@@ -7,7 +7,7 @@
 <br/>
 
 <p align='center'>
-  <img src='https://github.com/cluesurf/star.tree/blob/make/view/sun.gif?raw=true' height='192'/>
+  <img src='https://github.com/cluesurf/star.tree/blob/make/view/sun.svg?raw=true' height='192'/>
 </p>
 
 <h3 align='center'>star.tree</h3>
