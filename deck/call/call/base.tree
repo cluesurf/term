@@ -1,5 +1,5 @@
 
-load @termsurf/note/code/head/task/hook
+load @cluesurf/star/code/head/task/hook
   find task void
   find task bind-deck
   find task halt

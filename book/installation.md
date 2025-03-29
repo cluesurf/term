@@ -1,21 +1,21 @@
-# Installing TermTree
+# Installing StarTree
 
 _This is all idea phase at this time, not working yet!_
 
 ```
-pnpm install -g @cluesurf/note
+pnpm install -g @cluesurf/star
 ```
 
 Check that it worked.
 
 ```
-note --mark
+star --mark
 ```
 
-## Updating Note
+## Updating Star
 
 ```
-pnpm install -g @cluesurf/note@latest
+pnpm install -g @cluesurf/star@latest
 ```
 
-## Note Commands
+## Star Commands

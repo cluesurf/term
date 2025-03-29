@@ -1,4 +1,4 @@
-# The `deck` file in TermTree
+# The `deck` file in StarTree
 
 A deck is a package, and this is how you define the package metadata.
 
@@ -18,7 +18,7 @@ deck @cluesurf/deck
   read ./book # also a default
   lock apache-2
   sort tool
-  link @cluesurf/note, mark <0.x.x>
+  link @cluesurf/star, mark <0.x.x>
   link @cluesurf/nest, mark <0.x.x>
   link @cluesurf/crow, mark <0.x.x>
   load work
@@ -37,7 +37,7 @@ task ./task
 
 ### `boot`
 
-You can have a file run on TermTreetup. Just add this to your deck:
+You can have a file run on StarTreetup. Just add this to your deck:
 
 ```
 boot ./boot

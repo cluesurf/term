@@ -1,13 +1,13 @@
-# Package Manager Internals in TermTree
+# Package Manager Internals in StarTree
 
 This is the package manager section basically, the first prototype
 implemented in TypeScript. The goal is to eventually have it built using
-note.tree in link text itself.
+star.tree in link text itself.
 
 This should find the package first and foremost.
 
 - check the current directory for a special file called `link/deck.tree`
-  and a file called `note.tree`.
+  and a file called `star.tree`.
   - if it doesn't exist, then try going up one.
 
 When you encounter a path, you resolve the path.
@@ -24,7 +24,7 @@ resolution is necessary.
 The linking to the global store stores it at:
 
 ```
-~/.note
+~/.tree
   /deck
     /link # global dependency store
       /<host>
@@ -59,16 +59,16 @@ deck @my/deck
 When it searches for files, it searches like this:
 
 ```
-/something/deeply/nested/note.tree
+/something/deeply/nested/star.tree
 /something/deeply/nested/link
 
-/something/deeply/note.tree
+/something/deeply/star.tree
 /something/deeply/link
 
-/something/note.tree
+/something/star.tree
 /something/link
 
-/note.tree
+/star.tree
 /link
 ```
 
@@ -82,7 +82,7 @@ of files matching a path.
 role ./**/test.tree
   mint test
 
-role ./task/**/note.tree
+role ./task/**/star.tree
   mint task
 ```
 
@@ -102,8 +102,8 @@ it is just built into the compiler, the specific ways different file
 types are handled.
 
 ```
-https://note.surf/@cluesurf/note/head/deck.tree
-https://note.surf/@cluesurf/note/1.2.3/deck.tree
+https://star.surf/@cluesurf/star/head/deck.tree
+https://star.surf/@cluesurf/star/1.2.3/deck.tree
 ```
 
 Limit to 256mb decks.
@@ -112,7 +112,7 @@ The decks are stored on google cloud.
 
 ```
 deck <host/name>
-  mark <0.0.1> # note.tree version
+  mark <0.0.1> # star.tree version
   lock mit # required for publishing
   head <Required summary of the package in 64 characters or less.>
   site <repo>
@@ -127,11 +127,11 @@ note host deck
 Stored on google cloud like:
 
 ```
-deck.note.surf/@cluesurf/note/1.2.3/deck.tar.gz
-deck.note.surf/@cluesurf/note/1.2.3/note.tree
+deck.tree.surf/@cluesurf/star/1.2.3/deck.tar.gz
+deck.tree.surf/@cluesurf/star/1.2.3/star.tree
 ```
 
-The `note.tree` gives us the metadata associated with the deck:
+The `star.tree` gives us the metadata associated with the deck:
 
 ```
 {
@@ -153,9 +153,9 @@ hash integrity
 If there are more than 256 downloads, it can't be deleted without
 reaching out to support at meet@clue.surf.
 
-On publish to note.tree, once the package hits the server and streams
+On publish to star.tree, once the package hits the server and streams
 the upload to google cloud, it generates the hash and saves the
-`note.tree`.
+`star.tree`.
 
 ```js
 // open file stream
@@ -182,7 +182,7 @@ base <0.0.1>
 load @cluesurf/moon
   mark <*>
   lock <0.0.1>
-load @cluesurf/note
+load @cluesurf/star
   mark <*>
   lock <0.0.1>
 load @cluesurf/wolf
@@ -191,14 +191,14 @@ load @cluesurf/wolf
 
 link <@cluesurf/wolf:0.0.1>
   hash <sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==>
-  load @cluesurf/note
+  load @cluesurf/star
     mark <0.0.1>
 ```
 
 The website is pinged:
 
 ```
-PATCH https://note.surf/deck
+PATCH https://star.surf/deck
 ```
 
 With the payload:
@@ -214,7 +214,7 @@ It stores a copy of the package readme.md and the deck file metadata for
 display in the UI.
 
 ```
-https://note.surf/@cluesurf/note
+https://star.surf/@cluesurf/star
 ```
 
 Shows readme, with link to source.
@@ -234,7 +234,7 @@ For each version, it stores the readme and the metadata on the site in
 postgres, to render the website.
 
 ```
-https://note.surf/@cluesurf/note/1.2.3
+https://star.surf/@cluesurf/star/1.2.3
 ```
 
 The registry chooses to not use URLs and instead use the `@` at sign to
@@ -248,10 +248,10 @@ The sandbox is basically a deck.
 https://codepen.io/ettrics/pen/WRbGRN
 
 ```
-note.surf/@cluesurf/:deck/code/:file+
-note.surf/@cluesurf/buck-1212 (4 letter word followed by numbers)
-note.surf/@cluesurf/buck-1212/mark/:mark/code/:file+ (just the code)
-note.surf/@cluesurf/buck-1212/mark/:mark/hint/:file+/task/create-something
+star.surf/@cluesurf/:deck/code/:file+
+star.surf/@cluesurf/buck-1212 (4 letter word followed by numbers)
+star.surf/@cluesurf/buck-1212/mark/:mark/code/:file+ (just the code)
+star.surf/@cluesurf/buck-1212/mark/:mark/hint/:file+/task/create-something
 ```
 
 Then the sandbox decks are marked as "sort make".
@@ -265,27 +265,27 @@ When you add new dependencies, it runs a new vercel build. Otherwise it
 runs against the vercel code.
 
 ```
-TermTreeShow (project name)
+StarTreeShow (project name)
 
-MakeTermTree (project name)
+MakeStarTree (project name)
 
-make.note.surf/@cluesurf/buck-1234
+make.tree.surf/@cluesurf/buck-1234
   Shows the rendering
-make.note.surf/@cluesurf/buck-1234/hint/:file+
-make.note.surf/@cluesurf/buck-1234/code/:file+
-make.note.tree
+make.tree.surf/@cluesurf/buck-1234/hint/:file+
+make.tree.surf/@cluesurf/buck-1234/code/:file+
+make.star.tree
   Try and share code
-note.surf/dock/vercel/back
+star.surf/dock/vercel/back
 ```
 
 Those are `sort make` decks under the hood, or `make true`.
 
 For now, it links to GitHub projects and deploys directly through
-vercel. You don't host the code on note.tree.
+vercel. You don't host the code on star.tree.
 
 show true (to your deck, so it gets published to the world)
 
-The decks that you publish to note.tree are basically tools for the most
+The decks that you publish to star.tree are basically tools for the most
 part, though they can be apps / sites.
 
 ```
@@ -348,9 +348,9 @@ them into bundles, for minimizing HTTP requests on changed files.
 The bolt.tree project is all types, it is not needed at runtime. So
 there is type-annotated and type-free versions of the output JS.
 
-So we have the note.tree "compiler" form of the output JS, which is
+So we have the star.tree "compiler" form of the output JS, which is
 basically a direct port of the code to the compiler AST in JS. Then we
-have the compiled AST output file, without any types. The JS note.tree
+have the compiled AST output file, without any types. The JS star.tree
 code is used to generate the output JS. This outputs stuff without the
 types, if the types aren't directly referenced. If there is any code
 directly or indirectly referencing types, it perhaps includes all the
@@ -403,14 +403,14 @@ There is a server which loads the source maps under `/link`:
       /crow
         /1.0.23
           /code
-            /note.tree
+            /star.tree
           /link
             /cluesurf
               /wolf => /wolf/0.1.0
       /wolf
         /0.1.0
           /code
-            /note.tree
+            /star.tree
 ```
 
 The server aliases to `./link` on the file system, as in:
@@ -421,7 +421,7 @@ The server aliases to `./link` on the file system, as in:
     /crow
       /1.0.23
         /code
-          /note.tree
+          /star.tree
         /link
           /cluesurf
             /wolf => /wolf/0.1.0
@@ -435,7 +435,7 @@ Specify the bundle groups with:
 ```
 deck @foo/bar
   band base
-    link @cluesurf/note
+    link @cluesurf/star
     link @cluesurf/nest
     link @cluesurf/crow
 ```
@@ -534,7 +534,7 @@ public for the browser.
       /crow
         /1.0.23
           /code
-            /note.tree
+            /star.tree
           /base
             /link
               /cluesurf
@@ -542,7 +542,7 @@ public for the browser.
       /wolf
         /0.1.3
           /code
-            /note.tree
+            /star.tree
 /make
   # this folder changes a lot
   /bake # prepare the code
@@ -555,7 +555,7 @@ public for the browser.
   /rake # organize the code
     /javascript
       /package.json
-        name: @cluesurf/note
+        name: @cluesurf/star
         browser: ./browser/index.js
       /browser
         /hash.json
@@ -640,14 +640,14 @@ There is an in-memory cache of the modules. It saves the modules
 
 https://betterprogramming.pub/a-memory-friendly-way-of-reading-files-in-node-js-a45ad0cc7bb6
 
-On TermTreet the dev server, read each file's hash using streaming API
+On StarTreet the dev server, read each file's hash using streaming API
 or fs.read directly with shared memory buffer. Find all the old files
 using each hash, those files you don't have to recompile. Find the new
 files because they didn't exist in the cache, and compile those. Find
 the removed files because the cache contained extra files that weren't
 found in the new hash set. Remove those from the cache.
 
-TermTreet the dev server, when a file renamed, clear the cache and add
+StarTreet the dev server, when a file renamed, clear the cache and add
 the new value.
 
 link: hash
@@ -708,17 +708,17 @@ async function readBytes(fh, sharedBuffer) {
   return await fh.read(sharedBuffer, 0, sharedBuffer.length, null)
 }
 
-const TermTreet = new Date()
+const StarTreet = new Date()
 
 const str = []
 
 main().then(() => {
   const end = new Date()
-  console.log(end - TermTreet)
+  console.log(end - StarTreet)
 })
 
 async function main() {
-  const paths = glob.sync('../base.tree/code/**/*.tree')
+  const paths = glob.sync('../star.tree/code/**/*.tree')
   for (const path of paths) {
     const hash = await getFileHash(path)
     str.push(hash)

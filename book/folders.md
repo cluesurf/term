@@ -1,6 +1,6 @@
-# Folder Structure in TermTree
+# Folder Structure in StarTree
 
-The "index" file for a folder is called `note.tree` (you'll notice many
+The "index" file for a folder is called `star.tree` (you'll notice many
 of those in the repo already). This is how we name it, like `index.js`.
 Then you can name files whatever you want so long as it's a lowercase
 alphabetic, hyphen, or number character.
@@ -54,26 +54,26 @@ In applications it is common to use this convention:
   /task # handle API calls
   /hook # REST and webhook handlers
 /bind # configuration
-  /lock.note # commit this
-  /role.note
-  /text.note # copy
-  /kink.note # errors
+  /lock.tree# commit this
+  /role.tree
+  /text.tree# copy
+  /kink.tree# errors
   /form # schema
     /user
   /rule # policies/permissions
-  /take.note # query allowance
-  /vibe.note # global styles
+  /take.tree# query allowance
+  /vibe.tree# global styles
   /base # database
     /seed # seeding data
     /move # migrations
   /site # infrastructure
-    /hold.note # don't commit this
+    /hold.tree# don't commit this
     /move # migrations
   /host # env variables, don't commit
-    /test.note
-    /note.tree
-    /work.note # dev
-    /beat.note # prod
+    /test.tree
+    /star.tree
+    /work.tree# dev
+    /beat.tree# prod
 /book # guides
 /deck # custom packages
 /face # frontend
@@ -81,11 +81,11 @@ In applications it is common to use this convention:
   /vibe # styles/themes
   /wall # pages
     /host
-      /note.tree
-      /case.note
+      /star.tree
+      /case.tree
       /deck
-        /note.tree
-        /case.note
+        /star.tree
+        /case.tree
   /text # copy
 /file # public directory
   /text # fonts
@@ -96,7 +96,7 @@ In applications it is common to use this convention:
   /task # queries
 /line # command line processing
 /link
-  /hint.note
+  /hint.tree
   /head
   /tree
 /make
@@ -104,13 +104,13 @@ In applications it is common to use this convention:
     /browser
     /node
 /flow # logs
-  /work.note # dev logs
-  /test.note # test logs
-  /ride.note # prod logs
+  /work.tree# dev logs
+  /test.tree# test logs
+  /ride.tree# prod logs
 /task # dev helpers
 /test
 /host # shared
   /tree
-/note.tree # commit this
+/star.tree # commit this
 /hold # scratchpad/tmp folder
 ```

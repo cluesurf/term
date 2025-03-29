@@ -1,4 +1,4 @@
-# Linters in TermTree
+# Linters in StarTree
 
 Given a tree of AST nodes without whitespace, how do you generate the
 whitespace? Given a tree of CST nodes with whitespace, how do you edit
@@ -14,7 +14,7 @@ and fixed to format it nicely.
 
 Conversion from the generated AST to CST is basically a linting rule.
 
-    task.name.note.fold.text.last
+    task.name.tree.fold.text.last
 
     task.keyword
 
@@ -37,7 +37,7 @@ It needs to know if the link text represents a `task` for example.
 
     }
 
-    insertTextBefore(node.text.note.fold.text, '\n')
+    insertTextBefore(node.text.tree.fold.text, '\n')
 
 makeTaskText => a function which creates the AST node with the
 link/fold/text nodes makeTask => a function which creates the AST node
@@ -50,7 +50,7 @@ How will the parser show a task if there is interpolation before it is
 ready, and generated tree when it is ready? You don't want to edit the
 generated tree, just the written tree.
 
-You could handle that by saying only the ones with `.text.note` on them
+You could handle that by saying only the ones with `.text.tree` on them
 you pass to the rule handlers. But what about having interpolation
 inside a task? You don't know what the interpolation is for yet, so how
 can you build the task?
@@ -89,11 +89,11 @@ The linter gets the tree type, and works on that. The type checker gets
 the mesh type, and works on that. The mesh links back to the tree.
 
     mesh.tree
-    tree.note
+    tree.tree
     link.fold
     fold.text
 
-    tree.note goes to link text
+    tree.treegoes to link text
     tree.nest goes to the children
 
 So then when we construct the mesh type and generate code from it, it is

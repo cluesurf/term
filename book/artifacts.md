@@ -1,4 +1,4 @@
-# Artifacts in TermTree
+# Artifacts in StarTree
 
 This is how you would define them.
 
@@ -37,7 +37,7 @@ tool google
   bind region, loan region
 ```
 
-This is how the values would be saved in a sort of `seed.note` file.
+This is how the values would be saved in a sort of `seed.tree` file.
 
 ```
 mark <1.2.3>
@@ -49,7 +49,7 @@ seed example, like aws-instance
 ```
 
 The provided code showcases the definition of artifacts, which are
-similar to resources in Terraform, in TermTree. Let's explore the
+similar to resources in Terraform, in StarTree. Let's explore the
 different elements and syntax used:
 
 1. **Resource Definition:** The artifacts are defined using the `seed`
@@ -77,9 +77,9 @@ different elements and syntax used:
 
 ### Saving the Values
 
-The values can be saved in a separate `seed.note` file, following a
+The values can be saved in a separate `seed.tree` file, following a
 similar syntax to the artifact definitions. The `base` statement at the
-beginning sets the version or base for the `seed.note` file.
+beginning sets the version or base for the `seed.tree` file.
 
 ### Remote Storage with the Moon Framework
 
@@ -87,7 +87,7 @@ To save the artifacts remotely using a cloud provider, the
 `base bind site` statement is used, indicating that the artifacts should
 be saved in a remote site using the Moon framework.
 
-This syntax in TermTree allows you to define and configure artifacts
+This syntax in StarTree allows you to define and configure artifacts
 with their properties, bindings, and dependencies. It provides a
 structured way to manage and orchestrate resources or artifacts in your
 infrastructure or cloud environment.

@@ -1,5 +1,5 @@
 ```
-note.surf
+star.surf
   /book/*
   /@:host
     /:deck
@@ -67,5 +67,5 @@ fork hack, note <Place where you can have code pens>
         hook /:file+
       hook /show, note <The rendered form>
 
-https://hack.note.surf/@user/12321321233123
+https://hack.tree.surf/@user/12321321233123
 ```

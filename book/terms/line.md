@@ -1,7 +1,7 @@
-# The `line` file in TermTree
+# The `line` file in StarTree
 
 ```
-# file named foo.note
+# file named foo.tree
 hook bar
   take help
     take <-h>

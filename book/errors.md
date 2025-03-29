@@ -1,9 +1,9 @@
-# Error Definition and Handling in TermTree
+# Error Definition and Handling in StarTree
 
 First, in some library, you define your error:
 
 ```
-load @cluesurf/note/code/kink
+load @cluesurf/star/code/kink
   find suit fill
 
 kink syntax-error
@@ -33,7 +33,7 @@ is a default renderer, but you can override it on a per-error basis if
 you really want to.
 
 ```
-load @cluesurf/note/code/kink
+load @cluesurf/star/code/kink
   find suit show
 
 load ./halt

@@ -1,27 +1,27 @@
-# Cryptography in TermTree
+# Cryptography in StarTree
 
 ```
-load @cluesurf/note/code/base/cryptography/md5
+load @cluesurf/star/code/base/cryptography/md5
   find hash
 
 save hash, call hash, <foo>
 ```
 
 ```
-load @cluesurf/note/code/base/cryptography/aes
+load @cluesurf/star/code/base/cryptography/aes
   find encrypt
   find decrypt
 
-load @cluesurf/note/code/base/cryptography/rsa
+load @cluesurf/star/code/base/cryptography/rsa
   find encrypt
   find decrypt
   find generate
   find sign
   find verify
 
-load @cluesurf/note/code/base/cryptography/random/byte
+load @cluesurf/star/code/base/cryptography/random/byte
   find make
 
-load @cluesurf/note/code/base/cryptography/random/size
+load @cluesurf/star/code/base/cryptography/random/size
   find make
 ```

@@ -1,4 +1,4 @@
-## TermTree Hello World Example
+## StarTree Hello World Example
 
 You can do "log info" with the short show command.
 
@@ -18,7 +18,7 @@ Should print
     show <hello world>
       time <2023/07/10 04:32:01 pm utc>
       sort kink
-      deck <@cluesurf/note>
+      deck <@cluesurf/star>
       term process-tag
 
 You also have:

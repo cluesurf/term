@@ -1,5 +1,5 @@
 
-deck @termsurf/note
+deck @cluesurf/star
   head <A TreeCode Programming Framework>
 
   mark <0.0.1>
@@ -7,7 +7,7 @@ deck @termsurf/note
 
   lock apache-2
 
-  site <https://github.com/termsurf/note.tree>
+  site <https://github.com/termsurf/star.tree>
   view ./view/tree.gif
 
   term tree-code
@@ -21,16 +21,16 @@ deck @termsurf/note
   deck ./deck/load
   deck ./deck/line
 
-  link @termsurf/note, mark <0.0.x>
-  link @termsurf/bind, mark <0.0.x>
-  link @termsurf/moon, mark <0.0.x>
-  link @termsurf/bead, mark <0.0.x>
-  link @termsurf/chew, mark <0.0.x>
-  link @termsurf/move, mark <0.0.x>
-  link @termsurf/seal, mark <0.0.x>
-  link @termsurf/cone, mark <0.0.x>
-  link @termsurf/buzz, mark <0.0.x>
-  link @termsurf/crow, mark <0.0.x>
+  link @cluesurf/star, mark <0.0.x>
+  link @cluesurf/bind, mark <0.0.x>
+  link @cluesurf/moon, mark <0.0.x>
+  link @cluesurf/bead, mark <0.0.x>
+  link @cluesurf/chew, mark <0.0.x>
+  link @cluesurf/move, mark <0.0.x>
+  link @cluesurf/seal, mark <0.0.x>
+  link @cluesurf/cone, mark <0.0.x>
+  link @cluesurf/buzz, mark <0.0.x>
+  link @cluesurf/crow, mark <0.0.x>
 
   task ./task # the task loader
   read ./book # also a default

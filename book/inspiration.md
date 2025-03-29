@@ -4,35 +4,35 @@
 - https://doc.rust-lang.org/book/
 
 ```
-https://note.surf/@cluesurf/note/book
+https://star.surf/@cluesurf/star/book
   /introduction
-  /getting-TermTreeted
+  /getting-StarTreeted
     /installation
     /hello-world
 ```
 
 ```
-https://note.surf/@cluesurf/note/team
-https://note.surf/@cluesurf/note/book/:file+
-https://note.surf/@cluesurf/note/text/:file+ # docs
-https://note.surf/@cluesurf/note/tree/:file+
-https://note.surf/@cluesurf/note/mark # versions
-https://note.surf/@cluesurf/note/1.2.3/tree/:file+
+https://star.surf/@cluesurf/star/team
+https://star.surf/@cluesurf/star/book/:file+
+https://star.surf/@cluesurf/star/text/:file+ # docs
+https://star.surf/@cluesurf/star/tree/:file+
+https://star.surf/@cluesurf/star/mark # versions
+https://star.surf/@cluesurf/star/1.2.3/tree/:file+
 ```
 
 ```
-https://deck.note.surf/@cluesurf/note/1.2.3/base.note
-https://deck.note.surf/@cluesurf/note/1.2.3/base.tar.gz
-https://deck.note.surf/@cluesurf/note/1.2.3/book
-https://deck.note.surf/@cluesurf/note/1.2.3/code
-https://deck.note.surf/@cluesurf/note/1.2.3/tree
+https://deck.tree.surf/@cluesurf/star/1.2.3/base.tree
+https://deck.tree.surf/@cluesurf/star/1.2.3/base.tar.gz
+https://deck.tree.surf/@cluesurf/star/1.2.3/book
+https://deck.tree.surf/@cluesurf/star/1.2.3/code
+https://deck.tree.surf/@cluesurf/star/1.2.3/tree
 ```
 
 ```
 # book building
-note make note
+star make note
 # code notes
-note make code text
+star make code text
 ```
 
 - https://docs.gusto.com/app-integrations/reference/get-v1-me
@@ -43,7 +43,7 @@ note make code text
 ```
 /book
   /introduction
-  /getting-TermTreeted
+  /getting-StarTreeted
     /modeling
     /contributing
     /development

@@ -21,7 +21,7 @@
 
 ## Introduction
 
-TermTree is a cross-platform application framework _in development_
+StarTree is a cross-platform application framework _in development_
 (extreme **prototype**). It is far from being working, so mainly just a
 collection of packages with API ideas. The long term goal is to now get
 this working :).
@@ -38,7 +38,7 @@ pnpm add @cluesurf/term -g
 
 ## Dependencies
 
-TermTree is aimed to be built as a set of APIs, which you can swap out
+StarTree is aimed to be built as a set of APIs, which you can swap out
 the implementation for (as ones figure out more optimal approaches, like
 how normal software tools evolve generation after generation). But we
 will have a default set of implementations to start.
@@ -46,7 +46,7 @@ will have a default set of implementations to start.
 | Package                                              | Description                                                                                                                                                                                                                                                                                                                  |
 | :--------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`case.tree`](https://github.com/cluesurf/case.tree) | **Environment Binding Library.** This library will provide all the types for the base native runtimes (JavaScript, Swift, etc.).                                                                                                                                                                                             |
-| [`base.tree`](https://github.com/cluesurf/base.tree) | **Environment Tooling Library.** This will provide the main data types on top of the environment and all the standard functions. This will also include APIs for all the extra interfaces of the environment (cameras, flashlight, etc.).                                                                                    |
+| [`star.tree`](https://github.com/cluesurf/star.tree) | **Environment Tooling Library.** This will provide the main data types on top of the environment and all the standard functions. This will also include APIs for all the extra interfaces of the environment (cameras, flashlight, etc.).                                                                                    |
 | [`link.tree`](https://github.com/cluesurf/link.tree) | **Third-Party API Integration Library.** This will provide integration with common third-party REST APIs and the like.                                                                                                                                                                                                       |
 | [`feed.tree`](https://github.com/cluesurf/feed.tree) | **Data Management Library.** This will manage GraphQL/SQL-like querying and manipulation of database records. As well as handling caching, messaging, queueing, logging, etc.. Basically all data transfer.                                                                                                                  |
 | [`text.tree`](https://github.com/cluesurf/text.tree) | **Parsing Library.** These will be grammars used to parse text into ASTs, and generate text from ASTs.                                                                                                                                                                                                                       |

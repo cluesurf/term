@@ -70,14 +70,14 @@ dock macos
   note <Enable only for macos>
 
 role code
-  file ./**/*.note
+  file ./**/*.tree
   dock macos
 
-find ./**/*.note
+find ./**/*.tree
   role code
   dock macos
 
-file ./**/*.note
+file ./**/*.tree
   bind role, loan code
   bind dock, term macos
 

@@ -1,17 +1,17 @@
 
-deck @termsurf/note-load
+deck @cluesurf/star-load
   mark <0.0.1>
   sort load
   hide true
 
   head <A TreeCode Framework CLI>
 
-  link @termsurf/note, mark <0.0.x>
-  link @termsurf/bind, mark <0.0.x>
-  link @termsurf/moon, mark <0.0.x>
-  link @termsurf/cone, mark <0.0.x>
-  link @termsurf/buzz, mark <0.0.x>
-  link @termsurf/crow, mark <0.0.x>
+  link @cluesurf/star, mark <0.0.x>
+  link @cluesurf/bind, mark <0.0.x>
+  link @cluesurf/moon, mark <0.0.x>
+  link @cluesurf/cone, mark <0.0.x>
+  link @cluesurf/buzz, mark <0.0.x>
+  link @cluesurf/crow, mark <0.0.x>
 
   test ./test
 
