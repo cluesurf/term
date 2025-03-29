@@ -7,10 +7,10 @@
 <br/>
 
 <p align='center'>
-  <img src='https://github.com/cluesurf/term.tree/blob/make/view/tree.gif?raw=true' height='192'/>
+  <img src='https://github.com/cluesurf/star.tree/blob/make/view/sun.gif?raw=true' height='192'/>
 </p>
 
-<h3 align='center'>term.tree</h3>
+<h3 align='center'>star.tree</h3>
 <p align='center'>
   A <a href="https://github.com/cluesurf/tree">TreeCode</a> Programming Framework
 </p>
@@ -27,13 +27,13 @@ collection of packages with API ideas. The long term goal is to now get
 this working :).
 
 _Check out the
-"[Book](https://github.com/cluesurf/term.tree/tree/make/book)" for the
+"[Book](https://github.com/cluesurf/star.tree/tree/make/book)" for the
 most up-to-date examples and outlines of how this might end up working._
 
 ## Installation
 
 ```
-pnpm add @cluesurf/term -g
+pnpm add @cluesurf/star -g
 ```
 
 ## Dependencies
@@ -60,7 +60,7 @@ will have a default set of implementations to start.
 | [`site.tree`](https://github.com/cluesurf/site.tree) | **Application Framework**. A web application framework like Next.js or Ruby on Rails.                                                                                                                                                                                                                                        |
 | `chat.tree`                                          | **Natural Language Library.** This will contain tools for working with spoken languages and writing systems.                                                                                                                                                                                                                 |
 
-All of these are wrapped into the singular `term.tree` library, and you
+All of these are wrapped into the singular `star.tree` library, and you
 import from that.
 
 ## Folder Structure
@@ -80,10 +80,10 @@ Here is how a monolithic app might be structured:
 ```
 /.gitignore
 /.term
-/term.tree
+/star.tree
 /bind # env variables, don't commit
   /test.tree
-  /term.tree
+  /star.tree
   /work.tree # dev
   /moon.tree # staging
   /star.tree # prod
@@ -126,10 +126,10 @@ Here is how a monolithic app might be structured:
       /site-1
         /wall # pages
           /host
-            /term.tree
+            /star.tree
             /case.tree
             /deck
-              /term.tree
+              /star.tree
               /case.tree
         /text # copy
       /kink # errors
@@ -152,7 +152,7 @@ Here is how a monolithic app might be structured:
 For libraries, you might only have:
 
 ```
-/term.tree
+/star.tree
 /code
 /task
 /hold
