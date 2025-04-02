@@ -12,7 +12,7 @@
 
 <h3 align='center'>star.tree</h3>
 <p align='center'>
-  A <a href="https://github.com/cluesurf/tree">TreeCode</a> Programming Framework
+  A Reactive Compiler
 </p>
 
 <br/>
@@ -21,10 +21,15 @@
 
 ## Introduction
 
-StarTree is a cross-platform application framework _in development_
-(extreme **prototype**). It is far from being working, so mainly just a
-collection of packages with API ideas. The long term goal is to now get
-this working :).
+StarTree is a cross-platform programming/application/compiler framework
+written in [TreeCode](https://github.com/cluesurf/tree), and it is still
+in the _super prototype_ stage. It is far from being working, so mainly
+just a collection of packages with API ideas. The long term goal is to
+now get this working :).
+
+Think of it as a "reactive compiler", basically you model stuff in
+TreeCode (a simple structured language), and StarTree compiles that code
+into applications or software.
 
 _Check out the
 "[Book](https://github.com/cluesurf/star.tree/tree/make/book)" for the
