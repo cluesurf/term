@@ -5,7 +5,7 @@ framework. Calling TermTree a framework is kind of a misnomer, it is
 basically the minimal set of conventions for building packages.
 
 1. `@cluesurf/bind`: The TermTree Environment Binding Library
-1. `@cluesurf/star`: The TermTree Data Type Library
+1. `@cluesurf/term`: The TermTree Data Type Library
 1. `@cluesurf/moon`: The TermTree Environment Tooling Library
 1. `@cluesurf/hare`: The TermTree Data Structure Library
 1. `@cluesurf/worm`: The TermTree Content Grammar Library
@@ -26,7 +26,7 @@ This is the set of interfaces built into the native environments, as
 well as a few very general types. This is the foundation of everything
 else.
 
-## `@cluesurf/star`
+## `@cluesurf/term`
 
 This is the "standard library", and builds the basic interfaces on top
 of the main datatypes, leaving the rest of the environment to be

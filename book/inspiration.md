@@ -4,7 +4,7 @@
 - https://doc.rust-lang.org/book/
 
 ```
-https://term.surf/@cluesurf/star/book
+https://term.surf/@cluesurf/term/book
   /introduction
   /getting-TermTreeted
     /installation
@@ -12,20 +12,20 @@ https://term.surf/@cluesurf/star/book
 ```
 
 ```
-https://term.surf/@cluesurf/star/team
-https://term.surf/@cluesurf/star/book/:file+
-https://term.surf/@cluesurf/star/text/:file+ # docs
-https://term.surf/@cluesurf/star/tree/:file+
-https://term.surf/@cluesurf/star/mark # versions
-https://term.surf/@cluesurf/star/1.2.3/tree/:file+
+https://term.surf/@cluesurf/term/team
+https://term.surf/@cluesurf/term/book/:file+
+https://term.surf/@cluesurf/term/text/:file+ # docs
+https://term.surf/@cluesurf/term/tree/:file+
+https://term.surf/@cluesurf/term/mark # versions
+https://term.surf/@cluesurf/term/1.2.3/tree/:file+
 ```
 
 ```
-https://deck.tree.surf/@cluesurf/star/1.2.3/base.tree
-https://deck.tree.surf/@cluesurf/star/1.2.3/base.tar.gz
-https://deck.tree.surf/@cluesurf/star/1.2.3/book
-https://deck.tree.surf/@cluesurf/star/1.2.3/code
-https://deck.tree.surf/@cluesurf/star/1.2.3/tree
+https://deck.tree.surf/@cluesurf/term/1.2.3/base.tree
+https://deck.tree.surf/@cluesurf/term/1.2.3/base.tar.gz
+https://deck.tree.surf/@cluesurf/term/1.2.3/book
+https://deck.tree.surf/@cluesurf/term/1.2.3/code
+https://deck.tree.surf/@cluesurf/term/1.2.3/tree
 ```
 
 ```

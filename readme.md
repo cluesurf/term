@@ -38,7 +38,7 @@ most up-to-date examples and outlines of how this might end up working._
 ## Installation
 
 ```
-pnpm add @cluesurf/star -g
+pnpm add @cluesurf/term -g
 ```
 
 ## Dependencies

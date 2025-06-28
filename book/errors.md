@@ -3,7 +3,7 @@
 First, in some library, you define your error:
 
 ```
-load @cluesurf/star/code/kink
+load @cluesurf/term/code/kink
   find suit fill
 
 kink syntax-error
@@ -33,7 +33,7 @@ is a default renderer, but you can override it on a per-error basis if
 you really want to.
 
 ```
-load @cluesurf/star/code/kink
+load @cluesurf/term/code/kink
   find suit show
 
 load ./halt

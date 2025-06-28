@@ -1,5 +1,5 @@
 
-deck @cluesurf/star
+deck @cluesurf/term
   head <A TreeCode Programming Framework>
 
   mark <0.0.1>
@@ -21,7 +21,7 @@ deck @cluesurf/star
   deck ./deck/load
   deck ./deck/line
 
-  link @cluesurf/star, mark <0.0.x>
+  link @cluesurf/term, mark <0.0.x>
   link @cluesurf/bind, mark <0.0.x>
   link @cluesurf/moon, mark <0.0.x>
   link @cluesurf/bead, mark <0.0.x>

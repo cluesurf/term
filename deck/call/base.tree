@@ -1,5 +1,5 @@
 
-deck @cluesurf/star-call
+deck @cluesurf/term-call
   mark <0.0.1>
   sort call
   lock apache-2
@@ -7,7 +7,7 @@ deck @cluesurf/star-call
 
   head <A TreeCode Framework CLI>
 
-  link @cluesurf/star, mark <0.0.x>
+  link @cluesurf/term, mark <0.0.x>
   link @cluesurf/bind, mark <0.0.x>
   link @cluesurf/moon, mark <0.0.x>
   link @cluesurf/cone, mark <0.0.x>

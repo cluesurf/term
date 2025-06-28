@@ -2,13 +2,13 @@
 
 Maps, also known as hash maps or dictionaries, are powerful data
 structures that allow efficient storage and retrieval of key-value
-pairs. In TermTree, you can leverage the built-in `@cluesurf/star`
+pairs. In TermTree, you can leverage the built-in `@cluesurf/term`
 module to work with maps seamlessly. Let's explore the potential use
 cases and the functionality provided by the TermTree API for hash
 tables.
 
 ```link
-load @cluesurf/star
+load @cluesurf/term
   find seek
 
 save x
@@ -40,8 +40,8 @@ You can get specific implementations of maps by going directly to the
 source.
 
 ```
-load @cluesurf/star/code/seek/b-tree
+load @cluesurf/term/code/seek/b-tree
   find seek
-load @cluesurf/star/code/seek/hash/quadratic-probing
+load @cluesurf/term/code/seek/hash/quadratic-probing
   find seek
 ```

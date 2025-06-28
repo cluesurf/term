@@ -102,8 +102,8 @@ it is just built into the compiler, the specific ways different file
 types are handled.
 
 ```
-https://term.surf/@cluesurf/star/head/deck.tree
-https://term.surf/@cluesurf/star/1.2.3/deck.tree
+https://term.surf/@cluesurf/term/head/deck.tree
+https://term.surf/@cluesurf/term/1.2.3/deck.tree
 ```
 
 Limit to 256mb decks.
@@ -127,8 +127,8 @@ note host deck
 Stored on google cloud like:
 
 ```
-deck.tree.surf/@cluesurf/star/1.2.3/deck.tar.gz
-deck.tree.surf/@cluesurf/star/1.2.3/term.tree
+deck.tree.surf/@cluesurf/term/1.2.3/deck.tar.gz
+deck.tree.surf/@cluesurf/term/1.2.3/term.tree
 ```
 
 The `term.tree` gives us the metadata associated with the deck:
@@ -182,7 +182,7 @@ base <0.0.1>
 load @cluesurf/moon
   mark <*>
   lock <0.0.1>
-load @cluesurf/star
+load @cluesurf/term
   mark <*>
   lock <0.0.1>
 load @cluesurf/wolf
@@ -191,7 +191,7 @@ load @cluesurf/wolf
 
 link <@cluesurf/wolf:0.0.1>
   hash <sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==>
-  load @cluesurf/star
+  load @cluesurf/term
     mark <0.0.1>
 ```
 
@@ -214,7 +214,7 @@ It stores a copy of the package readme.md and the deck file metadata for
 display in the UI.
 
 ```
-https://term.surf/@cluesurf/star
+https://term.surf/@cluesurf/term
 ```
 
 Shows readme, with link to source.
@@ -234,7 +234,7 @@ For each version, it stores the readme and the metadata on the site in
 postgres, to render the website.
 
 ```
-https://term.surf/@cluesurf/star/1.2.3
+https://term.surf/@cluesurf/term/1.2.3
 ```
 
 The registry chooses to not use URLs and instead use the `@` at sign to
@@ -435,7 +435,7 @@ Specify the bundle groups with:
 ```
 deck @foo/bar
   band base
-    link @cluesurf/star
+    link @cluesurf/term
     link @cluesurf/nest
     link @cluesurf/crow
 ```
@@ -555,7 +555,7 @@ public for the browser.
   /rake # organize the code
     /javascript
       /package.json
-        name: @cluesurf/star
+        name: @cluesurf/term
         browser: ./browser/index.js
       /browser
         /hash.json

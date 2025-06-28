@@ -18,7 +18,7 @@ deck @cluesurf/deck
   read ./book # also a default
   lock apache-2
   sort tool
-  link @cluesurf/star, mark <0.x.x>
+  link @cluesurf/term, mark <0.x.x>
   link @cluesurf/nest, mark <0.x.x>
   link @cluesurf/crow, mark <0.x.x>
   load work
