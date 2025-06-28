@@ -10,7 +10,7 @@
   <img src='https://github.com/cluesurf/term.tree/blob/make/view/tree.gif?raw=true' height='192'/>
 </p>
 
-<h3 align='center'>term.tree</h3>
+<h3 align='center'>term</h3>
 <p align='center'>
   A Reactive Compiler
 </p>
