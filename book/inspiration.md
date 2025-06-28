@@ -4,20 +4,20 @@
 - https://doc.rust-lang.org/book/
 
 ```
-https://star.surf/@cluesurf/star/book
+https://term.surf/@cluesurf/star/book
   /introduction
-  /getting-StarTreeted
+  /getting-TermTreeted
     /installation
     /hello-world
 ```
 
 ```
-https://star.surf/@cluesurf/star/team
-https://star.surf/@cluesurf/star/book/:file+
-https://star.surf/@cluesurf/star/text/:file+ # docs
-https://star.surf/@cluesurf/star/tree/:file+
-https://star.surf/@cluesurf/star/mark # versions
-https://star.surf/@cluesurf/star/1.2.3/tree/:file+
+https://term.surf/@cluesurf/star/team
+https://term.surf/@cluesurf/star/book/:file+
+https://term.surf/@cluesurf/star/text/:file+ # docs
+https://term.surf/@cluesurf/star/tree/:file+
+https://term.surf/@cluesurf/star/mark # versions
+https://term.surf/@cluesurf/star/1.2.3/tree/:file+
 ```
 
 ```
@@ -43,7 +43,7 @@ star make code text
 ```
 /book
   /introduction
-  /getting-StarTreeted
+  /getting-TermTreeted
     /modeling
     /contributing
     /development

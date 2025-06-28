@@ -1,6 +1,6 @@
-# Folder Structure in StarTree
+# Folder Structure in TermTree
 
-The "index" file for a folder is called `star.tree` (you'll notice many
+The "index" file for a folder is called `term.tree` (you'll notice many
 of those in the repo already). This is how we name it, like `index.js`.
 Then you can name files whatever you want so long as it's a lowercase
 alphabetic, hyphen, or number character.
@@ -71,7 +71,7 @@ In applications it is common to use this convention:
     /move # migrations
   /host # env variables, don't commit
     /test.tree
-    /star.tree
+    /term.tree
     /work.tree# dev
     /beat.tree# prod
 /book # guides
@@ -81,10 +81,10 @@ In applications it is common to use this convention:
   /vibe # styles/themes
   /wall # pages
     /host
-      /star.tree
+      /term.tree
       /case.tree
       /deck
-        /star.tree
+        /term.tree
         /case.tree
   /text # copy
 /file # public directory
@@ -111,6 +111,6 @@ In applications it is common to use this convention:
 /test
 /host # shared
   /tree
-/star.tree # commit this
+/term.tree # commit this
 /hold # scratchpad/tmp folder
 ```

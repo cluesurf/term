@@ -1,4 +1,4 @@
-# Error Definition and Handling in StarTree
+# Error Definition and Handling in TermTree
 
 First, in some library, you define your error:
 

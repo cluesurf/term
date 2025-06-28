@@ -1,4 +1,4 @@
-# Installing StarTree
+# Installing TermTree
 
 _This is all idea phase at this time, not working yet!_
 

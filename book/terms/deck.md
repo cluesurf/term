@@ -1,4 +1,4 @@
-# The `deck` file in StarTree
+# The `deck` file in TermTree
 
 A deck is a package, and this is how you define the package metadata.
 
@@ -37,7 +37,7 @@ task ./task
 
 ### `boot`
 
-You can have a file run on StarTreetup. Just add this to your deck:
+You can have a file run on TermTreetup. Just add this to your deck:
 
 ```
 boot ./boot

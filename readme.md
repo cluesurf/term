@@ -7,10 +7,10 @@
 <br/>
 
 <p align='center'>
-  <img src='https://github.com/cluesurf/star.tree/blob/make/view/star.svg?raw=true' height='192'/>
+  <img src='https://github.com/cluesurf/term.tree/blob/make/view/star.svg?raw=true' height='192'/>
 </p>
 
-<h3 align='center'>star.tree</h3>
+<h3 align='center'>term.tree</h3>
 <p align='center'>
   A Reactive Compiler
 </p>
@@ -21,18 +21,18 @@
 
 ## Introduction
 
-StarTree is a cross-platform programming/application/compiler framework
+TermTree is a cross-platform programming/application/compiler framework
 written in [TreeCode](https://github.com/cluesurf/tree), and it is still
 in the _super prototype_ stage. It is far from being working, so mainly
 just a collection of packages with API ideas. The long term goal is to
 now get this working :).
 
 Think of it as a "reactive compiler", basically you model stuff in
-TreeCode (a simple structured language), and StarTree compiles that code
+TreeCode (a simple structured language), and TermTree compiles that code
 into applications or software.
 
 _Check out the
-"[Book](https://github.com/cluesurf/star.tree/tree/make/book)" for the
+"[Book](https://github.com/cluesurf/term.tree/tree/make/book)" for the
 most up-to-date examples and outlines of how this might end up working._
 
 ## Installation
@@ -43,7 +43,7 @@ pnpm add @cluesurf/star -g
 
 ## Dependencies
 
-StarTree is aimed to be built as a set of APIs, which you can swap out
+TermTree is aimed to be built as a set of APIs, which you can swap out
 the implementation for (as ones figure out more optimal approaches, like
 how normal software tools evolve generation after generation). But we
 will have a default set of implementations to start.
@@ -51,7 +51,7 @@ will have a default set of implementations to start.
 | Package                                              | Description                                                                                                                                                                                                                                                                                                                  |
 | :--------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`case.tree`](https://github.com/cluesurf/case.tree) | **Environment Binding Library.** This library will provide all the types for the base native runtimes (JavaScript, Swift, etc.).                                                                                                                                                                                             |
-| [`star.tree`](https://github.com/cluesurf/star.tree) | **Environment Tooling Library.** This will provide the main data types on top of the environment and all the standard functions. This will also include APIs for all the extra interfaces of the environment (cameras, flashlight, etc.).                                                                                    |
+| [`term.tree`](https://github.com/cluesurf/term.tree) | **Environment Tooling Library.** This will provide the main data types on top of the environment and all the standard functions. This will also include APIs for all the extra interfaces of the environment (cameras, flashlight, etc.).                                                                                    |
 | [`link.tree`](https://github.com/cluesurf/link.tree) | **Third-Party API Integration Library.** This will provide integration with common third-party REST APIs and the like.                                                                                                                                                                                                       |
 | [`feed.tree`](https://github.com/cluesurf/feed.tree) | **Data Management Library.** This will manage GraphQL/SQL-like querying and manipulation of database records. As well as handling caching, messaging, queueing, logging, etc.. Basically all data transfer.                                                                                                                  |
 | [`text.tree`](https://github.com/cluesurf/text.tree) | **Parsing Library.** These will be grammars used to parse text into ASTs, and generate text from ASTs.                                                                                                                                                                                                                       |
@@ -65,7 +65,7 @@ will have a default set of implementations to start.
 | [`site.tree`](https://github.com/cluesurf/site.tree) | **Application Framework**. A web application framework like Next.js or Ruby on Rails.                                                                                                                                                                                                                                        |
 | `chat.tree`                                          | **Natural Language Library.** This will contain tools for working with spoken languages and writing systems.                                                                                                                                                                                                                 |
 
-All of these are wrapped into the singular `star.tree` library, and you
+All of these are wrapped into the singular `term.tree` library, and you
 import from that.
 
 ## Folder Structure
@@ -85,13 +85,13 @@ Here is how a monolithic app might be structured:
 ```
 /.gitignore
 /.term
-/star.tree
+/term.tree
 /bind # env variables, don't commit
   /test.tree
-  /star.tree
+  /term.tree
   /work.tree # dev
   /moon.tree # staging
-  /star.tree # prod
+  /term.tree # prod
 /hold # scratchpad/tmp folder
 /host
   /javascript
@@ -131,10 +131,10 @@ Here is how a monolithic app might be structured:
       /site-1
         /wall # pages
           /host
-            /star.tree
+            /term.tree
             /case.tree
             /deck
-              /star.tree
+              /term.tree
               /case.tree
         /text # copy
       /kink # errors
@@ -157,7 +157,7 @@ Here is how a monolithic app might be structured:
 For libraries, you might only have:
 
 ```
-/star.tree
+/term.tree
 /code
 /task
 /hold

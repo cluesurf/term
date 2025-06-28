@@ -1,4 +1,4 @@
-# Linters in StarTree
+# Linters in TermTree
 
 Given a tree of AST nodes without whitespace, how do you generate the
 whitespace? Given a tree of CST nodes with whitespace, how do you edit

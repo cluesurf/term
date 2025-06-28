@@ -7,7 +7,7 @@ deck @cluesurf/star
 
   lock apache-2
 
-  site <https://github.com/termsurf/star.tree>
+  site <https://github.com/cluesurf/term.tree>
   view ./view/tree.gif
 
   term tree-code

@@ -1,4 +1,4 @@
-## StarTree Hello World Example
+## TermTree Hello World Example
 
 You can do "log info" with the short show command.
 

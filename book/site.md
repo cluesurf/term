@@ -1,5 +1,5 @@
 ```
-star.surf
+term.surf
   /book/*
   /@:host
     /:deck

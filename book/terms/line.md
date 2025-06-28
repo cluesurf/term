@@ -1,4 +1,4 @@
-# The `line` file in StarTree
+# The `line` file in TermTree
 
 ```
 # file named foo.tree

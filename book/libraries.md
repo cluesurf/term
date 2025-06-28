@@ -1,24 +1,24 @@
-# Main Libraries in StarTree
+# Main Libraries in TermTree
 
-These are open source building blocks used to make up the StarTree
-framework. Calling StarTree a framework is kind of a misnomer, it is
+These are open source building blocks used to make up the TermTree
+framework. Calling TermTree a framework is kind of a misnomer, it is
 basically the minimal set of conventions for building packages.
 
-1. `@cluesurf/bind`: The StarTree Environment Binding Library
-1. `@cluesurf/star`: The StarTree Data Type Library
-1. `@cluesurf/moon`: The StarTree Environment Tooling Library
-1. `@cluesurf/hare`: The StarTree Data Structure Library
-1. `@cluesurf/worm`: The StarTree Content Grammar Library
-1. `@cluesurf/mesh`: The StarTree Compiler Library
-1. `@cluesurf/fish`: The StarTree Linting Library
-1. `@cluesurf/wolf`: The StarTree File Manipulation Library
-1. `@cluesurf/StarTree`: The StarTree Third-Party Integration Library
-1. `@cluesurf/crow`: The StarTree Drawing Library
-1. `@cluesurf/nest`: The StarTree Resource Provisioning Library
-1. `@cluesurf/snow`: The StarTree Querying Library
-1. `@cluesurf/door`: The StarTree Permission Library
-1. `@cluesurf/seed`: The StarTree Math Library
-1. `@cluesurf/tree`: The StarTree DSL Library
+1. `@cluesurf/bind`: The TermTree Environment Binding Library
+1. `@cluesurf/star`: The TermTree Data Type Library
+1. `@cluesurf/moon`: The TermTree Environment Tooling Library
+1. `@cluesurf/hare`: The TermTree Data Structure Library
+1. `@cluesurf/worm`: The TermTree Content Grammar Library
+1. `@cluesurf/mesh`: The TermTree Compiler Library
+1. `@cluesurf/fish`: The TermTree Linting Library
+1. `@cluesurf/wolf`: The TermTree File Manipulation Library
+1. `@cluesurf/TermTree`: The TermTree Third-Party Integration Library
+1. `@cluesurf/crow`: The TermTree Drawing Library
+1. `@cluesurf/nest`: The TermTree Resource Provisioning Library
+1. `@cluesurf/snow`: The TermTree Querying Library
+1. `@cluesurf/door`: The TermTree Permission Library
+1. `@cluesurf/seed`: The TermTree Math Library
+1. `@cluesurf/tree`: The TermTree DSL Library
 
 ## `@cluesurf/bind`
 
@@ -78,7 +78,7 @@ This is for parsing and writing text and/or bytes.
 
 ## `@cluesurf/mesh`
 
-This is the main StarTree compiler. It takes input text and compiles it
+This is the main TermTree compiler. It takes input text and compiles it
 to a mesh, then runs typechecking / typeinference on it and everything,
 and outputs builds for target environments.
 
@@ -104,7 +104,7 @@ This is for dealing with different files. It includes:
 - HTML
 - CSS
 
-## `@cluesurf/StarTree`
+## `@cluesurf/TermTree`
 
 This is for third-party library integrations like with GitHub and
 Vercel.
