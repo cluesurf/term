@@ -102,8 +102,8 @@ it is just built into the compiler, the specific ways different file
 types are handled.
 
 ```
-https://term.surf/@cluesurf/term/head/deck.tree
-https://term.surf/@cluesurf/term/1.2.3/deck.tree
+https://clue.surf/@cluesurf/term/head/deck.tree
+https://clue.surf/@cluesurf/term/1.2.3/deck.tree
 ```
 
 Limit to 256mb decks.
@@ -198,7 +198,7 @@ link <@cluesurf/wolf:0.0.1>
 The website is pinged:
 
 ```
-PATCH https://term.surf/deck
+PATCH https://clue.surf/deck
 ```
 
 With the payload:
@@ -214,7 +214,7 @@ It stores a copy of the package readme.md and the deck file metadata for
 display in the UI.
 
 ```
-https://term.surf/@cluesurf/term
+https://clue.surf/@cluesurf/term
 ```
 
 Shows readme, with link to source.
@@ -234,7 +234,7 @@ For each version, it stores the readme and the metadata on the site in
 postgres, to render the website.
 
 ```
-https://term.surf/@cluesurf/term/1.2.3
+https://clue.surf/@cluesurf/term/1.2.3
 ```
 
 The registry chooses to not use URLs and instead use the `@` at sign to
@@ -248,10 +248,10 @@ The sandbox is basically a deck.
 https://codepen.io/ettrics/pen/WRbGRN
 
 ```
-term.surf/@cluesurf/:deck/code/:file+
-term.surf/@cluesurf/buck-1212 (4 letter word followed by numbers)
-term.surf/@cluesurf/buck-1212/mark/:mark/code/:file+ (just the code)
-term.surf/@cluesurf/buck-1212/mark/:mark/hint/:file+/task/create-something
+clue.surf/@cluesurf/:deck/code/:file+
+clue.surf/@cluesurf/buck-1212 (4 letter word followed by numbers)
+clue.surf/@cluesurf/buck-1212/mark/:mark/code/:file+ (just the code)
+clue.surf/@cluesurf/buck-1212/mark/:mark/hint/:file+/task/create-something
 ```
 
 Then the sandbox decks are marked as "sort make".
@@ -275,7 +275,7 @@ make.tree.surf/@cluesurf/buck-1234/hint/:file+
 make.tree.surf/@cluesurf/buck-1234/code/:file+
 make.term.tree
   Try and share code
-term.surf/dock/vercel/back
+clue.surf/dock/vercel/back
 ```
 
 Those are `sort make` decks under the hood, or `make true`.

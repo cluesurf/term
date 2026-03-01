@@ -1,5 +1,5 @@
 ```
-term.surf
+clue.surf
   /book/*
   /@:host
     /:deck

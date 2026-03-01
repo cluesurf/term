@@ -4,7 +4,7 @@
 - https://doc.rust-lang.org/book/
 
 ```
-https://term.surf/@cluesurf/term/book
+https://clue.surf/@cluesurf/term/book
   /introduction
   /getting-TermTreeted
     /installation
@@ -12,12 +12,12 @@ https://term.surf/@cluesurf/term/book
 ```
 
 ```
-https://term.surf/@cluesurf/term/team
-https://term.surf/@cluesurf/term/book/:file+
-https://term.surf/@cluesurf/term/text/:file+ # docs
-https://term.surf/@cluesurf/term/tree/:file+
-https://term.surf/@cluesurf/term/mark # versions
-https://term.surf/@cluesurf/term/1.2.3/tree/:file+
+https://clue.surf/@cluesurf/term/team
+https://clue.surf/@cluesurf/term/book/:file+
+https://clue.surf/@cluesurf/term/text/:file+ # docs
+https://clue.surf/@cluesurf/term/tree/:file+
+https://clue.surf/@cluesurf/term/mark # versions
+https://clue.surf/@cluesurf/term/1.2.3/tree/:file+
 ```
 
 ```
