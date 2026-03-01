@@ -12,7 +12,7 @@
 
 <h3 align='center'>term</h3>
 <p align='center'>
-  A Reactive Compiler
+  A TreeCode Reactive Compiler
 </p>
 
 <br/>
