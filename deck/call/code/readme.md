@@ -1,4 +1,4 @@
-# Base CLI
+# Term CLI
 
 This is the first prototype of the CLI tool for base.
 
@@ -6,180 +6,180 @@ This is the first prototype of the CLI tool for base.
 
 ```bash
 # link local repo to global dependency store
-base link deck
-base link
+term link deck
+term link
 # link globally linked dependency to local project
-base link deck @foo/bar
-base link @foo/bar
+term link deck @foo/bar
+term link @foo/bar
 # remove a symlink
-base toss deck link <deck>
-base toss link <deck>
+term toss deck link <deck>
+term toss link <deck>
 # run project tests
-base test deck
-base test
+term test deck
+term test
 # install defined packages
-base load deck
-base load
+term load deck
+term load
 # install defined decks without dev(work)/test
-base load deck --like base
+term load deck --like base
 # install packages
-base save deck @foo/bar
-base save @foo/bar
+term save deck @foo/bar
+term save @foo/bar
 # install packages globally
-base save deck <deck> --slot base
+term save deck <deck> --slot base
 # check if decks are installed
-base seek
+term seek
 # create a new package
-base cast deck
-base cast
+term cast deck
+term cast
 # build/compile the package
-base make deck
-base make
+term make deck
+term make
 # watch the directory and recompile
-base make --ride
+term make --ride
 # start a repl for the current deck
-base walk deck
-base walk
+term walk deck
+term walk
 # apply configuration like terraform
-base bind deck
-base bind
+term bind deck
+term bind
 # create a user account
-base cast mind
+term cast mind
 # update user profile property
-base save mind <name> <value>
+term save mind <name> <value>
 # read user profile data
-base read mind
+term read mind
 # read user profile value
-base read mind <name>
+term read mind <name>
 # create an org/namespace
-base cast host
+term cast host
 # update host profile property
-base save host <name> <value>
+term save host <name> <value>
 # change the default registry from base.link to something else
-base save hold <url>
+term save hold <url>
 # change the org registry
-base save hold <host> <url>
+term save hold <host> <url>
 # login
-base dock mind
+term dock mind
 # logout
-base void mind
+term void mind
 # publish a package
-base host deck
-base host
+term host deck
+term host
 # bump patch version
-base move mark 3
-base move mark
+term move mark 3
+term move mark
 # bump minor version
-base move mark 2
+term move mark 2
 # bump major version
-base move mark 1
+term move mark 1
 # show dependency tree
-base show deck tree
+term show deck tree
 # run the code
-base boot deck
-base boot
+term boot deck
+term boot
 # clean artifacts
-base wash deck
+term wash deck
 # make documentation, hosted in ./hint/code
-base make code book
+term make code book
 # generate markdown from book
-base make book --like md
-base make book
+term make book --like md
+term make book
 # generate pdf from book
-base make book --like pdf
+term make book --like pdf
 # remove package from manifest
-base toss deck <deck>
-base toss <deck>
+term toss deck <deck>
+term toss <deck>
 # add owner to package
-base link deck mind <mind>
+term link deck mind <mind>
 # remove owner
-base toss deck mind <mind>
+term toss deck mind <mind>
 # show info about this deck
-base note deck
+term note deck
 # show info about a deck
-base note deck <deck>
-base note <deck>
+term note deck <deck>
+term note <deck>
 # show info and problems about current deck
 # shows TODOs as well, and stats.
-base note
+term note
 # show file sizes
-base note deck file size
-base note file size
-base note size
+term note deck file size
+term note file size
+term note size
 # list outdated decks
-base diff deck
+term diff deck
 # see if module is outdated
-base diff deck <deck>
-# base version
-base show mark
-# show basic information about base and operating system for debugging help
-base show
+term diff deck <deck>
+# term version
+term show mark
+# show basic information about term and operating system for debugging help
+term show
 # show intro helper menu
 base
 # show source location of deck
-base show deck link
+term show deck link
 # open deck in editor
-base show deck <deck>
+term show deck <deck>
 # execute an arbitrary task
-base <name>
+term <name>
 # execute arbitrary task from another repo
-base <name> <deck>
+term <name> <deck>
 # run the make command of another repo
-base make @foo/bar
+term make @foo/bar
 # deprecate a deck version
-base void deck my-thing@"< 0.2.3" "critical bug fixed in v0.2.3"
+term void deck my-thing@"< 0.2.3" "critical bug fixed in v0.2.3"
 # switch to a different version of base
-base move self <version>
+term move self <version>
 # set the default version to use
-base bind self <version>
-# install the latest base itself
-base save self
-# install a specific version of base itself
-base save self <version>
-# check if the base has a new version
-base diff self
+term bind self <version>
+# install the latest term itself
+term save self
+# install a specific version of term itself
+term save self <version>
+# check if the term has a new version
+term diff self
 # list installed versions of base
-base list self
-# where base is located itself, and other things
-base show self
+term list self
+# where term is located itself, and other things
+term show self
 # start development server
-base work
+term work
 # plan a terraform configuration
-base brew site
-base brew
+term brew site
+term brew
 # read config value
-base read <name>
+term read <name>
 # terraform bind
-base bind site
+term bind site
 # load db console
-base bind base
+term bind base
 # create Database
-base make base
+term make base
 # drop database
-base toss base
+term toss base
 # load seed data
-base seed base
+term seed base
 # clear logs
-base wash tail
+term wash tail
 # run migrations
-base bind base head
-base bind base
+term bind term head
+term bind base
 # rollback migrations
-base bind base back
+term bind term back
 # generate UI component
-base make dock
+term make dock
 # custom commands
-base call <command>
+term call <command>
 ```
 
 Since you can add your own commands to `base`, the convention is:
 
 ```bash
-base <verb> <...objects> <...options>
+term <verb> <...objects> <...options>
 ```
 
 ```bash
-base test view
+term test view
 ```
 
 ## Generic Options
