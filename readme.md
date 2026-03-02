@@ -12,7 +12,7 @@
 
 <h3 align='center'>term</h3>
 <p align='center'>
-  A TreeCode Reactive Compiler
+  A Reactive Language
 </p>
 
 <br/>
@@ -22,7 +22,7 @@
 ## Introduction
 
 TermTree is a cross-platform programming/application/compiler framework
-written in [TreeCode](https://github.com/cluesurf/tree), and it is still
+built with [TreeCode](https://github.com/cluesurf/tree) syntax, and it is still
 in the _super prototype_ stage. It is far from being working, so mainly
 just a collection of packages with API ideas. The long term goal is to
 now get this working :).
