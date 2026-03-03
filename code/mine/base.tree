@@ -1,9 +1,0 @@
-
-task make
-  note <Make the mint parser.>
-  base mint, list mint
-
-task mint
-  note <Use the parser to construct an object.>
-  base mint, form mint
-  base tree, form link-tree

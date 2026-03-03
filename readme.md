@@ -7,261 +7,142 @@
 <br/>
 
 <p align='center'>
-  <img src='https://github.com/cluesurf/term.tree/blob/make/view/tree.gif?raw=true' height='192'/>
+  <img src='https://github.com/cluesurf/seed/blob/make/view/seed.png?raw=true' height='256'>
 </p>
 
-<h3 align='center'>term</h3>
+<h3 align='center'>
+  seed
+</h3>
 <p align='center'>
-  A Reactive Language
+  A Reactive Language 𖣂︎
 </p>
 
 <br/>
 <br/>
 <br/>
 
-## Introduction
+## Why
 
-TermTree is a cross-platform programming/application/compiler framework
-built with [TreeCode](https://github.com/cluesurf/tree) syntax, and it is still
-in the _super prototype_ stage. It is far from being working, so mainly
-just a collection of packages with API ideas. The long term goal is to
-now get this working :).
+Every platform has its own language, its own build tools, its own
+ecosystem. Writing an app that runs on servers, browsers, iOS, and
+Android means learning four toolchains, maintaining four codebases, and
+watching them drift apart. The logic is the same. The plumbing is not.
 
-Think of it as a "reactive compiler", basically you model stuff in
-TreeCode (a simple structured language), and TermTree compiles that code
-into applications or software.
+Seed is a programming language and ecosystem that compiles `.tree`
+source code into native, idiomatic output for multiple platforms. You
+write your logic once in a clean, indentation-based syntax. The
+compiler produces Rust, TypeScript, Kotlin, Swift, or HVM, each looking
+like it was written by hand for that target.
 
-_Check out the
-"[Book](https://github.com/cluesurf/term.tree/tree/make/book)" for the
-most up-to-date examples and outlines of how this might end up working._
+Seed is not a runtime or a virtual machine. It generates real native
+code that integrates with each platform's existing tools, libraries,
+and package managers.
+
+## The Ecosystem
+
+### Core
+
+| Package                      | Purpose                            |
+| ---------------------------- | ---------------------------------- |
+| [seed](.) (this)             | Entrypoint and CLI                 |
+| [mesh.tree](../mesh.tree)    | Compiler + runtime                 |
+| [deck.tree](../deck.tree)    | Package manager                    |
+| [base.tree](../base.tree)    | Standard library                   |
+| [case.tree](../case.tree)    | Environment types and native bindings |
+
+### Libraries
+
+| Package                      | Purpose                            |
+| ---------------------------- | ---------------------------------- |
+| [flow.tree](../flow.tree)    | Graphics, audio, interface logic   |
+| [form.tree](../form.tree)    | Math                               |
+| [land.tree](../land.tree)    | Infrastructure                     |
+| [word.tree](../word.tree)    | Language and linguistics           |
+| [code.tree](../code.tree)    | Content grammars (binary and text) |
+| [link.tree](../link.tree)    | Third party API connections        |
+| [site.tree](../site.tree)    | App level frameworks               |
+
+## How It Works
+
+```
+.tree source
+    |
+    v
+mesh.tree (compiler)
+    |
+    +---> Rust       (servers, CLI, embedded)
+    +---> TypeScript  (browsers, Node.js)
+    +---> Kotlin      (Android, JVM)
+    +---> Swift       (iOS, macOS)
+    +---> HVM         (parallel computation)
+```
+
+The compiler parses `.tree` files into a surface AST, desugars into
+core terms based on the Calculus of Constructions with self-types,
+type-checks, and hands off to backend code generators. Each backend
+produces idiomatic output for its platform.
+
+For HVM targets, the runtime manages execution through WebAssembly,
+marshaling values and interpreting the IO protocol for side effects.
 
 ## Installation
 
 ```
-pnpm add @cluesurf/term -g
+pnpm add @cluesurf/seed -g
 ```
 
-## Dependencies
+## Getting Started
 
-TermTree is aimed to be built as a set of APIs, which you can swap out
-the implementation for (as ones figure out more optimal approaches, like
-how normal software tools evolve generation after generation). But we
-will have a default set of implementations to start.
+```bash
+# Compile a project
+seed make
 
-| Package                                              | Description                                                                                                                                                                                                                                                                                                                  |
-| :--------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`case.tree`](https://github.com/cluesurf/case.tree) | **Environment Binding Library.** This library will provide all the types for the base native runtimes (JavaScript, Swift, etc.).                                                                                                                                                                                             |
-| [`term.tree`](https://github.com/cluesurf/term.tree) | **Environment Tooling Library.** This will provide the main data types on top of the environment and all the standard functions. This will also include APIs for all the extra interfaces of the environment (cameras, flashlight, etc.).                                                                                    |
-| [`link.tree`](https://github.com/cluesurf/link.tree) | **Third-Party API Integration Library.** This will provide integration with common third-party REST APIs and the like.                                                                                                                                                                                                       |
-| [`feed.tree`](https://github.com/cluesurf/feed.tree) | **Data Management Library.** This will manage GraphQL/SQL-like querying and manipulation of database records. As well as handling caching, messaging, queueing, logging, etc.. Basically all data transfer.                                                                                                                  |
-| [`text.tree`](https://github.com/cluesurf/text.tree) | **Parsing Library.** These will be grammars used to parse text into ASTs, and generate text from ASTs.                                                                                                                                                                                                                       |
-| [`view.tree`](https://github.com/cluesurf/view.tree) | **View Library.** This will be combined 2D and 3D graphics rendering for the web.                                                                                                                                                                                                                                            |
-| [`make.tree`](https://github.com/cluesurf/make.tree) | **Compiler.** This will do typechecking and compile the code to output runtimes. This will also do regular code linting and formatting (like prettier and ESLint). And it will allow for debugging and setting breakpoints, all from within the same AST and compilation scope. Finally, it will contain the runtime module. |
-| [`deck.tree`](https://github.com/cluesurf/deck.tree) | **Package Management Library.** This will handle resolving, fetching, and publishing packages.                                                                                                                                                                                                                               |
-| [`host.tree`](https://github.com/cluesurf/host.tree) | **Resource Provisioning Framework.** This will be like working with terraform modules to deploy and manage infrastructure.                                                                                                                                                                                                   |
-| [`test.tree`](https://github.com/cluesurf/test.tree) | **Testing Library.** The framework and tooling to run unit and integration tests.                                                                                                                                                                                                                                            |
-| [`form.tree`](https://github.com/cluesurf/form.tree) | **Math Definition Library.** This will ideally contain models for the foundations of math.                                                                                                                                                                                                                                   |
-| [`lock.tree`](https://github.com/cluesurf/lock.tree) | **Security Framework**. All auth and security protocols go here.                                                                                                                                                                                                                                                             |
-| [`site.tree`](https://github.com/cluesurf/site.tree) | **Application Framework**. A web application framework like Next.js or Ruby on Rails.                                                                                                                                                                                                                                        |
-| `chat.tree`                                          | **Natural Language Library.** This will contain tools for working with spoken languages and writing systems.                                                                                                                                                                                                                 |
+# Run in dev mode (watch + hot reload)
+seed flow
 
-All of these are wrapped into the singular `term.tree` library, and you
-import from that.
+# Add a package
+seed deck save <package>
 
-## Folder Structure
-
-Ignore the key folders in `.gitignore`:
-
-```.gitignore
-/.term  # compiled helper folder
-/bind   # environment variables
-/hold   # temporary folder
-/host   # generated content folder
-/link   # downloaded packages folder
+# Run tests
+seed test
 ```
 
-Here is how a monolithic app might be structured:
+## Example
 
 ```
-/.gitignore
-/.term
-/term.tree
-/bind # env variables, don't commit
-  /test.tree
-  /term.tree
-  /work.tree # dev
-  /moon.tree # staging
-  /term.tree # prod
-/hold # scratchpad/tmp folder
-/host
-  /javascript
-    /browser
-    /node
-  /log # logs
-    /work.tree # dev logs
-    /test.tree # test logs
-/note # guides
-/link
-/deck
-  /form # schema
-    /code
-      /user.tree
-  /line # command line processing
-  /back # backend
-    /deck
-      /site-1
-      /site-2
-      /hook # REST and webhook handlers
-        /task # handle API calls
-        /take
-        /save
-      /note # mailers
-      /work # jobs
-        /time # cron jobs
-      /form # schema
-        /user.tree
-      /call
-        /take # query allowance
-      /rule # policies/permissions
-  /face # frontend
-    /deck
-      /test
-      /dock # ui components
-      /vibe # styles/themes
-      /site-1
-        /wall # pages
-          /host
-            /term.tree
-            /case.tree
-            /deck
-              /term.tree
-              /case.tree
-        /text # copy
-      /kink # errors
-      /file # public directory
-        /text # fonts
-        /view # images
-  /base # database
-    /seed # seeding data
-    /move # migrations
-  /site # infrastructure
-    /hold.tree # don't commit this
-    /move # migrations
-/task # dev helpers
-/text # copy
-  /en.tree
-  /fr.tree
-  /zh.tree
+task greet
+  take name, like text
+  back call join
+    bind a, mark <Hello, >
+    bind b, read name
+
+task main
+  save message
+    call greet
+      bind name, mark <world>
+  call print
+    bind text, read message
 ```
 
-For libraries, you might only have:
+Compiles to:
 
-```
-/term.tree
-/code
-/task
-/hold
-/host
-/link
-/note
-```
-
-## Interfaces
-
-The package manager and several other components can possibly be swapped
-out potentially in the future, each just depends on a small interface.
-
-### Package Manager Interface
-
-```ts
-const deck = new Deck({ home: '.' })
-
-// save global package
-Deck.save()
-
-// remove global package
-Deck.toss()
-
-// verify global package
-Deck.test()
-
-// link global package
-Deck.link()
-
-// install defined packages
-deck.load()
-
-// add a package
-deck.save({ link, mark, site })
-
-// remove a package
-deck.toss({ link, mark, site })
-
-// verify a deck
-deck.test({ link, mark, site })
-
-// link a package
-deck.link({ link, mark, site })
-
-// resolve file link
-deck.find({ file, base })
-```
-
-### Compiler Interface
-
-```ts
-class Code {
-  make() {
-    this.load()
-    this.mesh()
-    this.lint()
-    this.tree()
-    this.text()
-    this.bind()
-  }
-
-  bind() {
-    code.on('file', code.make)
-  }
-
-  // load from the entrypoint of the project
-  load() {}
-
-  // do type-checking, variable resolution, optimizations, etc..
-  mesh() {}
-
-  // do linting and fix up code
-  lint() {}
-
-  // make output AST in target language
-  make() {}
-
-  // write the AST to string
-  text() {}
+**Rust**
+```rust
+fn greet(name: String) -> String {
+    format!("Hello, {}", name)
 }
 ```
 
-### Output Generator Interface
-
-```ts
-const host = new Host({ code })
-
-const ts = host.make({ form: 'typescript' })
-const rust = host.make({ form: 'rust' })
+**TypeScript**
+```typescript
+export function greet(name) {
+    return `Hello, ${name}`;
+}
 ```
-
-The output is typed as a standard AST in each language.
-
-## TODO
-
-- parse mine/mind files (mint)
-  - parse tree-role file types
-  - parse chat-talk-link tree
-  - convert into json
 
 ## License
 
-Copyright 2021-2024 <a href='https://clue.surf'>ClueSurf</a>
+Copyright 2021-2026+ <a href='https://clue.surf'>ClueSurf</a>
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may
 not use this file except in compliance with the License. You may obtain

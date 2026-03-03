@@ -1,5 +1,5 @@
 
-load @cluesurf/cone
+load @cluesurf/code
   find mint code
 
 role book

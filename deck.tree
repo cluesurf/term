@@ -1,5 +1,5 @@
 
-deck @cluesurf/term
+deck @cluesurf/seed
   head <A TreeCode Programming Framework>
 
   mark <0.0.1>

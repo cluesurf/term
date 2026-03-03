@@ -1,5 +1,0 @@
-dock:
-  case: ''
-  call: 'base dock'
-  take:
-    - name: string
