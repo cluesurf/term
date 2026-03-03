@@ -19,7 +19,7 @@ deck @cluesurf/deck
   lock apache-2
   sort tool
   link @cluesurf/term, mark <0.x.x>
-  link @cluesurf/nest, mark <0.x.x>
+  link @cluesurf/base, mark <0.x.x>
   link @cluesurf/crow, mark <0.x.x>
   load work
   load host

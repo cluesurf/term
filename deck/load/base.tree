@@ -15,4 +15,5 @@ deck @cluesurf/term-load
 
   test ./test
 
-  mind <Lance Pollard>, site <lp@elk.fm>
+  mind <Lance Pollard>, base <lp@elk.fm>
+    site <lancejpollard.com>

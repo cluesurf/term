@@ -9,10 +9,10 @@ tables.
 
 ```link
 load @cluesurf/term
-  find seek
+  find find
 
 save x
-  make seek
+  make find
     save <Foo>, <bar>
     save <Key>, <value>
 
@@ -20,7 +20,7 @@ call x/save, <Another key>, 123
 save foo, call x/read, <Foo>
 call x/size
 
-walk seek, loan x
+walk find, loan x
   hook tick
     take key
     show <{key}>
@@ -40,8 +40,8 @@ You can get specific implementations of maps by going directly to the
 source.
 
 ```
-load @cluesurf/term/code/seek/b-tree
-  find seek
-load @cluesurf/term/code/seek/hash/quadratic-probing
-  find seek
+load @cluesurf/term/code/find/b-tree
+  find find
+load @cluesurf/term/code/find/hash/quadratic-probing
+  find find
 ```

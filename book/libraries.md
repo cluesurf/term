@@ -14,7 +14,7 @@ basically the minimal set of conventions for building packages.
 1. `@cluesurf/wolf`: The TermTree File Manipulation Library
 1. `@cluesurf/TermTree`: The TermTree Third-Party Integration Library
 1. `@cluesurf/crow`: The TermTree Drawing Library
-1. `@cluesurf/nest`: The TermTree Resource Provisioning Library
+1. `@cluesurf/base`: The TermTree Resource Provisioning Library
 1. `@cluesurf/snow`: The TermTree Querying Library
 1. `@cluesurf/door`: The TermTree Permission Library
 1. `@cluesurf/seed`: The TermTree Math Library
@@ -115,7 +115,7 @@ This is for managing the UI and defining UI components. This includes
 DOM trees like React, WebGL graphics, game graphics like Pixi.js, and
 game physics. Ideally there are both 2d and 3d variants.
 
-## `@cluesurf/nest`
+## `@cluesurf/base`
 
 This is for managing the provisioning of "resources" like databases and
 other infrastructure.

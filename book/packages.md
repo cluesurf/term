@@ -436,7 +436,7 @@ Specify the bundle groups with:
 deck @foo/bar
   band base
     link @cluesurf/term
-    link @cluesurf/nest
+    link @cluesurf/base
     link @cluesurf/crow
 ```
 
