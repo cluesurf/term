@@ -65,10 +65,12 @@ halt syntax-error
 The `halt` basically does:
 
 ```
-back
+send back
   make syntax-error
     ...
 ```
+
+Or maybe the `halt kink` that we implemented.
 
 ## Notes
 
