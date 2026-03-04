@@ -57,30 +57,6 @@ bear <./{base/host/dock}>
 This resolves to different files based on the target platform
 (javascript, rust, swift, etc.).
 
-## Visibility
-
-```tree
-task helper
-  hide true
-  send back, mark 0
-
-task api
-  send back
-    call helper
-```
-
-## Namespaces (`book`)
-
-Group definitions under a namespace:
-
-```tree
-book math
-  task add
-    take a, like u64
-    take b, like u64
-    like u64
-```
-
 ## Native Libraries (`dock`)
 
 Import native platform libraries:
@@ -103,15 +79,26 @@ call fs/read-file-sync
   bind encoding, text <utf8>
 ```
 
-## Scope Variables
+## Visibility
 
-Built-in scope references:
+`hide` makes a definition private:
 
-| Variable | Meaning |
-| --- | --- |
-| `card` | Current file |
-| `base` | Main world / root |
-| `base/host` | Environment variables |
-| `fork` | Current scope |
-| `flow` | Current process |
-| `task` | Calling task |
+```tree
+task helper
+  hide true
+  send back, mark 0
+```
+
+Everything is public by default.
+
+## Namespaces (`book`)
+
+Group definitions under a namespace:
+
+```tree
+book math
+  task add
+    take a, like u64
+    take b, like u64
+    like u64
+```

@@ -1,7 +1,7 @@
 # Functions
 
 Define functions with `task`. Parameters use `take`, return type
-uses `like`, return value uses `back`.
+uses `like`, return value uses `send back`.
 
 ## Basic Task
 
@@ -23,11 +23,17 @@ task add
       bind b, read b
 ```
 
-Parameter modifiers:
+With type annotation:
 
 ```tree
-take x               # default (copy)
-take x, like u64     # with type
+take x, like u64
+```
+
+With a default value (`base`):
+
+```tree
+take x, like u64
+  base mark 0
 ```
 
 ## Return Type (`like`)
@@ -39,7 +45,7 @@ task is-valid
   send back, true
 ```
 
-## Return Value (`back`)
+## Return Value (`send back`)
 
 Return a value:
 
@@ -293,6 +299,7 @@ send back
 
 ```tree
 halt text <division by zero>
+halt flow, text <stop program>
 ```
 
 Throw a typed error:
@@ -301,7 +308,12 @@ Throw a typed error:
 halt kink
 ```
 
-### Break from Loop
+### Break from Loop or Block
+
+```tree
+halt
+halt fork
+```
 
 ```tree
 walk test
@@ -407,15 +419,12 @@ task apply
 
 ## Visibility
 
+`hide` makes a task private:
+
 ```tree
 task internal-helper
   hide true
   send back, mark 0
-
-task public-api
-  face true
-  send back
-    call internal-helper
 ```
 
 ## Dock (Platform-Specific)

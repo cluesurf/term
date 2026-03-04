@@ -76,8 +76,8 @@ Zones can contain other zones:
 ```tree
 zone app
   zone header
-    take title, like text
+    bind title, like text
   zone body
     zone counter
-      take count, mark 0
+      bind count, mark 0
 ```

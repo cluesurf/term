@@ -1,7 +1,35 @@
 # Structures
 
-Define data types with `form`. A form can be an enum (with `case`),
-a struct (with `link`), or both.
+Define data types with `form`. Three syntax patterns:
+
+1. **Base form**: Define constructors with `link` fields.
+2. **Alias form**: Give a new name to an existing type with `like`.
+3. **Enum form**: List possible values with `case`.
+
+## Base Form (Struct)
+
+A basic form with fields and methods:
+
+```tree
+form user
+  link email, like text
+
+  task login
+    take email
+    take password
+    call service/login
+      read email
+      read password
+```
+
+## Alias Form
+
+Give a shorter name to a complex type:
+
+```tree
+form x
+  like user
+```
 
 ## Enum (Sum Type)
 
@@ -127,6 +155,43 @@ link color, like color
 link items, like list
 ```
 
+### Generic Type References
+
+Pass type parameters to generic forms:
+
+```tree
+like list
+  like u64
+like maybe
+  like text
+```
+
+### Function Types
+
+Describe a closure or function-typed parameter:
+
+```tree
+like task
+  head x
+  take y
+  like z
+```
+
+### Union and Intersection Types
+
+```tree
+like or
+  like u8
+  like u16
+  like u32
+```
+
+```tree
+like and
+  like readable
+  like writable
+```
+
 ## Trait Bounds (`need`)
 
 Constrain a type parameter to implement a trait:
@@ -166,9 +231,9 @@ task do-nothing
   like void
 ```
 
-## Totality (`firm`)
+## Stability (`firm`)
 
-Mark a definition as total (must handle all cases):
+Mark a definition as stable (part of the public API contract):
 
 ```tree
 task safe-divide
@@ -272,4 +337,18 @@ form list
   task is-empty
     take self
     like boolean
+```
+
+## Standalone Functions for a Form
+
+Define functions associated with a form via a namespace:
+
+```tree
+form user
+
+host user-task
+  task create
+  task delete
+
+call user-task/create
 ```

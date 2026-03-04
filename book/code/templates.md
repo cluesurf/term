@@ -95,21 +95,25 @@ tree interval-methods
 
 ## Slots and Beams
 
-`slot` defines an insertion point. `beam` emits content into a slot.
+`slot` marks a place you can return to in future contexts. `beam`
+returns to that slot to emit content. Use this when you need to
+dynamically build definitions, like adding links to a form during
+iteration.
 
 ```tree
-tree wrapper
-  take content
-
-  hook bind
-    slot body
-    beam body
-      fuse content
+form x
+  slot self
+  walk list, read something
+    hook tick
+      take site
+      beam self
+        link {site/name}, like {site/type}
 ```
 
-## Iteration in Templates
+Here we dynamically define `link` fields on the form. The `beam`
+tells the compiler what context the DSL terms apply to.
 
-Loop over a list to generate multiple definitions:
+Another example, emitting into a template output:
 
 ```tree
 tree define-each

@@ -1,7 +1,7 @@
 # Packages
 
-Define a package manifest with `deck`. This goes in a `deck.tree`
-file at the root of your package.
+Define a package manifest with `deck`. This goes in a `deck.tree` file
+at the root of your package.
 
 ## Package Manifest
 
@@ -9,7 +9,7 @@ file at the root of your package.
 deck @cluesurf/base
   mark <0.3.1>
   head <Standard library for Seed>
-  face <Lance Pollard>
+  mind <Lance Pollard>
   lock apache-2
   sort tool
   term compiler
@@ -18,16 +18,16 @@ deck @cluesurf/base
 
 ## Fields
 
-| Keyword | Role | Example |
-| --- | --- | --- |
-| `deck` | Package name | `deck @cluesurf/base` |
-| `mark` | Version | `mark <0.3.1>` |
-| `head` | Description | `head <A standard library>` |
-| `face` | Author | `face <Lance Pollard>` |
-| `lock` | License | `lock apache-2` |
-| `sort` | Category | `sort tool` |
-| `term` | Tag | `term compiler` |
-| `link` | Dependency | `link @cluesurf/tree, mark <1.x.x>` |
+| Keyword | Role         | Example                             |
+| ------- | ------------ | ----------------------------------- |
+| `deck`  | Package name | `deck @cluesurf/base`               |
+| `mark`  | Version      | `mark <0.3.1>`                      |
+| `head`  | Description  | `head <A standard library>`         |
+| `mind`  | Author       | `mind <Lance Pollard>`              |
+| `lock`  | License      | `lock apache-2`                     |
+| `sort`  | Category     | `sort tool`                         |
+| `term`  | Tag          | `term compiler`                     |
+| `link`  | Dependency   | `link @cluesurf/tree, mark <1.x.x>` |
 
 ## Dependencies
 
@@ -40,10 +40,10 @@ deck @cluesurf/my-app
 
 ## Version Ranges
 
-| Pattern | Meaning |
-| --- | --- |
-| `<1.2.3>` | Exact version |
-| `<1.2.x>` | Any patch in 1.2 |
+| Pattern   | Meaning              |
+| --------- | -------------------- |
+| `<1.2.3>` | Exact version        |
+| `<1.2.x>` | Any patch in 1.2     |
 | `<1.x.x>` | Any minor/patch in 1 |
 
 ## Project Structure
@@ -74,10 +74,10 @@ my-app/
 
 ## Standard Packages
 
-| Package | Purpose |
-| --- | --- |
-| `base.tree` | Standard library |
-| `bind.tree` | Platform bindings |
+| Package     | Purpose              |
+| ----------- | -------------------- |
+| `base.tree` | Standard library     |
+| `bind.tree` | Platform bindings    |
 | `mesh.tree` | Compiler and runtime |
-| `deck.tree` | Package manager |
-| `seed.tree` | Entrypoint |
+| `deck.tree` | Package manager      |
+| `seed.tree` | Entrypoint           |

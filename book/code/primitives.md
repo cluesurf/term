@@ -3,39 +3,15 @@
 Seed has six literal types: integers, floats, strings, booleans,
 character codes, and symbols.
 
-## Integers (`mark`)
+## Numbers
 
 ```tree
-mark 0
-mark 42
-mark 1000
+number 1
+number 3.14
+number -2.46
 ```
 
-Binary, octal, and hex:
-
-```tree
-mark #b0101
-mark #o755
-mark #xff
-```
-
-Negative numbers use a function call:
-
-```tree
-call sub
-  bind a, mark 0
-  bind b, mark 5
-```
-
-## Floats (`comb`)
-
-```tree
-comb 3.14
-comb 1.0
-comb 0.5
-```
-
-## Strings (`text`)
+## Strings
 
 Wrap text in angle brackets:
 
@@ -52,6 +28,12 @@ text <
   string that spans
   multiple lines.
 >
+```
+
+### Codes
+
+```tree
+something #b000
 ```
 
 ### Compile-Time Interpolation
@@ -75,23 +57,6 @@ Double braces substitute at runtime:
 task greet
   take name, like text
   send back, text <hello {{name}}>
-```
-
-## Booleans (`wave`)
-
-```tree
-wave true
-wave false
-```
-
-## Character Codes (`code`)
-
-Byte or character values in binary or hex:
-
-```tree
-code #b01000001
-code #xff
-code #x41
 ```
 
 ## Symbols (`term`)

@@ -18,12 +18,23 @@ form kink
 - `note`: human-readable error message
 - `hint`: suggestion for how to fix it
 
+## Stopping a Program
+
+Stop the program with `halt flow`:
+
+```tree
+halt flow, text <Message>
+halt <Message>
+```
+
+Both forms stop program execution with an error message.
+
 ## Throwing Errors
 
 ### Throw with Message
 
 ```tree
-halt <division by zero>
+halt text <division by zero>
 ```
 
 ### Throw a Kink
@@ -51,9 +62,11 @@ task safe-div
           bind b, read b
 ```
 
+## Breaking Out
+
 ### Break from a Loop
 
-`halt` without a message breaks the current loop:
+`halt` breaks the current loop or block:
 
 ```tree
 walk test, true
@@ -63,6 +76,17 @@ walk test, true
       hook true
         halt
 ```
+
+### Break from a Fork
+
+Break from a named scope:
+
+```tree
+halt fork
+halt term
+```
+
+As long as `term` is not a special halt keyword like `fork` or `flow`.
 
 ## Catching Errors (`risk`)
 
