@@ -53,9 +53,10 @@ send back, true
 Return a function call result:
 
 ```tree
-back call add
-  bind a, read x
-  bind b, mark 1
+send back
+  call add
+    bind a, read x
+    bind b, mark 1
 ```
 
 Return a constructed value:
@@ -203,9 +204,10 @@ fork case, read n
 fork tree
   save x, mark 1
   save y, mark 2
-  back call add
-    bind a, read x
-    bind b, read y
+  send back
+    call add
+      bind a, read x
+      bind b, read y
 ```
 
 ## Loops (`walk`)
@@ -262,24 +264,27 @@ walk site
 Combine boolean expressions:
 
 ```tree
-back meet and
-  read a
-  read b
+send back
+  meet and
+    read a
+    read b
 ```
 
 ```tree
-back meet or
-  call is-admin, bind user, loan user
-  call is-owner, bind user, loan user
+send back
+  meet or
+    call is-admin, bind user, loan user
+    call is-owner, bind user, loan user
 ```
 
 Three or more conditions:
 
 ```tree
-back meet and
-  read a
-  read b
-  read c
+send back
+  meet and
+    read a
+    read b
+    read c
 ```
 
 ## Error Handling
@@ -344,7 +349,7 @@ task fetch-data
     call fetch-url
       bind url, read url
       wait true
-  back read response
+  send back, read response
 ```
 
 The `wait true` on `call` awaits the result.
@@ -358,9 +363,10 @@ task unchecked-add
   risk true
   take a, like u64
   take b, like u64
-  back call add
-    bind a, read a
-    bind b, read b
+  send back
+    call add
+      bind a, read a
+      bind b, read b
 ```
 
 ## Generic Functions
@@ -369,7 +375,7 @@ task unchecked-add
 task identity
   head t
   take x
-  back read x
+  send back, read x
 ```
 
 ```tree
@@ -378,8 +384,9 @@ task apply
   head b
   take f, like task
   take x
-  back call f
-    bind x, read x
+  send back
+    call f
+      bind x, read x
 ```
 
 ## Higher-Order Functions
@@ -393,8 +400,9 @@ task apply
     like u64
   take x, like u64
   like u64
-  back call f
-    bind x, read x
+  send back
+    call f
+      bind x, read x
 ```
 
 ## Visibility
@@ -402,11 +410,12 @@ task apply
 ```tree
 task internal-helper
   hide true
-  back mark 0
+  send back, mark 0
 
 task public-api
   face true
-  back call internal-helper
+  send back
+    call internal-helper
 ```
 
 ## Dock (Platform-Specific)

@@ -64,7 +64,7 @@ tree greeter
 
   hook bind
     task greet-{name}
-      back text <hello {name}>
+      send back, text <hello {name}>
 ```
 
 ### Runtime Interpolation
@@ -74,7 +74,7 @@ Double braces substitute at runtime:
 ```tree
 task greet
   take name, like text
-  back text <hello {{name}}>
+  send back, text <hello {{name}}>
 ```
 
 ## Booleans (`wave`)

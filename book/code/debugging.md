@@ -9,9 +9,10 @@ task debug-add
   take a, like u64
   take b, like u64
   rest
-  back call add
-    bind a, read a
-    bind b, read b
+  send back
+    call add
+      bind a, read a
+      bind b, read b
 ```
 
 When the debugger hits `rest`, it pauses and lets you inspect

@@ -15,9 +15,10 @@ tree doubler
     task double-{name}
       take n, like u64
       like u64
-      back call mul
-        bind a, read n
-        bind b, mark 2
+      send back
+        call mul
+          bind a, read n
+          bind b, mark 2
 ```
 
 ## Instantiate (`fuse`)

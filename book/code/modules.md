@@ -62,10 +62,11 @@ This resolves to different files based on the target platform
 ```tree
 task helper
   hide true
-  back mark 0
+  send back, mark 0
 
 task api
-  back call helper
+  send back
+    call helper
 ```
 
 ## Namespaces (`book`)

@@ -76,7 +76,7 @@ task write-file
     bind path, read path
     bind content, read content
     halt kink
-  back text <done>
+  send back, text <done>
 ```
 
 Mark an entire task as unsafe:
