@@ -45,23 +45,23 @@ and package managers.
 | Package                      | Purpose                            |
 | ---------------------------- | ---------------------------------- |
 | [seed](.) (this)             | Entrypoint and CLI                    |
-| [make.tree](../make.tree)    | Compiler                              |
-| [flow.tree](../flow.tree)    | Language server                       |
-| [deck.tree](../deck.tree)    | Package manager                       |
-| [base.tree](../base.tree)    | Standard library                      |
-| [bind.tree](../bind.tree)    | Environment types and native bindings |
+| [make.tree](https://github.com/cluesurf/make.tree)    | Compiler                              |
+| [flow.tree](https://github.com/cluesurf/flow.tree)    | Language server                       |
+| [deck.tree](https://github.com/cluesurf/deck.tree)    | Package manager                       |
+| [base.tree](https://github.com/cluesurf/base.tree)    | Standard library                      |
+| [bind.tree](https://github.com/cluesurf/bind.tree)    | Environment types and native bindings |
 
 ### Libraries
 
 | Package                      | Purpose                            |
 | ---------------------------- | ---------------------------------- |
-| [land.tree](../land.tree)    | Physics, graphics, worlds, games, audio, video, image |
-| [mesh.tree](../mesh.tree)    | Infrastructure                     |
-| [form.tree](../form.tree)    | Math                               |
-| [word.tree](../word.tree)    | Language and linguistics           |
-| [code.tree](../code.tree)    | Content grammars (binary and text) |
-| [link.tree](../link.tree)    | Third party API connections        |
-| [site.tree](../site.tree)    | App level frameworks               |
+| [land.tree](https://github.com/cluesurf/land.tree)    | Physics, graphics, worlds, games, audio, video, image |
+| [mesh.tree](https://github.com/cluesurf/mesh.tree)    | Infrastructure                     |
+| [form.tree](https://github.com/cluesurf/form.tree)    | Math                               |
+| [word.tree](https://github.com/cluesurf/word.tree)    | Language and linguistics           |
+| [code.tree](https://github.com/cluesurf/code.tree)    | Content grammars (binary and text) |
+| [link.tree](https://github.com/cluesurf/link.tree)    | Third party API connections        |
+| [site.tree](https://github.com/cluesurf/site.tree)    | App level frameworks               |
 
 ## How It Works
 
