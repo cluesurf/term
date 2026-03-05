@@ -7,7 +7,7 @@
     "rootDir": "code",
     "sourceMap": true,
     "declaration": true,
-    "moduleResolution": "Node16",
+    "moduleResolution": "bundler",
     "strictNullChecks": true,
     "strict": true,
     "esModuleInterop": true,

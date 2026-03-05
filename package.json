@@ -7,7 +7,7 @@
     "seed": "./host/line.js"
   },
   "scripts": {
-    "make": "tsc && tsc-alias",
+    "make": "npx esbuild code/line.ts --bundle --platform=node --format=esm --outfile=host/line.js --banner:js='#!/usr/bin/env node'",
     "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
     "test": "vitest run",
     "host": "pnpm make && npm publish --access=public"
@@ -20,6 +20,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/yargs": "^17.0.33",
+    "esbuild": "^0.27.0",
     "concurrently": "^9.2.1",
     "tsc-alias": "^1.8.16",
     "typescript": "^5.9.3",

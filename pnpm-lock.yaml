@@ -27,6 +27,9 @@ importers:
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
+      esbuild:
+        specifier: ^0.27.0
+        version: 0.27.3
       tsc-alias:
         specifier: ^1.8.16
         version: 1.8.16
