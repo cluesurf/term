@@ -38,7 +38,7 @@ Seed is not a runtime or a virtual machine. It generates real native
 code that integrates with each platform's existing tools, libraries,
 and package managers.
 
-## The Ecosystem
+## Packages
 
 ### Core
 
