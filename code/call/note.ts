@@ -1,0 +1,47 @@
+import { loadManifest, showMark } from '@cluesurf/deck.tree'
+import chalk from 'chalk'
+import { logFail, formatError, name, mark as markColor, fade } from '../tint'
+
+export async function callNote(input: {
+  root: string
+  deck?: string
+}): Promise<void> {
+  try {
+    const manifest = await loadManifest({ dir: input.root })
+    const fullName = manifest.host
+      ? `@${manifest.host}/${manifest.name}`
+      : manifest.name
+
+    console.log('')
+    console.log(
+      '  ' + chalk.bold(name(fullName)) + ' ' + markColor(showMark(manifest.mark)),
+    )
+
+    if (manifest.head) {
+      console.log('  ' + manifest.head)
+    }
+
+    if (manifest.lock) {
+      console.log('  License: ' + manifest.lock)
+    }
+
+    if (manifest.face && manifest.face.length > 0) {
+      console.log(
+        '  Authors: ' + manifest.face.map(f => f.name).join(', '),
+      )
+    }
+
+    if (manifest.link.length > 0) {
+      console.log('')
+      console.log(chalk.bold('  Dependencies:'))
+      for (const dep of manifest.link) {
+        console.log('    ' + name(dep.name))
+      }
+    }
+
+    console.log('')
+  } catch (err) {
+    logFail(formatError(err))
+    process.exit(1)
+  }
+}
