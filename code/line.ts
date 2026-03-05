@@ -9,6 +9,7 @@ import { callSeek } from './call/seek'
 import { callLink } from './call/link'
 import { callMake } from './call/make'
 import { callTest } from './call/test'
+import { callTime } from './call/time'
 import { callBoot } from './call/boot'
 import { callWash } from './call/wash'
 import { callWalk } from './call/walk'
@@ -18,7 +19,7 @@ import { logFail, warn } from './tint'
 
 const COMMANDS = [
   'load', 'save', 'toss', 'link', 'seek', 'host',
-  'make', 'test', 'boot', 'wash', 'walk', 'move', 'note', 'show',
+  'make', 'test', 'time', 'boot', 'wash', 'walk', 'move', 'note', 'show',
 ]
 
 function editDistance(a: string, b: string): number {
@@ -194,6 +195,42 @@ const cli = yargs(hideBin(process.argv))
       await callTest({
         root,
         filter: argv.filter,
+      })
+    },
+  )
+  .command(
+    'time [filter]',
+    'Run benchmarks',
+    yargs =>
+      yargs
+        .positional('filter', {
+          type: 'string',
+          description: 'Filter benchmarks by name',
+        })
+        .option('file', {
+          type: 'string',
+          description: 'Run benchmarks in a specific file',
+        })
+        .option('json', {
+          type: 'boolean',
+          description: 'Output JSON instead of table',
+        })
+        .option('save', {
+          type: 'string',
+          description: 'Save results as a named baseline',
+        })
+        .option('compare', {
+          type: 'string',
+          description: 'Compare against a saved baseline',
+        }),
+    async argv => {
+      await callTime({
+        root,
+        filter: argv.filter,
+        file: argv.file,
+        json: argv.json,
+        save: argv.save,
+        compare: argv.compare,
       })
     },
   )
