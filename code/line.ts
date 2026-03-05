@@ -14,7 +14,47 @@ import { callWash } from './call/wash'
 import { callWalk } from './call/walk'
 import { callMove } from './call/move'
 import { callNote } from './call/note'
-import { logFail } from './tint'
+import { logFail, warn } from './tint'
+
+const COMMANDS = [
+  'load', 'save', 'toss', 'link', 'seek', 'host',
+  'make', 'test', 'boot', 'wash', 'walk', 'move', 'note', 'show',
+]
+
+function editDistance(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  const dp: Array<Array<number>> = Array.from({ length: m + 1 }, () =>
+    Array.from({ length: n + 1 }, () => 0),
+  )
+  for (let i = 0; i <= m; i++) dp[i]![0] = i
+  for (let j = 0; j <= n; j++) dp[0]![j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      dp[i]![j] = Math.min(
+        dp[i - 1]![j]! + 1,
+        dp[i]![j - 1]! + 1,
+        dp[i - 1]![j - 1]! + cost,
+      )
+    }
+  }
+  return dp[m]![n]!
+}
+
+function suggestCommand(input: string): string | undefined {
+  let best: string | undefined
+  let bestDist = Infinity
+  for (const cmd of COMMANDS) {
+    const dist = editDistance(input.toLowerCase(), cmd)
+    if (dist < bestDist) {
+      bestDist = dist
+      best = cmd
+    }
+  }
+  if (bestDist <= 2 && best) return best
+  return undefined
+}
 
 const root = process.cwd()
 
@@ -263,9 +303,20 @@ const cli = yargs(hideBin(process.argv))
 async function main(): Promise<void> {
   const argv = await cli.parse()
 
-  // if no command was given, show banner
   if (argv._.length === 0) {
     showBanner()
+    return
+  }
+
+  const cmd = String(argv._[0])
+  if (!COMMANDS.includes(cmd)) {
+    const suggestion = suggestCommand(cmd)
+    if (suggestion) {
+      logFail(`Unknown command "${cmd}". Did you mean ${warn(`seed ${suggestion}`)}?`)
+    } else {
+      logFail(`Unknown command "${cmd}". Run "seed" for a list of commands.`)
+    }
+    process.exit(1)
   }
 }
 
