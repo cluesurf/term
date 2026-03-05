@@ -44,20 +44,20 @@ and package managers.
 
 | Package                      | Purpose                            |
 | ---------------------------- | ---------------------------------- |
-| [seed](.) (this)             | Entrypoint and CLI                 |
-| [mesh.tree](../mesh.tree)    | Compiler + runtime                 |
-| [deck.tree](../deck.tree)    | Package manager                    |
-| [base.tree](../base.tree)    | Standard library                   |
+| [seed](.) (this)             | Entrypoint and CLI                    |
+| [make.tree](../make.tree)    | Compiler                              |
+| [flow.tree](../flow.tree)    | Language server                       |
+| [deck.tree](../deck.tree)    | Package manager                       |
+| [base.tree](../base.tree)    | Standard library                      |
 | [bind.tree](../bind.tree)    | Environment types and native bindings |
-| [make.tree](../make.tree)    | Language server                    |
 
 ### Libraries
 
 | Package                      | Purpose                            |
 | ---------------------------- | ---------------------------------- |
-| [flow.tree](../flow.tree)    | Graphics, audio, interface logic   |
+| [land.tree](../land.tree)    | Physics, graphics, worlds, games, audio, video, image |
+| [mesh.tree](../mesh.tree)    | Infrastructure                     |
 | [form.tree](../form.tree)    | Math                               |
-| [land.tree](../land.tree)    | Infrastructure                     |
 | [word.tree](../word.tree)    | Language and linguistics           |
 | [code.tree](../code.tree)    | Content grammars (binary and text) |
 | [link.tree](../link.tree)    | Third party API connections        |
@@ -68,7 +68,7 @@ and package managers.
 ```
 .tree source
     ↓
-mesh.tree (compiler)
+make.tree (compiler)
     ├─→ Rust        (servers, CLI, embedded)
     ├─→ TypeScript  (browsers, Node.js)
     ├─→ Kotlin      (Android, JVM)
