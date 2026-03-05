@@ -6,7 +6,6 @@ at compile time.
 ## Simple Constant
 
 ```tree
-host pi, comb 3.14159
 host max-size, mark 1024
 host greeting, text <hello world>
 ```

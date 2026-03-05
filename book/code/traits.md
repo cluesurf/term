@@ -26,7 +26,7 @@ mask addition
   head output
   head other, base self
   task add
-    take self, move true
+    take self
     take other, move true
     like output
 ```
@@ -135,36 +135,6 @@ suit shape
           send back, text <square>
 ```
 
-## Conditional Implementation (`coat`)
-
-Implement a trait only when type parameters satisfy constraints:
-
-```tree
-coat form
-  head item, base clone
-  head allocator, base allocator
-  suit list
-    head item
-    head allocator
-    wear clone
-      task clone
-        take self, loan true
-```
-
-Multiple constraints:
-
-```tree
-coat form
-  head item, base hash
-  head allocator, base allocator
-  suit list
-    head item
-    head allocator
-    wear hash
-      task hash
-        take self, loan true
-```
-
 ## Trait Bounds (`need`)
 
 Require a type parameter to implement a trait:
@@ -188,7 +158,7 @@ Methods use `self` to reference the current instance:
 ```tree
 mask cloneable
   task clone
-    take self, loan true
+    take self
     like self
 ```
 
@@ -197,7 +167,7 @@ form counter
   link value, like u64
 
   task increment
-    take self, flex true
+    take self
 ```
 
 ## Conversion Trait

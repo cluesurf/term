@@ -41,14 +41,14 @@ tune fade-in
   take target
 
   hook start
-    save target/opacity, comb 0.0
+    save target/opacity, mark 0
 
   hook step
     take progress, like f64
     save target/opacity, read progress
 
   hook done
-    save target/opacity, comb 1.0
+    save target/opacity, mark 1
 ```
 
 ## Event Handlers

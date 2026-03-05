@@ -219,7 +219,7 @@ form counter
   link value, like u64
 
   task increment
-    take self, flex true
+    take self
 ```
 
 ## Void Type
@@ -320,11 +320,11 @@ form list
   head t
 
   task push
-    take self, flex true
+    take self
     take item, like t
 
   task pop
-    take self, flex true
+    take self
 
   task get
     take self

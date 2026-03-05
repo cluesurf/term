@@ -1,14 +1,14 @@
 # Primitives
 
-Seed has six literal types: integers, floats, strings, booleans,
-character codes, and symbols.
+Seed has four literal types: integers, strings, booleans, and
+symbols.
 
 ## Numbers
 
 ```tree
-number 1
-number 3.14
-number -2.46
+mark 1
+mark 42
+mark 100
 ```
 
 ## Strings
@@ -28,12 +28,6 @@ text <
   string that spans
   multiple lines.
 >
-```
-
-### Codes
-
-```tree
-something #b000
 ```
 
 ### Compile-Time Interpolation
@@ -82,8 +76,6 @@ host color
 | `like i16` | Signed 16-bit integer |
 | `like i32` | Signed 32-bit integer |
 | `like i64` | Signed 64-bit integer |
-| `like f32` | 32-bit float |
-| `like f64` | 64-bit float |
 | `like text` | String |
 | `like boolean` | Boolean |
 | `like void` | No value |

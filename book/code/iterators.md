@@ -77,6 +77,39 @@ walk site
       bind item, read item
 ```
 
+With a named walk and named take:
+
+```tree
+walk site, name cursor
+  read iter
+  hook tick
+    take item, name current
+    call process
+      bind item, read current
+```
+
+### Pre/Post Conditions (`hold`)
+
+Add invariants that must hold before and after each iteration:
+
+```tree
+walk site
+  read items
+  hold
+    call is-sorted
+      bind list, read items
+  hook tick
+    take item
+    call process
+      bind item, read item
+  hold
+    call is-sorted
+      bind list, read items
+```
+
+The first `hold` is the precondition (checked before the loop body).
+The second `hold` is the postcondition (checked after each iteration).
+
 ## Break (`halt`)
 
 Exit a loop early:
@@ -120,7 +153,7 @@ form walk
   head t
 
   task get-next
-    take self, flex true
+    take self
 
   task get-size
     take self
