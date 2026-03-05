@@ -9,6 +9,9 @@ export async function callTime(input: {
   json?: boolean
   save?: string
   compare?: string
+  failOnRegression?: number
+  markdown?: boolean
+  history?: string
 }): Promise<void> {
   logStep('Running benchmarks...')
 
@@ -134,11 +137,68 @@ export async function callTime(input: {
       )
       try {
         const baselineText = await fs.readFile(comparePath, 'utf-8')
-        const baseline = JSON.parse(baselineText)
-        printComparison(allResults, baseline.benchmarks)
+        const baselineSuite = JSON.parse(baselineText)
+        const baseline = {
+          results: baselineSuite.results ?? baselineSuite.benchmarks ?? [],
+          timestamp: baselineSuite.timestamp ?? '',
+          platform: baselineSuite.platform ?? '',
+        }
+        const { compareResults, formatComparison } = await import(
+          '@cluesurf/mesh.tree/code/time/compare'
+        )
+        const comparison = compareResults({
+          current: allResults,
+          baseline,
+        })
+
+        if (input.markdown) {
+          const { formatMarkdown } = await import(
+            '@cluesurf/mesh.tree/code/time/ci'
+          )
+          console.log(formatMarkdown({ result: comparison, suite }))
+        } else {
+          console.log('')
+          console.log(formatComparison(comparison))
+        }
+
+        if (comparison.regressions > 0) {
+          logWarn(`${comparison.regressions} significant regression(s) detected`)
+        }
+
+        // CI gating
+        if (input.failOnRegression != null) {
+          const { shouldFail } = await import(
+            '@cluesurf/mesh.tree/code/time/ci'
+          )
+          if (shouldFail({ result: comparison, maxRegressionPct: input.failOnRegression })) {
+            logFail(`Regression exceeds ${input.failOnRegression}% threshold`)
+            process.exit(1)
+          }
+        }
       } catch {
         logFail(`Could not read baseline: ${comparePath}`)
       }
+    }
+
+    // Save history entry
+    if (input.save) {
+      try {
+        const historyDir = path.join(input.root, '.seed', 'time', 'history')
+        await fs.mkdir(historyDir, { recursive: true })
+        const { buildHistoryEntry } = await import(
+          '@cluesurf/mesh.tree/code/time/ci'
+        )
+        const entry = buildHistoryEntry({ suite })
+        const historyPath = path.join(historyDir, `${Date.now()}.json`)
+        await fs.writeFile(historyPath, JSON.stringify(entry, null, 2))
+      } catch {
+        // History save is best-effort
+      }
+    }
+
+    // Show history for a specific benchmark
+    if (input.history) {
+      await showHistory({ root: input.root, name: input.history })
     }
 
     logGood(`${allResults.length} benchmark(s) complete`)
@@ -166,39 +226,42 @@ async function findTreeFiles(dir: string): Promise<string[]> {
   return results
 }
 
-function printComparison(
-  current: Array<{ name: string; mean_ns: number }>,
-  baseline: Array<{ name: string; mean_ns: number }>,
-): void {
-  console.log('')
-  console.log(
-    'Benchmark'.padEnd(30) +
-      'Before'.padEnd(12) +
-      'After'.padEnd(12) +
-      'Change'.padEnd(12),
-  )
-  console.log('-'.repeat(66))
+async function showHistory(input: { root: string; name: string }): Promise<void> {
+  const historyDir = path.join(input.root, '.seed', 'time', 'history')
+  try {
+    const files = await fs.readdir(historyDir)
+    const jsonFiles = files.filter(f => f.endsWith('.json')).sort().slice(-20)
 
-  for (const cur of current) {
-    const base = baseline.find(b => b.name === cur.name)
-    if (!base) continue
+    const entries: Array<{ timestamp: string; mean_ns: number }> = []
 
-    const change = ((cur.mean_ns - base.mean_ns) / base.mean_ns) * 100
-    const sign = change > 0 ? '+' : ''
-    const changeStr = `${sign}${change.toFixed(1)}%`
+    for (const file of jsonFiles) {
+      const text = await fs.readFile(path.join(historyDir, file), 'utf-8')
+      const data = JSON.parse(text)
+      const bench = data.benchmarks?.find((b: { name: string }) => b.name === input.name)
+      if (bench) {
+        entries.push({ timestamp: data.timestamp ?? file, mean_ns: bench.mean_ns })
+      }
+    }
 
-    console.log(
-      cur.name.padEnd(30) +
-        formatNs(base.mean_ns).padEnd(12) +
-        formatNs(cur.mean_ns).padEnd(12) +
-        changeStr.padEnd(12),
-    )
+    if (entries.length === 0) {
+      logWarn(`No history found for "${input.name}"`)
+      return
+    }
+
+    console.log('')
+    console.log(`History for "${input.name}" (last ${entries.length} entries):`)
+    console.log('-'.repeat(50))
+
+    for (const entry of entries) {
+      const date = entry.timestamp.slice(0, 19)
+      const ns = entry.mean_ns
+      const timeStr = ns < 1000 ? `${ns.toFixed(1)}ns`
+        : ns < 1_000_000 ? `${(ns / 1000).toFixed(1)}us`
+        : ns < 1_000_000_000 ? `${(ns / 1_000_000).toFixed(1)}ms`
+        : `${(ns / 1_000_000_000).toFixed(2)}s`
+      console.log(`  ${date}  ${timeStr}`)
+    }
+  } catch {
+    logWarn(`No history directory found at ${historyDir}`)
   }
-}
-
-function formatNs(ns: number): string {
-  if (ns < 1000) return `${ns.toFixed(1)}ns`
-  if (ns < 1_000_000) return `${(ns / 1000).toFixed(1)}us`
-  if (ns < 1_000_000_000) return `${(ns / 1_000_000).toFixed(1)}ms`
-  return `${(ns / 1_000_000_000).toFixed(2)}s`
 }

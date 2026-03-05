@@ -15,11 +15,12 @@ import { callWash } from './call/wash'
 import { callWalk } from './call/walk'
 import { callMove } from './call/move'
 import { callNote } from './call/note'
+import { callProfile } from './call/profile'
 import { logFail, warn } from './tint'
 
 const COMMANDS = [
   'load', 'save', 'toss', 'link', 'seek', 'host',
-  'make', 'test', 'time', 'boot', 'wash', 'walk', 'move', 'note', 'show',
+  'make', 'test', 'time', 'profile', 'boot', 'wash', 'walk', 'move', 'note', 'show',
 ]
 
 function editDistance(a: string, b: string): number {
@@ -222,6 +223,18 @@ const cli = yargs(hideBin(process.argv))
         .option('compare', {
           type: 'string',
           description: 'Compare against a saved baseline',
+        })
+        .option('fail-on-regression', {
+          type: 'number',
+          description: 'Fail if any benchmark regresses by more than N%',
+        })
+        .option('markdown', {
+          type: 'boolean',
+          description: 'Output comparison as markdown',
+        })
+        .option('history', {
+          type: 'string',
+          description: 'Show history for a specific benchmark',
         }),
     async argv => {
       await callTime({
@@ -231,6 +244,55 @@ const cli = yargs(hideBin(process.argv))
         json: argv.json,
         save: argv.save,
         compare: argv.compare,
+        failOnRegression: argv['fail-on-regression'] as number | undefined,
+        markdown: argv.markdown,
+        history: argv.history,
+      })
+    },
+  )
+  .command(
+    'profile <mode> <file>',
+    'Profile CPU or memory usage',
+    yargs =>
+      yargs
+        .positional('mode', {
+          type: 'string',
+          description: 'Profile mode: cpu or memory',
+        })
+        .positional('file', {
+          type: 'string',
+          description: 'File to profile',
+        })
+        .option('flame', {
+          type: 'boolean',
+          description: 'Show flamegraph instructions',
+        })
+        .option('top', {
+          type: 'number',
+          description: 'Show top-N hottest functions',
+        })
+        .option('time', {
+          type: 'boolean',
+          description: 'Profile time blocks only',
+        })
+        .option('heap', {
+          type: 'boolean',
+          description: 'Capture heap snapshot',
+        })
+        .option('track', {
+          type: 'boolean',
+          description: 'Record memory timeline',
+        }),
+    async argv => {
+      await callProfile({
+        root,
+        mode: argv.mode!,
+        file: argv.file!,
+        flame: argv.flame,
+        top: argv.top,
+        time: argv.time,
+        heap: argv.heap,
+        track: argv.track,
       })
     },
   )
