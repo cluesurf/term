@@ -14,7 +14,7 @@
   seed
 </h3>
 <p align='center'>
-  A Reactive Language ႎ
+  A Reactive Language θ
 </p>
 
 <br/>
