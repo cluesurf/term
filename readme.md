@@ -48,7 +48,8 @@ and package managers.
 | [mesh.tree](../mesh.tree)    | Compiler + runtime                 |
 | [deck.tree](../deck.tree)    | Package manager                    |
 | [base.tree](../base.tree)    | Standard library                   |
-| [case.tree](../case.tree)    | Environment types and native bindings |
+| [bind.tree](../bind.tree)    | Environment types and native bindings |
+| [make.tree](../make.tree)    | Language server                    |
 
 ### Libraries
 
@@ -66,15 +67,13 @@ and package managers.
 
 ```
 .tree source
-    |
-    v
+    ↓
 mesh.tree (compiler)
-    |
-    +---> Rust       (servers, CLI, embedded)
-    +---> TypeScript  (browsers, Node.js)
-    +---> Kotlin      (Android, JVM)
-    +---> Swift       (iOS, macOS)
-    +---> HVM         (parallel computation)
+    ├─→ Rust        (servers, CLI, embedded)
+    ├─→ TypeScript  (browsers, Node.js)
+    ├─→ Kotlin      (Android, JVM)
+    ├─→ Swift       (iOS, macOS)
+    └─→ HVM         (parallel computation)
 ```
 
 The compiler parses `.tree` files into a surface AST, desugars into
