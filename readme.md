@@ -14,7 +14,7 @@
   seed
 </h3>
 <p align='center'>
-  A Programming Framework on Tree Syntax Φ
+  A Reactive Language Φ
 </p>
 
 <br/>
