@@ -133,19 +133,19 @@ mine miss
 ### Emit Value
 
 ```tree
-mint save, loan node/text
+mint save, read node/text
 ```
 
 ### Append to Array
 
 ```tree
-mint line, loan item
+mint line, read item
 ```
 
 ### Add to Map
 
 ```tree
-mint knit, loan key, loan val
+mint knit, read key, read val
 ```
 
 ### Delegate to Sub-Builder
@@ -164,15 +164,14 @@ mint make, form ast-node
 
 ```tree
 mill cookie-parser
-
   mine form, <cookie-pair>
     mine line
       mine term, <cookie-name>
       mine text, <=>
       mine term, <cookie-value>
     mint make, form cookie
-      mint save, loan name
-      mint save, loan value
+      mint save, read name
+      mint save, read value
 
   mine form, <cookie-name>
     mine line
@@ -218,8 +217,8 @@ mill cookie-parser
 
 | Variant | Purpose | Example |
 | --- | --- | --- |
-| `mint save` | Emit value | `mint save, loan text` |
-| `mint line` | Append to list | `mint line, loan item` |
-| `mint knit` | Add to map | `mint knit, loan k, loan v` |
+| `mint save` | Emit value | `mint save, read text` |
+| `mint line` | Append to list | `mint line, read item` |
+| `mint knit` | Add to map | `mint knit, read k, read v` |
 | `mint form` | Sub-builder | `mint form, form node` |
 | `mint make` | Construct | `mint make, form ast` |

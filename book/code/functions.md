@@ -136,30 +136,35 @@ save result
 
 ```tree
 fork test
-  call gt
-    bind a, read a
-    bind b, read b
-  hook true
+  hook test
+    call is-above
+      bind a, read a
+      bind b, read b
+  hook hold
     send back, read a
-  hook false
+  hook miss
     send back, read b
 ```
 
-### If/Else-If/Else (`fork roll`)
+### If/Else-If/Else (`fork test`)
+
+It is just a bunch of pairs of `test/hold`, with a final optional `miss`.
 
 ```tree
-fork roll
+fork test
   hook test
-    call gt
+    call is-above
       bind a, read x
       bind b, mark 100
+  hook hold
     send back, text <big>
   hook test
     call gt
       bind a, read x
       bind b, mark 10
+  hook hold
     send back, text <medium>
-  hook fall
+  hook miss
     send back, text <small>
 ```
 
@@ -169,11 +174,11 @@ Match on an enum variant:
 
 ```tree
 fork case, read color
-  hook red
+  case red
     send back, text <red>
-  hook green
+  case green
     send back, text <green>
-  hook blue
+  case blue
     send back, text <blue>
 ```
 
@@ -181,9 +186,9 @@ Destructure fields with `base`:
 
 ```tree
 fork case, read m
-  hook some, base value
+  case some, base value
     send back, read value
-  hook none
+  case none
     send back, mark 0
 ```
 
@@ -191,13 +196,13 @@ Nested pattern match:
 
 ```tree
 fork case, read n
-  hook zero
+  case zero
     send back, mark 0
-  hook succ, base pred
+  case succ, base pred
     fork case, read pred
-      hook zero
+      case zero
         send back, mark 1
-      hook succ, base pp
+      case succ, base pp
         send back
           call add
             bind a, call fib, bind n, read pred
@@ -223,10 +228,11 @@ fork tree
 ```tree
 save i, mark 0
 walk test
-  call lt
-    bind a, read i
-    bind b, mark 10
-  hook step
+  hook test
+    call is-below
+      bind a, read i
+      bind b, mark 10
+  hook hold
     save i
       call add
         bind a, read i
@@ -236,31 +242,29 @@ walk test
 ### For-Each (`walk list`)
 
 ```tree
-walk list
-  read items
-  hook tick
-    take item
-    show read item
+walk list, read items
+  hook next
+    take site, name item
+    call show, read item
 ```
 
 ### Range Loop (`walk size`)
 
 ```tree
 walk size
-  mark 0
-  mark 10
-  hook step
-    take i
-    show read i
+  bind base, 0
+  bind head, 10
+  hook next
+    take slot, name i
+    call show, read i
 ```
 
 ### Iterator (`walk site`)
 
 ```tree
-walk site
-  read iter
-  hook tick
-    take item
+walk form, read iter
+  hook next
+    take site, name item
     call process
       bind item, read item
 ```
@@ -279,8 +283,8 @@ send back
 ```tree
 send back
   meet or
-    call is-admin, bind user, loan user
-    call is-owner, bind user, loan user
+    call is-admin, bind user, read user
+    call is-owner, bind user, read user
 ```
 
 Three or more conditions:
@@ -298,7 +302,7 @@ send back
 ### Throw (`halt`)
 
 ```tree
-halt text <division by zero>
+halt <division by zero>
 halt flow, text <stop program>
 ```
 
@@ -316,9 +320,8 @@ halt fork
 ```
 
 ```tree
-walk test
-  wave true
-  hook step
+walk test, true
+  hook hold
     fork test
       call is-done
       hook true
@@ -332,12 +335,12 @@ Skip to next iteration:
 ```tree
 walk list
   read items
-  hook tick
-    take item
+  hook next
+    take site, name item
     fork test
       call is-skip, bind item, read item
       hook true
-        next
+        turn next
     call process, bind item, read item
 ```
 
@@ -346,7 +349,7 @@ walk list
 Unrecoverable error:
 
 ```tree
-bust text <fatal: out of memory>
+bust <out of memory>
 ```
 
 ## Async (`wait`)
@@ -407,9 +410,10 @@ Accept a function as a parameter:
 
 ```tree
 task apply
-  take f, like task
-    take x, like u64
-    like u64
+  take f
+    like task
+      take x, like u64
+      like u64
   take x, like u64
   like u64
   send back

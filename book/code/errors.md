@@ -34,13 +34,13 @@ Both forms stop program execution with an error message.
 ### Throw with Message
 
 ```tree
-halt text <division by zero>
+kink <division by zero>
 ```
 
 ### Throw a Kink
 
 ```tree
-halt kink
+kink some-message-key
 ```
 
 ### Throw in a Condition
@@ -50,12 +50,13 @@ task safe-div
   take a, like u64
   take b, like u64
   fork test
-    call eq
-      bind a, read b
-      bind b, mark 0
-    hook true
+    hook test
+      call eq
+        bind a, read b
+        bind b, mark 0
+    hook hold
       halt text <division by zero>
-    hook false
+    hook miss
       send back
         call div
           bind a, read a
@@ -69,11 +70,13 @@ task safe-div
 `halt` breaks the current loop or block:
 
 ```tree
-walk test, true
-  hook step
+walk test
+  hook test, true
+  hook hold
     fork test
-      call is-done
-      hook true
+      hook test
+        call is-done
+      hook hold
         halt
 ```
 
@@ -120,7 +123,7 @@ task unchecked-add
 For unrecoverable situations:
 
 ```tree
-bust text <fatal: out of memory>
+bust <out of memory>
 ```
 
 ## Error Propagation

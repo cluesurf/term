@@ -60,11 +60,11 @@ form color
       take self, like color
       like text
       fork case, read self
-        hook red
+        case red
           send back, text <red>
-        hook green
+        case green
           send back, text <green>
-        hook blue
+        case blue
           send back, text <blue>
 ```
 
@@ -80,22 +80,22 @@ form color
     task to-text
       take self, like color
       fork case, read self
-        hook red
+        case red
           send back, text <red>
-        hook green
+        case green
           send back, text <green>
-        hook blue
+        case blue
           send back, text <blue>
 
   wear numeric
     task to-number
       take self, like color
       fork case, read self
-        hook red
+        case red
           send back, mark 1
-        hook green
+        case green
           send back, mark 2
-        hook blue
+        case blue
           send back, mark 3
 ```
 
@@ -111,11 +111,11 @@ form color
     task warmth
       take self, like color
       fork case, read self
-        hook red
+        case red
           send back, mark 1
-        hook green
+        case green
           send back, mark 0
-        hook blue
+        case blue
           send back, mark 0
 ```
 
@@ -129,9 +129,9 @@ suit shape
     task to-text
       take self, like shape
       fork case, read self
-        hook circle
+        case circle
           send back, text <circle>
-        hook square
+        case square
           send back, text <square>
 ```
 

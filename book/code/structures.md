@@ -18,8 +18,8 @@ form user
     take email
     take password
     call service/login
-      read email
-      read password
+      bind email, read email
+      bind password, read password
 ```
 
 ## Alias Form

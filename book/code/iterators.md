@@ -10,10 +10,11 @@ Loop while a condition is true:
 save i, mark 0
 save total, mark 0
 walk test
-  call lt
-    bind a, read i
-    bind b, mark 10
-  hook step
+  hook test
+    call is-below
+      bind a, read i
+      bind b, mark 10
+  hook hold
     save total
       call add
         bind a, read total
@@ -30,10 +31,9 @@ send back, read total
 Iterate over a collection:
 
 ```tree
-walk list
-  read items
-  hook tick
-    take item
+walk list, read items
+  hook next
+    take site, name item
     show read item
 ```
 
@@ -41,10 +41,9 @@ Process each item:
 
 ```tree
 save total, mark 0
-walk list
-  read numbers
-  hook tick
-    take n
+walk list, read numbers
+  hook next
+    take site, name n
     save total
       call add
         bind a, read total
@@ -57,35 +56,23 @@ Loop over a numeric range:
 
 ```tree
 walk size
-  mark 0
-  mark 10
-  hook step
-    take i
+  bind base, 0
+  bind head, 10
+  hook next
+    take slot, name i
     show read i
 ```
 
-## Iterator Protocol (`walk site`)
+## Iterator Protocol (`walk form`)
 
 Iterate using an iterator object:
 
 ```tree
-walk site
-  read iter
-  hook tick
-    take item
+walk form, read iter
+  hook next
+    take site, name item
     call process
       bind item, read item
-```
-
-With a named walk and named take:
-
-```tree
-walk site, name cursor
-  read iter
-  hook tick
-    take item, name current
-    call process
-      bind item, read current
 ```
 
 ### Pre/Post Conditions (`hold`)
@@ -93,13 +80,12 @@ walk site, name cursor
 Add invariants that must hold before and after each iteration:
 
 ```tree
-walk site
-  read items
+walk form, read items
   hold
     call is-sorted
       bind list, read items
-  hook tick
-    take item
+  hook next
+    take site, name item
     call process
       bind item, read item
   hold
@@ -116,30 +102,32 @@ Exit a loop early:
 
 ```tree
 save found, wave false
-walk list
-  read items
-  hook tick
-    take item
+walk list, read items
+  hook next
+    take site, name item
     fork test
-      call is-match, bind item, read item
-      hook true
+      hook test
+        call is-match
+          bind item, read item
+      hook hold
         save found, wave true
-        halt
+        halt flow
 ```
 
-## Continue (`next`)
+## Continue (`turn next`)
 
 Skip to the next iteration:
 
 ```tree
-walk list
-  read items
-  hook tick
-    take item
+walk list, read items
+  hook next
+    take site, name item
     fork test
-      call is-skip, bind item, read item
-      hook true
-        next
+      hook test
+        call is-skip
+          bind item, read item
+      hook hold
+        turn next
     call process
       bind item, read item
 ```
@@ -199,7 +187,7 @@ form walk
 
 | Variant | Traditional | Hook | Use |
 | --- | --- | --- | --- |
-| `walk test` | `while (cond)` | `hook step` | Condition-based loop |
-| `walk list` | `for x in list` | `hook tick` | Collection iteration |
-| `walk size` | `for i in 0..n` | `hook step` | Counted loop |
-| `walk site` | `for x in iter` | `hook tick` | Iterator protocol |
+| `walk test` | `while (cond)` | `hook test`/`hook hold` | Condition-based loop |
+| `walk list` | `for x in list` | `hook next` | Collection iteration |
+| `walk size` | `for i in 0..n` | `hook next` | Counted loop |
+| `walk form` | `for x in iter` | `hook next` | Iterator protocol |

@@ -40,7 +40,7 @@ tree greeter
 
   hook bind
     task greet-{name}
-      send back, text <hello {name}>
+      send back, <hello {name}>
 ```
 
 ### Runtime Interpolation
@@ -50,7 +50,7 @@ Double braces substitute at runtime:
 ```tree
 task greet
   take name, like text
-  send back, text <hello {{name}}>
+  send back, <hello {{name}}>
 ```
 
 ## Symbols (`term`)

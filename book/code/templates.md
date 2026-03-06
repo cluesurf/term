@@ -11,7 +11,7 @@ A template takes parameters and generates code:
 tree doubler
   take name
 
-  hook bind
+  hook fuse
     task double-{name}
       take n, like u64
       like u64
@@ -49,7 +49,7 @@ tree accessor
   take name
   take type
 
-  hook bind
+  hook fuse
     task get-{name}
       like {type}
     task set-{name}
@@ -64,7 +64,7 @@ Single braces `{name}` substitute at compile time:
 tree is-even
   take size
 
-  hook bind
+  hook fuse
     task is-even
       take n, like mark-{size}
       send back
@@ -78,13 +78,13 @@ tree is-even
 
 ## Template Hooks
 
-Templates use `hook bind` or `hook fuse` to define their output:
+Templates use `hook fuse` or `hook fuse` to define their output:
 
 ```tree
 tree interval-methods
   take name
 
-  hook bind
+  hook fuse
     task get-{name}
       like u32
     task set-{name}
@@ -104,7 +104,7 @@ iteration.
 form x
   slot self
   walk list, read something
-    hook tick
+    hook next
       take site
       beam self
         link {site/name}, like {site/type}
@@ -122,12 +122,12 @@ tree define-each
 
   hook fuse
     slot file
-    walk list, loan list
-      hook step
-        take item
+    walk list, read list
+      hook next
+        take site, name item
         beam file
           fuse {template-name}
-            loan item
+            read item
 ```
 
 ## Fuse Inside a Form
@@ -154,7 +154,7 @@ Runtime interpolation happens when the program runs.
 tree greeter
   take lang
 
-  hook bind
+  hook fuse
     task greet-{lang}
       take name, like text
       send back
