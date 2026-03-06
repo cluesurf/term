@@ -71,6 +71,25 @@
 | Check   | `test`, `is`, `has`            |
 | Wait    | `wait`, `poll`, `watch`        |
 
+## Cross-Platform Uniformity
+
+- Rust, Swift, Kotlin, and TypeScript implementations must share the
+  exact same API surface. Same function names, same parameter shapes,
+  same return types. A developer switching platforms should feel at home
+  immediately.
+- When one platform requires unusual machinery (ownership in Rust,
+  coroutine contexts in Kotlin, actor isolation in Swift), absorb that
+  complexity inside the implementation. The public interface stays
+  identical across all four.
+- Design the API around the hardest platform first. If Rust needs a
+  certain shape to stay zero-cost, make that shape the universal one
+  rather than bolting on a compatibility layer later.
+- Never settle for a lowest-common-denominator API. Each backend should
+  compile to the optimal idiom for its platform while exposing the same
+  contract. Uniform does not mean slow.
+- Test parity across platforms. If a function exists on one backend, it
+  exists on all four with the same behavior and the same edge cases.
+
 ## Anti-Patterns
 
 - No builder pattern for required fields. Put them in the constructor.
