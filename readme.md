@@ -14,7 +14,7 @@
   seed
 </h3>
 <p align='center'>
-  A Reactive Language Φ
+  A Programming Framework on Tree Syntax Φ
 </p>
 
 <br/>
@@ -28,7 +28,8 @@ ecosystem. Writing an app that runs on servers, browsers, iOS, and
 Android means learning four toolchains, maintaining four codebases, and
 watching them drift apart. The logic is the same. The plumbing is not.
 
-Seed is a programming language and ecosystem that compiles `.tree`
+Seed is a programming framework built on top of the
+[tree](https://github.com/cluesurf/tree) syntax. It compiles `.tree`
 source code into native, idiomatic output for multiple platforms. You
 write your logic once in a clean, indentation-based syntax. The
 compiler produces Rust, TypeScript, Kotlin, Swift, or HVM, each looking
