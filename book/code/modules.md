@@ -8,7 +8,7 @@ Native libraries use `dock`.
 Import by package path:
 
 ```tree
-load @cluesurf/base/code/base/form/maybe
+load @cluesurf/base/code/maybe
 ```
 
 Import by relative path:
@@ -23,7 +23,7 @@ load ./types/user
 Import only specific names:
 
 ```tree
-load @cluesurf/base/code/base/form/list
+load @cluesurf/base/code/list
   find list
   find push
 ```
@@ -31,7 +31,7 @@ load @cluesurf/base/code/base/form/list
 With optional type hint:
 
 ```tree
-load @cluesurf/base/code/base/form/list
+load @cluesurf/base/code/list
   find list, like form
   find push, like task
 ```
@@ -39,7 +39,7 @@ load @cluesurf/base/code/base/form/list
 With a local alias:
 
 ```tree
-load @cluesurf/base/code/base/form/list
+load @cluesurf/base/code/list
   find push, like task
     name push-list
 ```

@@ -33,9 +33,10 @@ deck @cluesurf/seed
   link @cluesurf/crow, mark <0.0.x>
 
   task ./task # the task loader
-  read ./book # also a default
-  role ./role # also a default
+  book ./book # also a default
+  role ./base/role # also a default
   line ./line
   test ./test
 
-  mind <Lance Pollard>, site <lp@elk.fm>
+  mind <Lance Pollard>, base <lp@elk.fm>
+    site <lancejpollard.com>

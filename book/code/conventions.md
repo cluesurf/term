@@ -90,6 +90,54 @@
 - Test parity across platforms. If a function exists on one backend, it
   exists on all four with the same behavior and the same edge cases.
 
+## File Layout
+
+- A module is a single `.tree` file. The file name is the module name.
+- Prefer `foo.tree` over `foo/base.tree`. If a module has no
+  submodules, it should be a single file, not a directory with
+  `base.tree` inside.
+- When a module has both its own code and submodules, use both:
+  `foo.tree` for the module entry and `foo/bar.tree` for submodules.
+  For example, `clock.tree` alongside `clock/measurement.tree` and
+  `clock/now.tree`.
+- The only `base.tree` that should exist is the package entry point
+  at `code/base.tree`.
+- Resolution order: the compiler tries `name.tree` first, then
+  `name/base.tree` as a legacy fallback.
+
+## base.tree Package Structure
+
+The standard library (`base.tree`) is organized as:
+
+```
+code/
+  base.tree          # package entry point
+  boolean.tree       # types (forms)
+  integer.tree       # types with subtypes
+  integer/           # integer subtypes
+    unsigned.tree
+    unsigned/8.tree
+    unsigned/16.tree
+    ...
+  mask/              # traits (masks)
+    addition.tree
+    comparison.tree
+    ...
+  native/            # platform implementations
+    node/            # Node.js implementations
+    rust/            # Rust implementations
+    kotlin/          # Kotlin implementations
+    swift/           # Swift implementations
+    shared/          # cross-platform algorithms
+  hold/              # internal utilities
+  mill/              # parser grammars
+```
+
+- Types go directly in `code/` (e.g. `code/boolean.tree`).
+- Traits go in `code/mask/`.
+- Platform-specific implementations go in `code/native/<platform>/`.
+- Shared algorithms go in `code/native/shared/`.
+
 ## Anti-Patterns
 
 - No builder pattern for required fields. Put them in the constructor.
