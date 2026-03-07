@@ -1,0 +1,12 @@
+
+load @cluesurf/code
+  find code
+  find book
+
+role book
+  take ~/book/**/*.tree
+    miss ~/book/**/{code,view}/**/*.tree
+
+role code
+  take ~/code/**/*.tree
+  take ~/book/**/{code,view}/**/*.tree
