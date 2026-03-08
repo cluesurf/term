@@ -9,7 +9,7 @@ The `role` directive in `deck.tree` maps file glob patterns to
 vocabularies. It tells the package manager which parser rules to apply
 to which files.
 
-```
+```tree
 deck @cluesurf/seed
   role ./base/role
 ```
@@ -22,7 +22,7 @@ assignments.
 A role file loads the available vocabularies and assigns them to file
 patterns using glob matching.
 
-```
+```tree
 load @cluesurf/code
   find code
   find book

@@ -1,13 +1,13 @@
 # Constants
 
-Define constants with `host`. Constants are immutable values known
+Define constants with `seed`. Constants are immutable values known
 at compile time.
 
 ## Simple Constant
 
 ```tree
-host max-size, mark 1024
-host greeting, text <hello world>
+seed max-size, 1024
+seed greeting, <hello world>
 ```
 
 ## Named Constant Block
@@ -15,13 +15,13 @@ host greeting, text <hello world>
 Group related constants:
 
 ```tree
-host permission
-  host can-read-flag, mark #b1
-  host can-write-flag, mark #b10
-  host can-create-flag, mark #b100
-  host can-append-flag, mark #b1000
-  host can-clear-flag, mark #b10000
-  host can-read-write-flag, mark #b11
+seed permission
+  seed can-read-flag, #b1
+  seed can-write-flag, #b10
+  seed can-create-flag, #b100
+  seed can-append-flag, #b1000
+  seed can-clear-flag, #b10000
+  seed can-read-write-flag, #b11
 ```
 
 ## Enum-Like Constants (`term`)
@@ -29,7 +29,7 @@ host permission
 Define a set of named symbols:
 
 ```tree
-host interval
+seed interval
   term year
   term month
   term week
@@ -42,7 +42,7 @@ host interval
 ```
 
 ```tree
-host encoding
+seed encoding
   term ascii
   term utf-8
   term utf-16
@@ -51,7 +51,7 @@ host encoding
 ```
 
 ```tree
-host color
+seed color
   term red
   term green
   term blue
@@ -62,15 +62,15 @@ host color
 Constants can nest arbitrarily:
 
 ```tree
-host mode
-  host owner
-    host read-flag, mark #b100000000
-    host write-flag, mark #b10000000
-    host execute-flag, mark #b1000000
-  host group
-    host read-flag, mark #b100000
-    host write-flag, mark #b10000
-    host execute-flag, mark #b1000
+seed mode
+  seed owner
+    seed read-flag, #b100000000
+    seed write-flag, #b10000000
+    seed execute-flag, #b1000000
+  seed group
+    seed read-flag, #b100000
+    seed write-flag, #b10000
+    seed execute-flag, #b1000
 ```
 
 ## Test Data Constants
@@ -78,20 +78,50 @@ host mode
 Constants work well for test data:
 
 ```tree
-host test-data
-  host add-cases
-    host zero
-      host a, mark 0
-      host b, mark 0
-      host result, make some, mark 0
-    host small
-      host a, mark 0
-      host b, mark 1
-      host result, make some, mark 1
-    host overflow
-      host a, mark 255
-      host b, mark 1
-      host error, wave true
+seed test-data
+  seed add-cases
+    seed zero
+      seed a, 0
+      seed b, 0
+      seed result, make some, 0
+    seed small
+      seed a, 0
+      seed b, 1
+      seed result, make some, 1
+    seed overflow
+      seed a, 255
+      seed b, 1
+      seed error, wave true
+```
+
+## JSON
+
+Seeds can be used to construct anything JSON supports:
+
+Lists/arrays:
+
+```tree
+seed example
+  seed an-array, like list
+    save 1
+    save 2
+    save 3
+
+seed example-2
+  seed an-array, like list
+    1
+    2
+    3
+```
+
+Maps/objects:
+
+```tree
+seed example
+  seed an-object, like base
+    save a, 1
+    save b, 2
+    save c, 3
 ```
 
 ## Using Constants
@@ -107,6 +137,6 @@ read mode/owner/read-flag
 Access environment variables:
 
 ```tree
-read base/host/path
-read base/host/home
+read base/seed/path
+read base/seed/home
 ```

@@ -46,6 +46,45 @@ load @cluesurf/base/code/list
 
 Without `find`, everything from the module is imported.
 
+## Nested Imports
+
+When multiple imports share a common prefix, nest them to reduce
+repetition:
+
+```tree
+load @cluesurf/term/code/code
+  load /head/mine
+    find head
+  load /like/mine
+    find like
+  load /take/mine
+    find take
+```
+
+This is equivalent to writing three separate load statements:
+
+```tree
+load @cluesurf/term/code/code/head/mine
+  find head
+load @cluesurf/term/code/code/like/mine
+  find like
+load @cluesurf/term/code/code/take/mine
+  find take
+```
+
+### When to nest
+
+Use nested imports when 3 or more imports share the same prefix.
+For 1 or 2 imports from the same prefix, keep them flat. Do not nest
+more than 2 levels deep.
+
+### Linting
+
+A linter may eventually enforce consistent style. The rules would be:
+- Group imports that share a prefix when there are 3+ of them.
+- Keep flat imports for 1-2 from the same prefix.
+- Maximum nesting depth of 2.
+
 ## Dynamic Export (`bear`)
 
 Export platform-specific implementations:
@@ -57,18 +96,18 @@ bear <./{base/host/dock}>
 This resolves to different files based on the target platform
 (javascript, rust, swift, etc.).
 
-## Native Libraries (`dock`)
+## Native Libraries (`host` load)
 
-Import native platform libraries:
+Import native platform libraries with `host true`:
 
 ```tree
-dock load
-  load <node:fs>, name fs
+load <node:fs>, name fs
+  host true
 ```
 
 ```tree
-dock load
-  load <std:fs>, name fs
+load <node:path>, name path
+  host true
 ```
 
 Then call native functions:
@@ -78,6 +117,9 @@ call fs/read-file-sync
   bind path, read path
   bind encoding, text <utf8>
 ```
+
+The `host true` flag tells the compiler this is a platform-native
+module, not a Seed package. See `packages.md` for more examples.
 
 ## Visibility
 

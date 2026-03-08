@@ -72,6 +72,51 @@ form nat
     link pred
 ```
 
+## Case Type (Prefilled Form)
+
+A `case` at the top level defines a type that extends a parent form
+with specific values already filled in. Think of it as a constructor
+with defaults baked in.
+
+```tree
+case syntax-error, like error
+  head <Syntax error>
+  code 1
+  hint <To fix this syntax error, try x>
+
+  link text, like text
+  link link, like text
+  link band, like text
+```
+
+This creates a `syntax-error` type that inherits from `error` but
+has `head`, `code`, and `hint` pre-filled. You can still add extra
+fields with `link`.
+
+Use it for error definitions, config presets, or any pattern where
+you want a named variant of an existing form with known values:
+
+```tree
+case not-found, like error
+  head <Not found>
+  code 404
+  hint <The requested resource does not exist>
+
+case timeout, like error
+  head <Request timeout>
+  code 408
+  hint <The request took too long to complete>
+```
+
+Throw a case error with `bust`:
+
+```tree
+bust syntax-error
+  bind text, read source
+  bind link, read path
+  bind band, read region
+```
+
 ## Struct (Product Type)
 
 Use `link` without `case` for a plain record:
@@ -207,7 +252,7 @@ Add a constraint on a form:
 
 ```tree
 form positive
-  hold, call is-valid
+  hold is-valid
 ```
 
 ## Self Type

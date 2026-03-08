@@ -62,6 +62,36 @@ Code mills are used when Seed programs need to parse external
 formats at runtime or compile time. They define grammars for data
 formats (JSON, HTTP, CSV, binary formats) that Seed code can use.
 
+## Nested Imports
+
+When multiple imports share a common prefix, nest them to reduce
+verbosity:
+
+```tree
+load @cluesurf/term/code/code
+  load /head/mine
+    find head
+  load /like/mine
+    find like
+  load /link/mine
+    find link
+```
+
+This is equivalent to:
+
+```tree
+load @cluesurf/term/code/code/head/mine
+  find head
+load @cluesurf/term/code/code/like/mine
+  find like
+load @cluesurf/term/code/code/link/mine
+  find link
+```
+
+The nested `load` path is relative, prefixed with `/` to append to the
+parent path. Use nested imports when 3+ imports share a prefix. Avoid
+deep nesting (more than 2 levels) as it hurts readability.
+
 ## The Mine/Mint Architecture
 
 A mill has two halves that work together:
@@ -102,7 +132,7 @@ mine load                     mint load, like import
     mine text
       take path          ->     case path
     mine list                     slot path
-      mine form, form find
+      mine form, like find
         take find        ->     case find, mint reference
                                   slot reference
 ```
@@ -117,9 +147,9 @@ name you choose:
 ```tree
 mine indented-term
   take indent, like size
-  mine form, form indent
+  mine form, like indent
     bind abind, read indent
-  mine form, form inline-term
+  mine form, like inline-term
 ```
 
 ```tree
@@ -142,7 +172,7 @@ and `look` (lookaround without consuming).
 |----------------|---------|---------|
 | `mine <...>` | Match literal string | `mine <hello>` |
 | `mine range` | Match character range | `mine range, <a>, <z>` |
-| `mine form` | Delegate to named rule | `mine form, form number` |
+| `mine form` | Delegate to named rule | `mine form, like number` |
 | `mine flow` | Sequence (in order) | children matched in order |
 | `mine list` | Repetition | `bind minimum` / `bind maximum` for bounds |
 | `mine any` | Alternatives (one of) | first matching child wins |
@@ -158,8 +188,10 @@ and `look` (lookaround without consuming).
 | Nested keyword | Purpose | Example |
 |----------------|---------|---------|
 | `mine term` | Match tree node by keyword | `mine term, term bind` |
-| `mine form` | Delegate to named rule | `mine form, form sift` |
-| `mine case` | Match one of several alternatives | variant dispatch |
+| `mine form` | Delegate to named rule | `mine form, like sift` |
+| `mine any` | Match one of several alternatives | variant dispatch |
+| `mine case` | Match children in any order, each at most once | config flags |
+| `mine need` | Required child inside `mine case` | must-have fields |
 | `mine list` | Match repeated children | collect into list |
 | `mine maybe` | Optional child | `mine maybe` + child |
 | `mine text` | Match raw text content | extract string value |
@@ -220,9 +252,9 @@ mine range
 ### Delegate to Named Rule
 
 ```tree
-mine form, form identifier
-mine form, form expression
-mine form, form number
+mine form, like identifier
+mine form, like expression
+mine form, like number
 ```
 
 ### Sequence
@@ -232,7 +264,7 @@ Match items in order:
 ```tree
 mine flow
   mine <[>
-  mine form, form value
+  mine form, like value
   mine <]>
 ```
 
@@ -291,9 +323,9 @@ mine test
         something
         else
   hook hold
-    mine form, form number
+    mine form, like number
   hook miss
-    mine form, form identifier
+    mine form, like identifier
 ```
 
 ### Check (Lookahead / Lookbehind)
@@ -341,7 +373,7 @@ mine bind
     mine term
       take name
     mine maybe
-      mine form, form sift
+      mine form, like sift
         take sift
 ```
 
@@ -369,21 +401,21 @@ mine load
       take path
 ```
 
-### Match Alternatives with `mine case`
+### Match Alternatives with `mine any`
 
-`mine case` matches one of several possible child types. Only one
+`mine any` matches one of several possible child types. Only one
 child matches per parse event:
 
 ```tree
 mine sift
-  mine case
+  mine any
     mine text
       take text
-    mine form, form link
+    mine form, like link
       take link
-    mine form, form call
+    mine form, like call
       take call
-    mine form, form make
+    mine form, like make
       take make
 ```
 
@@ -399,10 +431,10 @@ mine form
     mine term
       take name
     mine list
-      mine form, form head
+      mine form, like head
         take head
     mine list
-      mine form, form task
+      mine form, like task
         take task
 ```
 
@@ -421,6 +453,87 @@ mine find
           take name
 ```
 
+### Match Any-Order Children with `mine case`
+
+`mine case` matches children where each child rule matches at most once,
+in any order. This is for terms where config flags and content can be
+interleaved. Unlike `mine any` (which picks ONE alternative), `mine case`
+tries ALL its child rules against each remaining input child.
+
+```tree
+mine task
+  mine term, term task
+    mine term
+      slot name
+    mine case
+      mine maybe
+        mine term, term hide
+          slot hide
+      mine maybe
+        mine term, term wait
+          slot wait
+      mine need
+        mine list
+          mine form, like take
+            slot take
+      mine list
+        mine form, like flow
+          slot flow
+```
+
+This accepts all of these orderings:
+
+```tree
+task foo
+  hide true
+  take a
+  take b
+  call bar
+
+task foo
+  take a
+  hide true
+  take b
+  call bar
+
+task foo
+  take a
+  take b
+  call bar
+```
+
+Children wrapped in `mine maybe` match zero or one time. Children
+wrapped in `mine need` must match at least once. Other children
+(like `mine list`) follow their normal semantics but each distinct
+rule is tried at most once per position scan.
+
+### Mark Required Children with `mine need`
+
+`mine need` is only valid inside `mine case`. It marks a child rule
+as required. If the required rule does not match any input child,
+the entire `mine case` fails.
+
+```tree
+mine call
+  mine term, term call
+    mine case
+      mine need
+        mine term
+          slot name
+      mine maybe
+        mine term, term wait
+          slot wait
+      mine maybe
+        mine term, term risk
+          slot risk
+      mine list
+        mine form, like bind
+          slot bind
+```
+
+Here, the call name is required (`mine need`), while `wait` and
+`risk` are optional (`mine maybe`). All can appear in any order.
+
 ### Full Term Mill Example
 
 The `form` keyword (type definition) mine:
@@ -431,19 +544,19 @@ mine form
     mine term
       take name
     mine list
-      mine form, form head
+      mine form, like head
         take head
     mine list
-      mine form, form link
+      mine form, like link
         take link
     mine list
-      mine form, form bond
+      mine form, like bond
         take bond
     mine list
-      mine form, form rein
+      mine form, like rein
         take rein
     mine list
-      mine form, form task
+      mine form, like task
         take task
 ```
 
@@ -560,20 +673,20 @@ mint sift
 ```
 
 Each case stores into the same `slot value`. The corresponding mine
-uses `mine case` for alternatives:
+uses `mine any` for alternatives:
 
 ```tree
 mine sift
-  mine case
+  mine any
     mine text
       take text
-    mine form, form link
+    mine form, like link
       take link
-    mine form, form move
+    mine form, like move
       take move
-    mine form, form call
+    mine form, like call
       take call
-    mine form, form make
+    mine form, like make
       take make
 ```
 
@@ -645,7 +758,7 @@ mine load
     mine text
       take path
     mine list
-      mine form, form find
+      mine form, like find
         take find
 
 mine find
@@ -707,11 +820,11 @@ mill cookie
 
 ```tree
 mine cookie
-  mine form, form cookie-pair
+  mine form, like cookie-pair
     mine flow
-      mine form, form cookie-name
+      mine form, like cookie-name
       mine <=>
-      mine form, form cookie-value
+      mine form, like cookie-value
 
 mine cookie-name
   mine list
@@ -728,9 +841,9 @@ mine cookie-value
     mine any
       mine flow
         mine <">
-        mine form, form cookie-octets
+        mine form, like cookie-octets
         mine <">
-      mine form, form cookie-octets
+      mine form, like cookie-octets
 ```
 
 ## Summary (Code Mill)
@@ -739,7 +852,7 @@ mine cookie-value
 | --- | --- | --- |
 | `mine <...>` | Literal string | `mine <hello>` |
 | `mine range` | Character range | `mine range, <a>, <z>` |
-| `mine form` | Delegate to named rule | `mine form, form number` |
+| `mine form` | Delegate to named rule | `mine form, like number` |
 | `mine flow` | Sequence | children in order |
 | `mine list` | Repetition | `bind minimum` / `bind maximum` for bounds |
 | `mine any` | Alternatives | first matching child |
@@ -754,8 +867,10 @@ mine cookie-value
 | Keyword | Purpose | Example |
 | --- | --- | --- |
 | `mine term` | Match tree node | `mine term, term bind` |
-| `mine form` | Delegate to named rule | `mine form, form sift` |
-| `mine case` | Match alternatives | variant dispatch |
+| `mine form` | Delegate to named rule | `mine form, like sift` |
+| `mine any` | Match alternatives (first wins) | variant dispatch |
+| `mine case` | Match any-order, each at most once | config + content |
+| `mine need` | Required child inside `mine case` | must-have fields |
 | `mine list` | Match repeated children | collect into list |
 | `mine maybe` | Optional child | `mine maybe` + child |
 | `mine text` | Match text content | extract string |

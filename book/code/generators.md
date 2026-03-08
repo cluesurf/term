@@ -37,14 +37,7 @@ lace content
   take node
 
   walk node/head
-    test test-match
-      bind base, read seed/form
-      bind head, read form flow
-      hook rise
-        lace text, read seed/text
-      hook fall
-        lace form, form node
-          bind node, read seed
+    call x
 ```
 
 ## HTML Example
@@ -100,4 +93,3 @@ lace node-head
 | `lace text` | Emit a literal or variable string |
 | `lace form` | Call a sub-template with binds |
 | `walk` | Iterate over a collection in the template |
-| `test` | Conditional output |

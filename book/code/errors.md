@@ -1,14 +1,14 @@
 # Errors
 
-Errors in Seed use the `kink` form. Throw with `halt`. Catch with
-`risk`.
+Throw with `bust`. Propagate with
+`send error`. Catch with `risk`.
 
-## Error Type (`kink`)
+## Error Type
 
 The standard error form:
 
 ```tree
-form kink
+form error
   link code, like text
   link note, like text
   link hint, like text
@@ -18,13 +18,13 @@ form kink
 - `note`: human-readable error message
 - `hint`: suggestion for how to fix it
 
-## Defining Errors (`kink`)
+## Defining Errors
 
-Define named error types with `kink`. Each kink definition declares
+Define named error types with `case`. Each error definition declares
 the error's heading, optional numeric code, hint text, and data fields.
 
 ```tree
-kink syntax-error
+case syntax-error, like error
   head <Syntax error>
   code 1
   hint <To fix this syntax error, try x>
@@ -45,16 +45,16 @@ kink syntax-error
 
 ### Rendering
 
-Each kink has a `show` task that renders it for the CLI. There is a
+Each error has a `show` task that renders it for the CLI. There is a
 default renderer, but you can override it per error.
 
 First, define the fill (default renderer mixin):
 
 ```tree
-load @cluesurf/term/code/kink
+load @cluesurf/term/code/error
   find fill
 
-kink syntax-error
+cast syntax-error, like error
   head <Syntax error>
   code 1
   hint <To fix this syntax error, try x>
@@ -69,7 +69,7 @@ kink syntax-error
   wear fill
     task fill
       take self
-      save self/show, call make-kink-show, loan self/text
+      save self/show, call make-error-show, loan self/text
       save self/link, loan self/link
 ```
 
@@ -82,62 +82,42 @@ derived fields like `show` (formatted display text).
 Override the default renderer:
 
 ```tree
-load @cluesurf/term/code/kink
+load @cluesurf/term/code/error
   find show
 
 load ./halt
-  find kink syntax-error
+  find cast syntax-error
 
-kink syntax-error
+cast syntax-error
   wear show
     task show
       take self
       take call, list halt-call
-      call make-kink-text
+      call make-error-text
         loan self
         loan call
 ```
 
-### Throwing Errors
+## Throwing Errors (`bust`)
 
-Throw a defined kink by name and bind its data fields:
-
-```tree
-load ./halt
-  find kink syntax-error
-
-halt syntax-error
-  bind text, loan text
-  bind link, loan link
-  bind band, call make-band, loan text
-```
-
-## Stopping a Program
-
-Stop the program with `halt flow`:
+Throw a defined error by name and bind its data fields:
 
 ```tree
-halt flow, text <Message>
-halt <Message>
+bust syntax-error
+  bind text, read source
+  bind link, read link
+  bind band
+    call make-band
+      bind text, read source
 ```
 
-Both forms stop program execution with an error message.
-
-## Throwing Errors
-
-### Throw with Message
+Throw with a plain message:
 
 ```tree
-kink <division by zero>
+bust <division by zero>
 ```
 
-### Throw a Kink
-
-```tree
-kink some-message-key
-```
-
-### Throw in a Condition
+Throw in a condition:
 
 ```tree
 task safe-div
@@ -145,11 +125,11 @@ task safe-div
   take b, like u64
   fork test
     hook test
-      call eq
+      call is-equal
         bind a, read b
         bind b, mark 0
     hook hold
-      halt text <division by zero>
+      bust <division by zero>
     hook miss
       send back
         call div
@@ -157,9 +137,63 @@ task safe-div
           bind b, read b
 ```
 
-## Breaking Out
+## Error Propagation (`send error`)
 
-### Break from a Loop
+Pass errors up the call stack. Add `send error` as a child of `call`
+to propagate any thrown error (like Rust's `?`):
+
+```tree
+task process-file
+  take path, like text
+  save content
+    call read-file
+      bind path, read path
+      send error
+  save result
+    call parse
+      bind text, read content
+      send error
+  send back, read result
+```
+
+If a called function throws via `bust`, `send error` causes the
+current task to return the error instead of crashing.
+
+## Catching Errors (`risk`)
+
+Mark an entire task as unsafe to handle errors manually:
+
+```tree
+task unchecked-add
+  risk true
+  take a, like u64
+  take b, like u64
+  send back
+    call add
+      bind a, read a
+      bind b, read b
+```
+
+## Halting
+
+### Stop the Program (`halt flow`)
+
+Stop execution entirely:
+
+```tree
+halt flow
+halt flow, text <shutting down>
+```
+
+### Debugger Breakpoint (`halt code`)
+
+Pause execution for debugging (like `debugger` in JavaScript):
+
+```tree
+halt code
+```
+
+### Break from Loop or Block (`halt`)
 
 `halt` breaks the current loop or block:
 
@@ -174,76 +208,20 @@ walk test
         halt
 ```
 
-### Break from a Fork
-
 Break from a named scope:
 
 ```tree
 halt fork
-halt term
-```
-
-As long as `term` is not a special halt keyword like `fork` or `flow`.
-
-## Catching Errors (`risk`)
-
-Mark a call as risky to catch errors:
-
-```tree
-task write-file
-  take path, like text
-  take content, like text
-  call fs/write
-    bind path, read path
-    bind content, read content
-    halt kink
-  send back, text <done>
-```
-
-Mark an entire task as unsafe:
-
-```tree
-task unchecked-add
-  risk true
-  take a, like u64
-  take b, like u64
-  send back, call add
-    bind a, read a
-    bind b, read b
-```
-
-## Critical Error (`bust`)
-
-For unrecoverable situations:
-
-```tree
-bust <out of memory>
-```
-
-## Error Propagation
-
-Pass errors up the call stack:
-
-```tree
-task process-file
-  take path, like text
-  save content
-    call read-file
-      bind path, read path
-      halt kink
-  save result
-    call parse
-      bind text, read content
-      halt kink
-  send back, read result
 ```
 
 ## Error Severity
 
 | Level | Keyword | Meaning |
 | --- | --- | --- |
-| Fatal | `halt` | Stop execution, throw error |
-| Critical | `bust` | Unrecoverable, crash |
+| Throw | `bust` | Throw a catchable error |
+| Break | `halt` | Break from loop or block |
+| Stop | `halt flow` | Stop the program |
+| Debug | `halt code` | Debugger breakpoint |
 
 ## Custom Error Forms
 

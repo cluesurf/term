@@ -63,7 +63,7 @@ Use `mind` for authors. Each author can have an email (`site` or
 
 ```tree
 deck @cluesurf/seed
-  mind <Lance Pollard>, site <lp@elk.fm>
+  mind <Lance Pollard>, base <lp@elk.fm>
 ```
 
 With a website:
@@ -357,6 +357,43 @@ my-app/
   test/
     base.tree
 ```
+
+## Native Platform Imports
+
+Import native (host) libraries with `host true` on a load statement:
+
+```tree
+load <node:fs>, name fs
+  host true
+
+load <node:path>, name path
+  host true
+```
+
+Then call functions on them:
+
+```tree
+task read-file
+  take path, like text
+  like text
+  save content
+    call fs/read-file-sync
+      bind path, read path
+      bind encoding, text <utf8>
+  send back, read content
+```
+
+For Rust targets:
+
+```tree
+load <std:fs>, name std-fs
+  host true
+```
+
+The `host true` flag distinguishes native platform modules from Seed
+packages. The compiler resolves the module name to the correct import
+for each backend (e.g., `require('node:fs')` for Node.js,
+`use std::fs` for Rust).
 
 ## Other Notes
 

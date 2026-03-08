@@ -18,7 +18,7 @@ tree doubler
       send back
         call mul
           bind a, read n
-          bind b, mark 2
+          bind b, 2
 ```
 
 ## Instantiate (`fuse`)
@@ -27,7 +27,7 @@ Generate code from a template:
 
 ```tree
 fuse doubler
-  bind name, text <int>
+  bind name, <int>
 ```
 
 This produces:
@@ -39,7 +39,7 @@ task double-int
   send back
     call mul
       bind a, read n
-      bind b, mark 2
+      bind b, 2
 ```
 
 ## Template with Multiple Parameters
@@ -72,8 +72,8 @@ tree is-even
           bind a
             call intersect-bitwise
               bind a, read n
-              bind b, mark 1
-        bind b, mark 0
+              bind b, 1
+        bind b, 0
 ```
 
 ## Template Hooks

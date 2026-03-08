@@ -1,6 +1,6 @@
 # Debugging
 
-## Breakpoints (`rest`)
+## Breakpoints (`halt code`)
 
 Insert a breakpoint that pauses execution:
 
@@ -8,15 +8,16 @@ Insert a breakpoint that pauses execution:
 task debug-add
   take a, like u64
   take b, like u64
-  rest flow
+  halt code
   send back
     call add
       bind a, read a
       bind b, read b
 ```
 
-When the debugger hits `rest flow`, it pauses and lets you inspect
-variables.
+When the debugger hits `halt code`, it pauses and lets you inspect
+variables. This is equivalent to the `debugger` statement in
+JavaScript.
 
 ## Debugging Modes
 

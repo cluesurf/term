@@ -27,27 +27,6 @@ test list-push
     bind expected, mark 1
 ```
 
-## Test Suites
-
-Group tests with `hook suite`:
-
-```tree
-hook suite
-  host add-cases
-    host zero
-      host a, mark 0
-      host b, mark 0
-      host result, make some, mark 0
-    host small
-      host a, mark 0
-      host b, mark 1
-      host result, make some, mark 1
-    host boundary
-      host a, mark 255
-      host b, mark 1
-      host error, wave true
-```
-
 ## Assertions
 
 | Assertion | Purpose |

@@ -138,6 +138,135 @@ code/
 - Platform-specific implementations go in `code/native/<platform>/`.
 - Shared algorithms go in `code/native/shared/`.
 
+## Ordering Principles
+
+There is no strict ordering requirement on children within a term.
+The parser uses `mine case` (any-order matching) to allow flexibility.
+However, follow these conventions for readability.
+
+### General Rule
+
+Configuration and metadata come first. Dynamic content comes second.
+Within each group, order does not matter.
+
+### Task Definitions
+
+```tree
+task get-foo
+  hide true          # config: visibility
+  wait true          # config: async marker
+  firm true          # config: totality marker
+
+  head A, head B     # type parameters
+
+  take a, like text  # parameters
+  take b, like mark
+
+  like text          # return type
+
+  call do-thing      # body (dynamic)
+    read a
+```
+
+Group order:
+1. Config flags (`hide`, `wait`, `risk`, `firm`, `note`)
+2. Type parameters (`head`)
+3. Parameters (`take`)
+4. Return type (`like`)
+5. Body statements (`call`, `save`, `fork`, `walk`, `send back`)
+
+### Call Expressions
+
+```tree
+call some-function
+  wait true          # config: async
+  risk true          # config: unsafe
+
+  bind x, read a     # arguments
+  bind y, read b
+```
+
+Group order:
+1. Config flags (`wait`, `risk`)
+2. Arguments (`bind`, `read`, `save`)
+
+### Form Definitions
+
+```tree
+form user
+  hide true          # config: visibility
+  firm true          # config: totality
+
+  head T             # type parameters
+
+  like base-form     # alias/extends
+
+  link name, like text   # fields
+  link age, like mark
+
+  case admin         # variants
+    link role
+
+  task greet         # methods
+    like text
+```
+
+Group order:
+1. Config flags (`hide`, `firm`, `note`)
+2. Type parameters (`head`)
+3. Type alias (`like`)
+4. Fields (`link`)
+5. Variants (`case`)
+6. Methods (`task`)
+7. Constraints (`hold`, `rein`)
+
+### DSL Role Files
+
+For DSL roles (deck, host, base, etc.), put metadata first:
+
+```tree
+deck @cluesurf/base
+  mark <0.3.1>       # metadata
+  head <Description>
+  lock apache-2
+  sort tool
+  hide true
+
+  mind <Author>      # people
+
+  link foo, mark <1>  # dependencies
+
+  case work           # dev dependencies
+    link bar
+
+  task ./task         # directory pointers
+  book ./book
+```
+
+### Parser Support
+
+The parser does not enforce ordering. `mine case` matches children
+in any order with at-most-one-each semantics. `mine need` inside
+`mine case` marks required children. Linters and formatters may
+reorder children to match conventions, but the parser accepts any
+valid ordering.
+
+## Imports
+
+When multiple imports share a common prefix, nest them:
+
+```tree
+load @cluesurf/term/code/code
+  load /head/mine
+    find head
+  load /like/mine
+    find like
+```
+
+Use nested imports when 3+ imports share a prefix. Do not nest more
+than 2 levels deep. For 1-2 imports from the same prefix, keep them
+flat. A linter may eventually enforce consistent style.
+
 ## Anti-Patterns
 
 - No builder pattern for required fields. Put them in the constructor.

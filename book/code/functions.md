@@ -299,33 +299,64 @@ send back
 
 ## Error Handling
 
-### Throw (`halt`)
+### Throw Errors (`bust`)
+
+Throw an error by name:
 
 ```tree
-halt <division by zero>
-halt flow, text <stop program>
+bust syntax-error
+  bind text, read source
+  bind line, read line
 ```
 
-Throw a typed error:
+Throw with a message:
 
 ```tree
-halt kink
+bust <division by zero>
 ```
+
+### Propagate Errors (`send error`)
+
+Propagate an error up the call stack (like Rust's `?`):
+
+```tree
+save content
+  call read-file
+    bind path, read path
+    send error
+```
+
+If `read-file` throws via `bust`, `send error` returns the error
+from the current task instead of crashing.
 
 ### Break from Loop or Block
 
 ```tree
-halt
 halt fork
+halt some-fork-name
 ```
 
 ```tree
 walk test, true
   hook hold
     fork test
-      call is-done
-      hook true
-        halt
+      hook test
+        call is-done
+      hook hold
+        halt fork
+```
+
+Or if you name it:
+
+
+```tree
+walk test, true
+  hook hold, name fork-1
+    fork test
+      hook test
+        call is-done
+      hook hold
+        halt fork-1
 ```
 
 ### Continue (`next`)
@@ -333,23 +364,34 @@ walk test, true
 Skip to next iteration:
 
 ```tree
-walk list
-  read items
+walk list, read items
   hook next
     take site, name item
     fork test
-      call is-skip, bind item, read item
-      hook true
+      hook test
+        call is-skip
+          bind item, read item
+      hook hold
         turn next
-    call process, bind item, read item
+    call process
+      bind item, read item
 ```
 
-### Critical Error (`bust`)
+### Halt the Program (`halt flow`)
 
-Unrecoverable error:
+Stop execution entirely:
 
 ```tree
-bust <out of memory>
+halt flow
+halt flow, text <shutting down>
+```
+
+### Debugger Breakpoint (`halt code`)
+
+Pause execution for debugging (like `debugger` in JavaScript):
+
+```tree
+halt code
 ```
 
 ## Async (`wait`)
@@ -431,11 +473,13 @@ task internal-helper
   send back, mark 0
 ```
 
-## Dock (Platform-Specific)
+## Native Calls
+
+Import a native module and call its functions:
 
 ```tree
-dock load
-  load <node:fs>, name fs
+load <node:fs>, name fs
+  host true
 
 task read-file
   take path, like text
@@ -443,3 +487,5 @@ task read-file
     bind path, read path
     bind encoding, text <utf8>
 ```
+
+See `modules.md` for more on host imports.
