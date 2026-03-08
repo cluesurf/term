@@ -163,7 +163,7 @@ and `look` (lookaround without consuming).
 | `mine list` | Match repeated children | collect into list |
 | `mine maybe` | Optional child | `mine maybe` + child |
 | `mine text` | Match raw text content | extract string value |
-| `mine road` | Match a path/road expression | extract path |
+| `mine path` | Match a path/road expression | extract path |
 | `take` | Extract and emit named value | `take name` |
 
 You cannot invent new nested keywords. `mine size-repeat` is NOT valid.
@@ -759,7 +759,7 @@ mine cookie-value
 | `mine list` | Match repeated children | collect into list |
 | `mine maybe` | Optional child | `mine maybe` + child |
 | `mine text` | Match text content | extract string |
-| `mine road` | Match path | extract road |
+| `mine path` | Match path | extract path |
 | `take` | Emit named value | `take name` |
 
 ## Mint Summary
