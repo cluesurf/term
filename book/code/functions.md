@@ -473,6 +473,30 @@ task internal-helper
   send back, mark 0
 ```
 
+## Shell Commands
+
+Call a shell command by passing a string literal as the first argument:
+
+```tree
+call <git init>
+```
+
+With arguments:
+
+```tree
+call <git commit>
+  bind message, text <initial commit>
+```
+
+Save the result:
+
+```tree
+save output
+  call <ls -la>
+```
+
+The string in angle brackets is the shell command to execute.
+
 ## Native Calls
 
 Import a native module and call its functions:
