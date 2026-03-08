@@ -88,6 +88,7 @@ AST node it produces.
 | Mill | Purpose | Keywords |
 | --- | --- | --- |
 | `code` | Program source code | `task`, `form`, `mask`, `load`, `call`, `fork`, `walk`, etc. |
+| `math` | Formal proofs and theorems | `rule`, `test`, `form`, `load`, `call`, `fork`, etc. |
 | `book` | Documentation | Headings, paragraphs, lists, tables, code blocks, etc. |
 | `deck` | Package manifests | `deck`, `mark`, `link`, `lock`, `mind`, etc. |
 | `line` | CLI definitions | Command structure, flags, arguments |
