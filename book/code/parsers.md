@@ -36,17 +36,17 @@ the Phase 0 tree parser. Term mills recognize keyword patterns in
 the tree structure and construct typed surface AST nodes.
 
 These live in the `base.tree` package
-(`deck/seed/deck/base.tree/code/mill/`).
+(`deck/seed/deck/term.tree/code/`).
 
 Term mills use `mine term` to match tree nodes by keyword. For
 example, `mine term, term bind` matches a TreeBlock whose keyword
 is `bind`. They use `take` to extract values from matched nodes.
 
 Examples of term mills:
-- `mill/code/` - Parse Term language keywords (task, form, call, etc.)
-- `mill/math/` - Parse proof keywords (rule, test, form, hold)
-- `mill/book/` - Parse documentation structure
-- `mill/deck/` - Parse package manifests
+- `code/` - Parse Term language keywords (task, form, call, etc.)
+- `math/` - Parse proof keywords (rule, test, form, hold)
+- `book/` - Parse documentation structure
+- `deck/` - Parse package manifests
 
 Term mills do not see characters or bytes. They see tree nodes
 (blocks, strings, numbers) produced by the tree parser. Their job is
@@ -637,7 +637,7 @@ mint code
 
 The canonical mine/mint pair for parsing `load` statements:
 
-**mine** (`mill/code/load/mine.tree`):
+**mine** (`code/load/mine.tree`):
 
 ```tree
 mine load
@@ -658,7 +658,7 @@ mine find
           take name
 ```
 
-**mint** (`mill/code/load/mint.tree`):
+**mint** (`code/load/mint.tree`):
 
 ```tree
 load @cluesurf/base/code/import
