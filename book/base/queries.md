@@ -64,8 +64,8 @@ Alias a column:
 ```tree
 find user-names
   base user
-  take first-name, name given
-  take last-name, name family
+  send given, read self/first-name
+  send family, read self/last-name
 ```
 
 ## Filtering (`test`)
