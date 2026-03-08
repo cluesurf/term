@@ -1,7 +1,7 @@
 # Errors
 
 Throw with `bust`. Propagate with
-`send error`. Catch with `risk`.
+`send error`. Catch with `mark unsafe`.
 
 ## Error Type
 
@@ -159,13 +159,13 @@ task process-file
 If a called function throws via `bust`, `send error` causes the
 current task to return the error instead of crashing.
 
-## Catching Errors (`risk`)
+## Catching Errors (`mark unsafe`)
 
 Mark an entire task as unsafe to handle errors manually:
 
 ```tree
 task unchecked-add
-  risk true
+  mark unsafe
   take a, like u64
   take b, like u64
   send back

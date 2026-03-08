@@ -196,6 +196,11 @@ and `look` (lookaround without consuming).
 | `mine maybe` | Optional child | `mine maybe` + child |
 | `mine text` | Match raw text content | extract string value |
 | `mine path` | Match a path/road expression | extract path |
+| `mine number` | Match numeric literal (int/decimal) | `mine number` + `take` |
+| `mine code` | Match code literal (0x, 0b, 0o) | `mine code` + `take` |
+| `mine load-path` | Match import path (./,@,/) | `mine load-path` + `take` |
+| `mine read-path` | Match read path (allows ?) | `mine read-path` + `take` |
+| `mine save-path` | Match save path (no ?) | `mine save-path` + `take` |
 | `take` | Extract and emit named value | `take name` |
 
 You cannot invent new nested keywords. `mine size-repeat` is NOT valid.
@@ -467,11 +472,8 @@ mine task
       slot name
     mine case
       mine maybe
-        mine term, term hide
-          slot hide
-      mine maybe
-        mine term, term wait
-          slot wait
+        mine form, like mark
+          slot mark
       mine need
         mine list
           mine form, like take
@@ -485,14 +487,14 @@ This accepts all of these orderings:
 
 ```tree
 task foo
-  hide true
+  mark private
   take a
   take b
   call bar
 
 task foo
   take a
-  hide true
+  mark private
   take b
   call bar
 
@@ -521,18 +523,86 @@ mine call
         mine term
           slot name
       mine maybe
-        mine term, term wait
-          slot wait
-      mine maybe
-        mine term, term risk
-          slot risk
+        mine form, like mark
+          slot mark
       mine list
         mine form, like bind
           slot bind
 ```
 
-Here, the call name is required (`mine need`), while `wait` and
-`risk` are optional (`mine maybe`). All can appear in any order.
+Here, the call name is required (`mine need`), while `mark` tags
+(like `mark async`, `mark unsafe`) are optional (`mine maybe`). All
+can appear in any order.
+
+### Match Numeric Literals with `mine number`
+
+`mine number` matches integer (PSize) or decimal (PComb) literals:
+
+```tree
+mine mark
+  mine term, term mark
+    mine number
+      take value
+```
+
+This matches `mark 42`, `mark -123`, `mark 3.14`.
+
+### Match Code Literals with `mine code`
+
+`mine code` matches code literals like `0x1F`, `0b1010`, `0o755`:
+
+```tree
+mine code-value
+  mine code
+    take value
+```
+
+This matches `0xFF`, `0b10110`, `0o777`.
+
+### Match Import Paths with `mine load-path`
+
+`mine load-path` matches import-style paths that start with `./`, `@`,
+or `/`. It does NOT allow optional markers (`?`):
+
+```tree
+mine load
+  mine term, term load
+    mine load-path
+      take path
+```
+
+Matches: `./foo/bar`, `@cluesurf/base`, `./{name}/code`, `/absolute/path`.
+Does NOT match: `foo/bar`, `foo?/bar`.
+
+### Match Read-Access Paths with `mine read-path`
+
+`mine read-path` matches variable access paths. These are relative
+paths (no `./`, `@`, `/` prefix) that allow optional markers (`?`):
+
+```tree
+mine read
+  mine term, term read
+    mine read-path
+      take path
+```
+
+Matches: `foo`, `foo/bar`, `{foo}/bar`, `foo?/bar`.
+Does NOT match: `./foo`, `@foo/bar`.
+
+### Match Save Paths with `mine save-path`
+
+`mine save-path` matches assignment target paths. Like read paths but
+without optional markers:
+
+```tree
+mine save
+  mine term, term save
+    mine save-path
+      take path
+```
+
+Matches: `foo`, `foo/bar`, `{foo}/bar`.
+Does NOT match: `foo?/bar`, `./foo`, `@foo`.
 
 ### Full Term Mill Example
 
@@ -875,6 +945,11 @@ mine cookie-value
 | `mine maybe` | Optional child | `mine maybe` + child |
 | `mine text` | Match text content | extract string |
 | `mine path` | Match path | extract path |
+| `mine number` | Match numeric literal | extract integer or decimal |
+| `mine code` | Match code literal | extract `0x`, `0b`, `0o` value |
+| `mine load-path` | Match import path | `./foo`, `@foo`, `/foo` |
+| `mine read-path` | Match read-access path | `foo`, `foo/bar`, `foo?/bar` |
+| `mine save-path` | Match save/write path | `foo`, `foo/bar` (no `?`) |
 | `take` | Emit named value | `take name` |
 
 ## Mint Summary

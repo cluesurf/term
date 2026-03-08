@@ -30,10 +30,11 @@ deck @cluesurf/base
 | `term`  | Tag           | `term compiler`                     |
 | `site`  | Homepage URL  | `site <https://github.com/cluesurf/seed>` |
 | `view`  | Preview image | `view ./view/tree.gif`              |
-| `hide`  | Private flag  | `hide true`                         |
+| `mark private` | Private flag | `mark private`                 |
 
-- **`hide true`** marks the package as private. It will not be published
-  to any registry. Useful for internal sub-packages or applications.
+- **`mark private`** marks the package as private. It will not be
+  published to any registry. Useful for internal sub-packages or
+  applications.
 
 ### Directory Pointers
 
@@ -284,7 +285,7 @@ deck @cluesurf/base
 
 ## Sub-Package Example
 
-A sub-package is a child deck within a parent package. Use `hide true`
+A sub-package is a child deck within a parent package. Use `mark private`
 to keep it private. Use `sort call` for CLI packages. Use `call` to
 point to the command handler directory.
 
@@ -293,7 +294,7 @@ deck @cluesurf/term-call
   mark <0.0.1>
   sort call
   lock apache-2
-  hide true
+  mark private
 
   head <A TreeCode Framework CLI>
 
@@ -313,7 +314,7 @@ deck @cluesurf/term-call
 ```
 
 Key differences from a library package:
-- **`hide true`** prevents publishing to a registry.
+- **`mark private`** prevents publishing to a registry.
 - **`sort call`** marks this as a CLI package.
 - **`call ./call`** points to the command handler entry point.
 - **`link ../load`** references a sibling sub-package by relative path.
@@ -360,14 +361,14 @@ my-app/
 
 ## Native Platform Imports
 
-Import native (host) libraries with `host true` on a load statement:
+Import native platform libraries with `mark native` on a load statement:
 
 ```tree
 load <node:fs>, name fs
-  host true
+  mark native
 
 load <node:path>, name path
-  host true
+  mark native
 ```
 
 Then call functions on them:
@@ -387,10 +388,10 @@ For Rust targets:
 
 ```tree
 load <std:fs>, name std-fs
-  host true
+  mark native
 ```
 
-The `host true` flag distinguishes native platform modules from Seed
+The `mark native` tag distinguishes native platform modules from Seed
 packages. The compiler resolves the module name to the correct import
 for each backend (e.g., `require('node:fs')` for Node.js,
 `use std::fs` for Rust).

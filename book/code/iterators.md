@@ -34,7 +34,7 @@ Iterate over a collection:
 walk list, read items
   hook next
     take site, name item
-    show read item
+    call show, read item
 ```
 
 Process each item:
@@ -60,7 +60,7 @@ walk size
   bind head, 10
   hook next
     take slot, name i
-    show read i
+    call show, read i
 ```
 
 ## Iterator Protocol (`walk form`)

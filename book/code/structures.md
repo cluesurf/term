@@ -289,11 +289,12 @@ task safe-divide
 
 ## Visibility
 
-`hide` makes a field or form private:
+`mark private` makes a field or form private:
 
 ```tree
 form list
-  link data, hide true
+  link data
+    mark private
 ```
 
 ## Construction (`make`)

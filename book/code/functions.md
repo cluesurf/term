@@ -394,30 +394,30 @@ Pause execution for debugging (like `debugger` in JavaScript):
 halt code
 ```
 
-## Async (`wait`)
+## Async (`mark async`)
 
 Mark a task as async:
 
 ```tree
 task fetch-data
-  wait true
+  mark async
   take url, like text
   save response
     call fetch-url
       bind url, read url
-      wait true
+      mark async
   send back, read response
 ```
 
-The `wait true` on `call` awaits the result.
+The `mark async` on `call` awaits the result.
 
-## Unsafe (`risk`)
+## Unsafe (`mark unsafe`)
 
 Mark a task as unsafe:
 
 ```tree
 task unchecked-add
-  risk true
+  mark unsafe
   take a, like u64
   take b, like u64
   send back
@@ -465,11 +465,11 @@ task apply
 
 ## Visibility
 
-`hide` makes a task private:
+`mark private` makes a task private:
 
 ```tree
 task internal-helper
-  hide true
+  mark private
   send back, mark 0
 ```
 
@@ -479,7 +479,7 @@ Import a native module and call its functions:
 
 ```tree
 load <node:fs>, name fs
-  host true
+  mark native
 
 task read-file
   take path, like text
@@ -488,4 +488,32 @@ task read-file
     bind encoding, text <utf8>
 ```
 
-See `modules.md` for more on host imports.
+See `modules.md` for more on native imports.
+
+## Totality Checking (`fold`)
+
+Mark a task as total (must terminate, no side effects):
+
+```tree
+task add-zero-right
+  fold well
+  take n, like nat
+  like equal
+  fork case, read n
+    case zero
+      send back
+        call refl
+    case succ, base pred
+      send back
+        call congruence
+          bind f, read succ
+          bind proof
+            call add-zero-right
+              bind n, read pred
+```
+
+Functions marked `fold well` are checked for:
+- Structural recursion on a decreasing argument
+- Exhaustive pattern matching
+- No side effects (no `bust`, no `mark async`, no `mark unsafe`, no `halt`)
+- No infinite loops

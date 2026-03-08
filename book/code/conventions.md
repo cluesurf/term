@@ -26,7 +26,7 @@
   plain value.
 - Variants are parameters, not separate functions.
   `seek(file, offset, frame: relative)` not `seek-relative(file, offset)`.
-- Public names stay clean (`read`, `write`). Internal `hide true`
+- Public names stay clean (`read`, `write`). Internal `mark private`
   functions handle the dispatch.
 
 ## Errors
@@ -153,8 +153,8 @@ Within each group, order does not matter.
 
 ```tree
 task get-foo
-  hide true          # config: visibility
-  wait true          # config: async marker
+  mark private       # config: visibility
+  mark async         # config: async marker
   firm true          # config: totality marker
 
   head A, head B     # type parameters
@@ -169,7 +169,7 @@ task get-foo
 ```
 
 Group order:
-1. Config flags (`hide`, `wait`, `risk`, `firm`, `note`)
+1. Config flags (`mark private`, `mark async`, `mark unsafe`, `firm`, `note`)
 2. Type parameters (`head`)
 3. Parameters (`take`)
 4. Return type (`like`)
@@ -179,22 +179,22 @@ Group order:
 
 ```tree
 call some-function
-  wait true          # config: async
-  risk true          # config: unsafe
+  mark async         # config: async
+  mark unsafe        # config: unsafe
 
   bind x, read a     # arguments
   bind y, read b
 ```
 
 Group order:
-1. Config flags (`wait`, `risk`)
+1. Config flags (`mark async`, `mark unsafe`)
 2. Arguments (`bind`, `read`, `save`)
 
 ### Form Definitions
 
 ```tree
 form user
-  hide true          # config: visibility
+  mark private       # config: visibility
   firm true          # config: totality
 
   head T             # type parameters
@@ -212,7 +212,7 @@ form user
 ```
 
 Group order:
-1. Config flags (`hide`, `firm`, `note`)
+1. Config flags (`mark private`, `firm`, `note`)
 2. Type parameters (`head`)
 3. Type alias (`like`)
 4. Fields (`link`)
@@ -230,7 +230,7 @@ deck @cluesurf/base
   head <Description>
   lock apache-2
   sort tool
-  hide true
+  mark private
 
   mind <Author>      # people
 

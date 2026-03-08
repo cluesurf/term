@@ -96,18 +96,18 @@ bear <./{base/host/dock}>
 This resolves to different files based on the target platform
 (javascript, rust, swift, etc.).
 
-## Native Libraries (`host` load)
+## Native Libraries (`mark native`)
 
-Import native platform libraries with `host true`:
+Import native platform libraries with `mark native`:
 
 ```tree
 load <node:fs>, name fs
-  host true
+  mark native
 ```
 
 ```tree
 load <node:path>, name path
-  host true
+  mark native
 ```
 
 Then call native functions:
@@ -118,29 +118,45 @@ call fs/read-file-sync
   bind encoding, text <utf8>
 ```
 
-The `host true` flag tells the compiler this is a platform-native
+The `mark native` tag tells the compiler this is a platform-native
 module, not a Seed package. See `packages.md` for more examples.
+
+## Dynamic Loads (`load` in expressions)
+
+Use `load` inside expressions to dynamically import a module path. This
+is commonly used in mill definitions to wire up mine and mint grammars:
+
+```tree
+mill cookie
+  bind mine, load ./mine
+  bind mint, load ./mint
+```
+
+The `load` here resolves the module at the given path and returns it as
+a value. The mill engine uses this to load mine (pattern) and mint
+(builder) definitions from separate files.
+
+Another example wiring a mill with multiple grammar components:
+
+```tree
+mill task
+  bind mine, load ./mine
+  bind mint, load ./mint
+  bind flow, load ./flow/mine
+```
+
+This keeps grammar definitions modular. Each `mine.tree` file defines
+patterns, each `mint.tree` file defines builders, and the `mill`
+statement wires them together.
 
 ## Visibility
 
-`hide` makes a definition private:
+`mark private` makes a definition private:
 
 ```tree
 task helper
-  hide true
+  mark private
   send back, mark 0
 ```
 
 Everything is public by default.
-
-## Namespaces (`book`)
-
-Group definitions under a namespace:
-
-```tree
-book math
-  task add
-    take a, like u64
-    take b, like u64
-    like u64
-```

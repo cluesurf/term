@@ -16,12 +16,12 @@ Group related constants:
 
 ```tree
 seed permission
-  seed can-read-flag, #b1
-  seed can-write-flag, #b10
-  seed can-create-flag, #b100
-  seed can-append-flag, #b1000
-  seed can-clear-flag, #b10000
-  seed can-read-write-flag, #b11
+  seed can-read-flag, 0b1
+  seed can-write-flag, 0b10
+  seed can-create-flag, 0b100
+  seed can-append-flag, 0b1000
+  seed can-clear-flag, 0b10000
+  seed can-read-write-flag, 0b11
 ```
 
 ## Enum-Like Constants (`term`)
@@ -64,13 +64,13 @@ Constants can nest arbitrarily:
 ```tree
 seed mode
   seed owner
-    seed read-flag, #b100000000
-    seed write-flag, #b10000000
-    seed execute-flag, #b1000000
+    seed read-flag, 0b100000000
+    seed write-flag, 0b10000000
+    seed execute-flag, 0b1000000
   seed group
-    seed read-flag, #b100000
-    seed write-flag, #b10000
-    seed execute-flag, #b1000
+    seed read-flag, 0b100000
+    seed write-flag, 0b10000
+    seed execute-flag, 0b1000
 ```
 
 ## Test Data Constants
