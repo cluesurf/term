@@ -1,12 +1,12 @@
 # CLI Commands
 
-Define CLI tools with `tool`. Parameters use `take`, types use `like`,
+Define CLI docks with `dock`. Parameters use `take`, types use `like`,
 execution uses `call` with `bind`.
 
 ## Basic Command
 
 ```tree
-tool make
+dock make
   take name
     like text
     need true
@@ -31,7 +31,7 @@ make my-project -t "My Project"
 Arguments matched by position rather than by flag. Order matters.
 
 ```tree
-tool copy
+dock copy
   take source
     like path
     need true
@@ -48,7 +48,7 @@ copy ./src ./dist
 Variadic positional (collects remaining args):
 
 ```tree
-tool concat
+dock concat
   take file
     list path
     need true
@@ -189,11 +189,11 @@ Resolution order:
 
 ## Subcommands
 
-Nest `tool` blocks to define subcommands.
+Nest `dock` blocks to define subcommands.
 
 ```tree
-tool deck
-  tool make
+dock deck
+  dock make
     take name
       like text
       need true
@@ -201,7 +201,7 @@ tool deck
     call make-deck
       bind name, read name
 
-  tool push
+  dock push
     take tag
       like text
 
@@ -217,9 +217,9 @@ deck push --tag v1.0
 Deeper nesting works the same way:
 
 ```tree
-tool deck
-  tool remote
-    tool add
+dock deck
+  dock remote
+    dock add
       take name
         like text
         need true
@@ -244,7 +244,7 @@ tree global-flags
     take config, code c
       like path
 
-tool make
+dock make
   fuse global-flags
   take name
     like text
@@ -254,7 +254,7 @@ tool make
     bind name, read name
     bind verbose, read verbose
 
-tool push
+dock push
   fuse global-flags
   take tag
     like text
@@ -342,7 +342,7 @@ and offers the results.
 Run normalization logic before the main execution.
 
 ```tree
-tool make
+dock make
   take title, code t
     like text
 
@@ -379,7 +379,7 @@ These run automatically before and after the command body.
 Bind to a Seed task:
 
 ```tree
-tool make
+dock make
   take name
     like text
     need true
@@ -393,7 +393,7 @@ tool make
 Execute a shell command directly:
 
 ```tree
-tool init
+dock init
 
   call <git init>
 ```
@@ -401,7 +401,7 @@ tool init
 With dynamic arguments:
 
 ```tree
-tool clone
+dock clone
   take url
     like text
     need true
@@ -415,10 +415,10 @@ tool clone
 Declare what format the command outputs.
 
 ```tree
-tool list
+dock list
   send text
 
-tool list
+dock list
   send json
 ```
 
@@ -427,7 +427,7 @@ automatically.
 
 ## Exit Codes
 
-Define named exit codes for the tool.
+Define named exit codes for the dock.
 
 ```tree
 seed code
@@ -446,7 +446,7 @@ halt flow, read input-error
 
 ## Parse Policy
 
-Configure CLI parsing behavior at the tool level.
+Configure CLI parsing behavior at the dock level.
 
 ```tree
 seed short-pack, true    # allow -abc (combined short flags)
@@ -458,11 +458,11 @@ seed snake-long, true    # --dry_run matches --dry-run
 
 ## Examples
 
-Attach usage examples to the tool. These appear in help output and can
+Attach usage examples to the dock. These appear in help output and can
 double as test cases.
 
 ```tree
-tool make
+dock make
   show <basic>
     <make deck1 --title "First">
 
@@ -472,7 +472,7 @@ tool make
 
 ## Full Example
 
-A complete CLI tool definition:
+A complete CLI dock definition:
 
 ```tree
 tree global-flags
@@ -488,8 +488,8 @@ seed code
   case ok, mark 0
   case input-error, mark 2
 
-tool deck
-  tool make
+dock deck
+  dock make
     fuse global-flags
 
     take name
@@ -561,7 +561,7 @@ tool deck
       bind token, read token
       bind config, read config
 
-  tool push
+  dock push
     fuse global-flags
 
     take tag
@@ -570,7 +570,7 @@ tool deck
     call push-deck
       bind tag, read tag
 
-  tool init
+  dock init
 
     call <git init>
 ```
@@ -591,7 +591,7 @@ tool deck
 | Default | `base` | `base <localhost>` |
 | Repeatable | `list text` | `take tag` / `list text` |
 | Env baseback | `seed env` | `seed env, <APP_TOKEN>` |
-| Subcommand | nested `tool` | `tool deck` / `tool make` |
+| Subcommand | nested `dock` | `dock deck` / `dock make` |
 | Shared flags | `tree` + `fuse` | `fuse global-flags` |
 | Hidden | `mark private` | internal-only option |
 | Deprecated | `mark deprecated` | warns, links replacement |
@@ -603,5 +603,5 @@ tool deck
 | Exit codes | `seed code` + `case` | `case ok, mark 0` |
 | Parse policy | `seed short-pack` etc. | `seed short-pack, true` |
 | Examples | `show` | `show <basic>` |
-| Pre-run | `tool boot` | `call check-auth` |
-| Post-run | `tool exit` | `call flush-output` |
+| Pre-run | `dock boot` | `call check-auth` |
+| Post-run | `dock exit` | `call flush-output` |
