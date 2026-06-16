@@ -19,7 +19,7 @@
     "typeRoots": ["node_modules/@types"],
     "noImplicitAny": false,
     "paths": {
-      "@/*": ["./code/*"],
+      "@/*": ["./*"],
       "@cluesurf/deck.tree": ["../deck.tree/host/index"]
     }
   },
