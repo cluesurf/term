@@ -1,219 +1,201 @@
-// The tree builder. The sift stream to the TreeLine AST, using a wall of slabs (a stack of nesting contexts).
-// Each node attaches under the head of its line. Faithful port of @cluesurf/tree's tree pass. Browser-safe:
-// no node APIs, pure data transformation.
+// The tree builder. The event stream to the syntax tree, using a stack of nesting frames. Each node attaches
+// under the head of its line. Also the public parse entry and a printer for the canonical form. Browser-safe.
 
-import type { Band, Diagnostic } from '@/code/parser/diagnostic'
+import type { Diagnostic, Span } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
-import type { Leaf } from '@/code/parser/leaf'
-import { makeLeafList } from '@/code/parser/leaf'
-import type { Sift } from '@/code/parser/sift'
-import { SiftName, makeSiftList } from '@/code/parser/sift'
+import type { Token } from '@/code/parser/token'
+import { tokenize } from '@/code/parser/token'
+import type { Event } from '@/code/parser/event'
+import { EventKind, buildEvents } from '@/code/parser/event'
 
-export enum TreeName {
-  Comb = 'tree-comb',
-  Code = 'tree-code',
-  Knit = 'tree-knit',
-  Nick = 'tree-nick',
-  Text = 'tree-text',
-  Cord = 'tree-cord',
-  Fork = 'tree-fork',
-  Size = 'tree-size',
-  Line = 'tree-line',
-}
-
-export type TreeLine = { form: TreeName.Line; nest: Array<TreeFork> }
-
-export type TreeFork = {
-  form: TreeName.Fork
-  nest: Array<TreeFork | TreeText | TreeSize | TreeCord | TreeNick | TreeComb | TreeCode | TreeKnit>
-  base?: TreeFork | TreeNick
+export type RootNode = { kind: 'root'; nodes: Array<GroupNode> }
+export type GroupNode = {
+  kind: 'group'
+  nodes: Array<GroupNode | NameNode | TextNode | IntegerNode | DecimalNode | RadixNode>
+  parent?: GroupNode | InterpolationNode
   optional?: boolean
 }
+export type NameNode = { kind: 'name'; parts: Array<ChunkNode | InterpolationNode>; parent?: GroupNode }
+export type TextNode = { kind: 'text'; parts: Array<ChunkNode | InterpolationNode>; parent?: GroupNode }
+export type InterpolationNode = { kind: 'interpolation'; depth: number; group?: GroupNode; parent?: NameNode | TextNode }
+export type ChunkNode = { kind: 'chunk'; text: string; token: Token; parent?: NameNode | TextNode }
+export type IntegerNode = { kind: 'integer'; value: number; token: Token; parent?: GroupNode }
+export type DecimalNode = { kind: 'decimal'; value: number; token: Token; parent?: GroupNode }
+export type RadixNode = { kind: 'radix'; value: number; radix: number; token: Token; parent?: GroupNode }
 
-export type TreeKnit = { form: TreeName.Knit; nest: Array<TreeNick | TreeCord>; base?: TreeFork }
-export type TreeText = { form: TreeName.Text; nest: Array<TreeCord | TreeNick>; base?: TreeFork }
-export type TreeNick = { form: TreeName.Nick; size: number; nest?: TreeFork; base?: TreeKnit | TreeText }
-export type TreeCord = { form: TreeName.Cord; text: string; leaf: Leaf; base?: TreeText | TreeKnit }
-export type TreeSize = { form: TreeName.Size; bond: number; leaf: Leaf; base?: TreeFork }
-export type TreeComb = { form: TreeName.Comb; bond: number; leaf: Leaf; base?: TreeFork }
-export type TreeCode = { form: TreeName.Code; bond: number; mold: string; leaf: Leaf; base?: TreeFork }
+export type Node =
+  | RootNode
+  | GroupNode
+  | NameNode
+  | TextNode
+  | InterpolationNode
+  | ChunkNode
+  | IntegerNode
+  | DecimalNode
+  | RadixNode
 
-export type Tree =
-  | TreeLine
-  | TreeFork
-  | TreeKnit
-  | TreeText
-  | TreeNick
-  | TreeCord
-  | TreeSize
-  | TreeComb
-  | TreeCode
-
-export type TreeResult =
-  | { ok: true; tree: TreeLine }
+export type ParseResult =
+  | { ok: true; tree: RootNode }
   | { ok: false; diagnostics: Array<Diagnostic> }
 
-type Slab = { line: Array<Tree>; nest: Array<Tree>; slot: number }
+type Frame = { line: Array<Node>; levels: Array<Node>; level: number }
 
-function readSiftTree(
-  siftList: Array<Sift>,
-  file: string,
-  diagnostics: Array<Diagnostic>,
-): TreeLine {
-  const tree: TreeLine = { form: TreeName.Line, nest: [] }
-  const slab: Slab = { line: [tree], nest: [tree], slot: 0 }
-  const wall: Array<Slab> = [slab]
+function setParent(child: { parent?: unknown }, parent: unknown) {
+  // non-enumerable so the tree can be serialized without circular references
+  Object.defineProperty(child, 'parent', { value: parent, enumerable: false, writable: true })
+}
 
-  function top(): Slab {
-    return wall[wall.length - 1]!
-  }
-  function base(): Tree {
-    const s = top()
-    return s.line[s.line.length - 1]!
-  }
-  function takeSlab(s: Slab, head: Tree) {
-    if (s.line.length === 2) {
-      s.nest = s.nest.slice(0, s.slot + 1)
-      s.nest.push(head)
+function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagnostic>): RootNode {
+  const root: RootNode = { kind: 'root', nodes: [] }
+  const stack: Array<Frame> = [{ line: [root], levels: [root], level: 0 }]
+
+  const top = () => stack[stack.length - 1]!
+  const base = () => top().line[top().line.length - 1]!
+  const lift = (frame: Frame, node: Node) => {
+    if (frame.line.length === 2) {
+      frame.levels = frame.levels.slice(0, frame.level + 1)
+      frame.levels.push(node)
     }
   }
-  function unexpected(seed: Sift) {
-    const leaf = 'leaf' in seed ? (seed.leaf as Leaf) : undefined
-    diagnostics.push(
-      diagnose('unexpected-node', {
-        file,
-        band: leaf ? leaf.band : zeroBand(),
-        note: `unexpected ${seed.form} here`,
-      }),
-    )
+  const unexpected = (event: Event) => {
+    const token = 'token' in event ? (event.token as Token) : undefined
+    diagnostics.push(diagnose('unexpected-node', { file, span: token ? token.span : zeroSpan(), message: `unexpected ${event.kind} here` }))
   }
 
-  for (const seed of siftList) {
-    switch (seed.form) {
-      case SiftName.RiseFork: {
-        const b = base()
-        if (b.form === TreeName.Line || b.form === TreeName.Fork) {
-          const fork: TreeFork = { form: TreeName.Fork, nest: [], base: b }
-          b.nest.push(fork)
-          top().line.push(fork)
-          takeSlab(top(), fork)
-        } else if (b.form === TreeName.Nick) {
-          const fork: TreeFork = { form: TreeName.Fork, nest: [], base: b }
-          b.nest = fork
-          top().line.push(fork)
-          takeSlab(top(), fork)
+  for (const event of events) {
+    switch (event.kind) {
+      case EventKind.OpenGroup: {
+        const here = base()
+        if (here.kind === 'root' || here.kind === 'group') {
+          const group: GroupNode = { kind: 'group', nodes: [] }
+          here.nodes.push(group)
+          setParent(group, here)
+          top().line.push(group)
+          lift(top(), group)
+        } else if (here.kind === 'interpolation') {
+          const group: GroupNode = { kind: 'group', nodes: [] }
+          here.group = group
+          setParent(group, here)
+          top().line.push(group)
+          lift(top(), group)
         } else {
-          unexpected(seed)
+          unexpected(event)
         }
         break
       }
-      case SiftName.FallFork:
-      case SiftName.FallKnit:
-      case SiftName.FallText:
+      case EventKind.CloseGroup:
+      case EventKind.CloseName:
+      case EventKind.CloseText:
         top().line.pop()
         break
-      case SiftName.RiseKnit: {
-        const b = base()
-        if (b.form === TreeName.Fork) {
-          const knit: TreeKnit = { form: TreeName.Knit, nest: [], base: b }
-          b.nest.push(knit)
-          top().line.push(knit)
-          takeSlab(top(), knit)
+      case EventKind.OpenName: {
+        const here = base()
+        if (here.kind === 'group') {
+          const name: NameNode = { kind: 'name', parts: [] }
+          here.nodes.push(name)
+          setParent(name, here)
+          top().line.push(name)
         } else {
-          unexpected(seed)
+          unexpected(event)
         }
         break
       }
-      case SiftName.RiseText: {
-        const b = base()
-        if (b.form === TreeName.Fork) {
-          const text: TreeText = { form: TreeName.Text, nest: [], base: b }
-          b.nest.push(text)
+      case EventKind.OpenText: {
+        const here = base()
+        if (here.kind === 'group') {
+          const text: TextNode = { kind: 'text', parts: [] }
+          here.nodes.push(text)
+          setParent(text, here)
           top().line.push(text)
         } else {
-          unexpected(seed)
+          unexpected(event)
         }
         break
       }
-      case SiftName.RiseNick: {
-        const b = base()
-        if (b.form === TreeName.Knit || b.form === TreeName.Text) {
-          const nick: TreeNick = { form: TreeName.Nick, size: seed.size, base: b }
-          b.nest.push(nick)
-          wall.push({ line: [nick], nest: [nick], slot: 0 })
+      case EventKind.OpenInterpolation: {
+        const here = base()
+        if (here.kind === 'name' || here.kind === 'text') {
+          const interpolation: InterpolationNode = { kind: 'interpolation', depth: event.depth }
+          here.parts.push(interpolation)
+          setParent(interpolation, here)
+          stack.push({ line: [interpolation], levels: [interpolation], level: 0 })
         } else {
-          unexpected(seed)
+          unexpected(event)
         }
         break
       }
-      case SiftName.FallNick:
-        wall.pop()
+      case EventKind.CloseInterpolation:
+        stack.pop()
         break
-      case SiftName.Cord: {
-        const b = base()
-        if (b.form === TreeName.Knit) {
-          const leaf = seed.leaf
-          const hasOptional = leaf.text.includes('?')
-          const cord: TreeCord = {
-            form: TreeName.Cord,
-            text: hasOptional ? leaf.text.replace(/\?/g, '') : leaf.text,
-            leaf,
-            base: b,
-          }
-          b.nest.push(cord)
-          if (hasOptional && b.base) b.base.optional = true
-        } else if (b.form === TreeName.Text) {
-          b.nest.push({ form: TreeName.Cord, text: seed.leaf.text, leaf: seed.leaf, base: b })
+      case EventKind.Chunk: {
+        const here = base()
+        if (here.kind === 'name') {
+          const text = event.token.text
+          const optional = text.includes('?')
+          const chunk: ChunkNode = { kind: 'chunk', text: optional ? text.replace(/\?/g, '') : text, token: event.token }
+          here.parts.push(chunk)
+          setParent(chunk, here)
+          if (optional && here.parent) here.parent.optional = true
+        } else if (here.kind === 'text') {
+          const chunk: ChunkNode = { kind: 'chunk', text: event.token.text, token: event.token }
+          here.parts.push(chunk)
+          setParent(chunk, here)
         } else {
-          unexpected(seed)
+          unexpected(event)
         }
         break
       }
-      case SiftName.Size: {
-        const b = base()
-        if (b.form === TreeName.Fork) {
-          b.nest.push({ form: TreeName.Size, bond: seed.bond, leaf: seed.leaf, base: b })
-        } else if (b.form === TreeName.Line) {
+      case EventKind.Integer: {
+        const here = base()
+        if (here.kind === 'group') {
+          const node: IntegerNode = { kind: 'integer', value: event.value, token: event.token }
+          here.nodes.push(node)
+          setParent(node, here)
+        } else if (here.kind === 'root') {
           diagnostics.push(
             diagnose('invalid-nesting', {
               file,
-              band: seed.leaf.band,
-              hint: 'a bare number is a size, not a term, so it cannot be the head of a line',
+              span: event.token.span,
+              hint: 'a bare number is a value, not a name, so it cannot be the head of a line',
             }),
           )
         } else {
-          unexpected(seed)
+          unexpected(event)
         }
         break
       }
-      case SiftName.Comb: {
-        const b = base()
-        if (b.form === TreeName.Fork) {
-          b.nest.push({ form: TreeName.Comb, bond: seed.bond, leaf: seed.leaf, base: b })
+      case EventKind.Decimal: {
+        const here = base()
+        if (here.kind === 'group') {
+          const node: DecimalNode = { kind: 'decimal', value: event.value, token: event.token }
+          here.nodes.push(node)
+          setParent(node, here)
         } else {
-          unexpected(seed)
+          unexpected(event)
         }
         break
       }
-      case SiftName.Code: {
-        const b = base()
-        if (b.form === TreeName.Fork) {
-          b.nest.push({ form: TreeName.Code, bond: seed.bond, mold: seed.mold, leaf: seed.leaf, base: b })
+      case EventKind.Radix: {
+        const here = base()
+        if (here.kind === 'group') {
+          const node: RadixNode = { kind: 'radix', value: event.value, radix: event.radix, token: event.token }
+          here.nodes.push(node)
+          setParent(node, here)
         } else {
-          unexpected(seed)
+          unexpected(event)
         }
         break
       }
-      case SiftName.RiseNest: {
-        const s = top()
-        s.slot++
-        s.line = [s.nest[s.slot]!]
+      case EventKind.OpenIndent: {
+        const frame = top()
+        frame.level++
+        frame.line = [frame.levels[frame.level]!]
         break
       }
-      case SiftName.FallNest: {
-        const s = top()
-        s.slot--
-        s.line = [s.nest[s.slot]!]
+      case EventKind.CloseIndent: {
+        const frame = top()
+        frame.level--
+        frame.line = [frame.levels[frame.level]!]
         break
       }
       default:
@@ -221,35 +203,88 @@ function readSiftTree(
     }
   }
 
-  return tree
+  return root
 }
 
-function zeroBand(): Band {
-  return { base: { line: 0, mark: 0 }, head: { line: 0, mark: 0 } }
+function zeroSpan(): Span {
+  return { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
 }
 
 // The strict entry. Parse text to a tree, or return diagnostics.
-export function makeTree(link: { file: string; text: string }): TreeResult {
-  const leafResult = makeLeafList(link)
-  if (!leafResult.ok) return { ok: false, diagnostics: leafResult.diagnostics }
+export function parse(source: { file: string; text: string }): ParseResult {
+  const tokenResult = tokenize(source)
+  if (!tokenResult.ok) return { ok: false, diagnostics: tokenResult.diagnostics }
 
-  const siftResult = makeSiftList(leafResult.cast)
-  if (!siftResult.ok) return { ok: false, diagnostics: siftResult.diagnostics }
+  const eventResult = buildEvents(tokenResult.tokens)
+  if (!eventResult.ok) return { ok: false, diagnostics: eventResult.diagnostics }
 
   const diagnostics: Array<Diagnostic> = []
-  const tree = readSiftTree(siftResult.cast.siftList, link.file, diagnostics)
+  const tree = buildTree(eventResult.stream.events, source.file, diagnostics)
   if (diagnostics.length) return { ok: false, diagnostics }
   return { ok: true, tree }
 }
 
 // The tolerant entry. Never fails. Returns whatever tree it built plus any diagnostics. For the language server.
-export function makeTreeTolerant(link: { file: string; text: string }): { tree: TreeLine; diagnostics: Array<Diagnostic> } {
-  const empty: TreeLine = { form: TreeName.Line, nest: [] }
-  const leafResult = makeLeafList(link)
-  if (!leafResult.ok) return { tree: empty, diagnostics: leafResult.diagnostics }
-  const siftResult = makeSiftList(leafResult.cast)
-  if (!siftResult.ok) return { tree: empty, diagnostics: siftResult.diagnostics }
+export function parseTolerant(source: { file: string; text: string }): { tree: RootNode; diagnostics: Array<Diagnostic> } {
+  const empty: RootNode = { kind: 'root', nodes: [] }
+  const tokenResult = tokenize(source)
+  if (!tokenResult.ok) return { tree: empty, diagnostics: tokenResult.diagnostics }
+  const eventResult = buildEvents(tokenResult.tokens)
+  if (!eventResult.ok) return { tree: empty, diagnostics: eventResult.diagnostics }
   const diagnostics: Array<Diagnostic> = []
-  const tree = readSiftTree(siftResult.cast.siftList, link.file, diagnostics)
+  const tree = buildTree(eventResult.stream.events, source.file, diagnostics)
   return { tree, diagnostics }
+}
+
+// Render a name or text node inline (e.g. inside interpolation or as a head value).
+function renderParts(parts: Array<ChunkNode | InterpolationNode>): string {
+  let out = ''
+  for (const part of parts) {
+    if (part.kind === 'chunk') out += part.text
+    else out += `${'{'.repeat(part.depth)}${part.group ? renderInline(part.group) : ''}${'}'.repeat(part.depth)}`
+  }
+  return out
+}
+
+// Render a group in inline parenthesized form: a(b, c). Used inside interpolation.
+function renderInline(group: GroupNode): string {
+  const [head, ...rest] = group.nodes
+  const headText = head ? renderHead(head) : ''
+  if (rest.length === 0) return headText
+  return `${headText}(${rest.map((n) => (n.kind === 'group' ? renderInline(n) : renderHead(n))).join(', ')})`
+}
+
+function renderHead(node: Node): string {
+  switch (node.kind) {
+    case 'name':
+      return renderParts(node.parts)
+    case 'text':
+      return `<${renderParts(node.parts)}>`
+    case 'integer':
+      return String(node.value)
+    case 'decimal':
+      return String(node.value)
+    case 'radix':
+      return node.token.text
+    case 'group':
+      return renderInline(node)
+    default:
+      return ''
+  }
+}
+
+// Print the canonical expanded form: one node per line, children indented two spaces.
+export function printTree(tree: RootNode): string {
+  const lines: Array<string> = []
+  const walk = (group: GroupNode, depth: number) => {
+    const [head, ...rest] = group.nodes
+    const indent = '  '.repeat(depth)
+    lines.push(`${indent}${head ? renderHead(head) : ''}${group.optional ? '?' : ''}`)
+    for (const child of rest) {
+      if (child.kind === 'group') walk(child, depth + 1)
+      else lines.push(`${'  '.repeat(depth + 1)}${renderHead(child)}`)
+    }
+  }
+  for (const group of tree.nodes) walk(group, 0)
+  return lines.join('\n')
 }
