@@ -60,8 +60,16 @@ export type Statement =
   | { form: 'break'; span: Span }
   | { form: 'continue'; span: Span }
   | { form: 'return'; value?: Expression; span: Span }
-  | { form: 'function'; name: string; params: Array<{ name: string; type?: Type }>; body: Array<Statement>; result?: Type; span: Span }
+  // throw an error value (the `bust` keyword)
+  | { form: 'throw'; value: Expression; span: Span }
+  // a verification condition: the expression must be provably true (refinement layer 2)
+  | { form: 'hold'; expr: Expression; span: Span }
+  | { form: 'function'; name: string; params: Array<{ name: string; type?: Type; refine?: 'natural' }>; body: Array<Statement>; result?: Type; generics: Array<{ name: string; need?: string }>; span: Span }
   | { form: 'record-type'; name: string; params: Array<string>; fields: Array<{ name: string; type: Type }>; span: Span }
+  // a trait: a named set of method signatures (mask)
+  | { form: 'mask'; name: string; methods: Array<string>; span: Span }
+  // a trait implementation for a type: provides methods (wear on a form, or suit standalone)
+  | { form: 'instance'; mask: string; target: string; methods: Array<string>; span: Span }
 
 export type Program = Array<Statement>
 

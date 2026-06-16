@@ -105,12 +105,56 @@ export function check(program: Program, file: string): Array<Diagnostic> {
     }
   }
 
-  // function name -> its type, so calls (including recursion) check against a known signature
-  const functions = new Map<string, { params: Array<Type>; result: Type }>()
-  for (const statement of program) {
-    if (statement.form === 'function') {
-      functions.set(statement.name, { params: statement.params.map(() => fresh()), result: fresh() })
+  // a declared type, with generic names mapped to their variables and unknown names left to inference
+  function seedType(type: Type | undefined, generics: Map<string, Type>): Type {
+    if (!type) return fresh()
+    if (type.kind === 'named') {
+      const generic = generics.get(type.name)
+      if (generic) return generic
+      if (records.has(type.name)) return type
+      return fresh() // an unrecognized name: infer it from usage rather than forcing a mismatch
     }
+    if (type.kind === 'array') return { kind: 'array', element: seedType(type.element, generics) }
+    return type
+  }
+
+  // function name -> its signature, with the ids of its generic (quantified) variables for per-call instantiation
+  const functions = new Map<string, { generics: Set<number>; genericNames: Map<number, string>; params: Array<Type>; result: Type }>()
+  for (const statement of program) {
+    if (statement.form !== 'function') continue
+    const genericVars = new Map<string, Type>()
+    const genericIds = new Set<number>()
+    const genericNames = new Map<number, string>()
+    for (const g of statement.generics) {
+      const variable = fresh()
+      genericVars.set(g.name, variable)
+      if (variable.kind === 'variable') {
+        genericIds.add(variable.id)
+        genericNames.set(variable.id, g.name)
+      }
+    }
+    functions.set(statement.name, {
+      generics: genericIds,
+      genericNames,
+      params: statement.params.map((p) => seedType(p.type, genericVars)),
+      result: seedType(statement.result, genericVars),
+    })
+  }
+
+  // instantiate a signature, freshening its generic variables (Hindley-Milner let-polymorphism), so a generic
+  // function can be called at different types in the same program
+  function instantiate(signature: { generics: Set<number>; params: Array<Type>; result: Type }): { params: Array<Type>; result: Type } {
+    if (signature.generics.size === 0) return { params: signature.params, result: signature.result }
+    const map = new Map<number, Type>()
+    for (const id of signature.generics) map.set(id, fresh())
+    const subst = (type: Type): Type => {
+      const r = resolve(type)
+      if (r.kind === 'variable') return map.get(r.id) ?? r
+      if (r.kind === 'array') return { kind: 'array', element: subst(r.element) }
+      if (r.kind === 'function') return { kind: 'function', params: r.params.map(subst), result: subst(r.result) }
+      return r
+    }
+    return { params: signature.params.map(subst), result: subst(signature.result) }
   }
 
   type Env = Map<string, Type>
@@ -186,13 +230,24 @@ export function check(program: Program, file: string): Array<Diagnostic> {
         break
       case 'member': {
         const target = resolve(inferExpression(node.target, env))
-        type = target.kind === 'named' && records.has(target.name) ? records.get(target.name)!.get(node.name) ?? UNKNOWN : UNKNOWN
+        if (target.kind === 'named' && records.has(target.name)) {
+          const field = records.get(target.name)!.get(node.name)
+          if (field) {
+            type = field
+          } else {
+            diagnostics.push(diagnose('unknown-name', { file, span: node.span, message: `"${target.name}" has no field "${node.name}"` }))
+            type = UNKNOWN
+          }
+        } else {
+          type = UNKNOWN
+        }
         break
       }
       case 'call': {
         const args = node.args.map((arg) => inferExpression(arg, env))
         if (node.callee.form === 'variable' && functions.has(node.callee.name)) {
-          const signature = functions.get(node.callee.name)!
+          // instantiate generics fresh for this call (let-polymorphism)
+          const signature = instantiate(functions.get(node.callee.name)!)
           if (args.length !== signature.params.length) {
             diagnostics.push(
               diagnose('type-mismatch', {
@@ -259,9 +314,17 @@ export function check(program: Program, file: string): Array<Diagnostic> {
         checkBody(node.body, inner, result)
         break
       }
+      case 'hold':
+        expect(inferExpression(node.expr, env), BOOLEAN, node.span, 'hold condition')
+        break
+      case 'throw':
+        inferExpression(node.value, env) // a throw has no result type (it is bottom)
+        break
       case 'break':
       case 'continue':
       case 'record-type':
+      case 'mask':
+      case 'instance':
         break
       case 'function':
         checkFunction(node)
@@ -276,17 +339,31 @@ export function check(program: Program, file: string): Array<Diagnostic> {
     checkBody(node.body, env, signature.result)
   }
 
+  const topLevelSkip = new Set(['record-type', 'mask', 'instance'])
   for (const statement of program) {
     if (statement.form === 'function') checkFunction(statement)
-    else if (statement.form !== 'record-type') checkStatement(statement, new Map(), UNKNOWN)
+    else if (!topLevelSkip.has(statement.form)) checkStatement(statement, new Map(), UNKNOWN)
+  }
+
+  // deeply resolve, mapping a function's still-unsolved generic variables back to their declared names (so a
+  // generic function emits `<T>(x: T): T` rather than a defaulted concrete type)
+  function zonkGeneric(type: Type, names: Map<number, string>): Type {
+    const r = resolve(type)
+    if (r.kind === 'variable') {
+      const name = names.get(r.id)
+      return name ? { kind: 'named', name } : r
+    }
+    if (r.kind === 'array') return { kind: 'array', element: zonkGeneric(r.element, names) }
+    if (r.kind === 'function') return { kind: 'function', params: r.params.map((t) => zonkGeneric(t, names)), result: zonkGeneric(r.result, names) }
+    return r
   }
 
   // final pass: record fully resolved types (cross-function constraints from call sites are now known)
   for (const statement of program) {
     if (statement.form === 'function') {
       const signature = functions.get(statement.name)!
-      statement.result = zonk(signature.result)
-      statement.params.forEach((param, i) => (param.type = zonk(signature.params[i]!)))
+      statement.result = zonkGeneric(signature.result, signature.genericNames)
+      statement.params.forEach((param, i) => (param.type = zonkGeneric(signature.params[i]!, signature.genericNames)))
     }
   }
 

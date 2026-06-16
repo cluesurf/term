@@ -130,9 +130,17 @@ export function resolve(program: Program, file: string): Array<Diagnostic> {
         for (const statement of node.body) resolveStatement(statement)
         stack.pop()
         break
+      case 'hold':
+        resolveExpression(node.expr)
+        break
+      case 'throw':
+        resolveExpression(node.value)
+        break
       case 'break':
       case 'continue':
       case 'record-type':
+      case 'mask':
+      case 'instance':
         break
       case 'function': {
         stack.push(new Map())

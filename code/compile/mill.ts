@@ -258,6 +258,8 @@ export function mill(tree: RootNode, file: string): MillResult {
         case 'take':
         case 'like':
         case 'flex':
+        case 'head':
+        case 'wear':
           break
         case 'save': {
           const args = rest(node).filter((a) => !(a.kind === 'group' && headName(a) === 'flex'))
@@ -280,6 +282,16 @@ export function mill(tree: RootNode, file: string): MillResult {
         case 'back': {
           const value = rest(node)[0]
           out.push({ form: 'return', value: value ? toExpression(value, scope) : undefined, span })
+          break
+        }
+        case 'hold': {
+          const condition = rest(node)[0]
+          if (condition) out.push({ form: 'hold', expr: toExpression(condition, scope), span })
+          break
+        }
+        case 'bust': {
+          const valueNode = rest(node)[0]
+          out.push({ form: 'throw', value: valueNode ? toExpression(valueNode, scope) : { form: 'unit', span }, span })
           break
         }
         case 'send': {
@@ -371,16 +383,87 @@ export function mill(tree: RootNode, file: string): MillResult {
       return undefined
     }
     const body = parts.slice(1)
-    const params: Array<{ name: string }> = []
+    // generic type parameters: `head t` or `head t, need <mask>`
+    const generics: Array<{ name: string; need?: string }> = []
+    for (const statement of body) {
+      if (statement.kind === 'group' && headName(statement) === 'head') {
+        const inner = rest(statement)
+        const gName = inner[0] && inner[0].kind === 'group' ? headName(inner[0]) : undefined
+        if (!gName) continue
+        const needGroup = inner.find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'need')
+        const need = needGroup ? (rest(needGroup)[0] && rest(needGroup)[0]!.kind === 'group' ? headName(rest(needGroup)[0] as GroupNode) : undefined) : undefined
+        generics.push(need ? { name: gName, need } : { name: gName })
+      }
+    }
+    const params: Array<{ name: string; type?: Type; refine?: 'natural' }> = []
     for (const statement of body) {
       if (statement.kind === 'group' && headName(statement) === 'take') {
         const varGroup = rest(statement)[0]
         const paramName = varGroup && varGroup.kind === 'group' ? headName(varGroup) : undefined
-        if (paramName) params.push({ name: paramName })
+        if (!paramName) continue
+        const likeGroup = rest(statement).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+        const typeNode = likeGroup ? rest(likeGroup)[0] : undefined
+        // honor the declared type, and detect a natural-number refinement
+        const type = typeNode ? parseType(typeNode) : undefined
+        const refine = typeNode && typeNode.kind === 'group' && headName(typeNode) === 'natural-number' ? 'natural' : undefined
+        const param: { name: string; type?: Type; refine?: 'natural' } = { name: paramName }
+        if (type) param.type = type
+        if (refine) param.refine = refine
+        params.push(param)
       }
     }
+    // the function's return type: a bare `like <type>` statement in the body
+    const resultLike = body.find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+    const resultType = resultLike ? parseType(rest(resultLike)[0] ?? resultLike) : undefined
     const scope = new Set<string>(params.map((p) => p.name))
-    return { form: 'function', name, params, body: toStatements(body, scope), span }
+    const fn: Statement = { form: 'function', name, params, body: toStatements(body, scope), generics, span }
+    if (resultType) fn.result = resultType
+    return fn
+  }
+
+  // a mask defines a trait: the names of the method signatures it declares
+  function methodNames(group: GroupNode): Array<string> {
+    const names: Array<string> = []
+    for (const child of rest(group)) {
+      if (child.kind === 'group' && headName(child) === 'task') {
+        const nameGroup = rest(child)[0]
+        const m = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+        if (m) names.push(m)
+      }
+    }
+    return names
+  }
+
+  function buildMask(group: GroupNode): Statement | undefined {
+    const nameGroup = rest(group)[0]
+    const name = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+    if (!name) {
+      fail(group, 'mask needs a name')
+      return undefined
+    }
+    return { form: 'mask', name, methods: methodNames(group), span: spanOf(group) }
+  }
+
+  // extract trait instances from `wear <mask>` children, implemented for `target`
+  function wearInstances(group: GroupNode, target: string): Array<Statement> {
+    const out: Array<Statement> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'wear') continue
+      const maskGroup = rest(child)[0]
+      const mask = maskGroup && maskGroup.kind === 'group' ? headName(maskGroup) : undefined
+      if (mask) out.push({ form: 'instance', mask, target, methods: methodNames(child), span: spanOf(child) })
+    }
+    return out
+  }
+
+  function buildSuit(group: GroupNode): Array<Statement> {
+    const targetGroup = rest(group)[0]
+    const target = targetGroup && targetGroup.kind === 'group' ? headName(targetGroup) : undefined
+    if (!target) {
+      fail(group, 'suit needs a target form')
+      return []
+    }
+    return wearInstances(group, target)
   }
 
   function buildRecordType(group: GroupNode): Statement | undefined {
@@ -418,6 +501,15 @@ export function mill(tree: RootNode, file: string): MillResult {
     } else if (keyword === 'form') {
       const rt = buildRecordType(group)
       if (rt) program.push(rt)
+      // `wear <mask>` blocks inside the form are trait instances for it
+      const nameGroup = rest(group)[0]
+      const formName = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+      if (formName) program.push(...wearInstances(group, formName))
+    } else if (keyword === 'mask') {
+      const mask = buildMask(group)
+      if (mask) program.push(mask)
+    } else if (keyword === 'suit') {
+      program.push(...buildSuit(group))
     } else {
       program.push(...toStatements([group], new Set<string>()))
     }

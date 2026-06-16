@@ -142,6 +142,9 @@ function makeEmitter() {
         return expression(node.expr)
       case 'return':
         return node.value ? `return ${expression(node.value)}` : 'return'
+      case 'throw':
+        // a thrown string becomes an Error; any other value is thrown as-is
+        return node.value.form === 'string' ? `throw new Error(${expression(node.value)})` : `throw ${expression(node.value)}`
       case 'while':
         return `while (${expression(node.cond)}) ${block(node.body, depth)}`
       case 'for-each':
@@ -167,10 +170,21 @@ function makeEmitter() {
         assignedNames = new Set<string>()
         collectAssigned(node.body, assignedNames)
         const params = node.params.map((p) => `${toCamel(p.name)}: ${tsType(p.type)}`).join(', ')
-        const out = `function ${toCamel(node.name)}(${params}): ${tsType(node.result)} ${block(node.body, depth)}`
+        const generics = node.generics.length ? `<${node.generics.map((g) => toPascal(g.name)).join(', ')}>` : ''
+        const out = `function ${toCamel(node.name)}${generics}(${params}): ${tsType(node.result)} ${block(node.body, depth)}`
         assignedNames = previous
         return out
       }
+      case 'hold':
+        return '// hold: verified at compile time'
+      case 'mask': {
+        // a trait becomes an interface of its method signatures
+        const methods = node.methods.map((m) => `  ${toCamel(m)}(...args: Array<unknown>): unknown`).join('\n')
+        return `interface ${toPascal(node.name)} {\n${methods}\n}`
+      }
+      case 'instance':
+        // a trait implementation: the methods are emitted as their own functions; this records the dictionary
+        return `// ${toPascal(node.target)} implements ${toPascal(node.mask)} { ${node.methods.map(toCamel).join(', ')} }`
     }
   }
 
@@ -181,7 +195,8 @@ export function emitTypeScript(program: Program): string {
   const emitter = makeEmitter()
   const lines = program.map((node) => {
     const text = emitter.statement(node, 0)
-    return node.form === 'function' || node.form === 'record-type' ? `export ${text}` : text
+    const exported = node.form === 'function' || node.form === 'record-type' || node.form === 'mask'
+    return exported ? `export ${text}` : text
   })
   return `${lines.join('\n\n')}\n`
 }

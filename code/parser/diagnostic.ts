@@ -36,6 +36,8 @@ export const CATALOG = {
   'unknown-name': { code: 0x5, message: 'this name is not defined', severity: 'error' },
   'unexpected-node': { code: 0x6, message: 'this node is not valid here', severity: 'error' },
   'type-mismatch': { code: 0x7, message: 'the types do not match', severity: 'error' },
+  'unproven': { code: 0x8, message: 'this hold could not be proven', severity: 'error' },
+  'incomplete-instance': { code: 0x9, message: 'this trait implementation is missing methods', severity: 'error' },
 } satisfies Record<string, CatalogEntry>
 
 export type DiagnosticName = keyof typeof CATALOG
