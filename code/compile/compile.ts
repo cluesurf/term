@@ -9,6 +9,7 @@ import { parse } from '@/code/parser/tree'
 import { mill } from '@/code/compile/mill'
 import { resolve } from '@/code/check/resolve'
 import { check } from '@/code/check/infer'
+import { simplify } from '@/code/ir/simplify'
 import { emitTypeScript } from '@/code/compile/typescript'
 import type { Program } from '@/code/compile/node'
 
@@ -31,5 +32,8 @@ export function compile(source: { file: string; text: string }): CompileResult {
   const checkDiagnostics = check(built.program, source.file)
   if (checkDiagnostics.length) return { ok: false, diagnostics: checkDiagnostics }
 
-  return { ok: true, program: built.program, typescript: emitTypeScript(built.program) }
+  // IR pass: simplify (constant folding, algebraic identities)
+  const optimized = simplify(built.program)
+
+  return { ok: true, program: optimized, typescript: emitTypeScript(optimized) }
 }

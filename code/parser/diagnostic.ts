@@ -112,6 +112,13 @@ export function render(diagnostic: Diagnostic, lines: Array<string>, color = cha
   }
   out.push(rail)
 
+  // related (secondary) markers: point at other relevant places, e.g. where a type was first fixed
+  for (let i = 1; i < diagnostic.markers.length; i++) {
+    const marker = diagnostic.markers[i]!
+    const where = `${diagnostic.file}:${marker.span.start.line + 1}:${marker.span.start.column + 1}`
+    out.push(`  ${paint.dim('-->')} ${where}${marker.label ? `: ${paint.dim(marker.label)}` : ''}`)
+  }
+
   if (diagnostic.hint) {
     out.push(` ${paint.bold('hint')}: ${diagnostic.hint}`)
   }

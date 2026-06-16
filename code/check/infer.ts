@@ -51,8 +51,12 @@ export function check(program: Program, file: string): Array<Diagnostic> {
     }
   }
 
-  // unify two types. returns true on success. `unknown` (gradual) is consistent with anything.
-  function unify(a: Type, b: Type): boolean {
+  // where each inference variable was first fixed to a concrete type, for blame tracking
+  const origin = new Map<number, { span: Span; type: Type }>()
+
+  // unify two types. returns true on success. `unknown` (gradual) is consistent with anything. When a variable is
+  // solved to a concrete type and a span is given, remember it (so a later conflict can point back here).
+  function unify(a: Type, b: Type, span?: Span): boolean {
     const x = resolve(a)
     const y = resolve(b)
     if (x.kind === 'unknown' || y.kind === 'unknown') return true
@@ -60,11 +64,13 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       if (y.kind === 'variable' && y.id === x.id) return true
       if (occurs(x.id, y)) return false
       substitution.set(x.id, y)
+      if (span && y.kind !== 'variable') origin.set(x.id, { span, type: y })
       return true
     }
     if (y.kind === 'variable') {
       if (occurs(y.id, x)) return false
       substitution.set(y.id, x)
+      if (span && x.kind !== 'variable') origin.set(y.id, { span, type: x })
       return true
     }
     if (x.kind === 'function' && y.kind === 'function') {
@@ -78,12 +84,22 @@ export function check(program: Program, file: string): Array<Diagnostic> {
   }
 
   function expect(actual: Type, wanted: Type, span: Span, what: string): void {
-    if (!unify(actual, wanted)) {
+    // remember which sides were still inference variables, so we can blame where they were first fixed
+    const suspects: Array<number> = []
+    if (actual.kind === 'variable') suspects.push(actual.id)
+    if (wanted.kind === 'variable') suspects.push(wanted.id)
+    if (!unify(actual, wanted, span)) {
+      const markers = [{ span }]
+      for (const id of suspects) {
+        const where = origin.get(id)
+        if (where) markers.push({ span: where.span, label: `first used as ${showType(where.type)} here` })
+      }
       diagnostics.push(
         diagnose('type-mismatch', {
           file,
           span,
           message: `${what}: expected ${showType(resolve(wanted))}, found ${showType(resolve(actual))}`,
+          markers,
         }),
       )
     }

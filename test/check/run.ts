@@ -2,9 +2,34 @@
 // mismatches and arity errors. Run: npx tsx test/check/run.ts
 
 import { compile } from '@/code/compile/compile'
+import { render } from '@/code/parser/diagnostic'
 
 let pass = 0
 let fail = 0
+
+// confirm a type error blames more than one location (multi-span)
+function expectBlame(name: string, source: string): void {
+  const result = compile({ file: 'bad.tree', text: source })
+  if (result.ok) {
+    fail++
+    console.log(`FAIL  ${name}  (compiled cleanly, expected a blamed type error)`)
+    return
+  }
+  const markers = result.diagnostics[0]?.markers ?? []
+  if (markers.length >= 2) {
+    pass++
+    console.log(`ok    ${name}  (${markers.length} spans)`)
+    console.log(
+      render(result.diagnostics[0]!, source.split('\n'), false)
+        .split('\n')
+        .map((l) => `      ${l}`)
+        .join('\n'),
+    )
+  } else {
+    fail++
+    console.log(`FAIL  ${name}  (only ${markers.length} span, expected multi-span)`)
+  }
+}
 
 function expectError(name: string, source: string, code: string): void {
   const result = compile({ file: 'bad.tree', text: source })
@@ -109,6 +134,20 @@ task helper
     call add
       loan x
       mark 1
+`,
+  )
+
+  // multi-span blame: n is used as boolean (loop condition) and as a number (assignment)
+  expectBlame(
+    'blame points at both uses',
+    `task bad
+  take n
+  walk test
+    hook test
+      loan n
+    hook step
+      save n, mark 0
+  back n
 `,
   )
 
