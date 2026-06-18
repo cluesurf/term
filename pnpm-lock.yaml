@@ -19,7 +19,7 @@ importers:
         version: 17.7.2
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
+        specifier: ^22.19.13
         version: 22.19.13
       '@types/yargs':
         specifier: ^17.0.33

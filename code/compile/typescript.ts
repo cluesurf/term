@@ -121,7 +121,7 @@ function makeEmitter(variants: Set<string>) {
         return `{ ${fields.join(', ')} }`
       }
       case 'member':
-        return `${expression(node.target)}.${node.name}`
+        return `${expression(node.target)}.${toCamel(node.name)}`
       case 'await':
         return `await ${expression(node.expr)}`
       case 'unary':
@@ -218,6 +218,9 @@ function makeEmitter(variants: Set<string>) {
       case 'instance':
         // a trait implementation: the methods are emitted as their own functions; this records the dictionary
         return `// ${toPascal(node.target)} implements ${toPascal(node.mask)} { ${node.methods.map(toCamel).join(', ')} }`
+      case 'native':
+        // a `dock load` native binding: emitted as a host import at the top of the module, not inline here
+        return ''
     }
   }
 
@@ -228,10 +231,17 @@ export function emitTypeScript(program: Program): string {
   const variants = new Set<string>()
   for (const node of program) if (node.form === 'record-type') for (const v of node.variants) variants.add(v.name)
   const emitter = makeEmitter(variants)
-  const lines = program.map((node) => {
-    const text = emitter.statement(node, 0)
-    const exported = node.form === 'function' || node.form === 'record-type' || node.form === 'mask'
-    return exported ? `export ${text}` : text
-  })
-  return `${lines.join('\n\n')}\n`
+  // native module bindings (`dock load`) become host imports at the top
+  const imports = program
+    .filter((node): node is Extract<typeof node, { form: 'native' }> => node.form === 'native')
+    .map((node) => `import * as ${toCamel(node.alias)} from "${node.module}"`)
+  const lines = program
+    .filter((node) => node.form !== 'native')
+    .map((node) => {
+      const text = emitter.statement(node, 0)
+      const exported = node.form === 'function' || node.form === 'record-type' || node.form === 'mask'
+      return exported ? `export ${text}` : text
+    })
+  const body = `${lines.join('\n\n')}\n`
+  return imports.length > 0 ? `${imports.join('\n')}\n\n${body}` : body
 }

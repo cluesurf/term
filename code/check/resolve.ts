@@ -17,6 +17,14 @@ export function resolve(program: Program, file: string): Array<Diagnostic> {
   for (const statement of program) {
     if (statement.form === 'function') {
       global.set(statement.name, { kind: 'function', arity: statement.params.length })
+      // a form method is callable by its bare name (`call unwrap-or`); receiver dispatch picks the form later.
+      // a real top-level function of the same name wins, so only register the bare name if it is still free.
+      if (statement.method && !global.has(statement.method.name)) {
+        global.set(statement.method.name, { kind: 'function', arity: statement.params.length })
+      }
+    } else if (statement.form === 'native') {
+      // a native module alias (from `dock load`) is a defined name; member calls on it are the FFI
+      global.set(statement.alias, { kind: 'deferred' })
     }
   }
 

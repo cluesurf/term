@@ -70,12 +70,16 @@ export type Statement =
   // a verification condition: the expression must be provably true (refinement layer 2). An optional `name` makes
   // it a citable lemma; an optional `proof` is the explicit proof tree (heads from hold/base/terms.json).
   | { form: 'hold'; expr: Expression; name?: string; proof?: Array<Proof>; span: Span }
-  | { form: 'function'; name: string; params: Array<{ name: string; type?: Type; refine?: 'natural' }>; body: Array<Statement>; result?: Type; generics: Array<{ name: string; need?: string }>; async?: boolean; span: Span }
+  // a `method` tag marks a function desugared from a form's nested `task`: its `name` is mangled (`<form>_<method>`)
+  // to avoid cross-module clashes, and `method` records the form and the bare method name for receiver dispatch.
+  | { form: 'function'; name: string; params: Array<{ name: string; type?: Type; refine?: 'natural' }>; body: Array<Statement>; result?: Type; generics: Array<{ name: string; need?: string }>; async?: boolean; method?: { form: string; name: string }; span: Span }
   | { form: 'record-type'; name: string; params: Array<string>; fields: Array<{ name: string; type: Type }>; variants: Array<{ name: string; fields: Array<{ name: string; type: Type }> }>; span: Span }
   // a trait: a named set of method signatures (mask)
   | { form: 'mask'; name: string; methods: Array<string>; span: Span }
   // a trait implementation for a type: provides methods (wear on a form, or suit standalone)
   | { form: 'instance'; mask: string; target: string; methods: Array<string>; span: Span }
+  // a native module binding (`dock load / load <node:fs/promises>, name fs`): the env-specific FFI for the stdlib
+  | { form: 'native'; alias: string; module: string; span: Span }
 
 // a node in an explicit proof tree: a four-letter tactic `head` paired with an optional one-word `arg`, plus
 // nested sub-proofs. See note/research/vibe/computation/libraries/06-hold.md.

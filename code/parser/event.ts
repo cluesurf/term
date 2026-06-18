@@ -111,7 +111,10 @@ export function buildEvents(tokens: TokenList): EventResult {
           comma()
           break
         case TokenKind.Comment:
+          // a comment is trivia: keep it in the stream so the tree builder can attach it to the CST (for the
+          // formatter and inline lint suppression). It does not affect grouping or indentation.
           atLineStart = false
+          events.push({ kind: EventKind.Comment, token })
           break
         case TokenKind.Decimal:
           atLineStart = false

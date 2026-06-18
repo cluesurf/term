@@ -98,13 +98,234 @@ task increment
       mark 1
 `
 
+const RESULT = `load @cluesurf/base/code/result
+  find result
+
+task ok-value
+  like number
+  back
+    call unwrap-or
+      make okay
+        bind value, mark 5
+      mark 0
+
+task err-default
+  like number
+  back
+    call unwrap-or
+      make error
+        bind value, mark 99
+      mark 0
+
+task okay-check
+  like boolean
+  back
+    call is-okay
+      make okay
+        bind value, mark 1
+`
+
+const PAIR = `load @cluesurf/base/code/pair
+  find pair
+
+task first-of
+  like number
+  back
+    call get-first
+      make pair
+        bind first, mark 3
+        bind second, mark 4
+
+task second-after-swap
+  like number
+  back
+    call get-second
+      call swap
+        make pair
+          bind first, mark 3
+          bind second, mark 4
+`
+
+const BOOLEAN = `load @cluesurf/base/code/boolean
+  find boolean
+
+task negate-true
+  like boolean
+  back
+    call not
+      wave true
+
+task negate-false
+  like boolean
+  back
+    call not
+      wave false
+`
+
+// dock: a native module binding (FFI). `node:path` is pure + deterministic, so we can run it.
+const DOCK = `dock load
+  load <node:path>, name pathmod
+
+task base-name
+  like text
+  back
+    call pathmod/basename
+      text </a/b/file.txt>
+`
+
+// both maybe and result loaded together: they each define `unwrap-or`/`map`, so this only works if the bare call
+// dispatches on the receiver's form (selective find / receiver dispatch).
+const COMBINED = `load @cluesurf/base/code/maybe
+  find maybe
+
+load @cluesurf/base/code/result
+  find result
+
+task from-maybe
+  like number
+  back
+    call unwrap-or
+      make some
+        bind value, mark 11
+      mark 0
+
+task from-result
+  like number
+  back
+    call unwrap-or
+      make error
+        bind value, mark 1
+      mark 22
+`
+
+// the list type: native-array-backed methods, dispatched on the array receiver
+const LIST = `load @cluesurf/base/code/list
+  find list
+
+task size-of
+  like number
+  back
+    call size
+      make list
+        mark 1
+        mark 2
+        mark 3
+
+task has-it
+  like boolean
+  back
+    call contains
+      make list
+        mark 5
+        mark 6
+      mark 6
+
+task get-second
+  like number
+  back
+    call get
+      make list
+        mark 7
+        mark 8
+        mark 9
+      mark 1
+
+task join-them
+  like text
+  back
+    call join
+      make list
+        mark 1
+        mark 2
+        mark 3
+      text <->
+
+task size-after-reverse
+  like number
+  back
+    call size
+      call reverse
+        make list
+          mark 1
+          mark 2
+
+task double
+  take n, like number
+  like number
+  back
+    call multiply
+      read n
+      mark 2
+
+task size-after-map
+  like number
+  back
+    call size
+      call map
+        make list
+          mark 1
+          mark 2
+          mark 3
+          mark 4
+        read double
+
+task add-two
+  take a, like number
+  take b, like number
+  like number
+  back
+    call add
+      read a
+      read b
+
+task sum-of
+  like number
+  back
+    call reduce
+      make list
+        mark 1
+        mark 2
+        mark 3
+      read add-two
+      mark 0
+`
+
 async function main(): Promise<void> {
+  const l = await loadProgram(LIST)
+  expect('list/size counts elements', l.sizeOf!(), 3)
+  expect('list/contains finds a member', l.hasIt!(), true)
+  expect('list/get reads by index', l.getSecond!(), 8)
+  expect('list/join joins with a separator', l.joinThem!(), '1-2-3')
+  expect('list/reverse then size is unchanged', l.sizeAfterReverse!(), 2)
+  expect('list/map then size is unchanged', l.sizeAfterMap!(), 4)
+  expect('list/reduce sums the elements', l.sumOf!(), 6)
+
+  const c = await loadProgram(COMBINED)
+  expect('combined: maybe.unwrap-or dispatches to the maybe method', c.fromMaybe!(), 11)
+  expect('combined: result.unwrap-or dispatches to the result method', c.fromResult!(), 22)
+
+  const d = await loadProgram(DOCK)
+  expect('dock: a native module call runs (path.basename)', d.baseName!(), 'file.txt')
+
+  const b = await loadProgram(BOOLEAN)
+  expect('boolean/not on true is false', b.negateTrue!(), false)
+  expect('boolean/not on false is true', b.negateFalse!(), true)
+
   const m = await loadProgram(MAYBE)
   expect('maybe/unwrap-or on some returns the value', m.unwrapPresent!(), 42)
   expect('maybe/unwrap-or on none returns the fallback', m.unwrapAbsent!(), 7)
   expect('maybe/is-some on some is true', m.present!(), true)
   expect('maybe/is-some on none is false', m.absent!(), false)
   expect('maybe/map applies the function under some', m.mapAddOne!(), 42)
+
+  const r = await loadProgram(RESULT)
+  expect('result/unwrap-or on okay returns the value', r.okValue!(), 5)
+  expect('result/unwrap-or on error returns the fallback', r.errDefault!(), 0)
+  expect('result/is-okay on okay is true', r.okayCheck!(), true)
+
+  const p = await loadProgram(PAIR)
+  expect('pair/get-first reads the first', p.firstOf!(), 3)
+  expect('pair/swap then get-second reads the original first', p.secondAfterSwap!(), 3)
 
   console.log(`\nstdlib: ${pass} pass, ${fail} fail`)
 }

@@ -9,11 +9,15 @@ import type { Event } from '@/code/parser/event'
 import { EventKind, buildEvents } from '@/code/parser/event'
 
 export type RootNode = { kind: 'root'; nodes: Array<GroupNode> }
+export type Comment = { text: string; span: Span }
 export type GroupNode = {
   kind: 'group'
   nodes: Array<GroupNode | NameNode | TextNode | IntegerNode | DecimalNode | RadixNode>
   parent?: GroupNode | InterpolationNode
   optional?: boolean
+  // CST trivia: comments written on the lines above this group. The formatter re-emits them; lint reads
+  // suppressions. This is what makes the tree a concrete syntax tree rather than a bare AST.
+  comments?: Array<Comment>
 }
 export type NameNode = { kind: 'name'; parts: Array<ChunkNode | InterpolationNode>; parent?: GroupNode }
 export type TextNode = { kind: 'text'; parts: Array<ChunkNode | InterpolationNode>; parent?: GroupNode }
@@ -62,12 +66,22 @@ function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagno
     diagnostics.push(diagnose('unexpected-node', { file, span: token ? token.span : zeroSpan(), message: `unexpected ${event.kind} here` }))
   }
 
+  // comments seen since the last group; attached as leading trivia to the next group opened (CST)
+  let pendingComments: Array<Comment> = []
+
   for (const event of events) {
     switch (event.kind) {
+      case EventKind.Comment:
+        pendingComments.push({ text: event.token.text, span: event.token.span })
+        break
       case EventKind.OpenGroup: {
         const here = base()
         if (here.kind === 'root' || here.kind === 'group') {
           const group: GroupNode = { kind: 'group', nodes: [] }
+          if (pendingComments.length > 0) {
+            group.comments = pendingComments
+            pendingComments = []
+          }
           here.nodes.push(group)
           setParent(group, here)
           top().line.push(group)

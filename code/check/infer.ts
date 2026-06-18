@@ -160,6 +160,8 @@ export function check(program: Program, file: string): Array<Diagnostic> {
     if (type.kind === 'named') {
       const generic = generics.get(type.name)
       if (generic) return generic
+      // `list` is the native array type: `like list` is array<unknown>, `like list<t>` is array<t>
+      if (type.name === 'list') return { kind: 'array', element: type.args?.[0] ? seedType(type.args[0], generics) : UNKNOWN }
       if (records.has(type.name)) {
         // a form: give it a fresh type argument per generic parameter (maybe -> maybe<?a>), inferred from usage
         const params = formGenerics.get(type.name) ?? []
@@ -168,6 +170,8 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       return fresh() // an unrecognized name: infer it from usage rather than forcing a mismatch
     }
     if (type.kind === 'array') return { kind: 'array', element: seedType(type.element, generics) }
+    if (type.kind === 'map') return { kind: 'map', key: seedType(type.key, generics), value: seedType(type.value, generics) }
+    if (type.kind === 'function') return { kind: 'function', params: type.params.map((p) => seedType(p, generics)), result: seedType(type.result, generics), effects: type.effects }
     return type
   }
 
@@ -200,6 +204,19 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       params: statement.params.map((p) => seedType(p.type, genericVars)),
       result: seedType(statement.result, genericVars),
     })
+  }
+
+  // receiver dispatch: a form's mangled method (`maybe_unwrap-or`) indexed by form name then bare method name, so a
+  // bare `call unwrap-or / <receiver>` resolves to the method of the receiver's form. `methodNames` is the set of
+  // every bare method name, used to recognise a call site as a method call before dispatching.
+  const methodTable = new Map<string, Map<string, string>>()
+  const methodNames = new Set<string>()
+  for (const statement of program) {
+    if (statement.form !== 'function' || !statement.method) continue
+    const byName = methodTable.get(statement.method.form) ?? new Map<string, string>()
+    byName.set(statement.method.name, statement.name)
+    methodTable.set(statement.method.form, byName)
+    methodNames.add(statement.method.name)
   }
 
   // instantiate a signature, freshening its generic variables (Hindley-Milner let-polymorphism), so a generic
@@ -407,11 +424,17 @@ export function check(program: Program, file: string): Array<Diagnostic> {
         if (target.kind === 'named' && records.has(target.name)) {
           const field = records.get(target.name)!.get(node.name)
           if (field) {
-            type = field
+            // substitute the target's type arguments for the form's generics (pair<a,b> -> first : a)
+            const params = formGenerics.get(target.name) ?? []
+            const argMap = new Map<string, Type>()
+            if (target.args) params.forEach((p, i) => target.args![i] && argMap.set(p, target.args![i]!))
+            type = substGenerics(field, argMap)
           } else {
             diagnostics.push(diagnose('unknown-name', { file, span: node.span, message: `"${target.name}" has no field "${node.name}"` }))
             type = UNKNOWN
           }
+        } else if (target.kind === 'array' && node.name === 'length') {
+          type = NUMBER
         } else {
           type = UNKNOWN
         }
@@ -419,6 +442,28 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       }
       case 'call': {
         const args = node.args.map((arg) => inferExpression(arg, env))
+        // receiver dispatch: rewrite a bare method call (`call unwrap-or / <receiver>`) to the mangled method of the
+        // receiver's form. The receiver is whichever argument is a form that owns this method (usually `self`, first).
+        if (node.callee.form === 'variable' && !functions.has(node.callee.name) && methodNames.has(node.callee.name)) {
+          const method = node.callee.name
+          let mangled: string | undefined
+          for (const arg of args) {
+            const receiver = resolve(arg)
+            if (receiver.kind === 'named') {
+              const found = methodTable.get(receiver.name)?.get(method)
+              if (found) {
+                mangled = found
+                break
+              }
+            }
+          }
+          // if no argument pins the form but exactly one form owns this method name, it is unambiguous
+          if (!mangled) {
+            const owners = [...methodTable.values()].filter((m) => m.has(method))
+            if (owners.length === 1) mangled = owners[0]!.get(method)
+          }
+          if (mangled && functions.has(mangled)) node.callee.name = mangled
+        }
         if (node.callee.form === 'variable' && functions.has(node.callee.name)) {
           // instantiate generics fresh for this call (let-polymorphism)
           const signature = instantiate(functions.get(node.callee.name)!)
@@ -563,6 +608,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       case 'record-type':
       case 'mask':
       case 'instance':
+      case 'native':
         break
       case 'function':
         checkFunction(node)
@@ -579,7 +625,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
     checkBody(node.body, env, signature.result)
   }
 
-  const topLevelSkip = new Set(['record-type', 'mask', 'instance'])
+  const topLevelSkip = new Set(['record-type', 'mask', 'instance', 'native'])
   for (const statement of program) {
     if (statement.form === 'function') checkFunction(statement)
     else if (!topLevelSkip.has(statement.form)) checkStatement(statement, new Map(), UNKNOWN)

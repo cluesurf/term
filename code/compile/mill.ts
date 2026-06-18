@@ -132,7 +132,11 @@ function spanOf(node: Node): Span {
       return node.token.span
     case 'group': {
       const head = node.nodes[0]
-      return head ? spanOf(head) : ZERO_SPAN
+      if (!head) return ZERO_SPAN
+      // span the whole construct, head through the last child, so diagnostics underline the full term and
+      // source-slice autofixes (the linter) capture the exact surface syntax, not just the head keyword.
+      const last = node.nodes[node.nodes.length - 1]!
+      return { start: spanOf(head).start, end: spanOf(last).end }
     }
     default:
       return ZERO_SPAN
@@ -228,7 +232,9 @@ export function mill(tree: RootNode, file: string): MillResult {
     } else if (calleeName === 'increment' && callArgs.length === 1) {
       result = { form: 'binary', op: '+', left: callArgs[0]!, right: { form: 'integer', value: 1, span }, span }
     } else {
-      result = { form: 'call', callee: { form: 'variable', name: calleeName ?? '', span }, args: callArgs, span }
+      // a slashed callee (`fs/read-file`) is a member path: the native-module FFI or a qualified function
+      const callee: Expression = calleeName && calleeName.includes('/') ? pathExpression(calleeName, span) : { form: 'variable', name: calleeName ?? '', span }
+      result = { form: 'call', callee, args: callArgs, span }
     }
     return awaited ? { form: 'await', expr: result, span } : result
   }
@@ -607,16 +613,42 @@ export function mill(tree: RootNode, file: string): MillResult {
 
   // a form's nested `task` children are methods: desugared to free functions over the form, with `self` typed as
   // the form (parameterized by the form's generics) and the form's generics in scope. `read(file)`, not file.read().
-  function formMethods(group: GroupNode, formName: string, formParams: Array<string>): Array<Statement> {
+  // `selfOverride` types `self` as a primitive kind, for a primitive type's stdlib form (boolean, number, text).
+  function formMethods(group: GroupNode, formName: string, formParams: Array<string>, selfOverride?: Type): Array<Statement> {
     const out: Array<Statement> = []
-    const selfType: Type = { kind: 'named', name: formName, args: formParams.map((name) => ({ kind: 'named', name })) }
+    const selfType: Type = selfOverride ?? { kind: 'named', name: formName, args: formParams.map((name) => ({ kind: 'named', name })) }
     for (const child of rest(group)) {
       if (child.kind !== 'group' || headName(child) !== 'task') continue
       const fn = buildFunction(child)
       if (!fn || fn.form !== 'function') continue
       fn.generics = [...formParams.map((name) => ({ name })), ...fn.generics]
       fn.params = fn.params.map((p) => (p.name === 'self' && !p.type ? { ...p, type: selfType } : p))
+      // mangle the emitted name so two forms can both define `map`/`unwrap-or` without clashing across modules.
+      // the bare method name stays in `method` for receiver dispatch (a `call <method> / <receiver>` resolves by
+      // the receiver's form). See note/research/vibe/computation/plans on the module system.
+      fn.method = { form: formName, name: fn.name }
+      fn.name = `${formName}_${fn.name}`
       out.push(fn)
+    }
+    return out
+  }
+
+  // `dock load / load <node:fs/promises>, name fs` declares native module bindings (the FFI). Each becomes a
+  // native-import statement the emitter turns into a host import; `call fs/read-file` then lowers natively.
+  function buildDock(group: GroupNode): Array<Statement> {
+    const out: Array<Statement> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'load') continue
+      let module: string | undefined
+      let alias: string | undefined
+      for (const part of rest(child)) {
+        if (part.kind === 'text') module = part.parts.map((p) => (p.kind === 'chunk' ? p.text : '')).join('')
+        else if (part.kind === 'group' && headName(part) === 'name') {
+          const a = rest(part)[0]
+          alias = a && a.kind === 'group' ? headName(a) : undefined
+        }
+      }
+      if (module && alias) out.push({ form: 'native', alias, module, span: spanOf(child) })
     }
     return out
   }
@@ -628,19 +660,36 @@ export function mill(tree: RootNode, file: string): MillResult {
       const fn = buildFunction(group)
       if (fn) program.push(fn)
     } else if (keyword === 'form') {
-      const rt = buildRecordType(group)
-      if (rt) program.push(rt)
-      // `wear <mask>` blocks inside the form are trait instances for it
       const nameGroup = rest(group)[0]
       const formName = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
-      if (formName) program.push(...wearInstances(group, formName))
-      if (formName && rt && rt.form === 'record-type') program.push(...formMethods(group, formName, rt.params))
+      const primitive = formName ? TYPE_NAME[formName] : undefined
+      if (formName && primitive) {
+        // a primitive type's definition lives in the stdlib (boolean, number, text): the compiler uses its native
+        // representation, so it does not register a record-type (avoiding a clash with the primitive), but it does
+        // desugar the form's methods over the primitive kind.
+        program.push(...formMethods(group, formName, [], primitive))
+      } else if (formName === 'list') {
+        // list is the native array: its methods are typed over array<t> (t = the form's element generic), and no
+        // record-type is registered. Receiver dispatch routes `call size / <array>` to the list method.
+        const rt = buildRecordType(group)
+        const params = rt && rt.form === 'record-type' ? rt.params : []
+        const element: Type = { kind: 'array', element: { kind: 'named', name: params[0] ?? 't' } }
+        program.push(...formMethods(group, formName, params, element))
+      } else {
+        const rt = buildRecordType(group)
+        if (rt) program.push(rt)
+        // `wear <mask>` blocks inside the form are trait instances for it
+        if (formName) program.push(...wearInstances(group, formName))
+        if (formName && rt && rt.form === 'record-type') program.push(...formMethods(group, formName, rt.params))
+      }
     } else if (keyword === 'mask') {
       const mask = buildMask(group)
       if (mask) program.push(mask)
     } else if (keyword === 'suit') {
       program.push(...buildSuit(group))
-    } else if (keyword === 'load' || keyword === 'dock' || keyword === 'bear' || keyword === 'deck') {
+    } else if (keyword === 'dock') {
+      program.push(...buildDock(group))
+    } else if (keyword === 'load' || keyword === 'bear' || keyword === 'deck') {
       // module directives: resolved by the loader (code/compile/load.ts), not statements
     } else {
       program.push(...toStatements([group], new Set<string>()))
