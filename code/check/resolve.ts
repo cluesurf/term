@@ -85,6 +85,9 @@ export function resolve(program: Program, file: string): Array<Diagnostic> {
       case 'member':
         resolveExpression(node.target)
         break
+      case 'await':
+        resolveExpression(node.expr)
+        break
       default:
         break
     }
@@ -129,6 +132,11 @@ export function resolve(program: Program, file: string): Array<Diagnostic> {
         declare(node.item, { kind: 'local' })
         for (const statement of node.body) resolveStatement(statement)
         stack.pop()
+        break
+      case 'match':
+        resolveExpression(node.subject)
+        for (const branch of node.cases) resolveBody(branch.body)
+        if (node.otherwise) resolveBody(node.otherwise)
         break
       case 'hold':
         resolveExpression(node.expr)

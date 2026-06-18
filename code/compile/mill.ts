@@ -6,7 +6,7 @@
 import type { Diagnostic, Span } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
 import type { GroupNode, NameNode, Node, RootNode } from '@/code/parser/tree'
-import type { BinaryOp, Expression, Program, Statement, Type } from '@/code/compile/node'
+import type { BinaryOp, Expression, Program, Proof, Statement, Type } from '@/code/compile/node'
 import { BOOLEAN, NUMBER, STRING, UNIT, UNKNOWN } from '@/code/compile/node'
 
 // like-type names to surface types
@@ -25,12 +25,60 @@ function pathExpression(raw: string, span: Span): Expression {
   return expr
 }
 
+// parse a node of an explicit proof tree: head word, an optional bare-word arg (the paired one-word name), and
+// nested sub-proofs. Follows the two-words-per-line convention from libraries/06-hold.md.
+function parseProof(node: GroupNode): Proof {
+  const head = headName(node) ?? ''
+  const parts = rest(node).filter((n): n is GroupNode => n.kind === 'group')
+  let arg: string | undefined
+  const children: Array<Proof> = []
+  for (const part of parts) {
+    if (arg === undefined && rest(part).length === 0) arg = headName(part)
+    else children.push(parseProof(part))
+  }
+  const proof: Proof = { head, children, span: spanOf(node) }
+  if (arg) proof.arg = arg
+  return proof
+}
+
+// is this node `wait true` (the async marker)?
+function isWaitTrue(node: Node): boolean {
+  if (node.kind !== 'group' || headName(node) !== 'wait') return false
+  const arg = node.nodes[1]
+  return arg !== undefined && arg.kind === 'group' && headName(arg) === 'true'
+}
+
 // a `like <type>` node to a surface type
 function parseType(node: Node): Type {
   if (node.kind !== 'group') return UNKNOWN
   const name = headName(node)
   if (!name) return UNKNOWN
   return TYPE_NAME[name] ?? { kind: 'named', name }
+}
+
+// the type written by a `like` group. Usually `like <name>`, but for a first-class function it is `like task` with
+// `take` params and a `like` result as further children of the SAME like group (siblings of the `task` node).
+function parseLikeType(likeGroup: GroupNode): Type {
+  const children = rest(likeGroup)
+  const first = children[0]
+  if (first && first.kind === 'group' && headName(first) === 'task') {
+    const params = children
+      .filter((c): c is GroupNode => c.kind === 'group' && headName(c) === 'take')
+      .map((take) => {
+        const inner = rest(take).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+        return inner ? parseLikeType(inner) : UNKNOWN
+      })
+    const resultLike = children.find((c): c is GroupNode => c.kind === 'group' && headName(c) === 'like')
+    const result = resultLike ? parseLikeType(resultLike) : UNIT
+    // effect annotations on the callback: `wait true` marks it async, `bust` marks it throwing
+    const effects: Array<string> = []
+    if (children.some(isWaitTrue)) effects.push('async')
+    if (children.some((c) => c.kind === 'group' && headName(c) === 'bust')) effects.push('throw')
+    const type: Type = { kind: 'function', params, result }
+    if (effects.length > 0) type.effects = effects
+    return type
+  }
+  return first ? parseType(first) : UNKNOWN
 }
 
 const BINARY_BUILTIN: Record<string, BinaryOp> = {
@@ -75,10 +123,13 @@ function spanOf(node: Node): Span {
     case 'decimal':
     case 'radix':
       return node.token.span
-    case 'name': {
-      const first = node.parts[0]
-      return first && first.kind === 'chunk' ? first.token.span : ZERO_SPAN
+    case 'name':
+    case 'text': {
+      const chunk = node.parts.find((p) => p.kind === 'chunk')
+      return chunk && chunk.kind === 'chunk' ? chunk.token.span : ZERO_SPAN
     }
+    case 'chunk':
+      return node.token.span
     case 'group': {
       const head = node.nodes[0]
       return head ? spanOf(head) : ZERO_SPAN
@@ -165,18 +216,21 @@ export function mill(tree: RootNode, file: string): MillResult {
     const target = parts[0]
     const calleeName = target && target.kind === 'group' ? headName(target) : undefined
     const span = spanOf(group)
-    const callArgs = parts.slice(1).map((a) => toExpression(a, scope))
+    // `wait true` marks the call to be awaited; it is not an argument
+    const awaited = parts.slice(1).some(isWaitTrue)
+    const callArgs = parts.slice(1).filter((a) => !isWaitTrue(a)).map((a) => toExpression(a, scope))
 
+    let result: Expression
     if (calleeName && calleeName in BINARY_BUILTIN && callArgs.length === 2) {
-      return { form: 'binary', op: BINARY_BUILTIN[calleeName]!, left: callArgs[0]!, right: callArgs[1]!, span }
+      result = { form: 'binary', op: BINARY_BUILTIN[calleeName]!, left: callArgs[0]!, right: callArgs[1]!, span }
+    } else if (calleeName === 'decrement' && callArgs.length === 1) {
+      result = { form: 'binary', op: '-', left: callArgs[0]!, right: { form: 'integer', value: 1, span }, span }
+    } else if (calleeName === 'increment' && callArgs.length === 1) {
+      result = { form: 'binary', op: '+', left: callArgs[0]!, right: { form: 'integer', value: 1, span }, span }
+    } else {
+      result = { form: 'call', callee: { form: 'variable', name: calleeName ?? '', span }, args: callArgs, span }
     }
-    if (calleeName === 'decrement' && callArgs.length === 1) {
-      return { form: 'binary', op: '-', left: callArgs[0]!, right: { form: 'integer', value: 1, span }, span }
-    }
-    if (calleeName === 'increment' && callArgs.length === 1) {
-      return { form: 'binary', op: '+', left: callArgs[0]!, right: { form: 'integer', value: 1, span }, span }
-    }
-    return { form: 'call', callee: { form: 'variable', name: calleeName ?? '', span }, args: callArgs, span }
+    return awaited ? { form: 'await', expr: result, span } : result
   }
 
   // make list / make find / make <form>
@@ -260,6 +314,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         case 'flex':
         case 'head':
         case 'wear':
+        case 'wait':
           break
         case 'save': {
           const args = rest(node).filter((a) => !(a.kind === 'group' && headName(a) === 'flex'))
@@ -285,8 +340,26 @@ export function mill(tree: RootNode, file: string): MillResult {
           break
         }
         case 'hold': {
-          const condition = rest(node)[0]
-          if (condition) out.push({ form: 'hold', expr: toExpression(condition, scope), span })
+          const parts = rest(node)
+          // optional inline name (`hold <name>`): a bare word with siblings after it makes the hold a citable lemma
+          let nameValue: string | undefined
+          let propIndex = 0
+          const first = parts[0]
+          if (parts.length > 1 && first && first.kind === 'group' && rest(first).length === 0) {
+            nameValue = headName(first)
+            propIndex = 1
+          }
+          const condition = parts[propIndex]
+          if (condition) {
+            const proof = parts
+              .slice(propIndex + 1)
+              .filter((n): n is GroupNode => n.kind === 'group')
+              .map(parseProof)
+            const holdStatement: Statement = { form: 'hold', expr: toExpression(condition, scope), span }
+            if (nameValue) holdStatement.name = nameValue
+            if (proof.length > 0) holdStatement.proof = proof
+            out.push(holdStatement)
+          }
           break
         }
         case 'bust': {
@@ -295,9 +368,10 @@ export function mill(tree: RootNode, file: string): MillResult {
           break
         }
         case 'send': {
+          // `send back, X` parses as send > [back, X], so the value is send's second child
           const backGroup = rest(node)[0]
           if (backGroup && backGroup.kind === 'group' && headName(backGroup) === 'back') {
-            const value = rest(backGroup)[0]
+            const value = rest(node)[1]
             out.push({ form: 'return', value: value ? toExpression(value, scope) : undefined, span })
           } else {
             fail(node, 'send must be followed by back')
@@ -353,6 +427,23 @@ export function mill(tree: RootNode, file: string): MillResult {
           break
         }
         case 'fork': {
+          const parts = rest(node)
+          const variant = parts[0] && parts[0].kind === 'group' ? headName(parts[0]) : undefined
+          if (variant === 'case') {
+            // `fork case, <subject>` with `case <label>` arms: a pattern match on an enum
+            const subject: Expression = parts[1] ? toExpression(parts[1], scope) : { form: 'unit', span }
+            const cases: Array<{ label: string; body: Array<Statement> }> = []
+            let otherwise: Array<Statement> | undefined
+            for (const arm of parts.slice(2)) {
+              if (arm.kind !== 'group' || headName(arm) !== 'case') continue
+              const labelGroup = rest(arm)[0]
+              const label = labelGroup && labelGroup.kind === 'group' ? headName(labelGroup) : undefined
+              if (label === 'else') otherwise = toStatements(rest(arm).slice(1), scope)
+              else if (label) cases.push({ label, body: toStatements(rest(arm).slice(1), scope) })
+            }
+            out.push({ form: 'match', subject, cases, otherwise, span })
+            break
+          }
           const hookMap = hooks(node)
           const condNodes = hookMap.get('test')
           const cond: Expression = condNodes && condNodes[0] ? toExpression(condNodes[0], scope) : { form: 'boolean', value: false, span }
@@ -403,8 +494,8 @@ export function mill(tree: RootNode, file: string): MillResult {
         if (!paramName) continue
         const likeGroup = rest(statement).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
         const typeNode = likeGroup ? rest(likeGroup)[0] : undefined
-        // honor the declared type, and detect a natural-number refinement
-        const type = typeNode ? parseType(typeNode) : undefined
+        // honor the declared type (a first-class task type is parsed structurally), and detect a natural refinement
+        const type = likeGroup ? parseLikeType(likeGroup) : undefined
         const refine = typeNode && typeNode.kind === 'group' && headName(typeNode) === 'natural-number' ? 'natural' : undefined
         const param: { name: string; type?: Type; refine?: 'natural' } = { name: paramName }
         if (type) param.type = type
@@ -414,10 +505,11 @@ export function mill(tree: RootNode, file: string): MillResult {
     }
     // the function's return type: a bare `like <type>` statement in the body
     const resultLike = body.find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
-    const resultType = resultLike ? parseType(rest(resultLike)[0] ?? resultLike) : undefined
+    const resultType = resultLike ? parseLikeType(resultLike) : undefined
     const scope = new Set<string>(params.map((p) => p.name))
     const fn: Statement = { form: 'function', name, params, body: toStatements(body, scope), generics, span }
     if (resultType) fn.result = resultType
+    if (body.some(isWaitTrue)) fn.async = true // `wait true` makes the task async
     return fn
   }
 
@@ -475,21 +567,58 @@ export function mill(tree: RootNode, file: string): MillResult {
       fail(group, 'form needs a name')
       return undefined
     }
-    const fields: Array<{ name: string; type: Type }> = []
-    for (const child of parts.slice(1)) {
-      if (child.kind !== 'group' || headName(child) !== 'link') continue
-      const inner = rest(child)
-      const fieldNode = inner[0]
-      const fieldName = fieldNode && fieldNode.kind === 'group' ? headName(fieldNode) : undefined
-      const likeGroup = inner[1]
-      let type: Type = UNKNOWN
-      if (likeGroup && likeGroup.kind === 'group' && headName(likeGroup) === 'like') {
-        const typeNode = rest(likeGroup)[0]
-        type = typeNode ? parseType(typeNode) : UNKNOWN
+    const linkFields = (g: GroupNode): Array<{ name: string; type: Type }> => {
+      const out: Array<{ name: string; type: Type }> = []
+      for (const child of rest(g)) {
+        if (child.kind !== 'group' || headName(child) !== 'link') continue
+        const inner = rest(child)
+        const fieldNode = inner[0]
+        const fieldName = fieldNode && fieldNode.kind === 'group' ? headName(fieldNode) : undefined
+        const likeGroup = inner[1]
+        let type: Type = UNKNOWN
+        if (likeGroup && likeGroup.kind === 'group' && headName(likeGroup) === 'like') {
+          const typeNode = rest(likeGroup)[0]
+          type = typeNode ? parseType(typeNode) : UNKNOWN
+        }
+        if (fieldName) out.push({ name: fieldName, type })
       }
-      if (fieldName) fields.push({ name: fieldName, type })
+      return out
     }
-    return { form: 'record-type', name, params: [], fields, span }
+
+    const fields = linkFields(group)
+    // enum variants: `case <name>` children, each with its own fields
+    const variants: Array<{ name: string; fields: Array<{ name: string; type: Type }> }> = []
+    for (const child of parts.slice(1)) {
+      if (child.kind !== 'group' || headName(child) !== 'case') continue
+      const vNameGroup = rest(child)[0]
+      const vName = vNameGroup && vNameGroup.kind === 'group' ? headName(vNameGroup) : undefined
+      if (vName) variants.push({ name: vName, fields: linkFields(child) })
+    }
+    // `head <name>` children are the form's generic parameters (e.g. `form maybe / head t`)
+    const params: Array<string> = []
+    for (const child of parts.slice(1)) {
+      if (child.kind !== 'group' || headName(child) !== 'head') continue
+      const gNameGroup = rest(child)[0]
+      const gName = gNameGroup && gNameGroup.kind === 'group' ? headName(gNameGroup) : undefined
+      if (gName) params.push(gName)
+    }
+    return { form: 'record-type', name, params, fields, variants, span }
+  }
+
+  // a form's nested `task` children are methods: desugared to free functions over the form, with `self` typed as
+  // the form (parameterized by the form's generics) and the form's generics in scope. `read(file)`, not file.read().
+  function formMethods(group: GroupNode, formName: string, formParams: Array<string>): Array<Statement> {
+    const out: Array<Statement> = []
+    const selfType: Type = { kind: 'named', name: formName, args: formParams.map((name) => ({ kind: 'named', name })) }
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'task') continue
+      const fn = buildFunction(child)
+      if (!fn || fn.form !== 'function') continue
+      fn.generics = [...formParams.map((name) => ({ name })), ...fn.generics]
+      fn.params = fn.params.map((p) => (p.name === 'self' && !p.type ? { ...p, type: selfType } : p))
+      out.push(fn)
+    }
+    return out
   }
 
   const program: Program = []
@@ -505,11 +634,14 @@ export function mill(tree: RootNode, file: string): MillResult {
       const nameGroup = rest(group)[0]
       const formName = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
       if (formName) program.push(...wearInstances(group, formName))
+      if (formName && rt && rt.form === 'record-type') program.push(...formMethods(group, formName, rt.params))
     } else if (keyword === 'mask') {
       const mask = buildMask(group)
       if (mask) program.push(mask)
     } else if (keyword === 'suit') {
       program.push(...buildSuit(group))
+    } else if (keyword === 'load' || keyword === 'dock' || keyword === 'bear' || keyword === 'deck') {
+      // module directives: resolved by the loader (code/compile/load.ts), not statements
     } else {
       program.push(...toStatements([group], new Set<string>()))
     }

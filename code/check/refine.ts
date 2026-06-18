@@ -80,16 +80,13 @@ function eliminate(ineqs: Array<Inequality>, v: string): Array<Inequality> {
 
 // is the system of constraints unsatisfiable?
 function unsatisfiable(ineqs: Array<Inequality>): boolean {
-  let system = ineqs
+  // integer tightening: the program variables are integers, so a strict `l < 0` is exactly `l + 1 <= 0`. Tightening
+  // up front makes the procedure integer-sound (it now proves e.g. n > 0 => n >= 1, which is false over rationals).
+  let system = ineqs.map((ineq) => (ineq.strict ? { linear: { terms: ineq.linear.terms, constant: ineq.linear.constant + 1 }, strict: false } : ineq))
   for (const v of variables(system)) system = eliminate(system, v)
-  // every remaining constraint is `constant <op> 0`; look for a contradiction
+  // every remaining constraint is `constant <= 0`; a positive constant is a contradiction
   for (const ineq of system) {
-    const k = ineq.linear.constant
-    if (ineq.strict) {
-      if (k >= -1e-12) return true // k < 0 required but k >= 0
-    } else {
-      if (k > 1e-12) return true // k <= 0 required but k > 0
-    }
+    if (ineq.linear.constant > 1e-9) return true
   }
   return false
 }

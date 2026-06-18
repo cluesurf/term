@@ -40,10 +40,14 @@ function tsType(type: Type | undefined): string {
       return 'void'
     case 'array':
       return `${tsType(type.element)}[]`
+    case 'map':
+      return `Map<${tsType(type.key)}, ${tsType(type.value)}>`
     case 'named':
       return toPascal(type.name)
-    case 'function':
-      return `(${type.params.map((p, i) => `a${i}: ${tsType(p)}`).join(', ')}) => ${tsType(type.result)}`
+    case 'function': {
+      const result = type.effects?.includes('async') ? `Promise<${tsType(type.result)}>` : tsType(type.result)
+      return `(${type.params.map((p, i) => `a${i}: ${tsType(p)}`).join(', ')}) => ${result}`
+    }
     case 'number':
       return 'number'
     case 'variable':
@@ -67,6 +71,10 @@ function collectAssigned(statements: Array<Statement>, into: Set<string>): void 
       case 'for-each':
         collectAssigned(statement.body, into)
         break
+      case 'match':
+        for (const branch of statement.cases) collectAssigned(branch.body, into)
+        if (statement.otherwise) collectAssigned(statement.otherwise, into)
+        break
       case 'if':
         for (const branch of statement.branches) collectAssigned(branch.body, into)
         if (statement.otherwise) collectAssigned(statement.otherwise, into)
@@ -80,7 +88,7 @@ function collectAssigned(statements: Array<Statement>, into: Set<string>): void 
   }
 }
 
-function makeEmitter() {
+function makeEmitter(variants: Set<string>) {
   const pad = (depth: number) => '  '.repeat(depth)
   let assignedNames = new Set<string>()
 
@@ -106,10 +114,16 @@ function makeEmitter() {
         return `[${node.items.map((item) => expression(item)).join(', ')}]`
       case 'map':
         return `new Map([${node.entries.map((e) => `[${expression(e.key)}, ${expression(e.value)}]`).join(', ')}])`
-      case 'record':
-        return `{ ${node.fields.map((f) => `${f.name}: ${expression(f.value)}`).join(', ')} }`
+      case 'record': {
+        const fields = node.fields.map((f) => `${f.name}: ${expression(f.value)}`)
+        // an enum variant carries a discriminant tag; a struct is a plain object
+        if (variants.has(node.name)) return `{ ${['form: ' + JSON.stringify(node.name), ...fields].join(', ')} }`
+        return `{ ${fields.join(', ')} }`
+      }
       case 'member':
         return `${expression(node.target)}.${node.name}`
+      case 'await':
+        return `await ${expression(node.expr)}`
       case 'unary':
         return `${node.op}${expression(node.operand, 6)}`
       case 'binary': {
@@ -149,11 +163,28 @@ function makeEmitter() {
         return `while (${expression(node.cond)}) ${block(node.body, depth)}`
       case 'for-each':
         return `for (const ${toCamel(node.item)} of ${expression(node.iterable)}) ${block(node.body, depth)}`
+      case 'match': {
+        const subject = expression(node.subject)
+        let out = ''
+        node.cases.forEach((branch, i) => {
+          out += `${i ? ' else ' : ''}if (${subject}.form === ${JSON.stringify(branch.label)}) ${block(branch.body, depth)}`
+        })
+        if (node.otherwise) out += ` else ${block(node.otherwise, depth)}`
+        return out
+      }
       case 'break':
         return 'break'
       case 'continue':
         return 'continue'
       case 'record-type': {
+        // an enum becomes a discriminated union; a struct becomes an interface
+        if (node.variants.length > 0) {
+          const members = node.variants.map((v) => {
+            const fields = v.fields.map((f) => `${f.name}: ${tsType(f.type)}`)
+            return `{ ${['form: ' + JSON.stringify(v.name), ...fields].join('; ')} }`
+          })
+          return `type ${toPascal(node.name)} =\n${members.map((m) => `${pad(depth + 1)}| ${m}`).join('\n')}`
+        }
         const fields = node.fields.map((f) => `${pad(depth + 1)}${f.name}: ${tsType(f.type)}`).join('\n')
         return `interface ${toPascal(node.name)} {\n${fields}\n${pad(depth)}}`
       }
@@ -171,7 +202,9 @@ function makeEmitter() {
         collectAssigned(node.body, assignedNames)
         const params = node.params.map((p) => `${toCamel(p.name)}: ${tsType(p.type)}`).join(', ')
         const generics = node.generics.length ? `<${node.generics.map((g) => toPascal(g.name)).join(', ')}>` : ''
-        const out = `function ${toCamel(node.name)}${generics}(${params}): ${tsType(node.result)} ${block(node.body, depth)}`
+        const returnType = node.async ? `Promise<${tsType(node.result)}>` : tsType(node.result)
+        const keyword = node.async ? 'async function' : 'function'
+        const out = `${keyword} ${toCamel(node.name)}${generics}(${params}): ${returnType} ${block(node.body, depth)}`
         assignedNames = previous
         return out
       }
@@ -192,7 +225,9 @@ function makeEmitter() {
 }
 
 export function emitTypeScript(program: Program): string {
-  const emitter = makeEmitter()
+  const variants = new Set<string>()
+  for (const node of program) if (node.form === 'record-type') for (const v of node.variants) variants.add(v.name)
+  const emitter = makeEmitter(variants)
   const lines = program.map((node) => {
     const text = emitter.statement(node, 0)
     const exported = node.form === 'function' || node.form === 'record-type' || node.form === 'mask'

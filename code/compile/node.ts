@@ -12,8 +12,9 @@ export type Type =
   | { kind: 'unit' }
   | { kind: 'unknown' }
   | { kind: 'array'; element: Type }
-  | { kind: 'named'; name: string }
-  | { kind: 'function'; params: Array<Type>; result: Type }
+  | { kind: 'map'; key: Type; value: Type }
+  | { kind: 'named'; name: string; args?: Array<Type> }
+  | { kind: 'function'; params: Array<Type>; result: Type; effects?: Array<string> }
   | { kind: 'variable'; id: number }
 
 export const NUMBER: Type = { kind: 'number' }
@@ -47,6 +48,8 @@ export type Expression =
   | { form: 'map'; entries: Array<{ key: Expression; value: Expression }>; span: Span; type?: Type }
   | { form: 'record'; name: string; fields: Array<{ name: string; value: Expression }>; span: Span; type?: Type }
   | { form: 'member'; target: Expression; name: string; span: Span; type?: Type }
+  // await an async result (`call ... / wait true`)
+  | { form: 'await'; expr: Expression; span: Span; type?: Type }
   // a hole: an unresolved reference, may be runtime-deferred
   | { form: 'hole'; name: string; span: Span; type?: Type; deferred?: boolean }
 
@@ -56,20 +59,27 @@ export type Statement =
   | { form: 'expression'; expr: Expression; span: Span }
   | { form: 'if'; branches: Array<{ cond: Expression; body: Array<Statement> }>; otherwise?: Array<Statement>; span: Span }
   | { form: 'while'; cond: Expression; body: Array<Statement>; span: Span }
+  // a pattern match on an enum value (fork case): each case is a variant label
+  | { form: 'match'; subject: Expression; cases: Array<{ label: string; body: Array<Statement> }>; otherwise?: Array<Statement>; span: Span }
   | { form: 'for-each'; item: string; iterable: Expression; body: Array<Statement>; span: Span }
   | { form: 'break'; span: Span }
   | { form: 'continue'; span: Span }
   | { form: 'return'; value?: Expression; span: Span }
   // throw an error value (the `bust` keyword)
   | { form: 'throw'; value: Expression; span: Span }
-  // a verification condition: the expression must be provably true (refinement layer 2)
-  | { form: 'hold'; expr: Expression; span: Span }
-  | { form: 'function'; name: string; params: Array<{ name: string; type?: Type; refine?: 'natural' }>; body: Array<Statement>; result?: Type; generics: Array<{ name: string; need?: string }>; span: Span }
-  | { form: 'record-type'; name: string; params: Array<string>; fields: Array<{ name: string; type: Type }>; span: Span }
+  // a verification condition: the expression must be provably true (refinement layer 2). An optional `name` makes
+  // it a citable lemma; an optional `proof` is the explicit proof tree (heads from hold/base/terms.json).
+  | { form: 'hold'; expr: Expression; name?: string; proof?: Array<Proof>; span: Span }
+  | { form: 'function'; name: string; params: Array<{ name: string; type?: Type; refine?: 'natural' }>; body: Array<Statement>; result?: Type; generics: Array<{ name: string; need?: string }>; async?: boolean; span: Span }
+  | { form: 'record-type'; name: string; params: Array<string>; fields: Array<{ name: string; type: Type }>; variants: Array<{ name: string; fields: Array<{ name: string; type: Type }> }>; span: Span }
   // a trait: a named set of method signatures (mask)
   | { form: 'mask'; name: string; methods: Array<string>; span: Span }
   // a trait implementation for a type: provides methods (wear on a form, or suit standalone)
   | { form: 'instance'; mask: string; target: string; methods: Array<string>; span: Span }
+
+// a node in an explicit proof tree: a four-letter tactic `head` paired with an optional one-word `arg`, plus
+// nested sub-proofs. See note/research/vibe/computation/libraries/06-hold.md.
+export type Proof = { head: string; arg?: string; children: Array<Proof>; span: Span }
 
 export type Program = Array<Statement>
 
@@ -87,10 +97,14 @@ export function showType(type: Type): string {
       return 'unknown'
     case 'array':
       return `${showType(type.element)}[]`
+    case 'map':
+      return `map<${showType(type.key)}, ${showType(type.value)}>`
     case 'named':
-      return type.name
-    case 'function':
-      return `(${type.params.map(showType).join(', ')}) -> ${showType(type.result)}`
+      return type.args && type.args.length > 0 ? `${type.name}<${type.args.map(showType).join(', ')}>` : type.name
+    case 'function': {
+      const effects = type.effects && type.effects.length > 0 ? ` !${type.effects.join(',')}` : ''
+      return `(${type.params.map(showType).join(', ')}) -> ${showType(type.result)}${effects}`
+    }
     case 'variable':
       return `?${type.id}`
   }

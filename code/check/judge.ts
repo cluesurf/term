@@ -77,6 +77,8 @@ function fitsMult(use: Mult, need: Mult): boolean {
 // ---- terms (de Bruijn indices) ----
 export type Term =
   | { tag: 'var'; index: number }
+  | { tag: 'meta'; id: number } // a metavariable (inference hole), solved by unification
+  | { tag: 'const'; name: string } // a postulated global constant (base type or primitive in the signature)
   | { tag: 'type'; level: Level }
   | { tag: 'pi'; mult: Mult; domain: Term; codomain: Term }
   | { tag: 'lam'; body: Term }
@@ -85,24 +87,195 @@ export type Term =
   | { tag: 'id'; type: Term; left: Term; right: Term }
   | { tag: 'refl'; type: Term; value: Term }
   | { tag: 'j'; proof: Term; motive: Term; base: Term; level: Level }
+  // dependent pairs (sigma): Sigma (x : domain) codomain, with a pair constructor and two projections
+  | { tag: 'sigma'; mult: Mult; domain: Term; codomain: Term }
+  | { tag: 'pair'; first: Term; second: Term }
+  | { tag: 'fst'; pair: Term }
+  | { tag: 'snd'; pair: Term }
+  // self types (the inductive foundation): Self (x) body, where x stands for the value of the type itself
+  | { tag: 'self'; body: Term }
 
 // ---- values (normal forms) ----
 type Closure = { env: Array<Value>; body: Term } | { native: (arg: Value) => Value }
-type Elim = { e: 'app'; arg: Value } | { e: 'j'; motive: Value; base: Value }
+type Elim = { e: 'app'; arg: Value } | { e: 'j'; motive: Value; base: Value } | { e: 'fst' } | { e: 'snd' }
 export type Value =
   | { v: 'type'; level: Level }
   | { v: 'pi'; mult: Mult; domain: Value; codomain: Closure }
   | { v: 'lam'; body: Closure }
   | { v: 'neutral'; head: number; spine: Array<Elim> }
+  // a rigid constant from the signature, stuck like a neutral (it has no definition to unfold)
+  | { v: 'rigid'; name: string; spine: Array<Elim> }
+  // a flexible neutral headed by an unsolved metavariable; collapses to its solution once solved
+  | { v: 'flex'; id: number; spine: Array<Elim> }
   | { v: 'id'; type: Value; left: Value; right: Value }
   | { v: 'refl'; type: Value; value: Value }
+  | { v: 'sigma'; mult: Mult; domain: Value; codomain: Closure }
+  | { v: 'pair'; first: Value; second: Value }
+  | { v: 'self'; body: Closure }
 
-const neutralVar = (level: number): Value => ({ v: 'neutral', head: level, spine: [] })
+export const neutralVar = (level: number): Value => ({ v: 'neutral', head: level, spine: [] })
 
-function evaluate(env: Array<Value>, term: Term): Value {
+// ---- the metacontext: metavariable types and solutions (module-level, ids globally fresh and monotonic) ----
+const metaType = new Map<number, Value>()
+const metaSolution = new Map<number, Value>()
+let nextMeta = 0
+
+// ---- transparent definitions (delta reduction): a constant with a definition may unfold during conversion ----
+// Only sound for terminating definitions, so the elaborator registers non-recursive ones; recursive / effectful
+// functions stay opaque postulates.
+const definition = new Map<string, Value>()
+// fuel bounds how deeply transparent definitions may unfold during one conversion, so a recursive (or pathological
+// self-referential) definition can be made transparent without the checker ever looping. Exhausting fuel makes the
+// unfold stuck (conversion returns not-equal): sound but incomplete, never wrong.
+let unfoldFuel = 0
+const MAX_UNFOLD = 32
+export function defineConstant(name: string, value: Value): void {
+  definition.set(name, value)
+}
+export function resetDefinitions(): void {
+  definition.clear()
+}
+// unfold a rigid constant that has a definition, replaying its spine onto the definition's value
+function unfoldRigid(value: Extract<Value, { v: 'rigid' }>): Value {
+  let result = definition.get(value.name)!
+  for (const elim of value.spine) {
+    if (elim.e === 'app') result = applyValue(result, elim.arg)
+    else if (elim.e === 'fst') result = applyFst(result)
+    else if (elim.e === 'snd') result = applySnd(result)
+    else result = applyJ(result, elim.motive, elim.base)
+  }
+  return result
+}
+
+// create a fresh metavariable of the given type, returned as a term ready to splice into elaboration
+export function freshMeta(type: Value): Term {
+  const id = nextMeta++
+  metaType.set(id, type)
+  return { tag: 'meta', id }
+}
+
+// reset solutions between independent elaboration runs (types are re-registered as metas are created)
+export function resetMetas(): void {
+  metaType.clear()
+  metaSolution.clear()
+  nextMeta = 0
+}
+
+// follow a flexible value to its solution (applying the recorded spine), as far as it resolves
+function force(value: Value): Value {
+  if (value.v !== 'flex') return value
+  const solution = metaSolution.get(value.id)
+  if (!solution) return value
+  let result = solution
+  for (const elim of value.spine) result = elim.e === 'app' ? applyValue(result, elim.arg) : applyJ(result, elim.motive, elim.base)
+  return force(result)
+}
+
+// Miller pattern unification. A flexible value `?m x1 .. xn` (the spine is distinct bound variables) unifies with
+// `rhs` by solving `?m := \ x1 .. xn. rhs`, where rhs is renamed into the scope of the new binders. The renaming
+// also enforces the scope check (rhs may not mention variables outside x1..xn) and the occurs check (rhs may not
+// mention ?m). This is the standard algorithm (Abel-Pientka / elaboration-zoo), here over our value language.
+
+// a partial renaming from outer de Bruijn levels (the spine variables) to the solution's local de Bruijn levels
+type Renaming = { codomain: number; map: Map<number, number> }
+
+// invert a spine: succeed only when it is a list of distinct bound variables (a Miller pattern)
+function invertSpine(spine: Array<Elim>): Renaming | null {
+  const map = new Map<number, number>()
+  let codomain = 0
+  for (const elim of spine) {
+    if (elim.e !== 'app') return null
+    const arg = force(elim.arg)
+    if (arg.v !== 'neutral' || arg.spine.length !== 0) return null // not a bare variable
+    if (map.has(arg.head)) return null // not distinct
+    map.set(arg.head, codomain)
+    codomain++
+  }
+  return { codomain, map }
+}
+
+// extend a renaming under one new binder: the fresh outer variable maps to a fresh local variable
+function liftRenaming(renaming: Renaming, outerLevel: number): Renaming {
+  const map = new Map(renaming.map)
+  map.set(outerLevel, renaming.codomain)
+  return { codomain: renaming.codomain + 1, map }
+}
+
+// rename a value into a term valid under the solution's binders. Throws on an escaping variable (scope check) or a
+// self-reference of `metaId` (occurs check). `level` is the current outer de Bruijn level.
+function renameValue(metaId: number, renaming: Renaming, level: number, value: Value): Term {
+  value = force(value)
+  switch (value.v) {
+    case 'type':
+      return { tag: 'type', level: value.level }
+    case 'flex': {
+      if (value.id === metaId) throw new TypeError('occurs check: a metavariable appears in its own solution')
+      return renameSpine(metaId, renaming, level, { tag: 'meta', id: value.id }, value.spine)
+    }
+    case 'neutral': {
+      const local = renaming.map.get(value.head)
+      if (local === undefined) throw new TypeError('a variable escapes the scope of the metavariable solution')
+      return renameSpine(metaId, renaming, level, { tag: 'var', index: renaming.codomain - local - 1 }, value.spine)
+    }
+    case 'rigid':
+      return renameSpine(metaId, renaming, level, { tag: 'const', name: value.name }, value.spine)
+    case 'pi':
+      return { tag: 'pi', mult: value.mult, domain: renameValue(metaId, renaming, level, value.domain), codomain: renameUnder(metaId, renaming, level, value.codomain) }
+    case 'sigma':
+      return { tag: 'sigma', mult: value.mult, domain: renameValue(metaId, renaming, level, value.domain), codomain: renameUnder(metaId, renaming, level, value.codomain) }
+    case 'lam':
+      return { tag: 'lam', body: renameUnder(metaId, renaming, level, value.body) }
+    case 'self':
+      return { tag: 'self', body: renameUnder(metaId, renaming, level, value.body) }
+    case 'pair':
+      return { tag: 'pair', first: renameValue(metaId, renaming, level, value.first), second: renameValue(metaId, renaming, level, value.second) }
+    case 'id':
+      return { tag: 'id', type: renameValue(metaId, renaming, level, value.type), left: renameValue(metaId, renaming, level, value.left), right: renameValue(metaId, renaming, level, value.right) }
+    case 'refl':
+      return { tag: 'refl', type: renameValue(metaId, renaming, level, value.type), value: renameValue(metaId, renaming, level, value.value) }
+  }
+}
+
+function renameUnder(metaId: number, renaming: Renaming, level: number, closure: Closure): Term {
+  return renameValue(metaId, liftRenaming(renaming, level), level + 1, closeOver(closure, neutralVar(level)))
+}
+
+function renameSpine(metaId: number, renaming: Renaming, level: number, head: Term, spine: Array<Elim>): Term {
+  let term = head
+  for (const elim of spine) {
+    if (elim.e === 'app') term = { tag: 'app', fun: term, arg: renameValue(metaId, renaming, level, elim.arg) }
+    else if (elim.e === 'fst') term = { tag: 'fst', pair: term }
+    else if (elim.e === 'snd') term = { tag: 'snd', pair: term }
+    else term = { tag: 'j', proof: term, motive: renameValue(metaId, renaming, level, elim.motive), base: renameValue(metaId, renaming, level, elim.base), level: litLevel(0) }
+  }
+  return term
+}
+
+// solve `?id spine := rhs` by Miller pattern unification (covers the empty-spine case too). Returns false if the
+// spine is not a pattern, or the scope / occurs check fails.
+function solveMeta(level: number, id: number, spine: Array<Elim>, rhs: Value): boolean {
+  const renaming = invertSpine(spine)
+  if (!renaming) return false
+  let body: Term
+  try {
+    body = renameValue(id, renaming, level, rhs)
+  } catch {
+    return false
+  }
+  let solution = body
+  for (let i = 0; i < renaming.codomain; i++) solution = { tag: 'lam', body: solution }
+  metaSolution.set(id, evaluate([], solution))
+  return true
+}
+
+export function evaluate(env: Array<Value>, term: Term): Value {
   switch (term.tag) {
     case 'var':
       return env[term.index]!
+    case 'meta':
+      return force({ v: 'flex', id: term.id, spine: [] })
+    case 'const':
+      return { v: 'rigid', name: term.name, spine: [] }
     case 'type':
       return { v: 'type', level: term.level }
     case 'pi':
@@ -119,11 +292,77 @@ function evaluate(env: Array<Value>, term: Term): Value {
       return { v: 'refl', type: evaluate(env, term.type), value: evaluate(env, term.value) }
     case 'j':
       return applyJ(evaluate(env, term.proof), evaluate(env, term.motive), evaluate(env, term.base))
+    case 'sigma':
+      return { v: 'sigma', mult: term.mult, domain: evaluate(env, term.domain), codomain: { env, body: term.codomain } }
+    case 'pair':
+      return { v: 'pair', first: evaluate(env, term.first), second: evaluate(env, term.second) }
+    case 'fst':
+      return applyFst(evaluate(env, term.pair))
+    case 'snd':
+      return applySnd(evaluate(env, term.pair))
+    case 'self':
+      return { v: 'self', body: { env, body: term.body } }
   }
 }
 
-// the observational identity: Id ((a:S) -> T a) f g  ==  (a:S) -> Id (T a) (f a) (g a). This is what makes
-// function extensionality compute: a proof of pointwise equality IS a proof of equality of functions.
+function applyFst(value: Value): Value {
+  value = force(value)
+  if (value.v === 'pair') return value.first
+  if (value.v === 'neutral') return { v: 'neutral', head: value.head, spine: [...value.spine, { e: 'fst' }] }
+  if (value.v === 'rigid') return { v: 'rigid', name: value.name, spine: [...value.spine, { e: 'fst' }] }
+  if (value.v === 'flex') return { v: 'flex', id: value.id, spine: [...value.spine, { e: 'fst' }] }
+  throw new Error('fst of a non-pair')
+}
+
+function applySnd(value: Value): Value {
+  value = force(value)
+  if (value.v === 'pair') return value.second
+  if (value.v === 'neutral') return { v: 'neutral', head: value.head, spine: [...value.spine, { e: 'snd' }] }
+  if (value.v === 'rigid') return { v: 'rigid', name: value.name, spine: [...value.spine, { e: 'snd' }] }
+  if (value.v === 'flex') return { v: 'flex', id: value.id, spine: [...value.spine, { e: 'snd' }] }
+  throw new Error('snd of a non-pair')
+}
+
+// does the term reference the variable bound `depth` binders outward? (used to detect a non-dependent codomain)
+function usesVar(term: Term, depth: number): boolean {
+  switch (term.tag) {
+    case 'var':
+      return term.index === depth
+    case 'pi':
+    case 'sigma':
+      return usesVar(term.domain, depth) || usesVar(term.codomain, depth + 1)
+    case 'lam':
+    case 'self':
+      return usesVar(term.body, depth + 1)
+    case 'app':
+      return usesVar(term.fun, depth) || usesVar(term.arg, depth)
+    case 'pair':
+      return usesVar(term.first, depth) || usesVar(term.second, depth)
+    case 'fst':
+    case 'snd':
+      return usesVar(term.pair, depth)
+    case 'ann':
+      return usesVar(term.term, depth) || usesVar(term.type, depth)
+    case 'id':
+      return usesVar(term.type, depth) || usesVar(term.left, depth) || usesVar(term.right, depth)
+    case 'refl':
+      return usesVar(term.type, depth) || usesVar(term.value, depth)
+    case 'j':
+      return usesVar(term.proof, depth) || usesVar(term.motive, depth) || usesVar(term.base, depth)
+    default:
+      return false
+  }
+}
+
+// a codomain depends on its argument unless it is a closed (non-native) body that never mentions the bound variable
+function dependsOnArgument(closure: Closure): boolean {
+  return 'native' in closure ? true : usesVar(closure.body, 0)
+}
+
+// the observational identity, which makes extensionality COMPUTE:
+//   Id ((a:S) -> T a) f g   ==   (a:S) -> Id (T a) (f a) (g a)             (function extensionality)
+//   Id ((x:A) * B) p q       ==   (Id A p.1 q.1) * (Id B p.2 q.2)           (pair extensionality, B non-dependent)
+// A proof of pointwise / componentwise equality IS a proof of equality of the function / pair.
 function idValue(type: Value, left: Value, right: Value): Value {
   if (type.v === 'pi') {
     return {
@@ -133,29 +372,74 @@ function idValue(type: Value, left: Value, right: Value): Value {
       codomain: { native: (a: Value) => idValue(closeOver(type.codomain, a), applyValue(left, a), applyValue(right, a)) },
     }
   }
+  if (type.v === 'sigma') {
+    const firstLeft = applyFst(left)
+    const firstRight = applyFst(right)
+    const firstId = idValue(type.domain, firstLeft, firstRight)
+    if (!dependsOnArgument(type.codomain)) {
+      // non-dependent product: Id (A * B) p q = (Id A p.1 q.1) * (Id B p.2 q.2)
+      const secondType = closeOver(type.codomain, firstLeft)
+      return { v: 'sigma', mult: 'many', domain: firstId, codomain: { native: () => idValue(secondType, applySnd(left), applySnd(right)) } }
+    }
+    // dependent pair: Id (Sigma(x:A) B) p q = Sigma (h : Id A p.1 q.1) (Id (B q.1) (transport B h p.2) q.2). The
+    // second component is transported along the first-component proof h, using J (so when h is refl it computes
+    // away and this is the ordinary componentwise identity).
+    const secondTypeAtRight = closeOver(type.codomain, firstRight)
+    const secondLeft = applySnd(left)
+    const secondRight = applySnd(right)
+    // the transport motive: \ y. \ _. B y
+    const motive: Value = { v: 'lam', body: { native: (y: Value) => ({ v: 'lam', body: { native: () => closeOver(type.codomain, y) } }) } }
+    return {
+      v: 'sigma',
+      mult: 'many',
+      domain: firstId,
+      codomain: { native: (h: Value) => idValue(secondTypeAtRight, applyJ(h, motive, secondLeft), secondRight) },
+    }
+  }
   return { v: 'id', type, left, right }
 }
 
-function closeOver(closure: Closure, value: Value): Value {
+export function closeOver(closure: Closure, value: Value): Value {
   return 'native' in closure ? closure.native(value) : evaluate([value, ...closure.env], closure.body)
 }
 
 function applyValue(fun: Value, arg: Value): Value {
+  fun = force(fun)
   if (fun.v === 'lam') return closeOver(fun.body, arg)
   if (fun.v === 'neutral') return { v: 'neutral', head: fun.head, spine: [...fun.spine, { e: 'app', arg }] }
+  if (fun.v === 'rigid') return { v: 'rigid', name: fun.name, spine: [...fun.spine, { e: 'app', arg }] }
+  if (fun.v === 'flex') return { v: 'flex', id: fun.id, spine: [...fun.spine, { e: 'app', arg }] }
   throw new Error('applied a non-function')
 }
 
 function applyJ(proof: Value, motive: Value, base: Value): Value {
+  proof = force(proof)
   if (proof.v === 'refl') return base
   if (proof.v === 'neutral') return { v: 'neutral', head: proof.head, spine: [...proof.spine, { e: 'j', motive, base }] }
+  if (proof.v === 'rigid') return { v: 'rigid', name: proof.name, spine: [...proof.spine, { e: 'j', motive, base }] }
+  if (proof.v === 'flex') return { v: 'flex', id: proof.id, spine: [...proof.spine, { e: 'j', motive, base }] }
   throw new Error('J on a non-identity')
 }
 
-function quote(level: number, value: Value): Term {
+// quote a spine of eliminators onto a head term (shared by metavariable, neutral, and rigid heads)
+function quoteSpine(level: number, head: Term, spine: Array<Elim>): Term {
+  let term = head
+  for (const elim of spine) {
+    if (elim.e === 'app') term = { tag: 'app', fun: term, arg: quote(level, elim.arg) }
+    else if (elim.e === 'fst') term = { tag: 'fst', pair: term }
+    else if (elim.e === 'snd') term = { tag: 'snd', pair: term }
+    else term = { tag: 'j', proof: term, motive: quote(level, elim.motive), base: quote(level, elim.base), level: litLevel(0) }
+  }
+  return term
+}
+
+export function quote(level: number, value: Value): Term {
+  value = force(value)
   switch (value.v) {
     case 'type':
       return { tag: 'type', level: value.level }
+    case 'flex':
+      return quoteSpine(level, { tag: 'meta', id: value.id }, value.spine)
     case 'pi':
       return { tag: 'pi', mult: value.mult, domain: quote(level, value.domain), codomain: quote(level + 1, closeOver(value.codomain, neutralVar(level))) }
     case 'lam':
@@ -164,18 +448,45 @@ function quote(level: number, value: Value): Term {
       return { tag: 'id', type: quote(level, value.type), left: quote(level, value.left), right: quote(level, value.right) }
     case 'refl':
       return { tag: 'refl', type: quote(level, value.type), value: quote(level, value.value) }
-    case 'neutral': {
-      let term: Term = { tag: 'var', index: level - value.head - 1 }
-      for (const elim of value.spine) {
-        if (elim.e === 'app') term = { tag: 'app', fun: term, arg: quote(level, elim.arg) }
-        else term = { tag: 'j', proof: term, motive: quote(level, elim.motive), base: quote(level, elim.base), level: litLevel(0) }
-      }
-      return term
-    }
+    case 'sigma':
+      return { tag: 'sigma', mult: value.mult, domain: quote(level, value.domain), codomain: quote(level + 1, closeOver(value.codomain, neutralVar(level))) }
+    case 'pair':
+      return { tag: 'pair', first: quote(level, value.first), second: quote(level, value.second) }
+    case 'self':
+      return { tag: 'self', body: quote(level + 1, closeOver(value.body, neutralVar(level))) }
+    case 'neutral':
+      return quoteSpine(level, { tag: 'var', index: level - value.head - 1 }, value.spine)
+    case 'rigid':
+      return quoteSpine(level, { tag: 'const', name: value.name }, value.spine)
   }
 }
 
+// compare two eliminator spines structurally (shared by neutral and rigid heads)
+function convertSpine(level: number, a: Array<Elim>, b: Array<Elim>): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!
+    const y = b[i]!
+    if (x.e === 'app' && y.e === 'app') {
+      if (!convert(level, x.arg, y.arg)) return false
+    } else if (x.e === 'j' && y.e === 'j') {
+      if (!convert(level, x.motive, y.motive) || !convert(level, x.base, y.base)) return false
+    } else if (x.e === 'fst' && y.e === 'fst') {
+      // a projection: nothing to compare beyond the elimination kind
+    } else if (x.e === 'snd' && y.e === 'snd') {
+      // ditto
+    } else return false
+  }
+  return true
+}
+
 function convert(level: number, a: Value, b: Value): boolean {
+  a = force(a)
+  b = force(b)
+  // metavariable solving by Miller pattern unification
+  if (a.v === 'flex' && b.v === 'flex' && a.id === b.id) return convertSpine(level, a.spine, b.spine)
+  if (a.v === 'flex') return solveMeta(level, a.id, a.spine, b)
+  if (b.v === 'flex') return solveMeta(level, b.id, b.spine, a)
   if (a.v === 'type' && b.v === 'type') return eqLevel(a.level, b.level)
   if (a.v === 'pi' && b.v === 'pi') {
     return a.mult === b.mult && convert(level, a.domain, b.domain) &&
@@ -184,44 +495,83 @@ function convert(level: number, a: Value, b: Value): boolean {
   if (a.v === 'lam' || b.v === 'lam') {
     return convert(level + 1, applyValue(a, neutralVar(level)), applyValue(b, neutralVar(level)))
   }
+  if (a.v === 'sigma' && b.v === 'sigma') {
+    return a.mult === b.mult && convert(level, a.domain, b.domain) &&
+      convert(level + 1, closeOver(a.codomain, neutralVar(level)), closeOver(b.codomain, neutralVar(level)))
+  }
+  if (a.v === 'pair' || b.v === 'pair') {
+    // eta for pairs: compare componentwise, eta-expanding a neutral pair via its projections
+    return convert(level, applyFst(a), applyFst(b)) && convert(level, applySnd(a), applySnd(b))
+  }
+  if (a.v === 'self' && b.v === 'self') {
+    return convert(level + 1, closeOver(a.body, neutralVar(level)), closeOver(b.body, neutralVar(level)))
+  }
   if (a.v === 'id' && b.v === 'id') return convert(level, a.type, b.type) && convert(level, a.left, b.left) && convert(level, a.right, b.right)
   if (a.v === 'refl' && b.v === 'refl') return convert(level, a.value, b.value)
   if (a.v === 'neutral' && b.v === 'neutral') {
-    if (a.head !== b.head || a.spine.length !== b.spine.length) return false
-    for (let i = 0; i < a.spine.length; i++) {
-      const x = a.spine[i]!
-      const y = b.spine[i]!
-      if (x.e === 'app' && y.e === 'app') {
-        if (!convert(level, x.arg, y.arg)) return false
-      } else if (x.e === 'j' && y.e === 'j') {
-        if (!convert(level, x.motive, y.motive) || !convert(level, x.base, y.base)) return false
-      } else return false
-    }
+    if (a.head !== b.head) return false
+    return convertSpine(level, a.spine, b.spine)
+  }
+  // rigid constants: try the fast structural path first, then delta-unfold any transparent definition and retry
+  if (a.v === 'rigid' && b.v === 'rigid' && a.name === b.name && a.spine.length === b.spine.length && convertSpine(level, a.spine, b.spine)) {
     return true
   }
+  if (a.v === 'rigid' && definition.has(a.name)) return convertUnfolding(level, unfoldRigid(a), b)
+  if (b.v === 'rigid' && definition.has(b.name)) return convertUnfolding(level, a, unfoldRigid(b))
   return false
+}
+
+// convert after a delta unfold, charging fuel so recursive / self-referential definitions cannot loop the checker
+function convertUnfolding(level: number, a: Value, b: Value): boolean {
+  if (unfoldFuel >= MAX_UNFOLD) return false
+  unfoldFuel++
+  const result = convert(level, a, b)
+  unfoldFuel--
+  return result
+}
+
+// public: are two values definitionally equal? (used by the refinement layer to discharge a non-linear hold via
+// the kernel, leveraging delta so e.g. a transparent `double(n)` is equal to `add(n, n)`)
+export function areConvertible(level: number, a: Value, b: Value): boolean {
+  return convert(level, a, b)
 }
 
 // subtyping with universe cumulativity
 function subtype(level: number, a: Value, b: Value): boolean {
+  a = force(a)
+  b = force(b)
+  if (a.v === 'flex' || b.v === 'flex') return convert(level, a, b) // let the meta solver handle either side
   if (a.v === 'type' && b.v === 'type') return leqLevel(a.level, b.level)
   if (a.v === 'pi' && b.v === 'pi') {
     return a.mult === b.mult && convert(level, a.domain, b.domain) &&
+      subtype(level + 1, closeOver(a.codomain, neutralVar(level)), closeOver(b.codomain, neutralVar(level)))
+  }
+  if (a.v === 'sigma' && b.v === 'sigma') {
+    return a.mult === b.mult && subtype(level, a.domain, b.domain) &&
       subtype(level + 1, closeOver(a.codomain, neutralVar(level)), closeOver(b.codomain, neutralVar(level)))
   }
   return convert(level, a, b)
 }
 
 // ---- context and usage ----
-type Context = { level: number; env: Array<Value>; types: Array<Value>; mults: Array<Mult> }
-export const emptyContext: Context = { level: 0, env: [], types: [], mults: [] }
+// `globals` is the signature: each postulated constant mapped to its type (a value). Threaded through binders.
+export type Context = { level: number; env: Array<Value>; types: Array<Value>; mults: Array<Mult>; globals: Map<string, Value> }
+export const emptyContext: Context = { level: 0, env: [], types: [], mults: [], globals: new Map() }
 
-function bind(context: Context, mult: Mult, type: Value): Context {
+// build a context whose signature postulates each named constant at the given (closed) type term
+export function contextWithSignature(signature: Array<{ name: string; type: Term }>): Context {
+  const globals = new Map<string, Value>()
+  for (const entry of signature) globals.set(entry.name, evaluate([], entry.type))
+  return { ...emptyContext, globals }
+}
+
+export function bind(context: Context, mult: Mult, type: Value): Context {
   return {
     level: context.level + 1,
     env: [neutralVar(context.level), ...context.env],
     types: [type, ...context.types],
     mults: [mult, ...context.mults],
+    globals: context.globals,
   }
 }
 
@@ -246,6 +596,16 @@ export function infer(context: Context, term: Term): Inferred {
       if (!type) throw new TypeError(`unbound variable ${term.index}`)
       return { type, usage: singletonUsage(context.level, term.index) }
     }
+    case 'const': {
+      const type = context.globals.get(term.name)
+      if (!type) throw new TypeError(`unknown constant ${term.name}`)
+      return { type, usage: zeroUsage(context.level) }
+    }
+    case 'meta': {
+      const type = metaType.get(term.id)
+      if (!type) throw new TypeError(`unknown metavariable ${term.id}`)
+      return { type, usage: zeroUsage(context.level) }
+    }
     case 'type':
       return { type: { v: 'type', level: succLevel(term.level) }, usage: zeroUsage(context.level) }
     case 'pi': {
@@ -256,10 +616,11 @@ export function infer(context: Context, term: Term): Inferred {
     }
     case 'app': {
       const fun = infer(context, term.fun)
-      if (fun.type.v !== 'pi') throw new TypeError('applied a non-function')
-      const argUsage = check(context, term.arg, fun.type.domain)
-      const result = closeOver(fun.type.codomain, evaluate(context.env, term.arg))
-      return { type: result, usage: addUsage(fun.usage, scaleUsage(fun.type.mult, argUsage)) }
+      const funType = force(fun.type)
+      if (funType.v !== 'pi') throw new TypeError('applied a non-function')
+      const argUsage = check(context, term.arg, funType.domain)
+      const result = closeOver(funType.codomain, evaluate(context.env, term.arg))
+      return { type: result, usage: addUsage(fun.usage, scaleUsage(funType.mult, argUsage)) }
     }
     case 'ann': {
       inferUniverse(context, term.type)
@@ -293,6 +654,34 @@ export function infer(context: Context, term: Term): Inferred {
       const resultType = applyValue(applyValue(motive, b), proofValue)
       return { type: resultType, usage: zeroUsage(context.level) }
     }
+    case 'sigma': {
+      const domainLevel = inferUniverse(context, term.domain)
+      const inner = bind(context, 'many', evaluate(context.env, term.domain))
+      const codomainLevel = inferUniverse(inner, term.codomain)
+      return { type: { v: 'type', level: maxLevel(domainLevel, codomainLevel) }, usage: zeroUsage(context.level) }
+    }
+    case 'fst': {
+      const pair = infer(context, term.pair)
+      const pairType = force(pair.type)
+      if (pairType.v !== 'sigma') throw new TypeError('fst of a non-pair')
+      return { type: pairType.domain, usage: pair.usage }
+    }
+    case 'snd': {
+      const pair = infer(context, term.pair)
+      const pairType = force(pair.type)
+      if (pairType.v !== 'sigma') throw new TypeError('snd of a non-pair')
+      const first = applyFst(evaluate(context.env, term.pair))
+      return { type: closeOver(pairType.codomain, first), usage: pair.usage }
+    }
+    case 'self': {
+      // formation: Self x. T : Type i, where T is typed with x standing for the self type itself
+      const selfType: Value = { v: 'self', body: { env: context.env, body: term.body } }
+      const inner = bind(context, 'many', selfType)
+      const level = inferUniverse(inner, term.body)
+      return { type: { v: 'type', level }, usage: zeroUsage(context.level) }
+    }
+    case 'pair':
+      throw new TypeError('cannot infer a bare pair; annotate it or check it against a sigma type')
     case 'lam':
       throw new TypeError('cannot infer a bare function; annotate it or check it against a pi type')
   }
@@ -316,6 +705,7 @@ function motivePiType(context: Context, aType: Value, a: Value, level: Level): V
 }
 
 export function check(context: Context, term: Term, expected: Value): Usage {
+  expected = force(expected)
   if (term.tag === 'lam') {
     if (expected.v !== 'pi') throw new TypeError('a function must be checked against a pi type')
     const inner = bind(context, expected.mult, expected.domain)
@@ -334,7 +724,24 @@ export function check(context: Context, term: Term, expected: Value): Usage {
     check(context, term.value, expected.type)
     return zeroUsage(context.level)
   }
+  if (term.tag === 'pair') {
+    if (expected.v !== 'sigma') throw new TypeError('a pair must be checked against a sigma type')
+    const firstUsage = check(context, term.first, expected.domain)
+    const secondType = closeOver(expected.codomain, evaluate(context.env, term.first))
+    const secondUsage = check(context, term.second, secondType)
+    return addUsage(scaleUsage(expected.mult, firstUsage), secondUsage)
+  }
+  if (expected.v === 'self') {
+    // self introduction: a term has type Self x. T exactly when it has type T[x := itself]
+    return check(context, term, closeOver(expected.body, evaluate(context.env, term)))
+  }
   const actual = infer(context, term)
+  const actualType = force(actual.type)
+  // self elimination: a term of type Self x. T may be used at T[x := itself]
+  if (actualType.v === 'self' && !subtype(context.level, actualType, expected)) {
+    const unfolded = closeOver(actualType.body, evaluate(context.env, term))
+    if (subtype(context.level, unfolded, expected)) return actual.usage
+  }
   if (!subtype(context.level, actual.type, expected)) {
     throw new TypeError(`type mismatch:\n  expected ${showValue(context.level, expected)}\n  found    ${showValue(context.level, actual.type)}`)
   }
@@ -357,6 +764,10 @@ export function showTerm(term: Term): string {
   switch (term.tag) {
     case 'var':
       return `#${term.index}`
+    case 'meta':
+      return `?${term.id}`
+    case 'const':
+      return term.name
     case 'type':
       return `Type ${showLevel(term.level)}`
     case 'pi':
@@ -373,6 +784,16 @@ export function showTerm(term: Term): string {
       return `refl`
     case 'j':
       return `J(${showTerm(term.proof)})`
+    case 'sigma':
+      return `(${showMult(term.mult)} ${showTerm(term.domain)}) * ${showTerm(term.codomain)}`
+    case 'pair':
+      return `(${showTerm(term.first)}, ${showTerm(term.second)})`
+    case 'fst':
+      return `${showTerm(term.pair)}.1`
+    case 'snd':
+      return `${showTerm(term.pair)}.2`
+    case 'self':
+      return `Self ${showTerm(term.body)}`
   }
 }
 
@@ -396,7 +817,19 @@ export function instantiateLevel(term: Term, name: string, replacement: Level): 
         return { tag: 'refl', type: go(t.type), value: go(t.value) }
       case 'j':
         return { tag: 'j', proof: go(t.proof), motive: go(t.motive), base: go(t.base), level: substLevel(t.level, name, replacement) }
+      case 'sigma':
+        return { tag: 'sigma', mult: t.mult, domain: go(t.domain), codomain: go(t.codomain) }
+      case 'pair':
+        return { tag: 'pair', first: go(t.first), second: go(t.second) }
+      case 'fst':
+        return { tag: 'fst', pair: go(t.pair) }
+      case 'snd':
+        return { tag: 'snd', pair: go(t.pair) }
+      case 'self':
+        return { tag: 'self', body: go(t.body) }
       case 'var':
+      case 'const':
+      case 'meta':
         return t
     }
   }

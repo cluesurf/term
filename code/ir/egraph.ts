@@ -130,6 +130,21 @@ class EGraph {
           if (inner.op === '*' && this.find(inner.args[0]!) === this.find(r)) changed = this.union(id, inner.args[1]!) || changed
         }
       }
+
+      // x - x  ->  0
+      if (node.op === '-' && this.find(l) === this.find(r)) changed = this.union(id, this.add('int:0', [])) || changed
+
+      // constant reassociation: (a + k1) + k2  ->  a + (k1 + k2); likewise for *. With commutativity this also
+      // catches (k1 + a) + k2 and the multiplicative forms, so scattered constants collapse to one.
+      if ((node.op === '+' || node.op === '*') && ri !== undefined) {
+        for (const inner of this.classNodes(l)) {
+          if (inner.op !== node.op) continue
+          const innerConstant = this.intValue(inner.args[1]!)
+          if (innerConstant === undefined) continue
+          const combined = fold(node.op, innerConstant, ri)
+          if (combined !== undefined) changed = this.union(id, this.add(node.op, [inner.args[0]!, this.add(`int:${combined}`, [])])) || changed
+        }
+      }
     }
     return changed
   }

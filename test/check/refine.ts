@@ -27,9 +27,11 @@ function main(): void {
   // n >= 0  does NOT imply  n - 1 >= 0  (n = 0 is a counterexample)
   expect('n>=0 =/=> n-1>=0', proves([atLeast(n, k(0))], atLeast(linear({ n: 1 }, -1), k(0))), false)
 
-  // n > 0  implies  n - 1 >= 0   (integers... but FM is over rationals; n>0 rational allows n=0.5, so n-1>=0 fails)
-  // so over rationals this is NOT valid; we assert the rational answer (sound, conservative)
-  expect('n>0 =/=> n-1>=0 (rational)', proves([above(n, k(0))], atLeast(linear({ n: 1 }, -1), k(0))), false)
+  // n > 0  implies  n - 1 >= 0   over integers (n > 0 means n >= 1). The prover tightens strict inequalities, so it
+  // reasons over the integers, not the rationals: this is now valid.
+  expect('n>0 => n-1>=0 (integers)', proves([above(n, k(0))], atLeast(linear({ n: 1 }, -1), k(0))), true)
+  // and the integer tightening is real: n > 0 proves n >= 1
+  expect('n>0 => n>=1 (integers)', proves([above(n, k(0))], atLeast(n, k(1))), true)
 
   // index safety: 0 <= i AND i < len  implies  i < len
   expect('bounds => i<len', proves([atLeast(i, k(0)), below(i, len)], below(i, len)), true)

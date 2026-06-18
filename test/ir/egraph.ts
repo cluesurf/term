@@ -46,6 +46,13 @@ function main(): void {
   // guard: distinct variables are not conflated
   expect('(a + b) - b stays (not folded to a, no such rule)', optimize(op('-', op('+', v('a'), v('b')), v('b'))), '((a + b) - b)')
 
+  // x - x -> 0
+  expect('a - a', optimize(op('-', v('a'), v('a'))), '0')
+  // constant reassociation: (a + 2) + 3 -> a + 5
+  expect('(a + 2) + 3', optimize(op('+', op('+', v('a'), int(2)), int(3))), '(a + 5)')
+  // and multiplicative: (a * 2) * 4 -> a * 8
+  expect('(a * 2) * 4', optimize(op('*', op('*', v('a'), int(2)), int(4))), '(a * 8)')
+
   console.log(`\negraph: ${pass} pass, ${fail} fail`)
 }
 

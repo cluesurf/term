@@ -18,6 +18,23 @@ export function checkTraits(program: Program, file: string): Array<Diagnostic> {
   }
   const maskNames = [...masks.keys()]
 
+  // coherence: a given trait may be implemented at most once for a given type (no overlapping instances)
+  const seenInstances = new Set<string>()
+  for (const statement of program) {
+    if (statement.form !== 'instance') continue
+    const key = `${statement.mask}:${statement.target}`
+    if (seenInstances.has(key)) {
+      diagnostics.push(
+        diagnose('duplicate-instance', {
+          file,
+          span: statement.span,
+          message: `"${statement.target}" implements "${statement.mask}" more than once`,
+        }),
+      )
+    }
+    seenInstances.add(key)
+  }
+
   // each instance must implement every method of its mask, and its mask must exist
   for (const statement of program) {
     if (statement.form !== 'instance') continue

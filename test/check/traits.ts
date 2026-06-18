@@ -132,6 +132,30 @@ task sort
     'unknown-name',
   )
 
+  // coherence: a type may implement a trait only once; an overlapping instance is rejected
+  expectError(
+    'overlapping instances rejected (coherence)',
+    `${COMPARISON}
+suit shape
+  wear comparison
+    task is-equal
+      take self
+      back, wave true
+    task is-not-equal
+      take self
+      back, wave false
+suit shape
+  wear comparison
+    task is-equal
+      take self
+      back, wave true
+    task is-not-equal
+      take self
+      back, wave false
+`,
+    'duplicate-instance',
+  )
+
   console.log(`\ntraits: ${pass} pass, ${fail} fail`)
 }
 
