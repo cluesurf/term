@@ -181,6 +181,7 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
       case 'record':
       case 'member':
       case 'await':
+      case 'closure':
         cur.lines.push(unsupported('LLVM', node.form, ';'))
         return '0'
       default:

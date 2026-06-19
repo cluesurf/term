@@ -50,6 +50,8 @@ export type Expression =
   | { form: 'member'; target: Expression; name: string; span: Span; type?: Type }
   // await an async result (`call ... / wait true`)
   | { form: 'await'; expr: Expression; span: Span; type?: Type }
+  // a function literal / callback value (`task name / take ... / <body>` used as a value), e.g. a hook handler
+  | { form: 'closure'; params: Array<{ name: string; type?: Type }>; body: Array<Statement>; result?: Type; async?: boolean; span: Span; type?: Type }
   // a hole: an unresolved reference, may be runtime-deferred
   | { form: 'hole'; name: string; span: Span; type?: Type; deferred?: boolean }
 

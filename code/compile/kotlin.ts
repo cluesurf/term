@@ -153,6 +153,9 @@ export function emitKotlin(program: Program): string {
         return `${expr(node.target)}.${camel(node.name)}`
       case 'await':
         return expr(node.expr)
+      case 'closure':
+        // a function literal as a Kotlin lambda (full callback bodies for Kotlin are a follow-up; JS is the primary target)
+        return `{ ${node.params.map((p) => camel(p.name)).join(', ')} -> TODO() }`
       default:
         return exhausted(node)
     }

@@ -169,6 +169,9 @@ export function emitSwift(program: Program): string {
       }
       case 'await':
         return `await ${expr(node.expr, bind)}`
+      case 'closure':
+        // a function literal as a Swift closure (full callback bodies for Swift are a follow-up; JS is the primary target)
+        return `{ (${node.params.map((p) => camel(p.name)).join(', ')}) in fatalError() }`
       default:
         return exhausted(node)
     }

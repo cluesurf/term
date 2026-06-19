@@ -121,6 +121,40 @@ fuse make-adder
     console.log(`FAIL  clean fuse compile (${cleanResult.ok ? cleanResult.typescript : cleanResult.diagnostics.map((d) => d.message).join(';')})`)
   }
 
+  // compile-time meta-loop: a fuse over a `host` enumeration generates one definition per item (dynamic `fuse read`
+  // resolves the inner template name from a parameter, and `{name}` substitutes the item)
+  const metaLoop = `host suit
+  term hearts
+  term spades
+
+tree make-flag
+  take name
+  hook bind
+    task is-{name}
+      like boolean
+
+tree each
+  take items
+  take maker
+  hook fuse
+    walk list, read items
+      hook step
+        take item
+        fuse read maker
+          read item
+
+fuse each, read suit
+  read make-flag
+`
+  const metaResult = compile({ file: 'meta.tree', text: metaLoop })
+  if (metaResult.ok && metaResult.typescript.includes('isHearts') && metaResult.typescript.includes('isSpades')) {
+    pass++
+    console.log('ok    meta-loop unrolls a fuse over a host enumeration (isHearts, isSpades)')
+  } else {
+    fail++
+    console.log(`FAIL  meta-loop (${metaResult.ok ? metaResult.typescript : metaResult.diagnostics.map((d) => d.message).join(';')})`)
+  }
+
   // a fuse whose expanded body has a type error must be caught by the checker (proves injected code is checked)
   const badFuse = `tree bad-tmpl
   take x

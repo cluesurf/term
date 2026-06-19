@@ -180,7 +180,7 @@ function unrollWalk(group: GroupNode, ctx: Context): Array<Node> | undefined {
   if (!items) return undefined // the iterable is not a known enumeration: leave it as a runtime walk
   const stepHook = args.find((a): a is GroupNode => a.kind === 'group' && headName(a) === 'hook')
   if (!stepHook) return undefined
-  const stepChildren = rest(stepHook)
+  const stepChildren = rest(stepHook).slice(1) // drop the hook variant marker (`step` / `next`), keep the loop body
   const takeNode = stepChildren.find((c): c is GroupNode => c.kind === 'group' && headName(c) === 'take')
   const itemArg = takeNode && rest(takeNode)[0]
   const itemVar = itemArg && itemArg.kind === 'group' ? headName(itemArg) ?? 'item' : 'item'

@@ -21,10 +21,20 @@ const PRECEDENCE: Record<BinaryOp, number> = {
   '%': 5,
 }
 
+// JavaScript reserved words that cannot be bare identifiers; a seed name colliding with one is suffixed with `_`.
+// Applied uniformly (definitions and uses), so a field/param named `new` stays consistent across the module.
+const RESERVED = new Set([
+  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum',
+  'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'null',
+  'return', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
+  'let', 'static', 'await', 'async', 'implements', 'interface', 'package', 'private', 'protected', 'public',
+])
+
 // the TypeScript identifier a seed name compiles to (kebab/snake to camelCase). Exported so the benchmark runner can
 // map a seed function name to the exported symbol it must call in the emitted module.
 export function toCamel(name: string): string {
-  return name.replace(/[-_](.)/g, (_, c: string) => c.toUpperCase())
+  const camel = name.replace(/[-_](.)/g, (_, c: string) => c.toUpperCase())
+  return RESERVED.has(camel) ? `${camel}_` : camel
 }
 
 function toPascal(name: string): string {
@@ -127,6 +137,15 @@ function makeEmitter(variants: Set<string>) {
         return `${expression(node.target)}.${toCamel(node.name)}`
       case 'await':
         return `await ${expression(node.expr)}`
+      case 'closure': {
+        const params = node.params.map((p) => `${toCamel(p.name)}: ${tsType(p.type)}`).join(', ')
+        const arrow = node.async ? `async (${params})` : `(${params})`
+        // a single trailing `return X` becomes a concise arrow; otherwise a block
+        if (node.body.length === 1 && node.body[0]!.form === 'return' && node.body[0]!.value) {
+          return `${arrow} => ${expression(node.body[0]!.value)}`
+        }
+        return `${arrow} => ${block(node.body, 0)}`
+      }
       case 'unary':
         return `${node.op}${expression(node.operand, 6)}`
       case 'binary': {

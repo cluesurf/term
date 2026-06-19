@@ -163,6 +163,8 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       if (generic) return generic
       // `list` is the native array type: `like list` is array<unknown>, `like list<t>` is array<t>
       if (type.name === 'list') return { kind: 'array', element: type.args?.[0] ? seedType(type.args[0], generics) : UNKNOWN }
+      // `hash` is the native map type: `like hash<k, v>` is map<k, v>, `like hash` is map<unknown, unknown>
+      if (type.name === 'hash') return { kind: 'map', key: type.args?.[0] ? seedType(type.args[0], generics) : UNKNOWN, value: type.args?.[1] ? seedType(type.args[1], generics) : UNKNOWN }
       if (records.has(type.name)) {
         // a form: give it a fresh type argument per generic parameter (maybe -> maybe<?a>), inferred from usage
         const params = formGenerics.get(type.name) ?? []
@@ -292,6 +294,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       case 'map':
       case 'record':
       case 'variable':
+      case 'closure':
       case 'hole':
         return true
       default:
@@ -442,6 +445,8 @@ export function check(program: Program, file: string): Array<Diagnostic> {
           }
         } else if (target.kind === 'array' && node.name === 'length') {
           type = NUMBER
+        } else if (target.kind === 'map' && node.name === 'size') {
+          type = NUMBER
         } else {
           type = UNKNOWN
         }
@@ -456,8 +461,12 @@ export function check(program: Program, file: string): Array<Diagnostic> {
           let mangled: string | undefined
           for (const arg of args) {
             const receiver = resolve(arg)
-            if (receiver.kind === 'named') {
-              const found = methodTable.get(receiver.name)?.get(method)
+            // a named form dispatches to its own methods; an array receiver dispatches to `list`'s methods and a map
+            // receiver to `hash`'s (those forms are the native array / map), so `call map / <array>` or `call get /
+            // <map>` resolves even when other forms also define that method
+            const owner = receiver.kind === 'named' ? receiver.name : receiver.kind === 'array' ? 'list' : receiver.kind === 'map' ? 'hash' : undefined
+            if (owner) {
+              const found = methodTable.get(owner)?.get(method)
               if (found) {
                 mangled = found
                 break
@@ -521,6 +530,17 @@ export function check(program: Program, file: string): Array<Diagnostic> {
             type = UNKNOWN
           }
         }
+        break
+      }
+      case 'closure': {
+        // a function literal: check its body with the params in scope, and yield a function type
+        const inner: Env = new Map(env)
+        const params = node.params.map((p) => p.type ?? UNKNOWN)
+        node.params.forEach((p, i) => inner.set(p.name, { vars: [], type: params[i]! }))
+        checkBody(node.body, inner, node.result ?? UNKNOWN)
+        const fn: Type = { kind: 'function', params, result: node.result ?? UNKNOWN }
+        if (node.async) fn.effects = ['async']
+        type = fn
         break
       }
     }

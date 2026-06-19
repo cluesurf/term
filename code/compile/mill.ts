@@ -53,6 +53,11 @@ function parseType(node: Node): Type {
   if (node.kind !== 'group') return UNKNOWN
   const name = headName(node)
   if (!name) return UNKNOWN
+  // `list` is the native array; an inner `like <t>` gives the element type, else it is unconstrained
+  if (name === 'list') {
+    const elementLike = rest(node).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+    return { kind: 'array', element: elementLike ? parseLikeType(elementLike) : UNKNOWN }
+  }
   return TYPE_NAME[name] ?? { kind: 'named', name }
 }
 
@@ -77,6 +82,12 @@ function parseLikeType(likeGroup: GroupNode): Type {
     const type: Type = { kind: 'function', params, result }
     if (effects.length > 0) type.effects = effects
     return type
+  }
+  // `like list` (with an optional inner `like <t>` for the element) is the native array
+  if (first && first.kind === 'group' && headName(first) === 'list') {
+    const elementLike = children.slice(1).find((c): c is GroupNode => c.kind === 'group' && headName(c) === 'like')
+      ?? rest(first).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+    return { kind: 'array', element: elementLike ? parseLikeType(elementLike) : UNKNOWN }
   }
   return first ? parseType(first) : UNKNOWN
 }
@@ -203,6 +214,29 @@ export function mill(tree: RootNode, file: string): MillResult {
       }
       case 'make':
         return makeExpression(group, scope)
+      case 'task': {
+        // a function literal / callback value: `task <name> / take ... / like ... / <body>`. The name is cosmetic
+        // for a value position; params come from `take`, the body from the remaining statements.
+        const decl = args.slice(1)
+        const params: Array<{ name: string; type?: Type }> = []
+        for (const child of decl) {
+          if (child.kind !== 'group' || headName(child) !== 'take') continue
+          const varGroup = rest(child)[0]
+          const paramName = varGroup && varGroup.kind === 'group' ? headName(varGroup) : undefined
+          if (!paramName) continue
+          const likeGroup = rest(child).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+          params.push(likeGroup ? { name: paramName, type: parseLikeType(likeGroup) } : { name: paramName })
+        }
+        const inner = new Set(scope)
+        for (const p of params) inner.add(p.name)
+        const SIGNATURE = new Set(['take', 'like', 'head', 'mark', 'note', 'wait'])
+        const bodyNodes = decl.filter((n) => !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')))
+        const resultLike = decl.find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+        const closure: Expression = { form: 'closure', params, body: toStatements(bodyNodes, inner), span }
+        if (resultLike) closure.result = parseLikeType(resultLike)
+        if (decl.some(isWaitTrue)) closure.async = true
+        return closure
+      }
       case 'call':
         return callExpression(group, scope)
       case 'bind': {
@@ -337,7 +371,10 @@ export function mill(tree: RootNode, file: string): MillResult {
           }
           const valueNode = args[1]
           const value: Expression = valueNode ? toExpression(valueNode, scope) : { form: 'integer', value: 0, span }
-          if (scope.has(name)) {
+          if (name.includes('/')) {
+            // `save self/field, X` mutates a member, not a binding: emit an assignment to the member path
+            out.push({ form: 'assign', target: pathExpression(name, span), op: '=', value, span })
+          } else if (scope.has(name)) {
             out.push({ form: 'assign', target: { form: 'variable', name, span }, op: '=', value, span })
           } else {
             scope.add(name)
@@ -600,9 +637,10 @@ export function mill(tree: RootNode, file: string): MillResult {
         const fieldName = fieldNode && fieldNode.kind === 'group' ? headName(fieldNode) : undefined
         const likeGroup = inner[1]
         let type: Type = UNKNOWN
+        // parse the field type with the function-aware parser so `like task` fields are callable function types and
+        // `like list` fields are native arrays, not opaque named types
         if (likeGroup && likeGroup.kind === 'group' && headName(likeGroup) === 'like') {
-          const typeNode = rest(likeGroup)[0]
-          type = typeNode ? parseType(typeNode) : UNKNOWN
+          type = parseLikeType(likeGroup)
         }
         if (fieldName) out.push({ name: fieldName, type })
       }
@@ -968,6 +1006,13 @@ export function mill(tree: RootNode, file: string): MillResult {
         const params = rt && rt.form === 'record-type' ? rt.params : []
         const element: Type = { kind: 'array', element: { kind: 'named', name: params[0] ?? 't' } }
         program.push(...formMethods(group, formName, params, element))
+      } else if (formName === 'hash') {
+        // hash is the native map: its methods are typed over map<k, v> (the form's two generics); receiver dispatch
+        // routes `call get / <map>` to the hash method
+        const rt = buildRecordType(group)
+        const params = rt && rt.form === 'record-type' ? rt.params : []
+        const self: Type = { kind: 'map', key: { kind: 'named', name: params[0] ?? 'k' }, value: { kind: 'named', name: params[1] ?? 'v' } }
+        program.push(...formMethods(group, formName, params, self))
       } else {
         const rt = buildRecordType(group)
         if (rt) program.push(rt)

@@ -55,6 +55,7 @@ export function emitWgsl(program: Program): string {
       case 'record':
       case 'member':
       case 'await':
+      case 'closure':
         return `0 /* ${unsupported('WGSL', node.form, '').trim()} */`
       default:
         return exhausted(node)
