@@ -244,6 +244,9 @@ export function emitKotlin(program: Program): string {
         return '// hold: verified at compile time'
       case 'native':
         return ''
+      case 'zone':
+      case 'dock':
+        return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend
       default:
         return exhausted(node)
     }

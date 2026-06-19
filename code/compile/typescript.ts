@@ -226,6 +226,10 @@ function makeEmitter(variants: Set<string>) {
       case 'native':
         // a `dock load` native binding: emitted as a host import at the top of the module, not inline here
         return ''
+      case 'zone':
+      case 'dock':
+        // view (zone) and routing/CLI (dock) DSLs are lowered by the dedicated zone compiler (code/zone), not here
+        return ''
       default:
         return exhausted(node)
     }

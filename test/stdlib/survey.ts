@@ -46,6 +46,8 @@ const CORE = [
   'boolean.tree', 'maybe.tree', 'result.tree', 'pair.tree', 'list.tree', 'float.tree',
   'file.tree', 'clock.tree', 'color.tree', 'console.tree', 'process.tree', 'error.tree',
   'hash.tree', 'range.tree', 'time.tree', 'log.tree', 'input.tree',
+  'command.tree', 'text.tree', 'date.tree', 'channel.tree', 'network.tree', 'socket.tree',
+  'task.tree', 'cryptography.tree',
 ]
 
 // no module may crash the compiler (parser robustness)
@@ -63,7 +65,7 @@ for (const file of all) {
   }
 }
 expect('no module crashes the compiler', crashed, 0)
-expect('at least 45 core modules compile', ok >= 45, true)
+expect('every non-empty core module compiles', ok >= 58, true)
 
 // a curated set of load-bearing modules must compile individually
 for (const file of CORE) {

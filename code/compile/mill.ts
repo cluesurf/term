@@ -6,7 +6,7 @@
 import type { Diagnostic, Span } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
 import type { GroupNode, NameNode, Node, RootNode } from '@/code/parser/tree'
-import type { BinaryOp, Expression, Program, Proof, Statement, Type } from '@/code/compile/node'
+import type { BinaryOp, DockArgument, DockCall, DockMethod, DockRoute, DockTake, Expression, Program, Proof, Statement, Type, ZoneAttribute, ZoneNode } from '@/code/compile/node'
 import { BOOLEAN, NUMBER, STRING, UNIT, UNKNOWN } from '@/code/compile/node'
 
 // like-type names to surface types
@@ -514,14 +514,20 @@ export function mill(tree: RootNode, file: string): MillResult {
         params.push(param)
       }
     }
-    // the function's return type: a bare `like <type>` statement in the body
+    // the function's return type: a bare `like <type>`, or a named output `free <name>, like <type>` (the type of the
+    // value the task produces; native bindings use the name). The bare `like` wins if both are present.
     const resultLike = body.find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
-    const resultType = resultLike ? parseLikeType(resultLike) : undefined
+    let resultType = resultLike ? parseLikeType(resultLike) : undefined
+    if (!resultType) {
+      const freeNode = body.find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'free')
+      const likeInFree = freeNode && rest(freeNode).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+      if (likeInFree) resultType = parseLikeType(likeInFree)
+    }
     const scope = new Set<string>(params.map((p) => p.name))
     // signature nodes describe the task; they are not executable body statements. `head` (generics), `take` (params),
-    // the bare `like` (result type), `mark` (modifiers like `mark async`/`mark private`), and `note` (documentation)
-    // are all consumed here, so only real statements (send back, save, call, fork, ...) reach the body.
-    const SIGNATURE = new Set(['head', 'take', 'like', 'mark', 'note'])
+    // the bare `like` (result type), `free` (named output), `mark` (modifiers like `mark async`/`mark private`), and
+    // `note` (documentation) are all consumed here, so only real statements (send back, save, call, fork, ...) remain.
+    const SIGNATURE = new Set(['head', 'take', 'like', 'free', 'mark', 'note'])
     const executable = body.filter((n) => !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')))
     const fn: Statement = { form: 'function', name, params, body: toStatements(executable, scope), generics, span }
     if (resultType) fn.result = resultType
@@ -665,9 +671,284 @@ export function mill(tree: RootNode, file: string): MillResult {
     return out
   }
 
+  // `bind <name>, <value>` arguments under a group (component props, call args)
+  function buildBindArgs(group: GroupNode, scope: Set<string>): Array<DockArgument> {
+    const args: Array<DockArgument> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'bind') continue
+      const nameGroup = rest(child)[0]
+      const name = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+      const valueNode = rest(child)[1]
+      if (name) args.push({ name, value: valueNode ? toExpression(valueNode, scope) : { form: 'unit', span: spanOf(child) } })
+    }
+    return args
+  }
+
+  // `call <name> / bind ...` handlers under a group
+  function buildDockCalls(group: GroupNode, scope: Set<string>): Array<DockCall> {
+    const calls: Array<DockCall> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'call') continue
+      const nameGroup = rest(child)[0]
+      const name = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+      if (name) calls.push({ name, args: buildBindArgs(child, scope), span: spanOf(child) })
+    }
+    return calls
+  }
+
+  // `take <name> / like <type> / need true` options/params. A `take path|query|body|head` is a section whose nested
+  // takes/links are the real params, so descend into it.
+  const TAKE_SECTION = new Set(['path', 'query', 'body', 'head'])
+  function buildDockTakes(group: GroupNode): Array<DockTake> {
+    const takes: Array<DockTake> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group') continue
+      const headKw = headName(child)
+      if (headKw === 'take') {
+        const varGroup = rest(child)[0]
+        const name = varGroup && varGroup.kind === 'group' ? headName(varGroup) : undefined
+        if (!name) continue
+        if (TAKE_SECTION.has(name)) {
+          takes.push(...buildDockTakes(child))
+          continue
+        }
+        const likeGroup = rest(child).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+        const required = rest(child).some((n) => n.kind === 'group' && headName(n) === 'need')
+        const take: DockTake = { name, required, span: spanOf(child) }
+        if (likeGroup) take.type = parseLikeType(likeGroup)
+        takes.push(take)
+      } else if (headKw === 'link') {
+        const varGroup = rest(child)[0]
+        const name = varGroup && varGroup.kind === 'group' ? headName(varGroup) : undefined
+        if (!name) continue
+        const likeGroup = rest(child).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+        const take: DockTake = { name, required: false, span: spanOf(child) }
+        if (likeGroup) take.type = parseLikeType(likeGroup)
+        takes.push(take)
+      }
+    }
+    return takes
+  }
+
+  // `send <name>, <value>` responses
+  function buildDockSends(group: GroupNode, scope: Set<string>): Array<{ name: string; value?: Expression }> {
+    const out: Array<{ name: string; value?: Expression }> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'send') continue
+      const nameGroup = rest(child)[0]
+      const name = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+      if (!name) continue
+      const valueNode = rest(child)[1]
+      out.push(valueNode ? { name, value: toExpression(valueNode, scope) } : { name })
+    }
+    return out
+  }
+
+  // build the zone (component) body: nested elements, text, reads, slots, forks, walks, computed saves
+  function buildZoneNodes(nodes: Array<Node>, scope: Set<string>): Array<ZoneNode> {
+    const out: Array<ZoneNode> = []
+    for (const node of nodes) {
+      if (node.kind === 'text') {
+        out.push({ form: 'text', value: node.parts.map((p) => (p.kind === 'chunk' ? p.text : '')).join(''), span: spanOf(node) })
+        continue
+      }
+      if (node.kind !== 'group') continue
+      const span = spanOf(node)
+      switch (headName(node)) {
+        case 'zone': {
+          const nameGroup = rest(node)[0]
+          const elName = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+          if (!elName) break
+          const attributes: Array<ZoneAttribute> = []
+          const props: Array<{ name: string; value: Expression }> = []
+          const children: Array<Node> = []
+          for (const child of rest(node).slice(1)) {
+            if (child.kind === 'group' && headName(child) === 'seed') {
+              const attrGroup = rest(child)[0]
+              const attrName = attrGroup && attrGroup.kind === 'group' ? headName(attrGroup) : undefined
+              const valueNode = rest(child)[1]
+              if (attrName) {
+                const value: Expression = valueNode ? toExpression(valueNode, scope) : { form: 'unit', span }
+                const event = valueNode != null && valueNode.kind === 'group' && headName(valueNode) === 'call'
+                attributes.push({ name: attrName, value, event, span: spanOf(child) })
+              }
+            } else if (child.kind === 'group' && headName(child) === 'bind') {
+              const bindGroup = rest(child)[0]
+              const bindName = bindGroup && bindGroup.kind === 'group' ? headName(bindGroup) : undefined
+              const valueNode = rest(child)[1]
+              if (bindName) props.push({ name: bindName, value: valueNode ? toExpression(valueNode, scope) : { form: 'unit', span } })
+            } else {
+              children.push(child)
+            }
+          }
+          out.push({ form: 'element', name: elName, attributes, props, children: buildZoneNodes(children, scope), span })
+          break
+        }
+        case 'text': {
+          const t = rest(node)[0]
+          out.push({ form: 'text', value: t && t.kind === 'text' ? t.parts.map((p) => (p.kind === 'chunk' ? p.text : '')).join('') : '', span })
+          break
+        }
+        case 'read':
+          out.push({ form: 'read', value: toExpression(node, scope), span })
+          break
+        case 'slot': {
+          const n = rest(node)[0]
+          const nm = n && n.kind === 'group' ? headName(n) : undefined
+          out.push(nm ? { form: 'slot', name: nm, span } : { form: 'slot', span })
+          break
+        }
+        case 'fork': {
+          const hookMap = hooks(node)
+          const condNodes = hookMap.get('test')
+          const cond: Expression = condNodes && condNodes[0] ? toExpression(condNodes[0], scope) : { form: 'boolean', value: false, span }
+          const elseNodes = hookMap.get('miss')
+          out.push({
+            form: 'fork',
+            branches: [{ cond, body: buildZoneNodes(hookMap.get('hold') ?? [], scope) }],
+            otherwise: elseNodes ? buildZoneNodes(elseNodes, scope) : undefined,
+            span,
+          })
+          break
+        }
+        case 'walk': {
+          const parts = rest(node)
+          const variant = parts[0] && parts[0].kind === 'group' ? headName(parts[0]) : undefined
+          if (variant !== 'list') break
+          const iterable: Expression = parts[1] ? toExpression(parts[1], scope) : { form: 'unit', span }
+          const nextBody = hooks(node).get('next') ?? []
+          let item = 'item'
+          let bodyNodes = nextBody
+          const first = nextBody[0]
+          if (first && first.kind === 'group' && headName(first) === 'take') {
+            const nameGroup = rest(first)[1]
+            if (nameGroup && nameGroup.kind === 'group' && headName(nameGroup) === 'name') {
+              const itemGroup = rest(nameGroup)[0]
+              if (itemGroup && itemGroup.kind === 'group') item = headName(itemGroup) ?? 'item'
+            }
+            bodyNodes = nextBody.slice(1)
+          }
+          const inner = new Set(scope)
+          inner.add(item)
+          out.push({ form: 'walk', iterable, item, body: buildZoneNodes(bodyNodes, inner), span })
+          break
+        }
+        case 'save': {
+          const args = rest(node)
+          const target = args[0]
+          const nm = target && target.kind === 'group' ? headName(target) : undefined
+          const valueNode = args[1]
+          if (nm) {
+            scope.add(nm)
+            out.push({ form: 'save', name: nm, value: valueNode ? toExpression(valueNode, scope) : { form: 'unit', span }, span })
+          }
+          break
+        }
+        default:
+          break
+      }
+    }
+    return out
+  }
+
+  function buildZone(group: GroupNode): Statement | undefined {
+    const nameGroup = rest(group)[0]
+    const name = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+    const span = spanOf(group)
+    if (!name) {
+      fail(group, 'zone needs a name')
+      return undefined
+    }
+    const params: Array<{ name: string; type?: Type }> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'take') continue
+      const varGroup = rest(child)[0]
+      const paramName = varGroup && varGroup.kind === 'group' ? headName(varGroup) : undefined
+      if (!paramName) continue
+      const likeGroup = rest(child).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+      const param: { name: string; type?: Type } = { name: paramName }
+      if (likeGroup) param.type = parseLikeType(likeGroup)
+      params.push(param)
+    }
+    const scope = new Set<string>(params.map((p) => p.name))
+    const SIGNATURE = new Set(['take', 'like', 'head', 'note', 'mark'])
+    const bodyNodes = rest(group).slice(1).filter((n) => !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')))
+    return { form: 'zone', name, params, body: buildZoneNodes(bodyNodes, scope), span }
+  }
+
+  // build a routing / CLI dock (the non-FFI `dock`): path, params, method handlers, directives, nested docks.
+  function buildDockRoute(group: GroupNode): DockRoute {
+    const scope = new Set<string>()
+    const span = spanOf(group)
+    const pathGroup = rest(group)[0]
+    const path = pathGroup && pathGroup.kind === 'group' ? headName(pathGroup) ?? '' : ''
+
+    const methods: Array<DockMethod> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'task') continue
+      const mNameGroup = rest(child)[0]
+      const mName = mNameGroup && mNameGroup.kind === 'group' ? headName(mNameGroup) : undefined
+      if (mName) methods.push({ name: mName, takes: buildDockTakes(child), calls: buildDockCalls(child, scope), sends: buildDockSends(child, scope), span: spanOf(child) })
+    }
+
+    let component: DockRoute['component']
+    const zoneChild = rest(group).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'zone')
+    if (zoneChild) {
+      const zNameGroup = rest(zoneChild)[0]
+      const zName = zNameGroup && zNameGroup.kind === 'group' ? headName(zNameGroup) : undefined
+      if (zName) component = { name: zName, props: buildBindArgs(zoneChild, scope) }
+    }
+
+    const directives: Array<{ name: string; value?: Expression }> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'seed') continue
+      const nameGroup = rest(child)[0]
+      const dName = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+      if (!dName) continue
+      const valueNode = rest(child)[1]
+      directives.push(valueNode ? { name: dName, value: toExpression(valueNode, scope) } : { name: dName })
+    }
+
+    const dockHooks: Array<{ name: string; calls: Array<DockCall> }> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'hook') continue
+      const nameGroup = rest(child)[0]
+      const hName = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
+      if (hName) dockHooks.push({ name: hName, calls: buildDockCalls(child, scope) })
+    }
+
+    const children = rest(group)
+      .filter((n): n is GroupNode => n.kind === 'group' && headName(n) === 'dock')
+      .map(buildDockRoute)
+
+    return {
+      path,
+      takes: buildDockTakes(group),
+      methods,
+      calls: buildDockCalls(group, scope),
+      component,
+      directives,
+      sends: buildDockSends(group, scope),
+      hooks: dockHooks,
+      children,
+      span,
+    }
+  }
+
+  // distinguish the FFI form (`dock load / load <module>`) from a routing / CLI dock (`dock /path`, `dock make`)
+  function isFfiDock(group: GroupNode): boolean {
+    const first = rest(group)[0]
+    return first != null && first.kind === 'group' && headName(first) === 'load'
+  }
+
   const program: Program = []
   for (const group of tree.nodes) {
     const keyword = headName(group)
+    if (keyword === 'zone') {
+      const zone = buildZone(group)
+      if (zone) program.push(zone)
+      continue
+    }
     if (keyword === 'task') {
       const fn = buildFunction(group)
       if (fn) program.push(fn)
@@ -700,7 +981,9 @@ export function mill(tree: RootNode, file: string): MillResult {
     } else if (keyword === 'suit') {
       program.push(...buildSuit(group))
     } else if (keyword === 'dock') {
-      program.push(...buildDock(group))
+      // `dock load` is the native FFI binding; any other dock is a routing / CLI declaration
+      if (isFfiDock(group)) program.push(...buildDock(group))
+      else program.push({ form: 'dock', route: buildDockRoute(group), span: spanOf(group) })
     } else if (keyword === 'load' || keyword === 'bear' || keyword === 'deck') {
       // module directives: resolved by the loader (code/compile/load.ts), not statements
     } else if (keyword === 'note') {

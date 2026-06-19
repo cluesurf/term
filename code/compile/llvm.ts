@@ -311,6 +311,9 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
       case 'native':
         cur.lines.push(unsupported('LLVM', node.form, ';'))
         break
+      case 'zone':
+      case 'dock':
+        break // view / routing DSLs are lowered by the dedicated zone compiler, not this backend
       default:
         exhausted(node)
     }

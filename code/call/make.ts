@@ -3,6 +3,8 @@ import path from 'path'
 import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync, watch as fsWatch } from 'fs'
 import { compile } from '../compile/compile'
 import { CompileCache } from '../compile/cache'
+import { withNativeEnv } from '../compile/native'
+import type { NativeEnv } from '../compile/native'
 import type { Resolver } from '../compile/load'
 import { stdlibResolver } from './walk'
 import { logGood, logFail, logStep, formatError, fade } from '../tint'
@@ -24,10 +26,11 @@ function findTreeFiles(dir: string, out: Array<string> = []): Array<string> {
   return out
 }
 
-// the resolver a project build uses: the bundled stdlib (`@cluesurf/base/...`) plus the project's own `.tree` files
-function projectResolver(root: string): Resolver {
+// the resolver a project build uses: the bundled stdlib (`@cluesurf/base/...`) plus the project's own `.tree` files,
+// wrapped so abstract native imports resolve to the target platform's implementation (default node)
+function projectResolver(root: string, env: NativeEnv = 'node'): Resolver {
   const stdlib = stdlibResolver()
-  return (importPath, fromFile) => {
+  const base: Resolver = (importPath, fromFile) => {
     const fromStdlib = stdlib?.(importPath, fromFile)
     if (fromStdlib) return fromStdlib
     // `@scope/pkg/sub/path` -> `<root>/code/sub/path.tree` when it refers to this project
@@ -39,6 +42,7 @@ function projectResolver(root: string): Resolver {
       return undefined
     }
   }
+  return withNativeEnv(env, base)
 }
 
 // compile every .tree file in the project to TypeScript under `host/`, mirroring the source tree. An optional shared

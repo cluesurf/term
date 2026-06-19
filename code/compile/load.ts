@@ -19,11 +19,15 @@ function nameText(node: Node | undefined): string | undefined {
   return undefined
 }
 
-// the import paths a tree loads (top-level `load @path` directives)
+// the import paths a tree depends on: `load @path` (imports for local use) and `bear @path` (re-exports). Both pull
+// the target module into the merged program; because the program is one flat namespace, a `bear`ed definition is then
+// automatically visible to anything that imports this module (the re-export). The native bindings (bind.tree) lead
+// every wrapper with a run of `bear @...` lines that surface the platform's types.
 function loadPaths(tree: RootNode): Array<string> {
   const paths: Array<string> = []
   for (const group of tree.nodes) {
-    if (nameText(group.nodes[0]) !== 'load') continue
+    const keyword = nameText(group.nodes[0])
+    if (keyword !== 'load' && keyword !== 'bear') continue
     const path = nameText(group.nodes[1])
     if (path) paths.push(path)
   }

@@ -80,6 +80,48 @@ export type Statement =
   | { form: 'instance'; mask: string; target: string; methods: Array<string>; span: Span }
   // a native module binding (`dock load / load <node:fs/promises>, name fs`): the env-specific FFI for the stdlib
   | { form: 'native'; alias: string; module: string; span: Span }
+  // a component (view) definition, lowered from the `zone` DSL (book/site navigation, state, forms)
+  | { form: 'zone'; name: string; params: Array<{ name: string; type?: Type }>; body: Array<ZoneNode>; span: Span }
+  // a routing / CLI dock, lowered from the `dock` DSL (book/site/routes, navigation; book/line/calls)
+  | { form: 'dock'; route: DockRoute; span: Span }
+
+// ---- the zone (component / view) AST ----
+// an attribute or event binding on an element: `seed class, read theme` (attribute) or `seed click, call add` (event)
+export type ZoneAttribute = { name: string; value: Expression; event: boolean; span: Span }
+export type ZoneNode =
+  // `zone div` / `zone counter`: an html element or nested component. `props` are component inputs (`bind id, ...`).
+  | { form: 'element'; name: string; attributes: Array<ZoneAttribute>; props: Array<{ name: string; value: Expression }>; children: Array<ZoneNode>; span: Span }
+  | { form: 'text'; value: string; span: Span }
+  // a dynamic value rendered inline: `read app/count`
+  | { form: 'read'; value: Expression; span: Span }
+  // the outlet for children / the active child route
+  | { form: 'slot'; name?: string; span: Span }
+  // a conditional render: `fork test` with `hook test` / `hook hold` / `hook miss`
+  | { form: 'fork'; branches: Array<{ cond: Expression; body: Array<ZoneNode> }>; otherwise?: Array<ZoneNode>; span: Span }
+  // a list render: `walk list, read items` / `hook next` / `take site, name item`
+  | { form: 'walk'; iterable: Expression; item: string; body: Array<ZoneNode>; span: Span }
+  // a computed local: `save total / call count, ...`
+  | { form: 'save'; name: string; value: Expression; span: Span }
+
+// ---- the dock (routing / CLI) AST ----
+export type DockArgument = { name: string; value: Expression }
+export type DockCall = { name: string; args: Array<DockArgument>; span: Span }
+export type DockTake = { name: string; type?: Type; required: boolean; span: Span }
+export type DockMethod = { name: string; takes: Array<DockTake>; calls: Array<DockCall>; sends: Array<{ name: string; value?: Expression }>; span: Span }
+export type DockRoute = {
+  // a route path (`/users/:id`) or a CLI command name (`make`)
+  path: string
+  takes: Array<DockTake>
+  methods: Array<DockMethod>
+  calls: Array<DockCall>
+  // a client route renders a component: `zone user-detail / bind id, read id`
+  component?: { name: string; props: Array<DockArgument> }
+  directives: Array<{ name: string; value?: Expression }>
+  sends: Array<{ name: string; value?: Expression }>
+  hooks: Array<{ name: string; calls: Array<DockCall> }>
+  children: Array<DockRoute>
+  span: Span
+}
 
 // a node in an explicit proof tree: a four-letter tactic `head` paired with an optional one-word `arg`, plus
 // nested sub-proofs. See note/research/vibe/computation/libraries/06-hold.md.

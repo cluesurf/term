@@ -401,7 +401,9 @@ export function check(program: Program, file: string): Array<Diagnostic> {
         for (const field of node.fields) {
           const valueType = inferExpression(field.value, env)
           const fieldType = declared?.get(field.name)
-          if (fieldType) expect(valueType, substGenerics(fieldType, argMap), field.value.span, 'field value')
+          // seedType (not substGenerics) so a declared `like list` field becomes array<...>, matching how a list
+          // value is typed; it also resolves the form's generics via argMap
+          if (fieldType) expect(valueType, seedType(fieldType, argMap), field.value.span, 'field value')
         }
         type = { kind: 'named', name: enumName, args }
         break
