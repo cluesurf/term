@@ -75,7 +75,10 @@ export function buildEvents(tokens: TokenList): EventResult {
   const pop = () => contexts.pop()
   const indent = () => indents[indents.length - 1]!
   const pushIndent = (move = 0) => indents.push({ depth: lastDepth + move, used: true, ownLine: true })
-  const popIndent = () => indents.pop()
+  // never pop the root frame (depth 0): an over-dedent on malformed input must degrade to a diagnostic, not crash
+  const popIndent = () => {
+    if (indents.length > 1) indents.pop()
+  }
 
   function fail(name: 'invalid-nesting' | 'invalid-indentation' | 'syntax-error', token: Token, hint?: string) {
     diagnostics.push(diagnose(name, { file: tokens.file, span: token.span, hint }))

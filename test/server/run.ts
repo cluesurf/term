@@ -6,6 +6,7 @@ import { LanguageServer } from '@/code/server/server'
 import { MessageReader, encode } from '@/code/server/protocol'
 import type { Message } from '@/code/server/protocol'
 import { analyze, forEachExpression } from '@/code/server/analyze'
+import { buildIndex, referenceAt } from '@/code/server/symbols'
 
 let pass = 0
 let fail = 0
@@ -64,6 +65,44 @@ expect('hover: the integer literal reports type number', hoverValue, 'number')
 // close the document: diagnostics are cleared
 const closed = server.dispatch({ jsonrpc: '2.0', method: 'textDocument/didClose', params: { textDocument: { uri: 'good.tree' } } })
 expect('didClose: clears diagnostics', (closed[0]!.params as { diagnostics: Array<unknown> }).diagnostics.length, 0)
+
+// --- navigation: definition / references / rename / symbols / completion / signature help ---
+const NAV = 'task helper\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      mark 1\n\ntask runner\n  like number\n  back\n    call helper\n      mark 5\n'
+const navServer = new LanguageServer()
+navServer.dispatch({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri: 'nav.tree', text: NAV } } })
+
+// locate the `helper` reference at the call site (its span drives the position-based queries)
+const navIndex = buildIndex(analyze({ file: 'nav.tree', text: NAV }).program!)
+const callRef = navIndex.references.find((r) => r.name === 'helper')!
+const callPos = { line: callRef.span.start.line, character: callRef.span.start.character ?? callRef.span.start.column }
+const at = { line: callRef.span.start.line, character: callRef.span.start.column }
+
+const def = navServer.dispatch({ jsonrpc: '2.0', id: 10, method: 'textDocument/definition', params: { textDocument: { uri: 'nav.tree' }, position: at } })
+const defRange = (def[0]!.result as { range: { start: { line: number } } } | null)?.range
+expect('definition: jumps to the function declaration (line 0)', defRange?.start.line, 0)
+
+const refs = navServer.dispatch({ jsonrpc: '2.0', id: 11, method: 'textDocument/references', params: { textDocument: { uri: 'nav.tree' }, position: at } })
+expect('references: finds the call site and the declaration', (refs[0]!.result as Array<unknown>).length, 2)
+
+const rename = navServer.dispatch({ jsonrpc: '2.0', id: 12, method: 'textDocument/rename', params: { textDocument: { uri: 'nav.tree' }, position: at, newName: 'assist' } })
+const renameEdits = (rename[0]!.result as { changes: Record<string, Array<{ newText: string }>> }).changes['nav.tree']!
+expect('rename: edits every occurrence to the new name', renameEdits.length === 2 && renameEdits.every((e) => e.newText === 'assist'), true)
+
+const syms = navServer.dispatch({ jsonrpc: '2.0', id: 13, method: 'textDocument/documentSymbol', params: { textDocument: { uri: 'nav.tree' } } })
+const symNames = (syms[0]!.result as Array<{ name: string }>).map((s) => s.name)
+expect('documentSymbol: lists the top-level functions', symNames.includes('helper') && symNames.includes('runner'), true)
+
+const comp = navServer.dispatch({ jsonrpc: '2.0', id: 14, method: 'textDocument/completion', params: { textDocument: { uri: 'nav.tree' }, position: at } })
+const compLabels = (comp[0]!.result as { items: Array<{ label: string }> }).items.map((i) => i.label)
+expect('completion: offers in-scope names and keywords', compLabels.includes('helper') && compLabels.includes('call'), true)
+
+const sig = navServer.dispatch({ jsonrpc: '2.0', id: 15, method: 'textDocument/signatureHelp', params: { textDocument: { uri: 'nav.tree' }, position: callPos } })
+const sigLabel = (sig[0]!.result as { signatures: Array<{ label: string }> } | null)?.signatures[0]?.label
+expect('signatureHelp: shows the callee signature', typeof sigLabel === 'string' && sigLabel.startsWith('helper('), true)
+
+// initialize advertises the new capabilities
+const caps2 = (server.dispatch({ jsonrpc: '2.0', id: 20, method: 'initialize', params: {} })[0]!.result as { capabilities: Record<string, unknown> }).capabilities
+expect('initialize: advertises definition + completion + rename', !!caps2.definitionProvider && !!caps2.completionProvider && !!caps2.renameProvider, true)
 
 // an unknown request still gets a response (never hangs the client)
 const unknown: Message = { jsonrpc: '2.0', id: 9, method: 'textDocument/somethingNew', params: {} }

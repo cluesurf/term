@@ -6,11 +6,14 @@
 // Base types and primitives live IN the kernel as a signature of postulated constants, so a `Number` or `+` is a
 // genuine kernel term, not a parallel notion. Everyday types thus elaborate to the quantitative dependent theory.
 //
-// Coverage is staged. The pure functional fragment (functions, literals, arithmetic/comparison/logic, calls,
-// if-as-value, immutable let, recursion) is elaborated and kernel-checked today. Constructs without a kernel
-// encoding yet (mutation, loops, records, enums, async, generics, collections) cleanly decline (return null), and
-// the surface checker continues to cover them until their elaboration lands. The kernel is the authority for every
-// function it can model; nothing is judged by two theories at once.
+// Coverage is in two tiers. The pure functional fragment (functions, literals, arithmetic/comparison/logic, calls,
+// generics with erased type witnesses, immutable let, if-as-value, records and structs via constructors and
+// projections, enums via constructors and the match eliminator, arrays, recursion) elaborates to a proof-relevant
+// kernel term and is registered as a transparent delta definition. The effectful fragment (mutation, loops, `match`
+// with field projection, throw, hold) is type-checked as kernel commands (`checkCommands`) rather than as a single
+// proof term, so it is still kernel-verified but not made transparent for downstream delta. Anything genuinely
+// unrepresentable (the `map` literal, holes) cleanly declines and the surface checker covers it. The kernel is the
+// authority for every function it can model; nothing is judged by two theories at once.
 
 import type { Diagnostic, Span } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
@@ -409,6 +412,34 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
           result = apply(constant('cond'), quote(context.level, resultValue), condition, consequent, result)
         }
         return result
+      }
+      case 'match': {
+        // a match on an enum is its eliminator applied to the subject and one branch value per variant, in
+        // declaration order. The eliminator binds no fields, so a branch that projects a variant field declines
+        // (its body() returns null) and the surface checker covers it; an `otherwise` or missing variant also
+        // declines (the eliminator is total over exactly the variants).
+        if (tail.length > 0) return null // the match must produce the result (be the tail)
+        if (head!.otherwise) return null
+        const subject = expr(head!.subject, scope, context)
+        if (!subject) return null
+        let enumName: string | null = null
+        try {
+          const type = quote(context.level, infer(context, subject).type)
+          if (type.tag === 'const') enumName = type.name
+        } catch {
+          return null
+        }
+        const order = enumName ? variantNames.get(enumName) : undefined
+        if (!order) return null
+        const branches: Array<Term> = []
+        for (const variant of order) {
+          const branch = head!.cases.find((c) => c.label === variant)
+          if (!branch) return null // non-exhaustive against the eliminator: decline
+          const term = body(branch.body, scope, context, resultValue)
+          if (!term) return null
+          branches.push(term)
+        }
+        return apply(constant(`match__${enumName}`), quote(context.level, resultValue), subject, ...branches)
       }
       default:
         return null

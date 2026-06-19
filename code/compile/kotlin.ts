@@ -1,8 +1,9 @@
-// The Kotlin backend: emit the language as Kotlin. Parity with the TypeScript and Swift backends across every AST
-// form: functions, arithmetic, control flow, calls, algebraic data types, pattern match, maps, traits, throwing, and
-// native imports. Algebraic types use a tagged-record model (a `form` discriminant plus stored fields) for
-// cross-backend parity with the structural object model the TypeScript backend uses, so `match` and field access
-// lower uniformly. A typed lowering via monomorphization is a future refinement. Pure, browser-safe.
+// The Kotlin backend: emit the language as idiomatic, type-static Kotlin. Parity with the TypeScript backend across
+// every AST form. Algebraic data types lower to NATIVE sealed-class hierarchies (`sealed class Maybe<out T>` with a
+// subclass per variant), `match` to an exhaustive `when (subject) { is MaybeSome -> ... }` whose smart-casts make a
+// variant's fields directly accessible (no rewrite needed), and struct forms to `data class`es. A variant subclass
+// carries only the generics its own fields use, filling the rest with `Nothing` (valid under `out` variance), so
+// construction infers cleanly. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
 import type { Expression, Program, Statement, Type } from '@/code/compile/node'
 import { exhausted } from '@/code/compile/backend'
@@ -15,27 +16,28 @@ function pascal(name: string): string {
   return c.charAt(0).toUpperCase() + c.slice(1)
 }
 
-function kotlinType(type: Type | undefined): string {
+// gather the inference-variable ids appearing in a type (each an implicit generic parameter of its function)
+function collectVars(type: Type | undefined, into: Set<number>): void {
   switch (type?.kind) {
-    case 'boolean':
-      return 'Boolean'
-    case 'string':
-      return 'String'
-    case 'unit':
-    case undefined:
-      return 'Unit'
+    case 'variable':
+      into.add(type.id)
+      break
     case 'array':
-      return `List<${kotlinType(type.element)}>`
+      collectVars(type.element, into)
+      break
     case 'map':
-      return `Map<${kotlinType(type.key)}, ${kotlinType(type.value)}>`
-    case 'named':
-      return pascal(type.name)
+      collectVars(type.key, into)
+      collectVars(type.value, into)
+      break
     case 'function':
-      return `(${type.params.map(kotlinType).join(', ')}) -> ${kotlinType(type.result)}`
-    case 'number':
-      return 'Long'
+      type.params.forEach((p) => collectVars(p, into))
+      collectVars(type.result, into)
+      break
+    case 'named':
+      type.args?.forEach((a) => collectVars(a, into))
+      break
     default:
-      return 'Long'
+      break
   }
 }
 
@@ -43,8 +45,77 @@ const OP: Record<string, string> = { '&&': '&&', '||': '||', '==': '==', '!=': '
 
 export function emitKotlin(program: Program): string {
   const pad = (d: number) => '    '.repeat(d)
-  const variantType = new Map<string, string>()
-  for (const node of program) if (node.form === 'record-type') for (const v of node.variants) variantType.set(v.name, node.name)
+  // the Kotlin subclass for a variant label, and each variant's field names (for construction / smart-cast access)
+  const variantClass = new Map<string, string>()
+  const variantFieldNames = new Map<string, Array<string>>()
+  for (const node of program) {
+    if (node.form !== 'record-type') continue
+    for (const v of node.variants) {
+      variantClass.set(v.name, `${pascal(node.name)}${pascal(v.name)}`)
+      variantFieldNames.set(v.name, v.fields.map((f) => f.name))
+    }
+  }
+
+  let varNames = new Map<number, string>()
+
+  const kotlinType = (type: Type | undefined): string => {
+    switch (type?.kind) {
+      case 'boolean':
+        return 'Boolean'
+      case 'string':
+        return 'String'
+      case 'unit':
+      case undefined:
+        return 'Unit'
+      case 'array':
+        return `List<${kotlinType(type.element)}>`
+      case 'map':
+        return `Map<${kotlinType(type.key)}, ${kotlinType(type.value)}>`
+      case 'named':
+        return type.args && type.args.length > 0 ? `${pascal(type.name)}<${type.args.map(kotlinType).join(', ')}>` : pascal(type.name)
+      case 'function':
+        return `(${type.params.map(kotlinType).join(', ')}) -> ${kotlinType(type.result)}`
+      case 'number':
+        return 'Long'
+      case 'variable':
+        return varNames.get(type.id) ?? 'Long'
+      case 'unknown':
+        return 'Long'
+      default:
+        return 'Long'
+    }
+  }
+
+  const genericClause = (node: Extract<Statement, { form: 'function' }>): string => {
+    const ids = new Set<number>()
+    node.params.forEach((p) => collectVars(p.type, ids))
+    collectVars(node.result, ids)
+    const declared = node.generics.map((g) => g.name.toUpperCase())
+    const pool = ['T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'A', 'B', 'C']
+    const used = new Set(declared)
+    varNames = new Map()
+    const fresh: Array<string> = []
+    for (const id of ids) {
+      const letter = pool.find((l) => !used.has(l)) ?? `T${id}`
+      used.add(letter)
+      varNames.set(id, letter)
+      fresh.push(letter)
+    }
+    const namedInSig = new Set<string>()
+    const scan = (t: Type | undefined): void => {
+      if (!t) return
+      if (t.kind === 'named') {
+        namedInSig.add(t.name.toUpperCase())
+        t.args?.forEach(scan)
+      } else if (t.kind === 'array') scan(t.element)
+      else if (t.kind === 'map') { scan(t.key); scan(t.value) }
+      else if (t.kind === 'function') { t.params.forEach(scan); scan(t.result) }
+    }
+    node.params.forEach((p) => scan(p.type))
+    scan(node.result)
+    const all = [...declared.filter((d) => namedInSig.has(d)), ...fresh]
+    return all.length ? `<${all.join(', ')}> ` : ''
+  }
 
   const expr = (node: Expression): string => {
     switch (node.form) {
@@ -72,14 +143,16 @@ export function emitKotlin(program: Program): string {
       case 'map':
         return `mapOf(${node.entries.map((e) => `${expr(e.key)} to ${expr(e.value)}`).join(', ')})`
       case 'record': {
-        const owner = variantType.get(node.name) ?? node.name
-        const fields = [`form = ${JSON.stringify(node.name)}`, ...node.fields.map((f) => `${camel(f.name)} = ${expr(f.value)}`)]
-        return `${pascal(owner)}(${fields.join(', ')})`
+        const cls = variantClass.get(node.name)
+        if (cls) {
+          return node.fields.length > 0 ? `${cls}(${node.fields.map((f) => `${camel(f.name)} = ${expr(f.value)}`).join(', ')})` : cls
+        }
+        return `${pascal(node.name)}(${node.fields.map((f) => `${camel(f.name)} = ${expr(f.value)}`).join(', ')})`
       }
       case 'member':
         return `${expr(node.target)}.${camel(node.name)}`
       case 'await':
-        return expr(node.expr) // suspend functions await implicitly
+        return expr(node.expr)
       default:
         return exhausted(node)
     }
@@ -104,13 +177,15 @@ export function emitKotlin(program: Program): string {
       case 'for-each':
         return `for (${camel(node.item)} in ${expr(node.iterable)}) {\n${block(node.body, d + 1)}\n${pad(d)}}`
       case 'match': {
+        // an exhaustive `when` on the sealed type: each `is` arm smart-casts the subject, so its fields are directly
+        // accessible in the body with no rewrite. A return-position match becomes `return when (...)`.
         const subject = expr(node.subject)
-        let out = ''
-        node.cases.forEach((b, i) => {
-          out += `${i ? ' else ' : ''}if (${subject}.form == ${JSON.stringify(b.label)}) {\n${block(b.body, d + 1)}\n${pad(d)}}`
+        const arms = node.cases.map((b) => {
+          const cls = variantClass.get(b.label) ?? pascal(b.label)
+          return `${pad(d + 1)}is ${cls} -> {\n${block(b.body, d + 2)}\n${pad(d + 1)}}`
         })
-        if (node.otherwise) out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`
-        return out
+        if (node.otherwise) arms.push(`${pad(d + 1)}else -> {\n${block(node.otherwise, d + 2)}\n${pad(d + 1)}}`)
+        return `when (${subject}) {\n${arms.join('\n')}\n${pad(d)}}`
       }
       case 'if': {
         let out = ''
@@ -125,17 +200,39 @@ export function emitKotlin(program: Program): string {
       case 'continue':
         return 'continue'
       case 'function': {
-        const generics = node.generics.length ? `<${node.generics.map((g) => g.name.toUpperCase()).join(', ')}> ` : ''
+        const generics = genericClause(node)
         const params = node.params.map((p) => `${camel(p.name)}: ${kotlinType(p.type)}`).join(', ')
         const suspend = node.async ? 'suspend ' : ''
-        return `${suspend}fun ${generics}${camel(node.name)}(${params}): ${kotlinType(node.result)} {\n${block(node.body, d + 1)}\n${pad(d)}}`
+        // a reassigned parameter is shadowed by a mutable local (Kotlin parameters are immutable)
+        const mutated = new Set<string>()
+        reassigned(node.body, mutated)
+        const shadows = node.params.filter((p) => mutated.has(p.name)).map((p) => `${pad(d + 1)}var ${camel(p.name)} = ${camel(p.name)}`)
+        const bodyText = [...shadows, block(node.body, d + 1)].filter(Boolean).join('\n')
+        return `${suspend}fun ${generics}${camel(node.name)}(${params}): ${kotlinType(node.result)} {\n${bodyText}\n${pad(d)}}`
       }
       case 'record-type': {
-        const fields = new Map<string, string>()
-        for (const f of node.fields) fields.set(camel(f.name), 'Any?')
-        for (const v of node.variants) for (const f of v.fields) fields.set(camel(f.name), 'Any?')
-        const params = ['var form: String', ...[...fields.keys()].map((name) => `var ${name}: Any? = null`)]
-        return `data class ${pascal(node.name)}(${params.join(', ')})`
+        if (node.variants.length > 0) {
+          const generics = node.params.length ? `<${node.params.map((p) => `out ${p.toUpperCase()}`).join(', ')}>` : ''
+          const head = `sealed class ${pascal(node.name)}${generics}`
+          const subclasses = node.variants.map((v) => {
+            const cls = `${pascal(node.name)}${pascal(v.name)}`
+            // the variant carries only the generics its own fields mention; the rest of the type's params are Nothing
+            const usesGeneric = (name: string) => v.fields.some((f) => mentions(f.type, name))
+            const ownGenerics = node.params.filter(usesGeneric)
+            const genericDecl = ownGenerics.length ? `<${ownGenerics.map((p) => `out ${p.toUpperCase()}`).join(', ')}>` : ''
+            const superArgs = node.params.length ? `<${node.params.map((p) => (usesGeneric(p) ? p.toUpperCase() : 'Nothing')).join(', ')}>` : ''
+            if (v.fields.length > 0) {
+              const fields = v.fields.map((f) => `val ${camel(f.name)}: ${kotlinType(f.type)}`).join(', ')
+              return `data class ${cls}${genericDecl}(${fields}) : ${pascal(node.name)}${superArgs}()`
+            }
+            const objectSuper = node.params.length ? `<${node.params.map(() => 'Nothing').join(', ')}>` : ''
+            return `object ${cls} : ${pascal(node.name)}${objectSuper}()`
+          })
+          return [`${head}`, ...subclasses].join('\n')
+        }
+        const fields = node.fields.map((f) => `val ${camel(f.name)}: ${kotlinType(f.type)}`).join(', ')
+        const generics = node.params.length ? `<${node.params.map((p) => p.toUpperCase()).join(', ')}>` : ''
+        return `data class ${pascal(node.name)}${generics}(${fields})`
       }
       case 'mask': {
         const methods = node.methods.map((m) => `${pad(d + 1)}fun ${camel(m)}(vararg args: Any?): Any?`)
@@ -156,4 +253,45 @@ export function emitKotlin(program: Program): string {
   const body = program.filter((n) => n.form !== 'native').map((n) => stmt(n, 0)).filter(Boolean)
   const prelude = body.some((b) => b.includes('SeedError(')) ? ['class SeedError(message: String) : RuntimeException(message)'] : []
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'
+}
+
+// the names reassigned anywhere in a body (Kotlin parameters are immutable, so a reassigned one needs a var shadow)
+function reassigned(body: Array<Statement>, into: Set<string>): void {
+  for (const s of body) {
+    switch (s.form) {
+      case 'assign':
+        if (s.target.form === 'variable') into.add(s.target.name)
+        break
+      case 'if':
+        s.branches.forEach((b) => reassigned(b.body, into))
+        if (s.otherwise) reassigned(s.otherwise, into)
+        break
+      case 'match':
+        s.cases.forEach((c) => reassigned(c.body, into))
+        if (s.otherwise) reassigned(s.otherwise, into)
+        break
+      case 'while':
+      case 'for-each':
+        reassigned(s.body, into)
+        break
+      default:
+        break
+    }
+  }
+}
+
+// does a type mention a given generic parameter name?
+function mentions(type: Type | undefined, name: string): boolean {
+  switch (type?.kind) {
+    case 'named':
+      return type.name === name || (type.args?.some((a) => mentions(a, name)) ?? false)
+    case 'array':
+      return mentions(type.element, name)
+    case 'map':
+      return mentions(type.key, name) || mentions(type.value, name)
+    case 'function':
+      return type.params.some((p) => mentions(p, name)) || mentions(type.result, name)
+    default:
+      return false
+  }
 }

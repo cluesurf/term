@@ -359,6 +359,10 @@ export function check(program: Program, file: string): Array<Diagnostic> {
           expect(left, NUMBER, node.left.span, 'comparison operand')
           expect(right, NUMBER, node.right.span, 'comparison operand')
           type = BOOLEAN
+        } else if (node.op === '+' && resolve(left).kind === 'string') {
+          // `+` is string concatenation when its left operand is a string (otherwise numeric addition)
+          expect(right, STRING, node.right.span, 'string concatenation')
+          type = STRING
         } else {
           expect(left, NUMBER, node.left.span, 'arithmetic operand')
           expect(right, NUMBER, node.right.span, 'arithmetic operand')
@@ -654,17 +658,18 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       statement.result = zonkGeneric(signature.result, signature.genericNames)
       statement.params.forEach((param, i) => (param.type = zonkGeneric(signature.params[i]!, signature.genericNames)))
       // deep-resolve every expression's inferred type, so later passes (monomorphization, native codegen) see
-      // concrete types rather than unsolved inference variables
-      zonkBody(statement.body)
+      // concrete types rather than unsolved inference variables. Free variables tied to a generic parameter resolve
+      // to that parameter's name (so `make none` in a generic method types as maybe<s>, emittable as a native enum).
+      zonkBody(statement.body, signature.genericNames)
     }
   }
 
   return diagnostics
 
   // walk a body, replacing each expression's `type` with its fully resolved form
-  function zonkBody(body: Array<Statement>): void {
+  function zonkBody(body: Array<Statement>, names: Map<number, string>): void {
     const visitExpression = (node: Expression): void => {
-      if (node.type) node.type = zonk(node.type)
+      if (node.type) node.type = zonkGeneric(node.type, names)
       switch (node.form) {
         case 'binary':
           visitExpression(node.left)
@@ -720,23 +725,23 @@ export function check(program: Program, file: string): Array<Diagnostic> {
           break
         case 'while':
           visitExpression(statement.cond)
-          zonkBody(statement.body)
+          zonkBody(statement.body, names)
           break
         case 'for-each':
           visitExpression(statement.iterable)
-          zonkBody(statement.body)
+          zonkBody(statement.body, names)
           break
         case 'if':
           statement.branches.forEach((b) => {
             visitExpression(b.cond)
-            zonkBody(b.body)
+            zonkBody(b.body, names)
           })
-          if (statement.otherwise) zonkBody(statement.otherwise)
+          if (statement.otherwise) zonkBody(statement.otherwise, names)
           break
         case 'match':
           visitExpression(statement.subject)
-          statement.cases.forEach((c) => zonkBody(c.body))
-          if (statement.otherwise) zonkBody(statement.otherwise)
+          statement.cases.forEach((c) => zonkBody(c.body, names))
+          if (statement.otherwise) zonkBody(statement.otherwise, names)
           break
         default:
           break

@@ -111,14 +111,14 @@ task danger
 `)
 
   const sw = emitSwift(rich)
-  ok('swift: ADT struct with field', sw.includes('struct Box {') && sw.includes('var value: Any? = nil'), sw)
-  ok('swift: match lowers to a form discriminant', sw.includes('if self.form == "full"'), sw)
-  ok('swift: variant field access', sw.includes('return self.value'), sw)
+  ok('swift: ADT native generic enum', sw.includes('enum Box<T>') && sw.includes('case full(value: T)') && sw.includes('case empty'), sw)
+  ok('swift: match is a native switch with field binding', sw.includes('switch') && sw.includes('case let .full(value):'), sw)
+  ok('swift: variant field access uses the bound local', sw.includes('return value'), sw)
   ok('swift: throw with the SeedError prelude', sw.includes('throw SeedError("oops")') && sw.includes('struct SeedError'), sw)
 
   const ko = emitKotlin(rich)
-  ok('kotlin: ADT data class with field', ko.includes('data class Box(') && ko.includes('var value: Any? = null'), ko)
-  ok('kotlin: match lowers to a form discriminant', ko.includes('if (self.form == "full")'), ko)
+  ok('kotlin: ADT sealed-class hierarchy', ko.includes('sealed class Box<out T>') && ko.includes('data class BoxFull') && ko.includes('object BoxEmpty'), ko)
+  ok('kotlin: match is an exhaustive when with smart-cast', ko.includes('when (self)') && ko.includes('is BoxFull ->') && ko.includes('self.value'), ko)
   ok('kotlin: throw with the SeedError prelude', ko.includes('throw SeedError("oops")') && ko.includes('class SeedError'), ko)
 
   // restricted targets: explicit markers, no silent drop, while still emitting the numeric functions they can
@@ -129,6 +129,13 @@ task danger
   const wgslRich = emitWgsl(rich)
   ok('wgsl: marks forms outside its fragment', wgslRich.includes('SEED-UNSUPPORTED'), wgslRich)
   ok('wgsl: still emits the numeric function', wgslRich.includes('fn danger'), wgslRich)
+
+  // LLVM strings: a string-returning function is typed as a pointer and lowered through the managed runtime
+  const strings = frontEnd('task greeting\n  like text\n  send back\n    call add\n      text <hi >\n      text <there>\n')
+  const llvmStr = emitLlvm(strings)
+  ok('llvm: declares the string runtime', llvmStr.includes('declare ptr @seed_str_concat(ptr, ptr)'), llvmStr)
+  ok('llvm: string literals are module constants', llvmStr.includes('private unnamed_addr constant'), llvmStr)
+  ok('llvm: concatenation lowers to the runtime, returning a pointer', llvmStr.includes('call ptr @seed_str_concat') && llvmStr.includes('ret ptr'), llvmStr)
 
   console.log(`\nbackends: ${pass} pass, ${fail} fail`)
 }

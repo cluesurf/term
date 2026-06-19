@@ -16,7 +16,7 @@ export type LspDiagnostic = { range: LspRange; severity: number; code: number; s
 
 const SEVERITY: Record<Severity, number> = { error: 1, warning: 2, info: 3 }
 
-const toRange = (span: Span): LspRange => ({
+export const toRange = (span: Span): LspRange => ({
   start: { line: span.start.line, character: span.start.column },
   end: { line: span.end.line, character: span.end.column },
 })
@@ -51,7 +51,7 @@ export function analyze(
 }
 
 // position p is within span (inclusive), comparing line then column
-function within(span: Span, p: LspPosition): boolean {
+export function within(span: Span, p: LspPosition): boolean {
   const after = (a: SeedPosition) => p.line > a.line || (p.line === a.line && p.character >= a.column)
   const before = (b: SeedPosition) => p.line < b.line || (p.line === b.line && p.character <= b.column)
   return after(span.start) && before(span.end)

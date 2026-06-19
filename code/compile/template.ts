@@ -123,9 +123,10 @@ function cloneNode(node: Node, subs: Map<string, string>, beams: Beams): Node {
   }
 }
 
-type Template = { params: Array<string>; body: Array<Node> }
+export type Template = { params: Array<string>; body: Array<Node> }
 
-function collectTemplates(tree: RootNode): Map<string, Template> {
+// extract the `tree` template definitions from a parse tree, so a build can gather them across every loaded module
+export function collectTemplates(tree: RootNode): Map<string, Template> {
   const templates = new Map<string, Template>()
   for (const group of tree.nodes) {
     if (headName(group) !== 'tree') continue
@@ -151,21 +152,37 @@ function collectTemplates(tree: RootNode): Map<string, Template> {
   return templates
 }
 
+// does a template body contain a compile-time meta-loop (`walk`) that this engine does not unroll yet?
+function hasMetaLoop(body: Array<Node>): boolean {
+  return body.some((n) => n.kind === 'group' && headName(n) === 'walk')
+}
+
 // expand one fuse group into its instantiated body nodes
 function expandFuse(group: GroupNode, templates: Map<string, Template>): Array<Node> {
   const args = rest(group)
   const name = args[0] && args[0].kind === 'group' ? headName(args[0]) : undefined
   const template = name ? templates.get(name) : undefined
   if (!template) return []
+  // a template that meta-iterates an enumeration (compile-time `walk`) is not unrolled here yet; leave it unexpanded
+  // rather than emit a half-substituted body that fails to compile
+  if (hasMetaLoop(template.body)) return []
   const subs = new Map<string, string>()
   const beams: Beams = new Map()
+  // positional arguments bind to the template's parameters in order (`fuse t, read x / read y` -> param0=x, param1=y)
+  let positional = 0
   for (const node of args.slice(1)) {
     if (node.kind !== 'group') continue
-    if (headName(node) === 'bind') {
+    const head = headName(node)
+    if (head !== 'bind' && head !== 'beam' && positional < template.params.length) {
+      subs.set(template.params[positional]!, valueText(node))
+      positional++
+      continue
+    }
+    if (head === 'bind') {
       const inner = rest(node)
       const param = inner[0] && inner[0].kind === 'group' ? headName(inner[0]) : undefined
       if (param) subs.set(param, valueText(inner[1]))
-    } else if (headName(node) === 'beam') {
+    } else if (head === 'beam') {
       // `beam <name>` sends its nested body back to the matching `slot <name>` in the template
       const inner = rest(node)
       const beamName = inner[0] && inner[0].kind === 'group' ? headName(inner[0]) : undefined
@@ -188,9 +205,11 @@ function expandNode(node: Node, templates: Map<string, Template>): Array<Node> {
   return [{ kind: 'group', nodes, optional: node.optional }]
 }
 
-// expand all templates in a parse tree
-export function expandTemplates(tree: RootNode): RootNode {
-  const templates = collectTemplates(tree)
+// expand all templates in a parse tree. `external` carries `tree` definitions from other loaded modules, so a `fuse`
+// can instantiate a template that an imported module defines (the module's own definitions take precedence on a clash).
+export function expandTemplates(tree: RootNode, external?: Map<string, Template>): RootNode {
+  const templates = new Map(external)
+  for (const [name, template] of collectTemplates(tree)) templates.set(name, template)
   const nodes: Array<GroupNode> = []
   for (const group of tree.nodes) {
     for (const expanded of expandNode(group, templates)) {

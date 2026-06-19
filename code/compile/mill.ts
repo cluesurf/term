@@ -184,6 +184,11 @@ export function mill(tree: RootNode, file: string): MillResult {
         if (value && value.kind === 'integer') return { form: 'string', value: String(value.value), span }
         return { form: 'string', value: '', span }
       }
+      case 'term': {
+        // an atom / symbol literal: `term infinity` is the symbol "infinity" (represented as a string)
+        const atom = args[0] && args[0].kind === 'group' ? headName(args[0] as GroupNode) : undefined
+        return { form: 'string', value: atom ?? '', span }
+      }
       case 'loan':
       case 'move':
       case 'read': {
@@ -513,9 +518,16 @@ export function mill(tree: RootNode, file: string): MillResult {
     const resultLike = body.find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
     const resultType = resultLike ? parseLikeType(resultLike) : undefined
     const scope = new Set<string>(params.map((p) => p.name))
-    const fn: Statement = { form: 'function', name, params, body: toStatements(body, scope), generics, span }
+    // signature nodes describe the task; they are not executable body statements. `head` (generics), `take` (params),
+    // the bare `like` (result type), `mark` (modifiers like `mark async`/`mark private`), and `note` (documentation)
+    // are all consumed here, so only real statements (send back, save, call, fork, ...) reach the body.
+    const SIGNATURE = new Set(['head', 'take', 'like', 'mark', 'note'])
+    const executable = body.filter((n) => !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')))
+    const fn: Statement = { form: 'function', name, params, body: toStatements(executable, scope), generics, span }
     if (resultType) fn.result = resultType
-    if (body.some(isWaitTrue)) fn.async = true // `wait true` makes the task async
+    // async is marked by `wait true` or `mark async`
+    const markedAsync = body.some((n) => n.kind === 'group' && headName(n) === 'mark' && rest(n)[0]?.kind === 'group' && headName(rest(n)[0] as GroupNode) === 'async')
+    if (markedAsync || body.some(isWaitTrue)) fn.async = true
     return fn
   }
 
@@ -576,7 +588,7 @@ export function mill(tree: RootNode, file: string): MillResult {
     const linkFields = (g: GroupNode): Array<{ name: string; type: Type }> => {
       const out: Array<{ name: string; type: Type }> = []
       for (const child of rest(g)) {
-        if (child.kind !== 'group' || headName(child) !== 'link') continue
+        if (child.kind !== 'group' || (headName(child) !== 'link' && headName(child) !== 'free')) continue
         const inner = rest(child)
         const fieldNode = inner[0]
         const fieldName = fieldNode && fieldNode.kind === 'group' ? headName(fieldNode) : undefined
@@ -691,6 +703,8 @@ export function mill(tree: RootNode, file: string): MillResult {
       program.push(...buildDock(group))
     } else if (keyword === 'load' || keyword === 'bear' || keyword === 'deck') {
       // module directives: resolved by the loader (code/compile/load.ts), not statements
+    } else if (keyword === 'note') {
+      // top-level documentation: not a statement
     } else {
       program.push(...toStatements([group], new Set<string>()))
     }
