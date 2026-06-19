@@ -89,6 +89,23 @@ export function stdlibResolver(): Resolver | undefined {
   }
 }
 
+// resolve any `@scope/pkg/sub/path` import via the package manager's link dir (`<root>/link/@scope/pkg/...`), where
+// `seed link` symlinks each dependency. Follows the file-resolution rules (foo.tree, then foo/base.tree, foo/note.tree).
+// This is how a project resolves its linked packages (@cluesurf/base, @cluesurf/bind, @cluesurf/term, @cluesurf/site).
+export function linkResolver(root: string): Resolver {
+  const linkDir = join(root, 'link')
+  return (importPath: string): Source | undefined => {
+    const match = importPath.match(/^(@[^/]+\/[^/]+)\/(.+)$/)
+    if (!match) return undefined
+    const [, pkg, rest] = match
+    const base = join(linkDir, pkg!)
+    for (const candidate of [join(base, `${rest}.tree`), join(base, rest!, 'base.tree'), join(base, rest!, 'note.tree')]) {
+      if (existsSync(candidate)) return { file: candidate, text: readFileSync(candidate, 'utf8') }
+    }
+    return undefined
+  }
+}
+
 export async function callWalk(_input: { root: string }): Promise<void> {
   logStep('Seed REPL')
   console.log(fade('  Type a definition (task / form / load) to add it, an expression to evaluate it, or `exit`.'))

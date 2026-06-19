@@ -255,7 +255,10 @@ export function emitKotlin(program: Program): string {
     }
   }
 
-  const imports = program.filter((n): n is Extract<Statement, { form: 'native' }> => n.form === 'native').map((n) => `import ${n.module.replace(/^[a-z]+:/, '').replace(/\//g, '.')}`)
+  // a `<global:X>` binding (e.g. the linked `io` runtime object) needs no import: it is already in scope
+  const imports = program
+    .filter((n): n is Extract<Statement, { form: 'native' }> => n.form === 'native' && !n.module.startsWith('global:'))
+    .map((n) => `import ${n.module.replace(/^[a-z]+:/, '').replace(/\//g, '.')}`)
   const body = program.filter((n) => n.form !== 'native').map((n) => stmt(n, 0)).filter(Boolean)
   const prelude = body.some((b) => b.includes('SeedError(')) ? ['class SeedError(message: String) : RuntimeException(message)'] : []
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'

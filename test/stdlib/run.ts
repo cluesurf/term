@@ -729,7 +729,189 @@ task oset-size
       read s
 `
 
+// list breadth: sum (loop), index-of, take-first / drop-first, flatten — all native-backed or pure-loop
+const LIST_EXTRAS = `load @cluesurf/base/code/list
+  find list
+
+task sum-of
+  like number
+  back
+    call sum
+      make list
+        mark 1
+        mark 2
+        mark 3
+        mark 4
+
+task index-of-twenty
+  like number
+  back
+    call index-of
+      make list
+        mark 10
+        mark 20
+        mark 30
+      mark 20
+
+task take-two-size
+  like number
+  back
+    call size
+      call take-first
+        make list
+          mark 1
+          mark 2
+          mark 3
+          mark 4
+        mark 2
+
+task drop-two-size
+  like number
+  back
+    call size
+      call drop-first
+        make list
+          mark 1
+          mark 2
+          mark 3
+          mark 4
+        mark 2
+
+task flatten-size
+  like number
+  back
+    call size
+      call flatten
+        make list
+          make list
+            mark 1
+            mark 2
+          make list
+            mark 3
+`
+
+// pair map-both: apply a different function to each side
+const PAIR_BOTH = `load @cluesurf/base/code/pair
+  find pair
+
+task double
+  take n, like number
+  like number
+  back
+    call multiply
+      read n
+      mark 2
+
+task add-ten
+  take n, like number
+  like number
+  back
+    call add
+      read n
+      mark 10
+
+task both-first
+  like number
+  save p
+    call map-both
+      make pair
+        bind first, mark 3
+        bind second, mark 4
+      read double
+      read add-ten
+  send back
+    read p/first
+
+task both-second
+  like number
+  save p
+    call map-both
+      make pair
+        bind first, mark 3
+        bind second, mark 4
+      read double
+      read add-ten
+  send back
+    read p/second
+`
+
+// color: pure-logic RGB operations (grayscale, luminance, invert, is-dark, blend), all integer math
+const COLOR = `load @cluesurf/base/code/color/rgb
+  find rgb-color
+
+task gray
+  like number
+  back
+    call grayscale
+      make rgb-color
+        bind red, mark 30
+        bind green, mark 60
+        bind blue, mark 90
+
+task lum-white
+  like number
+  back
+    call luminance
+      make rgb-color
+        bind red, mark 255
+        bind green, mark 255
+        bind blue, mark 255
+
+task inverted-red
+  like number
+  save c
+    call invert
+      make rgb-color
+        bind red, mark 0
+        bind green, mark 0
+        bind blue, mark 0
+  send back
+    read c/red
+
+task dark-check
+  like boolean
+  back
+    call is-dark
+      make rgb-color
+        bind red, mark 10
+        bind green, mark 10
+        bind blue, mark 10
+
+task blended-red
+  like number
+  save c
+    call blend
+      make rgb-color
+        bind red, mark 100
+        bind green, mark 0
+        bind blue, mark 0
+      make rgb-color
+        bind red, mark 200
+        bind green, mark 0
+        bind blue, mark 0
+  send back
+    read c/red
+`
+
 async function main(): Promise<void> {
+  const cl = await loadProgram(COLOR)
+  expect('color/grayscale averages the channels', cl.gray!(), 60)
+  expect('color/luminance of white is 255', cl.lumWhite!(), 255)
+  expect('color/invert of black gives 255 red', cl.invertedRed!(), 255)
+  expect('color/is-dark on a near-black color is true', cl.darkCheck!(), true)
+  expect('color/blend averages each channel', cl.blendedRed!(), 150)
+
+  const pb = await loadProgram(PAIR_BOTH)
+  expect('pair/map-both applies the first function to first', pb.bothFirst!(), 6)
+  expect('pair/map-both applies the second function to second', pb.bothSecond!(), 14)
+
+  const le = await loadProgram(LIST_EXTRAS)
+  expect('list/sum totals the elements', le.sumOf!(), 10)
+  expect('list/index-of finds the position', le.indexOfTwenty!(), 1)
+  expect('list/take-first keeps the leading n', le.takeTwoSize!(), 2)
+  expect('list/drop-first removes the leading n', le.dropTwoSize!(), 2)
+  expect('list/flatten merges one level', le.flattenSize!(), 3)
+
   const bg = await loadProgram(BAG)
   expect('bag/insert keeps duplicates (multiset size)', bg.bagSize!(), 2)
 

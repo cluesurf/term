@@ -30,11 +30,29 @@ const RESERVED = new Set([
   'let', 'static', 'await', 'async', 'implements', 'interface', 'package', 'private', 'protected', 'public',
 ])
 
+// acronyms that the host APIs spell in all caps (randomUUID, toJSON, parseURL). A whole kebab segment matching one of
+// these uppercases entirely instead of just its first letter, so FFI member names match the platform exactly. `id` is
+// deliberately excluded (host convention is `Id`, e.g. userId).
+const ACRONYMS = new Set(['uuid', 'url', 'uri', 'http', 'https', 'html', 'xml', 'json', 'css', 'api', 'sql', 'ascii', 'utf8', 'jwt'])
+
 // the TypeScript identifier a seed name compiles to (kebab/snake to camelCase). Exported so the benchmark runner can
-// map a seed function name to the exported symbol it must call in the emitted module.
+// map a seed function name to the exported symbol it must call in the emitted module. Plain camelCase: a user's own
+// function `make-api` becomes `makeApi`, not `makeAPI`. Acronym uppercasing (for host FFI names) is reserved for
+// member access (see `toMember`), where the emitted name must match the platform exactly.
 export function toCamel(name: string): string {
-  const camel = name.replace(/[-_](.)/g, (_, c: string) => c.toUpperCase())
+  const parts = name.split(/[-_]/)
+  const head = parts[0] ?? ''
+  const camel = head + parts.slice(1).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('')
   return RESERVED.has(camel) ? `${camel}_` : camel
+}
+
+// a member name a seed name compiles to, uppercasing whole-segment acronyms so a host FFI call matches the platform
+// spelling exactly (`set-attribute` -> `setAttribute`, `to-json` -> `toJSON`, `inner-html` -> `innerHTML`). Used only
+// for member access (`receiver.method(...)`), which is how bind's JS-`this`-style DOM methods are invoked.
+function toMember(name: string): string {
+  const parts = name.split(/[-_]/)
+  const head = parts[0] ?? ''
+  return head + parts.slice(1).map((p) => (ACRONYMS.has(p) ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1))).join('')
 }
 
 function toPascal(name: string): string {
@@ -198,7 +216,7 @@ function makeEmitter(variants: Set<string>) {
         return `{ ${fields.join(', ')} }`
       }
       case 'member':
-        return `${expression(node.target)}.${toCamel(node.name)}`
+        return `${expression(node.target)}.${toMember(node.name)}`
       case 'await':
         return `await ${expression(node.expr)}`
       case 'closure': {

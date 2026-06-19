@@ -8,8 +8,11 @@ import { diagnose } from '@/code/parser/diagnostic'
 import type { Expression, Program, Statement, Type } from '@/code/compile/node'
 import { BOOLEAN, NUMBER, STRING, UNIT, UNKNOWN, showType } from '@/code/compile/node'
 
-export function check(program: Program, file: string): Array<Diagnostic> {
+export function check(program: Program, file: string, fileOrigin?: WeakMap<Statement, string>): Array<Diagnostic> {
   const diagnostics: Array<Diagnostic> = []
+  // the file currently being checked. With a merged multi-module program `file` is only the entry; `fileOrigin` maps
+  // each top-level statement to its module, so a type error points at the real source rather than the entry.
+  let currentFile = file
   const substitution = new Map<number, Type>()
   let nextVariable = 0
   const fresh = (): Type => ({ kind: 'variable', id: nextVariable++ })
@@ -146,8 +149,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       }
       diagnostics.push(
         diagnose('type-mismatch', {
-          file,
-          span,
+          file: currentFile,          span,
           message: `${what}: expected ${showType(resolve(wanted))}, found ${showType(resolve(actual))}`,
           markers,
         }),
@@ -443,8 +445,18 @@ export function check(program: Program, file: string): Array<Diagnostic> {
             if (target.args) params.forEach((p, i) => target.args![i] && argMap.set(p, target.args![i]!))
             type = seedType(field, argMap)
           } else {
-            diagnostics.push(diagnose('unknown-name', { file, span: node.span, message: `"${target.name}" has no field "${node.name}"` }))
-            type = UNKNOWN
+            // not a field: a member access onto a form method (`document/create-element`) is a native method call.
+            // Type it as the method's function (so the enclosing call checks its args). The receiver stays the member
+            // target, and the emitter lowers `target.create-element(args)` to `target.createElement(args)`. This is
+            // how a JS-`this`-style binding (bind's DOM methods take no `self`) is invoked from seed.
+            const mangled = methodTable.get(target.name)?.get(node.name)
+            if (mangled && functions.has(mangled)) {
+              const signature = instantiate(functions.get(mangled)!)
+              type = { kind: 'function', params: signature.params, result: signature.result }
+            } else {
+              diagnostics.push(diagnose('unknown-name', { file: currentFile, span: node.span, message: `"${target.name}" has no field "${node.name}"` }))
+              type = UNKNOWN
+            }
           }
         } else if (target.kind === 'array' && node.name === 'length') {
           type = NUMBER
@@ -459,7 +471,9 @@ export function check(program: Program, file: string): Array<Diagnostic> {
         const args = node.args.map((arg) => inferExpression(arg, env))
         // receiver dispatch: rewrite a bare method call (`call unwrap-or / <receiver>`) to the mangled method of the
         // receiver's form. The receiver is whichever argument is a form that owns this method (usually `self`, first).
-        if (node.callee.form === 'variable' && !functions.has(node.callee.name) && methodNames.has(node.callee.name)) {
+        // A local binding of the same name (a parameter or let, e.g. maybe/filter's `test` task param) shadows both
+        // method dispatch and any global function, so skip when the name is bound in the current environment.
+        if (node.callee.form === 'variable' && !env.has(node.callee.name) && !functions.has(node.callee.name) && methodNames.has(node.callee.name)) {
           const method = node.callee.name
           let mangled: string | undefined
           for (const arg of args) {
@@ -483,14 +497,13 @@ export function check(program: Program, file: string): Array<Diagnostic> {
           }
           if (mangled && functions.has(mangled)) node.callee.name = mangled
         }
-        if (node.callee.form === 'variable' && functions.has(node.callee.name)) {
+        if (node.callee.form === 'variable' && functions.has(node.callee.name) && !env.has(node.callee.name)) {
           // instantiate generics fresh for this call (let-polymorphism)
           const signature = instantiate(functions.get(node.callee.name)!)
           if (args.length !== signature.params.length) {
             diagnostics.push(
               diagnose('type-mismatch', {
-                file,
-                span: node.span,
+                file: currentFile,                span: node.span,
                 message: `"${node.callee.name}" expects ${signature.params.length} arguments, found ${args.length}`,
               }),
             )
@@ -503,7 +516,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
           for (const bound of signature.bounds) {
             const concrete = resolve(bound.variable)
             if (concrete.kind === 'named' && !instances.has(`${bound.mask}:${concrete.name}`)) {
-              diagnostics.push(diagnose('no-instance', { file, span: node.span, message: `no "${bound.mask}" instance for "${concrete.name}"` }))
+              diagnostics.push(diagnose('no-instance', { file: currentFile, span: node.span, message: `no "${bound.mask}" instance for "${concrete.name}"` }))
             } else if (concrete.kind === 'variable') {
               const satisfied = currentBounds.some((b) => {
                 if (b.mask !== bound.mask) return false
@@ -511,7 +524,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
                 return enclosing.kind === 'variable' && enclosing.id === concrete.id
               })
               if (!satisfied) {
-                diagnostics.push(diagnose('no-instance', { file, span: node.span, message: `the type variable here is not known to implement "${bound.mask}"; add a "need ${bound.mask}" bound` }))
+                diagnostics.push(diagnose('no-instance', { file: currentFile, span: node.span, message: `the type variable here is not known to implement "${bound.mask}"; add a "need ${bound.mask}" bound` }))
               }
             }
           }
@@ -521,7 +534,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
           const calleeType = resolve(inferExpression(node.callee, env))
           if (calleeType.kind === 'function') {
             if (args.length !== calleeType.params.length) {
-              diagnostics.push(diagnose('type-mismatch', { file, span: node.span, message: `this function expects ${calleeType.params.length} arguments, found ${args.length}` }))
+              diagnostics.push(diagnose('type-mismatch', { file: currentFile, span: node.span, message: `this function expects ${calleeType.params.length} arguments, found ${args.length}` }))
             } else {
               args.forEach((arg, i) => expect(arg, calleeType.params[i]!, node.args[i]!.span, 'argument'))
             }
@@ -529,7 +542,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
           } else if (calleeType.kind === 'unknown' || calleeType.kind === 'variable') {
             type = UNKNOWN // gradual: unknown callee
           } else {
-            diagnostics.push(diagnose('type-mismatch', { file, span: node.callee.span, message: `this value is not callable (it has type ${showType(calleeType)})` }))
+            diagnostics.push(diagnose('type-mismatch', { file: currentFile, span: node.callee.span, message: `this value is not callable (it has type ${showType(calleeType)})` }))
             type = UNKNOWN
           }
         }
@@ -559,10 +572,21 @@ export function check(program: Program, file: string): Array<Diagnostic> {
     switch (node.form) {
       case 'let': {
         const initType = inferExpression(node.init, env)
-        // value-restricted let-generalization: an immutable binding to a syntactic value gets a polymorphic scheme
-        const vars = !node.mutable && isValueExpression(node.init) ? generalize(initType, env) : []
-        env.set(node.name, { vars, type: initType })
-        node.type = initType
+        // an explicit annotation (`host el, like element / read x`) types the binding: check the initializer against it
+        // (gradual `unknown` from an opaque field unifies freely) and bind the declared type so the value can be re-typed
+        // to a concrete form for receiver dispatch. Otherwise infer the binding's type from its initializer.
+        if (node.type) {
+          // an ambient declaration (`host document, name <document> / like document`) has no initializer; the mill
+          // synthesizes a unit placeholder, so do not check it against the declared type. A real initializer (a
+          // re-type like `host el, like element / read x`, where the opaque field is gradual `unknown`) is checked.
+          if (node.init.form !== 'unit') expect(initType, node.type, node.span, 'binding')
+          env.set(node.name, { vars: [], type: node.type })
+        } else {
+          // value-restricted let-generalization: an immutable binding to a syntactic value gets a polymorphic scheme
+          const vars = !node.mutable && isValueExpression(node.init) ? generalize(initType, env) : []
+          env.set(node.name, { vars, type: initType })
+          node.type = initType
+        }
         break
       }
       case 'assign': {
@@ -603,13 +627,13 @@ export function check(program: Program, file: string): Array<Diagnostic> {
           const covered = new Set(node.cases.map((c) => c.label))
           for (const branch of node.cases) {
             if (!variants.has(branch.label)) {
-              diagnostics.push(diagnose('unknown-name', { file, span: node.span, message: `"${branch.label}" is not a variant of "${subjectType.name}"` }))
+              diagnostics.push(diagnose('unknown-name', { file: currentFile, span: node.span, message: `"${branch.label}" is not a variant of "${subjectType.name}"` }))
             }
           }
           if (!node.otherwise) {
             const missing = [...variants].filter((v) => !covered.has(v))
             if (missing.length > 0) {
-              diagnostics.push(diagnose('non-exhaustive', { file, span: node.span, message: `match on "${subjectType.name}" does not cover: ${missing.join(', ')}` }))
+              diagnostics.push(diagnose('non-exhaustive', { file: currentFile, span: node.span, message: `match on "${subjectType.name}" does not cover: ${missing.join(', ')}` }))
             }
           }
         }
@@ -657,6 +681,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
 
   const topLevelSkip = new Set(['record-type', 'mask', 'instance', 'native'])
   for (const statement of program) {
+    currentFile = fileOrigin?.get(statement) ?? file
     if (statement.form === 'function') checkFunction(statement)
     else if (!topLevelSkip.has(statement.form)) checkStatement(statement, new Map(), UNKNOWN)
   }
@@ -678,10 +703,17 @@ export function check(program: Program, file: string): Array<Diagnostic> {
 
   // final pass: record fully resolved types (cross-function constraints from call sites are now known)
   for (const statement of program) {
+    currentFile = fileOrigin?.get(statement) ?? file
     if (statement.form === 'function') {
       const signature = functions.get(statement.name)!
       statement.result = zonkGeneric(signature.result, signature.genericNames)
-      statement.params.forEach((param, i) => (param.type = zonkGeneric(signature.params[i]!, signature.genericNames)))
+      statement.params.forEach((param, i) => {
+        // when a merged program holds two top-level functions of the same name (common across hundreds of generated
+        // binding modules), `functions` keeps only the last, so its signature can have fewer params than this
+        // statement. Fall back to the param's own milled type rather than crashing on a missing signature slot.
+        const slot = signature.params[i]
+        param.type = slot ? zonkGeneric(slot, signature.genericNames) : (param.type ?? UNKNOWN)
+      })
       // deep-resolve every expression's inferred type, so later passes (monomorphization, native codegen) see
       // concrete types rather than unsolved inference variables. Free variables tied to a generic parameter resolve
       // to that parameter's name (so `make none` in a generic method types as maybe<s>, emittable as a native enum).

@@ -6,7 +6,7 @@ import { CompileCache } from '../compile/cache'
 import { withNativeEnv } from '../compile/native'
 import type { NativeEnv } from '../compile/native'
 import type { Resolver } from '../compile/load'
-import { stdlibResolver } from './walk'
+import { stdlibResolver, linkResolver } from './walk'
 import { logGood, logFail, logStep, formatError, fade } from '../tint'
 
 // every .tree file under a directory, skipping generated output and dependency / vcs folders
@@ -28,9 +28,13 @@ function findTreeFiles(dir: string, out: Array<string> = []): Array<string> {
 
 // the resolver a project build uses: the bundled stdlib (`@cluesurf/base/...`) plus the project's own `.tree` files,
 // wrapped so abstract native imports resolve to the target platform's implementation (default node)
-function projectResolver(root: string, env: NativeEnv = 'node'): Resolver {
+export function projectResolver(root: string, env: NativeEnv = 'node'): Resolver {
   const stdlib = stdlibResolver()
+  const linked = linkResolver(root)
   const base: Resolver = (importPath, fromFile) => {
+    // linked packages first (@cluesurf/base, /bind, /term, /site via `seed link`), then the bundled stdlib fallback
+    const fromLink = linked(importPath, fromFile)
+    if (fromLink) return fromLink
     const fromStdlib = stdlib?.(importPath, fromFile)
     if (fromStdlib) return fromStdlib
     // `@scope/pkg/sub/path` -> `<root>/code/sub/path.tree` when it refers to this project

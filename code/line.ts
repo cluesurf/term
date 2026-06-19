@@ -18,11 +18,12 @@ import { callNote } from './call/note'
 import { callProfile } from './call/profile'
 import { callForm } from './call/form'
 import { callLint } from './call/lint'
+import { callLook } from './call/look'
 import { logFail, warn } from './tint'
 
 const COMMANDS = [
   'load', 'save', 'toss', 'link', 'seek', 'host',
-  'make', 'test', 'time', 'profile', 'boot', 'wash', 'walk', 'move', 'note', 'show', 'form', 'lint',
+  'make', 'test', 'time', 'profile', 'boot', 'wash', 'walk', 'move', 'note', 'show', 'form', 'lint', 'look',
 ]
 
 function editDistance(a: string, b: string): number {
@@ -388,6 +389,28 @@ const cli = yargs(hideBin(process.argv))
         paths: (argv.paths as Array<string> | undefined) ?? [],
         check: argv.check,
         list: argv.list,
+      })
+    },
+  )
+  .command(
+    'look [target]',
+    'Inspect what a module exposes (forms + tasks), following its load/bear graph',
+    yargs =>
+      yargs
+        .positional('target', {
+          type: 'string',
+          description: 'A package path (@cluesurf/bind/code/browser/dom) or a .tree file',
+        })
+        .option('json', { type: 'boolean', description: 'Output JSON' })
+        .option('csv', { type: 'boolean', description: 'Output CSV' })
+        .option('kind', { type: 'string', choices: ['form', 'task'] as const, description: 'Only forms or only tasks' }),
+    async argv => {
+      await callLook({
+        root,
+        target: argv.target,
+        json: argv.json,
+        csv: argv.csv,
+        kind: argv.kind,
       })
     },
   )

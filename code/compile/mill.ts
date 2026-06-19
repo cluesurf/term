@@ -17,6 +17,12 @@ const TYPE_NAME: Record<string, Type> = {
   text: STRING, boolean: BOOLEAN, void: UNIT, unit: UNIT,
 }
 
+// signature annotation keywords that decorate a `host`/`save` declaration rather than supplying its value:
+// `name <X>` (foreign / display name), `like <T>` (type), `flex` (variadic), `rank` (receiver type), plus the
+// generic / output markers. Filtered out so an annotation is never mistaken for the assigned value expression.
+// `mark` is deliberately absent: it is the integer-literal keyword (`mark 42`), so `save total, mark 0` assigns 0.
+const HOST_ANNOTATION = new Set(['name', 'like', 'flex', 'rank', 'head', 'note', 'free'])
+
 // a path string like `item/x` to a variable plus member chain
 function pathExpression(raw: string, span: Span): Expression {
   const parts = raw.split('/').filter((p) => p.length > 0)
@@ -360,16 +366,22 @@ export function mill(tree: RootNode, file: string): MillResult {
         case 'head':
         case 'wear':
         case 'wait':
+        // `name <X>` is a foreign / display-name annotation (the JS name a binding maps to), never an executable
+        // statement. Without this it would fall to the default case and mill as a bare `name` variable reference.
+        // `rank` likewise annotates a receiver's type and is not executable.
+        case 'name':
+        case 'rank':
           break
         case 'save': {
-          const args = rest(node).filter((a) => !(a.kind === 'group' && headName(a) === 'flex'))
+          const args = rest(node)
           const target = args[0]
           const name = target && target.kind === 'group' ? headName(target) : undefined
           if (!name) {
             fail(node, 'save needs a name')
             break
           }
-          const valueNode = args[1]
+          // skip signature annotations after the target when locating the assigned value (see `host` above)
+          const valueNode = args.slice(1).find((a) => !(a.kind === 'group' && HOST_ANNOTATION.has(headName(a) ?? '')))
           const value: Expression = valueNode ? toExpression(valueNode, scope) : { form: 'integer', value: 0, span }
           if (name.includes('/')) {
             // `save self/field, X` mutates a member, not a binding: emit an assignment to the member path
@@ -378,7 +390,10 @@ export function mill(tree: RootNode, file: string): MillResult {
             out.push({ form: 'assign', target: { form: 'variable', name, span }, op: '=', value, span })
           } else {
             scope.add(name)
-            out.push({ form: 'let', name, init: value, mutable: true, span })
+            const saveLike = args.slice(1).find((a): a is GroupNode => a.kind === 'group' && headName(a) === 'like')
+            const saveLet: Statement = { form: 'let', name, init: value, mutable: true, span }
+            if (saveLike) saveLet.type = parseLikeType(saveLike)
+            out.push(saveLet)
           }
           break
         }
@@ -427,17 +442,26 @@ export function mill(tree: RootNode, file: string): MillResult {
           break
         }
         case 'host': {
-          const hostArgs = rest(node).filter((a) => !(a.kind === 'group' && headName(a) === 'flex'))
+          const hostArgs = rest(node)
           const target = hostArgs[0]
           const name = target && target.kind === 'group' ? headName(target) : undefined
           if (!name) {
             fail(node, 'host needs a name')
             break
           }
-          const valueNode = hostArgs[1]
+          // signature annotations (`name <X>` foreign name, `like <T>` type, `flex`) are not the value. A generated
+          // ambient binding like `host na-n, name <NaN> / like native-number` has no value at all; without skipping
+          // these the `name <NaN>` annotation would be milled as a bare `name` variable reference. Only the target
+          // (first node) is exempt, since a binding can legitimately be named `name` (`host name, name <name>`).
+          const valueNode = hostArgs.slice(1).find((a) => !(a.kind === 'group' && HOST_ANNOTATION.has(headName(a) ?? '')))
           const value: Expression = valueNode ? toExpression(valueNode, scope) : { form: 'unit', span }
           scope.add(name)
-          out.push({ form: 'let', name, init: value, mutable: false, span })
+          // an explicit `like <T>` annotation types the binding (`host el, like element / read x`): it lets a value
+          // read from an opaque field be re-typed to a concrete form so receiver dispatch can route its methods.
+          const hostLike = hostArgs.slice(1).find((a): a is GroupNode => a.kind === 'group' && headName(a) === 'like')
+          const hostLet: Statement = { form: 'let', name, init: value, mutable: false, span }
+          if (hostLike) hostLet.type = parseLikeType(hostLike)
+          out.push(hostLet)
           break
         }
         case 'turn':
@@ -492,17 +516,27 @@ export function mill(tree: RootNode, file: string): MillResult {
             out.push({ form: 'match', subject, cases, otherwise, span })
             break
           }
-          const hookMap = hooks(node)
-          const condNodes = hookMap.get('test')
-          const cond: Expression = condNodes && condNodes[0] ? toExpression(condNodes[0], scope) : { form: 'boolean', value: false, span }
-          const thenNodes = hookMap.get('hold') ?? []
-          const elseNodes = hookMap.get('miss')
-          out.push({
-            form: 'if',
-            branches: [{ cond, body: toStatements(thenNodes, scope) }],
-            otherwise: elseNodes ? toStatements(elseNodes, scope) : undefined,
-            span,
-          })
+          // walk the hooks in order, pairing each `hook test` with the `hook hold` that follows it. This builds the
+          // full if / else-if chain (multiple test/hold pairs), with `hook miss` as the final else. A lone `hook hold`
+          // (no preceding test) defaults to an always-true branch.
+          const branches: Array<{ cond: Expression; body: Array<Statement> }> = []
+          let otherwise: Array<Statement> | undefined
+          let pendingCond: Expression | undefined
+          for (const child of rest(node)) {
+            if (child.kind !== 'group' || headName(child) !== 'hook') continue
+            const inner = rest(child)
+            const variantName = inner[0] && inner[0].kind === 'group' ? headName(inner[0]) : undefined
+            const bodyNodes = inner.slice(1)
+            if (variantName === 'test') {
+              pendingCond = bodyNodes[0] ? toExpression(bodyNodes[0], scope) : { form: 'boolean', value: false, span }
+            } else if (variantName === 'hold') {
+              branches.push({ cond: pendingCond ?? { form: 'boolean', value: true, span }, body: toStatements(bodyNodes, scope) })
+              pendingCond = undefined
+            } else if (variantName === 'miss') {
+              otherwise = toStatements(bodyNodes, scope)
+            }
+          }
+          out.push({ form: 'if', branches, otherwise, span })
           break
         }
         default:
@@ -518,6 +552,10 @@ export function mill(tree: RootNode, file: string): MillResult {
     const name = nameGroup && nameGroup.kind === 'group' ? headName(nameGroup) : undefined
     const span = spanOf(group)
     if (!name) {
+      // a computed / symbol-keyed method (e.g. `task {symbol/iterator}` from `[Symbol.iterator]()` in a generated
+      // binding) has no plain identifier name; it is not callable by name in seed, so skip it silently. Only a
+      // genuinely empty `task` (no head at all) is an error.
+      if (nameGroup) return undefined
       fail(group, 'task needs a name')
       return undefined
     }
@@ -572,7 +610,10 @@ export function mill(tree: RootNode, file: string): MillResult {
     // signature nodes describe the task; they are not executable body statements. `head` (generics), `take` (params),
     // the bare `like` (result type), `free` (named output), `mark` (modifiers like `mark async`/`mark private`), and
     // `note` (documentation) are all consumed here, so only real statements (send back, save, call, fork, ...) remain.
-    const SIGNATURE = new Set(['head', 'take', 'like', 'free', 'mark', 'note'])
+    // `name <X>` is the task's foreign / display name (the JS method name a generated binding maps to), not an
+    // executable statement. `flex` marks a variadic / optional parameter. `rank` annotates a receiver's type
+    // (`rank self / like array / like s`). All are signature annotations, never executable.
+    const SIGNATURE = new Set(['head', 'take', 'like', 'free', 'mark', 'note', 'name', 'flex', 'rank'])
     const executable = body.filter((n) => !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')))
     const fn: Statement = { form: 'function', name, params, body: toStatements(executable, scope), generics, span }
     if (resultType) fn.result = resultType

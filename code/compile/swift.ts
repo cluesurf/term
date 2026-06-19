@@ -8,15 +8,31 @@
 import type { Expression, Program, Statement, Type } from '@/code/compile/node'
 import { exhausted } from '@/code/compile/backend'
 
-// `self` is reserved in Swift; every other name is camelCased
-function vname(name: string): string {
-  return name === 'self' ? 'slf' : name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
+// Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
+// `default`, etc.) it must be backtick-escaped, in both the declaration and every reference.
+const SWIFT_KEYWORDS = new Set([
+  'associatedtype', 'class', 'deinit', 'enum', 'extension', 'fileprivate', 'func', 'import', 'init', 'inout',
+  'internal', 'let', 'open', 'operator', 'private', 'protocol', 'public', 'rethrows', 'static', 'struct', 'subscript',
+  'typealias', 'var', 'break', 'case', 'continue', 'default', 'defer', 'do', 'else', 'fallthrough', 'for', 'guard',
+  'if', 'in', 'repeat', 'return', 'switch', 'where', 'while', 'as', 'catch', 'false', 'is', 'nil', 'super', 'self',
+  'throw', 'throws', 'true', 'try', 'async', 'await', 'actor', 'any', 'some',
+])
+function escape(identifier: string): string {
+  return SWIFT_KEYWORDS.has(identifier) ? `\`${identifier}\`` : identifier
 }
-function camel(name: string): string {
+function camelize(name: string): string {
   return name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
 }
+// `self` is reserved in Swift; every other name is camelCased, then keyword-escaped
+function vname(name: string): string {
+  return name === 'self' ? 'slf' : escape(camelize(name))
+}
+function camel(name: string): string {
+  return escape(camelize(name))
+}
+// type / variant names are capitalized, so they can never collide with a (lowercase) keyword
 function pascal(name: string): string {
-  const c = camel(name)
+  const c = camelize(name)
   return c.charAt(0).toUpperCase() + c.slice(1)
 }
 
@@ -268,7 +284,10 @@ export function emitSwift(program: Program): string {
     }
   }
 
-  const imports = program.filter((n): n is Extract<Statement, { form: 'native' }> => n.form === 'native').map((n) => `import ${n.module.replace(/^[a-z]+:/, '')}`)
+  // a `<global:X>` binding (e.g. the linked `io` runtime namespace) needs no import: it is already in scope
+  const imports = program
+    .filter((n): n is Extract<Statement, { form: 'native' }> => n.form === 'native' && !n.module.startsWith('global:'))
+    .map((n) => `import ${n.module.replace(/^[a-z]+:/, '')}`)
   const body = program.filter((n) => n.form !== 'native').map((n) => stmt(n, 0, new Map())).filter(Boolean)
   const prelude = body.some((b) => b.includes('SeedError(')) ? ['struct SeedError: Error { let message: String; init(_ m: String) { message = m } }'] : []
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'

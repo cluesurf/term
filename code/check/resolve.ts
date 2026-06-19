@@ -9,8 +9,12 @@ import type { Binding, Expression, Program, Statement } from '@/code/compile/nod
 
 type Scope = Map<string, Binding>
 
-export function resolve(program: Program, file: string): Array<Diagnostic> {
+export function resolve(program: Program, file: string, origin?: WeakMap<Statement, string>): Array<Diagnostic> {
   const diagnostics: Array<Diagnostic> = []
+
+  // the file currently being resolved. With a merged multi-module program, `file` is only the entry; `origin` maps
+  // each top-level statement back to the module it came from, so an unknown-name error points at the real source.
+  let currentFile = file
 
   // global scope: top-level functions, collected first so forward references resolve
   const global: Scope = new Map()
@@ -27,6 +31,14 @@ export function resolve(program: Program, file: string): Array<Diagnostic> {
       global.set(statement.alias, { kind: 'deferred' })
     }
   }
+
+  // the JS intrinsics the generated bindings (bind.tree's native.tree) use to express operators, control flow, and
+  // dynamic member access. They are not user definitions; the backend lowers them to real operations. Always in scope.
+  const INTRINSICS = [
+    'native-test', 'native-test-else', 'debug', 'compute-binary-operation', 'compute-prefixed-unary-operation',
+    'call-keyword', 'set-dynamic-aspect', 'get-dynamic-aspect', 'try',
+  ]
+  for (const intrinsic of INTRINSICS) global.set(intrinsic, { kind: 'builtin' })
 
   const stack: Array<Scope> = [global]
 
@@ -58,7 +70,7 @@ export function resolve(program: Program, file: string): Array<Diagnostic> {
           const suggestion = nearest(node.name, known())
           diagnostics.push(
             diagnose('unknown-name', {
-              file,
+              file: currentFile,
               span: node.span,
               message: `the name "${node.name}" is not defined`,
               hint: suggestion ? `did you mean "${suggestion}"?` : undefined,
@@ -168,7 +180,10 @@ export function resolve(program: Program, file: string): Array<Diagnostic> {
     }
   }
 
-  for (const statement of program) resolveStatement(statement)
+  for (const statement of program) {
+    currentFile = origin?.get(statement) ?? file
+    resolveStatement(statement)
+  }
 
   return diagnostics
 }
