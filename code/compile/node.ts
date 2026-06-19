@@ -7,6 +7,9 @@ import type { Span } from '@/code/parser/diagnostic'
 // surface types. `unknown` is the gradual any. `variable` is an inference metavariable (a type hole).
 export type Type =
   | { kind: 'number' }
+  // a 64-bit floating-point number, distinct from the integer `number`. Sources: a decimal literal, `like decimal` /
+  // `like float`, the float math library, and JSON numbers. It does not silently unify with the integer `number`.
+  | { kind: 'float' }
   | { kind: 'boolean' }
   | { kind: 'string' }
   | { kind: 'unit' }
@@ -18,6 +21,7 @@ export type Type =
   | { kind: 'variable'; id: number }
 
 export const NUMBER: Type = { kind: 'number' }
+export const FLOAT: Type = { kind: 'float' }
 export const BOOLEAN: Type = { kind: 'boolean' }
 export const STRING: Type = { kind: 'string' }
 export const UNIT: Type = { kind: 'unit' }
@@ -138,6 +142,8 @@ export function showType(type: Type): string {
   switch (type.kind) {
     case 'number':
       return 'number'
+    case 'float':
+      return 'float'
     case 'boolean':
       return 'boolean'
     case 'string':

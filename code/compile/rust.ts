@@ -38,6 +38,8 @@ function rustType(type: Type | undefined): string {
       return `impl Fn(${type.params.map(rustType).join(', ')}) -> ${rustType(type.result)}`
     case 'number':
       return 'i64'
+    case 'float':
+      return 'f64'
     case 'variable':
     case 'unknown':
       return 'i64'
@@ -64,7 +66,8 @@ export function emitRust(program: Program): string {
       case 'integer':
         return String(node.value)
       case 'float':
-        return String(node.value)
+        // a float literal must carry a decimal point so the value and its arithmetic are f64, not integer
+        return Number.isInteger(node.value) ? `${node.value}.0` : String(node.value)
       case 'boolean':
         return node.value ? 'true' : 'false'
       case 'string':

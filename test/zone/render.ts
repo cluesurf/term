@@ -3,7 +3,7 @@
 // parse -> mill -> resolve -> infer -> emit (TypeScript) -> esbuild -> execute. Run: npx tsx test/zone/render.ts
 
 import { compile } from '@/code/compile/compile'
-import type { Source } from '@/code/compile/load'
+import { projectResolver } from '@/code/call/make'
 import { transform } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -22,27 +22,11 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-// the framework lives two packages over from the compiler; resolve relative to this file
-const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
-
-function tryFile(base: string): Source | undefined {
-  for (const candidate of [base + '.tree', path.join(base, 'base.tree')]) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return { file: candidate, text: fs.readFileSync(candidate, 'utf8') }
-  }
-  return undefined
-}
-
-// resolve framework + stdlib imports; the abstract dom API resolves to the node (SSR) native impl for this build
-function resolve(importPath: string, from: string): Source | undefined {
-  if (importPath.startsWith('@cluesurf/base/code/')) return tryFile(path.join(DECK, 'base.tree/code', importPath.slice(20)))
-  if (importPath.startsWith('@cluesurf/site/code/')) return tryFile(path.join(DECK, 'site.tree/code', importPath.slice(20)))
-  if (importPath.startsWith('./') || importPath.startsWith('../')) {
-    let resolved = path.resolve(path.dirname(from), importPath)
-    if (resolved.endsWith('/dom/dom')) resolved = path.join(DECK, 'site.tree/code/dom/native/node')
-    return tryFile(resolved)
-  }
-  return undefined
-}
+const SEED = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const DECK = path.resolve(SEED, '..')
+// resolve through the seed package manager: linked @cluesurf/* packages + the abstract dom API rewritten to the node
+// (SSR / headless) native impl by the `node` env.
+const resolve = projectResolver(SEED, 'node')
 
 async function main(): Promise<void> {
   const entry = path.join(DECK, 'site.tree/code/test/site/ssr-demo.tree')

@@ -18,6 +18,8 @@ function wgslType(type: Type | undefined): string {
       return `array<${wgslType(type.element)}>`
     case 'number':
       return 'i32'
+    case 'float':
+      return 'f32'
     default:
       return 'i32'
   }

@@ -77,6 +77,8 @@ export function emitKotlin(program: Program): string {
         return `(${type.params.map(kotlinType).join(', ')}) -> ${kotlinType(type.result)}`
       case 'number':
         return 'Long'
+      case 'float':
+        return 'Double'
       case 'variable':
         return varNames.get(type.id) ?? 'Long'
       case 'unknown':
@@ -122,7 +124,8 @@ export function emitKotlin(program: Program): string {
       case 'integer':
         return `${node.value}L`
       case 'float':
-        return String(node.value)
+        // a float literal needs a decimal point so it is a Double, not a Long
+        return Number.isInteger(node.value) ? `${node.value}.0` : String(node.value)
       case 'boolean':
         return node.value ? 'true' : 'false'
       case 'string':

@@ -88,6 +88,8 @@ export function emitSwift(program: Program): string {
         return `(${type.params.map(swiftType).join(', ')}) -> ${swiftType(type.result)}`
       case 'number':
         return 'Int'
+      case 'float':
+        return 'Double'
       case 'variable':
         return varNames.get(type.id) ?? 'Int' // a free variable not in this function's scope: default to Int
       case 'unknown':
@@ -148,8 +150,10 @@ export function emitSwift(program: Program): string {
   const expr = (node: Expression, bind: Bindings): string => {
     switch (node.form) {
       case 'integer':
-      case 'float':
         return String(node.value)
+      case 'float':
+        // a float literal needs a decimal point so it is a Double, not an Int
+        return Number.isInteger(node.value) ? `${node.value}.0` : String(node.value)
       case 'boolean':
         return node.value ? 'true' : 'false'
       case 'string':

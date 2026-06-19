@@ -619,6 +619,19 @@ task compute
       mark 5
       mark 5
 `
+// float: real floating-point math. square-root(9.0) == 3.0 exactly (asserted as a boolean to avoid print-format
+// differences: rust prints "3", swift/kotlin print "3.0").
+const FLOAT_PROG = `load @cluesurf/base/code/float
+  find square-root
+
+task compute
+  like boolean
+  send back
+    call is-equal
+      call square-root
+        9.0
+      3.0
+`
 // time: now() is non-deterministic, so assert it is a positive epoch (boolean -> "true")
 const TIME_PROG = `load @cluesurf/base/code/time
   find now
@@ -761,6 +774,11 @@ function main(): void {
   runSwiftText('swift + random: integer(5,5) is 5 (via Int.random)', frontEnd(RANDOM_PROG, true, 'swift'), '5')
   runKotlinText('kotlin + random: integer(5,5) is 5 (via kotlin Random)', frontEnd(RANDOM_PROG, true, 'kotlin'), '5')
   runRustCargo('rust + cargo: random integer(5,5) is 5 (via the rand crate)', frontEnd(RANDOM_PROG, true, 'rust'), '5', false)
+
+  // float math to "runs" on all three (square-root(9.0) == 3.0 via each platform's float library)
+  runSwiftText('swift + float: square-root(9.0) == 3.0 (via Foundation)', frontEnd(FLOAT_PROG, true, 'swift'), 'true')
+  runKotlinText('kotlin + float: square-root(9.0) == 3.0 (via kotlin.math)', frontEnd(FLOAT_PROG, true, 'kotlin'), 'true')
+  runRustCargo('rust + cargo: float square-root(9.0) == 3.0 (via f64 methods)', frontEnd(FLOAT_PROG, true, 'rust'), 'true', false)
 
   // time (positive epoch) + console (stdout) to "runs" on all three
   runSwiftText('swift + time: now() is a positive epoch (via Date)', frontEnd(TIME_PROG, true, 'swift'), 'true')

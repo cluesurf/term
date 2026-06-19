@@ -31,7 +31,21 @@ function findTreeFiles(dir: string, out: Array<string> = []): Array<string> {
 export function projectResolver(root: string, env: NativeEnv = 'node'): Resolver {
   const stdlib = stdlibResolver()
   const linked = linkResolver(root)
+  const tryFile = (b: string) => {
+    for (const candidate of [`${b}.tree`, path.join(b, 'base.tree'), path.join(b, 'note.tree')]) {
+      try {
+        return { file: candidate, text: readFileSync(candidate, 'utf8') }
+      } catch {
+        // try the next candidate
+      }
+    }
+    return undefined
+  }
   const base: Resolver = (importPath, fromFile) => {
+    // a relative import resolves against the importing file (the framework's modules import each other this way)
+    if (importPath.startsWith('./') || importPath.startsWith('../')) {
+      return tryFile(path.resolve(path.dirname(fromFile), importPath))
+    }
     // linked packages first (@cluesurf/base, /bind, /term, /site via `seed link`), then the bundled stdlib fallback
     const fromLink = linked(importPath, fromFile)
     if (fromLink) return fromLink

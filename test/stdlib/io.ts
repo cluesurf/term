@@ -567,7 +567,7 @@ load @cluesurf/base/code/json/value
 
 task field-number
   take text, like text
-  like number
+  like decimal
   send back
     call as-number
       call get-field
@@ -587,7 +587,7 @@ task field-text
 
 task item-number
   take text, like text
-  like number
+  like decimal
   send back
     call as-number
       call get-item
@@ -648,7 +648,46 @@ task fetch-status
     read response/status
 `
 
+// float: real floating-point math (host float library) + fractional division that does NOT truncate
+const FLOAT = `load @cluesurf/base/code/float
+  find square-root
+  find round-down
+  find power
+
+task root-of
+  like decimal
+  send back
+    call square-root
+      9.0
+
+task floor-of
+  like decimal
+  send back
+    call round-down
+      3.7
+
+task pow-of
+  like decimal
+  send back
+    call power
+      2.0
+      3.0
+
+task div-of
+  like decimal
+  send back
+    call divide
+      7.0
+      2.0
+`
+
 async function main(): Promise<void> {
+  const fl = await loadProgram(FLOAT)
+  expect('float: square-root(9.0) is 3', fl.rootOf!(), 3)
+  expect('float: round-down(3.7) is 3', fl.floorOf!(), 3)
+  expect('float: power(2.0, 3.0) is 8', fl.powOf!(), 8)
+  expect('float: 7.0 / 2.0 is 3.5 (not truncated like integer division)', fl.divOf!(), 3.5)
+
   const ht = await loadProgram(HTTP)
   expect('network/http: get reads the body (data URL via host fetch)', await ht.fetchBody!('data:text/plain,hello%20seed'), 'hello seed')
   expect('network/http: get reads the status', await ht.fetchStatus!('data:text/plain,x'), 200)

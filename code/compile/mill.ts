@@ -7,18 +7,22 @@ import type { Diagnostic, Span } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
 import type { GroupNode, NameNode, Node, RootNode } from '@/code/parser/tree'
 import type { BinaryOp, DockArgument, DockCall, DockMethod, DockRoute, DockTake, Expression, Program, Proof, Statement, Type, ZoneAttribute, ZoneNode } from '@/code/compile/node'
-import { BOOLEAN, NUMBER, STRING, UNIT, UNKNOWN } from '@/code/compile/node'
+import { BOOLEAN, FLOAT, NUMBER, STRING, UNIT, UNKNOWN } from '@/code/compile/node'
 
 // like-type names to surface types
 const TYPE_NAME: Record<string, Type> = {
   u8: NUMBER, u16: NUMBER, u32: NUMBER, u64: NUMBER,
   i8: NUMBER, i16: NUMBER, i32: NUMBER, i64: NUMBER,
-  'natural-number': NUMBER, integer: NUMBER, number: NUMBER, decimal: NUMBER,
+  'natural-number': NUMBER, integer: NUMBER, number: NUMBER,
+  // floating point: `decimal` / `float` and the sized floats are the distinct float type
+  decimal: FLOAT, float: FLOAT, f32: FLOAT, f64: FLOAT,
   text: STRING, boolean: BOOLEAN, void: UNIT, unit: UNIT,
   // bind's native primitives ARE seed's primitives (a JS string is seed's `string`, etc.): map them to the same
   // surface type so a seed value passes to a bind method param and vice versa, with no subtyping needed.
   'native-string': STRING, 'native-number': NUMBER, 'native-boolean': BOOLEAN, 'native-bigint': NUMBER,
   'native-void': UNIT, 'native-null': UNIT, 'native-undefined': UNIT,
+  // `any` is the gradual type: consistent with everything (an opaque bind type, a callback union, etc.)
+  any: UNKNOWN,
 }
 
 // signature annotation keywords that decorate a `host`/`save` declaration rather than supplying its value:

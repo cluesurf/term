@@ -5,7 +5,7 @@
 // `parent.appendChild`, ...); no FFI shim is needed. Run: npx tsx test/zone/browser.ts
 
 import { compile } from '@/code/compile/compile'
-import type { Source } from '@/code/compile/load'
+import { projectResolver } from '@/code/call/make'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -18,24 +18,11 @@ function ok(name: string, cond: boolean, info = ''): void {
   if (cond) { pass++; console.log(`ok    ${name}`) } else { fail++; console.log(`FAIL  ${name}  ${info}`) }
 }
 
-const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
-const tryFile = (b: string): Source | undefined => {
-  for (const c of [b + '.tree', path.join(b, 'base.tree')]) if (fs.existsSync(c) && fs.statSync(c).isFile()) return { file: c, text: fs.readFileSync(c, 'utf8') }
-  return undefined
-}
-// resolve framework + stdlib + bind. The abstract dom API resolves to the browser native impl for this build, so the
-// render runtime and app drive the real DOM through bind.
-function resolve(imp: string, from: string): Source | undefined {
-  if (imp.startsWith('@cluesurf/base/code/')) return tryFile(path.join(DECK, 'base.tree/code', imp.slice(20)))
-  if (imp.startsWith('@cluesurf/bind/code/')) return tryFile(path.join(DECK, 'bind.tree/code', imp.slice(20)))
-  if (imp.startsWith('@cluesurf/site/code/')) return tryFile(path.join(DECK, 'site.tree/code', imp.slice(20)))
-  if (imp.startsWith('./') || imp.startsWith('../')) {
-    let p = path.resolve(path.dirname(from), imp)
-    if (p.endsWith('/dom/dom')) p = path.join(DECK, 'site.tree/code/dom/native/browser')
-    return tryFile(p)
-  }
-  return undefined
-}
+const SEED = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const DECK = path.resolve(SEED, '..')
+// resolve through the seed package manager: linked @cluesurf/* packages + the abstract dom API rewritten to the
+// browser native impl by the `browser` env.
+const resolve = projectResolver(SEED, 'browser')
 
 // a minimal DOM stub for the headless run (a real browser supplies these natively). The compiled app calls the real
 // DOM via bind: `document.createElement(tag, opts)`, `el.setAttribute`, `parent.appendChild`, `el.addEventListener`,

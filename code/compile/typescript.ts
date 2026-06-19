@@ -82,6 +82,7 @@ function tsType(type: Type | undefined): string {
       return `(${type.params.map((p, i) => `a${i}: ${tsType(p)}`).join(', ')}) => ${result}`
     }
     case 'number':
+    case 'float':
       return 'number'
     case 'variable':
     case 'unknown':

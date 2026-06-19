@@ -6,7 +6,7 @@
 import type { Diagnostic, Span } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
 import type { Expression, Program, Statement, Type } from '@/code/compile/node'
-import { BOOLEAN, NUMBER, STRING, UNIT, UNKNOWN, showType } from '@/code/compile/node'
+import { BOOLEAN, FLOAT, NUMBER, STRING, UNIT, UNKNOWN, showType } from '@/code/compile/node'
 
 export function check(program: Program, file: string, fileOrigin?: WeakMap<Statement, string>): Array<Diagnostic> {
   const diagnostics: Array<Diagnostic> = []
@@ -315,8 +315,10 @@ export function check(program: Program, file: string, fileOrigin?: WeakMap<State
     let type: Type
     switch (node.form) {
       case 'integer':
-      case 'float':
         type = NUMBER
+        break
+      case 'float':
+        type = FLOAT
         break
       case 'boolean':
         type = BOOLEAN
@@ -345,8 +347,11 @@ export function check(program: Program, file: string, fileOrigin?: WeakMap<State
       }
       case 'unary':
         if (node.op === '-') {
-          expect(inferExpression(node.operand, env), NUMBER, node.span, 'negation operand')
-          type = NUMBER
+          // negation preserves the operand's numeric kind (float stays float)
+          const operand = inferExpression(node.operand, env)
+          const numeric = resolve(operand).kind === 'float' ? FLOAT : NUMBER
+          expect(operand, numeric, node.span, 'negation operand')
+          type = numeric
         } else {
           expect(inferExpression(node.operand, env), BOOLEAN, node.span, 'not operand')
           type = BOOLEAN
@@ -355,6 +360,8 @@ export function check(program: Program, file: string, fileOrigin?: WeakMap<State
       case 'binary': {
         const left = inferExpression(node.left, env)
         const right = inferExpression(node.right, env)
+        // arithmetic and comparison are numeric-kind-preserving: float with float, integer with integer, no silent mix
+        const numeric = resolve(left).kind === 'float' || resolve(right).kind === 'float' ? FLOAT : NUMBER
         if (node.op === '&&' || node.op === '||') {
           expect(left, BOOLEAN, node.left.span, 'logical operand')
           expect(right, BOOLEAN, node.right.span, 'logical operand')
@@ -363,17 +370,17 @@ export function check(program: Program, file: string, fileOrigin?: WeakMap<State
           expect(right, left, node.right.span, 'comparison operands')
           type = BOOLEAN
         } else if (node.op === '<' || node.op === '<=' || node.op === '>' || node.op === '>=') {
-          expect(left, NUMBER, node.left.span, 'comparison operand')
-          expect(right, NUMBER, node.right.span, 'comparison operand')
+          expect(left, numeric, node.left.span, 'comparison operand')
+          expect(right, numeric, node.right.span, 'comparison operand')
           type = BOOLEAN
         } else if (node.op === '+' && resolve(left).kind === 'string') {
           // `+` is string concatenation when its left operand is a string (otherwise numeric addition)
           expect(right, STRING, node.right.span, 'string concatenation')
           type = STRING
         } else {
-          expect(left, NUMBER, node.left.span, 'arithmetic operand')
-          expect(right, NUMBER, node.right.span, 'arithmetic operand')
-          type = NUMBER
+          expect(left, numeric, node.left.span, 'arithmetic operand')
+          expect(right, numeric, node.right.span, 'arithmetic operand')
+          type = numeric
         }
         break
       }
