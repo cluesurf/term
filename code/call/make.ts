@@ -1,7 +1,8 @@
 import { spawn } from 'child_process'
 import path from 'path'
-import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync } from 'fs'
+import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync, watch as fsWatch } from 'fs'
 import { compile } from '../compile/compile'
+import { CompileCache } from '../compile/cache'
 import type { Resolver } from '../compile/load'
 import { stdlibResolver } from './walk'
 import { logGood, logFail, logStep, formatError, fade } from '../tint'
@@ -40,9 +41,10 @@ function projectResolver(root: string): Resolver {
   }
 }
 
-// compile every .tree file in the project to TypeScript under `host/`, mirroring the source tree. Returns counts so
+// compile every .tree file in the project to TypeScript under `host/`, mirroring the source tree. An optional shared
+// cache makes repeated builds (watch mode) incremental: an unchanged module reuses its parse + mill. Returns counts so
 // the caller decides how to report and whether to fail.
-export function compileProject(root: string): { compiled: number; failed: number; errors: Array<string> } {
+export function compileProject(root: string, cache?: CompileCache): { compiled: number; failed: number; errors: Array<string> } {
   const files = findTreeFiles(root)
   const resolve = projectResolver(root)
   let compiled = 0
@@ -50,7 +52,7 @@ export function compileProject(root: string): { compiled: number; failed: number
   const errors: Array<string> = []
   for (const file of files) {
     const text = readFileSync(file, 'utf8')
-    const result = compile({ file, text }, { resolve })
+    const result = compile({ file, text }, { resolve, cache })
     if (!result.ok) {
       failed++
       const first = result.diagnostics[0]
@@ -63,6 +65,27 @@ export function compileProject(root: string): { compiled: number; failed: number
     compiled++
   }
   return { compiled, failed, errors }
+}
+
+// watch the project's .tree files and recompile incrementally on change (a shared cache reuses unchanged modules).
+// Debounced so a burst of saves triggers one rebuild. Runs until the process is killed.
+export function watchProject(root: string): void {
+  const cache = new CompileCache()
+  const build = (label: string): void => {
+    const { compiled, failed, errors } = compileProject(root, cache)
+    for (const error of errors) logFail(error)
+    if (failed > 0) logFail(`${label}: ${compiled} ok, ${failed} failed`)
+    else logGood(`${label}: ${compiled} file${compiled === 1 ? '' : 's'} -> host/`)
+  }
+  build('built')
+  console.log(fade('  watching for changes... (ctrl-c to stop)'))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  fsWatch(root, { recursive: true }, (_event, filename) => {
+    const name = typeof filename === 'string' ? filename : ''
+    if (!name.endsWith('.tree') || name.includes('host/')) return
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => build(`rebuilt (${name})`), 30)
+  })
 }
 
 export async function callMake(input: {
@@ -90,6 +113,9 @@ export async function callMake(input: {
       if (!input.ride) {
         logGood('Build complete')
       }
+    } else if (input.ride) {
+      console.log(fade('  No build script found. Watching .tree files (incremental)...'))
+      watchProject(input.root) // runs until interrupted
     } else {
       console.log(fade('  No build script found. Compiling .tree files directly...'))
       const { compiled, failed, errors } = compileProject(input.root)
