@@ -511,7 +511,7 @@ task entry-count
 const RANGE = `load @cluesurf/base/code/range
   find range
 
-task range-length
+task measure-range
   like number
   back
     call length
@@ -541,7 +541,217 @@ task range-excludes-end
       mark 10
 `
 
+const SET = `load @cluesurf/base/code/set
+  find set
+
+task add-has
+  like boolean
+  save s
+    make set
+      bind items
+        make find
+  save s
+    call insert
+      read s
+      mark 5
+  send back
+    call has
+      read s
+      mark 5
+
+task missing
+  like boolean
+  save s
+    make set
+      bind items
+        make find
+  send back
+    call has
+      read s
+      mark 99
+
+task unique-size
+  like number
+  save s
+    make set
+      bind items
+        make find
+  save s
+    call insert
+      read s
+      mark 1
+  save s
+    call insert
+      read s
+      mark 2
+  save s
+    call insert
+      read s
+      mark 1
+  send back
+    call size
+      read s
+`
+
+const STACK = `load @cluesurf/base/code/list/stack
+  find stack
+
+task push-pop
+  like number
+  save s
+    make stack
+      bind items
+        make list
+  save s
+    call push
+      read s
+      mark 10
+  save s
+    call push
+      read s
+      mark 20
+  send back
+    call unwrap-or
+      call pop
+        read s
+      mark 0
+`
+
+const QUEUE = `load @cluesurf/base/code/list/queue
+  find queue
+
+task fifo
+  like number
+  save q
+    make queue
+      bind items
+        make list
+  save q
+    call enqueue
+      read q
+      mark 10
+  save q
+    call enqueue
+      read q
+      mark 20
+  send back
+    call unwrap-or
+      call dequeue
+        read q
+      mark 0
+`
+
+// linked-list: a recursive immutable ADT (empty | node)
+const LINKED_LIST = `load @cluesurf/base/code/list/linked-list
+  find linked-list
+
+task ll-length
+  like number
+  save l
+    make empty
+  save l
+    call prepend
+      read l
+      mark 1
+  save l
+    call prepend
+      read l
+      mark 2
+  send back
+    call length
+      read l
+
+task ll-head
+  like number
+  save l
+    make empty
+  save l
+    call prepend
+      read l
+      mark 5
+  send back
+    call unwrap-or
+      call head
+        read l
+      mark 0
+
+task ll-empty
+  like boolean
+  send back
+    call is-empty
+      make empty
+`
+
+// bag (multiset, keeps duplicates) and ordered-set (dedup, keeps order), both array-backed
+const BAG = `load @cluesurf/base/code/list/bag
+  find bag
+
+task bag-size
+  like number
+  save b
+    make bag
+      bind items
+        make list
+  call insert
+    read b
+    mark 5
+  call insert
+    read b
+    mark 5
+  send back
+    call get-size
+      read b
+`
+
+const ORDERED_SET = `load @cluesurf/base/code/list/ordered-set
+  find ordered-set
+
+task oset-size
+  like number
+  save s
+    make ordered-set
+      bind items
+        make list
+  save s
+    call insert
+      read s
+      mark 1
+  save s
+    call insert
+      read s
+      mark 1
+  save s
+    call insert
+      read s
+      mark 2
+  send back
+    call size
+      read s
+`
+
 async function main(): Promise<void> {
+  const bg = await loadProgram(BAG)
+  expect('bag/insert keeps duplicates (multiset size)', bg.bagSize!(), 2)
+
+  const os = await loadProgram(ORDERED_SET)
+  expect('ordered-set/insert dedups (size counts uniques)', os.osetSize!(), 2)
+
+  const ll = await loadProgram(LINKED_LIST)
+  expect('linked-list/length counts the nodes (recursive)', ll.llLength!(), 2)
+  expect('linked-list/head returns some of the first value', ll.llHead!(), 5)
+  expect('linked-list/is-empty on empty is true', ll.llEmpty!(), true)
+
+  const se = await loadProgram(SET)
+  expect('set/add then has finds the value', se.addHas!(), true)
+  expect('set/has on a missing value is false', se.missing!(), false)
+  expect('set/size counts unique values', se.uniqueSize!(), 2)
+
+  const st = await loadProgram(STACK)
+  expect('stack/push then pop is LIFO', st.pushPop!(), 20)
+
+  const qu = await loadProgram(QUEUE)
+  expect('queue/enqueue then dequeue is FIFO', qu.fifo!(), 10)
+
   const h = await loadProgram(HASH)
   expect('hash/set then get returns some of the value', h.setAndGet!(), 10)
   expect('hash/get on a missing key returns none', h.getMissing!(), 99)
@@ -549,7 +759,7 @@ async function main(): Promise<void> {
   expect('hash/size counts entries', h.entryCount!(), 2)
 
   const rg = await loadProgram(RANGE)
-  expect('range/length is (end-start)/step', rg.rangeLength!(), 5)
+  expect('range/length is (end-start)/step', rg.measureRange!(), 5)
   expect('range/contains a value in bounds', rg.rangeHas!(), true)
   expect('range/contains excludes the end', rg.rangeExcludesEnd!(), false)
 

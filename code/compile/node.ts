@@ -74,7 +74,7 @@ export type Statement =
   | { form: 'hold'; expr: Expression; name?: string; proof?: Array<Proof>; span: Span }
   // a `method` tag marks a function desugared from a form's nested `task`: its `name` is mangled (`<form>_<method>`)
   // to avoid cross-module clashes, and `method` records the form and the bare method name for receiver dispatch.
-  | { form: 'function'; name: string; params: Array<{ name: string; type?: Type; refine?: 'natural' }>; body: Array<Statement>; result?: Type; generics: Array<{ name: string; need?: string }>; async?: boolean; method?: { form: string; name: string }; span: Span }
+  | { form: 'function'; name: string; params: Array<{ name: string; type?: Type; refine?: 'natural'; optional?: boolean }>; body: Array<Statement>; result?: Type; generics: Array<{ name: string; need?: string }>; async?: boolean; method?: { form: string; name: string }; span: Span }
   | { form: 'record-type'; name: string; params: Array<string>; fields: Array<{ name: string; type: Type }>; variants: Array<{ name: string; fields: Array<{ name: string; type: Type }> }>; span: Span }
   // a trait: a named set of method signatures (mask)
   | { form: 'mask'; name: string; methods: Array<string>; span: Span }

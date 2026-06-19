@@ -72,24 +72,88 @@ function tsType(type: Type | undefined): string {
   }
 }
 
+// find expressions reassigned to a name, so the binding emits as `let` not `const`. Crucially this descends into
+// closure bodies: a variable declared in an outer scope but reassigned inside a callback (e.g. an effect) must be a
+// `let`. Without this, the reassignment would target a `const` and throw.
+function collectAssignedExpr(expr: Expression, into: Set<string>): void {
+  switch (expr.form) {
+    case 'closure':
+      collectAssigned(expr.body, into)
+      break
+    case 'call':
+      collectAssignedExpr(expr.callee, into)
+      expr.args.forEach((a) => collectAssignedExpr(a, into))
+      break
+    case 'binary':
+      collectAssignedExpr(expr.left, into)
+      collectAssignedExpr(expr.right, into)
+      break
+    case 'unary':
+      collectAssignedExpr(expr.operand, into)
+      break
+    case 'array':
+      expr.items.forEach((i) => collectAssignedExpr(i, into))
+      break
+    case 'map':
+      expr.entries.forEach((e) => {
+        collectAssignedExpr(e.key, into)
+        collectAssignedExpr(e.value, into)
+      })
+      break
+    case 'record':
+      expr.fields.forEach((f) => collectAssignedExpr(f.value, into))
+      break
+    case 'member':
+      collectAssignedExpr(expr.target, into)
+      break
+    case 'await':
+      collectAssignedExpr(expr.expr, into)
+      break
+    default:
+      break
+  }
+}
+
 function collectAssigned(statements: Array<Statement>, into: Set<string>): void {
   for (const statement of statements) {
     switch (statement.form) {
+      case 'let':
+        collectAssignedExpr(statement.init, into)
+        break
       case 'assign':
         if (statement.target.form === 'variable') into.add(statement.target.name)
+        collectAssignedExpr(statement.value, into)
+        break
+      case 'expression':
+        collectAssignedExpr(statement.expr, into)
+        break
+      case 'return':
+        if (statement.value) collectAssignedExpr(statement.value, into)
+        break
+      case 'throw':
+        collectAssignedExpr(statement.value, into)
+        break
+      case 'hold':
+        collectAssignedExpr(statement.expr, into)
         break
       case 'while':
+        collectAssignedExpr(statement.cond, into)
         collectAssigned(statement.body, into)
         break
       case 'for-each':
+        collectAssignedExpr(statement.iterable, into)
         collectAssigned(statement.body, into)
         break
       case 'match':
+        collectAssignedExpr(statement.subject, into)
         for (const branch of statement.cases) collectAssigned(branch.body, into)
         if (statement.otherwise) collectAssigned(statement.otherwise, into)
         break
       case 'if':
-        for (const branch of statement.branches) collectAssigned(branch.body, into)
+        for (const branch of statement.branches) {
+          collectAssignedExpr(branch.cond, into)
+          collectAssigned(branch.body, into)
+        }
         if (statement.otherwise) collectAssigned(statement.otherwise, into)
         break
       case 'function':
@@ -140,9 +204,10 @@ function makeEmitter(variants: Set<string>) {
       case 'closure': {
         const params = node.params.map((p) => `${toCamel(p.name)}: ${tsType(p.type)}`).join(', ')
         const arrow = node.async ? `async (${params})` : `(${params})`
-        // a single trailing `return X` becomes a concise arrow; otherwise a block
+        // a single trailing `return X` becomes a concise arrow; the body is parenthesized so an object literal is
+        // not mistaken for a block (`() => ({ ... })`)
         if (node.body.length === 1 && node.body[0]!.form === 'return' && node.body[0]!.value) {
-          return `${arrow} => ${expression(node.body[0]!.value)}`
+          return `${arrow} => (${expression(node.body[0]!.value)})`
         }
         return `${arrow} => ${block(node.body, 0)}`
       }
@@ -261,10 +326,16 @@ export function emitTypeScript(program: Program): string {
   const variants = new Set<string>()
   for (const node of program) if (node.form === 'record-type') for (const v of node.variants) variants.add(v.name)
   const emitter = makeEmitter(variants)
-  // native module bindings (`dock load`) become host imports at the top
-  const imports = program
-    .filter((node): node is Extract<typeof node, { form: 'native' }> => node.form === 'native')
+  // native module bindings (`dock load`) become host imports at the top. A `<global:X>` binding refers to a host
+  // global (console, process, ...) — no import; alias it to the global (unless the alias already is the global name).
+  const natives = program.filter((node): node is Extract<typeof node, { form: 'native' }> => node.form === 'native')
+  const imports = natives
+    .filter((node) => !node.module.startsWith('global:'))
     .map((node) => `import * as ${toCamel(node.alias)} from "${node.module}"`)
+  for (const node of natives.filter((n) => n.module.startsWith('global:'))) {
+    const globalName = node.module.slice('global:'.length)
+    if (toCamel(node.alias) !== globalName) imports.push(`const ${toCamel(node.alias)} = ${globalName}`)
+  }
   const lines = program
     .filter((node) => node.form !== 'native')
     .map((node) => {

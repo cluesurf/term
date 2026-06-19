@@ -7,17 +7,21 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compile } from '@/code/compile/compile'
+import { withNativeEnv } from '@/code/compile/native'
 import type { Source } from '@/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const base = join(here, '..', '..', '..', 'base.tree')
 const codeDir = join(base, 'code')
-const resolver = (path: string): Source | undefined => {
+const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
   if (!path.startsWith(prefix)) return undefined
   const file = join(base, `${path.slice(prefix.length)}.tree`)
   return existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
 }
+// the survey compiles against the node target, so a public module's abstract `native/<x>` import resolves to the
+// node implementation (native/node/<x>); modules that do not use native imports are unaffected
+const resolver = withNativeEnv('node', stdlib)
 
 let pass = 0
 let fail = 0

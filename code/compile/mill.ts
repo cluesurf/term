@@ -534,7 +534,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         generics.push(need ? { name: gName, need } : { name: gName })
       }
     }
-    const params: Array<{ name: string; type?: Type; refine?: 'natural' }> = []
+    const params: Array<{ name: string; type?: Type; refine?: 'natural'; optional?: boolean }> = []
     for (const statement of body) {
       if (statement.kind === 'group' && headName(statement) === 'take') {
         const varGroup = rest(statement)[0]
@@ -545,9 +545,17 @@ export function mill(tree: RootNode, file: string): MillResult {
         // honor the declared type (a first-class task type is parsed structurally), and detect a natural refinement
         const type = likeGroup ? parseLikeType(likeGroup) : undefined
         const refine = typeNode && typeNode.kind === 'group' && headName(typeNode) === 'natural-number' ? 'natural' : undefined
-        const param: { name: string; type?: Type; refine?: 'natural' } = { name: paramName }
+        // `need false` marks the parameter optional. In the comma form (`take x, like t, need false`) the parser
+        // nests `need` inside the `like` group; in the indented form it sits at the take level. Check both.
+        const needGroup =
+          rest(statement).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'need') ??
+          (likeGroup ? rest(likeGroup).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'need') : undefined)
+        const needArg = needGroup ? rest(needGroup)[0] : undefined
+        const optional = needArg != null && needArg.kind === 'group' && headName(needArg) === 'false'
+        const param: { name: string; type?: Type; refine?: 'natural'; optional?: boolean } = { name: paramName }
         if (type) param.type = type
         if (refine) param.refine = refine
+        if (optional) param.optional = true
         params.push(param)
       }
     }

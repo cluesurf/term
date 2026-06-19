@@ -183,7 +183,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
   for (const statement of program) if (statement.form === 'instance') instances.add(`${statement.mask}:${statement.target}`)
 
   // function name -> its signature: generic variable ids, their names, their trait bounds, and param/result types
-  type Signature = { generics: Set<number>; genericNames: Map<number, string>; bounds: Map<number, string>; params: Array<Type>; result: Type }
+  type Signature = { generics: Set<number>; genericNames: Map<number, string>; bounds: Map<number, string>; params: Array<Type>; result: Type; minArgs: number }
   const functions = new Map<string, Signature>()
   for (const statement of program) {
     if (statement.form !== 'function') continue
@@ -206,6 +206,8 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       bounds,
       params: statement.params.map((p) => seedType(p.type, genericVars)),
       result: seedType(statement.result, genericVars),
+      // the minimum call arity: trailing `need false` params may be omitted
+      minArgs: statement.params.filter((p) => !p.optional).length,
     })
   }
 
@@ -224,8 +226,8 @@ export function check(program: Program, file: string): Array<Diagnostic> {
 
   // instantiate a signature, freshening its generic variables (Hindley-Milner let-polymorphism), so a generic
   // function can be called at different types in the same program
-  function instantiate(signature: Signature): { params: Array<Type>; result: Type; bounds: Array<{ variable: Type; mask: string }> } {
-    if (signature.generics.size === 0) return { params: signature.params, result: signature.result, bounds: [] }
+  function instantiate(signature: Signature): { params: Array<Type>; result: Type; bounds: Array<{ variable: Type; mask: string }>; minArgs: number } {
+    if (signature.generics.size === 0) return { params: signature.params, result: signature.result, bounds: [], minArgs: signature.minArgs }
     const map = new Map<number, Type>()
     for (const id of signature.generics) map.set(id, fresh())
     const subst = (type: Type): Type => {
@@ -237,7 +239,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
       return r
     }
     const bounds = [...signature.bounds].map(([id, mask]) => ({ variable: map.get(id)!, mask }))
-    return { params: signature.params.map(subst), result: subst(signature.result), bounds }
+    return { params: signature.params.map(subst), result: subst(signature.result), bounds, minArgs: signature.minArgs }
   }
 
   // a type scheme: a type with some inference variables generalized (quantified). Empty `vars` is a plain
@@ -426,7 +428,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
             const params = formGenerics.get(variantEnum.get(variant) ?? '') ?? []
             const argMap = new Map<string, Type>()
             if (subject.kind === 'named' && subject.args) params.forEach((p, i) => subject.args![i] && argMap.set(p, subject.args![i]!))
-            type = substGenerics(field, argMap)
+            type = seedType(field, argMap)
             break
           }
         }
@@ -434,11 +436,12 @@ export function check(program: Program, file: string): Array<Diagnostic> {
         if (target.kind === 'named' && records.has(target.name)) {
           const field = records.get(target.name)!.get(node.name)
           if (field) {
-            // substitute the target's type arguments for the form's generics (pair<a,b> -> first : a)
+            // substitute the target's type arguments for the form's generics (pair<a,b> -> first : a); seedType (not
+            // substGenerics) so a `like list` / `like hash` field reads as array / map, matching its values
             const params = formGenerics.get(target.name) ?? []
             const argMap = new Map<string, Type>()
             if (target.args) params.forEach((p, i) => target.args![i] && argMap.set(p, target.args![i]!))
-            type = substGenerics(field, argMap)
+            type = seedType(field, argMap)
           } else {
             diagnostics.push(diagnose('unknown-name', { file, span: node.span, message: `"${target.name}" has no field "${node.name}"` }))
             type = UNKNOWN
