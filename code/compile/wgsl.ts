@@ -4,6 +4,7 @@
 // Pure, browser-safe.
 
 import type { Expression, Program, Statement, Type } from '@/code/compile/node'
+import { exhausted, unsupported } from '@/code/compile/backend'
 
 function snake(name: string): string {
   return name.replace(/-/g, '_')
@@ -44,8 +45,19 @@ export function emitWgsl(program: Program): string {
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
       case 'call':
         return `${expr(node.callee)}(${node.args.map(expr).join(', ')})`
+      case 'array':
+        return `array(${node.items.map(expr).join(', ')})`
+      // strings, maps, records, closures, and host awaits are outside the data-parallel GPU fragment (no heap, no
+      // dynamic dispatch). They surface as a marked poison value, never silently miscompiled to 0.
+      case 'string':
+      case 'unit':
+      case 'map':
+      case 'record':
+      case 'member':
+      case 'await':
+        return `0 /* ${unsupported('WGSL', node.form, '').trim()} */`
       default:
-        return '0' // strings / records / closures are not in the GPU fragment
+        return exhausted(node)
     }
   }
 
@@ -75,8 +87,23 @@ export function emitWgsl(program: Program): string {
         return 'break;'
       case 'continue':
         return 'continue;'
+      case 'for-each':
+        // WGSL has no iterator protocol; a ranged `for` over an array index is the data-parallel form. Emit a marker
+        // until the front-end lowers `for-each` to an indexed loop.
+        return unsupported('WGSL', 'for-each', '//')
+      case 'hold':
+        return '// hold: verified at compile time'
+      // exceptions, pattern match on tagged records, and nested definitions are outside the GPU fragment
+      case 'throw':
+      case 'match':
+      case 'function':
+      case 'record-type':
+      case 'mask':
+      case 'instance':
+      case 'native':
+        return unsupported('WGSL', node.form, '//')
       default:
-        return '' // throw / for-each / match: outside the GPU fragment
+        return exhausted(node)
     }
   }
 

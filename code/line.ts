@@ -16,11 +16,13 @@ import { callWalk } from './call/walk'
 import { callMove } from './call/move'
 import { callNote } from './call/note'
 import { callProfile } from './call/profile'
+import { callForm } from './call/form'
+import { callLint } from './call/lint'
 import { logFail, warn } from './tint'
 
 const COMMANDS = [
   'load', 'save', 'toss', 'link', 'seek', 'host',
-  'make', 'test', 'time', 'profile', 'boot', 'wash', 'walk', 'move', 'note', 'show',
+  'make', 'test', 'time', 'profile', 'boot', 'wash', 'walk', 'move', 'note', 'show', 'form', 'lint',
 ]
 
 function editDistance(a: string, b: string): number {
@@ -360,6 +362,53 @@ const cli = yargs(hideBin(process.argv))
       await callNote({
         root,
         deck: argv.deck,
+      })
+    },
+  )
+  .command(
+    'form [paths..]',
+    'Format .tree files into canonical layout',
+    yargs =>
+      yargs
+        .positional('paths', {
+          type: 'string',
+          description: 'Files or directories to format (default: current directory)',
+        })
+        .option('check', {
+          type: 'boolean',
+          description: 'Report which files would change without writing (for CI)',
+        })
+        .option('list', {
+          type: 'boolean',
+          description: 'Print formatted source to stdout instead of writing',
+        }),
+    async argv => {
+      await callForm({
+        root,
+        paths: (argv.paths as Array<string> | undefined) ?? [],
+        check: argv.check,
+        list: argv.list,
+      })
+    },
+  )
+  .command(
+    'lint [paths..]',
+    'Lint .tree files for style and correctness',
+    yargs =>
+      yargs
+        .positional('paths', {
+          type: 'string',
+          description: 'Files or directories to lint (default: current directory)',
+        })
+        .option('fix', {
+          type: 'boolean',
+          description: 'Apply autofixes in place',
+        }),
+    async argv => {
+      await callLint({
+        root,
+        paths: (argv.paths as Array<string> | undefined) ?? [],
+        fix: argv.fix,
       })
     },
   )

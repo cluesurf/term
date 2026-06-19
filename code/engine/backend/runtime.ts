@@ -71,6 +71,23 @@ export const keys = (m: Value): Value => {
   return array(Mp.keys(m.value).map((k) => str(k.replace(/^s:/, ''))))
 }
 export const strOf = (v: Value): Value => str(show(v))
+
+// error bridging for `throw` / `try`: a thrown Value travels as a JS Error carrying the original Value, so the
+// `catch` binding can recover it. A non-Seed JS error caught here is surfaced as a string Value.
+class SeedError extends Error {
+  constructor(public readonly value: Value) {
+    super(show(value))
+  }
+}
+export const toError = (v: Value): SeedError => new SeedError(v)
+export const fromError = (e: unknown): Value => (e instanceof SeedError ? e.value : str(e instanceof Error ? e.message : String(e)))
+
+// `for` iteration: yield the elements of an array, or the values of a map, as a JS iterable of Values
+export const iterate = (v: Value): Iterable<Value> => {
+  if (v.form === 'array') return Arr.toArray(v.value)
+  if (v.form === 'map') return Mp.values(v.value)
+  throw new Error(`cannot iterate ${v.form}`)
+}
 export const toInt = (v: Value): Value => {
   if (v.form === 'integer') return v
   if (v.form === 'float') return int(BigInt(Math.trunc(Number((v.value as { mantissa: bigint }).mantissa) * 3 ** (v.value as { exponent: number }).exponent)))

@@ -167,7 +167,12 @@ function force(value: Value): Value {
   const solution = metaSolution.get(value.id)
   if (!solution) return value
   let result = solution
-  for (const elim of value.spine) result = elim.e === 'app' ? applyValue(result, elim.arg) : applyJ(result, elim.motive, elim.base)
+  for (const elim of value.spine) {
+    if (elim.e === 'app') result = applyValue(result, elim.arg)
+    else if (elim.e === 'fst') result = applyFst(result)
+    else if (elim.e === 'snd') result = applySnd(result)
+    else result = applyJ(result, elim.motive, elim.base)
+  }
   return force(result)
 }
 

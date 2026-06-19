@@ -1,6 +1,9 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { logGood, logFail, logStep, logWarn, formatError } from '../tint'
+import { render } from '../parser/diagnostic'
+import { compileToModule, CompileFailure } from '../time/execute'
+import { runMemoryProfile, formatMemoryResult } from '../time/memory'
 
 export async function callProfile(input: {
   root: string
@@ -24,10 +27,10 @@ export async function callProfile(input: {
 
   switch (mode) {
     case 'cpu':
-      await profileCpu({ root, filePath, flame: input.flame, top: input.top, timeOnly: input.time })
+      await profileCpu({ root, filePath })
       break
     case 'memory':
-      await profileMemory({ root, filePath, heap: input.heap, track: input.track })
+      await profileMemory({ root, filePath, track: input.track })
       break
     default:
       logFail(`Unknown profile mode: ${mode}. Use "cpu" or "memory".`)
@@ -35,112 +38,46 @@ export async function callProfile(input: {
   }
 }
 
-async function profileCpu(input: {
-  root: string
-  filePath: string
-  flame?: boolean
-  top?: number
-  timeOnly?: boolean
-}): Promise<void> {
+// CPU profiling of the compiled artifact's own hotspots is not wired yet. We still compile the file so the user gets
+// real feedback if it does not build, then point them at memory profiling, which is available.
+async function profileCpu(input: { root: string; filePath: string }): Promise<void> {
   logStep('CPU profiling...')
-
+  const text = await fs.readFile(input.filePath, 'utf-8')
   try {
-    const { captureProfile, serializeProfile, extractHotspots, formatHotspots } = await import(
-      '@cluesurf/mesh.tree/code/time/profile'
-    )
-    const { compileText } = await import('@cluesurf/mesh.tree/code/make')
-    const { parse } = await import('@cluesurf/tree')
-
-    const text = await fs.readFile(input.filePath, 'utf-8')
-
-    const compiled = compileText({
-      text,
-      file: input.filePath,
-      target: 'typescript',
-      parse,
-    })
-
-    if (compiled.errors.length > 0) {
-      logFail(`${compiled.errors.length} compilation errors`)
+    compileToModule({ text, file: path.relative(input.root, input.filePath) })
+  } catch (err) {
+    if (err instanceof CompileFailure) {
+      logFail(`${err.diagnostics.length} compilation error(s)`)
+      for (const diagnostic of err.diagnostics) console.error(render(diagnostic, text.split('\n')))
       process.exit(1)
     }
-
-    // Build the function to profile
-    const fn = new Function(compiled.code + '\n// entry') as () => void
-
-    const profile = await captureProfile({
-      run: fn,
-      samplingInterval: 100,
-    })
-
-    if (input.top) {
-      const hotspots = extractHotspots({ profile, limit: input.top })
-      console.log('')
-      console.log(formatHotspots(hotspots))
-      console.log('')
-    }
-
-    // Save .cpuprofile
-    const outPath = input.filePath.replace(/\.tree$/, '.cpuprofile')
-    await fs.writeFile(outPath, serializeProfile(profile))
-    logGood(`Profile saved to ${outPath}`)
-
-    if (input.flame) {
-      logStep('Open the .cpuprofile file in speedscope or Chrome DevTools for flamegraph visualization')
-    }
-  } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    throw err
   }
+  logWarn('CPU profiling is not available yet. The file compiles. Use `seed profile memory <file>` for now.')
 }
 
-async function profileMemory(input: {
-  root: string
-  filePath: string
-  heap?: boolean
-  track?: boolean
-}): Promise<void> {
+async function profileMemory(input: { root: string; filePath: string; track?: boolean }): Promise<void> {
   logStep('Memory profiling...')
+  if (input.track) logWarn('Timeline tracking is not available yet; reporting a single before/after measurement.')
 
+  const text = await fs.readFile(input.filePath, 'utf-8')
   try {
-    const { profileMemory: runMemProfile, recordTimeline, formatMemoryResult, formatTimelineCsv } = await import(
-      '@cluesurf/mesh.tree/code/time/memory'
-    )
-    const { compileText } = await import('@cluesurf/mesh.tree/code/make')
-    const { parse } = await import('@cluesurf/tree')
-
-    const text = await fs.readFile(input.filePath, 'utf-8')
-
-    const compiled = compileText({
+    const result = await runMemoryProfile({
       text,
-      file: input.filePath,
-      target: 'typescript',
-      parse,
+      file: path.relative(input.root, input.filePath),
+      root: input.root,
+      name: path.basename(input.filePath, '.tree'),
     })
-
-    if (compiled.errors.length > 0) {
-      logFail(`${compiled.errors.length} compilation errors`)
+    console.log('')
+    console.log(formatMemoryResult(result))
+    console.log('')
+    logGood('Memory profile complete')
+  } catch (err) {
+    if (err instanceof CompileFailure) {
+      logFail(`${err.diagnostics.length} compilation error(s)`)
+      for (const diagnostic of err.diagnostics) console.error(render(diagnostic, text.split('\n')))
       process.exit(1)
     }
-
-    const fn = new Function(compiled.code + '\n// entry') as () => void
-
-    if (input.track) {
-      const timeline = recordTimeline({ run: fn })
-      const csvPath = input.filePath.replace(/\.tree$/, '.memory.csv')
-      await fs.writeFile(csvPath, formatTimelineCsv(timeline))
-      logGood(`Memory timeline saved to ${csvPath}`)
-    } else {
-      const result = runMemProfile({
-        name: path.basename(input.filePath, '.tree'),
-        run: fn,
-        forceGc: true,
-      })
-      console.log('')
-      console.log(formatMemoryResult(result))
-      console.log('')
-    }
-  } catch (err) {
     logFail(formatError(err))
     process.exit(1)
   }

@@ -3,6 +3,7 @@
 // browser-safe: returns a string. See note/research/vibe/computation/plans/07-codegen.md.
 
 import type { BinaryOp, Expression, Program, Statement, Type } from '@/code/compile/node'
+import { exhausted } from '@/code/compile/backend'
 
 const PRECEDENCE: Record<BinaryOp, number> = {
   '||': 1,
@@ -20,7 +21,9 @@ const PRECEDENCE: Record<BinaryOp, number> = {
   '%': 5,
 }
 
-function toCamel(name: string): string {
+// the TypeScript identifier a seed name compiles to (kebab/snake to camelCase). Exported so the benchmark runner can
+// map a seed function name to the exported symbol it must call in the emitted module.
+export function toCamel(name: string): string {
   return name.replace(/[-_](.)/g, (_, c: string) => c.toUpperCase())
 }
 
@@ -133,6 +136,8 @@ function makeEmitter(variants: Set<string>) {
         const text = `${left} ${node.op} ${right}`
         return precedence < parentPrecedence ? `(${text})` : text
       }
+      default:
+        return exhausted(node)
     }
   }
 
@@ -221,6 +226,8 @@ function makeEmitter(variants: Set<string>) {
       case 'native':
         // a `dock load` native binding: emitted as a host import at the top of the module, not inline here
         return ''
+      default:
+        return exhausted(node)
     }
   }
 

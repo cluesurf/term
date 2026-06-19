@@ -6,6 +6,7 @@
 import type { Program, Statement, Expression, BinaryOp } from '@/code/engine/ast'
 import type { Value } from '@/code/engine/value'
 import * as RT from '@/code/engine/backend/runtime'
+import { exhausted } from '@/code/compile/backend'
 
 const BINOP: Record<string, string> = {
   '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', '%': 'mod',
@@ -46,6 +47,7 @@ function makeEmitter() {
       case 'await': return `(await ${expr(e.expr)})`
       case 'index': return `RT.index(${expr(e.target)}, ${expr(e.index)})`
       case 'member': return `RT.member(${expr(e.target)}, ${JSON.stringify(e.name)})`
+      default: return exhausted(e)
     }
   }
 
@@ -101,6 +103,27 @@ function makeEmitter() {
         stack.pop()
         return out
       }
+      case 'throw': return `throw RT.toError(${expr(s.value)});`
+      case 'try': {
+        let out = `try ${block(s.body)}`
+        if (s.catchBody) {
+          // the JS catch param is internal; the optional user-named binding recovers the original thrown Value
+          const raw = `_err${counter++}`
+          const bind = s.catchName ? `const ${s.catchName} = RT.fromError(${raw}); ` : ''
+          out += ` catch (${raw}) { ${bind}${s.catchBody.map(stmt).join(' ')} }`
+        }
+        if (s.finallyBody) out += ` finally ${block(s.finallyBody)}`
+        return out
+      }
+      case 'for': {
+        const lbl = label('loop')
+        stack.push({ kind: 'loop', label: lbl })
+        const out = `${lbl}: for (const ${s.name} of RT.iterate(${expr(s.iterable)})) ${block(s.body)}`
+        stack.pop()
+        return out
+      }
+      default:
+        return exhausted(s)
     }
   }
 

@@ -77,6 +77,26 @@ async function main(): Promise<void> {
   ]
   await same('async/await outer()', callFunction(asyncProg, 'outer', []), runCompiledFunction(asyncProg, 'outer', []))
 
+  // throw + try/catch: a thrown Value is recovered by the catch binding
+  const tryProg: Statement[] = [fn('safe', ['n'], [
+    { form: 'try',
+      body: [
+        { form: 'if', branches: [{ cond: bin('<', vbl('n'), int(0)), body: [{ form: 'throw', value: int(99) }] }] },
+        ret(vbl('n')),
+      ],
+      catchName: 'e', catchBody: [ret(vbl('e'))] },
+  ])]
+  await same('try/catch recovers a thrown value (n=-5)', callFunction(tryProg, 'safe', [arg(-5n)]), runCompiledFunction(tryProg, 'safe', [arg(-5n)]))
+  await same('try/catch passes through (n=7)', callFunction(tryProg, 'safe', [arg(7n)]), runCompiledFunction(tryProg, 'safe', [arg(7n)]))
+
+  // for-of over an array sums its elements
+  const forProg: Statement[] = [fn('total', [], [
+    lett('sum', int(0)),
+    { form: 'for', name: 'x', iterable: { form: 'array', items: [int(1), int(2), int(3), int(4)] }, body: [set('sum', bin('+', vbl('sum'), vbl('x')))] },
+    ret(vbl('sum')),
+  ])]
+  await same('for-of array sum', callFunction(forProg, 'total', []), runCompiledFunction(forProg, 'total', []))
+
   console.log(`\nbackend (TypeScript): ${pass} pass, ${fail} fail  (compiled output matches the interpreter)`)
 }
 

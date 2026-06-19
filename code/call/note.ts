@@ -25,9 +25,9 @@ export async function callNote(input: {
       console.log('  License: ' + manifest.lock)
     }
 
-    if (manifest.face && manifest.face.length > 0) {
+    if (manifest.mind && manifest.mind.length > 0) {
       console.log(
-        '  Authors: ' + manifest.face.map(f => f.name).join(', '),
+        '  Authors: ' + manifest.mind.map(f => f.name).join(', '),
       )
     }
 

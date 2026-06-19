@@ -112,7 +112,8 @@ export function check(program: Program, file: string): Array<Diagnostic> {
     if (y.kind === 'variable') {
       if (occurs(y.id, x)) return false
       substitution.set(y.id, x)
-      if (span && x.kind !== 'variable') origin.set(y.id, { span, type: x })
+      // x is already known to be non-variable here (the variable case above returned), so just record the origin
+      if (span) origin.set(y.id, { span, type: x })
       return true
     }
     if (x.kind === 'function' && y.kind === 'function') {
@@ -138,7 +139,7 @@ export function check(program: Program, file: string): Array<Diagnostic> {
     if (actual.kind === 'variable') suspects.push(actual.id)
     if (wanted.kind === 'variable') suspects.push(wanted.id)
     if (!unify(actual, wanted, span)) {
-      const markers = [{ span }]
+      const markers: Array<{ span: Span; label?: string }> = [{ span }]
       for (const id of suspects) {
         const where = origin.get(id)
         if (where) markers.push({ span: where.span, label: `first used as ${showType(where.type)} here` })
