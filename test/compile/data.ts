@@ -22,7 +22,7 @@ task sum-x-coords
         call add
           loan total
           read item/x
-  back total
+  send back total
 
 task run
   host points
@@ -33,7 +33,7 @@ task run
       make point
         bind x, mark 4
         bind y, mark 0
-  back
+  send back
     call sum-x-coords
       loan points
 `

@@ -36,7 +36,7 @@ task pick
   head t, need comparison
   take item, like t
   like t
-  back item
+  send back item
 `
 
 function main(): void {
@@ -49,11 +49,11 @@ form thing
   wear comparison
     task is-equal
       take self
-      back, wave true
+      send back, wave true
 
 task run
   take a, like thing
-  back
+  send back
     call pick
       loan a
 `,
@@ -68,7 +68,7 @@ form other
 
 task run
   take b, like other
-  back
+  send back
     call pick
       loan b
 `,
@@ -84,7 +84,7 @@ task choose
   head u, need comparison
   take a, like u
   like u
-  back
+  send back
     call pick
       loan a
 `,
@@ -98,7 +98,7 @@ task choose
   head u
   take a, like u
   like u
-  back
+  send back
     call pick
       loan a
 `,

@@ -42,9 +42,9 @@ const FIB = `task fibonacci
         loan n
         mark 2
     hook hold
-      back n
+      send back n
     hook miss
-      back
+      send back
         call add
           call fibonacci
             call subtract

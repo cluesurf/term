@@ -35,15 +35,15 @@ function main(): void {
   head t
   take x, like t
   like t
-  back x
+  send back x
 
 task use-number
-  back
+  send back
     call identity
       mark 5
 
 task use-text
-  back
+  send back
     call identity
       text <hi>
 `,
@@ -55,7 +55,7 @@ task use-text
     'boolean param used as number',
     `task wrong
   take b, like boolean
-  back
+  send back
     call add
       loan b
       mark 1
@@ -72,7 +72,7 @@ task use-text
 
 task bad
   take p, like point
-  back
+  send back
     read p/z
 `,
     'unknown-name',
@@ -87,7 +87,7 @@ task bad
 
 task good
   take p, like point
-  back
+  send back
     read p/x
 `,
   )
@@ -99,7 +99,7 @@ task good
       text: `task waste
   take n
   save unused, mark 5
-  back n
+  send back n
 `,
     })
     if (result.ok && result.warnings.some((w) => w.name === 'unused-binding' && w.message.includes('unused'))) {
@@ -131,7 +131,7 @@ task good
     make find
       save alice, mark 1
       save bob, mark 2
-  back table
+  send back table
 `,
   )
   expectError(
@@ -141,7 +141,7 @@ task good
     make find
       save alice, mark 1
       save bob, wave true
-  back table
+  send back table
 `,
     'type-mismatch',
   )
@@ -155,18 +155,18 @@ task good
       take x, like number
       like number
   like number
-  back
+  send back
     call f
       mark 1
 
 task wrong
   take b, like boolean
   like boolean
-  back b
+  send back b
 
 task run
   like number
-  back
+  send back
     call takes-number-fn
       read wrong
 `,
@@ -180,7 +180,7 @@ task run
   head t
   take x, like t
   like t
-  back x
+  send back x
 
 task run
   like number
@@ -192,7 +192,7 @@ task run
   save b
     call id
       text <hello>
-  back a
+  send back a
 `,
   )
 

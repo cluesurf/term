@@ -28,6 +28,8 @@ const RESERVED = new Set([
   'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'null',
   'return', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
   'let', 'static', 'await', 'async', 'implements', 'interface', 'package', 'private', 'protected', 'public',
+  // not keywords, but illegal as binding names in an ES module / strict mode
+  'eval', 'arguments',
 ])
 
 // acronyms that the host APIs spell in all caps (randomUUID, toJSON, parseURL). A whole kebab segment matching one of
@@ -210,7 +212,7 @@ function makeEmitter(variants: Set<string>) {
       case 'map':
         return `new Map([${node.entries.map((e) => `[${expression(e.key)}, ${expression(e.value)}]`).join(', ')}])`
       case 'record': {
-        const fields = node.fields.map((f) => `${f.name}: ${expression(f.value)}`)
+        const fields = node.fields.map((f) => `${toMember(f.name)}: ${expression(f.value)}`)
         // an enum variant carries a discriminant tag; a struct is a plain object
         if (variants.has(node.name)) return `{ ${['form: ' + JSON.stringify(node.name), ...fields].join(', ')} }`
         return `{ ${fields.join(', ')} }`
@@ -252,6 +254,13 @@ function makeEmitter(variants: Set<string>) {
   const statement = (node: Statement, depth: number): string => {
     switch (node.form) {
       case 'let': {
+        // a host global (`host document, name <document>`): alias the seed name to the foreign global, or emit nothing
+        // when the seed name already spells the global (so `document` resolves to the real `document`). Never bind it
+        // to `undefined`.
+        if (node.foreign) {
+          const alias = toCamel(node.name)
+          return alias === node.foreign ? '' : `const ${alias} = ${node.foreign}`
+        }
         const keyword = assignedNames.has(node.name) ? 'let' : 'const'
         return `${keyword} ${toCamel(node.name)} = ${expression(node.init)}`
       }
@@ -287,12 +296,12 @@ function makeEmitter(variants: Set<string>) {
         // an enum becomes a discriminated union; a struct becomes an interface
         if (node.variants.length > 0) {
           const members = node.variants.map((v) => {
-            const fields = v.fields.map((f) => `${f.name}: ${tsType(f.type)}`)
+            const fields = v.fields.map((f) => `${toMember(f.name)}: ${tsType(f.type)}`)
             return `{ ${['form: ' + JSON.stringify(v.name), ...fields].join('; ')} }`
           })
           return `type ${toPascal(node.name)} =\n${members.map((m) => `${pad(depth + 1)}| ${m}`).join('\n')}`
         }
-        const fields = node.fields.map((f) => `${pad(depth + 1)}${f.name}: ${tsType(f.type)}`).join('\n')
+        const fields = node.fields.map((f) => `${pad(depth + 1)}${toMember(f.name)}: ${tsType(f.type)}`).join('\n')
         return `interface ${toPascal(node.name)} {\n${fields}\n${pad(depth)}}`
       }
       case 'if': {
@@ -354,13 +363,25 @@ export function emitTypeScript(program: Program): string {
     const globalName = node.module.slice('global:'.length)
     if (toCamel(node.alias) !== globalName) imports.push(`const ${toCamel(node.alias)} = ${globalName}`)
   }
-  const lines = program
-    .filter((node) => node.form !== 'native')
+  // dedupe top-level named declarations: a generated binding has overloaded methods that collapse to one name (three
+  // `create-element` overloads -> one `documentCreateElement`), and an interface can recur across merged modules.
+  // Emitting each twice is a JS redeclaration error, so keep the LAST of each (form, name): it matches the signature
+  // the type checker kept (last registration wins), and a native impl loaded after the abstract signature it imports
+  // (its dependency) wins over that empty signature.
+  const declares = (node: Statement): node is Extract<Statement, { form: 'function' | 'record-type' | 'mask' }> =>
+    node.form === 'function' || node.form === 'record-type' || node.form === 'mask'
+  const emittable = program.filter((node) => node.form !== 'native')
+  const lastIndex = new Map<string, number>()
+  emittable.forEach((node, i) => { if (declares(node)) lastIndex.set(`${node.form}:${node.name}`, i) })
+  const lines = emittable
+    .filter((node, i) => !declares(node) || lastIndex.get(`${node.form}:${node.name}`) === i)
     .map((node) => {
       const text = emitter.statement(node, 0)
       const exported = node.form === 'function' || node.form === 'record-type' || node.form === 'mask'
       return exported ? `export ${text}` : text
     })
+    // an ambient host global whose seed name already spells the global emits nothing; drop the blank line
+    .filter((line) => line.length > 0)
   const body = `${lines.join('\n\n')}\n`
   return imports.length > 0 ? `${imports.join('\n')}\n\n${body}` : body
 }

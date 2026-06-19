@@ -38,7 +38,7 @@ task name-of
       send back, text <blue>
 
 task run
-  back
+  send back
     call name-of
       make green
 `

@@ -12,7 +12,7 @@ import { render } from '@/code/parser/diagnostic'
 const SOURCE = `task increment
   take n, like number
   like number
-  back
+  send back
     call add
       loan n
       mark 1
@@ -24,21 +24,21 @@ task apply-twice
       like number
   take n, like number
   like number
-  back
+  send back
     call f
       call f
         loan n
 
 task run-twice
   like number
-  back
+  send back
     call apply-twice
       read increment
       mark 5
 
 task run-direct
   like number
-  back
+  send back
     call apply-twice
       read double
       mark 5
@@ -46,7 +46,7 @@ task run-direct
 task double
   take n, like number
   like number
-  back
+  send back
     call add
       loan n
       loan n

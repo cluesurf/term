@@ -34,7 +34,7 @@ function expectInvalidProof(name: string, source: string): void {
 const DOUBLE = `task double
   take n, like number
   like number
-  back
+  send back
     call add
       loan n
       loan n
@@ -43,7 +43,7 @@ const DOUBLE = `task double
 const TWICE = `task twice
   take n, like number
   like number
-  back
+  send back
     call add
       loan n
       loan n
@@ -65,7 +65,7 @@ task use-it
         loan n
         loan n
     melt both
-  back n
+  send back n
 `,
   )
 
@@ -92,7 +92,7 @@ task use-it
         loan n
         loan n
     cite double-fact
-  back n
+  send back n
 `,
   )
 
@@ -107,7 +107,7 @@ task use-it
       loan n
       mark 5
     melt both
-  back n
+  send back n
 `,
   )
 
@@ -122,7 +122,7 @@ task use-it
       loan n
       loan n
     cite no-such-lemma
-  back n
+  send back n
 `,
   )
 
@@ -149,7 +149,7 @@ task use-turn
         loan n
         loan n
     turn rev
-  back n
+  send back n
 `,
   )
 
@@ -185,7 +185,7 @@ task use-link
     link
       cite step-one
       cite step-two
-  back n
+  send back n
 `,
   )
 

@@ -52,6 +52,12 @@ export function emitRust(program: Program): string {
   const pad = (d: number) => '    '.repeat(d)
   const variantOwner = new Map<string, string>()
   for (const node of program) if (node.form === 'record-type') for (const v of node.variants) variantOwner.set(v.name, node.name)
+  // native dock aliases: `fs/read-to-string` is a module path (`fs::read_to_string`), but `r/body` (r a value) is a
+  // field access (`r.body`). Only a member chain rooted at a dock alias uses `::`; everything else uses `.`.
+  const aliases = new Set<string>()
+  for (const node of program) if (node.form === 'native') aliases.add(node.alias)
+  const rootVariable = (node: Expression): string | undefined =>
+    node.form === 'variable' ? node.name : node.form === 'member' ? rootVariable(node.target) : undefined
 
   const expr = (node: Expression): string => {
     switch (node.form) {
@@ -102,9 +108,9 @@ export function emitRust(program: Program): string {
   // a member chain. A native module alias path (`fs/read-to-string`) is a Rust `::` path; a value field access is `.`
   const memberPath = (node: Expression): string => {
     if (node.form === 'member') {
-      // heuristic: a lowercase single-segment target that looks like a module alias uses `::`, else `.`
-      const base = node.target.form === 'variable' ? snake(node.target.name) : memberPath(node.target)
-      return `${base}::${snake(node.name)}`
+      const root = rootVariable(node)
+      const separator = root && aliases.has(root) ? '::' : '.'
+      return `${memberPath(node.target)}${separator}${snake(node.name)}`
     }
     return expr(node)
   }

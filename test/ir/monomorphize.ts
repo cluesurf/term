@@ -34,17 +34,17 @@ const SOURCE = `task identity
   head t
   take x, like t
   like t
-  back x
+  send back x
 
 task run-number
   like number
-  back
+  send back
     call identity
       mark 1
 
 task run-string
   like text
-  back
+  send back
     call identity
       text <hi>
 `

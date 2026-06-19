@@ -53,7 +53,7 @@ const MAYBE = `load @cluesurf/base/code/maybe
 
 task unwrap-present
   like number
-  back
+  send back
     call unwrap-or
       make some
         bind value, mark 42
@@ -61,27 +61,27 @@ task unwrap-present
 
 task unwrap-absent
   like number
-  back
+  send back
     call unwrap-or
       make none
       mark 7
 
 task present
   like boolean
-  back
+  send back
     call is-some
       make some
         bind value, mark 1
 
 task absent
   like boolean
-  back
+  send back
     call is-some
       make none
 
 task map-add-one
   like number
-  back
+  send back
     call unwrap-or
       call map
         make some
@@ -92,7 +92,7 @@ task map-add-one
 task increment
   take n, like number
   like number
-  back
+  send back
     call add
       loan n
       mark 1
@@ -103,7 +103,7 @@ const RESULT = `load @cluesurf/base/code/result
 
 task ok-value
   like number
-  back
+  send back
     call unwrap-or
       make okay
         bind value, mark 5
@@ -111,7 +111,7 @@ task ok-value
 
 task err-default
   like number
-  back
+  send back
     call unwrap-or
       make error
         bind value, mark 99
@@ -119,7 +119,7 @@ task err-default
 
 task okay-check
   like boolean
-  back
+  send back
     call is-okay
       make okay
         bind value, mark 1
@@ -130,7 +130,7 @@ const PAIR = `load @cluesurf/base/code/pair
 
 task first-of
   like number
-  back
+  send back
     call get-first
       make pair
         bind first, mark 3
@@ -138,7 +138,7 @@ task first-of
 
 task second-after-swap
   like number
-  back
+  send back
     call get-second
       call swap
         make pair
@@ -151,13 +151,13 @@ const BOOLEAN = `load @cluesurf/base/code/boolean
 
 task negate-true
   like boolean
-  back
+  send back
     call not
       wave true
 
 task negate-false
   like boolean
-  back
+  send back
     call not
       wave false
 `
@@ -168,7 +168,7 @@ const DOCK = `dock load
 
 task base-name
   like text
-  back
+  send back
     call pathmod/basename
       text </a/b/file.txt>
 `
@@ -183,7 +183,7 @@ load @cluesurf/base/code/result
 
 task from-maybe
   like number
-  back
+  send back
     call unwrap-or
       make some
         bind value, mark 11
@@ -191,7 +191,7 @@ task from-maybe
 
 task from-result
   like number
-  back
+  send back
     call unwrap-or
       make error
         bind value, mark 1
@@ -204,7 +204,7 @@ const LIST = `load @cluesurf/base/code/list
 
 task first-of
   like number
-  back
+  send back
     call unwrap-or
       call first
         make list
@@ -214,7 +214,7 @@ task first-of
 
 task last-of
   like number
-  back
+  send back
     call unwrap-or
       call last
         make list
@@ -225,7 +225,7 @@ task last-of
 
 task first-empty
   like number
-  back
+  send back
     call unwrap-or
       call first
         make list
@@ -233,7 +233,7 @@ task first-empty
 
 task size-of
   like number
-  back
+  send back
     call size
       make list
         mark 1
@@ -242,7 +242,7 @@ task size-of
 
 task has-it
   like boolean
-  back
+  send back
     call contains
       make list
         mark 5
@@ -251,7 +251,7 @@ task has-it
 
 task get-second
   like number
-  back
+  send back
     call get
       make list
         mark 7
@@ -261,7 +261,7 @@ task get-second
 
 task join-them
   like text
-  back
+  send back
     call join
       make list
         mark 1
@@ -271,7 +271,7 @@ task join-them
 
 task size-after-reverse
   like number
-  back
+  send back
     call size
       call reverse
         make list
@@ -281,14 +281,14 @@ task size-after-reverse
 task double
   take n, like number
   like number
-  back
+  send back
     call multiply
       read n
       mark 2
 
 task size-after-map
   like number
-  back
+  send back
     call size
       call map
         make list
@@ -302,14 +302,14 @@ task add-two
   take a, like number
   take b, like number
   like number
-  back
+  send back
     call add
       read a
       read b
 
 task sum-of
   like number
-  back
+  send back
     call reduce
       make list
         mark 1
@@ -513,16 +513,39 @@ const RANGE = `load @cluesurf/base/code/range
 
 task measure-range
   like number
-  back
+  send back
     call length
       make range
         bind start, mark 0
         bind end, mark 10
         bind step, mark 2
 
+task range-list-size
+  like number
+  save items
+    call to-list
+      make range
+        bind start, mark 0
+        bind end, mark 10
+        bind step, mark 2
+  send back
+    read items/length
+
+task range-list-first
+  like number
+  save items
+    call to-list
+      make range
+        bind start, mark 3
+        bind end, mark 9
+        bind step, mark 2
+  send back
+    call items/at
+      mark 0
+
 task range-has
   like boolean
-  back
+  send back
     call contains
       make range
         bind start, mark 0
@@ -532,7 +555,7 @@ task range-has
 
 task range-excludes-end
   like boolean
-  back
+  send back
     call contains
       make range
         bind start, mark 0
@@ -735,7 +758,7 @@ const LIST_EXTRAS = `load @cluesurf/base/code/list
 
 task sum-of
   like number
-  back
+  send back
     call sum
       make list
         mark 1
@@ -745,7 +768,7 @@ task sum-of
 
 task index-of-twenty
   like number
-  back
+  send back
     call index-of
       make list
         mark 10
@@ -755,7 +778,7 @@ task index-of-twenty
 
 task take-two-size
   like number
-  back
+  send back
     call size
       call take-first
         make list
@@ -767,7 +790,7 @@ task take-two-size
 
 task drop-two-size
   like number
-  back
+  send back
     call size
       call drop-first
         make list
@@ -779,7 +802,7 @@ task drop-two-size
 
 task flatten-size
   like number
-  back
+  send back
     call size
       call flatten
         make list
@@ -788,6 +811,27 @@ task flatten-size
             mark 2
           make list
             mark 3
+
+task product-of
+  like number
+  send back
+    call product
+      make list
+        mark 2
+        mark 3
+        mark 4
+
+task unique-size
+  like number
+  send back
+    call size
+      call unique
+        make list
+          mark 1
+          mark 1
+          mark 2
+          mark 3
+          mark 3
 `
 
 // pair map-both: apply a different function to each side
@@ -797,7 +841,7 @@ const PAIR_BOTH = `load @cluesurf/base/code/pair
 task double
   take n, like number
   like number
-  back
+  send back
     call multiply
       read n
       mark 2
@@ -805,7 +849,7 @@ task double
 task add-ten
   take n, like number
   like number
-  back
+  send back
     call add
       read n
       mark 10
@@ -841,7 +885,7 @@ const COLOR = `load @cluesurf/base/code/color/rgb
 
 task gray
   like number
-  back
+  send back
     call grayscale
       make rgb-color
         bind red, mark 30
@@ -850,7 +894,7 @@ task gray
 
 task lum-white
   like number
-  back
+  send back
     call luminance
       make rgb-color
         bind red, mark 255
@@ -870,7 +914,7 @@ task inverted-red
 
 task dark-check
   like boolean
-  back
+  send back
     call is-dark
       make rgb-color
         bind red, mark 10
@@ -911,6 +955,8 @@ async function main(): Promise<void> {
   expect('list/take-first keeps the leading n', le.takeTwoSize!(), 2)
   expect('list/drop-first removes the leading n', le.dropTwoSize!(), 2)
   expect('list/flatten merges one level', le.flattenSize!(), 3)
+  expect('list/product multiplies the elements', le.productOf!(), 24)
+  expect('list/unique removes duplicates', le.uniqueSize!(), 3)
 
   const bg = await loadProgram(BAG)
   expect('bag/insert keeps duplicates (multiset size)', bg.bagSize!(), 2)
@@ -942,6 +988,8 @@ async function main(): Promise<void> {
 
   const rg = await loadProgram(RANGE)
   expect('range/length is (end-start)/step', rg.measureRange!(), 5)
+  expect('range/to-list produces the right count', rg.rangeListSize!(), 5)
+  expect('range/to-list starts at start', rg.rangeListFirst!(), 3)
   expect('range/contains a value in bounds', rg.rangeHas!(), true)
   expect('range/contains excludes the end', rg.rangeExcludesEnd!(), false)
 

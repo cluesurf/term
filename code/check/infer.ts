@@ -472,8 +472,10 @@ export function check(program: Program, file: string, fileOrigin?: WeakMap<State
         // receiver dispatch: rewrite a bare method call (`call unwrap-or / <receiver>`) to the mangled method of the
         // receiver's form. The receiver is whichever argument is a form that owns this method (usually `self`, first).
         // A local binding of the same name (a parameter or let, e.g. maybe/filter's `test` task param) shadows both
-        // method dispatch and any global function, so skip when the name is bound in the current environment.
-        if (node.callee.form === 'variable' && !env.has(node.callee.name) && !functions.has(node.callee.name) && methodNames.has(node.callee.name)) {
+        // method dispatch and any global function, so skip when the name is bound in the current environment. Dispatch
+        // runs even when a global function shares the name (e.g. a `get`/`set` method alongside bind's global Reflect
+        // `get`): an argument that pins a form owning the method wins, otherwise we fall through to the global below.
+        if (node.callee.form === 'variable' && !env.has(node.callee.name) && methodNames.has(node.callee.name)) {
           const method = node.callee.name
           let mangled: string | undefined
           for (const arg of args) {
@@ -490,8 +492,9 @@ export function check(program: Program, file: string, fileOrigin?: WeakMap<State
               }
             }
           }
-          // if no argument pins the form but exactly one form owns this method name, it is unambiguous
-          if (!mangled) {
+          // if no argument pins the form but exactly one form owns this method name, it is unambiguous. Skip this guess
+          // when a global function of the same name exists, since the call may target that global rather than a method.
+          if (!mangled && !functions.has(method)) {
             const owners = [...methodTable.values()].filter((m) => m.has(method))
             if (owners.length === 1) mangled = owners[0]!.get(method)
           }
@@ -670,20 +673,33 @@ export function check(program: Program, file: string, fileOrigin?: WeakMap<State
     }
   }
 
+  // module-scope bindings (top-level `host`/`save` lets): typed once, then visible in every function body so a method
+  // call on one (`call get / read running`, where `running` is a module-level list) can dispatch on its real type.
+  const moduleEnv: Env = new Map()
+
   function checkFunction(node: Extract<Statement, { form: 'function' }>): void {
     const signature = functions.get(node.name)!
     // the generics of this function carry their declared `need` bounds, available to discharge bounded calls
     currentBounds = [...signature.bounds].map(([id, mask]) => ({ variable: { kind: 'variable', id } as Type, mask }))
-    const env: Env = new Map()
+    const env: Env = new Map(moduleEnv)
     node.params.forEach((param, i) => env.set(param.name, { vars: [], type: signature.params[i]! }))
     checkBody(node.body, env, signature.result)
   }
 
   const topLevelSkip = new Set(['record-type', 'mask', 'instance', 'native'])
+  // first pass: type module-level bindings into the shared module env, so functions (checked next) see their types.
+  // A foreign host global (`host page, name <document>`) is seeded too, so an imported, centrally-declared global is
+  // typed for dispatch in every consuming function. But one whose name collides with a function is skipped: bind's
+  // `Element`/`Text` host globals must not shadow the framework's `element`/`text` render helpers.
+  for (const statement of program) {
+    currentFile = fileOrigin?.get(statement) ?? file
+    if (statement.form === 'function' || topLevelSkip.has(statement.form)) continue
+    if (statement.form === 'let' && statement.foreign !== undefined && functions.has(statement.name)) continue
+    checkStatement(statement, moduleEnv, UNKNOWN)
+  }
   for (const statement of program) {
     currentFile = fileOrigin?.get(statement) ?? file
     if (statement.form === 'function') checkFunction(statement)
-    else if (!topLevelSkip.has(statement.form)) checkStatement(statement, new Map(), UNKNOWN)
   }
 
   // deeply resolve, mapping a function's still-unsolved generic variables back to their declared names (so a

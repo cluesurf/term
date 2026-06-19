@@ -324,7 +324,24 @@ function inlineForwarders(program: Program, roots?: Set<string>): Program {
   return rewritten.filter((n) => !(n.form === 'function' && forwarders.has(n.name) && (counts.get(n.name) ?? 0) === 0 && !roots?.has(n.name)))
 }
 
-// run the simplifier over a whole program: first collapse pass-through wrappers, then fold constants / identities
+// drop ambient host globals (`host document, name <document>` -> a foreign-aliased `let`) that nothing references.
+// A generated binding package declares hundreds of host globals; importing one interface pulls them all in. Emitting
+// an unused `const window = Window` is dead weight, and worse, a binding whose name shadows a real global of a
+// different case (`const document = Document`) would mask the genuine global. Keeping only the referenced ones is a
+// pure win and removes the shadow.
+function dropUnusedHostGlobals(program: Program): Program {
+  const counts = new Map<string, number>()
+  for (const s of program) countReferencesStatement(s, counts)
+  // a function of the same name is the real binding for that name; drop the host global so it does not redeclare it
+  // (bind's `Event` global vs the framework's `event` render helper). Also drop host globals nothing references.
+  const functionNames = new Set(program.filter((n) => n.form === 'function').map((n: any) => n.name as string))
+  return program.filter(
+    (n) => !(n.form === 'let' && n.foreign !== undefined && ((counts.get(n.name) ?? 0) === 0 || functionNames.has(n.name))),
+  )
+}
+
+// run the simplifier over a whole program: first collapse pass-through wrappers, drop unused host globals, then fold
+// constants / identities
 export function simplify(program: Program, roots?: Set<string>): Program {
-  return inlineForwarders(program, roots).map(simplifyStatement)
+  return dropUnusedHostGlobals(inlineForwarders(program, roots)).map(simplifyStatement)
 }

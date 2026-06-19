@@ -15,6 +15,10 @@ const TYPE_NAME: Record<string, Type> = {
   i8: NUMBER, i16: NUMBER, i32: NUMBER, i64: NUMBER,
   'natural-number': NUMBER, integer: NUMBER, number: NUMBER, decimal: NUMBER,
   text: STRING, boolean: BOOLEAN, void: UNIT, unit: UNIT,
+  // bind's native primitives ARE seed's primitives (a JS string is seed's `string`, etc.): map them to the same
+  // surface type so a seed value passes to a bind method param and vice versa, with no subtyping needed.
+  'native-string': STRING, 'native-number': NUMBER, 'native-boolean': BOOLEAN, 'native-bigint': NUMBER,
+  'native-void': UNIT, 'native-null': UNIT, 'native-undefined': UNIT,
 }
 
 // signature annotation keywords that decorate a `host`/`save` declaration rather than supplying its value:
@@ -431,10 +435,11 @@ export function mill(tree: RootNode, file: string): MillResult {
           break
         }
         case 'send': {
-          // `send back, X` parses as send > [back, X], so the value is send's second child
+          // `send back, X` and multiline `send back` / `<X>` parse as send > [back, X] (value is send's second
+          // child). `send back X` on one line parses as send > [back > [X]] (value nested under back). Accept both.
           const backGroup = rest(node)[0]
           if (backGroup && backGroup.kind === 'group' && headName(backGroup) === 'back') {
-            const value = rest(node)[1]
+            const value = rest(node)[1] ?? rest(backGroup)[0]
             out.push({ form: 'return', value: value ? toExpression(value, scope) : undefined, span })
           } else {
             fail(node, 'send must be followed by back')
@@ -461,6 +466,15 @@ export function mill(tree: RootNode, file: string): MillResult {
           const hostLike = hostArgs.slice(1).find((a): a is GroupNode => a.kind === 'group' && headName(a) === 'like')
           const hostLet: Statement = { form: 'let', name, init: value, mutable: false, span }
           if (hostLike) hostLet.type = parseLikeType(hostLike)
+          // a value-less `host x, name <Y>` is a host global (`host document, name <document>`): record the foreign
+          // name Y so the emitter aliases it to the host global instead of binding it to `undefined`.
+          if (!valueNode) {
+            const nameGroup = hostArgs.slice(1).find((a): a is GroupNode => a.kind === 'group' && headName(a) === 'name')
+            const foreignNode = nameGroup ? rest(nameGroup)[0] : undefined
+            if (foreignNode && foreignNode.kind === 'text') {
+              hostLet.foreign = foreignNode.parts.map((p) => (p.kind === 'chunk' ? p.text : '')).join('')
+            }
+          }
           out.push(hostLet)
           break
         }
@@ -528,14 +542,22 @@ export function mill(tree: RootNode, file: string): MillResult {
             const variantName = inner[0] && inner[0].kind === 'group' ? headName(inner[0]) : undefined
             const bodyNodes = inner.slice(1)
             if (variantName === 'test') {
+              // a `hook test` with no following `hook hold` still becomes a branch (with an empty body), so a bare
+              // `test` + `miss` lowers to `if (cond) {} else {...}` rather than an invalid otherwise-only `if`
+              if (pendingCond) branches.push({ cond: pendingCond, body: [] })
               pendingCond = bodyNodes[0] ? toExpression(bodyNodes[0], scope) : { form: 'boolean', value: false, span }
             } else if (variantName === 'hold') {
               branches.push({ cond: pendingCond ?? { form: 'boolean', value: true, span }, body: toStatements(bodyNodes, scope) })
               pendingCond = undefined
             } else if (variantName === 'miss') {
+              if (pendingCond) {
+                branches.push({ cond: pendingCond, body: [] })
+                pendingCond = undefined
+              }
               otherwise = toStatements(bodyNodes, scope)
             }
           }
+          if (pendingCond) branches.push({ cond: pendingCond, body: [] })
           out.push({ form: 'if', branches, otherwise, span })
           break
         }

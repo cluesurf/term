@@ -28,7 +28,7 @@ function main(): void {
   expectContains(
     'constant folds 6*7+0',
     `task compute
-  back
+  send back
     call add
       call multiply
         mark 6
@@ -43,7 +43,7 @@ function main(): void {
     'identity n + 0',
     `task identity
   take n
-  back
+  send back
     call add
       loan n
       mark 0
@@ -56,7 +56,7 @@ function main(): void {
     'identity n * 1',
     `task identity
   take n
-  back
+  send back
     call multiply
       loan n
       mark 1

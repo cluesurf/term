@@ -49,10 +49,10 @@ form thing
   wear comparison
     task is-equal
       take self
-      back, wave true
+      send back, wave true
     task is-not-equal
       take self
-      back, wave false
+      send back, wave false
 `,
     'interface Comparison',
   )
@@ -66,7 +66,7 @@ form thing
   wear comparison
     task is-equal
       take self
-      back, wave true
+      send back, wave true
 `,
     'incomplete-instance',
   )
@@ -91,10 +91,10 @@ suit shape
   wear comparison
     task is-equal
       take self
-      back, wave true
+      send back, wave true
     task is-not-equal
       take self
-      back, wave false
+      send back, wave false
 `,
   )
 
@@ -105,7 +105,7 @@ suit shape
   head t
   take x, like t
   like t
-  back x
+  send back x
 `,
     'function identity<T>',
   )
@@ -117,7 +117,7 @@ suit shape
 task sort
   head t, need comparison
   take items
-  back items
+  send back items
 `,
   )
 
@@ -127,7 +127,7 @@ task sort
     `task sort
   head t, need nonexistent
   take items
-  back items
+  send back items
 `,
     'unknown-name',
   )
@@ -140,18 +140,18 @@ suit shape
   wear comparison
     task is-equal
       take self
-      back, wave true
+      send back, wave true
     task is-not-equal
       take self
-      back, wave false
+      send back, wave false
 suit shape
   wear comparison
     task is-equal
       take self
-      back, wave true
+      send back, wave true
     task is-not-equal
       take self
-      back, wave false
+      send back, wave false
 `,
     'duplicate-instance',
   )

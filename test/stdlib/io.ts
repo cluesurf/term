@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@/code/compile/compile'
-import { withNativeEnv } from '@/code/compile/native'
+import { withNativeEnv, nativePrelude } from '@/code/compile/native'
 import { emitRust } from '@/code/compile/rust'
 import { emitSwift } from '@/code/compile/swift'
 import { emitKotlin } from '@/code/compile/kotlin'
@@ -39,13 +39,23 @@ function expect(name: string, got: unknown, want: unknown): void {
   }
 }
 
+// read a native runtime shim's raw source from base.tree (the path carries its real extension, no `.tree`)
+const readRuntime = (path: string): string | undefined => {
+  const prefix = '@cluesurf/base/'
+  if (!path.startsWith(prefix)) return undefined
+  const file = join(baseTree, path.slice(prefix.length))
+  return existsSync(file) ? readFileSync(file, 'utf8') : undefined
+}
+
 async function loadProgram(source: string): Promise<Record<string, (...a: Array<unknown>) => unknown>> {
   const result = compile({ file: 'main.tree', text: source }, { resolve })
   if (!result.ok) {
     for (const d of result.diagnostics) console.log(render(d, source.split('\n'), false))
     throw new Error('compile failed')
   }
-  const js = transformSync(result.typescript, { loader: 'ts', format: 'esm' }).code
+  // prepend any node runtime shim the program docks (e.g. the regex shim wrapping new RegExp), same as the build does
+  const prelude = nativePrelude(result.program, 'node', readRuntime)
+  const js = transformSync(`${prelude}\n${result.typescript}`, { loader: 'ts', format: 'esm' }).code
   const dir = mkdtempSync(join(tmpdir(), 'seed-io-'))
   const file = join(dir, 'module.mjs')
   writeFileSync(file, js)
@@ -510,7 +520,153 @@ task ranged
       mark 6
 `
 
+// regex, delegating to the host engine via the regex shim (wraps new RegExp on node)
+const REGEX = `load @cluesurf/base/code/regex
+  find matches
+  find replace
+  find find
+
+task is-digits
+  take m, like text
+  like boolean
+  send back
+    call matches
+      text <^[0-9]+$>
+      read m
+
+task strip-vowels
+  take m, like text
+  like text
+  send back
+    call replace
+      text <[aeiou]>
+      read m
+      text <*>
+
+task first-number
+  take m, like text
+  like text
+  send back
+    call find
+      text <[0-9]+>
+      read m
+`
+
+// json: parse to the json-value ADT, navigate, read leaves; stringify a typed value; round-trip via stringify-value
+const JSON_PROG = `load @cluesurf/base/code/json
+  find parse
+  find stringify
+  find stringify-value
+  find get-field
+  find get-item
+
+load @cluesurf/base/code/json/value
+  find as-number
+  find as-text
+  find as-boolean
+
+task field-number
+  take text, like text
+  like number
+  send back
+    call as-number
+      call get-field
+        call parse
+          read text
+        text <count>
+
+task field-text
+  take text, like text
+  like text
+  send back
+    call as-text
+      call get-field
+        call parse
+          read text
+        text <name>
+
+task item-number
+  take text, like text
+  like number
+  send back
+    call as-number
+      call get-item
+        call parse
+          read text
+        mark 1
+
+task bool-of
+  take text, like text
+  like boolean
+  send back
+    call as-boolean
+      call parse
+        read text
+
+task round-trip
+  take text, like text
+  like text
+  send back
+    call stringify-value
+      call parse
+        read text
+
+task dump-list
+  like text
+  send back
+    call stringify
+      make list
+        mark 1
+        mark 2
+        mark 3
+`
+
+// network/http: GET through the host fetch (a data: URL needs no server), reading status + body off the response
+const HTTP = `load @cluesurf/base/code/network/http
+  find get
+
+task fetch-body
+  mark async
+  take url, like text
+  like text
+  save response
+    call get
+      read url
+      wait true
+  send back
+    read response/body
+
+task fetch-status
+  mark async
+  take url, like text
+  like number
+  save response
+    call get
+      read url
+      wait true
+  send back
+    read response/status
+`
+
 async function main(): Promise<void> {
+  const ht = await loadProgram(HTTP)
+  expect('network/http: get reads the body (data URL via host fetch)', await ht.fetchBody!('data:text/plain,hello%20seed'), 'hello seed')
+  expect('network/http: get reads the status', await ht.fetchStatus!('data:text/plain,x'), 200)
+
+  const js = await loadProgram(JSON_PROG)
+  expect('json: parse + get-field + as-number reads a number field', js.fieldNumber!('{"count":42,"name":"seed"}'), 42)
+  expect('json: get-field + as-text reads a string field', js.fieldText!('{"count":42,"name":"seed"}'), 'seed')
+  expect('json: get-item + as-number indexes an array', js.itemNumber!('[10,20,30]'), 20)
+  expect('json: as-boolean reads a bool', js.boolOf!('true'), true)
+  expect('json: stringify-value round-trips parsed JSON', js.roundTrip!('{"a":1,"b":[2,3]}'), '{"a":1,"b":[2,3]}')
+  expect('json: stringify serializes a typed value', js.dumpList!(), '[1,2,3]')
+
+  const rx = await loadProgram(REGEX)
+  expect('regex/matches accepts a matching string', rx.isDigits!('12345'), true)
+  expect('regex/matches rejects a non-matching string', rx.isDigits!('12a45'), false)
+  expect('regex/replace replaces all matches', rx.stripVowels!('seedlang'), 's**dl*ng')
+  expect('regex/find returns the first match', rx.firstNumber!('abc42def7'), '42')
+
   const ud = await loadProgram(UUID)
   const id = ud.makeId!() as string
   expect('uuid/version4 returns a 36-char id', typeof id === 'string' && id.length === 36, true)
@@ -651,6 +807,22 @@ async function main(): Promise<void> {
   expect('string compiles for rust (text shim)', (() => { const r = stringFor('rust'); return r.ok && emitRust(r.program).includes('text::upper') })(), true)
   expect('string compiles for swift (text shim)', (() => { const r = stringFor('swift'); return r.ok && emitSwift(r.program).includes('text.upper') })(), true)
   expect('string compiles for kotlin (text shim)', (() => { const r = stringFor('kotlin'); return r.ok && emitKotlin(r.program).includes('text.upper') })(), true)
+
+  // the public regex interface compiles for every target, each wrapping that platform's regex engine
+  const regexSrc = stdlib('@cluesurf/base/code/regex')!.text
+  const regexFor = (env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin') => compile({ file: 'r.tree', text: regexSrc }, { resolve: withNativeEnv(env, stdlib) })
+  expect('regex compiles for node (regex shim)', (() => { const r = regexFor('node'); return r.ok && r.typescript.includes('regex.matches') })(), true)
+  expect('regex compiles for rust (regex shim)', (() => { const r = regexFor('rust'); return r.ok && emitRust(r.program).includes('regex::matches') })(), true)
+  expect('regex compiles for swift (regex shim)', (() => { const r = regexFor('swift'); return r.ok && emitSwift(r.program).includes('regex.matches') })(), true)
+  expect('regex compiles for kotlin (regex shim)', (() => { const r = regexFor('kotlin'); return r.ok && emitKotlin(r.program).includes('regex.matches') })(), true)
+
+  // the public http interface compiles for every target, each wrapping that platform's HTTP library
+  const httpSrc = stdlib('@cluesurf/base/code/network/http')!.text
+  const httpFor = (env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin') => compile({ file: 'h.tree', text: httpSrc }, { resolve: withNativeEnv(env, stdlib) })
+  expect('http compiles for node (fetch shim)', (() => { const r = httpFor('node'); return r.ok && r.typescript.includes('http.request') })(), true)
+  expect('http compiles for rust (http shim)', (() => { const r = httpFor('rust'); return r.ok && emitRust(r.program).includes('http::request') })(), true)
+  expect('http compiles for swift (http shim)', (() => { const r = httpFor('swift'); return r.ok && emitSwift(r.program).includes('http.request') })(), true)
+  expect('http compiles for kotlin (http shim)', (() => { const r = httpFor('kotlin'); return r.ok && emitKotlin(r.program).includes('http.request') })(), true)
 
   console.log(`\nio: ${pass} pass, ${fail} fail  (public file API -> hidden node native -> real fs; + cross-target compile)`)
   if (fail > 0) process.exit(1)

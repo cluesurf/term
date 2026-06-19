@@ -44,9 +44,9 @@ const RECURSIVE_FIB = `task fibonacci
         loan n
         mark 2
     hook hold
-      back n
+      send back n
     hook miss
-      back
+      send back
         call add
           call fibonacci
             call subtract
@@ -62,7 +62,7 @@ const RECURSIVE_FIB = `task fibonacci
 const TWO_FUNCTIONS = `task double
   take x, like number
   like number
-  back
+  send back
     call add
       loan x
       loan x
@@ -70,7 +70,7 @@ const TWO_FUNCTIONS = `task double
 task quadruple
   take x, like number
   like number
-  back
+  send back
     call double
       call double
         loan x
@@ -82,7 +82,7 @@ const USES_EQUALITY = `task same
   take a, like number
   take b, like number
   like boolean
-  back
+  send back
     call is-equal
       loan a
       loan b
@@ -92,14 +92,14 @@ const USES_EQUALITY = `task same
 const WRONG_RESULT = `task bad
   take n, like number
   like boolean
-  back n
+  send back n
 `
 
 // a wrong-typed argument: subtract wants numbers, gets a boolean. The kernel must reject it.
 const WRONG_ARGUMENT = `task oops
   take flag, like boolean
   like number
-  back
+  send back
     call subtract
       loan flag
       mark 1
@@ -111,12 +111,12 @@ const GENERIC = `task identity
   head t
   take item, like t
   like t
-  back item
+  send back item
 
 task use-identity
   take n, like number
   like number
-  back
+  send back
     call identity
       loan n
 `
@@ -128,7 +128,7 @@ const GENERIC_MISMATCH = `task pair-equal
   take a, like t
   take b, like t
   like boolean
-  back
+  send back
     call is-equal
       loan a
       loan b
@@ -137,7 +137,7 @@ task bad-call
   take n, like number
   take flag, like boolean
   like boolean
-  back
+  send back
     call pair-equal
       loan n
       loan flag
@@ -163,7 +163,7 @@ const WHILE_LOOP = `task sum-below
         call add
           loan i
           mark 1
-  back total
+  send back total
 `
 
 // an array constructed locally, then a for-each over it: the element type must flow to the loop variable
@@ -183,7 +183,7 @@ const FOR_EACH = `task sum-pair
         call add
           loan total
           loan x
-  back total
+  send back total
 `
 
 // a match (fork case) on an enum, in an effectful body
@@ -215,7 +215,7 @@ task use-async
   take n, like number
   like number
   wait true
-  back
+  send back
     call double-async
       loan n
       wait true
@@ -227,7 +227,7 @@ const BAD_ASSIGN = `task wrong-assign
   like number
   save total, mark 0
   save total, wave true
-  back total
+  send back total
 `
 
 function main(): void {

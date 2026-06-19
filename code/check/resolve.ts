@@ -36,7 +36,7 @@ export function resolve(program: Program, file: string, origin?: WeakMap<Stateme
   // dynamic member access. They are not user definitions; the backend lowers them to real operations. Always in scope.
   const INTRINSICS = [
     'native-test', 'native-test-else', 'debug', 'compute-binary-operation', 'compute-prefixed-unary-operation',
-    'call-keyword', 'set-dynamic-aspect', 'get-dynamic-aspect', 'try',
+    'call-keyword', 'set-dynamic-aspect', 'get-dynamic-aspect', 'delete-dynamic-aspect', 'try',
   ]
   for (const intrinsic of INTRINSICS) global.set(intrinsic, { kind: 'builtin' })
 

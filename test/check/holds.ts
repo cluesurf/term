@@ -217,7 +217,7 @@ function main(): void {
       call multiply
         loan n
         loan n
-  back n
+  send back n
 `,
   )
 
@@ -227,7 +227,7 @@ function main(): void {
     `task double
   take n, like number
   like number
-  back
+  send back
     call add
       loan n
       loan n
@@ -242,7 +242,7 @@ task check-it
       call add
         loan n
         loan n
-  back n
+  send back n
 `,
   )
 

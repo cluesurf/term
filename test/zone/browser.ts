@@ -1,7 +1,8 @@
-// In-browser end-to-end: compile the `.tree` app against the browser DOM, bundle it to JS, and run it against a DOM
-// stub (a stand-in for `document`). Asserts the app mounts real elements and that clicking the button reactively
-// updates the label's text node. Also emits the runnable browser artifacts (index.html + app.js). The browser DOM
-// FFI (`import * as dom from "dom"`) is wired to `document` via a tiny shim. Run: npx tsx test/zone/browser.ts
+// In-browser end-to-end: compile the `.tree` app against the browser DOM (which delegates to @cluesurf/bind), bundle
+// it to JS, and run it against a DOM stub (a stand-in for the page's `document`). Asserts the app mounts real elements
+// and that clicking the button reactively updates the label's text node. Also emits the runnable browser artifacts
+// (index.html + app.js). The browser impl calls the real DOM via bind (`document.createElement`, `el.setAttribute`,
+// `parent.appendChild`, ...); no FFI shim is needed. Run: npx tsx test/zone/browser.ts
 
 import { compile } from '@/code/compile/compile'
 import type { Source } from '@/code/compile/load'
@@ -22,9 +23,11 @@ const tryFile = (b: string): Source | undefined => {
   for (const c of [b + '.tree', path.join(b, 'base.tree')]) if (fs.existsSync(c) && fs.statSync(c).isFile()) return { file: c, text: fs.readFileSync(c, 'utf8') }
   return undefined
 }
-// resolve framework + stdlib; the abstract dom API resolves to the browser native impl for this build
+// resolve framework + stdlib + bind. The abstract dom API resolves to the browser native impl for this build, so the
+// render runtime and app drive the real DOM through bind.
 function resolve(imp: string, from: string): Source | undefined {
   if (imp.startsWith('@cluesurf/base/code/')) return tryFile(path.join(DECK, 'base.tree/code', imp.slice(20)))
+  if (imp.startsWith('@cluesurf/bind/code/')) return tryFile(path.join(DECK, 'bind.tree/code', imp.slice(20)))
   if (imp.startsWith('@cluesurf/site/code/')) return tryFile(path.join(DECK, 'site.tree/code', imp.slice(20)))
   if (imp.startsWith('./') || imp.startsWith('../')) {
     let p = path.resolve(path.dirname(from), imp)
@@ -34,13 +37,9 @@ function resolve(imp: string, from: string): Source | undefined {
   return undefined
 }
 
-// the DOM FFI shim: the browser native calls `dom.createElement` / `dom.createTextNode`; everything else is real DOM
-// methods on the element handle. Wires the `import ... from "dom"` to the global document.
-const DOM_SHIM = `export const createElement = (tag) => document.createElement(tag)
-export const createTextNode = (value) => document.createTextNode(value)
-`
-
-// a minimal DOM stub for the headless run (a real browser supplies these natively)
+// a minimal DOM stub for the headless run (a real browser supplies these natively). The compiled app calls the real
+// DOM via bind: `document.createElement(tag, opts)`, `el.setAttribute`, `parent.appendChild`, `el.addEventListener`,
+// `node.textContent = ...`. The stub implements exactly that surface.
 function makeStubElement(tag: string): any {
   return {
     tagName: tag, children: [] as any[], attributes: {} as Record<string, string>, listeners: {} as Record<string, Array<() => void>>, textContent: '',
@@ -55,28 +54,27 @@ function makeStubElement(tag: string): any {
 async function main(): Promise<void> {
   const entry = path.join(DECK, 'site.tree/code/test/site/app.tree')
   const result = compile({ file: entry, text: fs.readFileSync(entry, 'utf8') }, { resolve })
-  ok('app compiles against the browser DOM', result.ok, result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)))
+  ok('app compiles against the browser DOM (bind)', result.ok, result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)))
   if (!result.ok) { console.log(`\nbrowser: ${pass} pass, ${fail} fail`); return }
 
-  // lay out the bundle inputs in a temp dir: the compiled app, the dom shim, and an entry that mounts onto the body
+  // sanity-check the emit drives the real DOM through bind, not a shadowed/undefined global
+  ok('emits a real document binding (const page = document)', /const page = document\b/.test(result.typescript), 'missing page=document')
+  ok('emits native createElement', /\.createElement\(/.test(result.typescript))
+  ok('emits native appendChild', /\.appendChild\(/.test(result.typescript))
+  ok('does not shadow the document global', !/const document = \w/.test(result.typescript), 'a `const document = ...` would mask the real global')
+
+  // lay out the bundle inputs: the compiled app + an entry that mounts onto the body
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-web-'))
   fs.writeFileSync(path.join(dir, 'app.ts'), result.typescript)
-  fs.writeFileSync(path.join(dir, 'dom.ts'), DOM_SHIM)
   fs.writeFileSync(path.join(dir, 'entry.ts'), `import { mountApp } from './app'\nmountApp({ handle: document.body })\n`)
 
-  const bundled = await build({
-    entryPoints: [path.join(dir, 'entry.ts')],
-    bundle: true,
-    format: 'esm',
-    write: false,
-    alias: { dom: path.join(dir, 'dom.ts') },
-  })
+  const bundled = await build({ entryPoints: [path.join(dir, 'entry.ts')], bundle: true, format: 'esm', write: false })
   const code = bundled.outputFiles[0]!.text
   ok('bundles to a single browser module', code.length > 0)
 
   // run it headless against the DOM stub
   const body = makeStubElement('body')
-  ;(globalThis as any).document = { createElement: makeStubElement, createTextNode: (v: string) => { const n = makeStubElement(''); n.textContent = v; return n }, body }
+  ;(globalThis as any).document = { createElement: (tag: string) => makeStubElement(tag), createTextNode: (v: string) => { const n = makeStubElement(''); n.textContent = v; return n }, body }
   const file = path.join(dir, 'bundle.mjs')
   fs.writeFileSync(file, code)
   await import(file)

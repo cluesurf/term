@@ -54,9 +54,9 @@ const FIB = `task fib
         loan n
         mark 2
     hook hold
-      back n
+      send back n
     hook miss
-      back
+      send back
         call add
           call fib
             call subtract
@@ -72,7 +72,7 @@ const FIB = `task fib
 const LOOP = `task loop
   take n, like number
   like number
-  back
+  send back
     call loop
       loan n
 `
@@ -81,7 +81,7 @@ const LOOP = `task loop
 const PLAIN = `task plus-one
   take n, like number
   like number
-  back
+  send back
     call add
       loan n
       mark 1
@@ -92,14 +92,14 @@ const PLAIN = `task plus-one
 const MUTUAL = `task ping
   take n, like number
   like number
-  back
+  send back
     call pong
       loan n
 
 task pong
   take n, like number
   like number
-  back
+  send back
     call ping
       loan n
 `

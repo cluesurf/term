@@ -18,7 +18,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const BAD = `task wrong
   take n
-  back
+  send back
     call add
       loan n
       text <oops>

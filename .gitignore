@@ -2,6 +2,10 @@
 /host
 /node_modules
 
+# scratch dev runners / probes, at any depth
+tmp/
+**/tmp/
+
 /link
 !/link/lock.tree
 .claude/CLAUDE.md

@@ -3,8 +3,8 @@
 // and computes correctly, not just code of the right shape. Each backend is gated on its toolchain being installed;
 // a missing toolchain is reported as skipped, never a failure. Run: npx tsx test/compile/roundtrip.ts
 
-import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawnSync, spawn } from 'node:child_process'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from '@/code/parser/tree'
@@ -13,16 +13,12 @@ import { resolve as resolveNames } from '@/code/check/resolve'
 import { check } from '@/code/check/infer'
 import { collectModules } from '@/code/compile/load'
 import type { Source } from '@/code/compile/load'
-import { withNativeEnv } from '@/code/compile/native'
+import { withNativeEnv, nativePrelude } from '@/code/compile/native'
 import { emitSwift } from '@/code/compile/swift'
 import { emitKotlin } from '@/code/compile/kotlin'
 import { emitLlvm } from '@/code/compile/llvm'
 import { emitRust } from '@/code/compile/rust'
 import { LLVM_RUNTIME_RUST } from '@/code/compile/llvm-runtime'
-import { SEED_IO_RUNTIME_RUST, SEED_IO_RUNTIME_SWIFT, SEED_IO_RUNTIME_KOTLIN } from '@/code/compile/io-runtime'
-import { SEED_MATH_RUNTIME_RUST, SEED_MATH_RUNTIME_SWIFT, SEED_MATH_RUNTIME_KOTLIN } from '@/code/compile/math-runtime'
-import { SEED_CRYPTO_RUNTIME_SWIFT, SEED_CRYPTO_RUNTIME_KOTLIN } from '@/code/compile/crypto-runtime'
-import { SEED_TEXT_RUNTIME_RUST, SEED_TEXT_RUNTIME_SWIFT, SEED_TEXT_RUNTIME_KOTLIN } from '@/code/compile/text-runtime'
 import type { Program } from '@/code/compile/node'
 import { readFileSync, existsSync } from 'node:fs'
 
@@ -59,6 +55,15 @@ const stdlib = (path: string): Source | undefined => {
   if (!path.startsWith(prefix)) return undefined
   const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
   return existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
+}
+
+// read a native runtime shim's raw source from the stdlib (the path already carries the real extension, no `.tree`).
+// This is what `nativePrelude` calls: the shim source lives in base.tree, the compiler only knows where to look.
+const readRuntime = (path: string): string | undefined => {
+  const prefix = '@cluesurf/base/'
+  if (!path.startsWith(prefix)) return undefined
+  const file = join(baseTree, path.slice(prefix.length))
+  return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }
 
 // front-end a program (optionally resolving stdlib imports) to a checked compile AST. An `env` resolves abstract
@@ -143,7 +148,7 @@ function runRust(name: string, program: Program, callExpr: string, want: number)
 }
 
 // Rust file IO end to end: compile the synchronous native/rust/file module (which forwards to the linked `io`
-// runtime), prepend SEED_IO_RUNTIME_RUST, append a main that writes a temp file through the emitted code then reads it
+// runtime), prepend the io runtime shim (from base.tree, via nativePrelude), append a main that writes a temp file through the emitted code then reads it
 // back, run with rustc, and assert stdout. Proves native file IO actually RUNS on a real compiled toolchain, not just
 // that it emits the right shape. main owns the path and clones it across the two calls (each emitted call moves its arg).
 function runRustIo(name: string, program: Program, want: string): void {
@@ -151,7 +156,7 @@ function runRustIo(name: string, program: Program, want: string): void {
   const path = join(dir, 'seed_rust_io_roundtrip.txt')
   const main = `\nfn main() {\n  let p = ${JSON.stringify(path)}.to_string();\n  write_demo(p.clone(), ${JSON.stringify(want)}.to_string());\n  print!("{}", read_demo(p));\n}\n`
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
-  writeFileSync(file, `${SEED_IO_RUNTIME_RUST}\n${emitRust(program)}${main}`)
+  writeFileSync(file, `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}${main}`)
   const exe = file.replace(/\.rs$/, '')
   try {
     execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], { stdio: 'pipe' })
@@ -163,13 +168,13 @@ function runRustIo(name: string, program: Program, want: string): void {
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
-// Swift file IO end to end: prepend SEED_IO_RUNTIME_SWIFT, write + read a temp file through the emitted Swift.
+// Swift file IO end to end: prepend the io runtime shim (from base.tree), write + read a temp file through emitted Swift.
 function runSwiftIo(name: string, program: Program, want: string): void {
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const path = join(dir, 'seed_swift_io.txt')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   const main = `\nwriteDemo(${JSON.stringify(path)}, ${JSON.stringify(want)})\nprint(readDemo(${JSON.stringify(path)}), terminator: "")\n`
-  writeFileSync(file, `${SEED_IO_RUNTIME_SWIFT}\n${emitSwift(program)}${main}`)
+  writeFileSync(file, `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}${main}`)
   const exe = file.replace(/\.swift$/, '')
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
@@ -181,13 +186,13 @@ function runSwiftIo(name: string, program: Program, want: string): void {
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
-// Kotlin file IO end to end: prepend SEED_IO_RUNTIME_KOTLIN, write + read a temp file through the emitted Kotlin.
+// Kotlin file IO end to end: prepend the io runtime shim (from base.tree), write + read a temp file through emitted Kotlin.
 function runKotlinIo(name: string, program: Program, want: string): void {
   if (!have('kotlinc') || !have('java')) return skipped(name, 'kotlinc/java not installed')
   const path = join(dir, 'seed_kotlin_io.txt')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   const main = `\nfun main() {\n  writeDemo(${JSON.stringify(path)}, ${JSON.stringify(want)})\n  print(readDemo(${JSON.stringify(path)}))\n}\n`
-  writeFileSync(file, `${SEED_IO_RUNTIME_KOTLIN}\n${emitKotlin(program)}${main}`)
+  writeFileSync(file, `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}${main}`)
   const jar = file.replace(/\.kt$/, '.jar')
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
@@ -204,7 +209,7 @@ function runKotlinIo(name: string, program: Program, want: string): void {
 function runRustMath(name: string, program: Program, want: string): void {
   if (!have('rustc')) return skipped(name, 'rustc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
-  writeFileSync(file, `${SEED_MATH_RUNTIME_RUST}\n${emitRust(program)}\nfn main() { print!("{}", compute()); }\n`)
+  writeFileSync(file, `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { print!("{}", compute()); }\n`)
   const exe = file.replace(/\.rs$/, '')
   try {
     execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], { stdio: 'pipe' })
@@ -219,7 +224,7 @@ function runRustMath(name: string, program: Program, want: string): void {
 function runSwiftMath(name: string, program: Program, want: string): void {
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
-  writeFileSync(file, `${SEED_MATH_RUNTIME_SWIFT}\n${emitSwift(program)}\nprint(compute(), terminator: "")\n`)
+  writeFileSync(file, `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\nprint(compute(), terminator: "")\n`)
   const exe = file.replace(/\.swift$/, '')
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
@@ -234,7 +239,7 @@ function runSwiftMath(name: string, program: Program, want: string): void {
 function runKotlinMath(name: string, program: Program, want: string): void {
   if (!have('kotlinc') || !have('java')) return skipped(name, 'kotlinc/java not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
-  writeFileSync(file, `${SEED_MATH_RUNTIME_KOTLIN}\n${emitKotlin(program)}\nfun main() { print(compute()) }\n`)
+  writeFileSync(file, `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main() { print(compute()) }\n`)
   const jar = file.replace(/\.kt$/, '.jar')
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
@@ -252,7 +257,7 @@ function runKotlinMath(name: string, program: Program, want: string): void {
 function runSwiftCrypto(name: string, program: Program, want: string): void {
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
-  writeFileSync(file, `${SEED_CRYPTO_RUNTIME_SWIFT}\n${emitSwift(program)}\nprint(await compute(), terminator: "")\n`)
+  writeFileSync(file, `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\nprint(await compute(), terminator: "")\n`)
   const exe = file.replace(/\.swift$/, '')
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
@@ -265,7 +270,7 @@ function runSwiftCrypto(name: string, program: Program, want: string): void {
 function runKotlinCrypto(name: string, program: Program, want: string): void {
   if (!have('kotlinc') || !have('java')) return skipped(name, 'kotlinc/java not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
-  writeFileSync(file, `${SEED_CRYPTO_RUNTIME_KOTLIN}\n${emitKotlin(program)}\nsuspend fun main() { print(compute()) }\n`)
+  writeFileSync(file, `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nsuspend fun main() { print(compute()) }\n`)
   const jar = file.replace(/\.kt$/, '.jar')
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
@@ -279,7 +284,7 @@ function runKotlinCrypto(name: string, program: Program, want: string): void {
 function runRustText(name: string, program: Program, want: string): void {
   if (!have('rustc')) return skipped(name, 'rustc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
-  writeFileSync(file, `${SEED_TEXT_RUNTIME_RUST}\n${emitRust(program)}\nfn main() { print!("{}", compute()); }\n`)
+  writeFileSync(file, `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { print!("{}", compute()); }\n`)
   const exe = file.replace(/\.rs$/, '')
   try {
     execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], { stdio: 'pipe' })
@@ -294,7 +299,7 @@ function runRustText(name: string, program: Program, want: string): void {
 function runSwiftText(name: string, program: Program, want: string): void {
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
-  writeFileSync(file, `${SEED_TEXT_RUNTIME_SWIFT}\n${emitSwift(program)}\nprint(compute(), terminator: "")\n`)
+  writeFileSync(file, `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\nprint(compute(), terminator: "")\n`)
   const exe = file.replace(/\.swift$/, '')
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
@@ -309,7 +314,99 @@ function runSwiftText(name: string, program: Program, want: string): void {
 function runKotlinText(name: string, program: Program, want: string): void {
   if (!have('kotlinc') || !have('java')) return skipped(name, 'kotlinc/java not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
-  writeFileSync(file, `${SEED_TEXT_RUNTIME_KOTLIN}\n${emitKotlin(program)}\nfun main() { print(compute()) }\n`)
+  writeFileSync(file, `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main() { print(compute()) }\n`)
+  const jar = file.replace(/\.kt$/, '.jar')
+  try {
+    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
+  } catch (e) {
+    fail++
+    console.log(`FAIL  ${name}  (kotlinc error: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 300)})`)
+    return
+  }
+  ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
+}
+
+// run a program on rust THROUGH CARGO, so the crate-backed shims (crypto via sha2/hmac/md-5, regex via the regex
+// crate) actually link and execute. Uses a fixed project dir so the compiled dependencies cache across test runs.
+// `isAsync` wraps main in a tokio runtime (the crypto interface is async on every target).
+const RUST_CARGO_TOML = `[package]
+name = "seed-rust-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+regex = "1"
+sha2 = "0.10"
+md-5 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+hex = "0.4"
+uuid = { version = "1", features = ["v4"] }
+rand = "0.8"
+reqwest = { version = "0.12", features = ["rustls-tls"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+
+[[bin]]
+name = "run"
+path = "src/main.rs"
+`
+function runRustCargo(name: string, program: Program, want: string, isAsync: boolean): void {
+  if (!have('cargo')) return skipped(name, 'cargo not installed')
+  const proj = join(tmpdir(), 'seed-rust-runtime')
+  mkdirSync(join(proj, 'src'), { recursive: true })
+  writeFileSync(join(proj, 'Cargo.toml'), RUST_CARGO_TOML)
+  const prelude = nativePrelude(program, 'rust', readRuntime)
+  const main = isAsync
+    ? `\n#[tokio::main]\nasync fn main() { print!("{}", compute().await); }\n`
+    : `\nfn main() { print!("{}", compute()); }\n`
+  writeFileSync(join(proj, 'src', 'main.rs'), `${prelude}\n${emitRust(program)}${main}`)
+  let out: string
+  try {
+    out = execFileSync('cargo', ['run', '--quiet'], { cwd: proj, stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+  } catch (e) {
+    fail++
+    console.log(`FAIL  ${name}  (cargo error: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 300)})`)
+    return
+  }
+  ok(name, out.trim(), want)
+}
+
+// rust console uses println! (std, no crate), so bare rustc suffices; compute() prints, main calls it bare.
+function runRustConsole(name: string, program: Program, want: string): void {
+  if (!have('rustc')) return skipped(name, 'rustc not installed')
+  const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
+  writeFileSync(file, `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { compute(); }\n`)
+  const exe = file.replace(/\.rs$/, '')
+  try {
+    execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], { stdio: 'pipe' })
+  } catch (e) {
+    fail++
+    console.log(`FAIL  ${name}  (rustc error: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 300)})`)
+    return
+  }
+  ok(name, execFileSync(exe).toString().trim(), want)
+}
+
+// console: `compute` returns unit and prints as a side effect, so the runner calls it bare and captures stdout.
+function runSwiftConsole(name: string, program: Program, want: string): void {
+  if (!have('swiftc')) return skipped(name, 'swiftc not installed')
+  const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
+  writeFileSync(file, `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\ncompute()\n`)
+  const exe = file.replace(/\.swift$/, '')
+  try {
+    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
+  } catch (e) {
+    fail++
+    console.log(`FAIL  ${name}  (swiftc error: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 300)})`)
+    return
+  }
+  ok(name, execFileSync(exe).toString().trim(), want)
+}
+
+function runKotlinConsole(name: string, program: Program, want: string): void {
+  if (!have('kotlinc') || !have('java')) return skipped(name, 'kotlinc/java not installed')
+  const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
+  writeFileSync(file, `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main() { compute() }\n`)
   const jar = file.replace(/\.kt$/, '.jar')
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
@@ -462,6 +559,134 @@ task compute
 `
 const SHA256_ABC = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 
+// base64 / hex / hmac through the public interfaces, forwarding to each target's shim (prelude auto-collected)
+const BASE64_PROG = `load @cluesurf/base/code/text/base64
+  find encode
+
+task compute
+  like text
+  send back
+    call encode
+      text <hello>
+`
+const HEX_PROG = `load @cluesurf/base/code/text/hex
+  find encode
+
+task compute
+  like text
+  send back
+    call encode
+      text <hi>
+`
+const HMAC_PROG = `load @cluesurf/base/code/cryptography/hmac
+  find sha256
+
+task compute
+  mark async
+  like text
+  send back
+    call sha256
+      text <key>
+      text <The quick brown fox jumps over the lazy dog>
+      wait true
+`
+const HMAC_VECTOR = 'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8'
+
+// uuid: version4 is random, so verify its FORMAT with regex (cross-platform, no member access). Uses both shims.
+const UUID_PROG = `load @cluesurf/base/code/uuid
+  find version4
+
+load @cluesurf/base/code/regex
+  find matches
+
+task compute
+  like boolean
+  save id
+    call version4
+  send back
+    call matches
+      text <^[0-9a-f-]+$>
+      read id
+`
+// random: integer(low, high) with low == high is deterministic
+const RANDOM_PROG = `load @cluesurf/base/code/random
+  find integer
+
+task compute
+  like number
+  send back
+    call integer
+      mark 5
+      mark 5
+`
+// time: now() is non-deterministic, so assert it is a positive epoch (boolean -> "true")
+const TIME_PROG = `load @cluesurf/base/code/time
+  find now
+
+task compute
+  like boolean
+  send back
+    call is-above
+      call now
+      mark 0
+`
+// console: compute() prints to stdout (it returns unit), so the runner just calls it and captures stdout
+const CONSOLE_PROG = `load @cluesurf/base/code/console
+  find log
+
+task compute
+  like void
+  call log
+    text <hello console>
+`
+// clock: monotonic now() is positive
+const CLOCK_PROG = `load @cluesurf/base/code/clock
+  find now
+
+task compute
+  like boolean
+  send back
+    call is-above
+      call now
+      mark 0
+`
+// process / environment: return non-empty platform info, verified with regex (no member access)
+const PROCESS_PROG = `load @cluesurf/base/code/process
+  find platform
+
+load @cluesurf/base/code/regex
+  find matches
+
+task compute
+  like boolean
+  send back
+    call matches
+      text <^.+$>
+      call platform
+`
+const ENVIRONMENT_PROG = `load @cluesurf/base/code/environment
+  find directory
+
+load @cluesurf/base/code/regex
+  find matches
+
+task compute
+  like boolean
+  send back
+    call matches
+      text <^.+$>
+      call directory
+`
+// log: info() prints to stdout
+const LOG_PROG = `load @cluesurf/base/code/log
+  find info
+
+task compute
+  like void
+  call info
+    text <hello log>
+`
+
 // a string op through the public interface: to-upper("seed") forwards to the per-target text shim
 const TEXT_PROG = `load @cluesurf/base/code/text/string
   find to-upper
@@ -471,6 +696,18 @@ task compute
   send back
     call to-upper
       text <seed>
+`
+
+// a regex match through the public interface, forwarding to the per-target regex shim (the prelude is auto-collected)
+const REGEX_PROG = `load @cluesurf/base/code/regex
+  find matches
+
+task compute
+  like boolean
+  send back
+    call matches
+      text <^[0-9]+$>
+      text <12345>
 `
 
 function main(): void {
@@ -502,10 +739,81 @@ function main(): void {
   runSwiftCrypto('swift + crypto runtime: sha256("abc") through CryptoKit', frontEnd(cryptoProgram('swift'), true, 'swift'), SHA256_ABC)
   runKotlinCrypto('kotlin + crypto runtime: sha256("abc") through java.security', frontEnd(cryptoProgram('kotlin'), true, 'kotlin'), SHA256_ABC)
 
+  // rust crypto + regex running for real THROUGH CARGO, linking the production crates (sha2 / regex)
+  runRustCargo('rust + cargo: sha256("abc") through the sha2 crate', frontEnd(cryptoProgram('rust'), true, 'rust'), SHA256_ABC, true)
+  runRustCargo('rust + cargo: matches("^[0-9]+$","12345") through the regex crate', frontEnd(REGEX_PROG, true, 'rust'), 'true', false)
+
+  // base64 / hex / hmac to "runs" on all three compiled toolchains
+  runSwiftText('swift + base64: encode("hello") via Foundation', frontEnd(BASE64_PROG, true, 'swift'), 'aGVsbG8=')
+  runKotlinText('kotlin + base64: encode("hello") via java.util.Base64', frontEnd(BASE64_PROG, true, 'kotlin'), 'aGVsbG8=')
+  runRustCargo('rust + cargo: base64 encode("hello") via the base64 crate', frontEnd(BASE64_PROG, true, 'rust'), 'aGVsbG8=', false)
+  runSwiftText('swift + hex: encode("hi") via Foundation', frontEnd(HEX_PROG, true, 'swift'), '6869')
+  runKotlinText('kotlin + hex: encode("hi") via kotlin', frontEnd(HEX_PROG, true, 'kotlin'), '6869')
+  runRustCargo('rust + cargo: hex encode("hi") via the hex crate', frontEnd(HEX_PROG, true, 'rust'), '6869', false)
+  runSwiftCrypto('swift + hmac: sha256 RFC vector via CryptoKit', frontEnd(HMAC_PROG, true, 'swift'), HMAC_VECTOR)
+  runKotlinCrypto('kotlin + hmac: sha256 RFC vector via javax.crypto.Mac', frontEnd(HMAC_PROG, true, 'kotlin'), HMAC_VECTOR)
+  runRustCargo('rust + cargo: hmac sha256 RFC vector via the hmac crate', frontEnd(HMAC_PROG, true, 'rust'), HMAC_VECTOR, true)
+
+  // uuid (format-checked via regex) + random (deterministic integer) to "runs" on all three
+  runSwiftText('swift + uuid: version4 is well-formed (via Foundation UUID)', frontEnd(UUID_PROG, true, 'swift'), 'true')
+  runKotlinText('kotlin + uuid: version4 is well-formed (via java.util.UUID)', frontEnd(UUID_PROG, true, 'kotlin'), 'true')
+  runRustCargo('rust + cargo: uuid version4 is well-formed (via the uuid crate)', frontEnd(UUID_PROG, true, 'rust'), 'true', false)
+  runSwiftText('swift + random: integer(5,5) is 5 (via Int.random)', frontEnd(RANDOM_PROG, true, 'swift'), '5')
+  runKotlinText('kotlin + random: integer(5,5) is 5 (via kotlin Random)', frontEnd(RANDOM_PROG, true, 'kotlin'), '5')
+  runRustCargo('rust + cargo: random integer(5,5) is 5 (via the rand crate)', frontEnd(RANDOM_PROG, true, 'rust'), '5', false)
+
+  // time (positive epoch) + console (stdout) to "runs" on all three
+  runSwiftText('swift + time: now() is a positive epoch (via Date)', frontEnd(TIME_PROG, true, 'swift'), 'true')
+  runKotlinText('kotlin + time: now() is a positive epoch (via System)', frontEnd(TIME_PROG, true, 'kotlin'), 'true')
+  runRustCargo('rust + cargo: time now() is a positive epoch (via std::time)', frontEnd(TIME_PROG, true, 'rust'), 'true', false)
+  runSwiftConsole('swift + console: log prints to stdout (via print)', frontEnd(CONSOLE_PROG, true, 'swift'), 'hello console')
+  runKotlinConsole('kotlin + console: log prints to stdout (via println)', frontEnd(CONSOLE_PROG, true, 'kotlin'), 'hello console')
+  runRustConsole('rust + console: log prints to stdout (via println!)', frontEnd(CONSOLE_PROG, true, 'rust'), 'hello console')
+
+  // clock + process + environment + log to "runs" on all three
+  runSwiftText('swift + clock: now() is positive (via ProcessInfo uptime)', frontEnd(CLOCK_PROG, true, 'swift'), 'true')
+  runKotlinText('kotlin + clock: now() is positive (via System.nanoTime)', frontEnd(CLOCK_PROG, true, 'kotlin'), 'true')
+  runRustCargo('rust + cargo: clock now() is positive (via std::time)', frontEnd(CLOCK_PROG, true, 'rust'), 'true', false)
+  runSwiftText('swift + process: platform() is non-empty (via ProcessInfo)', frontEnd(PROCESS_PROG, true, 'swift'), 'true')
+  runKotlinText('kotlin + process: platform() is non-empty (via System)', frontEnd(PROCESS_PROG, true, 'kotlin'), 'true')
+  runRustCargo('rust + cargo: process platform() is non-empty (via std::env)', frontEnd(PROCESS_PROG, true, 'rust'), 'true', false)
+  runSwiftText('swift + environment: directory() is non-empty (via FileManager)', frontEnd(ENVIRONMENT_PROG, true, 'swift'), 'true')
+  runKotlinText('kotlin + environment: directory() is non-empty (via System)', frontEnd(ENVIRONMENT_PROG, true, 'kotlin'), 'true')
+  runRustCargo('rust + cargo: environment directory() is non-empty (via std::env)', frontEnd(ENVIRONMENT_PROG, true, 'rust'), 'true', false)
+  runSwiftConsole('swift + log: info prints to stdout (via print)', frontEnd(LOG_PROG, true, 'swift'), 'hello log')
+  runKotlinConsole('kotlin + log: info prints to stdout (via println)', frontEnd(LOG_PROG, true, 'kotlin'), 'hello log')
+  runRustConsole('rust + log: info prints to stdout (via println!)', frontEnd(LOG_PROG, true, 'rust'), 'hello log')
+
   // string ops through the public text interface, running on each compiled toolchain via the text shim
   runRustText('rust + text runtime: to-upper("seed") through the string interface', frontEnd(TEXT_PROG, true, 'rust'), 'SEED')
   runSwiftText('swift + text runtime: to-upper("seed") through the string interface', frontEnd(TEXT_PROG, true, 'swift'), 'SEED')
   runKotlinText('kotlin + text runtime: to-upper("seed") through the string interface', frontEnd(TEXT_PROG, true, 'kotlin'), 'SEED')
+
+  // regex through the public interface, running on each toolchain via the regex shim (the runner auto-prepends it)
+  runSwiftText('swift + regex runtime: matches("^[0-9]+$","12345") via NSRegularExpression', frontEnd(REGEX_PROG, true, 'swift'), 'true')
+  runKotlinText('kotlin + regex runtime: matches("^[0-9]+$","12345") via kotlin.text.Regex', frontEnd(REGEX_PROG, true, 'kotlin'), 'true')
+
+  // http client to "runs": fetch a real server. The server runs in a SEPARATE node process so the blocking
+  // execFileSync of each compiled binary does not freeze its event loop. swift uses URLSession, kotlin java.net.http,
+  // rust reqwest -- each wraps its platform client behind the one async `get` interface.
+  const portFile = join(dir, 'server-port.txt')
+  const serverCode = `const http=require('http');const fs=require('fs');const s=http.createServer((q,r)=>{r.writeHead(200);r.end('http ok')});s.listen(0,'127.0.0.1',()=>fs.writeFileSync(process.argv[1],String(s.address().port)))`
+  const server = spawn(process.execPath, ['-e', serverCode, portFile], { stdio: 'ignore' })
+  let port = ''
+  const waiter = new Int32Array(new SharedArrayBuffer(4))
+  for (let i = 0; i < 100 && !port; i++) {
+    if (existsSync(portFile)) port = readFileSync(portFile, 'utf8').trim()
+    else Atomics.wait(waiter, 0, 0, 50)
+  }
+  if (port) {
+    const httpProg = `load @cluesurf/base/code/network/http\n  find get\n\ntask compute\n  mark async\n  like text\n  save r\n    call get\n      text <http://127.0.0.1:${port}/>\n      wait true\n  send back\n    read r/body\n`
+    runSwiftCrypto('swift + http: GET a real server via URLSession', frontEnd(httpProg, true, 'swift'), 'http ok')
+    runKotlinCrypto('kotlin + http: GET a real server via java.net.http', frontEnd(httpProg, true, 'kotlin'), 'http ok')
+    runRustCargo('rust + cargo: http GET a real server via reqwest', frontEnd(httpProg, true, 'rust'), 'http ok', true)
+  } else {
+    skipped('http round-trips', 'could not start the local test server')
+  }
+  server.kill()
 
   console.log(`\nroundtrip: ${pass} pass, ${fail} fail, ${skip} skipped  (compiled + ran on the real toolchain)`)
   if (fail > 0) process.exit(1)

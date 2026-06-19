@@ -42,7 +42,7 @@ function main(): void {
     `${FETCH}
 task run
   wait true
-  back
+  send back
     call fetch
       wait true
 `,
@@ -53,7 +53,7 @@ task run
     'await is rejected in a synchronous task',
     `${FETCH}
 task run
-  back
+  send back
     call fetch
       wait true
 `,
@@ -67,7 +67,7 @@ task run
 
 task run
   wait true
-  back
+  send back
     call plain
       wait true
 `,
@@ -78,7 +78,7 @@ task run
     'unawaited async call in a synchronous task is rejected',
     `${FETCH}
 task run
-  back
+  send back
     call fetch
 `,
   )
@@ -93,7 +93,7 @@ task run
       like number
   take n, like number
   like number${callerAsync ? '\n  wait true' : ''}
-  back
+  send back
     call f
       loan n${await_ ? '\n      wait true' : ''}
 `
@@ -109,7 +109,7 @@ task run
   take n, like number
   like number
   wait true
-  back
+  send back
     call f
       loan n
       wait true
@@ -123,13 +123,13 @@ task run
 
 task relay
   take n
-  back
+  send back
     call boom
       loan n
 
 task quiet
   take n
-  back
+  send back
     call add
       loan n
       mark 1
@@ -159,7 +159,7 @@ task quiet
       like number
   take n, like number
   like number
-  back
+  send back
     call f
       loan n
 `

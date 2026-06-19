@@ -65,7 +65,7 @@ function main(): void {
     'unknown name',
     `task bad
   take n
-  back
+  send back
     call add
       loan n
       loan missing
@@ -79,7 +79,7 @@ function main(): void {
     `task bad
   take n
   save s, text <hi>
-  back
+  send back
     call add
       loan n
       loan s
@@ -97,7 +97,7 @@ function main(): void {
       loan n
     hook step
       save n, mark 0
-  back n
+  send back n
 `,
     'type-mismatch',
   )
@@ -107,11 +107,11 @@ function main(): void {
     'arity mismatch',
     `task one
   take a
-  back a
+  send back a
 
 task bad
   take n
-  back
+  send back
     call one
       loan n
       loan n
@@ -124,13 +124,13 @@ task bad
     'forward reference resolves',
     `task main
   take n
-  back
+  send back
     call helper
       loan n
 
 task helper
   take x
-  back
+  send back
     call add
       loan x
       mark 1
@@ -147,7 +147,7 @@ task helper
       loan n
     hook step
       save n, mark 0
-  back n
+  send back n
 `,
   )
 

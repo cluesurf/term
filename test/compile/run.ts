@@ -28,7 +28,7 @@ const FIB_LOOP = `task find-fibonacci-via-loop
         call subtract
           loan n
           mark 1
-  back a
+  send back a
 `
 
 const FIB_RECURSION = `task find-fibonacci-via-recursion
@@ -39,9 +39,9 @@ const FIB_RECURSION = `task find-fibonacci-via-recursion
         loan n
         mark 2
     hook hold
-      back n
+      send back n
     hook miss
-      back
+      send back
         call add
           call find-fibonacci-via-recursion
             call subtract

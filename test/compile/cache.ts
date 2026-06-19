@@ -21,7 +21,7 @@ function expect(name: string, got: unknown, want: unknown): void {
 const DOUBLE = `task double
   take n, like number
   like number
-  back
+  send back
     call multiply
       read n
       mark 2

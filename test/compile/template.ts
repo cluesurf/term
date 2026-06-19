@@ -104,7 +104,7 @@ function main(): void {
   hook fuse
     task add-{suffix}
       take n, like u64
-      back
+      send back
         call add
           loan n
           mark 1
@@ -162,7 +162,7 @@ fuse each, read suit
     task bad-{x}
       take n, like u64
       save s, text <hi>
-      back
+      send back
         call add
           loan n
           loan s

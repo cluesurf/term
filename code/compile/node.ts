@@ -56,7 +56,10 @@ export type Expression =
   | { form: 'hole'; name: string; span: Span; type?: Type; deferred?: boolean }
 
 export type Statement =
-  | { form: 'let'; name: string; init: Expression; mutable: boolean; span: Span; type?: Type }
+  // `foreign` is the host name an ambient binding maps to (`host document, name <document>`): a value-less `host`
+  // with a foreign name is a host global, emitted as an alias to that global (or nothing when the names match)
+  // rather than `const x = undefined`.
+  | { form: 'let'; name: string; init: Expression; mutable: boolean; span: Span; type?: Type; foreign?: string }
   | { form: 'assign'; target: Expression; op: AssignOp; value: Expression; span: Span }
   | { form: 'expression'; expr: Expression; span: Span }
   | { form: 'if'; branches: Array<{ cond: Expression; body: Array<Statement> }>; otherwise?: Array<Statement>; span: Span }
