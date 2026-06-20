@@ -826,8 +826,93 @@ function runLlvmRust(
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
+// like runLlvmRust but for an i64-returning entry: link the Rust runtime (so the seed_list_* heap ops resolve) and
+// assert the process exit code. Used for the list ops, whose handles live in the runtime.
+function runLlvmRustExit(
+  name: string,
+  program: Program,
+  mangledCall: string,
+  want: number,
+): void {
+  if (!have('clang') || !have('rustc'))
+    return skipped(name, 'clang/rustc not installed')
+  const arch = rustcArch()
+  if (!arch)
+    return skipped(name, 'could not determine the rust host arch')
+  const rs = join(dir, `${name.replace(/\W/g, '')}.rs`)
+  const lib = join(dir, `lib${name.replace(/\W/g, '')}.a`)
+  writeFileSync(rs, LLVM_RUNTIME_RUST)
+  try {
+    execFileSync(
+      'rustc',
+      ['--edition', '2021', '--crate-type', 'staticlib', '-O', rs, '-o', lib],
+      { stdio: 'pipe' },
+    )
+  } catch (e) {
+    fail++
+    console.log(
+      `FAIL  ${name}  (rustc error: ${String(
+        (e as { stderr?: Buffer }).stderr ?? e,
+      ).slice(0, 300)})`,
+    )
+    return
+  }
+  const file = join(dir, `${name.replace(/\W/g, '')}.ll`)
+  const main = `\ndefine i32 @main() {\n  %r = call i64 ${mangledCall}\n  %t = trunc i64 %r to i32\n  ret i32 %t\n}\n`
+  writeFileSync(file, emitLlvm(program) + main)
+  const exe = file.replace(/\.ll$/, '')
+  try {
+    execFileSync(
+      'clang',
+      ['-arch', arch, '-Wno-override-module', '-x', 'ir', file, '-x', 'none', lib, '-o', exe],
+      { stdio: 'pipe' },
+    )
+  } catch (e) {
+    fail++
+    console.log(
+      `FAIL  ${name}  (clang error: ${String(
+        (e as { stderr?: Buffer }).stderr ?? e,
+      ).slice(0, 300)})`,
+    )
+    return
+  }
+  ok(name, spawnSync(exe).status, want)
+}
+
 // a string-returning function: a literal concatenation, lowered to the runtime's seed_str_concat
 const GREETING = `task greeting\n  like text\n  send back\n    call add\n      text <hello >\n      text <world>\n`
+
+// a list reaching LLVM: build a list, push three integers, read element 1 (at) and the length (count). 20 + 3 = 23.
+// Exercises the seed_list_* heap runtime (new / push / at / length) -- the imperative integer-list capability.
+const LIST_LLVM = `load @cluesurf/base/code/list
+  find list
+  find push
+  find get
+  find count
+
+task compute
+  like number
+  save xs
+    make list
+  call push
+    read xs
+    mark 10
+  call push
+    read xs
+    mark 20
+  call push
+    read xs
+    mark 30
+  save n
+    call get
+      read xs
+      mark 1
+  send back
+    call add
+      read n
+      call count
+        read xs
+`
 
 // an iterative Fibonacci: mutation + a while loop (the scalar imperative fragment every native backend supports)
 // a higher-order function: a closure passed as a Box<dyn Fn> param and called twice. apply-twice(double, 5) = 20.
@@ -887,6 +972,97 @@ task compute
                 read n
                 mark 3
       read seed
+`
+// a closure that CAPTURES an outer variable (`seed`) and is invoked through a higher-order task: the `move` closure
+// owns its capture, so it is `'static` and storable as a `Box<dyn Fn>`. apply(adder, 10) with seed = 7 -> 17.
+const CAPTURE = `task apply
+  take f
+    like task
+      take n, like number
+      like number
+  take x, like number
+  like number
+  send back
+    call f
+      read x
+
+task compute
+  take seed
+  like number
+  send back
+    call apply
+      task adder
+        take n, like number
+        like number
+        send back
+          call add
+            read n
+            read seed
+      mark 10
+`
+
+// a value-position conditional (a `fork` used as the returned value) with an else-if chain: grade(70) takes the second
+// branch -> 2. On llvm this lowers to a result alloca written from each arm's block, loaded at the merge (no phi).
+const VALUE_COND = `task grade
+  take n, like number
+  like number
+  send back
+    fork test
+      hook test
+        call is-above
+          read n
+          mark 90
+      hook hold
+        mark 1
+      hook test
+        call is-above
+          read n
+          mark 50
+      hook hold
+        mark 2
+      hook miss
+        mark 3
+`
+
+// a generic function reaching a monomorphic backend: identity<t> called at a number. LLVM has no type parameters, so
+// monomorphization must specialize identity at i64 and rewrite the call, or the function would be dropped. compute -> 42.
+const GENERIC = `task identity
+  head t
+  take x, like t
+  like t
+  send back
+    read x
+
+task compute
+  like number
+  send back
+    call identity
+      mark 42
+`
+
+// a plain record reaching LLVM: build a struct, pass it by value, read a field. LLVM lowers it to a first-class
+// %struct value (insertvalue to build, extractvalue to read) -- no heap. compute -> 35.
+const RECORD = `form point
+  link x, like number
+  link y, like number
+
+task make-point
+  take a, like number
+  take b, like number
+  like point
+  send back
+    make point
+      bind x, read a
+      bind y, read b
+
+task compute
+  like number
+  save p
+    call make-point
+      mark 7
+      mark 35
+  send back
+    read p/y
 `
 
 const FIB = `task find-fibonacci-via-loop
@@ -972,19 +1148,27 @@ task compute
       mark 10
 `
 
-// a digest computed through the public-style interface: sha256("abc") forwards to the per-target crypto shim
+// a digest computed through the PUBLIC interface: sha256("abc") resolves to the declarative `bind` map, which inlines
+// the per-backend native call (sha2 crate on rust, CryptoKit on swift, ...). The `platform` arg is unused now that the
+// binding is per-backend in one place; kept so the caller's per-platform loop is unchanged.
 const cryptoProgram = (
-  platform: string,
-) => `load @cluesurf/base/code/native/${platform}/cryptography/digest
-  find digest-sha256
+  _platform: string,
+) => `load @cluesurf/base/code/cryptography/digest
+  find sha256
+
+load @cluesurf/base/code/bytes
+  find from-text
+  find to-hex
 
 task compute
   mark async
   like text
   send back
-    call digest-sha256
-      text <abc>
-      wait true
+    call to-hex
+      call sha256
+        call from-text
+          text <abc>
+        wait true
 `
 const SHA256_ABC =
   'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
@@ -1011,14 +1195,21 @@ task compute
 const HMAC_PROG = `load @cluesurf/base/code/cryptography/hmac
   find sha256
 
+load @cluesurf/base/code/bytes
+  find from-text
+  find to-hex
+
 task compute
   mark async
   like text
   send back
-    call sha256
-      text <key>
-      text <The quick brown fox jumps over the lazy dog>
-      wait true
+    call to-hex
+      call sha256
+        call from-text
+          text <key>
+        call from-text
+          text <The quick brown fox jumps over the lazy dog>
+        wait true
 `
 const HMAC_VECTOR =
   'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8'
@@ -1050,20 +1241,26 @@ task compute
       mark 5
       mark 5
 `
-// secure random: two 16-byte draws differ (the OS-backed generator is not a constant). Asserted as a boolean to stay
-// print-format agnostic. Exercises the crypto shim's random-bytes on each platform (rust OsRng, swift
-// SystemRandomNumberGenerator, kotlin SecureRandom).
+// secure random: two 16-byte draws differ (the OS-backed generator is not a constant). The draws are raw bytes (the
+// crypto currency); hex-encode each at the edge so the comparison is by value on every platform (a raw-buffer != would
+// be a reference compare on node / kotlin). Asserted as a boolean to stay print-format agnostic. Exercises the inlined
+// random-bytes bind on each platform (rust OsRng, swift system RNG, kotlin SecureRandom).
 const SECURE_RANDOM_PROG = `load @cluesurf/base/code/cryptography/random
   find bytes
+
+load @cluesurf/base/code/bytes
+  find to-hex
 
 task compute
   like boolean
   send back
     call is-unequal
-      call bytes
-        mark 16
-      call bytes
-        mark 16
+      call to-hex
+        call bytes
+          mark 16
+      call to-hex
+        call bytes
+          mark 16
 `
 // the bytes currency type as a native buffer: text "ab" + "cd" concatenated, hex-encoded, equals "61626364". The data
 // is a byte vector / Data / ByteArray the whole way through, hex only at the edge. Boolean so it is print-agnostic.
@@ -1091,24 +1288,35 @@ const CIPHER_PROG = `load @cluesurf/base/code/cryptography/cipher
   find encrypt
   find decrypt
 
+load @cluesurf/base/code/bytes
+  find from-text
+  find to-text
+  find from-hex
+
 task compute
   mark async
   like boolean
   save sealed
     call encrypt
-      text <00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff>
-      text <000102030405060708090a0b>
-      text <attack at dawn>
+      call from-hex
+        text <00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff>
+      call from-hex
+        text <000102030405060708090a0b>
+      call from-text
+        text <attack at dawn>
       wait true
   save opened
     call decrypt
-      text <00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff>
-      text <000102030405060708090a0b>
+      call from-hex
+        text <00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff>
+      call from-hex
+        text <000102030405060708090a0b>
       read sealed
       wait true
   send back
     call is-equal
-      read opened
+      call to-text
+        read opened
       text <attack at dawn>
 `
 // Ed25519 signatures: generate a key pair, sign a message, verify it (boolean round-trip, print-format agnostic).
@@ -1117,6 +1325,9 @@ const SIGNATURE_PROG = `load @cluesurf/base/code/cryptography/signature
   find make-key-pair
   find sign
   find verify
+
+load @cluesurf/base/code/bytes
+  find from-text
 
 task compute
   mark async
@@ -1127,12 +1338,14 @@ task compute
   save proof
     call sign
       read pair/private-key
-      text <ship sails at noon>
+      call from-text
+        text <ship sails at noon>
       wait true
   send back
     call verify
       read pair/public-key
-      text <ship sails at noon>
+      call from-text
+        text <ship sails at noon>
       read proof
       wait true
 `
@@ -1312,6 +1525,9 @@ const KEY_AGREEMENT_PROG = `load @cluesurf/base/code/cryptography/key-agreement
   find make-key-pair
   find shared-secret
 
+load @cluesurf/base/code/bytes
+  find to-hex
+
 task compute
   mark async
   like boolean
@@ -1333,8 +1549,10 @@ task compute
       wait true
   send back
     call is-equal
-      read ab
-      read ba
+      call to-hex
+        read ab
+      call to-hex
+        read ba
 `
 // dns: resolving a numeric IP returns it, through each platform's resolver (rust std::net, swift getaddrinfo, kotlin
 // InetAddress). Offline and deterministic, asserted as a boolean.
@@ -1761,6 +1979,42 @@ function main(): void {
     '@compute()',
     1,
   )
+  // llvm value-position conditional: grade(70) -> 2 through the else-if chain (result alloca + branch blocks, no phi)
+  runLlvm(
+    'llvm: value-position conditional (fork as a value)',
+    frontEnd(VALUE_COND),
+    '@grade(i64 70)',
+    2,
+  )
+  // llvm monomorphization: a generic identity specialized at i64 and called -> 42 (generic would be dropped otherwise)
+  runLlvm(
+    'llvm: monomorphized generic function',
+    frontEnd(GENERIC),
+    '@compute()',
+    42,
+  )
+  // llvm record: a struct built (insertvalue), passed by value, and a field read (extractvalue) -> 35
+  runLlvm(
+    'llvm: record build + field read (first-class struct)',
+    frontEnd(RECORD),
+    '@compute()',
+    35,
+  )
+  // llvm list: build an integer list, push, read element 1 + length through the seed_list_* heap runtime -> 23
+  runLlvmRustExit(
+    'llvm + rust runtime: integer list build + at + count',
+    frontEnd(LIST_LLVM, true),
+    '@compute()',
+    23,
+  )
+  // llvm closure: a closure capturing an outer variable, passed to a higher-order fn and called indirectly. The env is
+  // a seed_list of captured words, so the runtime is linked. compute(7) = adder(10) with captured seed 7 -> 17.
+  runLlvmRustExit(
+    'llvm + rust runtime: closure capture via indirect call',
+    frontEnd(CAPTURE),
+    '@compute(i64 7)',
+    17,
+  )
   runRust(
     'rust: iterative fibonacci (mutation + while)',
     fib,
@@ -1772,6 +2026,12 @@ function main(): void {
     frontEnd(CLOSURE),
     'compute(10)',
     40,
+  )
+  runRust(
+    'rust: a move closure capturing an outer variable',
+    frontEnd(CAPTURE),
+    'compute(7)',
+    17,
   )
   runRust(
     'rust: a closure stored in a struct field, called through it',

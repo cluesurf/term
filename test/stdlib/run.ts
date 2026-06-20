@@ -518,6 +518,25 @@ task entry-count
   send back
     call size
       read m
+
+# the canonical count verb (alias of size)
+task entry-count-verb
+  like number
+  save m
+    make find
+  save m
+    call set
+      read m
+      text <a>
+      mark 1
+  save m
+    call set
+      read m
+      text <b>
+      mark 2
+  send back
+    call count
+      read m
 `
 
 // the range type
@@ -626,6 +645,25 @@ task unique-size
       mark 1
   send back
     call size
+      read s
+
+# the canonical count verb (alias of size)
+task unique-count
+  like number
+  save s
+    make set
+      bind items
+        make find
+  save s
+    call insert
+      read s
+      mark 1
+  save s
+    call insert
+      read s
+      mark 2
+  send back
+    call count
       read s
 `
 
@@ -1065,6 +1103,7 @@ async function main(): Promise<void> {
   expect('set/add then has finds the value', se.addHas!(), true)
   expect('set/has on a missing value is false', se.missing!(), false)
   expect('set/size counts unique values', se.uniqueSize!(), 2)
+  expect('set/count is the canonical alias of size', (se.uniqueCount as () => number)(), 2)
 
   const st = await loadProgram(STACK)
   expect('stack/push then pop is LIFO', st.pushPop!(), 20)
@@ -1081,6 +1120,7 @@ async function main(): Promise<void> {
   expect('hash/get on a missing key returns none', h.getMissing!(), 99)
   expect('hash/has finds a set key', h.hasKey!(), true)
   expect('hash/size counts entries', h.entryCount!(), 2)
+  expect('hash/count is the canonical alias of size', (h.entryCountVerb as () => number)(), 2)
 
   const rg = await loadProgram(RANGE)
   expect('range/length is (end-start)/step', rg.measureRange!(), 5)

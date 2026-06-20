@@ -1,0 +1,56 @@
+note <Tests for the math module, written in Seed. The check verb takes a name, a got value, and an expected value, and is a pure equality test. run executes them all and reports. This is the ported, in-language form of the old TypeScript math suite.>
+
+load @cluesurf/base/code/math
+  find power
+  find absolute
+  find minimum
+  find maximum
+  find square-root
+  find clamp
+
+load @cluesurf/base/code/test
+  find check
+  find run
+
+task main
+  mark async
+  like report
+  send back
+    call run
+      wait true
+      make list
+        call check
+          text <power raises a base to an exponent>
+          call power
+            mark 2
+            mark 10
+          mark 1024
+        call check
+          text <absolute makes a negative positive>
+          call absolute
+            mark -5
+          mark 5
+        call check
+          text <minimum picks the smaller>
+          call minimum
+            mark 7
+            mark 3
+          mark 3
+        call check
+          text <maximum picks the larger>
+          call maximum
+            mark 7
+            mark 3
+          mark 7
+        call check
+          text <square-root of a perfect square>
+          call square-root
+            mark 144
+          mark 12
+        call check
+          text <clamp holds a value to a range>
+          call clamp
+            mark 15
+            mark 0
+            mark 10
+          mark 10

@@ -149,6 +149,9 @@ export function lint(
   file: string,
   source: string,
   config: LintConfig = {},
+  // the rule set to run. Defaults to the built-ins, but the caller passes its own (built-ins plus Seed-authored plugin
+  // rules loaded via code/lint/seed-rule.ts) so new rules drop in without editing this driver. This is the plugin seam.
+  rules: Array<Rule> = RULES,
 ): Array<Finding> {
   const findings: Array<Finding> = []
   const reassigned = reassignedNames(program)
@@ -167,7 +170,7 @@ export function lint(
     return [first, ...middle, last].join('\n')
   }
 
-  const enabled = RULES.filter(r => config.severity?.[r.code] !== 'off')
+  const enabled = rules.filter(r => config.severity?.[r.code] !== 'off')
 
   for (const rule of enabled) {
     const severity =

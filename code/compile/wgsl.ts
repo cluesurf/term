@@ -10,6 +10,7 @@ import type {
   Type,
 } from '@/code/compile/node'
 import { exhausted, unsupported } from '@/code/compile/backend'
+import { monomorphize } from '@/code/ir/monomorphize'
 
 function snake(name: string): string {
   return name.replace(/-/g, '_')
@@ -46,7 +47,10 @@ const OP: Record<string, string> = {
   '%': '%',
 }
 
-export function emitWgsl(program: Program): string {
+export function emitWgsl(input: Program): string {
+  // WGSL is monomorphic: specialize generic functions at their concrete call types and drop the generic originals
+  // first, so a generic call resolves to a real function instead of being skipped.
+  const program = monomorphize(input)
   const pad = (d: number) => '  '.repeat(d)
 
   const expr = (node: Expression): string => {

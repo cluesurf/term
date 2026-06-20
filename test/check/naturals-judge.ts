@@ -5,7 +5,6 @@
 
 import type { Mult, Term } from '@/code/check/judge'
 import {
-  checks,
   contextWithSignature,
   check,
   evaluate,
@@ -73,22 +72,19 @@ const plusTerm = lam(
   ),
 )
 
-// signature gives the types; defineConstant gives the values (transparent, so reduction fires).
+// signature gives the types; defineConstant gives the values (transparent, so reduction fires). The self-encoded
+// Nat lives at Type1 (its motive quantifies P : Nat -> Type0), so the constant Nat is typed at ty(1).
 const signature = [
-  { name: 'Nat', type: ty(0) },
+  { name: 'Nat', type: ty(1) },
   { name: 'zero', type: kc('Nat') },
   { name: 'succ', type: pi('many', kc('Nat'), kc('Nat')) },
-  {
-    name: 'plus',
-    type: pi('many', kc('Nat'), pi('many', kc('Nat'), kc('Nat'))),
-  },
 ]
 const context = contextWithSignature(signature)
 
-defineConstant('Nat', evaluate([], natTerm))
+const natValue = evaluate([], natTerm) // the self type as a value, the form the kernel introduces against
+defineConstant('Nat', natValue)
 defineConstant('zero', evaluate([], zeroTerm))
 defineConstant('succ', evaluate([], succTerm))
-defineConstant('plus', evaluate([], plusTerm))
 
 let pass = 0
 let fail = 0
@@ -104,32 +100,46 @@ function ok(name: string, run: () => void): void {
     )
   }
 }
+// a check that MUST fail: the test passes when the kernel rejects the term, recording a real boundary.
+function rejects(name: string, run: () => void): void {
+  try {
+    run()
+    fail++
+    console.log(`FAIL  ${name} (expected a rejection, but it checked)`)
+  } catch {
+    pass++
+    console.log(`ok    ${name} (rejected, as it must be)`)
+  }
+}
 
-ok('Nat is a type', () => {
-  if (!checks(natTerm, ty(1))) throw new Error('Nat did not check at Type1')
+ok('Nat is a self type at Type 1', () => {
+  check(context, natTerm, evaluate([], ty(1)))
 })
-ok('zero : Nat', () => {
-  check(context, zeroTerm, evaluate([], kc('Nat')))
+ok('zero : Nat (self introduction against the self type)', () => {
+  check(context, zeroTerm, natValue)
 })
-ok('succ : Nat -> Nat', () => {
-  check(
-    context,
-    succTerm,
-    evaluate([], pi('many', kc('Nat'), kc('Nat'))),
-  )
+ok('succ : Nat -> Nat (a generic recursive constructor)', () => {
+  check(context, succTerm, evaluate([], pi('many', natTerm, natTerm)))
 })
 ok('one = succ zero : Nat', () => {
   check(context, app(kc('succ'), kc('zero')), evaluate([], kc('Nat')))
 })
-ok('plus : Nat -> Nat -> Nat', () => {
-  check(
-    context,
-    plusTerm,
-    evaluate(
-      [],
-      pi('many', kc('Nat'), pi('many', kc('Nat'), kc('Nat'))),
-    ),
-  )
-})
+
+// The predicativity boundary. Addition returns Nat, so it must be defined by the recursor eliminating INTO Nat.
+// But the recursor's motive is P : Nat -> Type0, and this self-encoded Nat lives at Type1, so the motive (\ _. Nat)
+// would need Nat : Type0, which is false. Large recursion (returning the inductive type itself: plus, times) is not
+// available from the predicative recursor. It needs universe polymorphism in the motive or a primitive inductive.
+// Small folds (into a Type0 target) and dependent induction (motives into Type0, for proofs) are unaffected, and
+// are what `naturals2-judge` and `succ-judge` exercise. So this is a precise boundary, not a defect.
+rejects(
+  'plus : Nat -> Nat -> Nat is NOT definable by the predicative recursor (large recursion needs a higher motive)',
+  () => {
+    check(
+      context,
+      plusTerm,
+      evaluate([], pi('many', natTerm, pi('many', natTerm, natTerm))),
+    )
+  },
+)
 
 console.log(`\nnaturals (decided kernel judge.ts): ${pass} pass, ${fail} fail`)

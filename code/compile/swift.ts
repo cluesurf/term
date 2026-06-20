@@ -23,6 +23,7 @@ import {
   renderBind,
   bindGap,
   bindImports,
+  referencedBinds,
 } from '@/code/compile/bind'
 
 // Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
@@ -867,7 +868,7 @@ export function emitSwift(program: Program): string {
     )
     .map(n => `import ${n.module.replace(/^[a-z]+:/, '')}`)
   // a declarative binding's swift expression may need a module imported (e.g. `Foundation.pow`)
-  for (const need of bindImports(binds, 'swift')) {
+  for (const need of bindImports(referencedBinds(program, binds), 'swift')) {
     const line = `import ${need.module.replace(/^[a-z]+:/, '')}`
     if (!imports.includes(line)) imports.push(line)
   }

@@ -348,9 +348,13 @@ export function mill(tree: RootNode, file: string): MillResult {
       case 'text':
         return {
           form: 'string',
+          // unescape the literal's escape sequences (`\<` `\>` `\{` `\}`): the lexer keeps the backslash in the chunk so
+          // the bracket is content, not a delimiter; the semantic string is the unescaped form. This lets a native bind
+          // expression carry an arrow (`=>` / `->`) or a stray `>` as `\>` without closing the `text <...>` literal.
           value: node.parts
             .map(p => (p.kind === 'chunk' ? p.text : ''))
-            .join(''),
+            .join('')
+            .replace(/\\([<>{}])/g, '$1'),
           span,
         }
       case 'group':
@@ -1446,8 +1450,8 @@ export function mill(tree: RootNode, file: string): MillResult {
     }
     const linkFields = (
       g: GroupNode,
-    ): Array<{ name: string; type: Type }> => {
-      const out: Array<{ name: string; type: Type }> = []
+    ): Array<{ name: string; type: Type; nick?: string }> => {
+      const out: Array<{ name: string; type: Type; nick?: string }> = []
       for (const child of rest(g)) {
         if (
           child.kind !== 'group' ||
@@ -1471,7 +1475,21 @@ export function mill(tree: RootNode, file: string): MillResult {
         ) {
           type = parseLikeType(likeGroup)
         }
-        if (fieldName) out.push({ name: fieldName, type })
+        // a field's foreign `name <X>` (binding fields carry the exact native name, e.g. COLOR_BUFFER_BIT), so the
+        // emitter can use it verbatim instead of camelCasing the seed name. The `<X>` is a text node (see the host
+        // foreign-name reader above).
+        let nick: string | undefined
+        for (const c of inner) {
+          if (c.kind === 'group' && headName(c) === 'name') {
+            const valNode = rest(c)[0]
+            if (valNode && valNode.kind === 'text')
+              nick = valNode.parts
+                .map(p => (p.kind === 'chunk' ? p.text : ''))
+                .join('')
+            break
+          }
+        }
+        if (fieldName) out.push({ name: fieldName, type, nick })
       }
       return out
     }
@@ -1503,7 +1521,17 @@ export function mill(tree: RootNode, file: string): MillResult {
           : undefined
       if (gName) params.push(gName)
     }
-    return { form: 'record-type', name, params, fields, variants, span }
+    // a transparent alias: `form X, like <type>` carries its base so the checker can unify X with that base. The bind
+    // primitive aliases use this (`form g-luint, like native-number`). Only meaningful when the form has no own
+    // fields or variants; the checker treats such a form as interchangeable with its base.
+    let alias: Type | undefined
+    for (const child of parts.slice(1)) {
+      if (child.kind === 'group' && headName(child) === 'like') {
+        alias = parseLikeType(child)
+        break
+      }
+    }
+    return { form: 'record-type', name, params, fields, variants, alias, span }
   }
 
   // a form's nested `task` children are methods: desugared to free functions over the form, with `self` typed as

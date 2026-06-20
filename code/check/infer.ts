@@ -59,6 +59,8 @@ export function check(
 
   // record-type field maps, for member-access typing
   const records = new Map<string, Map<string, Type>>()
+  // a record-type field's foreign `name <...>` (its exact native name), so the emitter uses it verbatim
+  const fieldNick = new Map<string, Map<string, string>>()
   // enum variant sets (for exhaustiveness) and variant -> enum (so `make red` is typed as its enum)
   const enums = new Map<string, Set<string>>()
   const variantEnum = new Map<string, string>()
@@ -70,9 +72,13 @@ export function check(
     if (statement.form === 'record-type') {
       formGenerics.set(statement.name, statement.params)
       const fields = new Map<string, Type>()
-      for (const field of statement.fields)
+      const nicks = new Map<string, string>()
+      for (const field of statement.fields) {
         fields.set(field.name, field.type)
+        if (field.nick) nicks.set(field.name, field.nick)
+      }
       records.set(statement.name, fields)
+      if (nicks.size) fieldNick.set(statement.name, nicks)
       if (statement.variants.length > 0) {
         const set = new Set<string>()
         for (const variant of statement.variants) {
@@ -94,10 +100,40 @@ export function check(
   // where each inference variable was first fixed to a concrete type, for blame tracking (owned by the substitution)
   const origin = sub.origin
 
-  // unify two types. returns true on success. `unknown` (gradual) is consistent with anything. The algorithm lives in
-  // the Substitution component; this alias keeps call sites natural.
+  // transparent form-aliases: `form X, like <prim>` with no fields/variants. The checker unifies X with its base, so a
+  // bind primitive alias (e.g. `g-luint = native-number`, `g-lclampf = native-number`) accepts the underlying value.
+  // Built from the whole merged program. This is what lets a frontend pass a plain `number` where a binding declares a
+  // `GLuint`, instead of every WebGL/DOM call rejecting primitives.
+  const transparentAlias = new Map<string, Type>()
+  for (const statement of program)
+    if (
+      statement.form === 'record-type' &&
+      statement.alias &&
+      statement.fields.length === 0 &&
+      statement.variants.length === 0 &&
+      statement.params.length === 0
+    )
+      transparentAlias.set(statement.name, statement.alias)
+
+  // unfold a transparent alias to its base, following a chain (guarded against cycles). Unification only.
+  const unfoldAlias = (type: Type): Type => {
+    let current = type
+    const seen = new Set<string>()
+    while (
+      current.kind === 'named' &&
+      transparentAlias.has(current.name) &&
+      !seen.has(current.name)
+    ) {
+      seen.add(current.name)
+      current = transparentAlias.get(current.name)!
+    }
+    return current
+  }
+
+  // unify two types. returns true on success. `unknown` (gradual) is consistent with anything. Transparent aliases are
+  // unfolded to their base first. The core algorithm lives in the Substitution component.
   const unify = (a: Type, b: Type, span?: Span): boolean =>
-    sub.unify(a, b, span)
+    sub.unify(unfoldAlias(a), unfoldAlias(b), span)
 
   // unify-or-diagnose (component: code/check/expect.ts). `getFile` reads the live current file (mutated by the run loops).
   const expect = makeExpect({
@@ -423,6 +459,9 @@ export function check(
         if (target.kind === 'named' && records.has(target.name)) {
           const field = records.get(target.name)!.get(node.name)
           if (field) {
+            // carry the field's foreign `name <...>` to the emitter, so a binding constant emits its native name
+            const nick = fieldNick.get(target.name)?.get(node.name)
+            if (nick) node.nick = nick
             // substitute the target's type arguments for the form's generics (pair<a,b> -> first : a); seedType (not
             // substGenerics) so a `like list` / `like hash` field reads as array / map, matching its values
             const params = formGenerics.get(target.name) ?? []

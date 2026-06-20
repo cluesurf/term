@@ -37,6 +37,19 @@ export function maxLevel(a: Level, b: Level): Level {
     vars.set(v, Math.max(vars.get(v) ?? -Infinity, o))
   return { constant: Math.max(a.constant, b.constant), vars }
 }
+// the bottom universe is impredicative: a level is literally Type 0 (constant 0, no variables). A Pi whose codomain
+// lands here stays here regardless of the domain's level, which is what lets a self-encoded inductive live in Type 0
+// rather than floating one universe above its motive (the large-elimination fork, resolved this way per the plan's
+// CoC-derived self-type encoding). Only the literal bottom is impredicative; Type 1 and above stay predicative, and
+// Type 0 : Type 1 is unchanged, so this is the impredicative-Set discipline, not Type : Type.
+const isBottomLevel = (level: Level): boolean =>
+  level.constant === 0 && level.vars.size === 0
+// the universe a Pi inhabits: impredicative at the bottom, predicative above.
+export function piLevel(domainLevel: Level, codomainLevel: Level): Level {
+  return isBottomLevel(codomainLevel)
+    ? litLevel(0)
+    : maxLevel(domainLevel, codomainLevel)
+}
 // a <= b for ALL instantiations of the level variables
 function leqLevel(a: Level, b: Level): boolean {
   if (a.constant > b.constant) return false
@@ -1042,7 +1055,15 @@ export function infer(context: Context, term: Term): Inferred {
     }
     case 'app': {
       const fun = infer(context, term.fun)
-      const funType = force(fun.type)
+      let funType = force(fun.type)
+      // self elimination at application: a self-typed function unfolds to its body with the self value
+      // substituted, so a recursive constructor can apply its own recursive argument (itself self-typed) without
+      // a manual annotation. The unfolded body of an inductive's self type is a pi, so application then proceeds.
+      if (funType.v === 'self') {
+        funType = force(
+          closeOver(funType.body, evaluate(context.env, term.fun)),
+        )
+      }
       if (funType.v !== 'pi')
         throw new TypeError('applied a non-function')
       const argUsage = check(context, term.arg, funType.domain)
@@ -1189,6 +1210,17 @@ export function check(
   expected: Value,
 ): Usage {
   expected = force(expected)
+  if (expected.v === 'self') {
+    // self introduction: a term has type Self x. T exactly when it has type T[x := itself]. This is tried before
+    // the structural intro rules (lam / pair / refl), so a constructor lambda whose codomain is a self type (a
+    // recursive constructor like succ : Nat -> Nat) introduces against the unfolded body rather than failing the
+    // pi check. The unfolded body is not a self type, so the structural rules then apply and this does not recur.
+    return check(
+      context,
+      term,
+      closeOver(expected.body, evaluate(context.env, term)),
+    )
+  }
   if (term.tag === 'lam') {
     if (expected.v !== 'pi')
       throw new TypeError(
@@ -1232,14 +1264,6 @@ export function check(
     )
     const secondUsage = check(context, term.second, secondType)
     return addUsage(scaleUsage(expected.mult, firstUsage), secondUsage)
-  }
-  if (expected.v === 'self') {
-    // self introduction: a term has type Self x. T exactly when it has type T[x := itself]
-    return check(
-      context,
-      term,
-      closeOver(expected.body, evaluate(context.env, term)),
-    )
   }
   const actual = infer(context, term)
   const actualType = force(actual.type)

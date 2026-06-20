@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@/code/compile/compile'
 import { withNativeEnv, nativePrelude } from '@/code/compile/native'
+import { emitTypeScript } from '@/code/compile/typescript'
 import { emitRust } from '@/code/compile/rust'
 import { emitSwift } from '@/code/compile/swift'
 import { emitKotlin } from '@/code/compile/kotlin'
@@ -493,23 +494,31 @@ const DIGEST = `load @cluesurf/base/code/cryptography/digest
   find digest
   find digest-algorithm
 
+load @cluesurf/base/code/bytes
+  find from-text
+  find to-hex
+
 task sha
   mark async
   take m, like text
   like text
   send back
-    call sha256
-      read m
-      wait true
+    call to-hex
+      call sha256
+        call from-text
+          read m
+        wait true
 
 task md
   mark async
   take m, like text
   like text
   send back
-    call md5
-      read m
-      wait true
+    call to-hex
+      call md5
+        call from-text
+          read m
+        wait true
 
 # the parameterized verb: digest with the algorithm selected at the call site
 task sha-via-verb
@@ -517,10 +526,12 @@ task sha-via-verb
   take m, like text
   like text
   send back
-    call digest
-      read m
-      make sha-256
-      wait true
+    call to-hex
+      call digest
+        call from-text
+          read m
+        make sha-256
+        wait true
 `
 
 // rgb -> hex color string, the byte formatting delegated to the host Buffer
@@ -544,16 +555,23 @@ task hex-of
 const HMAC = `load @cluesurf/base/code/cryptography/hmac
   find sha256
 
+load @cluesurf/base/code/bytes
+  find from-text
+  find to-hex
+
 task mac
   mark async
   take k, like text
   take d, like text
   like text
   send back
-    call sha256
-      read k
-      read d
-      wait true
+    call to-hex
+      call sha256
+        call from-text
+          read k
+        call from-text
+          read d
+        wait true
 `
 
 // rgb -> hsv, pure-logic on the math interface
@@ -916,17 +934,21 @@ task encoded-active
       text <active>
 `
 
-// secure random: cryptographically secure bytes as hex text. A request for 16 bytes is a 32-char hex string. The
-// generator is OS-backed (node randomBytes); two draws differ. Synchronous on every host.
+// secure random: cryptographically secure raw bytes (the currency). A request for 16 bytes rendered to hex is a
+// 32-char string. The generator is OS-backed (node randomBytes); two draws differ. Synchronous on every host.
 const SECURE_RANDOM = `load @cluesurf/base/code/cryptography/random
   find bytes
+
+load @cluesurf/base/code/bytes
+  find to-hex
 
 task draw
   take size, like number
   like text
   send back
-    call bytes
-      read size
+    call to-hex
+      call bytes
+        read size
 `
 
 // the bytes currency type: text/hex/base64 codecs at the edges, length and concat over the native Uint8Array. The
@@ -1083,6 +1105,12 @@ const CIPHER = `load @cluesurf/base/code/cryptography/cipher
   find encrypt
   find decrypt
 
+load @cluesurf/base/code/bytes
+  find from-text
+  find to-text
+  find from-hex
+  find to-hex
+
 task seal
   mark async
   take key, like text
@@ -1090,11 +1118,15 @@ task seal
   take plain, like text
   like text
   send back
-    call encrypt
-      read key
-      read nonce
-      read plain
-      wait true
+    call to-hex
+      call encrypt
+        call from-hex
+          read key
+        call from-hex
+          read nonce
+        call from-text
+          read plain
+        wait true
 
 task open
   mark async
@@ -1103,11 +1135,15 @@ task open
   take cipher, like text
   like text
   send back
-    call decrypt
-      read key
-      read nonce
-      read cipher
-      wait true
+    call to-text
+      call decrypt
+        call from-hex
+          read key
+        call from-hex
+          read nonce
+        call from-hex
+          read cipher
+        wait true
 `
 
 // Ed25519 signatures: generate a key pair, sign a message with the private key, verify with the public key (via
@@ -1116,6 +1152,9 @@ const SIGNATURE = `load @cluesurf/base/code/cryptography/signature
   find make-key-pair
   find sign
   find verify
+
+load @cluesurf/base/code/bytes
+  find from-text
 
 task round-trip
   mark async
@@ -1127,12 +1166,14 @@ task round-trip
   save proof
     call sign
       read pair/private-key
-      read message
+      call from-text
+        read message
       wait true
   send back
     call verify
       read pair/public-key
-      read message
+      call from-text
+        read message
       read proof
       wait true
 
@@ -1147,12 +1188,14 @@ task tampered
   save proof
     call sign
       read pair/private-key
-      read message
+      call from-text
+        read message
       wait true
   send back
     call verify
       read pair/public-key
-      read other
+      call from-text
+        read other
       read proof
       wait true
 `
@@ -1236,6 +1279,9 @@ const KEY_AGREEMENT = `load @cluesurf/base/code/cryptography/key-agreement
   find make-key-pair
   find shared-secret
 
+load @cluesurf/base/code/bytes
+  find to-hex
+
 task agree
   mark async
   like boolean
@@ -1257,8 +1303,10 @@ task agree
       wait true
   send back
     call is-equal
-      read ab
-      read ba
+      call to-hex
+        read ab
+      call to-hex
+        read ba
 `
 
 // network/dns: resolve a host to its addresses via the platform resolver. A numeric IP resolves to itself with no
@@ -1968,7 +2016,8 @@ async function main(): Promise<void> {
     true,
   )
 
-  // the public digest interface compiles for every target, each wrapping that platform's built-in crypto
+  // the public digest interface compiles for every target. digest is a declarative `bind`: it inlines each platform's
+  // built-in crypto call directly at the use site (no hand-written shim), so the emit shows the native expression.
   const digestSrc = stdlib(
     '@cluesurf/base/code/cryptography/digest',
   )!.text
@@ -1979,32 +2028,41 @@ async function main(): Promise<void> {
     )
   const dNode = digestFor('node')
   expect(
-    'digest compiles for node (node:crypto createHash)',
+    'digest compiles for node (node:crypto createHash, inlined)',
     dNode.ok && dNode.typescript.includes('createHash'),
     true,
   )
   const dRust = digestFor('rust')
+  const rustDigest = dRust.ok ? emitRust(dRust.program) : ''
   expect(
-    'digest compiles for rust (crypto shim, RustCrypto)',
-    dRust.ok && emitRust(dRust.program).includes('crypto::sha256'),
+    'digest compiles for rust (sha2 crate, inlined) with its `use`',
+    dRust.ok &&
+      rustDigest.includes('Sha256::digest') &&
+      rustDigest.includes('use sha2::Sha256;'),
     true,
   )
   const dSwift = digestFor('swift')
   expect(
-    'digest compiles for swift (crypto shim, CryptoKit)',
-    dSwift.ok && emitSwift(dSwift.program).includes('crypto.sha256'),
+    'digest compiles for swift (CryptoKit, inlined)',
+    dSwift.ok && emitSwift(dSwift.program).includes('CryptoKit.SHA256'),
     true,
   )
   const dKotlin = digestFor('kotlin')
   expect(
-    'digest compiles for kotlin (crypto shim, java.security)',
-    dKotlin.ok && emitKotlin(dKotlin.program).includes('crypto.sha256'),
+    'digest compiles for kotlin (java.security, inlined)',
+    dKotlin.ok &&
+      emitKotlin(dKotlin.program).includes(
+        'MessageDigest.getInstance("SHA-256")',
+      ),
     true,
   )
   const dBrowser = digestFor('browser')
   expect(
-    'digest compiles for browser (Web Crypto subtle shim)',
-    dBrowser.ok && dBrowser.typescript.includes('crypto.sha256'),
+    'digest compiles for browser (Web Crypto subtle, inlined)',
+    dBrowser.ok &&
+      emitTypeScript(dBrowser.program, { env: 'browser' }).includes(
+        "subtle.digest('SHA-256'",
+      ),
     true,
   )
 

@@ -14,7 +14,13 @@ import type {
   Statement,
   Type,
 } from '@/code/compile/node'
-import { exhausted, unsupported } from '@/code/compile/backend'
+import {
+  exhausted,
+  unsupported,
+  collectionCall,
+  collectionRead,
+} from '@/code/compile/backend'
+import { monomorphize } from '@/code/ir/monomorphize'
 
 function mangle(name: string): string {
   return name.replace(/-/g, '_')
@@ -52,14 +58,164 @@ const FPRED: Record<string, string> = {
   '>=': 'oge',
 }
 
-type LlvmType = 'i64' | 'double' | 'ptr' | 'void'
-// the LLVM representation of a checked type: strings are managed pointers, unit is void, floats are double, everything
-// else is a 64-bit word
-function llty(type: Type | undefined): LlvmType {
+type LlvmType =
+  | 'i64'
+  | 'double'
+  | 'ptr'
+  | 'void'
+  | '{ ptr, ptr }'
+  | `%struct.${string}`
+// a closure value is a flat pair { code pointer, environment handle }. The environment is a `seed_list` of captured
+// words (reusing the list runtime), so a closure needs no new allocator: the captures push into a fresh list.
+const CLOSURE_TYPE = '{ ptr, ptr }'
+// the field layout of a plain record (product) type, in declared order, for first-class struct lowering
+type RecordLayout = { fields: Array<{ name: string; type: Type }> }
+// the LLVM representation of a checked type: strings are managed pointers, unit is void, floats are double, a plain
+// record is a first-class struct value (`%struct.Name`), everything else is a 64-bit word
+function llty(
+  type: Type | undefined,
+  records?: Map<string, RecordLayout>,
+): LlvmType {
   if (type?.kind === 'string') return 'ptr'
   if (type?.kind === 'unit') return 'void'
   if (type?.kind === 'float') return 'double'
+  if (type?.kind === 'array') return 'ptr' // a list is an opaque handle to the heap buffer
+  if (type?.kind === 'function') return CLOSURE_TYPE // a first-class function value: { code, env }
+  if (type?.kind === 'named' && records?.has(type.name))
+    return `%struct.${mangle(type.name)}`
   return 'i64'
+}
+
+// the plain-record (product) types of a program, indexed by name: a record-type with fields and no variants. Sum types
+// (variants) stay scalar for now; only fixed-shape products lower to an LLVM struct.
+function recordLayouts(
+  program: Program,
+): Map<string, RecordLayout> {
+  const records = new Map<string, RecordLayout>()
+  for (const s of program)
+    if (
+      s.form === 'record-type' &&
+      s.variants.length === 0 &&
+      s.fields.length > 0
+    )
+      records.set(s.name, { fields: s.fields })
+  return records
+}
+
+type Closure = Extract<Expression, { form: 'closure' }>
+type Capture = { name: string; type?: Type }
+
+// the variables a closure captures from its enclosing scope: every variable it references that is bound (a parameter or
+// local) outside the closure, minus its own parameters and the locals it declares. These become the closure's saved
+// environment.
+function freeVars(closure: Closure): Array<Capture> {
+  const bound = new Set(closure.params.map(p => p.name))
+  const captures = new Map<string, Type | undefined>()
+  const expr = (node: Expression): void => {
+    switch (node.form) {
+      case 'variable':
+        if (
+          !bound.has(node.name) &&
+          (node.binding?.kind === 'parameter' ||
+            node.binding?.kind === 'local') &&
+          !captures.has(node.name)
+        )
+          captures.set(node.name, node.type)
+        break
+      case 'call':
+        expr(node.callee)
+        node.args.forEach(expr)
+        break
+      case 'binary':
+        expr(node.left)
+        expr(node.right)
+        break
+      case 'unary':
+        expr(node.operand)
+        break
+      case 'member':
+        expr(node.target)
+        break
+      case 'await':
+        expr(node.expr)
+        break
+      case 'array':
+        node.items.forEach(expr)
+        break
+      case 'map':
+        node.entries.forEach(e => {
+          expr(e.key)
+          expr(e.value)
+        })
+        break
+      case 'record':
+        node.fields.forEach(f => expr(f.value))
+        break
+      case 'conditional':
+        node.branches.forEach(b => {
+          expr(b.cond)
+          expr(b.value)
+        })
+        if (node.otherwise) expr(node.otherwise)
+        break
+      case 'closure':
+        // a nested closure's own free variables, if still unbound here, are captured by this closure too
+        for (const inner of freeVars(node))
+          if (!bound.has(inner.name) && !captures.has(inner.name))
+            captures.set(inner.name, inner.type)
+        break
+      default:
+        break
+    }
+  }
+  const one = (s: Statement): void => {
+    switch (s.form) {
+      case 'let':
+        expr(s.init)
+        bound.add(s.name)
+        break
+      case 'assign':
+        expr(s.target)
+        expr(s.value)
+        break
+      case 'expression':
+        expr(s.expr)
+        break
+      case 'return':
+        if (s.value) expr(s.value)
+        break
+      case 'throw':
+        expr(s.value)
+        break
+      case 'hold':
+        expr(s.expr)
+        break
+      case 'while':
+        expr(s.cond)
+        s.body.forEach(one)
+        break
+      case 'for-each':
+        expr(s.iterable)
+        s.body.forEach(one)
+        break
+      case 'if':
+        s.branches.forEach(b => {
+          expr(b.cond)
+          b.body.forEach(one)
+        })
+        if (s.otherwise) s.otherwise.forEach(one)
+        break
+      case 'match':
+        expr(s.subject)
+        s.cases.forEach(c => c.body.forEach(one))
+        if (s.otherwise) s.otherwise.forEach(one)
+        break
+      default:
+        break
+    }
+  }
+  closure.body.forEach(one)
+  return [...captures].map(([name, type]) => ({ name, type }))
 }
 
 // the runtime the emitted IR calls for string operations (declared at the top of every module)
@@ -69,9 +225,24 @@ const RUNTIME_DECLS = [
   'declare i64 @seed_str_equal(ptr, ptr)',
   'declare void @seed_print_str(ptr)',
   'declare void @seed_print_int(i64)',
+  'declare ptr @seed_list_new()',
+  'declare i64 @seed_list_push(ptr, i64)',
+  'declare i64 @seed_list_at(ptr, i64)',
+  'declare i64 @seed_list_length(ptr)',
+  'declare i64 @seed_list_pop(ptr)',
+  'declare i64 @seed_list_includes(ptr, i64)',
+  'declare i64 @seed_list_index_of(ptr, i64)',
+  'declare ptr @seed_list_map(ptr, ptr, ptr)',
+  'declare ptr @seed_list_filter(ptr, ptr, ptr)',
+  'declare i64 @seed_list_reduce(ptr, ptr, ptr, i64)',
+  'declare i64 @seed_list_some(ptr, ptr, ptr)',
+  'declare i64 @seed_list_every(ptr, ptr, ptr)',
 ]
 
-export function emitLlvm(program: Program): string {
+export function emitLlvm(input: Program): string {
+  // LLVM has no type parameters: specialize every generic function at its concrete call types and drop the generic
+  // originals first, so a generic call resolves to a real monomorphic function instead of being silently skipped.
+  const program = monomorphize(input)
   // module-level string constants, interned by content
   const globals: Array<string> = []
   const interned = new Map<string, string>()
@@ -96,18 +267,34 @@ export function emitLlvm(program: Program): string {
     return name
   }
 
+  // plain records lower to named LLVM struct types, declared once at module scope
+  const records = recordLayouts(program)
+  const structDecls: Array<string> = []
+  for (const [name, layout] of records)
+    structDecls.push(
+      `%struct.${mangle(name)} = type { ${layout.fields
+        .map(f => llty(f.type, records))
+        .join(', ')} }`,
+    )
+
+  // lifted closure functions accumulate here as they are encountered inside any function body; closureId keeps their
+  // names unique module-wide. They are appended after the user's functions.
+  const lifted: Array<string> = []
+  const closureId = { n: 0 }
   const functions: Array<string> = []
   for (const s of program) {
     if (s.form !== 'function' || s.generics.length > 0) continue // generic functions are removed by monomorphization
-    functions.push(emitFunction(s, internString))
+    functions.push(emitFunction(s, internString, records, lifted, closureId))
   }
   return (
     [
       ...RUNTIME_DECLS,
       '',
+      ...(structDecls.length ? [...structDecls, ''] : []),
       ...globals,
       globals.length ? '' : null,
       ...functions,
+      ...lifted,
     ]
       .filter(l => l !== null)
       .join('\n') + '\n'
@@ -117,9 +304,50 @@ export function emitLlvm(program: Program): string {
 function emitFunction(
   fn: Extract<Statement, { form: 'function' }>,
   internString: (value: string) => string,
+  records: Map<string, RecordLayout> = new Map(),
+  lifted: Array<string> = [],
+  closureId: { n: number } = { n: 0 },
+  captures: Array<Capture> = [], // non-empty when `fn` is a lifted closure: the env words to unpack at entry
 ): string {
+  // record-aware type lowering, used everywhere in this function so a record-typed value gets its `%struct.Name` type
+  const llt = (type: Type | undefined): LlvmType => llty(type, records)
+
+  // a list stores every element as an i64 word, so a non-integer scalar is reinterpreted to / from i64 at the boundary:
+  // a float bit-casts, a pointer (string handle) converts with ptrtoint / inttoptr.
+  const toWord = (reg: string, type: Type | undefined): string => {
+    const t = llt(type)
+    if (t === 'double') {
+      const w = fresh()
+      cur.lines.push(`${w} = bitcast double ${reg} to i64`)
+      return w
+    }
+    if (t === 'ptr') {
+      const w = fresh()
+      cur.lines.push(`${w} = ptrtoint ptr ${reg} to i64`)
+      return w
+    }
+    return reg
+  }
+  const fromWord = (reg: string, type: Type | undefined): string => {
+    const t = llt(type)
+    if (t === 'double') {
+      const v = fresh()
+      cur.lines.push(`${v} = bitcast i64 ${reg} to double`)
+      return v
+    }
+    if (t === 'ptr') {
+      const v = fresh()
+      cur.lines.push(`${v} = inttoptr i64 ${reg} to ptr`)
+      return v
+    }
+    return reg
+  }
+  // the element type of an array-typed expression (for word conversion)
+  const elementOf = (node: Expression): Type | undefined =>
+    node.type?.kind === 'array' ? node.type.element : undefined
   let temp = 0
   let labelN = 0
+  let condN = 0
   const fresh = () => `%t${temp++}`
   const freshLabel = (base: string) => `${base}${labelN++}`
   const blocks: Array<{
@@ -255,6 +483,85 @@ function emitFunction(
         return t
       }
       case 'call': {
+        // a list method (`xs.push(v)`, `xs.at(i)`, ...) lowers to a `seed_list_*` runtime call. Elements move as i64
+        // words, so a non-integer element is converted at the boundary. Closure ops (map / reduce / ...) need LLVM
+        // closures and stay unsupported; the imperative ops are complete here.
+        const collection = collectionCall(node.callee)
+        if (collection && collection.kind === 'array') {
+          const handle = expr(collection.target)
+          const element = elementOf(collection.target)
+          const listCall = (
+            fn: string,
+            extra: Array<string>,
+          ): string => {
+            const out = fresh()
+            cur.lines.push(
+              `${out} = call i64 @${fn}(ptr ${handle}${extra
+                .map(a => `, ${a}`)
+                .join('')})`,
+            )
+            return out
+          }
+          switch (collection.op) {
+            case 'push':
+              return listCall('seed_list_push', [
+                `i64 ${toWord(expr(node.args[0]!), element)}`,
+              ])
+            case 'at':
+              return fromWord(
+                listCall('seed_list_at', [`i64 ${expr(node.args[0]!)}`]),
+                element,
+              )
+            case 'pop':
+              return fromWord(listCall('seed_list_pop', []), element)
+            case 'includes':
+              return listCall('seed_list_includes', [
+                `i64 ${toWord(expr(node.args[0]!), element)}`,
+              ])
+            case 'indexOf':
+              return listCall('seed_list_index_of', [
+                `i64 ${toWord(expr(node.args[0]!), element)}`,
+              ])
+            default:
+              cur.lines.push(
+                unsupported('LLVM', `list.${collection.op}`, ';'),
+              )
+              return '0'
+          }
+        }
+        // an indirect call through a closure VALUE (a function-typed parameter or local, not a top-level function):
+        // unpack the { code, env } pair and call the code pointer with the env threaded as the leading argument.
+        if (
+          node.callee.type?.kind === 'function' &&
+          !(
+            node.callee.form === 'variable' &&
+            node.callee.binding?.kind === 'function'
+          )
+        ) {
+          const value = expr(node.callee)
+          const fnPtr = fresh()
+          cur.lines.push(
+            `${fnPtr} = extractvalue ${CLOSURE_TYPE} ${value}, 0`,
+          )
+          const envPtr = fresh()
+          cur.lines.push(
+            `${envPtr} = extractvalue ${CLOSURE_TYPE} ${value}, 1`,
+          )
+          const callArgs = [
+            `ptr ${envPtr}`,
+            ...node.args.map(a => `${llt(a.type)} ${expr(a)}`),
+          ].join(', ')
+          const retType = llt(node.type)
+          if (retType === 'void') {
+            cur.lines.push(`call void ${fnPtr}(${callArgs})`)
+            return '0'
+          }
+          const out = fresh()
+          cur.lines.push(
+            `${out} = call ${retType} ${fnPtr}(${callArgs})`,
+          )
+          return out
+        }
         // a couple of builtins lower straight to the runtime; everything else is a direct call, args typed by value
         const callee =
           node.callee.form === 'variable'
@@ -272,8 +579,8 @@ function emitFunction(
           )
           return t
         }
-        const args = node.args.map(a => `${llty(a.type)} ${expr(a)}`)
-        const retType = llty(node.type)
+        const args = node.args.map(a => `${llt(a.type)} ${expr(a)}`)
+        const retType = llt(node.type)
         if (retType === 'void') {
           cur.lines.push(`call void @${callee}(${args.join(', ')})`)
           return '0'
@@ -284,14 +591,161 @@ function emitFunction(
         )
         return t
       }
-      case 'array':
+      // a value-position conditional (a `fork` used as a value) lowers like clang -O0 does a ternary: a result stack
+      // slot written from each arm's block, then loaded at the merge -- the same alloca model the rest of the backend
+      // uses, so no SSA phi node is needed. The condition / then chain mirrors the `if` statement lowering.
+      case 'conditional': {
+        const ty = llt(node.type)
+        const resultSlot = `%cond${condN++}.addr`
+        allocas.push(`${resultSlot} = alloca ${ty}`)
+        const merge = freshLabel('cond.merge')
+        const storeArm = (value: Expression) => {
+          const v = expr(value)
+          if (!cur.done) {
+            if (ty !== 'void')
+              cur.lines.push(`store ${ty} ${v}, ptr ${resultSlot}`)
+            cur.lines.push(`br label %${merge}`)
+            cur.done = true
+          }
+        }
+        for (const branch of node.branches) {
+          const c = condition(branch.cond)
+          const thenL = freshLabel('cond.then')
+          const nextL = freshLabel('cond.next')
+          cur.lines.push(`br i1 ${c}, label %${thenL}, label %${nextL}`)
+          cur.done = true
+          cur = block(thenL)
+          storeArm(branch.value)
+          cur = block(nextL)
+        }
+        // a value conditional always has an else (it must yield a value on every path); fall back to a zero store
+        if (node.otherwise) storeArm(node.otherwise)
+        else if (!cur.done) {
+          if (ty !== 'void')
+            cur.lines.push(`store ${ty} 0, ptr ${resultSlot}`)
+          cur.lines.push(`br label %${merge}`)
+          cur.done = true
+        }
+        cur = block(merge)
+        if (ty === 'void') return '0'
+        const out = fresh()
+        cur.lines.push(`${out} = load ${ty}, ptr ${resultSlot}`)
+        return out
+      }
+      // a plain record literal builds a first-class struct value via an `insertvalue` chain over `undef`, in the
+      // record-type's declared field order (the literal's fields may be written in any order).
+      case 'record': {
+        const layout = records.get(node.name)
+        if (!layout) {
+          cur.lines.push(unsupported('LLVM', `record ${node.name}`, ';'))
+          return '0'
+        }
+        const structTy = `%struct.${mangle(node.name)}`
+        let acc = 'undef'
+        layout.fields.forEach((field, index) => {
+          const written = node.fields.find(f => f.name === field.name)
+          const value = written ? expr(written.value) : '0'
+          const next = fresh()
+          cur.lines.push(
+            `${next} = insertvalue ${structTy} ${acc}, ${llt(
+              field.type,
+            )} ${value}, ${index}`,
+          )
+          acc = next
+        })
+        return acc
+      }
+      // a field read off a record is an `extractvalue` at the field's declared index
+      case 'member': {
+        // `xs.length` on a list reads the runtime length
+        const read = collectionRead(node)
+        if (read && read.kind === 'array') {
+          const handle = expr(read.target)
+          const out = fresh()
+          cur.lines.push(
+            `${out} = call i64 @seed_list_length(ptr ${handle})`,
+          )
+          return out
+        }
+        const targetType = node.target.type
+        const recordName =
+          targetType?.kind === 'named' ? targetType.name : undefined
+        const layout = recordName ? records.get(recordName) : undefined
+        const index = layout
+          ? layout.fields.findIndex(f => f.name === node.name)
+          : -1
+        if (!layout || index < 0) {
+          cur.lines.push(unsupported('LLVM', `member ${node.name}`, ';'))
+          return '0'
+        }
+        const target = expr(node.target)
+        const out = fresh()
+        cur.lines.push(
+          `${out} = extractvalue %struct.${mangle(
+            recordName!,
+          )} ${target}, ${index}`,
+        )
+        return out
+      }
+      // a list literal allocates a fresh handle and pushes each element (as an i64 word) in order
+      case 'array': {
+        const element =
+          node.type?.kind === 'array' ? node.type.element : undefined
+        const handle = fresh()
+        cur.lines.push(`${handle} = call ptr @seed_list_new()`)
+        for (const item of node.items) {
+          const word = toWord(expr(item), element ?? item.type)
+          const len = fresh()
+          cur.lines.push(
+            `${len} = call i64 @seed_list_push(ptr ${handle}, i64 ${word})`,
+          )
+        }
+        return handle
+      }
+      // a closure literal: save the captured variables into a fresh environment list, lift the body to a top-level
+      // function that unpacks that env, and return the { code pointer, env handle } pair.
+      case 'closure': {
+        const caps = freeVars(node)
+        const name = `closure_${closureId.n++}`
+        const env = fresh()
+        cur.lines.push(`${env} = call ptr @seed_list_new()`)
+        for (const cap of caps) {
+          const s = ensureSlot(cap.name, llt(cap.type))
+          const loaded = fresh()
+          cur.lines.push(
+            `${loaded} = load ${llt(cap.type)}, ptr ${s.reg}`,
+          )
+          const word = toWord(loaded, cap.type)
+          const len = fresh()
+          cur.lines.push(
+            `${len} = call i64 @seed_list_push(ptr ${env}, i64 ${word})`,
+          )
+        }
+        const synth = {
+          form: 'function',
+          name,
+          generics: [],
+          params: node.params,
+          result: node.result,
+          body: node.body,
+          span: node.span,
+          async: false,
+        } as Extract<Statement, { form: 'function' }>
+        lifted.push(
+          emitFunction(synth, internString, records, lifted, closureId, caps),
+        )
+        const v0 = fresh()
+        cur.lines.push(
+          `${v0} = insertvalue ${CLOSURE_TYPE} undef, ptr @${name}, 0`,
+        )
+        const v1 = fresh()
+        cur.lines.push(
+          `${v1} = insertvalue ${CLOSURE_TYPE} ${v0}, ptr ${env}, 1`,
+        )
+        return v1
+      }
       case 'map':
-      case 'record':
-      case 'member':
       case 'await':
-      case 'closure':
-      // a value-position conditional needs basic blocks + phi nodes, which this scalar-only backend does not yet model
-      case 'conditional':
         cur.lines.push(unsupported('LLVM', node.form, ';'))
         return '0'
       default:
@@ -311,7 +765,7 @@ function emitFunction(
     if (cur.done) cur = block(freshLabel('dead'))
     switch (node.form) {
       case 'let': {
-        const ty = llty(node.type ?? node.init.type)
+        const ty = llt(node.type ?? node.init.type)
         const s = ensureSlot(node.name, ty)
         const v = expr(node.init)
         cur.lines.push(`store ${ty} ${v}, ptr ${s.reg}`)
@@ -322,7 +776,7 @@ function emitFunction(
           cur.lines.push(unsupported('LLVM', 'assign', ';'))
           break
         }
-        const ty = llty(node.value.type)
+        const ty = llt(node.value.type)
         const s = ensureSlot(node.target.name, ty)
         let v: string
         if (node.op === '=') {
@@ -357,8 +811,11 @@ function emitFunction(
         if (!node.value) {
           cur.lines.push('ret void')
         } else {
-          const ty = llty(node.value.type)
-          cur.lines.push(`ret ${ty} ${expr(node.value)}`)
+          const ty = llt(node.value.type)
+          // evaluate the value BEFORE referencing cur.lines: a value-position conditional emits its own blocks and
+          // moves `cur` to the merge block, so the `ret` must land there, not in whatever block we started in.
+          const v = expr(node.value)
+          cur.lines.push(`ret ${ty} ${v}`)
         }
         cur.done = true
         break
@@ -438,23 +895,35 @@ function emitFunction(
     }
   }
 
+  // a lifted closure receives its saved environment as a leading `ptr %env`: unpack each captured word back into a
+  // slot at entry (the inverse of the literal's env-push), so the body reads a capture exactly like a local.
+  captures.forEach((cap, index) => {
+    const word = fresh()
+    cur.lines.push(
+      `${word} = call i64 @seed_list_at(ptr %env, i64 ${index})`,
+    )
+    const value = fromWord(word, cap.type)
+    const s = ensureSlot(cap.name, llt(cap.type))
+    cur.lines.push(`store ${llt(cap.type)} ${value}, ptr ${s.reg}`)
+  })
   // parameters: spill each incoming SSA argument into its (typed) stack slot at entry
   for (const p of fn.params) {
-    const ty = llty(p.type)
+    const ty = llt(p.type)
     const s = ensureSlot(p.name, ty)
     cur.lines.push(`store ${ty} %${mangle(p.name)}, ptr ${s.reg}`)
   }
   fn.body.forEach(stmt)
   if (!cur.done)
     cur.lines.push(
-      llty(fn.result) === 'void' ? 'ret void' : 'ret i64 0',
+      llt(fn.result) === 'void' ? 'ret void' : 'ret i64 0',
     )
 
   blocks[0]!.lines = [...allocas, ...blocks[0]!.lines]
-  const params = fn.params
-    .map(p => `${llty(p.type)} %${mangle(p.name)}`)
-    .join(', ')
-  const retType = llty(fn.result)
+  const params = [
+    ...(captures.length ? ['ptr %env'] : []),
+    ...fn.params.map(p => `${llt(p.type)} %${mangle(p.name)}`),
+  ].join(', ')
+  const retType = llt(fn.result)
   const body = blocks
     .map(b => `${b.name}:\n${b.lines.map(l => `  ${l}`).join('\n')}`)
     .join('\n')

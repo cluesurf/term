@@ -11,7 +11,13 @@ import type {
   Statement,
   Type,
 } from '@/code/compile/node'
-import { collectBinds, renderBind, bindGap } from '@/code/compile/bind'
+import {
+  collectBinds,
+  renderBind,
+  bindGap,
+  bindImports,
+  referencedBinds,
+} from '@/code/compile/bind'
 import {
   ARRAY_OP_BOUND,
   collectionCall,
@@ -736,6 +742,27 @@ export function emitRust(program: Program): string {
         n.form === 'native' && !n.module.startsWith('global:'),
     )
     .map(n => `use ${n.module.replace(/[:/]/g, '::')};`)
+  // plus the `use` each rendered `bind` needs (e.g. `use sha2::Sha256;` for a `case rust` that calls `Sha256::digest`).
+  // Two paths that bind the SAME final name collide in Rust (`use sha2::Digest;` + `use md5::Digest;` -> E0252), yet a
+  // trait like `Digest` only needs to be in scope for method resolution, not named. So the first occurrence binds the
+  // name and any later same-name path comes in anonymously with `as _` (in scope, no name), which is the Rust idiom.
+  const bound = new Set<string>()
+  for (const u of uses) {
+    const m = u.match(/use .*?(\w+)(?: as (\w+))?;$/)
+    const name = m?.[2] ?? m?.[1]
+    if (name) bound.add(name)
+  }
+  for (const need of bindImports(referencedBinds(program, binds), 'rust')) {
+    const path = need.module.replace(/[:/]/g, '::')
+    const name = need.alias ?? path.split('::').pop()!
+    const line = need.alias
+      ? `use ${path} as ${need.alias};`
+      : bound.has(name)
+        ? `use ${path} as _;`
+        : `use ${path};`
+    bound.add(name)
+    if (!uses.includes(line)) uses.push(line)
+  }
   const body = program
     .filter(n => n.form !== 'native')
     .map(n => stmt(n, 0))

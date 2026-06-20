@@ -137,6 +137,9 @@ export function tokenize(source: {
 
   const braceStack: Array<string> = []
   const modeStack: Array<LexMode> = [LexMode.Default]
+  // running `<` minus `>` balance for each open text literal, so a nested `>` (closing a generic like `Hmac<Sha256>`,
+  // not the literal) stays content. One entry per Text frame on the mode stack, so nested texts do not interfere.
+  const textDepthStack: Array<number> = []
 
   let line = 0
   let column = 0
@@ -156,6 +159,30 @@ export function tokenize(source: {
 
     while (lineText) {
       const mode = modeStack[modeStack.length - 1] ?? LexMode.Default
+
+      // inside a text literal with an unclosed `<`, the next `>` closes that nested bracket, not the literal: emit it as
+      // a literal chunk and rebalance, so `text <Hmac<Sha256>>` keeps the generic and ends only at the final `>`.
+      if (
+        mode === LexMode.Text &&
+        lineText[0] === '>' &&
+        (textDepthStack[textDepthStack.length - 1] ?? 0) > 0
+      ) {
+        const token: Token = {
+          kind: TokenKind.Chunk,
+          span: {
+            start: { line, column },
+            end: { line, column: column + 1 },
+          },
+          text: '>',
+        }
+        append(token)
+        previous = token
+        lineText = lineText.slice(1)
+        column += 1
+        textDepthStack[textDepthStack.length - 1]! -= 1
+        continue
+      }
+
       let matched = false
 
       for (const kind of MODE_MATCHERS[mode]) {
@@ -205,9 +232,19 @@ export function tokenize(source: {
             break
           case TokenKind.OpenAngle:
             modeStack.push(LexMode.Text)
+            textDepthStack.push(0)
             break
           case TokenKind.CloseAngle:
             modeStack.pop()
+            textDepthStack.pop()
+            break
+          case TokenKind.Chunk:
+            // a chunk in a text literal may carry unescaped `<` (a generic / less-than); each deepens the bracket
+            // balance so its matching `>` is treated as content rather than the literal's terminator.
+            if (mode === LexMode.Text && textDepthStack.length > 0)
+              textDepthStack[textDepthStack.length - 1]! += (
+                text.match(/(?<!\\)</g) ?? []
+              ).length
             break
           default:
             break

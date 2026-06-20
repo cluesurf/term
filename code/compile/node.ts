@@ -118,6 +118,9 @@ export type Expression =
       form: 'member'
       target: Expression
       name: string
+      // the member's foreign `name <...>` (e.g. a binding field's `COLOR_BUFFER_BIT`), set by the checker when the
+      // accessed field declares one, so the emitter uses the exact native name instead of camelCasing the seed name.
+      nick?: string
       span: Span
       type?: Type
     }
@@ -235,11 +238,14 @@ export type Statement =
       form: 'record-type'
       name: string
       params: Array<string>
-      fields: Array<{ name: string; type: Type }>
+      fields: Array<{ name: string; type: Type; nick?: string }>
       variants: Array<{
         name: string
-        fields: Array<{ name: string; type: Type }>
+        fields: Array<{ name: string; type: Type; nick?: string }>
       }>
+      // the `like <type>` base of a transparent alias form (`form g-luint, like native-number`): a form with this base
+      // and no fields/variants is an alias that unifies with its base. Undefined for ordinary forms.
+      alias?: Type
       span: Span
     }
   // a trait: a named set of method signatures (mask)

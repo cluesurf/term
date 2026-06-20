@@ -11,7 +11,12 @@ import type {
   ZoneNode,
 } from '@/code/compile/node'
 import { exhausted, mapCollect } from '@/code/compile/backend'
-import { collectBinds, renderBind, bindGap } from '@/code/compile/bind'
+import {
+  collectBinds,
+  renderBind,
+  bindGap,
+  referencedBinds,
+} from '@/code/compile/bind'
 import type { Bind } from '@/code/compile/bind'
 
 const PRECEDENCE: Record<BinaryOp, number> = {
@@ -366,7 +371,9 @@ function makeEmitter(
         return `{ ${fields.join(', ')} }`
       }
       case 'member':
-        return `${expression(node.target)}.${toMember(node.name)}`
+        // a binding field with a foreign `name <...>` (e.g. COLOR_BUFFER_BIT) emits that native name verbatim; other
+        // members camelCase the seed name
+        return `${expression(node.target)}.${node.nick ?? toMember(node.name)}`
       case 'await':
         return `await ${expression(node.expr)}`
       case 'closure': {
@@ -801,8 +808,9 @@ export function emitTypeScript(
     if (toCamel(node.alias) !== globalName)
       imports.push(`const ${toCamel(node.alias)} = ${globalName}`)
   }
-  // a declarative binding's env target may name imports its rendered expression needs (dedup against the natives)
-  for (const bind of binds.values()) {
+  // a declarative binding's env target may name imports its rendered expression needs (dedup against the natives). Only
+  // binds actually called contribute, so an unused alternative does not pull in an import the program never references.
+  for (const bind of referencedBinds(program, binds).values()) {
     const target =
       bind.targets.find(t => t.env === env) ??
       bind.targets.find(t => t.env === 'javascript')

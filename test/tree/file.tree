@@ -1,0 +1,48 @@
+note <Integration test for the file module: write a real file, read it back, and check the contents round-trip. Async throughout, so the work is an async closure and run awaits it. Ported from the TypeScript io suite.>
+
+load @cluesurf/base/code/file
+  find write
+  find read
+
+load @cluesurf/base/code/test
+  find case
+  find want
+  find run
+
+task main
+  mark async
+  like report
+  send back
+    call run
+      wait true
+      make list
+        call case
+          text <a file round-trips its contents>
+          task work
+            mark async
+            like boolean
+            call write
+              text </tmp/seed-test-roundtrip.txt>
+              text <hello from seed>
+              wait true
+            send back
+              call want
+                call read
+                  text </tmp/seed-test-roundtrip.txt>
+                  wait true
+                text <hello from seed>
+        call case
+          text <a second write overwrites the first>
+          task work
+            mark async
+            like boolean
+            call write
+              text </tmp/seed-test-roundtrip.txt>
+              text <second>
+              wait true
+            send back
+              call want
+                call read
+                  text </tmp/seed-test-roundtrip.txt>
+                  wait true
+                text <second>

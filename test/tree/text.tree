@@ -1,0 +1,59 @@
+note <Functional tests for the text module: drive the public API across several chained calls and check the observable outcome. Ported from the TypeScript text suite.>
+
+load @cluesurf/base/code/text
+  find to-upper-case
+  find trim
+  find contains
+  find starts-with
+
+load @cluesurf/base/code/test
+  find case
+  find want
+  find want-true
+  find want-text
+  find want-false
+  find run
+
+task main
+  mark async
+  like report
+  send back
+    call run
+      wait true
+      make list
+        call case
+          text <trim then uppercase yields a clean token>
+          task
+            like boolean
+            send back
+              call want
+                call to-upper-case
+                  call trim
+                    text <  hello  >
+                text <HELLO>
+        call case
+          text <contains finds a present substring>
+          task
+            like boolean
+            send back
+              call want-text
+                text <hello world>
+                text <world>
+        call case
+          text <contains rejects an absent substring>
+          task
+            like boolean
+            send back
+              call want-false
+                call contains
+                  text <hello world>
+                  text <absent>
+        call case
+          text <starts-with matches a prefix>
+          task
+            like boolean
+            send back
+              call want-true
+                call starts-with
+                  text <hello world>
+                  text <hello>
