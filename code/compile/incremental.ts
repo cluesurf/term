@@ -202,30 +202,31 @@ export class QueryCompiler {
   // ---- the functional per-definition pipeline (real resolve; stage 1) ----
 
   // the merged program (or empty on a compile error)
-  private merged(files: string[]): Program {
-    const result = this.program(files)
+  private async merged(cx: Cx, files: string[]): Promise<Program> {
+    const result = await this.program(cx, files)
 
     return result.ok ? result.program : []
   }
 
   // the global name scope (names -> kind/arity + intrinsics), built once. Backdates while the name set + arities are
   // unchanged, so editing a body does not invalidate it.
-  nameIndex(files: string[]): Scope {
-    return this.db.query(
+  nameIndex(cx: Cx, files: string[]): Promise<Scope> {
+    return cx.query(
       'nameIndex',
-      () => buildGlobalScope(this.merged(files)),
+      async c => buildGlobalScope(await this.merged(c, files)),
       (a, b) => scopeKey(a) === scopeKey(b),
     )
   }
 
   // one function's raw (unresolved) definition, sliced from the merged program. Backdates per function (span-free).
   functionSource(
+    cx: Cx,
     files: string[],
     name: string,
-  ): FunctionDef | undefined {
-    return this.db.query(
+  ): Promise<FunctionDef | undefined> {
+    return cx.query(
       `source:${name}`,
-      () => functionDefs(this.merged(files)).get(name),
+      async c => functionDefs(await this.merged(c, files)).get(name),
       (a, b) => structureKey(a) === structureKey(b),
     )
   }
@@ -233,19 +234,20 @@ export class QueryCompiler {
   // resolve one function's body against the global scope, functionally (on a clone, so the result is a stable cached
   // value). Depends only on this function's source + the name index, so editing a sibling does not re-resolve it.
   resolvedDef(
+    cx: Cx,
     files: string[],
     name: string,
-  ): { def: FunctionDef | undefined; diagnostics: Diagnostic[] } {
-    return this.db.query(
+  ): Promise<{ def: FunctionDef | undefined; diagnostics: Diagnostic[] }> {
+    return cx.query(
       `resolved:${name}`,
-      () => {
-        const source = this.functionSource(files, name)
+      async c => {
+        const source = await this.functionSource(c, files, name)
 
         if (!source) {
           return { def: undefined, diagnostics: [] }
         }
 
-        const scope = this.nameIndex(files)
+        const scope = await this.nameIndex(c, files)
         const clone = structuredClone(source)
         const diagnostics = resolveNames(
           [clone],
@@ -268,11 +270,11 @@ export class QueryCompiler {
   // the type-checking context: the program with every function BODY stripped. Infer only needs other definitions'
   // signatures + the forms / enums, never their bodies, so this backdates on a body edit. That is what lets a
   // function be type-checked without depending on its siblings' bodies (the firewall, on real inference).
-  private signatureContext(files: string[]): Program {
-    return this.db.query(
+  private signatureContext(cx: Cx, files: string[]): Promise<Program> {
+    return cx.query(
       'signatureContext',
-      () =>
-        this.merged(files).map(statement =>
+      async c =>
+        (await this.merged(c, files)).map(statement =>
           statement.form === 'function'
             ? { ...statement, body: [] }
             : statement,
@@ -286,30 +288,31 @@ export class QueryCompiler {
   // callee's signature, and the signature context -- none of which a sibling's body edit changes. So a callee body
   // edit does not re-type-check this function. The typed clone is the stable cached value.
   typedDef(
+    cx: Cx,
     files: string[],
     name: string,
-  ): { def: FunctionDef | undefined; diagnostics: Diagnostic[] } {
-    return this.db.query(
+  ): Promise<{ def: FunctionDef | undefined; diagnostics: Diagnostic[] }> {
+    return cx.query(
       `typed:${name}`,
-      () => {
-        const resolved = this.resolvedDef(files, name)
+      async c => {
+        const resolved = await this.resolvedDef(c, files, name)
 
         if (!resolved.def) {
           return { def: undefined, diagnostics: [] }
         }
 
         // firewall: depend on each defined callee's signature, never its body
-        const defined = new Set(this.defNames(files))
+        const defined = new Set(await this.defNames(c, files))
 
         for (const ref of collectCallRefs(resolved.def.body)) {
           if (defined.has(ref)) {
-            void this.signature(files, ref)
+            await this.signature(c, files, ref)
           }
         }
 
         // the context is bodies-stripped declarations; swap in this function's real resolved body, check only it
         const clone = resolved.def
-        const program = this.signatureContext(files).map(s =>
+        const program = (await this.signatureContext(c, files)).map(s =>
           s.form === 'function' && s.name === name ? clone : s,
         )
 
@@ -332,9 +335,9 @@ export class QueryCompiler {
 
   // emit one function's TypeScript from its typed clone. Depends on `typedDef(name)`, which backdates when the
   // function is unchanged, so editing a sibling never re-emits this one (the emit-level firewall).
-  emitDef(files: string[], name: string): string {
-    return this.db.query(`emit:${name}`, () => {
-      const typed = this.typedDef(files, name)
+  emitDef(cx: Cx, files: string[], name: string): Promise<string> {
+    return cx.query(`emit:${name}`, async c => {
+      const typed = await this.typedDef(c, files, name)
 
       return typed.def ? emitTypeScript([typed.def]) : ''
     })
@@ -342,9 +345,9 @@ export class QueryCompiler {
 
   // the whole program's TypeScript, assembled from the per-definition emits plus the non-function statements (forms,
   // native docks). A one-function edit re-emits only that function.
-  emitProgram(files: string[]): string {
-    return this.db.query(`emit`, () => {
-      const program = this.merged(files)
+  emitProgram(cx: Cx, files: string[]): Promise<string> {
+    return cx.query(`emit`, async c => {
+      const program = await this.merged(c, files)
       const parts: string[] = []
       const others = program.filter(s => s.form !== 'function')
 
@@ -352,11 +355,14 @@ export class QueryCompiler {
         parts.push(emitTypeScript(others))
       }
 
-      for (const statement of program) {
-        if (statement.form === 'function') {
-          parts.push(this.emitDef(files, statement.name))
-        }
-      }
+      // per-definition emit runs concurrently: each `emitDef` is independent (its own resolve -> infer -> emit chain)
+      const functionNames = program
+        .filter(s => s.form === 'function')
+        .map(s => (s as FunctionDef).name)
+      const emitted = await Promise.all(
+        functionNames.map(name => this.emitDef(c, files, name)),
+      )
+      parts.push(...emitted)
 
       return parts.filter(p => p.length > 0).join('\n\n')
     })

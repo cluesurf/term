@@ -1,15 +1,10 @@
-
 deck @cluesurf/seed
   head <A TreeCode Programming Framework>
-
   mark <0.0.1>
   sort tool
-
   lock apache-2
-
   site <https://github.com/cluesurf/term.tree>
   view ./view/tree.gif
-
   term tree-code
   term computation
   term information
@@ -17,10 +12,8 @@ deck @cluesurf/seed
   term platform
   term white-label
   term compiler
-
   deck ./deck/load
   deck ./deck/line
-
   link @cluesurf/term, mark <0.0.x>
   link @cluesurf/bind, mark <0.0.x>
   link @cluesurf/moon, mark <0.0.x>
@@ -31,12 +24,14 @@ deck @cluesurf/seed
   link @cluesurf/cone, mark <0.0.x>
   link @cluesurf/buzz, mark <0.0.x>
   link @cluesurf/crow, mark <0.0.x>
-
-  task ./task # the task loader
-  book ./book # also a default
-  role ./base/role # also a default
+  task ./task
+  # the task loader
+  book ./book
+  # also a default
+  role ./base/role
+  # also a default
   line ./line
   test ./test
-
-  mind <Lance Pollard>, base <lp@elk.fm>
+  mind <Lance Pollard>
+    base <lp@elk.fm>
     site <lancejpollard.com>

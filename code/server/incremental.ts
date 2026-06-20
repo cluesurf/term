@@ -19,11 +19,12 @@ export class IncrementalAnalyzer {
 
   constructor(private readonly resolve?: Resolver) {}
 
-  // analyze a document: collect its module graph, set sources, return incremental diagnostics + the typed program
-  analyze(document: Source): {
+  // analyze a document: collect its module graph, set sources, return incremental diagnostics + the typed program.
+  // Async: the per-definition chains (resolve -> type-check) run concurrently under one query transaction.
+  async analyze(document: Source): Promise<{
     diagnostics: Array<LspDiagnostic>
     program?: Program
-  } {
+  }> {
     const sources = this.resolve
       ? collectModules(document, this.resolve).sources
       : [document]
@@ -37,24 +38,49 @@ export class IncrementalAnalyzer {
         source.file === document.file ? LOW : HIGH,
       )
 
-    // parse / mill errors short-circuit, like the whole-program path
-    const merged = this.compiler.program(this.files)
-    if (!merged.ok)
-      return { diagnostics: merged.diagnostics.map(toLspDiagnostic) }
+    return this.compiler.db.transaction(async cx => {
+      // parse / mill errors short-circuit, like the whole-program path
+      const merged = await this.compiler.program(cx, this.files)
+      if (!merged.ok)
+        return { diagnostics: merged.diagnostics.map(toLspDiagnostic) }
 
-    // per definition: resolve, then (only if it resolved) type-check. Assemble the typed program for navigation.
-    const diagnostics: Array<LspDiagnostic> = []
-    const typed: Program = merged.program.map(statement => {
-      if (statement.form !== 'function') return statement
-      const resolved = this.compiler.resolvedDef(this.files, statement.name)
-      if (resolved.diagnostics.length) {
-        diagnostics.push(...resolved.diagnostics.map(toLspDiagnostic))
-        return resolved.def ?? statement
+      // per definition, concurrently: resolve, then (only if it resolved) type-check. Diagnostics are gathered into a
+      // map keyed by the statement index so they assemble in program order, never in completion order (determinism).
+      const perDef = await Promise.all(
+        merged.program.map(async (statement, index) => {
+          if (statement.form !== 'function')
+            return { index, statement, diagnostics: [] as Array<LspDiagnostic> }
+          const resolved = await this.compiler.resolvedDef(
+            cx,
+            this.files,
+            statement.name,
+          )
+          if (resolved.diagnostics.length)
+            return {
+              index,
+              statement: resolved.def ?? statement,
+              diagnostics: resolved.diagnostics.map(toLspDiagnostic),
+            }
+          const checked = await this.compiler.typedDef(
+            cx,
+            this.files,
+            statement.name,
+          )
+          return {
+            index,
+            statement: checked.def ?? statement,
+            diagnostics: checked.diagnostics.map(toLspDiagnostic),
+          }
+        }),
+      )
+
+      const diagnostics: Array<LspDiagnostic> = []
+      const typed: Program = []
+      for (const entry of perDef) {
+        diagnostics.push(...entry.diagnostics)
+        typed.push(entry.statement)
       }
-      const checked = this.compiler.typedDef(this.files, statement.name)
-      diagnostics.push(...checked.diagnostics.map(toLspDiagnostic))
-      return checked.def ?? statement
+      return { diagnostics, program: typed }
     })
-    return { diagnostics, program: typed }
   }
 }

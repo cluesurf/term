@@ -18,7 +18,12 @@ import {
   exhausted,
 } from '@/code/compile/backend'
 import type { CollectionOp } from '@/code/compile/backend'
-import { collectBinds, renderBind, bindGap } from '@/code/compile/bind'
+import {
+  collectBinds,
+  renderBind,
+  bindGap,
+  bindImports,
+} from '@/code/compile/bind'
 
 // Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
 // `default`, etc.) it must be backtick-escaped, in both the declaration and every reference.
@@ -860,6 +865,11 @@ export function emitSwift(program: Program): string {
         n.form === 'native' && !n.module.startsWith('global:'),
     )
     .map(n => `import ${n.module.replace(/^[a-z]+:/, '')}`)
+  // a declarative binding's swift expression may need a module imported (e.g. `Foundation.pow`)
+  for (const need of bindImports(binds, 'swift')) {
+    const line = `import ${need.module.replace(/^[a-z]+:/, '')}`
+    if (!imports.includes(line)) imports.push(line)
+  }
   const body = program
     .filter(n => n.form !== 'native')
     .map(n => stmt(n, 0, new Map()))

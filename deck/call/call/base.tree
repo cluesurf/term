@@ -1,4 +1,3 @@
-
 load @cluesurf/term/code/head/task/hook
   find task void
   find task bind-deck
@@ -23,7 +22,6 @@ hook make
     lead <-v>
     lead <--version>
   task make-deck
-
   hook deck
     note <Create a new deck repository>
     take name
@@ -37,12 +35,10 @@ hook make
       lead <-v>
       lead <--version>
     task make-deck
-
   hook face
     note <Create a person user>
     take name
     task make-face
-
   hook host
     note <Create an organization>
     take name
@@ -52,7 +48,6 @@ hook load
   note <Install a deck locally>
   take name
   task load
-
   hook deck
     note <Install a deck locally>
     take name
@@ -60,18 +55,15 @@ hook load
 
 hook link
   note <Start the local system connected to the remote system>
-
-  hook deck
-    note <Share the deck with the base>
+  hook deck, note <Share the deck with the base>
 
 hook lock
   note <Login>
-  take cite
-    note <Email>
-  take code, wait rise
+  take cite, note <Email>
+  take code
+    wait rise
     note <Password>
   task lock
-
   hook void
     note <Logout>
     take cite
@@ -89,14 +81,11 @@ hook read
     note <Read environment variable>
     take name
     task read-seed
-
-  hook note
-    note <Tail the logs>
+  hook note, note <Tail the logs>
 
 hook bind
   note <Publish latest version of deck>
   task bind-deck
-
   hook deck
     note <Publish latest version of deck>
     task bind-deck
@@ -106,7 +95,8 @@ hook halt
   task halt
 
 hook mark
-  take mark, like size
+  take mark
+    like size
     mint mint-size
   task mark
 

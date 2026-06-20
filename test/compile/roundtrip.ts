@@ -1602,6 +1602,32 @@ task compute
 // base to one of three declarative native binds. The convenience form `logarithm-base-2` fixes the base, so a call to
 // it specializes: the base==2 branch folds, the verb drops, and the surviving bind renders the platform's native log2
 // (`Math.log2` on node, `.log2()` on rust) with no division. `compute` returns log2(8) = 3.
+// the enum-verb specialization slice. `describe` dispatches a `fork case` on its parameter. `compute` calls it with the
+// constant variant `make warm`, so the verb inlines, the match folds to the matching arm, and `compute` reduces to that
+// arm's value. No switch survives in the emitted code.
+const ENUM_SPEC_PROG = `form tone
+  case warm
+  case cool
+
+task describe
+  take thing, like tone
+  like text
+  fork case
+    read thing
+    case warm
+      send back
+        text <fire>
+    case cool
+      send back
+        text <ice>
+
+task compute
+  like text
+  send back
+    call describe
+      make warm
+`
+
 const LOGARITHM_PROG = `bind logarithm-base-2-native
   take value, like float
   like float
@@ -1666,13 +1692,18 @@ task compute
       read value
 `
 
-// run the emitted TypeScript on node: write the module, append a print of compute(8), execute through node's native
+// run the emitted TypeScript on node: write the module, append a print of the given call, execute through node's native
 // type stripping, assert stdout
-function runNodeMath(name: string, program: Program, want: string): void {
+function runNodeExpr(
+  name: string,
+  program: Program,
+  call: string,
+  want: string,
+): void {
   const file = join(dir, `${name.replace(/\W/g, '')}.ts`)
   writeFileSync(
     file,
-    `${emitTypeScript(program)}\nconsole.log(compute(8.0))\n`,
+    `${emitTypeScript(program)}\nconsole.log(${call})\n`,
   )
   ok(
     name,
@@ -1683,13 +1714,18 @@ function runNodeMath(name: string, program: Program, want: string): void {
   )
 }
 
-// run the emitted Rust on rustc: print compute(8) (Display prints 3.0 as "3"), assert stdout
-function runRustLog(name: string, program: Program, want: string): void {
+// run the emitted Rust on rustc: print the given call (Display prints 3.0 as "3"), assert stdout
+function runRustExpr(
+  name: string,
+  program: Program,
+  call: string,
+  want: string,
+): void {
   if (!have('rustc')) return skipped(name, 'rustc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
     file,
-    `${emitRust(program)}\nfn main() { print!("{}", compute(8.0)); }\n`,
+    `${emitRust(program)}\nfn main() { print!("{}", ${call}); }\n`,
   )
   const exe = file.replace(/\.rs$/, '')
   try {
@@ -1819,19 +1855,26 @@ function main(): void {
     'hello kotlin io',
   )
 
-  // math delegation running for real: the public math interface forwards pow to each target's math shim
+  // math through the declarative `bind` interface (no per-env shim): power(2,10) specializes to each target's native
+  // power expression and runs for real
+  runNodeExpr(
+    'node + math bind: power(2,10) inline Math.pow',
+    frontEnd(MATH_PROG, true, 'node'),
+    'compute()',
+    '1024',
+  )
   runRustMath(
-    'rust + math runtime: power(2,10) through the math interface',
+    'rust + math bind: power(2,10) inline native pow',
     frontEnd(MATH_PROG, true, 'rust'),
     '1024',
   )
   runSwiftMath(
-    'swift + math runtime: power(2,10) through the math interface',
+    'swift + math bind: power(2,10) inline native pow',
     frontEnd(MATH_PROG, true, 'swift'),
     '1024',
   )
   runKotlinMath(
-    'kotlin + math runtime: power(2,10) through the math interface',
+    'kotlin + math bind: power(2,10) inline native pow',
     frontEnd(MATH_PROG, true, 'kotlin'),
     '1024',
   )
@@ -1859,8 +1902,40 @@ function main(): void {
     ),
     true,
   )
-  runNodeMath('node: logarithm-base-2(8) through specialization', logProgram, '3')
-  runRustLog('rust: logarithm-base-2(8) through specialization', logProgram, '3')
+  runNodeExpr(
+    'node: logarithm-base-2(8) through specialization',
+    logProgram,
+    'compute(8.0)',
+    '3',
+  )
+  runRustExpr(
+    'rust: logarithm-base-2(8) through specialization',
+    logProgram,
+    'compute(8.0)',
+    '3',
+  )
+
+  // enum-verb specialization: a fork case verb called with a constant variant folds to the matching arm
+  const enumProgram = frontEnd(ENUM_SPEC_PROG)
+  const enumTs = emitTypeScript(enumProgram)
+  ok(
+    'specialize: node enum verb folds to the matching arm, no switch',
+    /function compute\(\)[^{]*\{\s*return "fire"/.test(enumTs) &&
+      !/function compute[\s\S]*?switch/.test(enumTs),
+    true,
+  )
+  runNodeExpr(
+    'node: describe(make warm) through enum specialization',
+    enumProgram,
+    'compute()',
+    'fire',
+  )
+  runRustExpr(
+    'rust: describe(make warm) through enum specialization',
+    enumProgram,
+    'compute()',
+    'fire',
+  )
 
   // crypto wrapping the platform's built-in library, running for real (swift CryptoKit, kotlin java.security)
   runSwiftCrypto(

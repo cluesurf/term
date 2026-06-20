@@ -1,12 +1,9 @@
-
 load @cluesurf/code
   find code
   find book
 
-role book
-  take ~/book/**/*.tree
-    miss ~/book/**/{code,view}/**/*.tree
+role book, take ~/book/**/*.tree, miss ~/book/**/{{view}}/**/*.tree
 
 role code
   take ~/code/**/*.tree
-  take ~/book/**/{code,view}/**/*.tree
+  take ~/book/**/{{view}}/**/*.tree

@@ -52,7 +52,7 @@ export function startDaemon(options: {
     }
     if (typeof body.file !== 'string' || typeof body.text !== 'string')
       return context.json({ error: 'file and text required' }, 400)
-    const result = analyzerFor(body.file).analyze({
+    const result = await analyzerFor(body.file).analyze({
       file: body.file,
       text: body.text,
     })

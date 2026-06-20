@@ -1635,13 +1635,13 @@ async function main(): Promise<void> {
     false,
   )
   expect(
-    'math: power compiles to a direct host call (math.pow)',
-    mathTs.includes('math.pow'),
+    'math: power compiles to the inline native bind (Math.pow)',
+    mathTs.includes('Math.pow'),
     true,
   )
   expect(
-    'math: absolute compiles to a direct host call (math.abs)',
-    mathTs.includes('math.abs'),
+    'math: absolute compiles to the inline native bind (Math.abs)',
+    mathTs.includes('Math.abs'),
     true,
   )
   expect(

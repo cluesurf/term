@@ -75,7 +75,7 @@ function isInteger(node: Expression, value: number): boolean {
 // once per `simplify()` run, read by the call specializer. See plans/20-specialization-and-bind.md.
 let specializable: Map<
   string,
-  { params: Array<{ name: string }>, returnExpr: Expression }
+  { params: Array<{ name: string }>, body: Array<Statement> }
 > = new Map()
 // the names currently being inlined on this path, to break a recursive verb cycle
 let inlining: Set<string> = new Set()
@@ -119,16 +119,21 @@ function wrapsCollection(
   return fn.result?.kind === 'array' || fn.result?.kind === 'map'
 }
 
-// a function is specializable if its body is a single `send back <expr>`: a forwarder, a convenience form, or a verb
-// whose dispatch sits in value position (a `fork test` lowers to a `conditional` expression)
-function specializableReturn(
+// a function the call specializer may inline at a constant argument: its body must be a single statement that can
+// reduce to one value once the constant is known. A single `send back <expr>` always qualifies (a forwarder, a
+// convenience form, or a `fork test` verb whose dispatch is a value-position `conditional`). A single `fork case` (an
+// enum verb) qualifies too: once the constant variant reaches the subject, foldMatchOnConstant collapses the match to
+// the chosen arm, which is itself a single `send back`. Async and collection-wrapping functions are never inlined (a
+// caller awaits the former, and the backend boxes the latter at the function boundary).
+function specializableBody(
   fn: Extract<Statement, { form: 'function' }>,
-): Expression | undefined {
+): Array<Statement> | undefined {
   if (fn.async) return undefined
   if (wrapsCollection(fn)) return undefined
   if (fn.body.length !== 1) return undefined
   const only = fn.body[0]!
-  if (only.form === 'return' && only.value) return only.value
+  if (only.form === 'return' && only.value) return fn.body
+  if (only.form === 'match') return fn.body
   return undefined
 }
 
@@ -337,11 +342,18 @@ function simplifyExpression(node: Expression): Expression {
           const subst = new Map<string, Expression>()
           fn.params.forEach((p, i) => subst.set(p.name, args[i]!))
           inlining.add(callee.name)
-          const inlined = simplifyExpression(
-            substituteExpr(fn.returnExpr, subst),
+          // substitute the constant into the whole body and simplify: a value-position `send back` folds to its value,
+          // an enum verb's `fork case` folds to the chosen arm. If the body collapses to a single `send back <expr>`,
+          // that expr is the inlined value; otherwise the verb does not reduce to one expression here (a multi-statement
+          // arm, a non-constant subject), so the call is left intact.
+          const reduced = simplifyBody(
+            fn.body.map(s => substituteStmt(s, subst)),
           )
           inlining.delete(callee.name)
-          return inlined
+          const sole = reduced.length === 1 ? reduced[0]! : undefined
+          if (sole && sole.form === 'return' && sole.value) {
+            return sole.value
+          }
         }
       }
       return { ...node, callee, args }
@@ -902,15 +914,15 @@ export function simplify(
   roots?: Set<string>,
 ): Program {
   const inlined = dropUnusedHostGlobals(inlineForwarders(program, roots))
-  // collect the specializable functions (single `send back <expr>`) the call specializer may inline
+  // collect the functions the call specializer may inline at a constant argument (value-position returns and enum verbs)
   specializable = new Map()
   for (const node of inlined)
     if (node.form === 'function') {
-      const ret = specializableReturn(node)
-      if (ret)
+      const body = specializableBody(node)
+      if (body)
         specializable.set(node.name, {
           params: node.params,
-          returnExpr: ret,
+          body,
         })
     }
   inlining = new Set()

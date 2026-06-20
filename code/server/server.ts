@@ -103,7 +103,7 @@ export class LanguageServer {
     return analyzer
   }
 
-  dispatch(message: Message): Array<Message> {
+  async dispatch(message: Message): Promise<Array<Message>> {
     switch (message.method) {
       case 'initialize':
         return [
@@ -130,7 +130,7 @@ export class LanguageServer {
       case 'textDocument/didOpen': {
         const params = message.params as TextDocumentParams
         return [
-          this.refresh(
+          await this.refresh(
             params.textDocument.uri,
             params.textDocument.text ?? '',
           ),
@@ -139,7 +139,7 @@ export class LanguageServer {
       case 'textDocument/didChange': {
         const params = message.params as ChangeParams
         return [
-          this.refresh(
+          await this.refresh(
             params.textDocument.uri,
             params.contentChanges[params.contentChanges.length - 1]
               ?.text ?? '',
@@ -294,9 +294,9 @@ export class LanguageServer {
   }
 
   // recompile a document, store its typed program and symbol index, and produce the diagnostics notification
-  private refresh(uri: string, text: string): Message {
+  private async refresh(uri: string, text: string): Promise<Message> {
     this.documents.set(uri, text)
-    const result = this.analyzerFor(uri).analyze({ file: uri, text })
+    const result = await this.analyzerFor(uri).analyze({ file: uri, text })
     if (result.program) {
       this.programs.set(uri, result.program)
       this.indexes.set(uri, buildIndex(result.program))

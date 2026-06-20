@@ -1,9 +1,5 @@
+load @cluesurf/cone, find mint code
 
-load @cluesurf/cone
-  find mint code
+role code, take ~/code/**/*.tree
 
-role code
-  take ~/code/**/*.tree
-
-role call
-  take ~/call/**/*.tree
+role call, take ~/call/**/*.tree

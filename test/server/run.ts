@@ -57,7 +57,7 @@ expect(
 // --- dispatcher ---
 const server = new LanguageServer()
 
-const init = server.dispatch({
+const init = await server.dispatch({
   jsonrpc: '2.0',
   id: 1,
   method: 'initialize',
@@ -70,7 +70,7 @@ expect('initialize: advertises hover support', caps.hoverProvider, true)
 
 // open a document with an undefined name: a diagnostic must be published
 const BAD = 'task f\n  like number\n  back\n    read nope\n'
-const opened = server.dispatch({
+const opened = await server.dispatch({
   jsonrpc: '2.0',
   method: 'textDocument/didOpen',
   params: { textDocument: { uri: 'bad.tree', text: BAD } },
@@ -89,7 +89,7 @@ expect(
 // open a valid document: no error diagnostics, then hover an integer literal and expect `number`
 const GOOD =
   'task add-one\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      mark 1\n'
-const good = server.dispatch({
+const good = await server.dispatch({
   jsonrpc: '2.0',
   method: 'textDocument/didOpen',
   params: { textDocument: { uri: 'good.tree', text: GOOD } },
@@ -112,7 +112,7 @@ forEachExpression(program, node => {
       character: node.span.start.column,
     }
 })
-const hover = server.dispatch({
+const hover = await server.dispatch({
   jsonrpc: '2.0',
   id: 2,
   method: 'textDocument/hover',
@@ -131,7 +131,7 @@ expect(
 )
 
 // close the document: diagnostics are cleared
-const closed = server.dispatch({
+const closed = await server.dispatch({
   jsonrpc: '2.0',
   method: 'textDocument/didClose',
   params: { textDocument: { uri: 'good.tree' } },
@@ -147,7 +147,7 @@ expect(
 const NAV =
   'task helper\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      mark 1\n\ntask runner\n  like number\n  back\n    call helper\n      mark 5\n'
 const navServer = new LanguageServer()
-navServer.dispatch({
+await navServer.dispatch({
   jsonrpc: '2.0',
   method: 'textDocument/didOpen',
   params: { textDocument: { uri: 'nav.tree', text: NAV } },
@@ -167,7 +167,7 @@ const at = {
   character: callRef.span.start.column,
 }
 
-const def = navServer.dispatch({
+const def = await navServer.dispatch({
   jsonrpc: '2.0',
   id: 10,
   method: 'textDocument/definition',
@@ -182,7 +182,7 @@ expect(
   0,
 )
 
-const refs = navServer.dispatch({
+const refs = await navServer.dispatch({
   jsonrpc: '2.0',
   id: 11,
   method: 'textDocument/references',
@@ -194,7 +194,7 @@ expect(
   2,
 )
 
-const rename = navServer.dispatch({
+const rename = await navServer.dispatch({
   jsonrpc: '2.0',
   id: 12,
   method: 'textDocument/rename',
@@ -216,7 +216,7 @@ expect(
   true,
 )
 
-const syms = navServer.dispatch({
+const syms = await navServer.dispatch({
   jsonrpc: '2.0',
   id: 13,
   method: 'textDocument/documentSymbol',
@@ -231,7 +231,7 @@ expect(
   true,
 )
 
-const comp = navServer.dispatch({
+const comp = await navServer.dispatch({
   jsonrpc: '2.0',
   id: 14,
   method: 'textDocument/completion',
@@ -246,7 +246,7 @@ expect(
   true,
 )
 
-const sig = navServer.dispatch({
+const sig = await navServer.dispatch({
   jsonrpc: '2.0',
   id: 15,
   method: 'textDocument/signatureHelp',
@@ -263,12 +263,12 @@ expect(
 
 // initialize advertises the new capabilities
 const caps2 = (
-  server.dispatch({
+  (await server.dispatch({
     jsonrpc: '2.0',
     id: 20,
     method: 'initialize',
     params: {},
-  })[0]!.result as { capabilities: Record<string, unknown> }
+  }))[0]!.result as { capabilities: Record<string, unknown> }
 ).capabilities
 expect(
   'initialize: advertises definition + completion + rename',
@@ -287,7 +287,7 @@ const unknown: Message = {
 }
 expect(
   'unknown request: still answered',
-  server.dispatch(unknown)[0]!.id,
+  (await server.dispatch(unknown))[0]!.id,
   9,
 )
 

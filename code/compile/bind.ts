@@ -32,6 +32,26 @@ export function renderBind(
   return out
 }
 
+// the distinct imports every bind in the program needs for one environment, in first-seen order. A backend emits these
+// alongside its native-dock imports (e.g. swift `import Foundation` for `Foundation.pow`).
+export function bindImports(
+  binds: Map<string, Bind>,
+  env: string,
+): Array<{ module: string; alias?: string }> {
+  const seen = new Set<string>()
+  const out: Array<{ module: string; alias?: string }> = []
+  for (const bind of binds.values()) {
+    const target = bind.targets.find(candidate => candidate.env === env)
+    for (const need of target?.imports ?? []) {
+      const key = `${need.module}|${need.alias ?? ''}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(need)
+    }
+  }
+  return out
+}
+
 // the gap a backend emits when a called bind has no target for the environment it is emitting: an undefined sentinel
 // identifier, so the generated source fails to compile loudly (a stdlib author forgot a backend) rather than silently
 // calling a nonexistent function. The name carries the greppable SEED_UNSUPPORTED tag and the bind it came from. This
