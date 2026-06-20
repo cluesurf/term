@@ -12,6 +12,7 @@ import { nativePrelude } from '../compile/native'
 import type { NativeEnv } from '../compile/native'
 import { hashText } from '../compile/cache'
 import { projectCache } from './cache-store'
+import { pullRemoteCache, pushRemoteCache } from './remote-cache'
 import { toConstant } from '../compile/typescript'
 import { parse } from '../parser/tree'
 import type { GroupNode } from '../parser/tree'
@@ -39,7 +40,7 @@ function nodeValue(group: GroupNode): string {
 const BOOT_CACHE_EPOCH = '1'
 
 // the directory (cwd or an ancestor) that holds the `link/` package links a build resolves through; falls back to cwd
-function findProjectRoot(start: string): string {
+export function findProjectRoot(start: string): string {
   let dir = start
   for (;;) {
     if (existsSync(path.join(dir, 'link'))) return dir
@@ -50,7 +51,7 @@ function findProjectRoot(start: string): string {
 }
 
 // the entry module's path: an explicit argument, or the `boot <path>` directive in the nearest `deck.tree` manifest
-function findEntry(
+export function findEntry(
   cwd: string,
   entry: string | undefined,
 ): string | undefined {
@@ -109,6 +110,8 @@ export async function callBoot(input: {
   entry?: string
   env?: NativeEnv
   port?: number
+  remote?: string
+  remoteToken?: string
 }): Promise<void> {
   logStep('Booting app...')
   try {
@@ -130,6 +133,17 @@ export async function callBoot(input: {
     const loadedEnv = appDir ? loadHostEnv(appDir) : []
     if (loadedEnv.length) console.log(fade(`  env: ${loadedEnv.join(', ')} (bind/host/base.tree)`))
 
+    // warm the local cache from a remote (Tier 5) before compiling, so a cold machine / CI reuses shared artifacts
+    const cacheDir = path.join(projectRoot, '.seed', 'cache')
+    if (input.remote) {
+      try {
+        const pulled = await pullRemoteCache(cacheDir, input.remote, input.remoteToken)
+        if (pulled) console.log(fade(`  pulled ${pulled} cache artifacts from ${input.remote}`))
+      } catch {
+        // a remote-cache failure must never fail the build
+      }
+    }
+
     // compile the entry (and everything it loads) through the package manager, targeting the chosen env. A persistent
     // cache (`.seed/cache`) makes a cold re-boot reuse the prior parse + mill + compile (Tier 1).
     const resolve = projectResolver(projectRoot, env)
@@ -145,6 +159,16 @@ export async function callBoot(input: {
         }`,
       )
       process.exit(1)
+    }
+
+    // push freshly-built artifacts to the remote (Tier 5), so the next machine / CI reuses them
+    if (input.remote) {
+      try {
+        const pushed = await pushRemoteCache(cacheDir, input.remote, input.remoteToken)
+        if (pushed) console.log(fade(`  pushed ${pushed} cache artifacts to ${input.remote}`))
+      } catch {
+        // a remote-cache failure must never fail the build
+      }
     }
 
     // auto-prepend the native runtime shims this program docks (`<global:X>` -> its `runtime/X` sibling), so the

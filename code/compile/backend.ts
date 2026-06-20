@@ -18,6 +18,63 @@ export function mapCollect(
   return undefined
 }
 
+// ---- native collection operations ----
+// The stdlib `hash` / `list` forms are written against the JS collection API (`map.set`, `map.has`, `array.push`, ...).
+// On a typed backend that vocabulary does not exist verbatim, so each backend lowers these operations to its own
+// platform idiom. The shape is detected once here, by the receiver's TYPE (a map or an array), and the operation name.
+// The receiver type means a user struct with a field called `set` or `size` never matches.
+export type CollectionOp = {
+  target: Expression
+  op: string
+  kind: 'map' | 'array'
+}
+
+const MAP_METHODS = new Set([
+  'has',
+  'get',
+  'set',
+  'delete',
+  'keys',
+  'values',
+])
+const ARRAY_METHODS = new Set(['push', 'pop', 'at', 'includes'])
+
+// a native collection METHOD CALL (`map.set(k, v)`, `array.push(x)`) on a map/array receiver
+export function collectionCall(
+  callee: Expression,
+): CollectionOp | undefined {
+  if (callee.form !== 'member') return undefined
+
+  const kind = callee.target.type?.kind
+  if (kind === 'map' && MAP_METHODS.has(callee.name)) {
+    return { target: callee.target, op: callee.name, kind: 'map' }
+  }
+
+  if (kind === 'array' && ARRAY_METHODS.has(callee.name)) {
+    return { target: callee.target, op: callee.name, kind: 'array' }
+  }
+
+  return undefined
+}
+
+// a native collection PROPERTY READ (`map.size`, `array.length`) on a map/array receiver
+export function collectionRead(
+  node: Expression,
+): CollectionOp | undefined {
+  if (node.form !== 'member') return undefined
+
+  const kind = node.target.type?.kind
+  if (kind === 'map' && node.name === 'size') {
+    return { target: node.target, op: 'size', kind: 'map' }
+  }
+
+  if (kind === 'array' && node.name === 'length') {
+    return { target: node.target, op: 'length', kind: 'array' }
+  }
+
+  return undefined
+}
+
 // Shared backend machinery. Every code generator must handle every AST form, on every target.
 //
 // `exhausted` makes that a COMPILE-TIME invariant. Route the `default` branch of any form switch through it: when a

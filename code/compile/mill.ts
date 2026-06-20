@@ -28,6 +28,7 @@ import type {
 } from '@/code/compile/node'
 import {
   BOOLEAN,
+  BYTES,
   DYNAMIC,
   FLOAT,
   NUMBER,
@@ -57,6 +58,10 @@ const TYPE_NAME: Record<string, Type> = {
   // the host's dynamic value (the opaque result of json parse)
   dynamic: DYNAMIC,
   json: DYNAMIC,
+  // a raw byte buffer (Uint8Array / Vec<u8> / Data / ByteArray), the zero-copy currency for crypto and IO
+  bytes: BYTES,
+  'byte-array': BYTES,
+  buffer: BYTES,
   text: STRING,
   boolean: BOOLEAN,
   void: UNIT,

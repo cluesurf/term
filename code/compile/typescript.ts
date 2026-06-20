@@ -145,7 +145,7 @@ function toMember(name: string): string {
   )
 }
 
-function toPascal(name: string): string {
+export function toPascal(name: string): string {
   const camel = toCamel(name)
   return camel.charAt(0).toUpperCase() + camel.slice(1)
 }
@@ -178,6 +178,8 @@ function tsType(type: Type | undefined): string {
       return 'number'
     case 'dynamic':
       return 'any'
+    case 'bytes':
+      return 'Uint8Array'
     case 'variable':
     case 'unknown':
     case undefined:

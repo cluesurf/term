@@ -10,6 +10,7 @@ import {
   renameSync,
   existsSync,
 } from 'fs'
+import os from 'os'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import type { CacheStore } from '../compile/cache'
@@ -81,10 +82,39 @@ export function compilerVersion(): string {
   return cachedVersion
 }
 
-// a persistent compile cache rooted at a project's `.seed/cache`, versioned by the compiler. The call sites use this.
+// the machine-wide shared cache home (Tier 5). Mill entries are content + path addressed, and linked stdlib files
+// share a realpath across projects, so the stdlib is milled once for every project on the machine. Overridable for
+// tests / CI via SEED_CACHE_HOME.
+export function cacheHome(): string {
+  return (
+    process.env.SEED_CACHE_HOME ?? path.join(os.homedir(), '.seed', 'store')
+  )
+}
+
+// a store that routes the per-module `mill` level to a shared dir (reused across projects) and the whole-graph
+// `output` level to the project-local dir (a graph is project-specific). The big win is cross-project mill reuse.
+export function sharedCacheStore(
+  localDir: string,
+  sharedDir: string,
+): CacheStore {
+  const local = diskCacheStore(localDir)
+  const shared = diskCacheStore(sharedDir)
+  const storeFor = (kind: string): CacheStore =>
+    kind === 'mill' ? shared : local
+  return {
+    load: (kind, key) => storeFor(kind).load(kind, key),
+    save: (kind, key, value) => storeFor(kind).save(kind, key, value),
+  }
+}
+
+// a persistent compile cache for a project: per-module mills shared machine-wide, the project's compiled output local.
+// Versioned by the compiler, so a toolchain upgrade invalidates everything. The call sites use this.
 export function projectCache(projectRoot: string): CompileCache {
   return new CompileCache(
-    diskCacheStore(path.join(projectRoot, '.seed', 'cache')),
+    sharedCacheStore(
+      path.join(projectRoot, '.seed', 'cache'),
+      cacheHome(),
+    ),
     compilerVersion(),
   )
 }

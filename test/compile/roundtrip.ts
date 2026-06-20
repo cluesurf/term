@@ -1055,6 +1055,25 @@ task compute
       call bytes
         mark 16
 `
+// the bytes currency type as a native buffer: text "ab" + "cd" concatenated, hex-encoded, equals "61626364". The data
+// is a byte vector / Data / ByteArray the whole way through, hex only at the edge. Boolean so it is print-agnostic.
+const BYTES_PROG = `load @cluesurf/base/code/bytes
+  find from-text
+  find to-hex
+  find concat
+
+task compute
+  like boolean
+  send back
+    call is-equal
+      call to-hex
+        call concat
+          call from-text
+            text <ab>
+          call from-text
+            text <cd>
+      text <61626364>
+`
 // AES-256-GCM: encrypt a plaintext then decrypt it, asserting the round-trip recovers the original (boolean, so it is
 // print-format agnostic). Key is 32 bytes / 64 hex, nonce is 12 bytes / 24 hex. Exercises each platform's AEAD
 // library (rust aes-gcm, swift CryptoKit AES.GCM, kotlin javax.crypto), all agreeing on the ciphertext || tag layout.
@@ -1151,6 +1170,36 @@ task compute
     call exists
       text </tmp/seed-roundtrip-fsdir-two>
 `
+// directory list: make a directory with one child, list it, and count the entries by walking the result. Exercises
+// the list-typed native return (Vec<String> / [String] / MutableList<String>) plus native list iteration on each
+// backend. The walk avoids reducing through the list form, which does not yet apply to a raw native array.
+const DIR_LIST_PROG = `load @cluesurf/base/code/file/directory
+  find make
+  find remove
+  find list
+
+task compute
+  like boolean
+  call remove
+    text </tmp/seed-roundtrip-listdir>
+  call make
+    text </tmp/seed-roundtrip-listdir/alpha>
+  save entries
+    call list
+      text </tmp/seed-roundtrip-listdir>
+  save count, mark 0
+  walk list, read entries
+    hook next
+      take site, name item
+      save count
+        call add
+          read count
+          mark 1
+  send back
+    call is-equal
+      read count
+      mark 1
+`
 // calendar: build a UTC timestamp, format it to ISO 8601, parse it back, and shift it a month. Asserts three
 // invariants at once (format matches the exact cross-platform string, parse inverts format, add-months is
 // calendar-aware) as a single boolean. Exercises each platform's date library (rust chrono, swift Foundation,
@@ -1219,6 +1268,64 @@ task compute
     call is-equal
       read ab
       read ba
+`
+// dns: resolving a numeric IP returns it, through each platform's resolver (rust std::net, swift getaddrinfo, kotlin
+// InetAddress). Offline and deterministic, asserted as a boolean.
+const DNS_PROG = `load @cluesurf/base/code/network/dns
+  find resolve-one
+
+task compute
+  mark async
+  like boolean
+  save ip
+    call resolve-one
+      text <127.0.0.1>
+      wait true
+  send back
+    call is-equal
+      read ip
+      text <127.0.0.1>
+`
+// collection: build two sets, intersect them, check the size. Exercises the native map runtime (set / has / size /
+// keys) plus mutable-collection construction and walk on each platform's reference-typed map. Asserted as a boolean.
+const COLLECTION_PROG = `load @cluesurf/base/code/set
+  find set
+
+task compute
+  like boolean
+  save a
+    make set
+      bind items
+        make find
+  call insert
+    read a
+    mark 1
+  call insert
+    read a
+    mark 2
+  call insert
+    read a
+    mark 3
+  save b
+    make set
+      bind items
+        make find
+  call insert
+    read b
+    mark 2
+  call insert
+    read b
+    mark 3
+  call insert
+    read b
+    mark 4
+  send back
+    call is-equal
+      call size
+        call intersect
+          read a
+          read b
+      mark 2
 `
 // json: parse a JSON array (no braces -- seed text literals interpolate single { ), index it, read the number.
 // as-number(get-item(parse("[10,20,30]"), 1)) == 20.0, through each platform's host JSON.
@@ -1636,6 +1743,23 @@ function main(): void {
     'true',
     false,
   )
+  // the bytes currency type as a native buffer (rust Vec<u8>, swift Data, kotlin ByteArray), hex only at the edge
+  runSwiftText(
+    'swift + bytes: concat + hex over Foundation Data',
+    frontEnd(BYTES_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + bytes: concat + hex over ByteArray',
+    frontEnd(BYTES_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: bytes concat + hex over a Vec<u8> (zero-copy currency)',
+    frontEnd(BYTES_PROG, true, 'rust'),
+    'true',
+    false,
+  )
   // AES-256-GCM authenticated encryption round-trips on all three (rust aes-gcm, swift CryptoKit, kotlin javax.crypto)
   runSwiftCrypto(
     'swift + crypto/cipher: AES-256-GCM encrypt + decrypt round-trips (CryptoKit)',
@@ -1721,6 +1845,23 @@ function main(): void {
     'false',
     false,
   )
+  // directory list: the list-typed native return, walked and counted
+  runSwiftText(
+    'swift + file/directory: list one entry, counted by walk (contentsOfDirectory)',
+    frontEnd(DIR_LIST_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + file/directory: list one entry, counted by walk (java.io.File.list)',
+    frontEnd(DIR_LIST_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: file/directory list one entry, counted by walk (std::fs::read_dir)',
+    frontEnd(DIR_LIST_PROG, true, 'rust'),
+    'true',
+    false,
+  )
   // calendar: ISO format + parse + calendar-aware add-months agree across the platform date libraries
   runSwiftText(
     'swift + calendar: ISO format + parse + add-months (Foundation)',
@@ -1754,6 +1895,37 @@ function main(): void {
     frontEnd(KEY_AGREEMENT_PROG, true, 'rust'),
     'true',
     true,
+  )
+  // dns: resolve a numeric IP to itself through each platform's resolver (offline, deterministic)
+  runSwiftCrypto(
+    'swift + network/dns: resolve-one of a numeric IP (getaddrinfo)',
+    frontEnd(DNS_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinCrypto(
+    'kotlin + network/dns: resolve-one of a numeric IP (InetAddress)',
+    frontEnd(DNS_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: network/dns resolve-one of a numeric IP (std::net)',
+    frontEnd(DNS_PROG, true, 'rust'),
+    'true',
+    true,
+  )
+  // collections: the native map runtime. kotlin's MutableMap and rust's Rc<RefCell<HashMap>> are both reference-typed,
+  // so the mutable set form (which mutates `self.items` for its side effect) runs. swift still needs its collection
+  // runtime (a reference class wrapper), tracked as pending.
+  runKotlinText(
+    'kotlin + collection: set intersect size via the native map runtime (MutableMap)',
+    frontEnd(COLLECTION_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: collection set intersect size via the native map runtime (Rc<RefCell<HashMap>>)',
+    frontEnd(COLLECTION_PROG, true, 'rust'),
+    'true',
+    false,
   )
   // json to "runs" via the host JSON: rust serde_json (cargo), swift JSONSerialization. kotlin needs org.json on the
   // classpath (not in the JDK), so it is compile-checked, not run here.

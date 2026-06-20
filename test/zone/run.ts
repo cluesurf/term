@@ -1,7 +1,13 @@
 // Reactive runtime tests: signals, effects, memoized computeds, batching, and glitch-free diamond propagation.
 // Run: npx tsx test/zone/run.ts
 
-import { batch, computed, effect, signal } from '@/code/zone/reactive'
+import {
+  batch,
+  computed,
+  createRoot,
+  effect,
+  signal,
+} from '@/code/zone/reactive'
 
 let pass = 0
 let fail = 0
@@ -96,6 +102,35 @@ function main(): void {
     setA(10)
     expect('diamond updated', last, 10 + 1 + (10 + 2))
     expect('diamond effect ran once more (no glitch)', runs, 2)
+  }
+
+  // createRoot owns its effects: disposing the root stops them, exactly (for hot-swap of one zone)
+  {
+    const [a, setA] = signal(0)
+    const [b, setB] = signal(0)
+    let aRuns = 0
+    let bRuns = 0
+    let disposeA = (): void => {}
+    createRoot(dispose => {
+      effect(() => {
+        a()
+        aRuns++
+      })
+      disposeA = dispose
+    })
+    // a sibling effect outside the root must survive the root's disposal
+    effect(() => {
+      b()
+      bRuns++
+    })
+    expect('root effect ran initially', aRuns, 1)
+    setA(1)
+    expect('root effect re-runs while live', aRuns, 2)
+    disposeA()
+    setA(2)
+    expect('root effect stops after dispose', aRuns, 2)
+    setB(1)
+    expect('an effect outside the root is unaffected', bRuns, 2)
   }
 
   console.log(`\nzone: ${pass} pass, ${fail} fail`)

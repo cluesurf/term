@@ -11,7 +11,12 @@ import type {
   Statement,
   Type,
 } from '@/code/compile/node'
-import { exhausted, mapCollect } from '@/code/compile/backend'
+import {
+  collectionCall,
+  collectionRead,
+  exhausted,
+} from '@/code/compile/backend'
+import type { CollectionOp } from '@/code/compile/backend'
 
 // Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
 // `default`, etc.) it must be backtick-escaped, in both the declaration and every reference.
@@ -153,7 +158,11 @@ export function emitSwift(program: Program): string {
       case 'array':
         return `[${swiftType(type.element)}]`
       case 'map':
-        return `[${swiftType(type.key)}: ${swiftType(type.value)}]`
+        // a reference class wrapping a Dictionary, so a map mutated through one binding (a `set.insert`) is seen
+        // through every binding. A bare Swift Dictionary is a value type and would not carry the mutation across a copy.
+        return `SeedMap<${swiftType(type.key)}, ${swiftType(
+          type.value,
+        )}>`
       case 'named':
         return type.args && type.args.length > 0
           ? `${pascal(type.name)}<${type.args
@@ -170,6 +179,8 @@ export function emitSwift(program: Program): string {
         return 'Double'
       case 'dynamic':
         return 'Any'
+      case 'bytes':
+        return 'Data'
       case 'variable':
         return varNames.get(type.id) ?? 'Int' // a free variable not in this function's scope: default to Int
       case 'unknown':
@@ -263,10 +274,10 @@ export function emitSwift(program: Program): string {
           bind,
         )})`
       case 'call': {
-        // keys / values on a Dictionary materialize to an Array (the `.keys` / `.values` views are not Arrays)
-        const collected = mapCollect(node.callee)
-        if (collected) {
-          return `Array(${expr(collected.target, bind)}.${collected.name})`
+        // a native map / list operation lowers to swift's collection API (a map goes through the SeedMap wrapper)
+        const operation = collectionCall(node.callee)
+        if (operation) {
+          return collectionExpr(operation, node.args, bind)
         }
 
         return `${expr(node.callee, bind)}(${node.args
@@ -277,10 +288,10 @@ export function emitSwift(program: Program): string {
         return `[${node.items.map(i => expr(i, bind)).join(', ')}]`
       case 'map':
         return node.entries.length === 0
-          ? '[:]'
-          : `[${node.entries
+          ? 'SeedMap()'
+          : `SeedMap([${node.entries
               .map(e => `${expr(e.key, bind)}: ${expr(e.value, bind)}`)
-              .join(', ')}]`
+              .join(', ')}])`
       case 'record': {
         // leading-dot construction: Swift infers the enum/struct type from context
         if (variantSet.has(node.name)) {
@@ -297,6 +308,16 @@ export function emitSwift(program: Program): string {
           .join(', ')})`
       }
       case 'member': {
+        // `map.size` / `array.length` read the count (a map goes through its wrapper's `data`; an array is plain)
+        const read = collectionRead(node)
+        if (read) {
+          const handle =
+            read.kind === 'map'
+              ? `${expr(read.target, bind)}.data`
+              : expr(read.target, bind)
+          return `${handle}.count`
+        }
+
         // a matched variant's field reads the bound local; otherwise a normal field access
         if (
           node.target.form === 'variable' &&
@@ -327,6 +348,48 @@ export function emitSwift(program: Program): string {
       }
       default:
         return exhausted(node)
+    }
+  }
+
+  // lower a native map / list operation to swift. A map goes through the SeedMap wrapper (`.data` is its Dictionary,
+  // `.setting` / `.removing` mutate and return). The return shapes match the JS collection API the stdlib forms expect.
+  const collectionExpr = (
+    op: CollectionOp,
+    args: Array<Expression>,
+    bind: Bindings,
+  ): string => {
+    const target = expr(op.target, bind)
+    const arg = args.map(a => expr(a, bind))
+    if (op.kind === 'map') {
+      switch (op.op) {
+        case 'has':
+          return `(${target}.data[${arg[0]}] != nil)`
+        case 'get':
+          return `${target}.data[${arg[0]}]!`
+        case 'set':
+          return `${target}.setting(${arg[0]}, ${arg[1]})`
+        case 'delete':
+          return `${target}.removing(${arg[0]})`
+        case 'keys':
+          return `Array(${target}.data.keys)`
+        case 'values':
+          return `Array(${target}.data.values)`
+        default:
+          return ''
+      }
+    }
+
+    switch (op.op) {
+      case 'push':
+        return `${target}.append(${arg[0]})`
+      case 'pop':
+        return `${target}.removeLast()`
+      case 'at':
+        return `${target}[${arg[0]}]`
+      case 'includes':
+        return `${target}.contains(${arg[0]})`
+      default:
+        return ''
     }
   }
 

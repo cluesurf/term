@@ -200,6 +200,7 @@ const FILE_DIR = `load @cluesurf/base/code/file/directory
   find make
   find remove
   find exists
+  find list
 
 task make-dir
   take path, like text
@@ -217,6 +218,14 @@ task remove-dir
     read path
   send back
     call exists
+      read path
+
+task list-dir
+  take path, like text
+  like list
+    like text
+  send back
+    call list
       read path
 `
 
@@ -852,6 +861,117 @@ task draw
       read size
 `
 
+// the bytes currency type: text/hex/base64 codecs at the edges, length and concat over the native Uint8Array. The
+// data stays a raw buffer the whole way through, no hex tax between operations.
+const BYTES = `load @cluesurf/base/code/bytes
+  find from-text
+  find to-text
+  find to-hex
+  find from-hex
+  find to-base64
+  find from-base64
+  find length
+  find concat
+
+task hex-of
+  take input, like text
+  like text
+  send back
+    call to-hex
+      call from-text
+        read input
+
+task round-trip-text
+  take input, like text
+  like text
+  send back
+    call to-text
+      call from-text
+        read input
+
+task round-trip-base64
+  take input, like text
+  like text
+  send back
+    call to-text
+      call from-base64
+        call to-base64
+          call from-text
+            read input
+
+task byte-length
+  take input, like text
+  like number
+  send back
+    call length
+      call from-text
+        read input
+
+task concat-hex
+  like text
+  send back
+    call to-hex
+      call concat
+        call from-text
+          text <ab>
+        call from-text
+          text <cd>
+
+task hex-round-trip
+  take input, like text
+  like text
+  send back
+    call to-text
+      call from-hex
+        call to-hex
+          call from-text
+            read input
+`
+
+// zero-copy file IO: write a byte buffer and read it back as bytes. node fs returns a Buffer (a Uint8Array) with no
+// utf8 round-trip. The text codec is applied only at the very edge to check the result.
+const BYTES_FILE = `load @cluesurf/base/code/file
+  find write-bytes
+  find read-bytes
+
+load @cluesurf/base/code/bytes
+  find from-text
+  find to-text
+  find length
+
+task round-trip-file
+  mark async
+  take path, like text
+  take input, like text
+  like text
+  call write-bytes
+    read path
+    call from-text
+      read input
+    wait true
+  send back
+    call to-text
+      call read-bytes
+        read path
+        wait true
+
+task byte-size-on-disk
+  mark async
+  take path, like text
+  take input, like text
+  like number
+  call write-bytes
+    read path
+    call from-text
+      read input
+    wait true
+  send back
+    call length
+      call read-bytes
+        read path
+        wait true
+`
+
 // AES-256-GCM authenticated encryption: encrypt then decrypt round-trips back to the plaintext (via SubtleCrypto on
 // node). Key and nonce are hex; the ciphertext (with the appended tag) is hex.
 const CIPHER = `load @cluesurf/base/code/cryptography/cipher
@@ -1036,6 +1156,32 @@ task agree
       read ba
 `
 
+// network/dns: resolve a host to its addresses via the platform resolver. A numeric IP resolves to itself with no
+// network round trip, so the assertion is deterministic and offline.
+const DNS = `load @cluesurf/base/code/network/dns
+  find resolve
+  find resolve-one
+
+task one
+  mark async
+  take host, like text
+  like text
+  send back
+    call resolve-one
+      read host
+      wait true
+
+task all
+  mark async
+  take host, like text
+  like list
+    like text
+  send back
+    call resolve
+      read host
+      wait true
+`
+
 // network/http: GET through the host fetch (a data: URL needs no server), reading status + body off the response
 const HTTP = `load @cluesurf/base/code/network/http
   find get
@@ -1119,6 +1265,20 @@ async function main(): Promise<void> {
     200,
   )
 
+  const dns = await loadProgram(DNS)
+  expect(
+    'network/dns: resolve-one of a numeric IP returns it (offline)',
+    await dns.one!('127.0.0.1'),
+    '127.0.0.1',
+  )
+  expect(
+    'network/dns: resolve of localhost includes the loopback address',
+    ((await dns.all!('localhost')) as Array<string>).includes(
+      '127.0.0.1',
+    ),
+    true,
+  )
+
   const js = await loadProgram(JSON_PROG)
   expect(
     'json: parse + get-field + as-number reads a number field',
@@ -1175,6 +1335,14 @@ async function main(): Promise<void> {
     je.encodedActive!(),
     true,
   )
+
+  const by = await loadProgram(BYTES)
+  expect('bytes: from-text -> to-hex (utf8 then hex)', by.hexOf!('hi'), '6869')
+  expect('bytes: text round-trips through utf8 (multibyte)', by.roundTripText!('café'), 'café')
+  expect('bytes: base64 round-trips back to the text', by.roundTripBase64!('café'), 'café')
+  expect('bytes: utf8 length counts bytes not chars (é is 2)', by.byteLength!('café'), 5)
+  expect('bytes: concat two buffers then hex', by.concatHex!(), '61626364')
+  expect('bytes: hex round-trips back to the text', by.hexRoundTrip!('hello'), 'hello')
 
   const sr = await loadProgram(SECURE_RANDOM)
   const draw16 = sr.draw!(16) as string
@@ -1471,16 +1639,55 @@ async function main(): Promise<void> {
   const metaFile = join(metaDir, 'note.txt')
   writeFileSync(metaFile, 'twelve bytes')
   const fm = await loadProgram(FILE_META)
-  expect('file/metadata: size reads the byte length', fm.sizeOf!(metaFile), 12)
-  expect('file/metadata: is-file is true for a file', fm.fileCheck!(metaFile), true)
-  expect('file/metadata: is-directory is false for a file', fm.dirCheck!(metaFile), false)
-  expect('file/metadata: is-directory is true for a directory', fm.dirCheck!(metaDir), true)
-  expect('file/metadata: size of a missing path is 0', fm.sizeOf!(join(metaDir, 'nope')), 0)
+  expect(
+    'file/metadata: size reads the byte length',
+    fm.sizeOf!(metaFile),
+    12,
+  )
+  expect(
+    'file/metadata: is-file is true for a file',
+    fm.fileCheck!(metaFile),
+    true,
+  )
+  expect(
+    'file/metadata: is-directory is false for a file',
+    fm.dirCheck!(metaFile),
+    false,
+  )
+  expect(
+    'file/metadata: is-directory is true for a directory',
+    fm.dirCheck!(metaDir),
+    true,
+  )
+  expect(
+    'file/metadata: size of a missing path is 0',
+    fm.sizeOf!(join(metaDir, 'nope')),
+    0,
+  )
 
   const fd = await loadProgram(FILE_DIR)
   const newDir = join(metaDir, 'made', 'deep')
-  expect('file/directory: make creates the directory (recursive)', fd.makeDir!(newDir), true)
-  expect('file/directory: remove deletes the directory', fd.removeDir!(newDir), false)
+  expect(
+    'file/directory: make creates the directory (recursive)',
+    fd.makeDir!(newDir),
+    true,
+  )
+  expect(
+    'file/directory: remove deletes the directory',
+    fd.removeDir!(newDir),
+    false,
+  )
+  const entries = fd.listDir!(metaDir) as Array<string>
+  expect(
+    'file/directory: list returns the directory entries',
+    Array.isArray(entries) && entries.includes('note.txt'),
+    true,
+  )
+  expect(
+    'file/directory: list of a missing path is empty',
+    (fd.listDir!(join(metaDir, 'nope')) as Array<string>).length,
+    0,
+  )
 
   const ti = await loadProgram(TIME)
   const epoch = ti.epoch!() as number
@@ -1552,6 +1759,19 @@ async function main(): Promise<void> {
     'file: test reports a missing file',
     await m.exists!(missing),
     false,
+  )
+
+  const bf = await loadProgram(BYTES_FILE)
+  const bytesPath = join(dir, 'raw.bin')
+  expect(
+    'file: write-bytes then read-bytes round-trips as a native buffer (no utf8 hop)',
+    await bf.roundTripFile!(bytesPath, 'raw bytes ☃'),
+    'raw bytes ☃',
+  )
+  expect(
+    'file: the bytes on disk count utf8 octets (snowman is 3 bytes)',
+    await bf.byteSizeOnDisk!(bytesPath, 'ab☃'),
+    5,
   )
 
   // cross-target: the SAME public `file` module compiles for every platform, each forwarding to its own native impl,

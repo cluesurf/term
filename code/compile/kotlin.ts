@@ -11,7 +11,12 @@ import type {
   Statement,
   Type,
 } from '@/code/compile/node'
-import { exhausted, mapCollect } from '@/code/compile/backend'
+import {
+  collectionCall,
+  collectionRead,
+  exhausted,
+} from '@/code/compile/backend'
+import type { CollectionOp } from '@/code/compile/backend'
 
 function camel(name: string): string {
   return name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
@@ -90,9 +95,12 @@ export function emitKotlin(program: Program): string {
       case undefined:
         return 'Unit'
       case 'array':
-        return `List<${kotlinType(type.element)}>`
+        // the stdlib list mutates in place (push / pop), so it lowers to a mutable, reference-typed collection
+        return `MutableList<${kotlinType(type.element)}>`
       case 'map':
-        return `Map<${kotlinType(type.key)}, ${kotlinType(type.value)}>`
+        return `MutableMap<${kotlinType(type.key)}, ${kotlinType(
+          type.value,
+        )}>`
       case 'named':
         return type.args && type.args.length > 0
           ? `${pascal(type.name)}<${type.args
@@ -109,6 +117,8 @@ export function emitKotlin(program: Program): string {
         return 'Double'
       case 'dynamic':
         return 'Any'
+      case 'bytes':
+        return 'ByteArray'
       case 'variable':
         return varNames.get(type.id) ?? 'Long'
       case 'unknown':
@@ -179,20 +189,33 @@ export function emitKotlin(program: Program): string {
       case 'binary':
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
       case 'call': {
-        // keys / values on a Map materialize to a List (the `.keys` / `.values` views are not Lists)
-        const collected = mapCollect(node.callee)
-        if (collected) {
-          return `${expr(collected.target)}.${collected.name}.toList()`
+        // a native map / list operation lowers to kotlin's collection API
+        const operation = collectionCall(node.callee)
+        if (operation) {
+          return collectionExpr(operation, node.args)
         }
 
         return `${expr(node.callee)}(${node.args.map(expr).join(', ')})`
       }
-      case 'array':
-        return `listOf(${node.items.map(expr).join(', ')})`
-      case 'map':
-        return `mapOf(${node.entries
+      case 'array': {
+        // an empty collection literal gives kotlin nothing to infer from, so emit the element type explicitly
+        const args =
+          node.type?.kind === 'array'
+            ? `<${kotlinType(node.type.element)}>`
+            : ''
+        return `mutableListOf${args}(${node.items.map(expr).join(', ')})`
+      }
+      case 'map': {
+        const args =
+          node.type?.kind === 'map'
+            ? `<${kotlinType(node.type.key)}, ${kotlinType(
+                node.type.value,
+              )}>`
+            : ''
+        return `mutableMapOf${args}(${node.entries
           .map(e => `${expr(e.key)} to ${expr(e.value)}`)
           .join(', ')})`
+      }
       case 'record': {
         const cls = variantClass.get(node.name)
         if (cls) {
@@ -202,12 +225,24 @@ export function emitKotlin(program: Program): string {
                 .join(', ')})`
             : cls
         }
-        return `${pascal(node.name)}(${node.fields
+        // a generic struct built from empty collections cannot infer its parameters; pin them from the checked type
+        const args =
+          node.type?.kind === 'named' && node.type.args?.length
+            ? `<${node.type.args.map(kotlinType).join(', ')}>`
+            : ''
+        return `${pascal(node.name)}${args}(${node.fields
           .map(f => `${camel(f.name)} = ${expr(f.value)}`)
           .join(', ')})`
       }
-      case 'member':
+      case 'member': {
+        // `map.size` / `array.length` lower to the platform's count property (as a Long, the seed number type)
+        const read = collectionRead(node)
+        if (read) {
+          return `${expr(read.target)}.size.toLong()`
+        }
+
         return `${expr(node.target)}.${camel(node.name)}`
+      }
       case 'await':
         return expr(node.expr)
       case 'closure': {
@@ -231,6 +266,47 @@ export function emitKotlin(program: Program): string {
       }
       default:
         return exhausted(node)
+    }
+  }
+
+  // lower a native map / list operation to kotlin. The return shapes match the JS collection API the stdlib forms
+  // expect: `set` yields the map, `delete` / `push` yield a boolean / the new length, sizes are Long (the number type).
+  const collectionExpr = (
+    op: CollectionOp,
+    args: Array<Expression>,
+  ): string => {
+    const target = expr(op.target)
+    const arg = args.map(expr)
+    if (op.kind === 'map') {
+      switch (op.op) {
+        case 'has':
+          return `${target}.containsKey(${arg[0]})`
+        case 'get':
+          return `${target}.getValue(${arg[0]})`
+        case 'set':
+          return `${target}.apply { put(${arg[0]}, ${arg[1]}) }`
+        case 'delete':
+          return `(${target}.remove(${arg[0]}) != null)`
+        case 'keys':
+          return `${target}.keys.toMutableList()`
+        case 'values':
+          return `${target}.values.toMutableList()`
+        default:
+          return ''
+      }
+    }
+
+    switch (op.op) {
+      case 'push':
+        return `${target}.apply { add(${arg[0]}) }.size.toLong()`
+      case 'pop':
+        return `${target}.removeLast()`
+      case 'at':
+        return `${target}[(${arg[0]}).toInt()]`
+      case 'includes':
+        return `${target}.contains(${arg[0]})`
+      default:
+        return ''
     }
   }
 

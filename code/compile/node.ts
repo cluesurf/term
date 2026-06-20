@@ -17,6 +17,10 @@ export type Type =
   // the host's dynamic value: a JS `any`, a rust `serde_json::Value`, a swift / kotlin `Any`. The opaque result of
   // `json.parse`, navigated by the json accessors. Distinct from `unknown` (an inference hole that defaults to number).
   | { kind: 'dynamic' }
+  // a raw byte buffer backed by the platform's native octet type: a JS `Uint8Array`, a rust `Vec<u8>`, a swift
+  // `Data`, a kotlin `ByteArray`. The zero-copy currency for crypto, encoding, file IO, and the network. Hex and
+  // base64 are explicit codecs at the edges, not a tax on every call.
+  | { kind: 'bytes' }
   | { kind: 'array'; element: Type }
   | { kind: 'map'; key: Type; value: Type }
   | { kind: 'named'; name: string; args?: Array<Type> }
@@ -35,6 +39,7 @@ export const STRING: Type = { kind: 'string' }
 export const UNIT: Type = { kind: 'unit' }
 export const UNKNOWN: Type = { kind: 'unknown' }
 export const DYNAMIC: Type = { kind: 'dynamic' }
+export const BYTES: Type = { kind: 'bytes' }
 
 export type BinaryOp =
   | '+'
@@ -347,6 +352,8 @@ export function showType(type: Type): string {
       return 'float'
     case 'dynamic':
       return 'dynamic'
+    case 'bytes':
+      return 'bytes'
     case 'boolean':
       return 'boolean'
     case 'string':

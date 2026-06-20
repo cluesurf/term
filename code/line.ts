@@ -11,6 +11,7 @@ import { callMake } from './call/make'
 import { callTest } from './call/test'
 import { callTime } from './call/time'
 import { callBoot } from './call/boot'
+import { callServe } from './call/serve'
 import { callWash } from './call/wash'
 import { callWalk } from './call/walk'
 import { callMove } from './call/move'
@@ -33,6 +34,7 @@ const COMMANDS = [
   'time',
   'profile',
   'boot',
+  'serve',
   'wash',
   'walk',
   'move',
@@ -335,9 +337,39 @@ const cli = yargs(hideBin(process.argv))
         .option('env', {
           type: 'string',
           description: 'Target env (node, browser)',
+        })
+        .option('remote', {
+          type: 'string',
+          description: 'Remote cache endpoint (pull before, push after)',
+        })
+        .option('remote-token', {
+          type: 'string',
+          description: 'Bearer token for the remote cache',
         }),
     async argv => {
       await callBoot({
+        root,
+        entry: argv.entry,
+        port: argv.port,
+        env: argv.env as never,
+        remote: argv.remote,
+        remoteToken: argv['remote-token'],
+      })
+    },
+  )
+  .command(
+    'serve [entry]',
+    'Start the dev server (lazy ESM + hot reload)',
+    yargs =>
+      yargs
+        .positional('entry', {
+          type: 'string',
+          description: 'Entry .tree module (defaults to deck.tree boot)',
+        })
+        .option('port', { type: 'number', description: 'Port to serve on' })
+        .option('env', { type: 'string', description: 'Target env' }),
+    async argv => {
+      await callServe({
         root,
         entry: argv.entry,
         port: argv.port,

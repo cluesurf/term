@@ -5,8 +5,12 @@
 
 type Observer = { run: () => void; sources: Set<Source> }
 type Source = { observers: Set<Observer> }
+// a reactive ownership scope: the disposers (effect teardowns) created under it. A zone runs its setup inside one
+// scope, so a hot swap can tear down exactly that zone's reactive graph and nothing else. See createRoot.
+type Scope = { disposers: Set<() => void> }
 
 let currentObserver: Observer | undefined
+let currentScope: Scope | undefined
 let batchDepth = 0
 const pending = new Set<Observer>()
 
@@ -113,7 +117,28 @@ export function effect(run: () => void): () => void {
     },
   }
   observer.run()
-  return () => detach(observer)
+  const dispose = (): void => detach(observer)
+  // an effect created inside a scope is owned by it, so disposing the scope tears the effect down
+  currentScope?.disposers.add(dispose)
+  return dispose
+}
+
+// run `fn` inside a fresh ownership scope. Every effect created during `fn` (transitively) is owned by the scope.
+// `fn` receives a `dispose` that tears them all down. This is the unit a zone is mounted in, so a hot swap disposes
+// exactly one zone's reactive graph before re-running it. Returns whatever `fn` returns.
+export function createRoot<T>(fn: (dispose: () => void) => T): T {
+  const scope: Scope = { disposers: new Set() }
+  const dispose = (): void => {
+    for (const disposer of scope.disposers) disposer()
+    scope.disposers.clear()
+  }
+  const previous = currentScope
+  currentScope = scope
+  try {
+    return fn(dispose)
+  } finally {
+    currentScope = previous
+  }
 }
 
 // group several writes so dependents update once, after the batch
