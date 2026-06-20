@@ -74,6 +74,11 @@ function parseType(node: Node): Type {
     const elementLike = rest(node).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
     return { kind: 'array', element: elementLike ? parseLikeType(elementLike) : UNKNOWN }
   }
+  // `hash` is the native map; optional inner `like <k>` / `like <v>` give the key / value types
+  if (name === 'hash') {
+    const likes = rest(node).filter((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+    return { kind: 'map', key: likes[0] ? parseLikeType(likes[0]) : UNKNOWN, value: likes[1] ? parseLikeType(likes[1]) : UNKNOWN }
+  }
   return TYPE_NAME[name] ?? { kind: 'named', name }
 }
 
@@ -104,6 +109,21 @@ function parseLikeType(likeGroup: GroupNode): Type {
     const elementLike = children.slice(1).find((c): c is GroupNode => c.kind === 'group' && headName(c) === 'like')
       ?? rest(first).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
     return { kind: 'array', element: elementLike ? parseLikeType(elementLike) : UNKNOWN }
+  }
+  // `like hash` (with optional `like <k>` / `like <v>` siblings) is the native map
+  if (first && first.kind === 'group' && headName(first) === 'hash') {
+    const likes = children.slice(1).filter((c): c is GroupNode => c.kind === 'group' && headName(c) === 'like')
+    return { kind: 'map', key: likes[0] ? parseLikeType(likes[0]) : UNKNOWN, value: likes[1] ? parseLikeType(likes[1]) : UNKNOWN }
+  }
+  // a parameterized named type: `like maybe / like t` -> maybe<t>, `like result / like ok / like err` -> result<ok, err>.
+  // The type arguments are the sibling `like` children of the SAME like group.
+  if (first && first.kind === 'group') {
+    const base = parseType(first)
+    if (base.kind === 'named') {
+      const args = children.slice(1).filter((c): c is GroupNode => c.kind === 'group' && headName(c) === 'like').map(parseLikeType)
+      if (args.length > 0) return { kind: 'named', name: base.name, args }
+    }
+    return base
   }
   return first ? parseType(first) : UNKNOWN
 }
@@ -507,15 +527,18 @@ export function mill(tree: RootNode, file: string): MillResult {
               }
               bodyNodes = nextBody.slice(1)
             }
-            scope.add(item)
-            out.push({ form: 'for-each', item, iterable, body: toStatements(bodyNodes, scope), span })
+            // the loop body gets a fresh child scope (so a `save` inside the loop is local and does not leak), with
+            // the item name bound in it
+            const forScope = new Set(scope)
+            forScope.add(item)
+            out.push({ form: 'for-each', item, iterable, body: toStatements(bodyNodes, forScope), span })
             break
           }
           const hookMap = hooks(node)
           const condNodes = hookMap.get('test')
           const bodyNodes = hookMap.get('step') ?? hookMap.get('tick') ?? hookMap.get('hold') ?? []
           const cond: Expression = condNodes && condNodes[0] ? toExpression(condNodes[0], scope) : { form: 'boolean', value: false, span }
-          out.push({ form: 'while', cond, body: toStatements(bodyNodes, scope), span })
+          out.push({ form: 'while', cond, body: toStatements(bodyNodes, new Set(scope)), span })
           break
         }
         case 'fork': {
@@ -530,8 +553,8 @@ export function mill(tree: RootNode, file: string): MillResult {
               if (arm.kind !== 'group' || headName(arm) !== 'case') continue
               const labelGroup = rest(arm)[0]
               const label = labelGroup && labelGroup.kind === 'group' ? headName(labelGroup) : undefined
-              if (label === 'else') otherwise = toStatements(rest(arm).slice(1), scope)
-              else if (label) cases.push({ label, body: toStatements(rest(arm).slice(1), scope) })
+              if (label === 'else') otherwise = toStatements(rest(arm).slice(1), new Set(scope))
+              else if (label) cases.push({ label, body: toStatements(rest(arm).slice(1), new Set(scope)) })
             }
             out.push({ form: 'match', subject, cases, otherwise, span })
             break
@@ -553,14 +576,14 @@ export function mill(tree: RootNode, file: string): MillResult {
               if (pendingCond) branches.push({ cond: pendingCond, body: [] })
               pendingCond = bodyNodes[0] ? toExpression(bodyNodes[0], scope) : { form: 'boolean', value: false, span }
             } else if (variantName === 'hold') {
-              branches.push({ cond: pendingCond ?? { form: 'boolean', value: true, span }, body: toStatements(bodyNodes, scope) })
+              branches.push({ cond: pendingCond ?? { form: 'boolean', value: true, span }, body: toStatements(bodyNodes, new Set(scope)) })
               pendingCond = undefined
             } else if (variantName === 'miss') {
               if (pendingCond) {
                 branches.push({ cond: pendingCond, body: [] })
                 pendingCond = undefined
               }
-              otherwise = toStatements(bodyNodes, scope)
+              otherwise = toStatements(bodyNodes, new Set(scope))
             }
           }
           if (pendingCond) branches.push({ cond: pendingCond, body: [] })

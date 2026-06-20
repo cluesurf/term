@@ -104,13 +104,18 @@ const PATTERN: Record<TokenKind, RegExp> = {
   [TokenKind.Decimal]: /^-?\d+\.\d+/,
   [TokenKind.Radix]: /^0[xXbBoO]\w+/,
   [TokenKind.Newline]: /^\n/,
-  [TokenKind.OpenBrace]: /^\{+/,
+  // a `{` opens an interpolation ONLY when an identifier follows (`{name}`); otherwise it is a literal brace. This lets
+  // a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3}>`) without escaping, while `{name}`
+  // template / string interpolation still works.
+  [TokenKind.OpenBrace]: /^\{+(?=[a-zA-Z_])/,
   [TokenKind.OpenParen]: /^\(/,
   [TokenKind.OpenAngle]: /^</,
   [TokenKind.Space]: /^ +/,
   [TokenKind.Name]: /^[@~$%^&*'":.a-z0-9A-Z_\-?/]+/,
   [TokenKind.Integer]: /^-?\d+(?=\b)/,
-  [TokenKind.Chunk]: /^(?:\\[<>{}])+|[^{>\\]+/,
+  // a chunk runs over literal text, including a `{` that does not open an interpolation (not followed by an
+  // identifier) and any `}`; it stops at `>` (close), `\` (escape), or an interpolation-opening `{`.
+  [TokenKind.Chunk]: /^(?:\\[<>{}]|\{+(?![a-zA-Z_])|[^>{\\])+/,
 }
 
 export function tokenize(source: { file: string; text: string }): TokenResult {

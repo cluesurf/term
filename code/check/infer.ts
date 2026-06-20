@@ -137,6 +137,9 @@ export function check(program: Program, file: string, fileOrigin?: WeakMap<State
   }
 
   function expect(actual: Type, wanted: Type, span: Span, what: string): void {
+    // defensive: a malformed program (e.g. a duplicate definition that already produced a diagnostic) can leave a
+    // type undefined. Never crash on it -- the real error has been reported elsewhere.
+    if (!actual || !wanted) return
     // remember which sides were still inference variables, so we can blame where they were first fixed
     const suspects: Array<number> = []
     if (actual.kind === 'variable') suspects.push(actual.id)
@@ -189,6 +192,19 @@ export function check(program: Program, file: string, fileOrigin?: WeakMap<State
   const functions = new Map<string, Signature>()
   for (const statement of program) {
     if (statement.form !== 'function') continue
+    // a redefinition with a DIFFERENT arity corrupts the signature table (the body of one definition would be checked
+    // against the other's parameters) and used to crash the checker. Flag it and keep the first. Same-arity
+    // redefinitions are left as the existing last-wins behavior (template-generated term constants rely on it).
+    const existing = functions.get(statement.name)
+    if (existing) {
+      // a different-arity redefinition is flagged only when it is in the entry module (the user's own code). Imported
+      // packages legitimately carry same-name overloads (e.g. a generated binding's DOM method with several
+      // signatures); those keep the first silently, and the emitter dedups them.
+      if (existing.params.length !== statement.params.length && (fileOrigin?.get(statement) ?? file) === file) {
+        diagnostics.push(diagnose('duplicate-definition', { file, span: statement.span, message: `"${statement.name}" is defined more than once, with a different number of parameters` }))
+      }
+      continue
+    }
     const genericVars = new Map<string, Type>()
     const genericIds = new Set<number>()
     const genericNames = new Map<number, string>()

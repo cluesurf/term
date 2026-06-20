@@ -562,7 +562,7 @@ const JSON_PROG = `load @cluesurf/base/code/json
   find as-text
   find as-boolean
 
-task field-number
+task read-count
   take text, like text
   like decimal
   send back
@@ -572,7 +572,7 @@ task field-number
           read text
         text <count>
 
-task field-text
+task read-name
   take text, like text
   like text
   send back
@@ -607,6 +607,151 @@ task round-trip
     call stringify
       call parse
         read text
+
+task literal-object
+  like decimal
+  send back
+    call as-number
+      call get-field
+        call parse
+          text <{"count":7,"name":"seed"}>
+        text <count>
+`
+
+// typed JSON decode: a `form` schema's fields read straight out of the parsed JSON via the field accessors
+const JSON_DECODE = `load @cluesurf/base/code/json
+  find parse
+  find field-text
+  find field-number
+  find field-boolean
+
+form person
+  link name, like text
+  link age, like decimal
+  link active, like boolean
+
+task decode
+  take text, like text
+  like person
+  save j
+    call parse
+      read text
+  send back
+    make person
+      bind name
+        call field-text
+          read j
+          text <name>
+      bind age
+        call field-number
+          read j
+          text <age>
+      bind active
+        call field-boolean
+          read j
+          text <active>
+
+task name-of
+  take text, like text
+  like text
+  save p
+    call decode
+      read text
+  send back
+    read p/name
+
+task age-of
+  take text, like text
+  like decimal
+  save p
+    call decode
+      read text
+  send back
+    read p/age
+`
+
+// typed JSON encode: a `form`'s fields are assembled into the opaque dynamic value (make-object + set-field +
+// from-*), then stringified through the host JSON. Symmetric with the field-accessor decode above, and cross-platform
+// (every backend builds the native JSON value, no derive macros). Verified by parsing the output back out.
+const JSON_ENCODE = `load @cluesurf/base/code/json
+  find parse
+  find stringify
+  find field-text
+  find field-number
+  find field-boolean
+  find make-object
+  find set-field
+  find from-text
+  find from-number
+  find from-boolean
+
+form person
+  link name, like text
+  link age, like decimal
+  link active, like boolean
+
+task encode
+  take p, like person
+  like text
+  send back
+    call stringify
+      call set-field
+        call set-field
+          call set-field
+            call make-object
+            text <name>
+            call from-text
+              read p/name
+          text <age>
+          call from-number
+            read p/age
+        text <active>
+        call from-boolean
+          read p/active
+
+task sample
+  like text
+  save p
+    make person
+      bind name
+        text <seed>
+      bind age
+        3.0
+      bind active
+        wave true
+  send back
+    call encode
+      read p
+
+task encoded-name
+  like text
+  save j
+    call parse
+      call sample
+  send back
+    call field-text
+      read j
+      text <name>
+
+task encoded-age
+  like decimal
+  save j
+    call parse
+      call sample
+  send back
+    call field-number
+      read j
+      text <age>
+
+task encoded-active
+  like boolean
+  save j
+    call parse
+      call sample
+  send back
+    call field-boolean
+      read j
+      text <active>
 `
 
 // network/http: GET through the host fetch (a data: URL needs no server), reading status + body off the response
@@ -681,11 +826,21 @@ async function main(): Promise<void> {
   expect('network/http: get reads the status', await ht.fetchStatus!('data:text/plain,x'), 200)
 
   const js = await loadProgram(JSON_PROG)
-  expect('json: parse + get-field + as-number reads a number field', js.fieldNumber!('{"count":42,"name":"seed"}'), 42)
-  expect('json: get-field + as-text reads a string field', js.fieldText!('{"count":42,"name":"seed"}'), 'seed')
+  expect('json: parse + get-field + as-number reads a number field', js.readCount!('{"count":42,"name":"seed"}'), 42)
+  expect('json: get-field + as-text reads a string field', js.readName!('{"count":42,"name":"seed"}'), 'seed')
   expect('json: get-item + as-number indexes an array', js.itemNumber!('[10,20,30]'), 20)
   expect('json: as-boolean reads a bool', js.boolOf!('true'), true)
   expect('json: stringify(parse) round-trips through the host JSON', js.roundTrip!('{"a":1,"b":[2,3]}'), '{"a":1,"b":[2,3]}')
+  expect('json: a JSON object literal in seed source parses (brace fix)', js.literalObject!(), 7)
+
+  const jd = await loadProgram(JSON_DECODE)
+  expect('json: decode a typed `form` from JSON (text field)', jd.nameOf!('{"name":"seed","age":3,"active":true}'), 'seed')
+  expect('json: decode a typed `form` from JSON (number field)', jd.ageOf!('{"name":"seed","age":3,"active":true}'), 3)
+
+  const je = await loadProgram(JSON_ENCODE)
+  expect('json: encode a typed `form` to JSON, text field survives the round-trip', je.encodedName!(), 'seed')
+  expect('json: encode a typed `form` to JSON, number field survives the round-trip', je.encodedAge!(), 3)
+  expect('json: encode a typed `form` to JSON, boolean field survives the round-trip', je.encodedActive!(), true)
 
   const rx = await loadProgram(REGEX)
   expect('regex/matches accepts a matching string', rx.isDigits!('12345'), true)

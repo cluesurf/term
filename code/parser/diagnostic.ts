@@ -46,6 +46,7 @@ export const CATALOG = {
   'non-terminating': { code: 0xe, message: 'this recursion could not be shown to terminate', severity: 'warning', fix: 'make a recursive call decrease an argument (e.g. a structurally smaller value), or add a base case' },
   'unchecked-hold': { code: 0xf, message: 'this hold is outside the decidable linear fragment and was not proven', severity: 'warning', fix: 'rewrite it as a linear comparison (<, <=, >, >=, ==), or prove it in the dependent kernel' },
   'duplicate-instance': { code: 0x10, message: 'this trait is implemented more than once for the same type', severity: 'error', fix: 'remove the overlapping implementation; a type may implement a trait only once (coherence)' },
+  'duplicate-definition': { code: 0x13, message: 'this name is defined more than once', severity: 'error', fix: 'rename one of the definitions; a top-level task or form name must be unique within the program' },
   'effect-error': { code: 0x11, message: 'an effect is used inconsistently', severity: 'error', fix: 'mark the task async, await the asynchronous call, or only await asynchronous tasks' },
   'invalid-proof': { code: 0x12, message: 'this proof does not establish the proposition', severity: 'error', fix: 'check the tactic and its argument; `melt` needs both sides to compute equal, `cite` needs a proven lemma of the same statement' },
 } satisfies Record<string, CatalogEntry>

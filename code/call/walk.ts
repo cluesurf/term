@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline'
-import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -100,7 +100,9 @@ export function linkResolver(root: string): Resolver {
     const [, pkg, rest] = match
     const base = join(linkDir, pkg!)
     for (const candidate of [join(base, `${rest}.tree`), join(base, rest!, 'base.tree'), join(base, rest!, 'note.tree')]) {
-      if (existsSync(candidate)) return { file: candidate, text: readFileSync(candidate, 'utf8') }
+      // canonicalize through the `link/` symlink so a file reached via a linked package and via its real path dedup
+      // to one module (lets a package reference itself by name, e.g. `bear @cluesurf/site/code/dom/view`)
+      if (existsSync(candidate)) return { file: realpathSync(candidate), text: readFileSync(candidate, 'utf8') }
     }
     return undefined
   }

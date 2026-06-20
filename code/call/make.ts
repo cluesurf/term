@@ -1,6 +1,6 @@
 import { spawn } from 'child_process'
 import path from 'path'
-import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync, watch as fsWatch } from 'fs'
+import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync, realpathSync, watch as fsWatch } from 'fs'
 import { compile } from '../compile/compile'
 import { CompileCache } from '../compile/cache'
 import { withNativeEnv } from '../compile/native'
@@ -34,7 +34,8 @@ export function projectResolver(root: string, env: NativeEnv = 'node'): Resolver
   const tryFile = (b: string) => {
     for (const candidate of [`${b}.tree`, path.join(b, 'base.tree'), path.join(b, 'note.tree')]) {
       try {
-        return { file: candidate, text: readFileSync(candidate, 'utf8') }
+        // canonicalize so a file reached via a symlink (e.g. a self-referencing linked package) dedups to one module
+        return { file: realpathSync(candidate), text: readFileSync(candidate, 'utf8') }
       } catch {
         // try the next candidate
       }

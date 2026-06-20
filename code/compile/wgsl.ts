@@ -35,7 +35,8 @@ export function emitWgsl(program: Program): string {
       case 'integer':
         return String(node.value)
       case 'float':
-        return String(node.value)
+        // an f32 literal needs a decimal point so it is a float, not an i32
+        return Number.isInteger(node.value) ? `${node.value}.0` : String(node.value)
       case 'boolean':
         return node.value ? 'true' : 'false'
       case 'variable':

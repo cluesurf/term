@@ -465,6 +465,65 @@ function runLlvmRust(name: string, program: Program, mangledCall: string, want: 
 const GREETING = `task greeting\n  like text\n  send back\n    call add\n      text <hello >\n      text <world>\n`
 
 // an iterative Fibonacci: mutation + a while loop (the scalar imperative fragment every native backend supports)
+// a higher-order function: a closure passed as a Box<dyn Fn> param and called twice. apply-twice(double, 5) = 20.
+const CLOSURE = `task apply-twice
+  take f
+    like task
+      take n, like number
+      like number
+  take x, like number
+  like number
+  send back
+    call f
+      call f
+        read x
+
+task compute
+  take seed
+  like number
+  send back
+    call apply-twice
+      task double
+        take n, like number
+        like number
+        send back
+          call multiply
+            read n
+            mark 2
+      read seed
+`
+// a closure stored in a struct field (the router handler case) and invoked through the field: route.handle(6) = 18.
+const HANDLER = `form route
+  link handle
+    like task
+      take n, like number
+      like number
+
+task call-route
+  take r, like route
+  take x, like number
+  like number
+  send back
+    call r/handle
+      read x
+
+task compute
+  take seed
+  like number
+  send back
+    call call-route
+      make route
+        bind handle
+          task triple
+            take n, like number
+            like number
+            send back
+              call multiply
+                read n
+                mark 3
+      read seed
+`
+
 const FIB = `task find-fibonacci-via-loop
   take n
   save a, mark 0
@@ -606,7 +665,7 @@ task compute
     call version4
   send back
     call matches
-      text <^[0-9a-f-]+$>
+      text <^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$>
       read id
 `
 // random: integer(low, high) with low == high is deterministic
@@ -637,6 +696,46 @@ task compute
             text <[10,20,30]>
           mark 1
       20.0
+`
+// json encode: assemble a typed value (make-object + set-field + from-*), stringify it through the host JSON, then
+// parse the text back and read the name field. Proves typed encode round-trips on each platform's native JSON value
+// (serde_json Map, JSONSerialization dictionary) with no derive macros. Asserted as a boolean (text equality).
+const JSON_ENCODE_RT = `load @cluesurf/base/code/json
+  find parse
+  find stringify
+  find field-text
+  find make-object
+  find set-field
+  find from-text
+  find from-number
+  find from-boolean
+
+task compute
+  like boolean
+  save built
+    call stringify
+      call set-field
+        call set-field
+          call set-field
+            call make-object
+            text <name>
+            call from-text
+              text <seed>
+          text <age>
+          call from-number
+            3.0
+        text <active>
+        call from-boolean
+          wave true
+  save j
+    call parse
+      read built
+  send back
+    call is-equal
+      call field-text
+        read j
+        text <name>
+      text <seed>
 `
 // float: real floating-point math. square-root(9.0) == 3.0 exactly (asserted as a boolean to avoid print-format
 // differences: rust prints "3", swift/kotlin print "3.0").
@@ -745,9 +844,21 @@ task compute
 function main(): void {
   const fib = frontEnd(FIB)
   runLlvm('llvm: iterative fibonacci (mutation + while)', fib, '@find_fibonacci_via_loop(i64 10)', 55)
+  // llvm float: 7.0 / 2.0 == 3.5 via `fdiv double` + `fcmp oeq double` (not integer division)
+  runLlvm('llvm: float arithmetic + comparison (double)', frontEnd('task compute\n  like boolean\n  send back\n    call is-equal\n      call divide\n        7.0\n        2.0\n      3.5\n'), '@compute()', 1)
   runRust('rust: iterative fibonacci (mutation + while)', fib, 'find_fibonacci_via_loop(10)', 55)
+  runRust('rust: higher-order closure as a Box<dyn Fn> param', frontEnd(CLOSURE), 'compute(10)', 40)
+  runRust('rust: a closure stored in a struct field, called through it', frontEnd(HANDLER), 'compute(6)', 18)
   runSwift('swift: iterative fibonacci', fib, 'findFibonacciViaLoop(10)', 55)
   runKotlin('kotlin: iterative fibonacci', fib, 'findFibonacciViaLoop(10)', 55)
+
+  // closures on every backend: a higher-order function (closure param) and a closure stored in a struct field
+  const closure = frontEnd(CLOSURE)
+  runSwift('swift: higher-order closure param', closure, 'compute(10)', 40)
+  runKotlin('kotlin: higher-order closure param', closure, 'compute(10)', 40)
+  const handler = frontEnd(HANDLER)
+  runSwift('swift: a closure stored in a struct field', handler, 'compute(6)', 18)
+  runKotlin('kotlin: a closure stored in a struct field', handler, 'compute(6)', 18)
 
   const maybe = frontEnd(MAYBE, true)
   runSwift('swift: native ADT enum + match + map', maybe, 'demo()', 48)
@@ -798,6 +909,9 @@ function main(): void {
   // classpath (not in the JDK), so it is compile-checked, not run here.
   runRustCargo('rust + cargo: json parse + index + as-number via serde_json', frontEnd(JSON_RT_PROG, true, 'rust'), 'true', false)
   runSwiftText('swift + json: parse + index + as-number via JSONSerialization', frontEnd(JSON_RT_PROG, true, 'swift'), 'true')
+  // typed encode: build the value field-by-field, stringify, re-parse, read it back (no derive macros)
+  runRustCargo('rust + cargo: json encode a typed value + round-trip via serde_json', frontEnd(JSON_ENCODE_RT, true, 'rust'), 'true', false)
+  runSwiftText('swift + json: encode a typed value + round-trip via JSONSerialization', frontEnd(JSON_ENCODE_RT, true, 'swift'), 'true')
 
   // float math to "runs" on all three (square-root(9.0) == 3.0 via each platform's float library)
   runSwiftText('swift + float: square-root(9.0) == 3.0 (via Foundation)', frontEnd(FLOAT_PROG, true, 'swift'), 'true')

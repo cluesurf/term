@@ -158,9 +158,15 @@ export function emitKotlin(program: Program): string {
         return `${expr(node.target)}.${camel(node.name)}`
       case 'await':
         return expr(node.expr)
-      case 'closure':
-        // a function literal as a Kotlin lambda (full callback bodies for Kotlin are a follow-up; JS is the primary target)
-        return `{ ${node.params.map((p) => camel(p.name)).join(', ')} -> TODO() }`
+      case 'closure': {
+        // a function literal as a Kotlin lambda. A lambda's value is its last expression, so the trailing `send back X`
+        // becomes a bare `X` (an explicit `return` inside a lambda would non-locally return from the enclosing function).
+        const params = node.params.map((p) => camel(p.name)).join(', ')
+        const last = node.body[node.body.length - 1]
+        const lead = node.body.slice(0, -1).map((s) => stmt(s, 0)).filter(Boolean)
+        const tail = last && last.form === 'return' && last.value ? expr(last.value) : last ? stmt(last, 0) : ''
+        return `{ ${params} -> ${[...lead, tail].filter(Boolean).join('; ')} }`
+      }
       default:
         return exhausted(node)
     }

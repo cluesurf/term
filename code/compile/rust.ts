@@ -35,7 +35,9 @@ function rustType(type: Type | undefined): string {
     case 'named':
       return type.args && type.args.length > 0 ? `${pascal(type.name)}<${type.args.map(rustType).join(', ')}>` : pascal(type.name)
     case 'function':
-      return `impl Fn(${type.params.map(rustType).join(', ')}) -> ${rustType(type.result)}`
+      // a boxed trait object, not `impl Fn`: this is the one function type that works in every position -- a
+      // parameter, a return, a struct field, AND a collection element (`Vec<Box<dyn Fn>>`, `HashMap<_, Box<dyn Fn>>`).
+      return `Box<dyn Fn(${type.params.map(rustType).join(', ')}) -> ${rustType(type.result)}>`
     case 'number':
       return 'i64'
     case 'float':
@@ -55,7 +57,17 @@ const OP: Record<string, string> = { '&&': '&&', '||': '||', '==': '==', '!=': '
 export function emitRust(program: Program): string {
   const pad = (d: number) => '    '.repeat(d)
   const variantOwner = new Map<string, string>()
-  for (const node of program) if (node.form === 'record-type') for (const v of node.variants) variantOwner.set(v.name, node.name)
+  // struct / variant fields that hold a closure (a `Box<dyn Fn>`): calling one needs parentheses (`(r.handle)(x)`),
+  // since rust would otherwise read `r.handle(x)` as a method call on a field named `handle`.
+  const closureFields = new Set<string>()
+  for (const node of program) {
+    if (node.form !== 'record-type') continue
+    for (const v of node.variants) {
+      variantOwner.set(v.name, node.name)
+      for (const f of v.fields) if (f.type.kind === 'function') closureFields.add(f.name)
+    }
+    for (const f of node.fields) if (f.type.kind === 'function') closureFields.add(f.name)
+  }
   // native dock aliases: `fs/read-to-string` is a module path (`fs::read_to_string`), but `r/body` (r a value) is a
   // field access (`r.body`). Only a member chain rooted at a dock alias uses `::`; everything else uses `.`.
   const aliases = new Set<string>()
@@ -84,9 +96,14 @@ export function emitRust(program: Program): string {
       case 'binary':
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
       case 'call': {
-        // a slashed callee (`fs/read-to-string`) is a module path: emit Rust `::` segments
-        if (node.callee.form === 'member') return `${memberPath(node.callee)}(${node.args.map(expr).join(', ')})`
-        return `${expr(node.callee)}(${node.args.map(expr).join(', ')})`
+        const args = node.args.map(expr).join(', ')
+        // a slashed callee (`fs/read-to-string`) is a module path: emit Rust `::` segments. A field holding a closure
+        // is invoked with parens (`(r.handle)(x)`), distinguishing it from a method call.
+        if (node.callee.form === 'member') {
+          const callee = memberPath(node.callee)
+          return closureFields.has(node.callee.name) ? `(${callee})(${args})` : `${callee}(${args})`
+        }
+        return `${expr(node.callee)}(${args})`
       }
       case 'array':
         return `vec![${node.items.map(expr).join(', ')}]`
@@ -103,8 +120,19 @@ export function emitRust(program: Program): string {
       case 'await':
         return `${expr(node.expr)}.await`
       case 'map':
-      case 'closure':
-        return `/* ${unsupported('Rust', node.form, '').trim()} */ Default::default()`
+        return node.entries.length === 0
+          ? 'std::collections::HashMap::new()'
+          : `std::collections::HashMap::from([${node.entries.map((e) => `(${expr(e.key)}, ${expr(e.value)})`).join(', ')}])`
+      case 'closure': {
+        // a `move` closure boxed as `Box<dyn Fn>` (owns its captures, so it is `'static` and storable). Reassigned
+        // parameters get the same `let mut` shadow functions use, since closure parameters are immutable too.
+        const params = node.params.map((p) => vname(p.name)).join(', ')
+        const mutated = new Set<string>()
+        reassigned(node.body, mutated)
+        const shadows = node.params.filter((p) => mutated.has(p.name)).map((p) => `let mut ${vname(p.name)} = ${vname(p.name)};`)
+        const body = [...shadows, ...node.body.map((s) => stmt(s, 0))].filter(Boolean).join(' ')
+        return `Box::new(move |${params}| { ${body} })`
+      }
       default:
         return exhausted(node)
     }

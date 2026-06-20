@@ -17,12 +17,17 @@ function mangle(name: string): string {
 
 const ARITH: Record<string, string> = { '+': 'add', '-': 'sub', '*': 'mul', '/': 'sdiv', '%': 'srem' }
 const PRED: Record<string, string> = { '==': 'eq', '!=': 'ne', '<': 'slt', '<=': 'sle', '>': 'sgt', '>=': 'sge' }
+// the floating-point counterparts: `fadd`/.../`fdiv` for arithmetic, ordered `fcmp` predicates for comparison
+const FARITH: Record<string, string> = { '+': 'fadd', '-': 'fsub', '*': 'fmul', '/': 'fdiv', '%': 'frem' }
+const FPRED: Record<string, string> = { '==': 'oeq', '!=': 'one', '<': 'olt', '<=': 'ole', '>': 'ogt', '>=': 'oge' }
 
-type LlvmType = 'i64' | 'ptr' | 'void'
-// the LLVM representation of a checked type: strings are managed pointers, unit is void, everything else is a word
+type LlvmType = 'i64' | 'double' | 'ptr' | 'void'
+// the LLVM representation of a checked type: strings are managed pointers, unit is void, floats are double, everything
+// else is a 64-bit word
 function llty(type: Type | undefined): LlvmType {
   if (type?.kind === 'string') return 'ptr'
   if (type?.kind === 'unit') return 'void'
+  if (type?.kind === 'float') return 'double'
   return 'i64'
 }
 
@@ -87,8 +92,10 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
   const expr = (node: Expression): string => {
     switch (node.form) {
       case 'integer':
-      case 'float':
         return String(node.value)
+      case 'float':
+        // a double constant needs a decimal point (`3` is an i64 literal, `3.0` is a double)
+        return Number.isInteger(node.value) ? `${node.value}.0` : String(node.value)
       case 'boolean':
         return node.value ? '1' : '0'
       case 'string':
@@ -107,7 +114,7 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
         const v = expr(node.operand)
         const t = fresh()
         if (node.op === '-') {
-          cur.lines.push(`${t} = sub i64 0, ${v}`)
+          cur.lines.push(node.operand.type?.kind === 'float' ? `${t} = fneg double ${v}` : `${t} = sub i64 0, ${v}`)
         } else {
           const c = fresh()
           cur.lines.push(`${c} = icmp eq i64 ${v}, 0`)
@@ -139,13 +146,15 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
         const l = expr(node.left)
         const r = expr(node.right)
         const t = fresh()
+        // float operands use the floating-point instructions on `double`; integers use the i64 ones
+        const isFloat = node.left.type?.kind === 'float' || node.right.type?.kind === 'float'
         if (ARITH[node.op]) {
-          cur.lines.push(`${t} = ${ARITH[node.op]} i64 ${l}, ${r}`)
+          cur.lines.push(isFloat ? `${t} = ${FARITH[node.op]} double ${l}, ${r}` : `${t} = ${ARITH[node.op]} i64 ${l}, ${r}`)
           return t
         }
         if (PRED[node.op]) {
           const c = fresh()
-          cur.lines.push(`${c} = icmp ${PRED[node.op]} i64 ${l}, ${r}`)
+          cur.lines.push(isFloat ? `${c} = fcmp ${FPRED[node.op]} double ${l}, ${r}` : `${c} = icmp ${PRED[node.op]} i64 ${l}, ${r}`)
           cur.lines.push(`${t} = zext i1 ${c} to i64`)
           return t
         }
@@ -227,10 +236,11 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
           v = t
         } else {
           const old = fresh()
-          cur.lines.push(`${old} = load i64, ptr ${s.reg}`)
+          cur.lines.push(`${old} = load ${s.ty}, ptr ${s.reg}`)
           const rhs = expr(node.value)
           const t = fresh()
-          cur.lines.push(`${t} = ${ARITH[node.op[0]!]} i64 ${old}, ${rhs}`)
+          const op = node.op[0]!
+          cur.lines.push(`${t} = ${s.ty === 'double' ? FARITH[op] : ARITH[op]} ${s.ty} ${old}, ${rhs}`)
           v = t
         }
         cur.lines.push(`store ${s.ty} ${v}, ptr ${s.reg}`)

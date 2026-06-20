@@ -191,9 +191,14 @@ export function emitSwift(program: Program): string {
       }
       case 'await':
         return `await ${expr(node.expr, bind)}`
-      case 'closure':
-        // a function literal as a Swift closure (full callback bodies for Swift are a follow-up; JS is the primary target)
-        return `{ (${node.params.map((p) => camel(p.name)).join(', ')}) in fatalError() }`
+      case 'closure': {
+        // a function literal as a Swift closure. The trailing `send back X` becomes the closure's value expression.
+        const params = node.params.map((p) => camel(p.name)).join(', ')
+        const last = node.body[node.body.length - 1]
+        const lead = node.body.slice(0, -1).map((s) => stmt(s, 0, bind)).filter(Boolean)
+        const tail = last && last.form === 'return' && last.value ? expr(last.value, bind) : last ? stmt(last, 0, bind) : ''
+        return `{ (${params}) in ${[...lead, tail].filter(Boolean).join('; ')} }`
+      }
       default:
         return exhausted(node)
     }
