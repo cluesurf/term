@@ -40,6 +40,14 @@ function loadPaths(tree: RootNode): Array<string> {
   return paths
 }
 
+// the render runtime backing a `zone`: a module with a zone calls `element` / `text` / `dynamic` / `show` / `each`,
+// which the emitter synthesizes rather than the user importing. So a module containing a zone implicitly depends on it.
+const ZONE_RUNTIME_MODULE = '@cluesurf/site/code/zone/render'
+
+function hasZone(tree: RootNode): boolean {
+  return tree.nodes.some(group => nameText(group.nodes[0]) === 'zone')
+}
+
 // the entry plus every module it transitively loads, dependencies first (so forms are defined before use)
 export function collectModules(
   entry: Source,
@@ -55,7 +63,16 @@ export function collectModules(
     active.add(source.file)
     const parsed = parse(source)
     if (parsed.ok) {
-      for (const path of loadPaths(parsed.tree)) {
+      const paths = loadPaths(parsed.tree)
+      // a module with a zone implicitly depends on the render runtime (the emitter synthesizes its calls). Inject it
+      // unless the module already loads it or IS it (the render module itself must not depend on itself).
+      if (
+        hasZone(parsed.tree) &&
+        !paths.some(p => p.endsWith('zone/render')) &&
+        !source.file.endsWith('zone/render.tree')
+      )
+        paths.push(ZONE_RUNTIME_MODULE)
+      for (const path of paths) {
         const dependency = resolve(path, source.file)
         if (dependency) visit(dependency) // unresolved imports are left to the checker's unknown-name diagnostics
       }

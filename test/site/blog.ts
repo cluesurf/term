@@ -38,6 +38,7 @@ const resolve = projectResolver(SEED, 'browser')
 function makeStubElement(tag: string): any {
   return {
     tagName: tag,
+    parent: null as any,
     children: [] as any[],
     attributes: {} as Record<string, string>,
     listeners: {} as Record<string, Array<() => void>>,
@@ -47,6 +48,7 @@ function makeStubElement(tag: string): any {
       this.attributes[n] = v
     },
     appendChild(c: any) {
+      c.parent = this
       this.children.push(c)
       return c
     },
@@ -55,6 +57,15 @@ function makeStubElement(tag: string): any {
     },
     replaceWith(n: any) {
       void n
+    },
+    // ChildNode.remove(): detach from the parent. The reactive `each` uses it to reconcile the list on every change.
+    remove() {
+      const siblings = this.parent?.children
+      if (siblings) {
+        const i = siblings.indexOf(this)
+        if (i >= 0) siblings.splice(i, 1)
+      }
+      this.parent = null
     },
     fire(e: string) {
       for (const h of this.listeners[e] ?? []) h()
@@ -97,7 +108,7 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(dir, 'app.ts'), result.typescript)
   fs.writeFileSync(
     path.join(dir, 'entry.ts'),
-    `import { makeApp } from './app'\nmakeApp({ handle: document.body })\n`,
+    `import { blog } from './app'\nblog({ handle: document.body })\n`,
   )
   const bundled = await build({
     entryPoints: [path.join(dir, 'entry.ts')],

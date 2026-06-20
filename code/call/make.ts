@@ -62,9 +62,16 @@ export function resolveTreeFile(base: string): string | undefined {
 export function projectResolver(
   root: string,
   env: NativeEnv = 'node',
+  // an optional second `link/` root tried after the project's own. The CLI passes its own install dir here, so an app
+  // that has not run `seed link` itself still resolves `@cluesurf/*` through the seed install's stdlib links.
+  fallbackLinkRoot?: string,
 ): Resolver {
   const stdlib = stdlibResolver()
   const linked = linkResolver(root)
+  const fallbackLinked =
+    fallbackLinkRoot && fallbackLinkRoot !== root
+      ? linkResolver(fallbackLinkRoot)
+      : undefined
   const tryFile = (b: string) => {
     const candidate = resolveTreeFile(b)
     if (!candidate) return undefined
@@ -79,8 +86,10 @@ export function projectResolver(
     if (importPath.startsWith('./') || importPath.startsWith('../')) {
       return tryFile(path.resolve(path.dirname(fromFile), importPath))
     }
-    // linked packages first (@cluesurf/base, /bind, /term, /site via `seed link`), then the bundled stdlib fallback
-    const fromLink = linked(importPath, fromFile)
+    // linked packages first (@cluesurf/base, /bind, /term, /site via `seed link`): the project's own links, then the
+    // CLI install's links, then the bundled stdlib fallback
+    const fromLink =
+      linked(importPath, fromFile) ?? fallbackLinked?.(importPath, fromFile)
     if (fromLink) return fromLink
     const fromStdlib = stdlib?.(importPath, fromFile)
     if (fromStdlib) return fromStdlib
@@ -234,23 +243,38 @@ function runCommand(input: {
   cmd: string
   args: Array<string>
   cwd: string
+  // run through a shell (PATH lookup of script shims like `pnpm`). A long-running server (`seed boot`) sets this false
+  // so ctrl-c reaches the process directly and no shell sits in between.
+  shell?: boolean
 }): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(input.cmd, input.args, {
       cwd: input.cwd,
       stdio: 'inherit',
-      shell: true,
+      shell: input.shell ?? true,
     })
 
-    child.on('close', code => {
-      if (code === 0) {
-        resolve()
-      } else {
-        reject(new Error(`Process exited with code ${code}`))
-      }
+    // forward an interrupt to the child and take over the signal, so the parent waits for the child to exit (and then
+    // resolves cleanly) instead of node's default abrupt termination. ctrl-c thus quits the child and returns here.
+    const forward = (signal: NodeJS.Signals) => {
+      if (!child.killed) child.kill(signal)
+    }
+    process.on('SIGINT', forward)
+    process.on('SIGTERM', forward)
+
+    child.on('close', (code, signal) => {
+      process.off('SIGINT', forward)
+      process.off('SIGTERM', forward)
+      // a clean exit, or termination by a signal (ctrl-c), is not an error
+      if (code === 0 || code === null || signal) resolve()
+      else reject(new Error(`Process exited with code ${code}`))
     })
 
-    child.on('error', reject)
+    child.on('error', err => {
+      process.off('SIGINT', forward)
+      process.off('SIGTERM', forward)
+      reject(err)
+    })
   })
 }
 

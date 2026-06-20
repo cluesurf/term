@@ -18,6 +18,7 @@ import {
   exhausted,
 } from '@/code/compile/backend'
 import type { CollectionOp } from '@/code/compile/backend'
+import { collectBinds, renderBind, bindGap } from '@/code/compile/bind'
 
 // Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
 // `default`, etc.) it must be backtick-escaped, in both the declaration and every reference.
@@ -255,6 +256,8 @@ function collectArrayEq(body: Array<Statement>): {
 
 export function emitSwift(program: Program): string {
   const pad = (d: number) => '  '.repeat(d)
+  // declarative native bindings render their `case swift` template at call sites
+  const binds = collectBinds(program)
   // a function's free inference variables become named generic parameters; this maps each to its letter for the
   // duration of that function's emission, so `(t) -> ?5` prints as `(T) -> U` with `U` declared, not an unused `S`.
   let varNames = new Map<number, string>()
@@ -466,6 +469,14 @@ export function emitSwift(program: Program): string {
           bind,
         )})`
       case 'call': {
+        // a declarative native binding renders its `case swift` template
+        if (node.callee.form === 'variable' && binds.has(node.callee.name)) {
+          const found = binds.get(node.callee.name)!
+          return (
+            renderBind(found, 'swift', node.args.map(a => expr(a, bind))) ??
+            bindGap(found.name)
+          )
+        }
         // a native map / list operation lowers to swift's collection API (a map goes through the SeedMap wrapper)
         const operation = collectionCall(node.callee)
         if (operation) {
@@ -833,6 +844,7 @@ export function emitSwift(program: Program): string {
         return '// hold: verified at compile time'
       case 'native':
         return ''
+      case 'bind':
       case 'zone':
       case 'dock':
         return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend

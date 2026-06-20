@@ -1100,48 +1100,14 @@ export function mill(tree: RootNode, file: string): MillResult {
     return out
   }
 
-  function buildFunction(group: GroupNode): Statement | undefined {
-    const parts = rest(group)
-    const nameGroup = parts[0]
-    const name =
-      nameGroup && nameGroup.kind === 'group'
-        ? headName(nameGroup)
-        : undefined
-    const span = spanOf(group)
-    if (!name) {
-      // a computed / symbol-keyed method (e.g. `task {symbol/iterator}` from `[Symbol.iterator]()` in a generated
-      // binding) has no plain identifier name; it is not callable by name in seed, so skip it silently. Only a
-      // genuinely empty `task` (no head at all) is an error.
-      if (nameGroup) return undefined
-      fail(group, 'task needs a name')
-      return undefined
-    }
-    const body = parts.slice(1)
-    // generic type parameters: `head t` or `head t, need <mask>`
-    const generics: Array<{ name: string; need?: string }> = []
-    for (const statement of body) {
-      if (
-        statement.kind === 'group' &&
-        headName(statement) === 'head'
-      ) {
-        const inner = rest(statement)
-        const gName =
-          inner[0] && inner[0].kind === 'group'
-            ? headName(inner[0])
-            : undefined
-        if (!gName) continue
-        const needGroup = inner.find(
-          (n): n is GroupNode =>
-            n.kind === 'group' && headName(n) === 'need',
-        )
-        const need = needGroup
-          ? rest(needGroup)[0] && rest(needGroup)[0]!.kind === 'group'
-            ? headName(rest(needGroup)[0] as GroupNode)
-            : undefined
-          : undefined
-        generics.push(need ? { name: gName, need } : { name: gName })
-      }
-    }
+  // the parameter list of a task or bind: every `take <name>, like <type>` child, honoring `need false` (optional) and
+  // the `natural-number` refinement. Shared by buildFunction and buildBind.
+  function parseTaskParams(body: Array<Node>): Array<{
+    name: string
+    type?: Type
+    refine?: 'natural'
+    optional?: boolean
+  }> {
     const params: Array<{
       name: string
       type?: Type
@@ -1202,8 +1168,12 @@ export function mill(tree: RootNode, file: string): MillResult {
         params.push(param)
       }
     }
-    // the function's return type: a bare `like <type>`, or a named output `free <name>, like <type>` (the type of the
-    // value the task produces; native bindings use the name). The bare `like` wins if both are present.
+    return params
+  }
+
+  // the return type of a task or bind: a bare `like <type>`, or a named output `free <name>, like <type>`. The bare
+  // `like` wins if both are present. Shared by buildFunction and buildBind.
+  function parseTaskResult(body: Array<Node>): Type | undefined {
     const resultLike = body.find(
       (n): n is GroupNode =>
         n.kind === 'group' && headName(n) === 'like',
@@ -1222,6 +1192,53 @@ export function mill(tree: RootNode, file: string): MillResult {
         )
       if (likeInFree) resultType = parseLikeType(likeInFree)
     }
+    return resultType
+  }
+
+  function buildFunction(group: GroupNode): Statement | undefined {
+    const parts = rest(group)
+    const nameGroup = parts[0]
+    const name =
+      nameGroup && nameGroup.kind === 'group'
+        ? headName(nameGroup)
+        : undefined
+    const span = spanOf(group)
+    if (!name) {
+      // a computed / symbol-keyed method (e.g. `task {symbol/iterator}` from `[Symbol.iterator]()` in a generated
+      // binding) has no plain identifier name; it is not callable by name in seed, so skip it silently. Only a
+      // genuinely empty `task` (no head at all) is an error.
+      if (nameGroup) return undefined
+      fail(group, 'task needs a name')
+      return undefined
+    }
+    const body = parts.slice(1)
+    // generic type parameters: `head t` or `head t, need <mask>`
+    const generics: Array<{ name: string; need?: string }> = []
+    for (const statement of body) {
+      if (
+        statement.kind === 'group' &&
+        headName(statement) === 'head'
+      ) {
+        const inner = rest(statement)
+        const gName =
+          inner[0] && inner[0].kind === 'group'
+            ? headName(inner[0])
+            : undefined
+        if (!gName) continue
+        const needGroup = inner.find(
+          (n): n is GroupNode =>
+            n.kind === 'group' && headName(n) === 'need',
+        )
+        const need = needGroup
+          ? rest(needGroup)[0] && rest(needGroup)[0]!.kind === 'group'
+            ? headName(rest(needGroup)[0] as GroupNode)
+            : undefined
+          : undefined
+        generics.push(need ? { name: gName, need } : { name: gName })
+      }
+    }
+    const params = parseTaskParams(body)
+    const resultType = parseTaskResult(body)
     const scope = new Set<string>(params.map(p => p.name))
     // signature nodes describe the task; they are not executable body statements. `head` (generics), `take` (params),
     // the bare `like` (result type), `free` (named output), `mark` (modifiers like `mark async`/`mark private`), and
@@ -1262,6 +1279,85 @@ export function mill(tree: RootNode, file: string): MillResult {
     )
     if (markedAsync || body.some(isWaitTrue)) fn.async = true
     return fn
+  }
+
+  // a declarative native binding: `bind <name>` with `take`/`like` signature lines and one `case <env>` block per
+  // backend, each holding a `text <native expression>` (with `$param` placeholders) and optional `load` imports. The
+  // checker registers the signature like a function; each backend renders the matching env's template at call sites.
+  function buildBind(group: GroupNode): Statement | undefined {
+    const parts = rest(group)
+    const nameGroup = parts[0]
+    const name =
+      nameGroup && nameGroup.kind === 'group'
+        ? headName(nameGroup)
+        : undefined
+    const span = spanOf(group)
+    if (!name) {
+      fail(group, 'bind needs a name')
+      return undefined
+    }
+    const body = parts.slice(1)
+    const params = parseTaskParams(body)
+    const result = parseTaskResult(body)
+    const targets: Array<{
+      env: string
+      expression: string
+      imports: Array<{ module: string; alias?: string }>
+    }> = []
+    for (const child of body) {
+      if (child.kind !== 'group' || headName(child) !== 'case') continue
+      const envGroup = rest(child)[0]
+      const env =
+        envGroup && envGroup.kind === 'group'
+          ? headName(envGroup)
+          : undefined
+      if (!env) continue
+      // the native expression: a `text <...>` child whose chunks hold the raw target syntax
+      let expression: string | undefined
+      const imports: Array<{ module: string; alias?: string }> = []
+      for (const node of rest(child).slice(1)) {
+        if (node.kind !== 'group') continue
+        const head = headName(node)
+        if (head === 'text') {
+          const value = toExpression(node, new Set())
+          if (value.form === 'string') expression = value.value
+        } else if (head === 'load') {
+          // `load <node:module>, name alias`: an import the rendered expression needs
+          const moduleNode = rest(node)[0]
+          const module =
+            moduleNode && moduleNode.kind === 'text'
+              ? moduleNode.parts
+                  .map(p => (p.kind === 'chunk' ? p.text : ''))
+                  .join('')
+              : undefined
+          if (!module) continue
+          const nameChild = rest(node).find(
+            (n): n is GroupNode =>
+              n.kind === 'group' && headName(n) === 'name',
+          )
+          const aliasGroup = nameChild ? rest(nameChild)[0] : undefined
+          const alias =
+            aliasGroup && aliasGroup.kind === 'group'
+              ? headName(aliasGroup)
+              : undefined
+          imports.push(alias ? { module, alias } : { module })
+        }
+      }
+      if (expression === undefined) {
+        fail(child, `bind case "${env}" needs a text expression`)
+        continue
+      }
+      targets.push({ env, expression, imports })
+    }
+    const bind: Statement = {
+      form: 'bind',
+      name,
+      params,
+      targets,
+      span,
+    }
+    if (result) bind.result = result
+    return bind
   }
 
   // a mask defines a trait: the names of the method signatures it declares
@@ -1630,8 +1726,14 @@ export function mill(tree: RootNode, file: string): MillResult {
           const attributes: Array<ZoneAttribute> = []
           const props: Array<{ name: string; value: Expression }> = []
           const children: Array<Node> = []
+          let ref: string | undefined
           for (const child of rest(node).slice(1)) {
-            if (child.kind === 'group' && headName(child) === 'seed') {
+            if (child.kind === 'group' && headName(child) === 'name') {
+              // `name <ref>`: bind this element to a local the rest of the zone can read
+              const refGroup = rest(child)[0]
+              if (refGroup && refGroup.kind === 'group')
+                ref = headName(refGroup)
+            } else if (child.kind === 'group' && headName(child) === 'seed') {
               const attrGroup = rest(child)[0]
               const attrName =
                 attrGroup && attrGroup.kind === 'group'
@@ -1680,6 +1782,7 @@ export function mill(tree: RootNode, file: string): MillResult {
             attributes,
             props,
             children: buildZoneNodes(children, scope),
+            ref,
             span,
           })
           break
@@ -1981,6 +2084,9 @@ export function mill(tree: RootNode, file: string): MillResult {
     if (keyword === 'task') {
       const fn = buildFunction(group)
       if (fn) program.push(fn)
+    } else if (keyword === 'bind') {
+      const bind = buildBind(group)
+      if (bind) program.push(bind)
     } else if (keyword === 'form') {
       const nameGroup = rest(group)[0]
       const formName =

@@ -10,9 +10,10 @@ import type {
   ZoneNode,
 } from '@/code/compile/node'
 
-// the render-runtime primitives emitZone (code/compile/typescript.ts) synthesizes as raw calls in a zone's output.
-// They never appear as call nodes in the AST, so reference-counting cannot see them. When a program contains any zone,
-// treat this fixed ABI as referenced so forwarder-inlining never drops `element` / `text` (single-call forwarders).
+// the render + reactive runtime primitives emitZone (code/compile/typescript.ts) synthesizes as raw calls in a zone's
+// output. They never appear as call nodes in the AST, so reference-counting cannot see them. When a program contains
+// any zone, treat this fixed ABI as referenced so neither forwarder-inlining nor specialization drops a single-return
+// member of it (`element` / `text` / `make-signal`).
 const ZONE_RUNTIME = [
   'element',
   'text',
@@ -22,6 +23,10 @@ const ZONE_RUNTIME = [
   'append',
   'show',
   'each',
+  'make-signal',
+  'read-signal',
+  'write-signal',
+  'make-effect',
 ]
 
 type Folded =
@@ -64,11 +69,214 @@ function isInteger(node: Expression, value: number): boolean {
   return node.form === 'integer' && Number(node.value) === value
 }
 
+// ---- specialization state ----
+// the verbs and convenience forms that collapse at a constant selector: a function whose body is a single `send back`
+// of one expression (a forwarder, a convenience form, or a verb whose dispatch is a value-position `fork test`). Set
+// once per `simplify()` run, read by the call specializer. See plans/20-specialization-and-bind.md.
+let specializable: Map<
+  string,
+  { params: Array<{ name: string }>, returnExpr: Expression }
+> = new Map()
+// the names currently being inlined on this path, to break a recursive verb cycle
+let inlining: Set<string> = new Set()
+
+// the numeric value of an integer or float literal, for constant folding comparisons across both number kinds
+function numericValue(node: Expression): number | undefined {
+  if (node.form === 'integer' || node.form === 'float')
+    return Number(node.value)
+  return undefined
+}
+
+const COMPARISON = new Set(['==', '!=', '<', '<=', '>', '>='])
+
+// a value the specializer treats as a known constant: a literal, or a variant / struct record whose fields are all
+// constant (a nullary `make lines` is the common case)
+function isConstantExpr(node: Expression): boolean {
+  switch (node.form) {
+    case 'integer':
+    case 'float':
+    case 'boolean':
+    case 'string':
+      return true
+    case 'record':
+      return node.fields.every(f => isConstantExpr(f.value))
+    default:
+      return false
+  }
+}
+
+// only inline when every argument is pure (a literal, a constant, or a bare variable). This avoids reordering or
+// dropping a side-effecting argument when a branch is pruned, so specialization stays semantics-preserving.
+function isPureArg(node: Expression): boolean {
+  return isConstantExpr(node) || node.form === 'variable'
+}
+
+// a function whose result type is a collection currency (list / map / set), which the backend boxes into a reference
+// wrapper at the function boundary. Inlining or specializing such a function away would drop that boxing.
+function wrapsCollection(
+  fn: Extract<Statement, { form: 'function' }>,
+): boolean {
+  return fn.result?.kind === 'array' || fn.result?.kind === 'map'
+}
+
+// a function is specializable if its body is a single `send back <expr>`: a forwarder, a convenience form, or a verb
+// whose dispatch sits in value position (a `fork test` lowers to a `conditional` expression)
+function specializableReturn(
+  fn: Extract<Statement, { form: 'function' }>,
+): Expression | undefined {
+  if (fn.async) return undefined
+  if (wrapsCollection(fn)) return undefined
+  if (fn.body.length !== 1) return undefined
+  const only = fn.body[0]!
+  if (only.form === 'return' && only.value) return only.value
+  return undefined
+}
+
+// substitute parameter variables with their argument expressions when inlining a specializable function body. The
+// stdlib verbs reference only their parameters and globals, so a free-variable substitution is sound. A closure that
+// rebinds a parameter name shadows it, so that name is dropped from the substitution before descending.
+function substituteExpr(
+  node: Expression,
+  subst: Map<string, Expression>,
+): Expression {
+  switch (node.form) {
+    case 'variable':
+      return subst.get(node.name) ?? node
+    case 'binary':
+      return {
+        ...node,
+        left: substituteExpr(node.left, subst),
+        right: substituteExpr(node.right, subst),
+      }
+    case 'unary':
+      return { ...node, operand: substituteExpr(node.operand, subst) }
+    case 'call':
+      return {
+        ...node,
+        callee: substituteExpr(node.callee, subst),
+        args: node.args.map(a => substituteExpr(a, subst)),
+      }
+    case 'array':
+      return { ...node, items: node.items.map(i => substituteExpr(i, subst)) }
+    case 'member':
+      return { ...node, target: substituteExpr(node.target, subst) }
+    case 'record':
+      return {
+        ...node,
+        fields: node.fields.map(f => ({
+          name: f.name,
+          value: substituteExpr(f.value, subst),
+        })),
+      }
+    case 'map':
+      return {
+        ...node,
+        entries: node.entries.map(e => ({
+          key: substituteExpr(e.key, subst),
+          value: substituteExpr(e.value, subst),
+        })),
+      }
+    case 'await':
+      return { ...node, expr: substituteExpr(node.expr, subst) }
+    case 'conditional':
+      return {
+        ...node,
+        branches: node.branches.map(b => ({
+          cond: substituteExpr(b.cond, subst),
+          value: substituteExpr(b.value, subst),
+        })),
+        otherwise: node.otherwise
+          ? substituteExpr(node.otherwise, subst)
+          : undefined,
+      }
+    case 'closure': {
+      const inner = new Map(subst)
+      for (const p of node.params) inner.delete(p.name)
+      return {
+        ...node,
+        body: node.body.map(s => substituteStmt(s, inner)),
+      }
+    }
+    default:
+      return node
+  }
+}
+
+function substituteStmt(
+  node: Statement,
+  subst: Map<string, Expression>,
+): Statement {
+  const body = (b: Array<Statement>) => b.map(s => substituteStmt(s, subst))
+  switch (node.form) {
+    case 'let':
+      return { ...node, init: substituteExpr(node.init, subst) }
+    case 'assign':
+      return {
+        ...node,
+        target: substituteExpr(node.target, subst),
+        value: substituteExpr(node.value, subst),
+      }
+    case 'expression':
+      return { ...node, expr: substituteExpr(node.expr, subst) }
+    case 'return':
+      return {
+        ...node,
+        value: node.value ? substituteExpr(node.value, subst) : undefined,
+      }
+    case 'throw':
+      return { ...node, value: substituteExpr(node.value, subst) }
+    case 'while':
+      return {
+        ...node,
+        cond: substituteExpr(node.cond, subst),
+        body: body(node.body),
+      }
+    case 'for-each':
+      return {
+        ...node,
+        iterable: substituteExpr(node.iterable, subst),
+        body: body(node.body),
+      }
+    case 'if':
+      return {
+        ...node,
+        branches: node.branches.map(b => ({
+          cond: substituteExpr(b.cond, subst),
+          body: body(b.body),
+        })),
+        otherwise: node.otherwise ? body(node.otherwise) : undefined,
+      }
+    case 'match':
+      return {
+        ...node,
+        subject: substituteExpr(node.subject, subst),
+        cases: node.cases.map(c => ({ label: c.label, body: body(c.body) })),
+        otherwise: node.otherwise ? body(node.otherwise) : undefined,
+      }
+    case 'hold':
+      return { ...node, expr: substituteExpr(node.expr, subst) }
+    default:
+      return node
+  }
+}
+
 function simplifyExpression(node: Expression): Expression {
   switch (node.form) {
     case 'binary': {
       const left = simplifyExpression(node.left)
       const right = simplifyExpression(node.right)
+
+      // comparison of two numeric literals (integer or float) folds to a boolean. This is what lets a constant-selector
+      // dispatch like `is-equal(base, 2.0)` reduce, so the specializer can pick a branch.
+      if (COMPARISON.has(node.op)) {
+        const lv = numericValue(left)
+        const rv = numericValue(right)
+        if (lv !== undefined && rv !== undefined) {
+          const folded = foldArithmetic(node.op, lv, rv)
+          if (folded)
+            return { ...folded, form: folded.kind, span: node.span } as Expression
+        }
+      }
 
       // constant folding
       if (left.form === 'integer' && right.form === 'integer') {
@@ -111,12 +319,33 @@ function simplifyExpression(node: Expression): Expression {
     }
     case 'unary':
       return { ...node, operand: simplifyExpression(node.operand) }
-    case 'call':
-      return {
-        ...node,
-        callee: simplifyExpression(node.callee),
-        args: node.args.map(simplifyExpression),
+    case 'call': {
+      const callee = simplifyExpression(node.callee)
+      const args = node.args.map(simplifyExpression)
+      // specialization: inline a specializable function when an argument is a known constant, then fold. Only when
+      // every argument is pure (a constant or a bare variable), so no side-effecting argument is reordered or dropped
+      // when a branch is pruned. The cycle guard stops a recursive verb from looping the pass.
+      if (callee.form === 'variable') {
+        const fn = specializable.get(callee.name)
+        if (
+          fn &&
+          fn.params.length === args.length &&
+          args.some(isConstantExpr) &&
+          args.every(isPureArg) &&
+          !inlining.has(callee.name)
+        ) {
+          const subst = new Map<string, Expression>()
+          fn.params.forEach((p, i) => subst.set(p.name, args[i]!))
+          inlining.add(callee.name)
+          const inlined = simplifyExpression(
+            substituteExpr(fn.returnExpr, subst),
+          )
+          inlining.delete(callee.name)
+          return inlined
+        }
       }
+      return { ...node, callee, args }
+    }
     case 'array':
       return { ...node, items: node.items.map(simplifyExpression) }
     case 'member':
@@ -137,24 +366,67 @@ function simplifyExpression(node: Expression): Expression {
           value: simplifyExpression(e.value),
         })),
       }
-    case 'conditional':
-      return {
-        ...node,
-        branches: node.branches.map(b => ({
-          cond: simplifyExpression(b.cond),
-          value: simplifyExpression(b.value),
-        })),
-        otherwise: node.otherwise
-          ? simplifyExpression(node.otherwise)
-          : undefined,
+    case 'conditional': {
+      // prune branches whose condition folded to a constant: a false branch is unreachable and dropped, and a true
+      // branch wins (later branches and the otherwise become unreachable). A leading true branch collapses the whole
+      // conditional to its value.
+      const branches: Array<{ cond: Expression; value: Expression }> = []
+      let decided = false
+      for (const b of node.branches) {
+        const cond = simplifyExpression(b.cond)
+        if (cond.form === 'boolean' && cond.value === false) continue
+        const value = simplifyExpression(b.value)
+        if (cond.form === 'boolean' && cond.value === true) {
+          if (branches.length === 0) return value
+          branches.push({ cond, value })
+          decided = true
+          break
+        }
+        branches.push({ cond, value })
       }
+      const otherwise = decided
+        ? undefined
+        : node.otherwise
+          ? simplifyExpression(node.otherwise)
+          : undefined
+      if (branches.length === 0) return otherwise ?? node
+      return { ...node, branches, otherwise }
+    }
     default:
       return node
   }
 }
 
 function simplifyBody(body: Array<Statement>): Array<Statement> {
-  return body.map(simplifyStatement)
+  return body.flatMap(simplifyStatementSplice)
+}
+
+// most statements simplify in place to a single statement; a `match` (a `fork case`) whose subject folded to a constant
+// nullary variant selects its case at compile time, splicing that case's body into the parent list and dropping the
+// rest (the enum analog of constant `if`-branch pruning). A nullary variant binds no payload, so the splice is a pure
+// substitution. The constant case never matched by any label falls to `otherwise`.
+function simplifyStatementSplice(node: Statement): Array<Statement> {
+  if (node.form !== 'match') return [simplifyStatement(node)]
+  const subject = simplifyExpression(node.subject)
+  if (
+    subject.form === 'record' &&
+    subject.fields.length === 0 &&
+    isConstantExpr(subject)
+  ) {
+    const chosen = node.cases.find(c => c.label === subject.name)
+    return simplifyBody(chosen ? chosen.body : node.otherwise ?? [])
+  }
+  return [
+    {
+      ...node,
+      subject,
+      cases: node.cases.map(c => ({
+        label: c.label,
+        body: simplifyBody(c.body),
+      })),
+      otherwise: node.otherwise ? simplifyBody(node.otherwise) : undefined,
+    },
+  ]
 }
 
 function simplifyStatement(node: Statement): Statement {
@@ -217,6 +489,14 @@ function simplifyStatement(node: Statement): Statement {
 function forwarderTarget(
   fn: Extract<Statement, { form: 'function' }>,
 ): Expression | undefined {
+  // never inline an async forwarder. Its callers `await` it, so it must stay a real future. Inlining it would replace
+  // the call with the inner (often synchronous) call while the caller's `await` remains, which the strict backends
+  // reject (rust: "String is not a future"). Node tolerates `await` on a non-promise, which masked this before.
+  if (fn.async) return undefined
+  // never inline a forwarder whose result is a collection currency. The backend boxes a raw host collection into its
+  // reference wrapper (swift SeedList / SeedMap, rust Rc<RefCell<Vec>>) at the function boundary, so inlining the
+  // wrapper away leaves a raw host array where the wrapped currency type is expected.
+  if (wrapsCollection(fn)) return undefined
   if (fn.body.length !== 1) return undefined
   const ret = fn.body[0]!
   if (ret.form !== 'return' || !ret.value || ret.value.form !== 'call')
@@ -589,13 +869,54 @@ function dropUnusedHostGlobals(program: Program): Program {
   )
 }
 
-// run the simplifier over a whole program: first collapse pass-through wrappers, drop unused host globals, then fold
-// constants / identities
+// drop specializable functions (forwarders, convenience forms, verbs) that no longer have any reference after inlining
+// and specialization, so a fully-unwrapped verb leaves no dead definition behind. Iterate to a fixpoint: a function
+// used only by another now-dead function becomes dead next round. Entry roots are always kept.
+function dropDeadFunctions(
+  program: Program,
+  droppable: Set<string>,
+  roots?: Set<string>,
+): Program {
+  let current = program
+  for (;;) {
+    const counts = new Map<string, number>()
+    for (const s of current) countReferencesStatement(s, counts)
+    const next = current.filter(
+      n =>
+        !(
+          n.form === 'function' &&
+          droppable.has(n.name) &&
+          (counts.get(n.name) ?? 0) === 0 &&
+          !roots?.has(n.name)
+        ),
+    )
+    if (next.length === current.length) return next
+    current = next
+  }
+}
+
+// run the simplifier over a whole program: collapse pass-through wrappers, drop unused host globals, fold constants and
+// identities, specialize constant-selector verbs to their native branch, and drop the verbs that fully unwrapped away.
 export function simplify(
   program: Program,
   roots?: Set<string>,
 ): Program {
-  return dropUnusedHostGlobals(inlineForwarders(program, roots)).map(
-    simplifyStatement,
-  )
+  const inlined = dropUnusedHostGlobals(inlineForwarders(program, roots))
+  // collect the specializable functions (single `send back <expr>`) the call specializer may inline
+  specializable = new Map()
+  for (const node of inlined)
+    if (node.form === 'function') {
+      const ret = specializableReturn(node)
+      if (ret)
+        specializable.set(node.name, {
+          params: node.params,
+          returnExpr: ret,
+        })
+    }
+  inlining = new Set()
+  const folded = inlined.map(simplifyStatement)
+  const droppable = new Set(specializable.keys())
+  specializable = new Map()
+  inlining = new Set()
+  return dropDeadFunctions(folded, droppable, roots)
 }

@@ -429,6 +429,7 @@ function emitFunction(
       case 'native':
         cur.lines.push(unsupported('LLVM', node.form, ';'))
         break
+      case 'bind':
       case 'zone':
       case 'dock':
         break // view / routing DSLs are lowered by the dedicated zone compiler, not this backend

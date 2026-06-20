@@ -255,6 +255,27 @@ export type Statement =
   // a native module binding (`dock load / load <node:fs/promises>, name fs`): the env-specific FFI for the stdlib.
   // `file` is the module this dock lives in, so a `<global:X>` runtime shim can be found next to it (`./runtime/X.ext`).
   | { form: 'native'; alias: string; module: string; span: Span; file?: string }
+  // a declarative native binding: one stdlib name, a per-environment native expression template. A `$param` placeholder
+  // in a target's expression is substituted with the emitted argument at each call site. The verb that dispatches to a
+  // bind folds away under specialization, leaving the bind call to render its env's template (e.g. `Math.log2(x)` on
+  // node, `x.log2()` on rust). See note/research/vibe/computation/plans/20-specialization-and-bind.md.
+  | {
+      form: 'bind'
+      name: string
+      params: Array<{
+        name: string
+        type?: Type
+        refine?: 'natural'
+        optional?: boolean
+      }>
+      result?: Type
+      targets: Array<{
+        env: string
+        expression: string
+        imports: Array<{ module: string; alias?: string }>
+      }>
+      span: Span
+    }
   // a component (view) definition, lowered from the `zone` DSL (book/site navigation, state, forms)
   | {
       form: 'zone'
@@ -282,6 +303,9 @@ export type ZoneNode =
       attributes: Array<ZoneAttribute>
       props: Array<{ name: string; value: Expression }>
       children: Array<ZoneNode>
+      // an optional ref: `zone input / name title-field` binds the built element to `title-field`, a `view`-typed local
+      // the rest of the zone (e.g. an event handler) can read
+      ref?: string
       span: Span
     }
   | { form: 'text'; value: string; span: Span }

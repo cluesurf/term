@@ -9,7 +9,7 @@ import { expandTemplates } from '@/code/compile/template'
 import type { Template } from '@/code/compile/template'
 import { mill } from '@/code/compile/mill'
 import { Database, LOW } from '@/code/compile/query'
-import type { Durability } from '@/code/compile/query'
+import type { Durability, Cx } from '@/code/compile/query'
 import { hashText } from '@/code/compile/cache'
 import type { MilledUnit } from '@/code/compile/cache'
 import type {
@@ -58,18 +58,22 @@ export class QueryCompiler {
   }
 
   // the parse tree of a module (a query over its source)
-  private parsed(file: string): ReturnType<typeof parse> {
-    return this.db.query(`parse:${file}`, () =>
-      parse({ file, text: this.db.input<string>(`source:${file}`) }),
+  private parsed(cx: Cx, file: string): Promise<ReturnType<typeof parse>> {
+    return cx.query(`parse:${file}`, c =>
+      parse({ file, text: c.input<string>(`source:${file}`) }),
     )
   }
 
   // the milled program of a module (a query over its parse). Backdated by structural equality.
-  milled(file: string, templates?: Map<string, Template>): MilledUnit {
-    return this.db.query(
+  milled(
+    cx: Cx,
+    file: string,
+    templates?: Map<string, Template>,
+  ): Promise<MilledUnit> {
+    return cx.query(
       `mill:${file}`,
-      () => {
-        const parsed = this.parsed(file)
+      async c => {
+        const parsed = await this.parsed(c, file)
 
         if (!parsed.ok) {
           return { ok: false, diagnostics: parsed.diagnostics }
@@ -83,12 +87,12 @@ export class QueryCompiler {
 
   // the merged program over a set of modules (a query depending on each module's mill). Recomputes only when some
   // module's milled output actually changed, not merely its source text.
-  program(files: string[]): MergedProgram {
-    return this.db.query(`program:${files.join('|')}`, () => {
+  program(cx: Cx, files: string[]): Promise<MergedProgram> {
+    return cx.query(`program:${files.join('|')}`, async c => {
       const program: Program = []
 
       for (const file of files) {
-        const unit = this.milled(file)
+        const unit = await this.milled(c, file)
 
         if (!unit.ok) {
           return { ok: false, diagnostics: unit.diagnostics }
@@ -106,27 +110,30 @@ export class QueryCompiler {
   // each per-definition query backdates to its own slice, so a body edit invalidates only that definition's body
   // check, never its callers (which depend on its SIGNATURE, not its body). This is the Salsa firewall on real defs.
 
-  private functions(files: string[]): Map<string, FunctionDef> {
-    const merged = this.program(files)
+  private async functions(
+    cx: Cx,
+    files: string[],
+  ): Promise<Map<string, FunctionDef>> {
+    const merged = await this.program(cx, files)
 
     return merged.ok ? functionDefs(merged.program) : new Map()
   }
 
   // the set of defined function names. Backdates while the set is unchanged (so a body / signature edit, which does
   // not add or remove a name, does not invalidate dependents that only ask "what names exist").
-  defNames(files: string[]): string[] {
-    return this.db.query(
+  defNames(cx: Cx, files: string[]): Promise<string[]> {
+    return cx.query(
       'defNames',
-      () => [...this.functions(files).keys()].sort(),
+      async c => [...(await this.functions(c, files)).keys()].sort(),
       (a, b) => a.join(',') === b.join(','),
     )
   }
 
   // a definition's SIGNATURE (params + result, span-free). The firewall boundary: callers depend on this. Backdates
   // when only the body changes, so a body edit never advances it.
-  signature(files: string[], name: string): string {
-    return this.db.query(`signature:${name}`, () => {
-      const fn = this.functions(files).get(name)
+  signature(cx: Cx, files: string[], name: string): Promise<string> {
+    return cx.query(`signature:${name}`, async c => {
+      const fn = (await this.functions(c, files)).get(name)
 
       return fn
         ? structureKey({
@@ -139,13 +146,14 @@ export class QueryCompiler {
 
   // a definition's body fingerprint + the function names it calls. Backdates when the body is structurally unchanged.
   bodyRefs(
+    cx: Cx,
     files: string[],
     name: string,
-  ): { bodyKey: string; refs: string[] } {
-    return this.db.query(
+  ): Promise<{ bodyKey: string; refs: string[] }> {
+    return cx.query(
       `bodyRefs:${name}`,
-      () => {
-        const fn = this.functions(files).get(name)
+      async c => {
+        const fn = (await this.functions(c, files)).get(name)
 
         if (!fn) {
           return { bodyKey: '', refs: [] }
@@ -166,19 +174,20 @@ export class QueryCompiler {
   // name set, and each defined callee's SIGNATURE (never the callee's body). So editing a callee body leaves this
   // green; editing a callee signature re-checks it.
   checkDef(
+    cx: Cx,
     files: string[],
     name: string,
-  ): { name: string; unresolved: string[] } {
-    return this.db.query(
+  ): Promise<{ name: string; unresolved: string[] }> {
+    return cx.query(
       `checkDef:${name}`,
-      () => {
-        const { refs } = this.bodyRefs(files, name)
-        const defined = new Set(this.defNames(files))
+      async c => {
+        const { refs } = await this.bodyRefs(c, files, name)
+        const defined = new Set(await this.defNames(c, files))
         const unresolved: string[] = []
 
         for (const ref of refs) {
           if (defined.has(ref)) {
-            void this.signature(files, ref) // the firewall dependency: the callee's signature
+            await this.signature(c, files, ref) // the firewall dependency: the callee's signature
           } else if (!BUILTINS.has(ref)) {
             unresolved.push(ref)
           }

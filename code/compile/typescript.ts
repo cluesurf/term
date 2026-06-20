@@ -11,6 +11,8 @@ import type {
   ZoneNode,
 } from '@/code/compile/node'
 import { exhausted, mapCollect } from '@/code/compile/backend'
+import { collectBinds, renderBind, bindGap } from '@/code/compile/bind'
+import type { Bind } from '@/code/compile/bind'
 
 const PRECEDENCE: Record<BinaryOp, number> = {
   '||': 1,
@@ -293,7 +295,12 @@ function collectAssigned(
   }
 }
 
-function makeEmitter(variants: Set<string>, hmr = false) {
+function makeEmitter(
+  variants: Set<string>,
+  hmr = false,
+  binds: Map<string, Bind> = new Map(),
+  env = 'node',
+) {
   const pad = (depth: number) => '  '.repeat(depth)
   let assignedNames = new Set<string>()
 
@@ -317,6 +324,17 @@ function makeEmitter(variants: Set<string>, hmr = false) {
       case 'hole':
         return toCamel(node.name)
       case 'call': {
+        // a declarative native binding renders its environment's template in place of a real call. The `javascript`
+        // target covers both node and browser when no env-specific target is given.
+        if (node.callee.form === 'variable' && binds.has(node.callee.name)) {
+          const bind = binds.get(node.callee.name)!
+          const args = node.args.map(arg => expression(arg))
+          return (
+            renderBind(bind, env, args) ??
+            renderBind(bind, 'javascript', args) ??
+            bindGap(bind.name)
+          )
+        }
         // keys / values on a map materialize to an array (a `Map` iterator is not the list the stdlib returns)
         const collected = mapCollect(node.callee)
         if (collected) {
@@ -418,7 +436,9 @@ function makeEmitter(variants: Set<string>, hmr = false) {
     // each task in code/zone/render.tree: element(tag), text(value), dynamic(source), attribute(node, name, value),
     // event(node, name, handler).
     const build = (zone: ZoneNode, out: Array<string>): string => {
-      const ref = next()
+      // a named element (`name x`) is emitted under that name, so handlers elsewhere in the zone can read it
+      const ref =
+        zone.form === 'element' && zone.ref ? toCamel(zone.ref) : next()
       if (zone.form === 'text')
         out.push(`const ${ref} = text(${JSON.stringify(zone.value)})`)
       else if (zone.form === 'read')
@@ -457,7 +477,8 @@ function makeEmitter(variants: Set<string>, hmr = false) {
       host: string,
       zone: Extract<ZoneNode, { form: 'walk' }>,
     ): string =>
-      `each(${host}, ${expression(zone.iterable)}, ${fragment(
+      // the iterable is passed as a getter so `each` can read it inside an effect (reactive list rendering)
+      `each(${host}, () => ${expression(zone.iterable)}, ${fragment(
         [toCamel(zone.item)],
         zone.body,
       )})`
@@ -500,11 +521,24 @@ function makeEmitter(variants: Set<string>, hmr = false) {
       params: Array<string>,
       body: Array<ZoneNode>,
     ): string => {
-      const out: Array<string> = [
-        `const frag = element("seed-fragment")`,
-      ]
-      for (const child of body) attach(child, 'frag', out)
-      out.push('return frag')
+      const out: Array<string> = []
+      const only = body[0]
+      // a single static node is returned directly (no wrapper); anything else (0 or 2+ nodes, or control flow) goes
+      // under a `seed-fragment` so the callback always returns exactly one node
+      if (
+        body.length === 1 &&
+        only &&
+        (only.form === 'element' ||
+          only.form === 'text' ||
+          only.form === 'read')
+      ) {
+        const ref = build(only, out)
+        out.push(`return ${ref}`)
+      } else {
+        out.push(`const frag = element("seed-fragment")`)
+        for (const child of body) attach(child, 'frag', out)
+        out.push('return frag')
+      }
       return `(${params.join(', ')}) => { ${out.join('; ')} }`
     }
 
@@ -718,6 +752,9 @@ function makeEmitter(variants: Set<string>, hmr = false) {
       case 'native':
         // a `dock load` native binding: emitted as a host import at the top of the module, not inline here
         return ''
+      case 'bind':
+        // a declarative native binding: no declaration is emitted; it renders inline at each call site
+        return ''
       case 'zone':
         // a view component: emit a builder over the render runtime (element / text / dynamic / show / each)
         return emitZone(node)
@@ -736,13 +773,15 @@ export function emitTypeScript(
   program: Program,
   // `variants` carries the enum variant names defined across the WHOLE program. In per-module mode a module that builds
   // `make some` may not itself define `maybe`, so without this its variant constructors would lose their `form` tag.
-  options?: { hmr?: boolean; variants?: Set<string> },
+  options?: { hmr?: boolean; variants?: Set<string>; env?: string },
 ): string {
   const variants = new Set<string>(options?.variants)
   for (const node of program)
     if (node.form === 'record-type')
       for (const v of node.variants) variants.add(v.name)
-  const emitter = makeEmitter(variants, options?.hmr ?? false)
+  const env = options?.env ?? 'node'
+  const binds = collectBinds(program)
+  const emitter = makeEmitter(variants, options?.hmr ?? false, binds, env)
   // native module bindings (`dock load`) become host imports at the top. A `<global:X>` binding refers to a host
   // global (console, process, ...) — no import; alias it to the global (unless the alias already is the global name).
   const natives = program.filter(
@@ -761,6 +800,18 @@ export function emitTypeScript(
     const globalName = node.module.slice('global:'.length)
     if (toCamel(node.alias) !== globalName)
       imports.push(`const ${toCamel(node.alias)} = ${globalName}`)
+  }
+  // a declarative binding's env target may name imports its rendered expression needs (dedup against the natives)
+  for (const bind of binds.values()) {
+    const target =
+      bind.targets.find(t => t.env === env) ??
+      bind.targets.find(t => t.env === 'javascript')
+    for (const need of target?.imports ?? []) {
+      const line = need.alias
+        ? `import * as ${toCamel(need.alias)} from "${need.module}"`
+        : `import "${need.module}"`
+      if (!imports.includes(line)) imports.push(line)
+    }
   }
   // dedupe top-level named declarations: a generated binding has overloaded methods that collapse to one name (three
   // `create-element` overloads -> one `documentCreateElement`), and an interface can recur across merged modules.

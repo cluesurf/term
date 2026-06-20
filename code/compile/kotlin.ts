@@ -17,6 +17,7 @@ import {
   exhausted,
 } from '@/code/compile/backend'
 import type { CollectionOp } from '@/code/compile/backend'
+import { collectBinds, renderBind, bindGap } from '@/code/compile/bind'
 
 function camel(name: string): string {
   return name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
@@ -69,6 +70,8 @@ const OP: Record<string, string> = {
 
 export function emitKotlin(program: Program): string {
   const pad = (d: number) => '    '.repeat(d)
+  // declarative native bindings render their `case kotlin` template at call sites
+  const binds = collectBinds(program)
   // the Kotlin subclass for a variant label, and each variant's field names (for construction / smart-cast access)
   const variantClass = new Map<string, string>()
   const variantFieldNames = new Map<string, Array<string>>()
@@ -189,6 +192,14 @@ export function emitKotlin(program: Program): string {
       case 'binary':
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
       case 'call': {
+        // a declarative native binding renders its `case kotlin` template
+        if (node.callee.form === 'variable' && binds.has(node.callee.name)) {
+          const bind = binds.get(node.callee.name)!
+          return (
+            renderBind(bind, 'kotlin', node.args.map(expr)) ??
+            bindGap(bind.name)
+          )
+        }
         // a native map / list operation lowers to kotlin's collection API
         const operation = collectionCall(node.callee)
         if (operation) {
@@ -507,6 +518,7 @@ export function emitKotlin(program: Program): string {
         return '// hold: verified at compile time'
       case 'native':
         return ''
+      case 'bind':
       case 'zone':
       case 'dock':
         return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend

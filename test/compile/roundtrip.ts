@@ -11,6 +11,7 @@ import { parse } from '@/code/parser/tree'
 import { mill } from '@/code/compile/mill'
 import { resolve as resolveNames } from '@/code/check/resolve'
 import { check } from '@/code/check/infer'
+import { simplify } from '@/code/ir/simplify'
 import { collectModules } from '@/code/compile/load'
 import type { Source } from '@/code/compile/load'
 import { withNativeEnv, nativePrelude } from '@/code/compile/native'
@@ -18,6 +19,7 @@ import { emitSwift } from '@/code/compile/swift'
 import { emitKotlin } from '@/code/compile/kotlin'
 import { emitLlvm } from '@/code/compile/llvm'
 import { emitRust } from '@/code/compile/rust'
+import { emitTypeScript } from '@/code/compile/typescript'
 import { LLVM_RUNTIME_RUST } from '@/code/compile/llvm-runtime'
 import type { Program } from '@/code/compile/node'
 import { readFileSync, existsSync } from 'node:fs'
@@ -86,6 +88,9 @@ function frontEnd(
     ? collectModules({ file: 'main.tree', text }, resolver).sources
     : [{ file: 'main.tree', text }]
   const program: Program = []
+  // the entry module's own functions are the public roots: kept through simplification even when nothing internal
+  // calls them. Stdlib wrappers are internal and may be inlined or specialized away.
+  const roots = new Set<string>()
   for (const unit of sources) {
     const parsed = parse(unit)
     if (!parsed.ok) throw new Error('parse failed')
@@ -95,11 +100,16 @@ function frontEnd(
         'mill failed: ' +
           built.diagnostics.map(d => d.message).join(', '),
       )
+    if (unit.file === 'main.tree')
+      for (const node of built.program)
+        if (node.form === 'function') roots.add(node.name)
     program.push(...built.program)
   }
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
-  return program
+  // the same IR pass the compile() driver runs before emit: forwarder inlining, constant folding, and (added here)
+  // constant-selector specialization, so every backend consumes the specialized AST.
+  return simplify(program, roots)
 }
 
 function runSwift(
@@ -1229,6 +1239,34 @@ task compute
       read count
       mark 2
 `
+// path: join a base and a name, then read the last segment back. Exercises the path shim (node path, rust std::path,
+// swift Foundation, kotlin java.io.File). Asserted as a boolean over the exact cross-platform result.
+const PATH_JOIN_PROG = `load @cluesurf/base/code/path
+  find join
+  find file-name
+
+task compute
+  like boolean
+  send back
+    call is-equal
+      call file-name
+        call join
+          text </a/b>
+          text <c.json>
+      text <c.json>
+`
+// path: a file extension carries its leading dot, the same on every platform.
+const PATH_EXTENSION_PROG = `load @cluesurf/base/code/path
+  find file-extension
+
+task compute
+  like boolean
+  send back
+    call is-equal
+      call file-extension
+        text </a/b/report.txt>
+      text <.txt>
+`
 // calendar: build a UTC timestamp, format it to ISO 8601, parse it back, and shift it a month. Asserts three
 // invariants at once (format matches the exact cross-platform string, parse inverts format, add-months is
 // calendar-aware) as a single boolean. Exercises each platform's date library (rust chrono, swift Foundation,
@@ -1560,6 +1598,116 @@ task compute
       text <12345>
 `
 
+// the specialization + bind vertical slice. `logarithm` is a verb whose value-position `fork test` dispatches on the
+// base to one of three declarative native binds. The convenience form `logarithm-base-2` fixes the base, so a call to
+// it specializes: the base==2 branch folds, the verb drops, and the surviving bind renders the platform's native log2
+// (`Math.log2` on node, `.log2()` on rust) with no division. `compute` returns log2(8) = 3.
+const LOGARITHM_PROG = `bind logarithm-base-2-native
+  take value, like float
+  like float
+  case node
+    text <Math.log2($value)>
+  case rust
+    text <$value.log2()>
+
+bind logarithm-base-10-native
+  take value, like float
+  like float
+  case node
+    text <Math.log10($value)>
+  case rust
+    text <$value.log10()>
+
+bind logarithm-natural-native
+  take value, like float
+  like float
+  case node
+    text <Math.log($value)>
+  case rust
+    text <$value.ln()>
+
+task logarithm
+  take value, like float
+  take base, like float
+  like float
+  send back
+    fork test
+      hook test
+        call is-equal
+          read base
+          2.0
+      hook hold
+        call logarithm-base-2-native
+          read value
+      hook test
+        call is-equal
+          read base
+          10.0
+      hook hold
+        call logarithm-base-10-native
+          read value
+      hook miss
+        call logarithm-natural-native
+          read value
+
+task logarithm-base-2
+  take value, like float
+  like float
+  send back
+    call logarithm
+      read value
+      2.0
+
+task compute
+  take value, like float
+  like float
+  send back
+    call logarithm-base-2
+      read value
+`
+
+// run the emitted TypeScript on node: write the module, append a print of compute(8), execute through node's native
+// type stripping, assert stdout
+function runNodeMath(name: string, program: Program, want: string): void {
+  const file = join(dir, `${name.replace(/\W/g, '')}.ts`)
+  writeFileSync(
+    file,
+    `${emitTypeScript(program)}\nconsole.log(compute(8.0))\n`,
+  )
+  ok(
+    name,
+    execFileSync('node', ['--experimental-strip-types', file])
+      .toString()
+      .trim(),
+    want,
+  )
+}
+
+// run the emitted Rust on rustc: print compute(8) (Display prints 3.0 as "3"), assert stdout
+function runRustLog(name: string, program: Program, want: string): void {
+  if (!have('rustc')) return skipped(name, 'rustc not installed')
+  const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
+  writeFileSync(
+    file,
+    `${emitRust(program)}\nfn main() { print!("{}", compute(8.0)); }\n`,
+  )
+  const exe = file.replace(/\.rs$/, '')
+  try {
+    execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
+      stdio: 'pipe',
+    })
+  } catch (e) {
+    fail++
+    console.log(
+      `FAIL  ${name}  (rustc error: ${String(
+        (e as { stderr?: Buffer }).stderr ?? e,
+      ).slice(0, 300)})`,
+    )
+    return
+  }
+  ok(name, execFileSync(exe).toString().trim(), want)
+}
+
 function main(): void {
   const fib = frontEnd(FIB)
   runLlvm(
@@ -1687,6 +1835,32 @@ function main(): void {
     frontEnd(MATH_PROG, true, 'kotlin'),
     '1024',
   )
+
+  // specialization + bind vertical slice: a constant-base logarithm folds to the platform's native log2, end to end
+  const logProgram = frontEnd(LOGARITHM_PROG)
+  const logTs = emitTypeScript(logProgram)
+  ok(
+    'specialize: node logarithm-base-2 folds the verb to native Math.log2',
+    /function logarithmBase2\(value[^)]*\)[^{]*\{\s*return Math\.log2\(value\)/.test(
+      logTs,
+    ),
+    true,
+  )
+  ok(
+    'specialize: declarative binds emit no function declaration',
+    !/function logarithmBase2Native/.test(logTs),
+    true,
+  )
+  const logRust = emitRust(logProgram)
+  ok(
+    'specialize: rust logarithm-base-2 folds the verb to native .log2()',
+    /fn logarithm_base_2\(value[^)]*\)[^{]*\{[\s\S]*?value\.log2\(\)/.test(
+      logRust,
+    ),
+    true,
+  )
+  runNodeMath('node: logarithm-base-2(8) through specialization', logProgram, '3')
+  runRustLog('rust: logarithm-base-2(8) through specialization', logProgram, '3')
 
   // crypto wrapping the platform's built-in library, running for real (swift CryptoKit, kotlin java.security)
   runSwiftCrypto(
@@ -1947,6 +2121,40 @@ function main(): void {
   runRustCargo(
     'rust + cargo: file/directory walk a nested tree (std::fs recursion)',
     frontEnd(DIR_WALK_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  // path: join + file-name compose to the exact same result on every platform
+  runSwiftText(
+    'swift + path: join then file-name (Foundation NSString)',
+    frontEnd(PATH_JOIN_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + path: join then file-name (java.io.File)',
+    frontEnd(PATH_JOIN_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: path join then file-name (std::path)',
+    frontEnd(PATH_JOIN_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  // path: file extension carries its leading dot identically across platforms
+  runSwiftText(
+    'swift + path: file-extension carries its dot (Foundation)',
+    frontEnd(PATH_EXTENSION_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + path: file-extension carries its dot (java.io.File)',
+    frontEnd(PATH_EXTENSION_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: path file-extension carries its dot (std::path)',
+    frontEnd(PATH_EXTENSION_PROG, true, 'rust'),
     'true',
     false,
   )

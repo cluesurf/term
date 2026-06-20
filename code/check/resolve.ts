@@ -49,6 +49,12 @@ export function buildGlobalScope(program: Program): Scope {
           arity: statement.params.length,
         })
       }
+    } else if (statement.form === 'bind') {
+      // a declarative native binding is callable by name like a function
+      global.set(statement.name, {
+        kind: 'function',
+        arity: statement.params.length,
+      })
     } else if (statement.form === 'native') {
       // a native module alias (from `dock load`) is a defined name; member calls on it are the FFI
       global.set(statement.alias, { kind: 'deferred' })
@@ -234,16 +240,37 @@ export function resolve(
         stack.pop()
         break
       }
-      // a zone (view component): resolve names in its body the same as a function (params in scope, `save` declares)
+      // a zone (view component): resolve names in its body the same as a function (params in scope, `save` declares).
+      // Element refs (`zone input / name x`) are pre-declared so an event handler can read a ref defined anywhere.
       case 'zone': {
         stack.push(new Map())
         for (const param of node.params)
           declare(param.name, { kind: 'parameter' })
+        for (const ref of collectZoneRefs(node.body))
+          declare(ref, { kind: 'local' })
         resolveZoneNodes(node.body)
         stack.pop()
         break
       }
     }
+  }
+
+  // every element ref (`name x`) anywhere in a zone's view tree, so they can be declared up front
+  function collectZoneRefs(nodes: Array<ZoneNode>): Array<string> {
+    const refs: Array<string> = []
+    const walk = (list: Array<ZoneNode>): void => {
+      for (const node of list) {
+        if (node.form === 'element') {
+          if (node.ref) refs.push(node.ref)
+          walk(node.children)
+        } else if (node.form === 'fork') {
+          for (const branch of node.branches) walk(branch.body)
+          if (node.otherwise) walk(node.otherwise)
+        } else if (node.form === 'walk') walk(node.body)
+      }
+    }
+    walk(nodes)
+    return refs
   }
 
   // resolve names inside a zone's view tree: attribute / event / read expressions, `save` (which declares a local),

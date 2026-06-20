@@ -55,7 +55,9 @@ export function analyze(
   document: { file: string; text: string },
   options?: { resolve?: Resolver; cache?: CompileCache },
 ): { diagnostics: Array<LspDiagnostic>; program?: Program } {
-  const result = compile(document, options)
+  // the editor needs the un-optimized program (every call site intact for navigation / find-references), not the
+  // inlined / specialized shape the build emits
+  const result = compile(document, { ...options, optimize: false })
   if (!result.ok) {
     return { diagnostics: result.diagnostics.map(toLspDiagnostic) }
   }

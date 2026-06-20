@@ -1,9 +1,11 @@
 import path from 'path'
+import { fileURLToPath } from 'url'
 import {
   readFileSync,
   writeFileSync,
   mkdirSync,
   existsSync,
+  symlinkSync,
 } from 'fs'
 import { buildSync, version as esbuildVersion } from 'esbuild'
 import { compile } from '../compile/compile'
@@ -150,9 +152,15 @@ export async function callBoot(input: {
       }
     }
 
+    // the seed CLI's own install dir (the nearest `link/` ancestor of this module), used as a fallback link root so an
+    // app that has not run `seed link` itself still resolves `@cluesurf/*` through the install's stdlib links
+    const installRoot = findProjectRoot(
+      path.dirname(fileURLToPath(import.meta.url)),
+    )
+
     // compile the entry (and everything it loads) through the package manager, targeting the chosen env. A persistent
     // cache (`.seed/cache`) makes a cold re-boot reuse the prior parse + mill + compile (Tier 1).
-    const resolve = projectResolver(projectRoot, env)
+    const resolve = projectResolver(projectRoot, env, installRoot)
     const result = compile(
       { file: entry, text: readFileSync(entry, 'utf8') },
       { resolve, cache: projectCache(projectRoot) },
@@ -219,6 +227,19 @@ export async function callBoot(input: {
       })
       logGood(`Built ${path.relative(cwd, entry)} -> .seed/boot/${key.slice(0, 8)}`)
     }
+    // the bundle keeps node packages (pg, hono, ...) external, so they are imported at runtime. ESM resolves bare
+    // specifiers from the importing file's location, not cwd or NODE_PATH, so link the CLI install's node_modules next
+    // to the bundle. An app with its own node_modules (a published install) keeps using its own.
+    const bundleModules = path.join(out, 'node_modules')
+    const installModules = path.join(installRoot, 'node_modules')
+    if (!existsSync(bundleModules) && existsSync(installModules)) {
+      try {
+        symlinkSync(installModules, bundleModules, 'dir')
+      } catch {
+        // a pre-existing link or a race is fine
+      }
+    }
+
     const port = input.port ?? 8787
     writeFileSync(
       path.join(out, 'run.mjs'),
@@ -233,11 +254,13 @@ export async function callBoot(input: {
       ].join('\n'),
     )
 
-    console.log(fade(`  running (ctrl-c to stop)...`))
+    logGood(`Serving on http://localhost:${port}`)
+    console.log(fade(`  press ctrl-c to stop`))
     await runCommand({
       cmd: 'node',
       args: [path.join(out, 'run.mjs')],
       cwd: projectRoot,
+      shell: false,
     })
   } catch (err) {
     logFail(formatError(err))

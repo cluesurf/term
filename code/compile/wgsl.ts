@@ -151,6 +151,7 @@ export function emitWgsl(program: Program): string {
       case 'instance':
       case 'native':
         return unsupported('WGSL', node.form, '//')
+      case 'bind':
       case 'zone':
       case 'dock':
         return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend

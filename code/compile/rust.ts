@@ -11,6 +11,7 @@ import type {
   Statement,
   Type,
 } from '@/code/compile/node'
+import { collectBinds, renderBind, bindGap } from '@/code/compile/bind'
 import {
   ARRAY_OP_BOUND,
   collectionCall,
@@ -193,6 +194,8 @@ export function emitRust(program: Program): string {
   const aliases = new Set<string>()
   for (const node of program)
     if (node.form === 'native') aliases.add(node.alias)
+  // declarative native bindings render their `case rust` template at call sites
+  const binds = collectBinds(program)
   const rootVariable = (node: Expression): string | undefined =>
     node.form === 'variable'
       ? node.name
@@ -223,6 +226,15 @@ export function emitRust(program: Program): string {
       case 'binary':
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
       case 'call': {
+        // a declarative native binding renders its `case rust` template, with `$param` placeholders filled by the
+        // emitted (un-cloned) arguments: the template author writes the exact native call shape
+        if (node.callee.form === 'variable' && binds.has(node.callee.name)) {
+          const bind = binds.get(node.callee.name)!
+          return (
+            renderBind(bind, 'rust', node.args.map(expr)) ??
+            bindGap(bind.name)
+          )
+        }
         // a native map / list operation lowers to rust's collection API through the Rc<RefCell> handle
         const operation = collectionCall(node.callee)
         if (operation) {
@@ -705,6 +717,7 @@ export function emitRust(program: Program): string {
         return '// hold: verified at compile time'
       case 'native':
         return ''
+      case 'bind':
       case 'mask':
       case 'instance':
       case 'zone':

@@ -169,6 +169,22 @@ export function check(
     })
   }
 
+  // a declarative native binding registers a function-shaped signature (no generics, no body to check): calls resolve
+  // and type-check against it, and each backend renders the env's native template in place of a real call.
+  for (const statement of program) {
+    if (statement.form !== 'bind') continue
+    if (functions.has(statement.name)) continue
+    const noGenerics = new Map<string, Type>()
+    functions.set(statement.name, {
+      generics: new Set<number>(),
+      genericNames: new Map<number, string>(),
+      bounds: new Map<number, string>(),
+      params: statement.params.map(p => seedType(p.type, noGenerics)),
+      result: seedType(statement.result, noGenerics),
+      minArgs: statement.params.filter(p => !p.optional).length,
+    })
+  }
+
   // receiver dispatch: a form's mangled method (`maybe_unwrap-or`) indexed by form name then bare method name, so a
   // bare `call unwrap-or / <receiver>` resolves to the method of the receiver's form. `methodNames` is the set of
   // every bare method name, used to recognise a call site as a method call before dispatching.
@@ -822,6 +838,22 @@ export function check(
         vars: [],
         type: seedType(param.type, new Map()),
       })
+    // element refs (`zone input / name x`) are `view`-typed locals, pre-declared so a handler can read any of them
+    const refs: Array<string> = []
+    const walkRefs = (list: Array<ZoneNode>): void => {
+      for (const member of list) {
+        if (member.form === 'element') {
+          if (member.ref) refs.push(member.ref)
+          walkRefs(member.children)
+        } else if (member.form === 'fork') {
+          for (const branch of member.branches) walkRefs(branch.body)
+          if (member.otherwise) walkRefs(member.otherwise)
+        } else if (member.form === 'walk') walkRefs(member.body)
+      }
+    }
+    walkRefs(node.body)
+    for (const ref of refs)
+      env.set(ref, { vars: [], type: { kind: 'named', name: 'view' } })
     checkZoneNodes(node.body, env)
   }
 

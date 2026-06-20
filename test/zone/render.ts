@@ -36,9 +36,11 @@ async function main(): Promise<void> {
     DECK,
     'site.tree/code/test/site/ssr-demo.tree',
   )
+  // this test calls the dom primitives directly (createElement / createText / ...); compile un-optimized so the
+  // specializer does not inline + drop those single-return exports, which only an external caller like this test uses
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
-    { resolve },
+    { resolve, optimize: false },
   )
   ok(
     'the .tree render stack compiles to TypeScript',
