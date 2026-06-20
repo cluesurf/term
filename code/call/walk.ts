@@ -126,6 +126,28 @@ export function stdlibResolver(): Resolver | undefined {
   }
 }
 
+// the stdlib base.tree directory, located the same way stdlibResolver does (dev tree or installed). Used to read the
+// raw native runtime files (`.ts`/`.js` under `code/native/...`) that `nativePrelude` inlines when running a module.
+export function stdlibBase(): string | undefined {
+  const here = dirname(fileURLToPath(import.meta.url))
+  return [
+    join(here, '..', '..', '..', 'base.tree'),
+    join(here, '..', '..', 'base.tree'),
+  ].find(c => existsSync(c))
+}
+
+// a reader for native runtime sources, given a `@cluesurf/base/<path>` reference. Unlike the resolver, this reads the
+// raw file (no `.tree` suffix), since runtime files are native code, not Seed.
+export function stdlibRuntime(): (path: string) => string | undefined {
+  const base = stdlibBase()
+  return (path: string): string | undefined => {
+    const prefix = '@cluesurf/base/'
+    if (!base || !path.startsWith(prefix)) return undefined
+    const file = join(base, path.slice(prefix.length))
+    return existsSync(file) ? readFileSync(file, 'utf8') : undefined
+  }
+}
+
 // resolve any `@scope/pkg/sub/path` import via the package manager's link dir (`<root>/link/@scope/pkg/...`), where
 // `seed link` symlinks each dependency. Follows the file-resolution rules (foo.tree, then foo/base.tree, foo/note.tree).
 // This is how a project resolves its linked packages (@cluesurf/base, @cluesurf/bind, @cluesurf/term, @cluesurf/site).

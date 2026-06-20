@@ -19,6 +19,7 @@ import { compile } from '@/code/compile/compile'
 import { withNativeEnv, nativePrelude } from '@/code/compile/native'
 import { render } from '@/code/parser/diagnostic'
 import { toCamel } from '@/code/compile/typescript'
+import { preprocessTests } from '@/test/tree/preprocess'
 import type { Source } from '@/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -57,7 +58,9 @@ function discoverTests(text: string): Array<string> {
 }
 
 async function runFile(file: string): Promise<number> {
-  const text = readFileSync(file, 'utf8')
+  // expand `test <phrase>` blocks (surface B2) into top-level tasks before the compiler sees the file; a file with no
+  // `test` blocks passes through unchanged
+  const { text, labels } = preprocessTests(readFileSync(file, 'utf8'))
   const names = discoverTests(text)
   const result = compile(
     { file: 'main.tree', text },
@@ -96,7 +99,7 @@ async function runFile(file: string): Promise<number> {
   let pass = 0
   let fail = 0
   for (const name of names) {
-    const display = name.replace(/-/g, ' ')
+    const display = labels.get(name) ?? name.replace(/-/g, ' ')
     const held = await mod[toCamel(name)]!()
     if (held) {
       pass++

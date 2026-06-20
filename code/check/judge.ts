@@ -1048,7 +1048,7 @@ export function infer(context: Context, term: Term): Inferred {
       return {
         type: {
           v: 'type',
-          level: maxLevel(domainLevel, codomainLevel),
+          level: piLevel(domainLevel, codomainLevel),
         },
         usage: zeroUsage(context.level),
       }
@@ -1211,15 +1211,22 @@ export function check(
 ): Usage {
   expected = force(expected)
   if (expected.v === 'self') {
-    // self introduction: a term has type Self x. T exactly when it has type T[x := itself]. This is tried before
-    // the structural intro rules (lam / pair / refl), so a constructor lambda whose codomain is a self type (a
-    // recursive constructor like succ : Nat -> Nat) introduces against the unfolded body rather than failing the
-    // pi check. The unfolded body is not a self type, so the structural rules then apply and this does not recur.
-    return check(
-      context,
-      term,
-      closeOver(expected.body, evaluate(context.env, term)),
-    )
+    // checking against Self x. T. The self-introduction rule is: a term has type Self x. T exactly when it has type
+    // T[x := itself]. But a term may instead ALREADY have the self type (a variable of that type, or an eliminator
+    // result like the body of plus, which computes to the self type). So:
+    //   - a canonical introduction form (lam / pair) cannot be inferred, so introduce it directly: check it against
+    //     the unfolded body. This is what lets a recursive constructor (succ : Nat -> Nat) check.
+    //   - otherwise infer first; if the term already has the self type (up to conversion), accept it. Only when it
+    //     does not, fall back to self-introduction against the unfolded body. This keeps eliminator results, which
+    //     already carry the self type, from being forced to inhabit the unfolded body.
+    const unfolded = (): Value =>
+      closeOver(expected.body, evaluate(context.env, term))
+    if (term.tag === 'lam' || term.tag === 'pair') {
+      return check(context, term, unfolded())
+    }
+    const actual = infer(context, term)
+    if (subtype(context.level, actual.type, expected)) return actual.usage
+    return check(context, term, unfolded())
   }
   if (term.tag === 'lam') {
     if (expected.v !== 'pi')

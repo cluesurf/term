@@ -16,11 +16,14 @@ TESTS=(
   foundation          # naturals with induction and arithmetic (companion self-type kernel)
   foundation-judge    # kernel core: universe polymorphism, QTT, equality groupoid, funext, Sigma, self-types
   category-judge      # the category laws (composition associative, identity), via observational funext
-  naturals-judge      # self-typed naturals: generic succ, plus the predicativity boundary on large recursion
+  naturals-judge      # self-typed naturals WITH arithmetic: plus and times type-check and compute (1+1=2, 2*2=4)
   naturals2-judge     # self-typed naturals WITH computation on judge.ts (the inductive foundation)
   integers-judge      # the integers as a self-typed inductive on judge.ts (pos / negSucc, eliminator computes)
+  integer-arithmetic-judge  # integer negation and successor type-check and compute (neg involution, step across zero)
+  integer-addition-judge    # integer addition + signed subtraction compute, all four sign cases (impredicative motive)
+  integer-ring-judge        # integer multiplication (4 sign cases) and the decidable order compute: Z is the ordered ring
   succ-judge          # a GENERIC recursive constructor (succ : Nat -> Nat) type-checks and computes, no coercions
-  large-elim-judge    # large recursion (plus, returning Nat) is not predicatively self-encodable (the universe cap)
+  large-elim-judge    # the impredicative bottom universe is sound and bounded (impredicative Pi, predicative above)
   pinch-judge         # the pinch-point keystone, a structural kernel proof (the dimension equals eight)
   keystones-refine    # the floor / ceiling / pinch-point, via the refinement prover (linear arithmetic)
   keystones-arrow     # the arrow of time: integers the unique orderable rung, order lost at the complex numbers

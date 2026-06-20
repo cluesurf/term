@@ -71,6 +71,9 @@ export type Expression =
   | { form: 'boolean'; value: boolean; span: Span; type?: Type }
   | { form: 'string'; value: string; span: Span; type?: Type }
   | { form: 'unit'; span: Span; type?: Type }
+  // the host null literal (`null`), for the `dynamic` / host boundary: JSON null, a JS `null` passed to an FFI, the
+  // value `is-null` tests for. Distinct from `unit` (void / undefined). Typed `dynamic`; emitted as each host's null.
+  | { form: 'null'; span: Span; type?: Type }
   | {
       form: 'variable'
       name: string

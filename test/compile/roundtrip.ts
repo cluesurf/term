@@ -914,6 +914,78 @@ task compute
         read xs
 `
 
+// a map on LLVM: build a hash, set two keys plus a duplicate, read the size. The seed_map_* runtime canonicalizes keys
+// by value, so 1 -> ... twice counts once: size is 2. Exercises seed_map_new / set / size.
+const HASH_LLVM = `load @cluesurf/base/code/hash
+  find hash
+
+task compute
+  like number
+  save m
+    make find
+  call set
+    read m
+    mark 1
+    mark 100
+  call set
+    read m
+    mark 2
+    mark 200
+  call set
+    read m
+    mark 1
+    mark 300
+  send back
+    call size
+      read m
+`
+
+// a list through the closure-taking ops on LLVM: [1,2,3] -> map(*2) -> [2,4,6] -> reduce(+, 0) -> 12. The list
+// runtime calls each closure back per element (its { code, env } passed as two pointers).
+const LIST_FOLD_LLVM = `load @cluesurf/base/code/list
+  find list
+  find push
+  find map
+  find reduce
+
+task compute
+  like number
+  save xs
+    make list
+  call push
+    read xs
+    mark 1
+  call push
+    read xs
+    mark 2
+  call push
+    read xs
+    mark 3
+  save doubled
+    call map
+      read xs
+      task double
+        take item, like number
+        like number
+        send back
+          call multiply
+            read item
+            mark 2
+  send back
+    call reduce
+      read doubled
+      task add-up
+        take total, like number
+        take item, like number
+        like number
+        send back
+          call add
+            read total
+            read item
+      mark 0
+`
+
+
 // an iterative Fibonacci: mutation + a while loop (the scalar imperative fragment every native backend supports)
 // a higher-order function: a closure passed as a Box<dyn Fn> param and called twice. apply-twice(double, 5) = 20.
 const CLOSURE = `task apply-twice
@@ -2014,6 +2086,21 @@ function main(): void {
     frontEnd(CAPTURE),
     '@compute(i64 7)',
     17,
+  )
+  // llvm list closure ops: map then reduce, the runtime calling each closure back per element. [1,2,3]*2 summed -> 12
+  runLlvmRustExit(
+    'llvm + rust runtime: list map + reduce (closure callbacks)',
+    frontEnd(LIST_FOLD_LLVM, true),
+    '@compute()',
+    12,
+  )
+  // llvm map: set two distinct keys + one duplicate, then read the size -> 2 (verifies the seed_map_* heap runtime and
+  // that keys are compared by value, so the duplicate key does not grow the map).
+  runLlvmRustExit(
+    'llvm + rust runtime: map set (dedup) + size',
+    frontEnd(HASH_LLVM, true),
+    '@compute()',
+    2,
   )
   runRust(
     'rust: iterative fibonacci (mutation + while)',

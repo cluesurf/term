@@ -1,7 +1,8 @@
-// The natural numbers as a self-typed inductive on the DECIDED kernel (judge.ts), with real reduction.
-// Nat = Self n. (0 P : Nat -> Type0) -> (1 _ : P zero) -> (1 _ : (1 k : Nat) -> (1 _ : P k) -> P (succ k)) -> P n
-// zero and succ are the constructors; the self type carries its own induction principle. Transparent definitions
-// (defineConstant) give the constructors reduction so plus computes. Run: npx tsx test/check/naturals-judge.ts
+// The natural numbers as a self-typed inductive on the DECIDED kernel (judge.ts), WITH arithmetic that computes.
+// Nat = Self n. (P : Nat -> Type0) -> P zero -> ((k:Nat) -> P k -> P (succ k)) -> P n. zero and succ are the
+// constructors; the self type carries its own induction principle. Because the bottom universe is impredicative, the
+// self-encoded Nat lives in Type0 (its own motive's universe), so the recursor can eliminate INTO Nat -- addition
+// and multiplication, which return Nat, type-check and reduce. Run: npx tsx test/check/naturals-judge.ts
 
 import type { Mult, Term } from '@/code/check/judge'
 import {
@@ -24,6 +25,17 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const self = (body: Term): Term => ({ tag: 'self', body })
+const idt = (type: Term, left: Term, right: Term): Term => ({
+  tag: 'id',
+  type,
+  left,
+  right,
+})
+const refl = (type: Term, value: Term): Term => ({
+  tag: 'refl',
+  type,
+  value,
+})
 const aps = (fun: Term, ...args: Array<Term>): Term =>
   args.reduce((f, a) => app(f, a), fun)
 
@@ -60,31 +72,50 @@ const zeroTerm = lam(lam(lam(v(1))))
 const succTerm = lam(
   lam(lam(lam(aps(v(0), v(3), aps(v(3), v(2), v(1), v(0)))))),
 )
-// plus = \ a. \ b. a (\_. Nat) b (\_. \ r. succ r)
+// plus = \ a. \ b. a (\_. Nat) b (\_. \ r. succ r)   -- recurse on a, base b, step succ
 const plusTerm = lam(
+  lam(aps(v(1), lam(kc('Nat')), v(0), lam(lam(app(kc('succ'), v(0)))))),
+)
+// times = \ a. \ b. a (\_. Nat) zero (\_. \ r. plus b r)   -- recurse on a, base zero, step (add b)
+const timesTerm = lam(
   lam(
     aps(
       v(1),
       lam(kc('Nat')),
-      v(0),
-      lam(lam(app(kc('succ'), v(0)))),
+      kc('zero'),
+      lam(lam(aps(kc('plus'), v(2), v(0)))),
     ),
   ),
 )
 
-// signature gives the types; defineConstant gives the values (transparent, so reduction fires). The self-encoded
-// Nat lives at Type1 (its motive quantifies P : Nat -> Type0), so the constant Nat is typed at ty(1).
+const natValue = evaluate([], natTerm) // the self type as a value, the form the kernel introduces against
+const natToNat = pi('many', natTerm, natTerm)
+const natToNatToNat = pi('many', natTerm, natToNat)
+
+// signature gives the types; defineConstant gives the values (transparent, so reduction fires). The bottom universe
+// is impredicative, so the self-encoded Nat lives in Type0 (not one level above its motive), and the constant Nat is
+// typed at ty(0). This is what makes plus and times -- which return Nat -- well typed. plus is in the signature so
+// that times, whose body names it, type-checks.
 const signature = [
-  { name: 'Nat', type: ty(1) },
+  { name: 'Nat', type: ty(0) },
   { name: 'zero', type: kc('Nat') },
   { name: 'succ', type: pi('many', kc('Nat'), kc('Nat')) },
+  { name: 'plus', type: natToNatToNat },
+  { name: 'times', type: natToNatToNat },
 ]
 const context = contextWithSignature(signature)
 
-const natValue = evaluate([], natTerm) // the self type as a value, the form the kernel introduces against
 defineConstant('Nat', natValue)
 defineConstant('zero', evaluate([], zeroTerm))
 defineConstant('succ', evaluate([], succTerm))
+defineConstant('plus', evaluate([], plusTerm))
+defineConstant('times', evaluate([], timesTerm))
+
+// numerals, for the computation checks
+const one = app(kc('succ'), kc('zero'))
+const two = app(kc('succ'), one)
+const three = app(kc('succ'), two)
+const four = app(kc('succ'), three)
 
 let pass = 0
 let fail = 0
@@ -100,46 +131,38 @@ function ok(name: string, run: () => void): void {
     )
   }
 }
-// a check that MUST fail: the test passes when the kernel rejects the term, recording a real boundary.
-function rejects(name: string, run: () => void): void {
-  try {
-    run()
-    fail++
-    console.log(`FAIL  ${name} (expected a rejection, but it checked)`)
-  } catch {
-    pass++
-    console.log(`ok    ${name} (rejected, as it must be)`)
-  }
+// a definitional-equality check: the named term reduces to the expected value, witnessed by refl.
+function computes(name: string, type: Term, lhs: Term, rhs: Term): void {
+  ok(name, () => {
+    check(context, refl(type, rhs), evaluate([], idt(type, lhs, rhs)))
+  })
 }
 
-ok('Nat is a self type at Type 1', () => {
-  check(context, natTerm, evaluate([], ty(1)))
+ok('Nat is a self type in Type 0 (impredicative bottom universe)', () => {
+  check(context, natTerm, evaluate([], ty(0)))
 })
 ok('zero : Nat (self introduction against the self type)', () => {
   check(context, zeroTerm, natValue)
 })
 ok('succ : Nat -> Nat (a generic recursive constructor)', () => {
-  check(context, succTerm, evaluate([], pi('many', natTerm, natTerm)))
+  check(context, succTerm, evaluate([], natToNat))
 })
 ok('one = succ zero : Nat', () => {
-  check(context, app(kc('succ'), kc('zero')), evaluate([], kc('Nat')))
+  check(context, one, evaluate([], kc('Nat')))
 })
 
-// The predicativity boundary. Addition returns Nat, so it must be defined by the recursor eliminating INTO Nat.
-// But the recursor's motive is P : Nat -> Type0, and this self-encoded Nat lives at Type1, so the motive (\ _. Nat)
-// would need Nat : Type0, which is false. Large recursion (returning the inductive type itself: plus, times) is not
-// available from the predicative recursor. It needs universe polymorphism in the motive or a primitive inductive.
-// Small folds (into a Type0 target) and dependent induction (motives into Type0, for proofs) are unaffected, and
-// are what `naturals2-judge` and `succ-judge` exercise. So this is a precise boundary, not a defect.
-rejects(
-  'plus : Nat -> Nat -> Nat is NOT definable by the predicative recursor (large recursion needs a higher motive)',
-  () => {
-    check(
-      context,
-      plusTerm,
-      evaluate([], pi('many', natTerm, pi('many', natTerm, natTerm))),
-    )
-  },
-)
+// addition: it type-checks (it returns Nat, the large recursion the impredicative universe unblocks) and it reduces.
+ok('plus : Nat -> Nat -> Nat type-checks (large recursion, returns Nat)', () => {
+  check(context, plusTerm, evaluate([], natToNatToNat))
+})
+computes('plus zero one = one', kc('Nat'), aps(kc('plus'), kc('zero'), one), one)
+computes('plus one one = two', kc('Nat'), aps(kc('plus'), one, one), two)
+computes('plus two one = three', kc('Nat'), aps(kc('plus'), two, one), three)
 
-console.log(`\nnaturals (decided kernel judge.ts): ${pass} pass, ${fail} fail`)
+// multiplication, defined in terms of plus: also type-checks and reduces.
+ok('times : Nat -> Nat -> Nat type-checks', () => {
+  check(context, timesTerm, evaluate([], natToNatToNat))
+})
+computes('times two two = four', kc('Nat'), aps(kc('times'), two, two), four)
+
+console.log(`\nnaturals with arithmetic (decided kernel judge.ts): ${pass} pass, ${fail} fail`)

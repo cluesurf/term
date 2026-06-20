@@ -136,6 +136,16 @@ function isWaitTrue(node: Node): boolean {
   )
 }
 
+// is this node an annotation `note <name>` (or the retired `mark <name>`)? Tags / markers like `note async`,
+// `note private`, `note stable` are written under `note`; `mark` is the old spelling kept working during migration.
+function isAnnotation(node: Node, name: string): boolean {
+  if (node.kind !== 'group') return false
+  const head = headName(node)
+  if (head !== 'note' && head !== 'mark') return false
+  const arg = rest(node)[0]
+  return arg?.kind === 'group' && headName(arg) === name
+}
+
 // a `like <type>` node to a surface type
 function parseType(node: Node): Type {
   if (node.kind !== 'group') return UNKNOWN
@@ -374,6 +384,9 @@ export function mill(tree: RootNode, file: string): MillResult {
     const span = spanOf(group)
 
     switch (keyword) {
+      // `code` is the literal keyword (`code 1`, hex `code 0xaa12`); `mark` is the retired spelling kept working for
+      // now so the existing stdlib and tests still compile while sources migrate to `code`.
+      case 'code':
       case 'mark':
         return args[0]
           ? toExpression(args[0], scope)
@@ -461,14 +474,8 @@ export function mill(tree: RootNode, file: string): MillResult {
           span,
         }
         if (resultLike) closure.result = parseLikeType(resultLike)
-        // async is marked by `mark async` or a direct `wait true` (mirrors the top-level task rule)
-        const closureMarkedAsync = decl.some(
-          n =>
-            n.kind === 'group' &&
-            headName(n) === 'mark' &&
-            rest(n)[0]?.kind === 'group' &&
-            headName(rest(n)[0] as GroupNode) === 'async',
-        )
+        // async is marked by `note async` (or retired `mark async`) or a direct `wait true` (mirrors the task rule)
+        const closureMarkedAsync = decl.some(n => isAnnotation(n, 'async'))
         if (closureMarkedAsync || decl.some(isWaitTrue)) closure.async = true
         return closure
       }
@@ -479,6 +486,14 @@ export function mill(tree: RootNode, file: string): MillResult {
           args[0] && args[0].kind === 'group'
             ? headName(args[0] as GroupNode)
             : undefined
+        // `fork lack / <bool>` is boolean negation: it sits in the fork family next to `fork test` and `fork case`,
+        // and lowers to a unary `!` of its operand. The operand is the expression after the `lack` marker.
+        if (variant === 'lack') {
+          const operand = args[1]
+            ? toExpression(args[1], scope)
+            : { form: 'boolean' as const, value: false, span }
+          return { form: 'unary', op: '!', operand, span }
+        }
         if (variant !== 'case') {
           const branches: Array<{ cond: Expression; value: Expression }> =
             []
@@ -1273,14 +1288,8 @@ export function mill(tree: RootNode, file: string): MillResult {
       span,
     }
     if (resultType) fn.result = resultType
-    // async is marked by `wait true` or `mark async`
-    const markedAsync = body.some(
-      n =>
-        n.kind === 'group' &&
-        headName(n) === 'mark' &&
-        rest(n)[0]?.kind === 'group' &&
-        headName(rest(n)[0] as GroupNode) === 'async',
-    )
+    // async is marked by `wait true` or `note async` (or retired `mark async`)
+    const markedAsync = body.some(n => isAnnotation(n, 'async'))
     if (markedAsync || body.some(isWaitTrue)) fn.async = true
     return fn
   }

@@ -9,6 +9,7 @@
 export const LLVM_RUNTIME_RUST = `// Seed LLVM runtime (Rust, C ABI).
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::collections::HashMap;
 
 unsafe fn read<'a>(p: *const c_char) -> &'a str {
     if p.is_null() { return ""; }
@@ -86,10 +87,9 @@ pub extern "C" fn seed_list_index_of(p: *mut Vec<i64>, value: i64) -> i64 {
     list.iter().position(|e| *e == value).map(|i| i as i64).unwrap_or(-1)
 }
 
-// the closure-taking list ops. A Seed closure is passed as its raw code pointer plus its environment handle; the
-// runtime calls back through the C ABI, threading the env as the leading argument (exactly how the backend lowers an
-// indirect call). Element words are i64, so these serve integer lists; a typed-element variant would pass the element
-// through the closure's own parameter type.
+// the closure-taking list ops. A Seed closure is its code pointer plus its environment handle; the runtime calls back
+// through the C ABI, threading the env as the leading argument (exactly how the backend lowers an indirect call, and
+// why a lifted closure always takes a leading env pointer). Element words are i64, serving integer lists.
 type Unary = extern "C" fn(*mut Vec<i64>, i64) -> i64;
 type Binary = extern "C" fn(*mut Vec<i64>, i64, i64) -> i64;
 
@@ -124,4 +124,67 @@ pub extern "C" fn seed_list_every(p: *mut Vec<i64>, f: Unary, env: *mut Vec<i64>
     let list = unsafe { &*p };
     if list.iter().all(|&e| f(env, e) != 0) { 1 } else { 0 }
 }
+
+// Maps: a hash from a canonical key (bytes) to (original key word, value word). The key word and value word are i64
+// (the backend bitcasts a float / ptr at the boundary, like lists). A key is canonicalized by KIND so equality is by
+// value: an integer key by its bytes, a string key by its content (kind 1, the word is a C-string pointer). Storing
+// the original key word lets \`keys\` rebuild the list (a string key's pointer stays valid -- strings are leaked).
+type Map = HashMap<Vec<u8>, (i64, i64)>;
+
+fn map_key(kind: i64, key: i64) -> Vec<u8> {
+    if kind == 1 {
+        unsafe { read(key as *const c_char) }.as_bytes().to_vec()
+    } else {
+        key.to_le_bytes().to_vec()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn seed_map_new() -> *mut Map {
+    Box::into_raw(Box::new(HashMap::new()))
+}
+
+#[no_mangle]
+pub extern "C" fn seed_map_set(p: *mut Map, kind: i64, key: i64, value: i64) -> *mut Map {
+    let map = unsafe { &mut *p };
+    map.insert(map_key(kind, key), (key, value));
+    p
+}
+
+#[no_mangle]
+pub extern "C" fn seed_map_get(p: *mut Map, kind: i64, key: i64) -> i64 {
+    let map = unsafe { &*p };
+    map.get(&map_key(kind, key)).map(|pair| pair.1).unwrap_or(0)
+}
+
+#[no_mangle]
+pub extern "C" fn seed_map_has(p: *mut Map, kind: i64, key: i64) -> i64 {
+    let map = unsafe { &*p };
+    if map.contains_key(&map_key(kind, key)) { 1 } else { 0 }
+}
+
+#[no_mangle]
+pub extern "C" fn seed_map_delete(p: *mut Map, kind: i64, key: i64) -> i64 {
+    let map = unsafe { &mut *p };
+    if map.remove(&map_key(kind, key)).is_some() { 1 } else { 0 }
+}
+
+#[no_mangle]
+pub extern "C" fn seed_map_size(p: *mut Map) -> i64 {
+    let map = unsafe { &*p };
+    map.len() as i64
+}
+
+#[no_mangle]
+pub extern "C" fn seed_map_keys(p: *mut Map) -> *mut Vec<i64> {
+    let map = unsafe { &*p };
+    Box::into_raw(Box::new(map.values().map(|pair| pair.0).collect()))
+}
+
+#[no_mangle]
+pub extern "C" fn seed_map_values(p: *mut Map) -> *mut Vec<i64> {
+    let map = unsafe { &*p };
+    Box::into_raw(Box::new(map.values().map(|pair| pair.1).collect()))
+}
+
 `

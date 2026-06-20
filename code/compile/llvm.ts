@@ -80,6 +80,7 @@ function llty(
   if (type?.kind === 'unit') return 'void'
   if (type?.kind === 'float') return 'double'
   if (type?.kind === 'array') return 'ptr' // a list is an opaque handle to the heap buffer
+  if (type?.kind === 'map') return 'ptr' // a map is an opaque handle to the heap hash
   if (type?.kind === 'function') return CLOSURE_TYPE // a first-class function value: { code, env }
   if (type?.kind === 'named' && records?.has(type.name))
     return `%struct.${mangle(type.name)}`
@@ -237,6 +238,14 @@ const RUNTIME_DECLS = [
   'declare i64 @seed_list_reduce(ptr, ptr, ptr, i64)',
   'declare i64 @seed_list_some(ptr, ptr, ptr)',
   'declare i64 @seed_list_every(ptr, ptr, ptr)',
+  'declare ptr @seed_map_new()',
+  'declare ptr @seed_map_set(ptr, i64, i64, i64)',
+  'declare i64 @seed_map_get(ptr, i64, i64)',
+  'declare i64 @seed_map_has(ptr, i64, i64)',
+  'declare i64 @seed_map_delete(ptr, i64, i64)',
+  'declare i64 @seed_map_size(ptr)',
+  'declare ptr @seed_map_keys(ptr)',
+  'declare ptr @seed_map_values(ptr)',
 ]
 
 export function emitLlvm(input: Program): string {
@@ -307,7 +316,8 @@ function emitFunction(
   records: Map<string, RecordLayout> = new Map(),
   lifted: Array<string> = [],
   closureId: { n: number } = { n: 0 },
-  captures: Array<Capture> = [], // non-empty when `fn` is a lifted closure: the env words to unpack at entry
+  captures: Array<Capture> = [], // the env words a lifted closure unpacks at entry (may be empty)
+  isClosure = false, // a lifted closure ALWAYS takes a leading `ptr %env`, even with no captures, for a uniform ABI
 ): string {
   // record-aware type lowering, used everywhere in this function so a record-typed value gets its `%struct.Name` type
   const llt = (type: Type | undefined): LlvmType => llty(type, records)
@@ -522,9 +532,103 @@ function emitFunction(
               return listCall('seed_list_index_of', [
                 `i64 ${toWord(expr(node.args[0]!), element)}`,
               ])
+            // closure-taking ops: pass the closure's { code, env } as two pointers; the runtime calls it per element
+            case 'map':
+            case 'filter':
+            case 'some':
+            case 'every': {
+              const closure = expr(node.args[0]!)
+              const fnPtr = fresh()
+              cur.lines.push(
+                `${fnPtr} = extractvalue ${CLOSURE_TYPE} ${closure}, 0`,
+              )
+              const envPtr = fresh()
+              cur.lines.push(
+                `${envPtr} = extractvalue ${CLOSURE_TYPE} ${closure}, 1`,
+              )
+              const ret =
+                collection.op === 'map' || collection.op === 'filter'
+                  ? 'ptr'
+                  : 'i64'
+              const out = fresh()
+              cur.lines.push(
+                `${out} = call ${ret} @seed_list_${collection.op}(ptr ${handle}, ptr ${fnPtr}, ptr ${envPtr})`,
+              )
+              return out
+            }
+            case 'reduce': {
+              const closure = expr(node.args[0]!)
+              const fnPtr = fresh()
+              cur.lines.push(
+                `${fnPtr} = extractvalue ${CLOSURE_TYPE} ${closure}, 0`,
+              )
+              const envPtr = fresh()
+              cur.lines.push(
+                `${envPtr} = extractvalue ${CLOSURE_TYPE} ${closure}, 1`,
+              )
+              const init = toWord(expr(node.args[1]!), node.type)
+              const out = fresh()
+              cur.lines.push(
+                `${out} = call i64 @seed_list_reduce(ptr ${handle}, ptr ${fnPtr}, ptr ${envPtr}, i64 ${init})`,
+              )
+              return fromWord(out, node.type)
+            }
             default:
               cur.lines.push(
                 unsupported('LLVM', `list.${collection.op}`, ';'),
+              )
+              return '0'
+          }
+        }
+        // a map method (`m.set(k, v)`, `m.get(k)`, ...) lowers to a `seed_map_*` runtime call. The key kind (0 integer,
+        // 1 string) tells the runtime how to compare keys by value; key and value move as i64 words.
+        if (collection && collection.kind === 'map') {
+          const handle = expr(collection.target)
+          const mapType = collection.target.type
+          const keyType =
+            mapType?.kind === 'map' ? mapType.key : undefined
+          const valueType =
+            mapType?.kind === 'map' ? mapType.value : undefined
+          const keyKind = keyType?.kind === 'string' ? 1 : 0
+          const key = () =>
+            `i64 ${toWord(expr(node.args[0]!), keyType)}`
+          switch (collection.op) {
+            case 'set': {
+              const value = toWord(expr(node.args[1]!), valueType)
+              const out = fresh()
+              cur.lines.push(
+                `${out} = call ptr @seed_map_set(ptr ${handle}, i64 ${keyKind}, ${key()}, i64 ${value})`,
+              )
+              return out
+            }
+            case 'get': {
+              const out = fresh()
+              cur.lines.push(
+                `${out} = call i64 @seed_map_get(ptr ${handle}, i64 ${keyKind}, ${key()})`,
+              )
+              return fromWord(out, valueType)
+            }
+            case 'has':
+            case 'delete': {
+              const fn =
+                collection.op === 'has' ? 'seed_map_has' : 'seed_map_delete'
+              const out = fresh()
+              cur.lines.push(
+                `${out} = call i64 @${fn}(ptr ${handle}, i64 ${keyKind}, ${key()})`,
+              )
+              return out
+            }
+            case 'keys':
+            case 'values': {
+              const out = fresh()
+              cur.lines.push(
+                `${out} = call ptr @seed_map_${collection.op}(ptr ${handle})`,
+              )
+              return out
+            }
+            default:
+              cur.lines.push(
+                unsupported('LLVM', `map.${collection.op}`, ';'),
               )
               return '0'
           }
@@ -657,7 +761,7 @@ function emitFunction(
       }
       // a field read off a record is an `extractvalue` at the field's declared index
       case 'member': {
-        // `xs.length` on a list reads the runtime length
+        // `xs.length` on a list / `m.size` on a map reads the runtime count
         const read = collectionRead(node)
         if (read && read.kind === 'array') {
           const handle = expr(read.target)
@@ -665,6 +769,12 @@ function emitFunction(
           cur.lines.push(
             `${out} = call i64 @seed_list_length(ptr ${handle})`,
           )
+          return out
+        }
+        if (read && read.kind === 'map') {
+          const handle = expr(read.target)
+          const out = fresh()
+          cur.lines.push(`${out} = call i64 @seed_map_size(ptr ${handle})`)
           return out
         }
         const targetType = node.target.type
@@ -732,7 +842,15 @@ function emitFunction(
           async: false,
         } as Extract<Statement, { form: 'function' }>
         lifted.push(
-          emitFunction(synth, internString, records, lifted, closureId, caps),
+          emitFunction(
+            synth,
+            internString,
+            records,
+            lifted,
+            closureId,
+            caps,
+            true,
+          ),
         )
         const v0 = fresh()
         cur.lines.push(
@@ -744,7 +862,24 @@ function emitFunction(
         )
         return v1
       }
-      case 'map':
+      // a map literal allocates a fresh hash and sets each entry (key + value as i64 words)
+      case 'map': {
+        const keyType = node.type?.kind === 'map' ? node.type.key : undefined
+        const valueType =
+          node.type?.kind === 'map' ? node.type.value : undefined
+        const keyKind = keyType?.kind === 'string' ? 1 : 0
+        const handle = fresh()
+        cur.lines.push(`${handle} = call ptr @seed_map_new()`)
+        for (const entry of node.entries) {
+          const key = toWord(expr(entry.key), keyType)
+          const value = toWord(expr(entry.value), valueType)
+          const next = fresh()
+          cur.lines.push(
+            `${next} = call ptr @seed_map_set(ptr ${handle}, i64 ${keyKind}, i64 ${key}, i64 ${value})`,
+          )
+        }
+        return handle
+      }
       case 'await':
         cur.lines.push(unsupported('LLVM', node.form, ';'))
         return '0'
@@ -811,7 +946,10 @@ function emitFunction(
         if (!node.value) {
           cur.lines.push('ret void')
         } else {
-          const ty = llt(node.value.type)
+          // the returned value must match the function's DECLARED result type, not the (sometimes under-inferred)
+          // expression type: a stdlib body like `send back self.map(fn)` types the call as the element word, but the
+          // function returns a list (ptr). The declared result is the LLVM contract the call site relies on.
+          const ty = llt(fn.result)
           // evaluate the value BEFORE referencing cur.lines: a value-position conditional emits its own blocks and
           // moves `cur` to the merge block, so the `ret` must land there, not in whatever block we started in.
           const v = expr(node.value)
@@ -920,7 +1058,7 @@ function emitFunction(
 
   blocks[0]!.lines = [...allocas, ...blocks[0]!.lines]
   const params = [
-    ...(captures.length ? ['ptr %env'] : []),
+    ...(isClosure ? ['ptr %env'] : []),
     ...fn.params.map(p => `${llt(p.type)} %${mangle(p.name)}`),
   ].join(', ')
   const retType = llt(fn.result)

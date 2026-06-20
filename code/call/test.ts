@@ -1,5 +1,7 @@
 import { logGood, logFail, logStep, formatError, fade } from '../tint'
-import { runCommand } from './make'
+import { runCommand, projectResolver } from './make'
+import { runTestFile } from './test-run'
+import { stdlibRuntime } from './walk'
 
 export async function callTest(input: {
   root: string
@@ -108,6 +110,7 @@ async function runSeedTests(input: {
   filter?: string
 }): Promise<void> {
   const path = await import('path')
+  const fs = await import('fs/promises')
   const files = await findTestFiles({
     root: input.root,
     filter: input.filter,
@@ -127,37 +130,50 @@ async function runSeedTests(input: {
     ),
   )
 
-  let passed = 0
-  let failed = 0
-  let errors: Array<{ file: string; error: string }> = []
+  // every test file compiles and runs in-process with the project resolver, so each `test` block executes and its
+  // `want hold` / `want miss` assertion is reported, not merely that the file compiled.
+  const resolve = projectResolver(input.root)
+  const readRuntime = stdlibRuntime()
+  let pass = 0
+  let fail = 0
 
   for (const file of files) {
     const rel = path.relative(input.root, file)
+    console.log(fade(`  ${rel}`))
     try {
-      console.log(fade(`  ${rel}`))
-      await runCommand({
-        cmd: 'seed',
-        args: ['make', file],
-        cwd: input.root,
+      const source = await fs.readFile(file, 'utf-8')
+      const run = await runTestFile({
+        file,
+        source,
+        resolve,
+        env: 'node',
+        readRuntime,
       })
-      passed++
+      if (run.failure) {
+        fail++
+        logFail(`    ${run.failure.split('\n').pop()}`)
+        continue
+      }
+      for (const r of run.results) {
+        if (r.held) {
+          pass++
+          console.log(`    ${fade('ok')}  ${r.label}`)
+        } else {
+          fail++
+          logFail(`    ${r.label}`)
+        }
+      }
     } catch (err) {
-      failed++
-      errors.push({
-        file: rel,
-        error: formatError(err),
-      })
+      fail++
+      logFail(`    ${formatError(err)}`)
     }
   }
 
   console.log()
-  if (failed > 0) {
-    for (const e of errors) {
-      logFail(`${e.file}: ${e.error}`)
-    }
-    logFail(`${failed} of ${passed + failed} test files failed`)
+  if (fail > 0) {
+    logFail(`${fail} failed, ${pass} passed`)
     process.exit(1)
   } else {
-    logGood(`${passed} test file${passed === 1 ? '' : 's'} passed`)
+    logGood(`${pass} test${pass === 1 ? '' : 's'} passed`)
   }
 }
