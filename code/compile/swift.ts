@@ -91,7 +91,8 @@ function escape(identifier: string): string {
     : identifier
 }
 function camelize(name: string): string {
-  return name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
+  // strip every hyphen, including one before a digit (`sha-256` -> `sha256`), so the result is a valid identifier
+  return name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
 }
 // `self` is reserved in Swift; every other name is camelCased, then keyword-escaped
 function vname(name: string): string {

@@ -65,6 +65,12 @@ function shape(node: Node): string {
   }
 }
 
+// the head atom of a group (its first node), as text. Used to keep certain heads always stacked.
+function headName(group: GroupNode): string {
+  const head = group.nodes[0]
+  return head ? flatten(head) : ''
+}
+
 function isLeaf(node: Node): boolean {
   return node.kind !== 'group' || node.nodes.length <= 1
 }
@@ -84,8 +90,10 @@ function formatGroup(group: GroupNode, depth: number): Array<string> {
   const lines = comments(group, indent)
   const flat = flatten(group)
 
-  // inline when it fits, carries no comments to preserve, and re-parses to the same structure (meaning preserved)
+  // inline when it fits, carries no comments to preserve, and re-parses to the same structure (meaning preserved).
+  // a `load` group always stays stacked, so its `find` children sit on their own indented lines, never inline.
   if (
+    headName(group) !== 'load' &&
     !group.nodes.some(hasComment) &&
     indent.length + flat.length <= WIDTH
   ) {

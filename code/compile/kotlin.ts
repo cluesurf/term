@@ -20,7 +20,8 @@ import type { CollectionOp } from '@/code/compile/backend'
 import { collectBinds, renderBind, bindGap } from '@/code/compile/bind'
 
 function camel(name: string): string {
-  return name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
+  // strip every hyphen, including one before a digit (`sha-256` -> `sha256`), so the result is a valid identifier
+  return name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
 }
 function pascal(name: string): string {
   const c = camel(name)

@@ -29,7 +29,8 @@ function snake(name: string): string {
   return name.replace(/-/g, '_')
 }
 function pascal(name: string): string {
-  return name.replace(/(^|-)([a-z])/g, (_, _d, c: string) =>
+  // strip every hyphen, including one before a digit (`sha-256` -> `Sha256`), so the result is a valid identifier
+  return name.replace(/(^|-)([a-z0-9])/g, (_, _d, c: string) =>
     c.toUpperCase(),
   )
 }

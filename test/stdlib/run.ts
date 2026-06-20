@@ -845,6 +845,53 @@ task unique-size
           mark 2
           mark 3
           mark 3
+
+task count-of-four
+  like number
+  send back
+    call count
+      make list
+        mark 1
+        mark 2
+        mark 3
+        mark 4
+
+task take-last-two-first
+  like number
+  send back
+    call get
+      call take
+        make list
+          mark 1
+          mark 2
+          mark 3
+          mark 4
+        mark 2
+        make end
+      mark 0
+
+task drop-last-two-size
+  like number
+  send back
+    call size
+      call drop
+        make list
+          mark 1
+          mark 2
+          mark 3
+          mark 4
+        mark 2
+        make end
+
+task last-index-of-one
+  like number
+  send back
+    call last-index-of
+      make list
+        mark 1
+        mark 2
+        mark 1
+      mark 1
 `
 
 // pair map-both: apply a different function to each side
@@ -978,6 +1025,10 @@ async function main(): Promise<void> {
   expect('list/sum totals the elements', le.sumOf!(), 10)
   expect('list/index-of finds the position', le.indexOfTwenty!(), 1)
   expect('list/take-first keeps the leading n', le.takeTwoSize!(), 2)
+  expect('list/count returns the length', (le.countOfFour as () => number)(), 4)
+  expect('list/take with side end keeps the trailing n (first of [3,4] is 3)', (le.takeLastTwoFirst as () => number)(), 3)
+  expect('list/drop with side end drops the trailing n', (le.dropLastTwoSize as () => number)(), 2)
+  expect('list/last-index-of finds the last occurrence', (le.lastIndexOfOne as () => number)(), 2)
   expect('list/drop-first removes the leading n', le.dropTwoSize!(), 2)
   expect('list/flatten merges one level', le.flattenSize!(), 3)
   expect('list/product multiplies the elements', le.productOf!(), 24)

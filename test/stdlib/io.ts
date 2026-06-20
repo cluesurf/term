@@ -490,6 +490,8 @@ task un-hexed
 const DIGEST = `load @cluesurf/base/code/cryptography/digest
   find sha256
   find md5
+  find digest
+  find digest-algorithm
 
 task sha
   mark async
@@ -507,6 +509,17 @@ task md
   send back
     call md5
       read m
+      wait true
+
+# the parameterized verb: digest with the algorithm selected at the call site
+task sha-via-verb
+  mark async
+  take m, like text
+  like text
+  send back
+    call digest
+      read m
+      make sha-256
       wait true
 `
 
@@ -926,7 +939,44 @@ const BYTES = `load @cluesurf/base/code/bytes
   find to-base64
   find from-base64
   find length
+  find count
+  find encode
+  find decode
   find concat
+
+# the parameterized codec verb: encode bytes in a base chosen at the call site (16 = hex, 64 = base64)
+task encode-in
+  take input, like text
+  take base, like number
+  like text
+  send back
+    call encode
+      call from-text
+        read input
+      read base
+
+# round-trip through the decode verb at a runtime base
+task decode-round-trip
+  take input, like text
+  take base, like number
+  like text
+  send back
+    call to-text
+      call decode
+        call encode
+          call from-text
+            read input
+          read base
+        read base
+
+# count is the canonical name for the byte length
+task count-of
+  take input, like text
+  like number
+  send back
+    call count
+      call from-text
+        read input
 
 task hex-of
   take input, like text
@@ -1398,6 +1448,11 @@ async function main(): Promise<void> {
   expect('bytes: utf8 length counts bytes not chars (é is 2)', by.byteLength!('café'), 5)
   expect('bytes: concat two buffers then hex', by.concatHex!(), '61626364')
   expect('bytes: hex round-trips back to the text', by.hexRoundTrip!('hello'), 'hello')
+  // the minimal-surface verbs: encode/decode with a base parameter, and count as the canonical length
+  expect('bytes: encode verb at base 16 equals hex', (by.encodeIn as (s: string, b: number) => string)('hi', 16), '6869')
+  expect('bytes: encode verb at base 64 equals base64', (by.encodeIn as (s: string, b: number) => string)('hi', 64), Buffer.from('hi').toString('base64'))
+  expect('bytes: decode verb round-trips at base 64', (by.decodeRoundTrip as (s: string, b: number) => string)('café', 64), 'café')
+  expect('bytes: count verb counts bytes (é is 2)', (by.countOf as (s: string) => number)('café'), 5)
 
   const sr = await loadProgram(SECURE_RANDOM)
   const draw16 = sr.draw!(16) as string
@@ -1604,6 +1659,11 @@ async function main(): Promise<void> {
     'cryptography/digest: md5 matches the known vector for "abc"',
     await dg.md!('abc'),
     '900150983cd24fb0d6963f7d28e17f72',
+  )
+  expect(
+    'cryptography/digest: the digest verb with algorithm sha-256 matches the named form',
+    await (dg.shaViaVerb as (m: string) => Promise<string>)('abc'),
+    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
   )
 
   const ma = await loadProgram(MATH)
