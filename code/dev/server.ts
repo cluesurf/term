@@ -148,7 +148,9 @@ export function startDevServer(options: DevOptions): DevServer {
     streamSSE(context, async stream => {
       clients.add(stream)
       await stream.writeSSE({ data: JSON.stringify({ type: 'connected' }) })
-      stream.onAbort(() => clients.delete(stream))
+      stream.onAbort(() => {
+        clients.delete(stream)
+      })
       // keep the stream open until the client disconnects
       while (!stream.aborted) await stream.sleep(10_000)
     }),

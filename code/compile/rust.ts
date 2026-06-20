@@ -12,6 +12,7 @@ import type {
   Type,
 } from '@/code/compile/node'
 import {
+  ARRAY_OP_BOUND,
   collectionCall,
   collectionRead,
   exhausted,
@@ -327,7 +328,8 @@ export function emitRust(program: Program): string {
       }
     }
 
-    // arrays are plain `Vec` (owned, and locals emit as `let mut`, so in-place mutation works without a shared handle)
+    // arrays are plain `Vec` (owned, and locals emit as `let mut`, so in-place mutation works without a shared handle).
+    // the closure ops take a `Box<dyn Fn>` and clone each element into it; iterator adapters collect back to a `Vec`.
     switch (op.op) {
       case 'push':
         return `{ ${target}.push(${arg[0]}); ${target}.len() as i64 }`
@@ -337,6 +339,34 @@ export function emitRust(program: Program): string {
         return `${target}[(${arg[0]}) as usize].clone()`
       case 'includes':
         return `${target}.contains(&${arg[0]})`
+      case 'indexOf':
+        return `${target}.iter().position(|e| *e == ${arg[0]}).map(|i| i as i64).unwrap_or(-1)`
+      case 'concat':
+        return `[${target}, ${arg[0]}].concat()`
+      case 'slice':
+        // one argument slices to the end (JS `slice(start)`); two slices a range
+        return arg[1] !== undefined
+          ? `${target}[(${arg[0]} as usize)..(${arg[1]} as usize)].to_vec()`
+          : `${target}[(${arg[0]} as usize)..].to_vec()`
+      case 'toReversed':
+        return `${target}.iter().rev().cloned().collect::<Vec<_>>()`
+      case 'join':
+        return `${target}.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(&${arg[0]})`
+      case 'map':
+        return `${target}.iter().map(|e| ${arg[0]}(e.clone())).collect::<Vec<_>>()`
+      case 'filter':
+        return `${target}.iter().filter(|e| ${arg[0]}((*e).clone())).cloned().collect::<Vec<_>>()`
+      case 'some':
+        return `${target}.iter().any(|e| ${arg[0]}(e.clone()))`
+      case 'every':
+        return `${target}.iter().all(|e| ${arg[0]}(e.clone()))`
+      case 'reduce':
+        return `${target}.iter().fold(${arg[1]}, |acc, e| ${arg[0]}(acc, e.clone()))`
+      case 'findIndex':
+        return `${target}.iter().position(|e| ${arg[0]}(e.clone())).map(|i| i as i64).unwrap_or(-1)`
+      case 'flat':
+        // flatten is only defined for a list of lists; it cannot be typed over an arbitrary element, so it panics here
+        return `unimplemented!("flatten is only defined for a list of lists")`
       default:
         return ''
     }
@@ -507,10 +537,22 @@ export function emitRust(program: Program): string {
         }
         node.params.forEach(p => scanNamed(p.type))
         scanNamed(node.result)
-        const bound = (name: string, isKey: boolean): string =>
-          isKey
-            ? `${name}: Eq + std::hash::Hash + Clone`
-            : `${name}: Clone`
+        // extra element bounds the body's array ops require: equality (`includes` / `indexOf`), display (`join`)
+        const arrayBounds = collectArrayBounds(node.body)
+        // a generic's bound: `Clone` always; `Eq + Hash` for a map key (which implies PartialEq); `PartialEq` for an
+        // array used with `includes` / `indexOf`; `Display` for one stringified by `join`.
+        const bound = (
+          name: string,
+          isKey: boolean,
+          isEq: boolean,
+          isDisplay: boolean,
+        ): string => {
+          const traits = ['Clone']
+          if (isKey) traits.push('Eq', 'std::hash::Hash')
+          else if (isEq) traits.push('PartialEq')
+          if (isDisplay) traits.push('std::fmt::Display')
+          return `${name}: ${traits.join(' + ')}`
+        }
         const pool = ['T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'A', 'B', 'C']
         const used = new Set(
           node.generics.map(g => g.name.toUpperCase()),
@@ -521,12 +563,26 @@ export function emitRust(program: Program): string {
           const letter = pool.find(l => !used.has(l)) ?? `T${id}`
           used.add(letter)
           rustVarNames.set(id, letter)
-          fresh.push(bound(letter, keyIds.has(id)))
+          fresh.push(
+            bound(
+              letter,
+              keyIds.has(id),
+              arrayBounds.eqIds.has(id),
+              arrayBounds.displayIds.has(id),
+            ),
+          )
         }
         const kept = node.generics
           .map(g => g.name.toUpperCase())
           .filter(name => namedInSig.has(name))
-          .map(name => bound(name, keyNames.has(name)))
+          .map(name =>
+            bound(
+              name,
+              keyNames.has(name),
+              arrayBounds.eqNames.has(name),
+              arrayBounds.displayNames.has(name),
+            ),
+          )
         const decls = [...kept, ...fresh]
         const generics = decls.length ? `<${decls.join(', ')}>` : ''
         const params = node.params
@@ -641,4 +697,123 @@ function reassigned(body: Array<Statement>, into: Set<string>): void {
         break
     }
   }
+}
+
+// the extra element-type bounds a function body needs from its array ops: equality (`includes` / `indexOf`) or display
+// (`join`). Returns the generic variable ids and names sitting at the element position of an array receiving such an op.
+function collectArrayBounds(body: Array<Statement>): {
+  eqIds: Set<number>
+  displayIds: Set<number>
+  eqNames: Set<string>
+  displayNames: Set<string>
+} {
+  const eqIds = new Set<number>()
+  const displayIds = new Set<number>()
+  const eqNames = new Set<string>()
+  const displayNames = new Set<string>()
+  const record = (callee: Expression): void => {
+    const op = collectionCall(callee)
+    if (!op || op.kind !== 'array') return
+
+    const need = ARRAY_OP_BOUND[op.op]
+    if (!need) return
+
+    const element =
+      op.target.type?.kind === 'array' ? op.target.type.element : undefined
+    if (element?.kind === 'variable')
+      (need === 'eq' ? eqIds : displayIds).add(element.id)
+    else if (element?.kind === 'named')
+      (need === 'eq' ? eqNames : displayNames).add(
+        element.name.toUpperCase(),
+      )
+  }
+  const visitExpr = (e: Expression | undefined): void => {
+    if (!e) return
+    switch (e.form) {
+      case 'call':
+        record(e.callee)
+        visitExpr(e.callee)
+        e.args.forEach(visitExpr)
+        break
+      case 'binary':
+        visitExpr(e.left)
+        visitExpr(e.right)
+        break
+      case 'unary':
+        visitExpr(e.operand)
+        break
+      case 'member':
+        visitExpr(e.target)
+        break
+      case 'array':
+        e.items.forEach(visitExpr)
+        break
+      case 'map':
+        e.entries.forEach(en => {
+          visitExpr(en.key)
+          visitExpr(en.value)
+        })
+        break
+      case 'record':
+        e.fields.forEach(f => visitExpr(f.value))
+        break
+      case 'await':
+        visitExpr(e.expr)
+        break
+      case 'closure':
+        visitStmts(e.body)
+        break
+      default:
+        break
+    }
+  }
+  const visitStmts = (stmts: Array<Statement>): void => {
+    for (const s of stmts) {
+      switch (s.form) {
+        case 'let':
+          visitExpr(s.init)
+          break
+        case 'assign':
+          visitExpr(s.target)
+          visitExpr(s.value)
+          break
+        case 'expression':
+          visitExpr(s.expr)
+          break
+        case 'return':
+          visitExpr(s.value)
+          break
+        case 'throw':
+          visitExpr(s.value)
+          break
+        case 'hold':
+          visitExpr(s.expr)
+          break
+        case 'while':
+          visitExpr(s.cond)
+          visitStmts(s.body)
+          break
+        case 'for-each':
+          visitExpr(s.iterable)
+          visitStmts(s.body)
+          break
+        case 'if':
+          s.branches.forEach(b => {
+            visitExpr(b.cond)
+            visitStmts(b.body)
+          })
+          if (s.otherwise) visitStmts(s.otherwise)
+          break
+        case 'match':
+          visitExpr(s.subject)
+          s.cases.forEach(c => visitStmts(c.body))
+          if (s.otherwise) visitStmts(s.otherwise)
+          break
+        default:
+          break
+      }
+    }
+  }
+  visitStmts(body)
+  return { eqIds, displayIds, eqNames, displayNames }
 }

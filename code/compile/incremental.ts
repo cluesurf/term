@@ -18,6 +18,10 @@ import type {
   Expression,
 } from '@/code/compile/node'
 import type { Diagnostic } from '@/code/parser/diagnostic'
+import { resolve as resolveNames, buildGlobalScope } from '@/code/check/resolve'
+import type { Scope } from '@/code/check/resolve'
+import { check as inferTypes } from '@/code/check/infer'
+import { emitTypeScript } from '@/code/compile/typescript'
 
 export type MergedProgram =
   | { ok: true; program: Program }
@@ -159,6 +163,130 @@ export class QueryCompiler {
       (a, b) => a.unresolved.join(',') === b.unresolved.join(','),
     )
   }
+
+  // ---- the functional per-definition pipeline (real resolve; stage 1) ----
+
+  // the merged program (or empty on a compile error)
+  private merged(files: Array<string>): Program {
+    const result = this.program(files)
+    return result.ok ? result.program : []
+  }
+
+  // the global name scope (names -> kind/arity + intrinsics), built once. Backdates while the name set + arities are
+  // unchanged, so editing a body does not invalidate it.
+  nameIndex(files: Array<string>): Scope {
+    return this.db.query(
+      'nameIndex',
+      () => buildGlobalScope(this.merged(files)),
+      (a, b) => scopeKey(a) === scopeKey(b),
+    )
+  }
+
+  // one function's raw (unresolved) definition, sliced from the merged program. Backdates per function (span-free).
+  functionSource(
+    files: Array<string>,
+    name: string,
+  ): FunctionDef | undefined {
+    return this.db.query(
+      `source:${name}`,
+      () => functionDefs(this.merged(files)).get(name),
+      (a, b) => structureKey(a) === structureKey(b),
+    )
+  }
+
+  // resolve one function's body against the global scope, functionally (on a clone, so the result is a stable cached
+  // value). Depends only on this function's source + the name index, so editing a sibling does not re-resolve it.
+  resolvedDef(
+    files: Array<string>,
+    name: string,
+  ): { def: FunctionDef | undefined; diagnostics: Array<Diagnostic> } {
+    return this.db.query(
+      `resolved:${name}`,
+      () => {
+        const source = this.functionSource(files, name)
+        if (!source) return { def: undefined, diagnostics: [] }
+        const scope = this.nameIndex(files)
+        const clone = structuredClone(source)
+        const diagnostics = resolveNames([clone], '<entry>', undefined, {
+          scope,
+          only: name,
+        })
+        return { def: clone, diagnostics }
+      },
+      (a, b) =>
+        structureKey(a.def) === structureKey(b.def) &&
+        a.diagnostics.length === b.diagnostics.length,
+    )
+  }
+
+  // type-check one function functionally: infer its resolved clone against the program's signatures + forms, checking
+  // only that function's body. Registers each defined callee's signature as a dependency (the firewall). The typed
+  // clone is a stable cached value, so a callee body edit leaves it structurally unchanged (its dependents firewall).
+  typedDef(
+    files: Array<string>,
+    name: string,
+  ): { def: FunctionDef | undefined; diagnostics: Array<Diagnostic> } {
+    return this.db.query(
+      `typed:${name}`,
+      () => {
+        const resolved = this.resolvedDef(files, name)
+        if (!resolved.def) return { def: undefined, diagnostics: [] }
+        // firewall: depend on each defined callee's signature, never its body
+        const defined = new Set(this.defNames(files))
+        for (const ref of collectCallRefs(resolved.def.body))
+          if (defined.has(ref)) void this.signature(files, ref)
+        // a program whose `name` entry is the resolved clone (for table context), checking only it -> types the clone
+        const clone = resolved.def
+        const program = this.merged(files).map(s =>
+          s.form === 'function' && s.name === name ? clone : s,
+        )
+        const diagnostics = inferTypes(program, '<entry>', undefined, name)
+        return { def: clone, diagnostics }
+      },
+      (a, b) =>
+        structureKey(a.def) === structureKey(b.def) &&
+        a.diagnostics.length === b.diagnostics.length,
+    )
+  }
+
+  // ---- per-definition emit (stage 3) ----
+
+  // emit one function's TypeScript from its typed clone. Depends on `typedDef(name)`, which backdates when the
+  // function is unchanged, so editing a sibling never re-emits this one (the emit-level firewall).
+  emitDef(files: Array<string>, name: string): string {
+    return this.db.query(`emit:${name}`, () => {
+      const typed = this.typedDef(files, name)
+      return typed.def ? emitTypeScript([typed.def]) : ''
+    })
+  }
+
+  // the whole program's TypeScript, assembled from the per-definition emits plus the non-function statements (forms,
+  // native docks). A one-function edit re-emits only that function.
+  emitProgram(files: Array<string>): string {
+    return this.db.query(`emit`, () => {
+      const program = this.merged(files)
+      const parts: Array<string> = []
+      const others = program.filter(s => s.form !== 'function')
+      if (others.length) parts.push(emitTypeScript(others))
+      for (const statement of program)
+        if (statement.form === 'function')
+          parts.push(this.emitDef(files, statement.name))
+      return parts.filter(p => p.length > 0).join('\n\n')
+    })
+  }
+}
+
+// a scope's content as a stable string (names + kinds + arities), for backdating the name index
+function scopeKey(scope: Scope): string {
+  return [...scope.entries()]
+    .map(
+      ([name, binding]) =>
+        `${name}:${binding.kind}:${
+          'arity' in binding ? binding.arity : ''
+        }`,
+    )
+    .sort()
+    .join('|')
 }
 
 type FunctionDef = Extract<Statement, { form: 'function' }>

@@ -1200,6 +1200,60 @@ task compute
       read count
       mark 1
 `
+// directory list reduced through the list form's own method (size) applied to the raw native array the native op
+// returns. This is array-receiver method dispatch: list.size accepts the array directly, no conversion. The directory
+// list is aliased so it does not collide with the imported list form.
+const DIR_METHOD_PROG = `load @cluesurf/base/code/file/directory
+  find make
+  find remove
+  find list, name read-directory
+load @cluesurf/base/code/list
+  find list
+
+task compute
+  like boolean
+  call remove
+    text </tmp/seed-roundtrip-listmethod>
+  call make
+    text </tmp/seed-roundtrip-listmethod/alpha>
+  save entries
+    call read-directory
+      text </tmp/seed-roundtrip-listmethod>
+  send back
+    call is-equal
+      call size
+        read entries
+      mark 1
+`
+// directory walk: make a nested directory tree, walk it recursively, and count the entries. Exercises each platform's
+// recursive enumerator (rust std::fs recursion, swift FileManager.enumerator, kotlin walkTopDown) returning a list.
+const DIR_WALK_PROG = `load @cluesurf/base/code/file/directory
+  find make
+  find remove
+  find walk
+
+task compute
+  like boolean
+  call remove
+    text </tmp/seed-roundtrip-walkdir>
+  call make
+    text </tmp/seed-roundtrip-walkdir/aaa/bbb>
+  save entries
+    call walk
+      text </tmp/seed-roundtrip-walkdir>
+  save count, mark 0
+  walk list, read entries
+    hook next
+      take item, name value
+      save count
+        call add
+          read count
+          mark 1
+  send back
+    call is-equal
+      read count
+      mark 2
+`
 // calendar: build a UTC timestamp, format it to ISO 8601, parse it back, and shift it a month. Asserts three
 // invariants at once (format matches the exact cross-platform string, parse inverts format, add-months is
 // calendar-aware) as a single boolean. Exercises each platform's date library (rust chrono, swift Foundation,
@@ -1862,6 +1916,40 @@ function main(): void {
     'true',
     false,
   )
+  // list-form method on a native array: list.contains applied to the directory list result
+  runSwiftText(
+    'swift + list: size on a native array result (directory list)',
+    frontEnd(DIR_METHOD_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + list: size on a native array result (directory list)',
+    frontEnd(DIR_METHOD_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: list size on a native array result (directory list)',
+    frontEnd(DIR_METHOD_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  // directory walk: recursive enumeration returns the nested entries, counted
+  runSwiftText(
+    'swift + file/directory: walk a nested tree (FileManager.enumerator)',
+    frontEnd(DIR_WALK_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + file/directory: walk a nested tree (File.walkTopDown)',
+    frontEnd(DIR_WALK_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: file/directory walk a nested tree (std::fs recursion)',
+    frontEnd(DIR_WALK_PROG, true, 'rust'),
+    'true',
+    false,
+  )
   // calendar: ISO format + parse + calendar-aware add-months agree across the platform date libraries
   runSwiftText(
     'swift + calendar: ISO format + parse + add-months (Foundation)',
@@ -1913,9 +2001,9 @@ function main(): void {
     'true',
     true,
   )
-  // collections: the native map runtime. kotlin's MutableMap and rust's Rc<RefCell<HashMap>> are both reference-typed,
-  // so the mutable set form (which mutates `self.items` for its side effect) runs. swift still needs its collection
-  // runtime (a reference class wrapper), tracked as pending.
+  // collections: the native map runtime on every strict backend. The map is reference-typed on each (kotlin
+  // MutableMap, rust Rc<RefCell<HashMap>>, swift a SeedMap class wrapper), so the mutable set form -- which mutates
+  // `self.items` for its side effect -- runs uniformly.
   runKotlinText(
     'kotlin + collection: set intersect size via the native map runtime (MutableMap)',
     frontEnd(COLLECTION_PROG, true, 'kotlin'),
@@ -1926,6 +2014,11 @@ function main(): void {
     frontEnd(COLLECTION_PROG, true, 'rust'),
     'true',
     false,
+  )
+  runSwiftText(
+    'swift + collection: set intersect size via the native map runtime (SeedMap class)',
+    frontEnd(COLLECTION_PROG, true, 'swift'),
+    'true',
   )
   // json to "runs" via the host JSON: rust serde_json (cargo), swift JSONSerialization. kotlin needs org.json on the
   // classpath (not in the JDK), so it is compile-checked, not run here.

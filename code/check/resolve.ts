@@ -12,20 +12,27 @@ import type {
   Statement,
 } from '@/code/compile/node'
 
-type Scope = Map<string, Binding>
+export type Scope = Map<string, Binding>
 
-export function resolve(
-  program: Program,
-  file: string,
-  origin?: WeakMap<Statement, string>,
-): Array<Diagnostic> {
-  const diagnostics: Array<Diagnostic> = []
+// the JS intrinsics the generated bindings (bind.tree's native.tree) use to express operators, control flow, and
+// dynamic member access. They are not user definitions; the backend lowers them to real operations. Always in scope.
+const INTRINSICS = [
+  'native-test',
+  'native-test-else',
+  'debug',
+  'compute-binary-operation',
+  'compute-prefixed-unary-operation',
+  'call-keyword',
+  'set-dynamic-aspect',
+  'get-dynamic-aspect',
+  'delete-dynamic-aspect',
+  'try',
+]
 
-  // the file currently being resolved. With a merged multi-module program, `file` is only the entry; `origin` maps
-  // each top-level statement back to the module it came from, so an unknown-name error points at the real source.
-  let currentFile = file
-
-  // global scope: top-level functions, collected first so forward references resolve
+// build the global scope: top-level functions (+ form method bare-names), native aliases, and the intrinsics. Pure
+// over the program, so the incremental compiler builds it once and reuses it to resolve each definition in isolation.
+// See note/seed/plan/functional-checker.md (Tier 2, stage 1).
+export function buildGlobalScope(program: Program): Scope {
   const global: Scope = new Map()
   for (const statement of program) {
     if (statement.form === 'function') {
@@ -46,23 +53,27 @@ export function resolve(
       global.set(statement.alias, { kind: 'deferred' })
     }
   }
-
-  // the JS intrinsics the generated bindings (bind.tree's native.tree) use to express operators, control flow, and
-  // dynamic member access. They are not user definitions; the backend lowers them to real operations. Always in scope.
-  const INTRINSICS = [
-    'native-test',
-    'native-test-else',
-    'debug',
-    'compute-binary-operation',
-    'compute-prefixed-unary-operation',
-    'call-keyword',
-    'set-dynamic-aspect',
-    'get-dynamic-aspect',
-    'delete-dynamic-aspect',
-    'try',
-  ]
   for (const intrinsic of INTRINSICS)
     global.set(intrinsic, { kind: 'builtin' })
+  return global
+}
+
+export function resolve(
+  program: Program,
+  file: string,
+  origin?: WeakMap<Statement, string>,
+  // incremental hooks (default = whole-program, unchanged): `scope` reuses a prebuilt global scope instead of building
+  // one; `only` resolves just that one function. The per-definition path passes both. See functional-checker.md.
+  options?: { scope?: Scope; only?: string },
+): Array<Diagnostic> {
+  const diagnostics: Array<Diagnostic> = []
+
+  // the file currently being resolved. With a merged multi-module program, `file` is only the entry; `origin` maps
+  // each top-level statement back to the module it came from, so an unknown-name error points at the real source.
+  let currentFile = file
+
+  // the global scope, prebuilt (incremental path) or built now from the whole program (whole-program path)
+  const global = options?.scope ?? buildGlobalScope(program)
 
   const stack: Array<Scope> = [global]
 
@@ -210,6 +221,12 @@ export function resolve(
 
   for (const statement of program) {
     currentFile = origin?.get(statement) ?? file
+    // incremental: resolve only the requested function's body (the global scope already has every name)
+    if (
+      options?.only !== undefined &&
+      !(statement.form === 'function' && statement.name === options.only)
+    )
+      continue
     resolveStatement(statement)
   }
 

@@ -37,7 +37,32 @@ const MAP_METHODS = new Set([
   'keys',
   'values',
 ])
-const ARRAY_METHODS = new Set(['push', 'pop', 'at', 'includes'])
+const ARRAY_METHODS = new Set([
+  'push',
+  'pop',
+  'at',
+  'includes',
+  'indexOf',
+  'concat',
+  'slice',
+  'toReversed',
+  'join',
+  'map',
+  'filter',
+  'some',
+  'every',
+  'reduce',
+  'findIndex',
+  'flat',
+])
+
+// the extra trait the element type needs for an array op that goes beyond `Clone`: equality (`includes` / `indexOf`)
+// or string rendering (`join`). A backend reads this to constrain the element generic of a method that uses the op.
+export const ARRAY_OP_BOUND: Record<string, 'eq' | 'display'> = {
+  includes: 'eq',
+  indexOf: 'eq',
+  join: 'display',
+}
 
 // a native collection METHOD CALL (`map.set(k, v)`, `array.push(x)`) on a map/array receiver
 export function collectionCall(

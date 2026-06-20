@@ -201,6 +201,7 @@ const FILE_DIR = `load @cluesurf/base/code/file/directory
   find remove
   find exists
   find list
+  find walk
 
 task make-dir
   take path, like text
@@ -226,6 +227,14 @@ task list-dir
     like text
   send back
     call list
+      read path
+
+task walk-dir
+  take path, like text
+  like list
+    like text
+  send back
+    call walk
       read path
 `
 
@@ -1686,6 +1695,22 @@ async function main(): Promise<void> {
   expect(
     'file/directory: list of a missing path is empty',
     (fd.listDir!(join(metaDir, 'nope')) as Array<string>).length,
+    0,
+  )
+  // nested tree for walk: metaDir/branch/leaf.txt
+  fd.makeDir!(join(metaDir, 'branch'))
+  writeFileSync(join(metaDir, 'branch', 'leaf.txt'), 'x')
+  const walked = fd.walkDir!(metaDir) as Array<string>
+  expect(
+    'file/directory: walk lists nested entries recursively',
+    Array.isArray(walked) &&
+      walked.some(p => p.endsWith('branch')) &&
+      walked.some(p => p.endsWith('leaf.txt')),
+    true,
+  )
+  expect(
+    'file/directory: walk of a missing path is empty',
+    (fd.walkDir!(join(metaDir, 'nope')) as Array<string>).length,
     0,
   )
 

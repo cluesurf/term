@@ -202,12 +202,35 @@ export function emitSwift(program: Program): string {
     const pool = ['T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'A', 'B', 'C']
     const used = new Set(declared)
     varNames = new Map()
+    // which generics sit in a map-KEY position (a Dictionary key must be Hashable), following form args transitively so
+    // a `Set<U>` marks U even though its map is hidden inside the struct
+    const keyIds = new Set<number>()
+    const keyNames = new Set<string>()
+    const markKeys = (t: Type | undefined, isKey: boolean): void => {
+      if (!t) return
+      if (t.kind === 'variable') {
+        if (isKey) keyIds.add(t.id)
+      } else if (t.kind === 'map') {
+        markKeys(t.key, true)
+        markKeys(t.value, false)
+      } else if (t.kind === 'array') markKeys(t.element, false)
+      else if (t.kind === 'function') {
+        t.params.forEach(p => markKeys(p, false))
+        markKeys(t.result, false)
+      } else if (t.kind === 'named') {
+        if (isKey) keyNames.add(t.name.toUpperCase())
+        const keyArgs = formKeyIndices.get(t.name)
+        t.args?.forEach((a, i) => markKeys(a, keyArgs?.has(i) ?? false))
+      }
+    }
+    node.params.forEach(p => markKeys(p.type, false))
+    markKeys(node.result, false)
     const fresh: Array<string> = []
     for (const id of ids) {
       const letter = pool.find(l => !used.has(l)) ?? `T${id}`
       used.add(letter)
       varNames.set(id, letter)
-      fresh.push(letter)
+      fresh.push(keyIds.has(id) ? `${letter}: Hashable` : letter)
     }
     // declared generics that actually appear in the signature (as named types) are kept; the rest are dropped
     const namedInSig = new Set<string>()
@@ -227,13 +250,18 @@ export function emitSwift(program: Program): string {
     }
     node.params.forEach(p => scan(p.type))
     scan(node.result)
-    const keptDeclared = declared.filter(d => namedInSig.has(d))
+    const keptDeclared = declared
+      .filter(d => namedInSig.has(d))
+      .map(d => (keyNames.has(d) ? `${d}: Hashable` : d))
     const all = [...keptDeclared, ...fresh]
     return all.length ? `<${all.join(', ')}>` : ''
   }
   // variant label -> the owning enum, and each variant's field names (for construction and match binding)
   const variantFields = new Map<string, Array<string>>()
   const variantSet = new Set<string>()
+  // for each form, which generic parameters (by index) flow into a map KEY position inside its fields. A `set<t>` stores
+  // `items: hash<t, bool>`, so index 0 is a key; a method generic filling that slot must be `Hashable` (a Dictionary key).
+  const formKeyIndices = new Map<string, Set<number>>()
   for (const node of program) {
     if (node.form !== 'record-type') continue
     for (const v of node.variants) {
@@ -242,6 +270,28 @@ export function emitSwift(program: Program): string {
         v.name,
         v.fields.map(f => f.name),
       )
+    }
+    if (node.params.length > 0) {
+      const keyParams = new Set<string>()
+      const findKeys = (t: Type | undefined): void => {
+        if (!t) return
+        if (t.kind === 'map') {
+          if (t.key.kind === 'named') keyParams.add(t.key.name)
+          findKeys(t.key)
+          findKeys(t.value)
+        } else if (t.kind === 'array') findKeys(t.element)
+        else if (t.kind === 'named') t.args?.forEach(findKeys)
+      }
+      const fields =
+        node.variants.length > 0
+          ? node.variants.flatMap(v => v.fields)
+          : node.fields
+      fields.forEach(f => findKeys(f.type))
+      const indices = new Set<number>()
+      node.params.forEach((p, i) => {
+        if (keyParams.has(p)) indices.add(i)
+      })
+      if (indices.size > 0) formKeyIndices.set(node.name, indices)
     }
   }
 
@@ -526,8 +576,16 @@ export function emitSwift(program: Program): string {
         )} {\n${bodyText}\n${pad(d)}}`
       }
       case 'record-type': {
+        // a generic that flows into a map key inside the fields must be `Hashable` (the SeedMap wrapper requires it)
+        const keys = formKeyIndices.get(node.name)
         const generics = node.params.length
-          ? `<${node.params.map(p => p.toUpperCase()).join(', ')}>`
+          ? `<${node.params
+              .map((p, i) =>
+                keys?.has(i)
+                  ? `${p.toUpperCase()}: Hashable`
+                  : p.toUpperCase(),
+              )
+              .join(', ')}>`
           : ''
         if (node.variants.length > 0) {
           // a native enum: each variant a case, its fields the associated values
@@ -586,11 +644,23 @@ export function emitSwift(program: Program): string {
     .filter(n => n.form !== 'native')
     .map(n => stmt(n, 0, new Map()))
     .filter(Boolean)
-  const prelude = body.some(b => b.includes('SeedError('))
-    ? [
-        'struct SeedError: Error { let message: String; init(_ m: String) { message = m } }',
-      ]
-    : []
+  const prelude: Array<string> = []
+  if (body.some(b => b.includes('SeedError(')))
+    prelude.push(
+      'struct SeedError: Error { let message: String; init(_ m: String) { message = m } }',
+    )
+  // the reference wrapper for maps (a class so mutation persists across a struct copy); emitted only when used
+  if (body.some(b => b.includes('SeedMap')))
+    prelude.push(
+      [
+        'final class SeedMap<K: Hashable, V> {',
+        '    var data: [K: V]',
+        '    init(_ data: [K: V] = [:]) { self.data = data }',
+        '    @discardableResult func setting(_ key: K, _ value: V) -> SeedMap<K, V> { data[key] = value; return self }',
+        '    @discardableResult func removing(_ key: K) -> Bool { let had = data[key] != nil; data.removeValue(forKey: key); return had }',
+        '}',
+      ].join('\n'),
+    )
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'
 }
 
