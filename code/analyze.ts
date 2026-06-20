@@ -31,7 +31,13 @@ export type Analysis = {
 // the following line. Walks the CST so the formatter and linter share the same comment source.
 function suppressions(tree: RootNode): Map<number, Set<string>> {
   const map = new Map<number, Set<string>>()
-  const visit = (group: { comments?: Array<{ text: string; span: { start: { line: number } } }>; nodes: Array<unknown> }) => {
+  const visit = (group: {
+    comments?: Array<{
+      text: string
+      span: { start: { line: number } }
+    }>
+    nodes: Array<unknown>
+  }) => {
     for (const comment of group.comments ?? []) {
       const found = comment.text.match(/lint\s+off\s+([A-Za-z0-9]+)/)
       if (found) {
@@ -40,13 +46,22 @@ function suppressions(tree: RootNode): Map<number, Set<string>> {
         map.get(line)!.add(found[1]!)
       }
     }
-    for (const child of group.nodes) if (child && typeof child === 'object' && (child as { kind?: string }).kind === 'group') visit(child as never)
+    for (const child of group.nodes)
+      if (
+        child &&
+        typeof child === 'object' &&
+        (child as { kind?: string }).kind === 'group'
+      )
+        visit(child as never)
   }
   for (const group of tree.nodes) visit(group as never)
   return map
 }
 
-export function analyze(source: { file: string; text: string }): Analysis {
+export function analyze(source: {
+  file: string
+  text: string
+}): Analysis {
   const { tree, diagnostics } = parseTolerant(source)
   const built = mill(expandTemplates(tree), source.file)
   const program = built.ok ? built.program : null
@@ -58,7 +73,13 @@ export function analyze(source: { file: string; text: string }): Analysis {
     program,
     diagnostics: all,
     format: () => (diagnostics.length ? source.text : formatTree(tree)),
-    lint: (config: LintConfig = {}) => (program ? lint(program, source.file, source.text, { ...config, suppress }) : []),
+    lint: (config: LintConfig = {}) =>
+      program
+        ? lint(program, source.file, source.text, {
+            ...config,
+            suppress,
+          })
+        : [],
     check: () => {
       if (!program) return all
       const result = compileProgram(program, source.file)

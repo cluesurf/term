@@ -21,7 +21,10 @@ export type Cell =
   | { kind: 'group'; children: Array<Cell> }
 
 // a reactive text cell: an effect recomputes its cached value only when its dependencies change (minimal update)
-export function text(get: () => string, style: Style = ansi.plain): Cell {
+export function text(
+  get: () => string,
+  style: Style = ansi.plain,
+): Cell {
   const cell: Cell = { kind: 'text', value: '', dispose: () => {} }
   cell.dispose = effect(() => {
     cell.value = style(get())

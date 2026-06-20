@@ -17,23 +17,49 @@ export type Term =
   | { tag: 'annotate'; value: Term; type: Term }
   | { tag: 'reference'; name: string }
 
-export const variable = (level: number): Term => ({ tag: 'variable', level })
-export const lambda = (body: (x: Term) => Term): Term => ({ tag: 'lambda', body })
-export const pi = (input: Term, body: (x: Term) => Term): Term => ({ tag: 'pi', input, body })
-export const apply = (fun: Term, arg: Term): Term => ({ tag: 'apply', fun, arg })
-export const self = (body: (x: Term) => Term): Term => ({ tag: 'self', body })
-export const annotate = (value: Term, type: Term): Term => ({ tag: 'annotate', value, type })
-export const reference = (name: string): Term => ({ tag: 'reference', name })
+export const variable = (level: number): Term => ({
+  tag: 'variable',
+  level,
+})
+export const lambda = (body: (x: Term) => Term): Term => ({
+  tag: 'lambda',
+  body,
+})
+export const pi = (input: Term, body: (x: Term) => Term): Term => ({
+  tag: 'pi',
+  input,
+  body,
+})
+export const apply = (fun: Term, arg: Term): Term => ({
+  tag: 'apply',
+  fun,
+  arg,
+})
+export const self = (body: (x: Term) => Term): Term => ({
+  tag: 'self',
+  body,
+})
+export const annotate = (value: Term, type: Term): Term => ({
+  tag: 'annotate',
+  value,
+  type,
+})
+export const reference = (name: string): Term => ({
+  tag: 'reference',
+  name,
+})
 
 // the universe (the type of types): the self-type identity
-export const universe: Term = self((x) => x)
+export const universe: Term = self(x => x)
 
 // a book of named definitions, each with a declared type and a value
 export type Book = Record<string, { type: Term; value: Term }>
 
 export class TypeMismatch extends Error {
   constructor(public expected: string, public detected: string) {
-    super(`type mismatch\n- expected: ${expected}\n- detected: ${detected}`)
+    super(
+      `type mismatch\n- expected: ${expected}\n- detected: ${detected}`,
+    )
   }
 }
 
@@ -70,7 +96,9 @@ function reduceAnnotate(book: Book, value: Term, type: Term): Term {
   const head = deref(book, type)
   // { t : for all (x: A) B }  reduces to  lambda x. { (t {x:A}) : B }
   if (head.tag === 'pi') {
-    return lambda((x) => annotate(apply(value, annotate(x, head.input)), head.body(x)))
+    return lambda(x =>
+      annotate(apply(value, annotate(x, head.input)), head.body(x)),
+    )
   }
   // { t : self x. T }  reduces to  T[x <- t]
   if (head.tag === 'self') {
@@ -98,26 +126,46 @@ export function normal(book: Book, term: Term, depth = 0): Term {
     case 'variable':
       return head
     case 'lambda':
-      return lambda((x) => normal(book, head.body(x), depth + 1))
+      return lambda(x => normal(book, head.body(x), depth + 1))
     case 'pi':
-      return pi(normal(book, head.input, depth), (x) => normal(book, head.body(annotate(x, head.input)), depth + 1))
+      return pi(normal(book, head.input, depth), x =>
+        normal(book, head.body(annotate(x, head.input)), depth + 1),
+      )
     case 'apply':
-      return apply(normal(book, head.fun, depth), normal(book, head.arg, depth))
+      return apply(
+        normal(book, head.fun, depth),
+        normal(book, head.arg, depth),
+      )
     case 'self':
-      return self((x) => normal(book, head.body(x), depth + 1))
+      return self(x => normal(book, head.body(x), depth + 1))
     case 'annotate':
-      return normalAnnotate(book, normal(book, head.value, depth), normal(book, head.type, depth), depth)
+      return normalAnnotate(
+        book,
+        normal(book, head.value, depth),
+        normal(book, head.type, depth),
+        depth,
+      )
     case 'reference':
-      return book[head.name] ? normal(book, book[head.name]!.value, depth) : head
+      return book[head.name]
+        ? normal(book, book[head.name]!.value, depth)
+        : head
   }
 }
 
 // the annotation check: where type mismatches are caught
-function normalAnnotate(book: Book, value: Term, type: Term, depth: number): Term {
+function normalAnnotate(
+  book: Book,
+  value: Term,
+  type: Term,
+  depth: number,
+): Term {
   switch (value.tag) {
     case 'annotate': {
       if (!equal(book, value.type, type, depth)) {
-        throw new TypeMismatch(showTerm(type, depth), showTerm(value.type, depth))
+        throw new TypeMismatch(
+          showTerm(type, depth),
+          showTerm(value.type, depth),
+        )
       }
       return annotate(value.value, value.type)
     }
@@ -129,20 +177,74 @@ function normalAnnotate(book: Book, value: Term, type: Term, depth: number): Ter
 }
 
 // definitional equality, by structure under normalization
-export function equal(book: Book, a: Term, b: Term, depth: number): boolean {
-  if (a.tag === 'variable' && b.tag === 'variable') return a.level === b.level
-  if (a.tag === 'lambda' && b.tag === 'lambda') return equal(book, a.body(variable(depth)), b.body(variable(depth)), depth + 1)
-  if (a.tag === 'apply' && b.tag === 'apply') return equal(book, a.fun, b.fun, depth) && equal(book, a.arg, b.arg, depth)
+export function equal(
+  book: Book,
+  a: Term,
+  b: Term,
+  depth: number,
+): boolean {
+  if (a.tag === 'variable' && b.tag === 'variable')
+    return a.level === b.level
+  if (a.tag === 'lambda' && b.tag === 'lambda')
+    return equal(
+      book,
+      a.body(variable(depth)),
+      b.body(variable(depth)),
+      depth + 1,
+    )
+  if (a.tag === 'apply' && b.tag === 'apply')
+    return (
+      equal(book, a.fun, b.fun, depth) &&
+      equal(book, a.arg, b.arg, depth)
+    )
   if (a.tag === 'pi' && b.tag === 'pi') {
-    return equal(book, a.input, b.input, depth) && equal(book, a.body(variable(depth)), b.body(variable(depth)), depth + 1)
+    return (
+      equal(book, a.input, b.input, depth) &&
+      equal(
+        book,
+        a.body(variable(depth)),
+        b.body(variable(depth)),
+        depth + 1,
+      )
+    )
   }
-  if (a.tag === 'self' && b.tag === 'self') return equal(book, a.body(variable(depth)), b.body(variable(depth)), depth + 1)
-  if (a.tag === 'reference' && book[a.name]) return equal(book, normal(book, book[a.name]!.value, depth), b, depth)
-  if (b.tag === 'reference' && book[b.name]) return equal(book, a, normal(book, book[b.name]!.value, depth), depth)
+  if (a.tag === 'self' && b.tag === 'self')
+    return equal(
+      book,
+      a.body(variable(depth)),
+      b.body(variable(depth)),
+      depth + 1,
+    )
+  if (a.tag === 'reference' && book[a.name])
+    return equal(
+      book,
+      normal(book, book[a.name]!.value, depth),
+      b,
+      depth,
+    )
+  if (b.tag === 'reference' && book[b.name])
+    return equal(
+      book,
+      a,
+      normal(book, book[b.name]!.value, depth),
+      depth,
+    )
   if (a.tag === 'annotate') return equal(book, a.value, b, depth)
   if (b.tag === 'annotate') return equal(book, a, b.value, depth)
-  if (a.tag === 'lambda') return equal(book, a, lambda((x) => apply(b, x)), depth)
-  if (b.tag === 'lambda') return equal(book, lambda((x) => apply(a, x)), b, depth)
+  if (a.tag === 'lambda')
+    return equal(
+      book,
+      a,
+      lambda(x => apply(b, x)),
+      depth,
+    )
+  if (b.tag === 'lambda')
+    return equal(
+      book,
+      lambda(x => apply(a, x)),
+      b,
+      depth,
+    )
   return false
 }
 
@@ -156,7 +258,11 @@ export function checkBook(book: Book): Array<CheckResult> {
       normal(book, annotate(book[name]!.value, book[name]!.type))
       results.push({ name, ok: true })
     } catch (error) {
-      results.push({ name, ok: false, error: error instanceof Error ? error.message : String(error) })
+      results.push({
+        name,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   }
   return results
@@ -167,15 +273,30 @@ export function showTerm(term: Term, depth = 0): string {
     case 'variable':
       return numberToName(term.level)
     case 'lambda':
-      return `lambda ${numberToName(depth)} ${showTerm(term.body(variable(depth)), depth + 1)}`
+      return `lambda ${numberToName(depth)} ${showTerm(
+        term.body(variable(depth)),
+        depth + 1,
+      )}`
     case 'pi':
-      return `forall (${numberToName(depth)}: ${showTerm(term.input, depth)}) ${showTerm(term.body(variable(depth)), depth + 1)}`
+      return `forall (${numberToName(depth)}: ${showTerm(
+        term.input,
+        depth,
+      )}) ${showTerm(term.body(variable(depth)), depth + 1)}`
     case 'apply':
-      return `(${showTerm(term.fun, depth)} ${showTerm(term.arg, depth)})`
+      return `(${showTerm(term.fun, depth)} ${showTerm(
+        term.arg,
+        depth,
+      )})`
     case 'self':
-      return `self ${numberToName(depth)} ${showTerm(term.body(variable(depth)), depth + 1)}`
+      return `self ${numberToName(depth)} ${showTerm(
+        term.body(variable(depth)),
+        depth + 1,
+      )}`
     case 'annotate':
-      return `{${showTerm(term.value, depth)}: ${showTerm(term.type, depth)}}`
+      return `{${showTerm(term.value, depth)}: ${showTerm(
+        term.type,
+        depth,
+      )}}`
     case 'reference':
       return `@${term.name}`
   }

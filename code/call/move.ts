@@ -1,7 +1,19 @@
 import fsp from 'fs/promises'
 import path from 'path'
-import { loadManifest, writeManifest, bumpMark, showMark } from '@cluesurf/deck.tree'
-import { logGood, logFail, logStep, formatError, name, mark as markColor } from '../tint'
+import {
+  loadManifest,
+  writeManifest,
+  bumpMark,
+  showMark,
+} from '@cluesurf/deck.tree'
+import {
+  logGood,
+  logFail,
+  logStep,
+  formatError,
+  name,
+  mark as markColor,
+} from '../tint'
 
 export async function callMove(input: {
   root: string
@@ -9,7 +21,9 @@ export async function callMove(input: {
   level?: string
 }): Promise<void> {
   if (input.target !== 'mark') {
-    logFail(`Unknown move target: ${input.target}. Use: seed move mark [1|2|3]`)
+    logFail(
+      `Unknown move target: ${input.target}. Use: seed move mark [1|2|3]`,
+    )
     process.exit(1)
   }
 
@@ -32,7 +46,9 @@ export async function callMove(input: {
     )
 
     logGood(
-      `Version bumped: ${markColor(oldMark)} → ${markColor(newMarkStr)}`,
+      `Version bumped: ${markColor(oldMark)} → ${markColor(
+        newMarkStr,
+      )}`,
     )
   } catch (err) {
     logFail(formatError(err))

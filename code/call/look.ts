@@ -16,7 +16,9 @@ export async function callLook(input: {
   kind?: string
 }): Promise<void> {
   if (!input.target) {
-    logFail('Usage: seed look <module> [--json|--csv] [--kind form|task]')
+    logFail(
+      'Usage: seed look <module> [--json|--csv] [--kind form|task]',
+    )
     process.exit(1)
   }
 
@@ -27,7 +29,9 @@ export async function callLook(input: {
   if (input.target.startsWith('@')) {
     entry = resolve(input.target, input.root)
     if (!entry) {
-      logFail(`Could not resolve ${input.target} (is the package linked? run \`seed link\`)`)
+      logFail(
+        `Could not resolve ${input.target} (is the package linked? run \`seed link\`)`,
+      )
       process.exit(1)
     }
   } else {
@@ -40,9 +44,15 @@ export async function callLook(input: {
     }
   }
 
-  if (!input.json && !input.csv) logStep(`Inspecting ${input.target}...`)
-  const { symbols, modules, loadDiagnostics } = inspectModule(entry, resolve)
-  const filtered = input.kind ? symbols.filter((s) => s.kind === input.kind) : symbols
+  if (!input.json && !input.csv)
+    logStep(`Inspecting ${input.target}...`)
+  const { symbols, modules, loadDiagnostics } = inspectModule(
+    entry,
+    resolve,
+  )
+  const filtered = input.kind
+    ? symbols.filter(s => s.kind === input.kind)
+    : symbols
 
   if (input.json) {
     process.stdout.write(toJson(filtered) + '\n')
@@ -51,9 +61,17 @@ export async function callLook(input: {
   } else {
     console.log('')
     console.log(toTable(filtered))
-    const forms = symbols.filter((s) => s.kind === 'form').length
-    const tasks = symbols.filter((s) => s.kind === 'task').length
+    const forms = symbols.filter(s => s.kind === 'form').length
+    const tasks = symbols.filter(s => s.kind === 'task').length
     console.log('')
-    console.log(fade(`  ${modules} module(s), ${forms} form(s), ${tasks} task(s)${loadDiagnostics ? `, ${loadDiagnostics} unresolved import(s)` : ''}`))
+    console.log(
+      fade(
+        `  ${modules} module(s), ${forms} form(s), ${tasks} task(s)${
+          loadDiagnostics
+            ? `, ${loadDiagnostics} unresolved import(s)`
+            : ''
+        }`,
+      ),
+    )
   }
 }

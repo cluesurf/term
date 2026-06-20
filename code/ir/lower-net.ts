@@ -64,6 +64,7 @@ export function lower(term: Term): Lowered {
 // count the non-interface (computational) agents in a lowered net
 export function agentCount(lowered: Lowered): number {
   let n = 0
-  for (const id of lowered.net.nodes.keys()) if (!lowered.net.interface.has(id)) n++
+  for (const id of lowered.net.nodes.keys())
+    if (!lowered.net.interface.has(id)) n++
   return n
 }

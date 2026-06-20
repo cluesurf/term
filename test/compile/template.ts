@@ -6,7 +6,11 @@ import { compile } from '@/code/compile/compile'
 
 let pass = 0
 let fail = 0
-function expectContains(name: string, source: string, needle: string): void {
+function expectContains(
+  name: string,
+  source: string,
+  needle: string,
+): void {
   const parsed = parse({ file: 't.tree', text: source })
   if (!parsed.ok) {
     fail++
@@ -24,9 +28,15 @@ function expectContains(name: string, source: string, needle: string): void {
   }
 }
 
-function expectAbsent(name: string, source: string, needle: string): void {
+function expectAbsent(
+  name: string,
+  source: string,
+  needle: string,
+): void {
   const parsed = parse({ file: 't.tree', text: source })
-  const expanded = parsed.ok ? expandTemplates(parsed.tree) : { kind: 'root' as const, nodes: [] }
+  const expanded = parsed.ok
+    ? expandTemplates(parsed.tree)
+    : { kind: 'root' as const, nodes: [] }
   const text = printTree(expanded)
   if (!text.includes(needle)) {
     pass++
@@ -115,10 +125,18 @@ fuse make-adder
   const cleanResult = compile({ file: 'tmpl.tree', text: cleanFuse })
   if (cleanResult.ok && cleanResult.typescript.includes('addOne')) {
     pass++
-    console.log('ok    fused code compiles + names the expansion (addOne)')
+    console.log(
+      'ok    fused code compiles + names the expansion (addOne)',
+    )
   } else {
     fail++
-    console.log(`FAIL  clean fuse compile (${cleanResult.ok ? cleanResult.typescript : cleanResult.diagnostics.map((d) => d.message).join(';')})`)
+    console.log(
+      `FAIL  clean fuse compile (${
+        cleanResult.ok
+          ? cleanResult.typescript
+          : cleanResult.diagnostics.map(d => d.message).join(';')
+      })`,
+    )
   }
 
   // compile-time meta-loop: a fuse over a `host` enumeration generates one definition per item (dynamic `fuse read`
@@ -147,12 +165,24 @@ fuse each, read suit
   read make-flag
 `
   const metaResult = compile({ file: 'meta.tree', text: metaLoop })
-  if (metaResult.ok && metaResult.typescript.includes('isHearts') && metaResult.typescript.includes('isSpades')) {
+  if (
+    metaResult.ok &&
+    metaResult.typescript.includes('isHearts') &&
+    metaResult.typescript.includes('isSpades')
+  ) {
     pass++
-    console.log('ok    meta-loop unrolls a fuse over a host enumeration (isHearts, isSpades)')
+    console.log(
+      'ok    meta-loop unrolls a fuse over a host enumeration (isHearts, isSpades)',
+    )
   } else {
     fail++
-    console.log(`FAIL  meta-loop (${metaResult.ok ? metaResult.typescript : metaResult.diagnostics.map((d) => d.message).join(';')})`)
+    console.log(
+      `FAIL  meta-loop (${
+        metaResult.ok
+          ? metaResult.typescript
+          : metaResult.diagnostics.map(d => d.message).join(';')
+      })`,
+    )
   }
 
   // a fuse whose expanded body has a type error must be caught by the checker (proves injected code is checked)
@@ -171,12 +201,17 @@ fuse bad-tmpl
   bind x, one
 `
   const badResult = compile({ file: 'tmpl.tree', text: badFuse })
-  if (!badResult.ok && badResult.diagnostics.some((d) => d.name === 'type-mismatch')) {
+  if (
+    !badResult.ok &&
+    badResult.diagnostics.some(d => d.name === 'type-mismatch')
+  ) {
     pass++
     console.log('ok    type error inside a fused template is caught')
   } else {
     fail++
-    console.log(`FAIL  bad fuse should be a type error (ok=${badResult.ok})`)
+    console.log(
+      `FAIL  bad fuse should be a type error (ok=${badResult.ok})`,
+    )
   }
 
   console.log(`\ntemplate: ${pass} pass, ${fail} fail`)

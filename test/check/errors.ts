@@ -42,18 +42,40 @@ function main(): void {
   ok('shows a hint line', /hint:/.test(text))
 
   // a did-you-mean for an unknown name
-  const typo = compile({ file: 'bad.tree', text: `task t\n  take items\n  back\n    loan itemz\n` })
+  const typo = compile({
+    file: 'bad.tree',
+    text: `task t\n  take items\n  back\n    loan itemz\n`,
+  })
   ok(
     'unknown name suggests a correction',
-    !typo.ok && typo.diagnostics.some((x) => x.hint?.includes('did you mean') || x.hint?.includes('itemz') || x.name === 'unknown-name'),
-    typo.ok ? 'compiled' : typo.diagnostics.map((x) => `${x.name}:${x.hint}`).join(';'),
+    !typo.ok &&
+      typo.diagnostics.some(
+        x =>
+          x.hint?.includes('did you mean') ||
+          x.hint?.includes('itemz') ||
+          x.name === 'unknown-name',
+      ),
+    typo.ok
+      ? 'compiled'
+      : typo.diagnostics.map(x => `${x.name}:${x.hint}`).join(';'),
   )
 
   // a warning renders distinctly and a report summarizes a batch
-  const warned = compile({ file: 'w.tree', text: `task f\n  take n\n  save unused, mark 1\n  back n\n` })
+  const warned = compile({
+    file: 'w.tree',
+    text: `task f\n  take n\n  save unused, mark 1\n  back n\n`,
+  })
   if (warned.ok) {
-    const summary = report(warned.warnings, 'task f\n  take n\n  save unused, mark 1\n  back n'.split('\n'), false)
-    ok('report summarizes warnings', summary.includes('1 warning'), summary.split('\n').pop())
+    const summary = report(
+      warned.warnings,
+      'task f\n  take n\n  save unused, mark 1\n  back n'.split('\n'),
+      false,
+    )
+    ok(
+      'report summarizes warnings',
+      summary.includes('1 warning'),
+      summary.split('\n').pop(),
+    )
   } else {
     ok('report summarizes warnings', false, 'compile failed')
   }
@@ -75,7 +97,13 @@ function main(): void {
     text: `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, mark 0\n  back n\n`,
   })
   if (!blame.ok) {
-    const k = renderKink(blame.diagnostics[0]!, `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, mark 0\n  back n`.split('\n'), false)
+    const k = renderKink(
+      blame.diagnostics[0]!,
+      `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, mark 0\n  back n`.split(
+        '\n',
+      ),
+      false,
+    )
     ok('kink: multi-span shows a call frame', k.includes('call <'), k)
   } else {
     ok('kink: multi-span shows a call frame', false, 'compiled')

@@ -7,7 +7,10 @@ import type { Expression } from '@/code/compile/node'
 import type { Rule } from '@/code/lint/rule'
 
 function isLiteral(expr: Expression, value: number): boolean {
-  return (expr.form === 'integer' || expr.form === 'float') && Number(expr.value) === value
+  return (
+    (expr.form === 'integer' || expr.form === 'float') &&
+    Number(expr.value) === value
+  )
 }
 
 export const noRedundantArithmetic: Rule = {
@@ -22,9 +25,17 @@ export const noRedundantArithmetic: Rule = {
     if (e.form !== 'binary') return
 
     let survivor: Expression | undefined
-    if ((e.op === '+' && isLiteral(e.right, 0)) || (e.op === '-' && isLiteral(e.right, 0))) survivor = e.left
+    if (
+      (e.op === '+' && isLiteral(e.right, 0)) ||
+      (e.op === '-' && isLiteral(e.right, 0))
+    )
+      survivor = e.left
     else if (e.op === '+' && isLiteral(e.left, 0)) survivor = e.right
-    else if ((e.op === '*' && isLiteral(e.right, 1)) || (e.op === '/' && isLiteral(e.right, 1))) survivor = e.left
+    else if (
+      (e.op === '*' && isLiteral(e.right, 1)) ||
+      (e.op === '/' && isLiteral(e.right, 1))
+    )
+      survivor = e.left
     else if (e.op === '*' && isLiteral(e.left, 1)) survivor = e.right
     if (!survivor) return
 

@@ -37,12 +37,15 @@ function flush(): void {
 }
 
 function detach(observer: Observer): void {
-  for (const source of observer.sources) source.observers.delete(observer)
+  for (const source of observer.sources)
+    source.observers.delete(observer)
   observer.sources.clear()
 }
 
 // a reactive cell: read subscribes the current observer, write notifies
-export function signal<T>(initial: T): [read: () => T, write: (value: T) => void] {
+export function signal<T>(
+  initial: T,
+): [read: () => T, write: (value: T) => void] {
   let value = initial
   const source: Source = { observers: new Set() }
   const read = (): T => {

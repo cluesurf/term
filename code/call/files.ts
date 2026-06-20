@@ -5,8 +5,12 @@ const SKIP = new Set(['node_modules', 'host', 'tail', '.git'])
 
 // Collect `.tree` files from the given paths. A path may be a file (taken as-is) or a directory (walked
 // recursively, skipping build and dependency folders). With no paths, walk the root.
-export async function collectTreeFiles(paths: Array<string>, root: string): Promise<Array<string>> {
-  const targets = paths.length > 0 ? paths.map((p) => path.resolve(root, p)) : [root]
+export async function collectTreeFiles(
+  paths: Array<string>,
+  root: string,
+): Promise<Array<string>> {
+  const targets =
+    paths.length > 0 ? paths.map(p => path.resolve(root, p)) : [root]
   const found: Array<string> = []
 
   async function walk(target: string): Promise<void> {

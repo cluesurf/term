@@ -13,8 +13,14 @@
 // comparison decidable, which is what universe polymorphism needs.
 export type Level = { constant: number; vars: Map<string, number> }
 
-export const litLevel = (n: number): Level => ({ constant: n, vars: new Map() })
-export const varLevel = (name: string): Level => ({ constant: 0, vars: new Map([[name, 0]]) })
+export const litLevel = (n: number): Level => ({
+  constant: n,
+  vars: new Map(),
+})
+export const varLevel = (name: string): Level => ({
+  constant: 0,
+  vars: new Map([[name, 0]]),
+})
 export function succLevel(level: Level): Level {
   const vars = new Map<string, number>()
   for (const [v, o] of level.vars) vars.set(v, o + 1)
@@ -27,7 +33,8 @@ function shiftLevel(level: Level, by: number): Level {
 }
 export function maxLevel(a: Level, b: Level): Level {
   const vars = new Map(a.vars)
-  for (const [v, o] of b.vars) vars.set(v, Math.max(vars.get(v) ?? -Infinity, o))
+  for (const [v, o] of b.vars)
+    vars.set(v, Math.max(vars.get(v) ?? -Infinity, o))
   return { constant: Math.max(a.constant, b.constant), vars }
 }
 // a <= b for ALL instantiations of the level variables
@@ -39,19 +46,31 @@ function leqLevel(a: Level, b: Level): boolean {
   }
   return true
 }
-export const eqLevel = (a: Level, b: Level): boolean => leqLevel(a, b) && leqLevel(b, a)
+export const eqLevel = (a: Level, b: Level): boolean =>
+  leqLevel(a, b) && leqLevel(b, a)
 function showLevel(level: Level): string {
-  const atoms = [...level.vars].map(([v, o]) => (o === 0 ? v : `${v}+${o}`))
+  const atoms = [...level.vars].map(([v, o]) =>
+    o === 0 ? v : `${v}+${o}`,
+  )
   if (atoms.length === 0) return String(level.constant)
   if (level.constant > 0) atoms.unshift(String(level.constant))
   return atoms.length === 1 ? atoms[0]! : `max(${atoms.join(', ')})`
 }
 // substitute a level variable with a level (for instantiating a polymorphic definition)
-function substLevel(level: Level, name: string, replacement: Level): Level {
+function substLevel(
+  level: Level,
+  name: string,
+  replacement: Level,
+): Level {
   let result: Level = { constant: level.constant, vars: new Map() }
   for (const [v, o] of level.vars) {
-    if (v === name) result = maxLevel(result, shiftLevel(replacement, o))
-    else result = maxLevel(result, { constant: 0, vars: new Map([[v, o]]) })
+    if (v === name)
+      result = maxLevel(result, shiftLevel(replacement, o))
+    else
+      result = maxLevel(result, {
+        constant: 0,
+        vars: new Map([[v, o]]),
+      })
   }
   return result
 }
@@ -96,8 +115,14 @@ export type Term =
   | { tag: 'self'; body: Term }
 
 // ---- values (normal forms) ----
-type Closure = { env: Array<Value>; body: Term } | { native: (arg: Value) => Value }
-type Elim = { e: 'app'; arg: Value } | { e: 'j'; motive: Value; base: Value } | { e: 'fst' } | { e: 'snd' }
+type Closure =
+  | { env: Array<Value>; body: Term }
+  | { native: (arg: Value) => Value }
+type Elim =
+  | { e: 'app'; arg: Value }
+  | { e: 'j'; motive: Value; base: Value }
+  | { e: 'fst' }
+  | { e: 'snd' }
 export type Value =
   | { v: 'type'; level: Level }
   | { v: 'pi'; mult: Mult; domain: Value; codomain: Closure }
@@ -113,7 +138,11 @@ export type Value =
   | { v: 'pair'; first: Value; second: Value }
   | { v: 'self'; body: Closure }
 
-export const neutralVar = (level: number): Value => ({ v: 'neutral', head: level, spine: [] })
+export const neutralVar = (level: number): Value => ({
+  v: 'neutral',
+  head: level,
+  spine: [],
+})
 
 // ---- the metacontext: metavariable types and solutions (module-level, ids globally fresh and monotonic) ----
 const metaType = new Map<number, Value>()
@@ -200,7 +229,10 @@ function invertSpine(spine: Array<Elim>): Renaming | null {
 }
 
 // extend a renaming under one new binder: the fresh outer variable maps to a fresh local variable
-function liftRenaming(renaming: Renaming, outerLevel: number): Renaming {
+function liftRenaming(
+  renaming: Renaming,
+  outerLevel: number,
+): Renaming {
   const map = new Map(renaming.map)
   map.set(outerLevel, renaming.codomain)
   return { codomain: renaming.codomain + 1, map }
@@ -208,57 +240,148 @@ function liftRenaming(renaming: Renaming, outerLevel: number): Renaming {
 
 // rename a value into a term valid under the solution's binders. Throws on an escaping variable (scope check) or a
 // self-reference of `metaId` (occurs check). `level` is the current outer de Bruijn level.
-function renameValue(metaId: number, renaming: Renaming, level: number, value: Value): Term {
+function renameValue(
+  metaId: number,
+  renaming: Renaming,
+  level: number,
+  value: Value,
+): Term {
   value = force(value)
   switch (value.v) {
     case 'type':
       return { tag: 'type', level: value.level }
     case 'flex': {
-      if (value.id === metaId) throw new TypeError('occurs check: a metavariable appears in its own solution')
-      return renameSpine(metaId, renaming, level, { tag: 'meta', id: value.id }, value.spine)
+      if (value.id === metaId)
+        throw new TypeError(
+          'occurs check: a metavariable appears in its own solution',
+        )
+      return renameSpine(
+        metaId,
+        renaming,
+        level,
+        { tag: 'meta', id: value.id },
+        value.spine,
+      )
     }
     case 'neutral': {
       const local = renaming.map.get(value.head)
-      if (local === undefined) throw new TypeError('a variable escapes the scope of the metavariable solution')
-      return renameSpine(metaId, renaming, level, { tag: 'var', index: renaming.codomain - local - 1 }, value.spine)
+      if (local === undefined)
+        throw new TypeError(
+          'a variable escapes the scope of the metavariable solution',
+        )
+      return renameSpine(
+        metaId,
+        renaming,
+        level,
+        { tag: 'var', index: renaming.codomain - local - 1 },
+        value.spine,
+      )
     }
     case 'rigid':
-      return renameSpine(metaId, renaming, level, { tag: 'const', name: value.name }, value.spine)
+      return renameSpine(
+        metaId,
+        renaming,
+        level,
+        { tag: 'const', name: value.name },
+        value.spine,
+      )
     case 'pi':
-      return { tag: 'pi', mult: value.mult, domain: renameValue(metaId, renaming, level, value.domain), codomain: renameUnder(metaId, renaming, level, value.codomain) }
+      return {
+        tag: 'pi',
+        mult: value.mult,
+        domain: renameValue(metaId, renaming, level, value.domain),
+        codomain: renameUnder(metaId, renaming, level, value.codomain),
+      }
     case 'sigma':
-      return { tag: 'sigma', mult: value.mult, domain: renameValue(metaId, renaming, level, value.domain), codomain: renameUnder(metaId, renaming, level, value.codomain) }
+      return {
+        tag: 'sigma',
+        mult: value.mult,
+        domain: renameValue(metaId, renaming, level, value.domain),
+        codomain: renameUnder(metaId, renaming, level, value.codomain),
+      }
     case 'lam':
-      return { tag: 'lam', body: renameUnder(metaId, renaming, level, value.body) }
+      return {
+        tag: 'lam',
+        body: renameUnder(metaId, renaming, level, value.body),
+      }
     case 'self':
-      return { tag: 'self', body: renameUnder(metaId, renaming, level, value.body) }
+      return {
+        tag: 'self',
+        body: renameUnder(metaId, renaming, level, value.body),
+      }
     case 'pair':
-      return { tag: 'pair', first: renameValue(metaId, renaming, level, value.first), second: renameValue(metaId, renaming, level, value.second) }
+      return {
+        tag: 'pair',
+        first: renameValue(metaId, renaming, level, value.first),
+        second: renameValue(metaId, renaming, level, value.second),
+      }
     case 'id':
-      return { tag: 'id', type: renameValue(metaId, renaming, level, value.type), left: renameValue(metaId, renaming, level, value.left), right: renameValue(metaId, renaming, level, value.right) }
+      return {
+        tag: 'id',
+        type: renameValue(metaId, renaming, level, value.type),
+        left: renameValue(metaId, renaming, level, value.left),
+        right: renameValue(metaId, renaming, level, value.right),
+      }
     case 'refl':
-      return { tag: 'refl', type: renameValue(metaId, renaming, level, value.type), value: renameValue(metaId, renaming, level, value.value) }
+      return {
+        tag: 'refl',
+        type: renameValue(metaId, renaming, level, value.type),
+        value: renameValue(metaId, renaming, level, value.value),
+      }
   }
 }
 
-function renameUnder(metaId: number, renaming: Renaming, level: number, closure: Closure): Term {
-  return renameValue(metaId, liftRenaming(renaming, level), level + 1, closeOver(closure, neutralVar(level)))
+function renameUnder(
+  metaId: number,
+  renaming: Renaming,
+  level: number,
+  closure: Closure,
+): Term {
+  return renameValue(
+    metaId,
+    liftRenaming(renaming, level),
+    level + 1,
+    closeOver(closure, neutralVar(level)),
+  )
 }
 
-function renameSpine(metaId: number, renaming: Renaming, level: number, head: Term, spine: Array<Elim>): Term {
+function renameSpine(
+  metaId: number,
+  renaming: Renaming,
+  level: number,
+  head: Term,
+  spine: Array<Elim>,
+): Term {
   let term = head
   for (const elim of spine) {
-    if (elim.e === 'app') term = { tag: 'app', fun: term, arg: renameValue(metaId, renaming, level, elim.arg) }
+    if (elim.e === 'app')
+      term = {
+        tag: 'app',
+        fun: term,
+        arg: renameValue(metaId, renaming, level, elim.arg),
+      }
     else if (elim.e === 'fst') term = { tag: 'fst', pair: term }
     else if (elim.e === 'snd') term = { tag: 'snd', pair: term }
-    else term = { tag: 'j', proof: term, motive: renameValue(metaId, renaming, level, elim.motive), base: renameValue(metaId, renaming, level, elim.base), level: litLevel(0) }
+    else
+      term = {
+        tag: 'j',
+        proof: term,
+        motive: renameValue(metaId, renaming, level, elim.motive),
+        base: renameValue(metaId, renaming, level, elim.base),
+        level: litLevel(0),
+      }
   }
   return term
 }
 
 // solve `?id spine := rhs` by Miller pattern unification (covers the empty-spine case too). Returns false if the
 // spine is not a pattern, or the scope / occurs check fails.
-function solveMeta(level: number, id: number, spine: Array<Elim>, rhs: Value): boolean {
+function solveMeta(
+  level: number,
+  id: number,
+  spine: Array<Elim>,
+  rhs: Value,
+): boolean {
   const renaming = invertSpine(spine)
   if (!renaming) return false
   let body: Term
@@ -268,7 +391,8 @@ function solveMeta(level: number, id: number, spine: Array<Elim>, rhs: Value): b
     return false
   }
   let solution = body
-  for (let i = 0; i < renaming.codomain; i++) solution = { tag: 'lam', body: solution }
+  for (let i = 0; i < renaming.codomain; i++)
+    solution = { tag: 'lam', body: solution }
   metaSolution.set(id, evaluate([], solution))
   return true
 }
@@ -284,23 +408,52 @@ export function evaluate(env: Array<Value>, term: Term): Value {
     case 'type':
       return { v: 'type', level: term.level }
     case 'pi':
-      return { v: 'pi', mult: term.mult, domain: evaluate(env, term.domain), codomain: { env, body: term.codomain } }
+      return {
+        v: 'pi',
+        mult: term.mult,
+        domain: evaluate(env, term.domain),
+        codomain: { env, body: term.codomain },
+      }
     case 'lam':
       return { v: 'lam', body: { env, body: term.body } }
     case 'app':
-      return applyValue(evaluate(env, term.fun), evaluate(env, term.arg))
+      return applyValue(
+        evaluate(env, term.fun),
+        evaluate(env, term.arg),
+      )
     case 'ann':
       return evaluate(env, term.term)
     case 'id':
-      return idValue(evaluate(env, term.type), evaluate(env, term.left), evaluate(env, term.right))
+      return idValue(
+        evaluate(env, term.type),
+        evaluate(env, term.left),
+        evaluate(env, term.right),
+      )
     case 'refl':
-      return { v: 'refl', type: evaluate(env, term.type), value: evaluate(env, term.value) }
+      return {
+        v: 'refl',
+        type: evaluate(env, term.type),
+        value: evaluate(env, term.value),
+      }
     case 'j':
-      return applyJ(evaluate(env, term.proof), evaluate(env, term.motive), evaluate(env, term.base))
+      return applyJ(
+        evaluate(env, term.proof),
+        evaluate(env, term.motive),
+        evaluate(env, term.base),
+      )
     case 'sigma':
-      return { v: 'sigma', mult: term.mult, domain: evaluate(env, term.domain), codomain: { env, body: term.codomain } }
+      return {
+        v: 'sigma',
+        mult: term.mult,
+        domain: evaluate(env, term.domain),
+        codomain: { env, body: term.codomain },
+      }
     case 'pair':
-      return { v: 'pair', first: evaluate(env, term.first), second: evaluate(env, term.second) }
+      return {
+        v: 'pair',
+        first: evaluate(env, term.first),
+        second: evaluate(env, term.second),
+      }
     case 'fst':
       return applyFst(evaluate(env, term.pair))
     case 'snd':
@@ -313,18 +466,48 @@ export function evaluate(env: Array<Value>, term: Term): Value {
 function applyFst(value: Value): Value {
   value = force(value)
   if (value.v === 'pair') return value.first
-  if (value.v === 'neutral') return { v: 'neutral', head: value.head, spine: [...value.spine, { e: 'fst' }] }
-  if (value.v === 'rigid') return { v: 'rigid', name: value.name, spine: [...value.spine, { e: 'fst' }] }
-  if (value.v === 'flex') return { v: 'flex', id: value.id, spine: [...value.spine, { e: 'fst' }] }
+  if (value.v === 'neutral')
+    return {
+      v: 'neutral',
+      head: value.head,
+      spine: [...value.spine, { e: 'fst' }],
+    }
+  if (value.v === 'rigid')
+    return {
+      v: 'rigid',
+      name: value.name,
+      spine: [...value.spine, { e: 'fst' }],
+    }
+  if (value.v === 'flex')
+    return {
+      v: 'flex',
+      id: value.id,
+      spine: [...value.spine, { e: 'fst' }],
+    }
   throw new Error('fst of a non-pair')
 }
 
 function applySnd(value: Value): Value {
   value = force(value)
   if (value.v === 'pair') return value.second
-  if (value.v === 'neutral') return { v: 'neutral', head: value.head, spine: [...value.spine, { e: 'snd' }] }
-  if (value.v === 'rigid') return { v: 'rigid', name: value.name, spine: [...value.spine, { e: 'snd' }] }
-  if (value.v === 'flex') return { v: 'flex', id: value.id, spine: [...value.spine, { e: 'snd' }] }
+  if (value.v === 'neutral')
+    return {
+      v: 'neutral',
+      head: value.head,
+      spine: [...value.spine, { e: 'snd' }],
+    }
+  if (value.v === 'rigid')
+    return {
+      v: 'rigid',
+      name: value.name,
+      spine: [...value.spine, { e: 'snd' }],
+    }
+  if (value.v === 'flex')
+    return {
+      v: 'flex',
+      id: value.id,
+      spine: [...value.spine, { e: 'snd' }],
+    }
   throw new Error('snd of a non-pair')
 }
 
@@ -335,7 +518,9 @@ function usesVar(term: Term, depth: number): boolean {
       return term.index === depth
     case 'pi':
     case 'sigma':
-      return usesVar(term.domain, depth) || usesVar(term.codomain, depth + 1)
+      return (
+        usesVar(term.domain, depth) || usesVar(term.codomain, depth + 1)
+      )
     case 'lam':
     case 'self':
       return usesVar(term.body, depth + 1)
@@ -349,11 +534,19 @@ function usesVar(term: Term, depth: number): boolean {
     case 'ann':
       return usesVar(term.term, depth) || usesVar(term.type, depth)
     case 'id':
-      return usesVar(term.type, depth) || usesVar(term.left, depth) || usesVar(term.right, depth)
+      return (
+        usesVar(term.type, depth) ||
+        usesVar(term.left, depth) ||
+        usesVar(term.right, depth)
+      )
     case 'refl':
       return usesVar(term.type, depth) || usesVar(term.value, depth)
     case 'j':
-      return usesVar(term.proof, depth) || usesVar(term.motive, depth) || usesVar(term.base, depth)
+      return (
+        usesVar(term.proof, depth) ||
+        usesVar(term.motive, depth) ||
+        usesVar(term.base, depth)
+      )
     default:
       return false
   }
@@ -374,7 +567,14 @@ function idValue(type: Value, left: Value, right: Value): Value {
       v: 'pi',
       mult: type.mult,
       domain: type.domain,
-      codomain: { native: (a: Value) => idValue(closeOver(type.codomain, a), applyValue(left, a), applyValue(right, a)) },
+      codomain: {
+        native: (a: Value) =>
+          idValue(
+            closeOver(type.codomain, a),
+            applyValue(left, a),
+            applyValue(right, a),
+          ),
+      },
     }
   }
   if (type.v === 'sigma') {
@@ -384,7 +584,15 @@ function idValue(type: Value, left: Value, right: Value): Value {
     if (!dependsOnArgument(type.codomain)) {
       // non-dependent product: Id (A * B) p q = (Id A p.1 q.1) * (Id B p.2 q.2)
       const secondType = closeOver(type.codomain, firstLeft)
-      return { v: 'sigma', mult: 'many', domain: firstId, codomain: { native: () => idValue(secondType, applySnd(left), applySnd(right)) } }
+      return {
+        v: 'sigma',
+        mult: 'many',
+        domain: firstId,
+        codomain: {
+          native: () =>
+            idValue(secondType, applySnd(left), applySnd(right)),
+        },
+      }
     }
     // dependent pair: Id (Sigma(x:A) B) p q = Sigma (h : Id A p.1 q.1) (Id (B q.1) (transport B h p.2) q.2). The
     // second component is transported along the first-component proof h, using J (so when h is refl it computes
@@ -393,47 +601,106 @@ function idValue(type: Value, left: Value, right: Value): Value {
     const secondLeft = applySnd(left)
     const secondRight = applySnd(right)
     // the transport motive: \ y. \ _. B y
-    const motive: Value = { v: 'lam', body: { native: (y: Value) => ({ v: 'lam', body: { native: () => closeOver(type.codomain, y) } }) } }
+    const motive: Value = {
+      v: 'lam',
+      body: {
+        native: (y: Value) => ({
+          v: 'lam',
+          body: { native: () => closeOver(type.codomain, y) },
+        }),
+      },
+    }
     return {
       v: 'sigma',
       mult: 'many',
       domain: firstId,
-      codomain: { native: (h: Value) => idValue(secondTypeAtRight, applyJ(h, motive, secondLeft), secondRight) },
+      codomain: {
+        native: (h: Value) =>
+          idValue(
+            secondTypeAtRight,
+            applyJ(h, motive, secondLeft),
+            secondRight,
+          ),
+      },
     }
   }
   return { v: 'id', type, left, right }
 }
 
 export function closeOver(closure: Closure, value: Value): Value {
-  return 'native' in closure ? closure.native(value) : evaluate([value, ...closure.env], closure.body)
+  return 'native' in closure
+    ? closure.native(value)
+    : evaluate([value, ...closure.env], closure.body)
 }
 
 function applyValue(fun: Value, arg: Value): Value {
   fun = force(fun)
   if (fun.v === 'lam') return closeOver(fun.body, arg)
-  if (fun.v === 'neutral') return { v: 'neutral', head: fun.head, spine: [...fun.spine, { e: 'app', arg }] }
-  if (fun.v === 'rigid') return { v: 'rigid', name: fun.name, spine: [...fun.spine, { e: 'app', arg }] }
-  if (fun.v === 'flex') return { v: 'flex', id: fun.id, spine: [...fun.spine, { e: 'app', arg }] }
+  if (fun.v === 'neutral')
+    return {
+      v: 'neutral',
+      head: fun.head,
+      spine: [...fun.spine, { e: 'app', arg }],
+    }
+  if (fun.v === 'rigid')
+    return {
+      v: 'rigid',
+      name: fun.name,
+      spine: [...fun.spine, { e: 'app', arg }],
+    }
+  if (fun.v === 'flex')
+    return {
+      v: 'flex',
+      id: fun.id,
+      spine: [...fun.spine, { e: 'app', arg }],
+    }
   throw new Error('applied a non-function')
 }
 
 function applyJ(proof: Value, motive: Value, base: Value): Value {
   proof = force(proof)
   if (proof.v === 'refl') return base
-  if (proof.v === 'neutral') return { v: 'neutral', head: proof.head, spine: [...proof.spine, { e: 'j', motive, base }] }
-  if (proof.v === 'rigid') return { v: 'rigid', name: proof.name, spine: [...proof.spine, { e: 'j', motive, base }] }
-  if (proof.v === 'flex') return { v: 'flex', id: proof.id, spine: [...proof.spine, { e: 'j', motive, base }] }
+  if (proof.v === 'neutral')
+    return {
+      v: 'neutral',
+      head: proof.head,
+      spine: [...proof.spine, { e: 'j', motive, base }],
+    }
+  if (proof.v === 'rigid')
+    return {
+      v: 'rigid',
+      name: proof.name,
+      spine: [...proof.spine, { e: 'j', motive, base }],
+    }
+  if (proof.v === 'flex')
+    return {
+      v: 'flex',
+      id: proof.id,
+      spine: [...proof.spine, { e: 'j', motive, base }],
+    }
   throw new Error('J on a non-identity')
 }
 
 // quote a spine of eliminators onto a head term (shared by metavariable, neutral, and rigid heads)
-function quoteSpine(level: number, head: Term, spine: Array<Elim>): Term {
+function quoteSpine(
+  level: number,
+  head: Term,
+  spine: Array<Elim>,
+): Term {
   let term = head
   for (const elim of spine) {
-    if (elim.e === 'app') term = { tag: 'app', fun: term, arg: quote(level, elim.arg) }
+    if (elim.e === 'app')
+      term = { tag: 'app', fun: term, arg: quote(level, elim.arg) }
     else if (elim.e === 'fst') term = { tag: 'fst', pair: term }
     else if (elim.e === 'snd') term = { tag: 'snd', pair: term }
-    else term = { tag: 'j', proof: term, motive: quote(level, elim.motive), base: quote(level, elim.base), level: litLevel(0) }
+    else
+      term = {
+        tag: 'j',
+        proof: term,
+        motive: quote(level, elim.motive),
+        base: quote(level, elim.base),
+        level: litLevel(0),
+      }
   }
   return term
 }
@@ -444,30 +711,87 @@ export function quote(level: number, value: Value): Term {
     case 'type':
       return { tag: 'type', level: value.level }
     case 'flex':
-      return quoteSpine(level, { tag: 'meta', id: value.id }, value.spine)
+      return quoteSpine(
+        level,
+        { tag: 'meta', id: value.id },
+        value.spine,
+      )
     case 'pi':
-      return { tag: 'pi', mult: value.mult, domain: quote(level, value.domain), codomain: quote(level + 1, closeOver(value.codomain, neutralVar(level))) }
+      return {
+        tag: 'pi',
+        mult: value.mult,
+        domain: quote(level, value.domain),
+        codomain: quote(
+          level + 1,
+          closeOver(value.codomain, neutralVar(level)),
+        ),
+      }
     case 'lam':
-      return { tag: 'lam', body: quote(level + 1, closeOver(value.body, neutralVar(level))) }
+      return {
+        tag: 'lam',
+        body: quote(
+          level + 1,
+          closeOver(value.body, neutralVar(level)),
+        ),
+      }
     case 'id':
-      return { tag: 'id', type: quote(level, value.type), left: quote(level, value.left), right: quote(level, value.right) }
+      return {
+        tag: 'id',
+        type: quote(level, value.type),
+        left: quote(level, value.left),
+        right: quote(level, value.right),
+      }
     case 'refl':
-      return { tag: 'refl', type: quote(level, value.type), value: quote(level, value.value) }
+      return {
+        tag: 'refl',
+        type: quote(level, value.type),
+        value: quote(level, value.value),
+      }
     case 'sigma':
-      return { tag: 'sigma', mult: value.mult, domain: quote(level, value.domain), codomain: quote(level + 1, closeOver(value.codomain, neutralVar(level))) }
+      return {
+        tag: 'sigma',
+        mult: value.mult,
+        domain: quote(level, value.domain),
+        codomain: quote(
+          level + 1,
+          closeOver(value.codomain, neutralVar(level)),
+        ),
+      }
     case 'pair':
-      return { tag: 'pair', first: quote(level, value.first), second: quote(level, value.second) }
+      return {
+        tag: 'pair',
+        first: quote(level, value.first),
+        second: quote(level, value.second),
+      }
     case 'self':
-      return { tag: 'self', body: quote(level + 1, closeOver(value.body, neutralVar(level))) }
+      return {
+        tag: 'self',
+        body: quote(
+          level + 1,
+          closeOver(value.body, neutralVar(level)),
+        ),
+      }
     case 'neutral':
-      return quoteSpine(level, { tag: 'var', index: level - value.head - 1 }, value.spine)
+      return quoteSpine(
+        level,
+        { tag: 'var', index: level - value.head - 1 },
+        value.spine,
+      )
     case 'rigid':
-      return quoteSpine(level, { tag: 'const', name: value.name }, value.spine)
+      return quoteSpine(
+        level,
+        { tag: 'const', name: value.name },
+        value.spine,
+      )
   }
 }
 
 // compare two eliminator spines structurally (shared by neutral and rigid heads)
-function convertSpine(level: number, a: Array<Elim>, b: Array<Elim>): boolean {
+function convertSpine(
+  level: number,
+  a: Array<Elim>,
+  b: Array<Elim>,
+): boolean {
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
     const x = a[i]!
@@ -475,7 +799,11 @@ function convertSpine(level: number, a: Array<Elim>, b: Array<Elim>): boolean {
     if (x.e === 'app' && y.e === 'app') {
       if (!convert(level, x.arg, y.arg)) return false
     } else if (x.e === 'j' && y.e === 'j') {
-      if (!convert(level, x.motive, y.motive) || !convert(level, x.base, y.base)) return false
+      if (
+        !convert(level, x.motive, y.motive) ||
+        !convert(level, x.base, y.base)
+      )
+        return false
     } else if (x.e === 'fst' && y.e === 'fst') {
       // a projection: nothing to compare beyond the elimination kind
     } else if (x.e === 'snd' && y.e === 'snd') {
@@ -489,40 +817,80 @@ function convert(level: number, a: Value, b: Value): boolean {
   a = force(a)
   b = force(b)
   // metavariable solving by Miller pattern unification
-  if (a.v === 'flex' && b.v === 'flex' && a.id === b.id) return convertSpine(level, a.spine, b.spine)
+  if (a.v === 'flex' && b.v === 'flex' && a.id === b.id)
+    return convertSpine(level, a.spine, b.spine)
   if (a.v === 'flex') return solveMeta(level, a.id, a.spine, b)
   if (b.v === 'flex') return solveMeta(level, b.id, b.spine, a)
   if (a.v === 'type' && b.v === 'type') return eqLevel(a.level, b.level)
   if (a.v === 'pi' && b.v === 'pi') {
-    return a.mult === b.mult && convert(level, a.domain, b.domain) &&
-      convert(level + 1, closeOver(a.codomain, neutralVar(level)), closeOver(b.codomain, neutralVar(level)))
+    return (
+      a.mult === b.mult &&
+      convert(level, a.domain, b.domain) &&
+      convert(
+        level + 1,
+        closeOver(a.codomain, neutralVar(level)),
+        closeOver(b.codomain, neutralVar(level)),
+      )
+    )
   }
   if (a.v === 'lam' || b.v === 'lam') {
-    return convert(level + 1, applyValue(a, neutralVar(level)), applyValue(b, neutralVar(level)))
+    return convert(
+      level + 1,
+      applyValue(a, neutralVar(level)),
+      applyValue(b, neutralVar(level)),
+    )
   }
   if (a.v === 'sigma' && b.v === 'sigma') {
-    return a.mult === b.mult && convert(level, a.domain, b.domain) &&
-      convert(level + 1, closeOver(a.codomain, neutralVar(level)), closeOver(b.codomain, neutralVar(level)))
+    return (
+      a.mult === b.mult &&
+      convert(level, a.domain, b.domain) &&
+      convert(
+        level + 1,
+        closeOver(a.codomain, neutralVar(level)),
+        closeOver(b.codomain, neutralVar(level)),
+      )
+    )
   }
   if (a.v === 'pair' || b.v === 'pair') {
     // eta for pairs: compare componentwise, eta-expanding a neutral pair via its projections
-    return convert(level, applyFst(a), applyFst(b)) && convert(level, applySnd(a), applySnd(b))
+    return (
+      convert(level, applyFst(a), applyFst(b)) &&
+      convert(level, applySnd(a), applySnd(b))
+    )
   }
   if (a.v === 'self' && b.v === 'self') {
-    return convert(level + 1, closeOver(a.body, neutralVar(level)), closeOver(b.body, neutralVar(level)))
+    return convert(
+      level + 1,
+      closeOver(a.body, neutralVar(level)),
+      closeOver(b.body, neutralVar(level)),
+    )
   }
-  if (a.v === 'id' && b.v === 'id') return convert(level, a.type, b.type) && convert(level, a.left, b.left) && convert(level, a.right, b.right)
-  if (a.v === 'refl' && b.v === 'refl') return convert(level, a.value, b.value)
+  if (a.v === 'id' && b.v === 'id')
+    return (
+      convert(level, a.type, b.type) &&
+      convert(level, a.left, b.left) &&
+      convert(level, a.right, b.right)
+    )
+  if (a.v === 'refl' && b.v === 'refl')
+    return convert(level, a.value, b.value)
   if (a.v === 'neutral' && b.v === 'neutral') {
     if (a.head !== b.head) return false
     return convertSpine(level, a.spine, b.spine)
   }
   // rigid constants: try the fast structural path first, then delta-unfold any transparent definition and retry
-  if (a.v === 'rigid' && b.v === 'rigid' && a.name === b.name && a.spine.length === b.spine.length && convertSpine(level, a.spine, b.spine)) {
+  if (
+    a.v === 'rigid' &&
+    b.v === 'rigid' &&
+    a.name === b.name &&
+    a.spine.length === b.spine.length &&
+    convertSpine(level, a.spine, b.spine)
+  ) {
     return true
   }
-  if (a.v === 'rigid' && definition.has(a.name)) return convertUnfolding(level, unfoldRigid(a), b)
-  if (b.v === 'rigid' && definition.has(b.name)) return convertUnfolding(level, a, unfoldRigid(b))
+  if (a.v === 'rigid' && definition.has(a.name))
+    return convertUnfolding(level, unfoldRigid(a), b)
+  if (b.v === 'rigid' && definition.has(b.name))
+    return convertUnfolding(level, a, unfoldRigid(b))
   return false
 }
 
@@ -537,7 +905,11 @@ function convertUnfolding(level: number, a: Value, b: Value): boolean {
 
 // public: are two values definitionally equal? (used by the refinement layer to discharge a non-linear hold via
 // the kernel, leveraging delta so e.g. a transparent `double(n)` is equal to `add(n, n)`)
-export function areConvertible(level: number, a: Value, b: Value): boolean {
+export function areConvertible(
+  level: number,
+  a: Value,
+  b: Value,
+): boolean {
   return convert(level, a, b)
 }
 
@@ -546,31 +918,65 @@ function subtype(level: number, a: Value, b: Value): boolean {
   a = force(a)
   b = force(b)
   if (a.v === 'flex' || b.v === 'flex') return convert(level, a, b) // let the meta solver handle either side
-  if (a.v === 'type' && b.v === 'type') return leqLevel(a.level, b.level)
+  if (a.v === 'type' && b.v === 'type')
+    return leqLevel(a.level, b.level)
   if (a.v === 'pi' && b.v === 'pi') {
-    return a.mult === b.mult && convert(level, a.domain, b.domain) &&
-      subtype(level + 1, closeOver(a.codomain, neutralVar(level)), closeOver(b.codomain, neutralVar(level)))
+    return (
+      a.mult === b.mult &&
+      convert(level, a.domain, b.domain) &&
+      subtype(
+        level + 1,
+        closeOver(a.codomain, neutralVar(level)),
+        closeOver(b.codomain, neutralVar(level)),
+      )
+    )
   }
   if (a.v === 'sigma' && b.v === 'sigma') {
-    return a.mult === b.mult && subtype(level, a.domain, b.domain) &&
-      subtype(level + 1, closeOver(a.codomain, neutralVar(level)), closeOver(b.codomain, neutralVar(level)))
+    return (
+      a.mult === b.mult &&
+      subtype(level, a.domain, b.domain) &&
+      subtype(
+        level + 1,
+        closeOver(a.codomain, neutralVar(level)),
+        closeOver(b.codomain, neutralVar(level)),
+      )
+    )
   }
   return convert(level, a, b)
 }
 
 // ---- context and usage ----
 // `globals` is the signature: each postulated constant mapped to its type (a value). Threaded through binders.
-export type Context = { level: number; env: Array<Value>; types: Array<Value>; mults: Array<Mult>; globals: Map<string, Value> }
-export const emptyContext: Context = { level: 0, env: [], types: [], mults: [], globals: new Map() }
+export type Context = {
+  level: number
+  env: Array<Value>
+  types: Array<Value>
+  mults: Array<Mult>
+  globals: Map<string, Value>
+}
+export const emptyContext: Context = {
+  level: 0,
+  env: [],
+  types: [],
+  mults: [],
+  globals: new Map(),
+}
 
 // build a context whose signature postulates each named constant at the given (closed) type term
-export function contextWithSignature(signature: Array<{ name: string; type: Term }>): Context {
+export function contextWithSignature(
+  signature: Array<{ name: string; type: Term }>,
+): Context {
   const globals = new Map<string, Value>()
-  for (const entry of signature) globals.set(entry.name, evaluate([], entry.type))
+  for (const entry of signature)
+    globals.set(entry.name, evaluate([], entry.type))
   return { ...emptyContext, globals }
 }
 
-export function bind(context: Context, mult: Mult, type: Value): Context {
+export function bind(
+  context: Context,
+  mult: Mult,
+  type: Value,
+): Context {
   return {
     level: context.level + 1,
     env: [neutralVar(context.level), ...context.env],
@@ -582,8 +988,10 @@ export function bind(context: Context, mult: Mult, type: Value): Context {
 
 type Usage = Array<Mult>
 const zeroUsage = (n: number): Usage => new Array<Mult>(n).fill(0)
-const addUsage = (a: Usage, b: Usage): Usage => a.map((m, i) => addMult(m, b[i]!))
-const scaleUsage = (k: Mult, a: Usage): Usage => a.map((m) => mulMult(k, m))
+const addUsage = (a: Usage, b: Usage): Usage =>
+  a.map((m, i) => addMult(m, b[i]!))
+const scaleUsage = (k: Mult, a: Usage): Usage =>
+  a.map(m => mulMult(k, m))
 function singletonUsage(n: number, index: number): Usage {
   const u = zeroUsage(n)
   u[index] = 1
@@ -612,20 +1020,40 @@ export function infer(context: Context, term: Term): Inferred {
       return { type, usage: zeroUsage(context.level) }
     }
     case 'type':
-      return { type: { v: 'type', level: succLevel(term.level) }, usage: zeroUsage(context.level) }
+      return {
+        type: { v: 'type', level: succLevel(term.level) },
+        usage: zeroUsage(context.level),
+      }
     case 'pi': {
       const domainLevel = inferUniverse(context, term.domain)
-      const inner = bind(context, 'many', evaluate(context.env, term.domain))
+      const inner = bind(
+        context,
+        'many',
+        evaluate(context.env, term.domain),
+      )
       const codomainLevel = inferUniverse(inner, term.codomain)
-      return { type: { v: 'type', level: maxLevel(domainLevel, codomainLevel) }, usage: zeroUsage(context.level) }
+      return {
+        type: {
+          v: 'type',
+          level: maxLevel(domainLevel, codomainLevel),
+        },
+        usage: zeroUsage(context.level),
+      }
     }
     case 'app': {
       const fun = infer(context, term.fun)
       const funType = force(fun.type)
-      if (funType.v !== 'pi') throw new TypeError('applied a non-function')
+      if (funType.v !== 'pi')
+        throw new TypeError('applied a non-function')
       const argUsage = check(context, term.arg, funType.domain)
-      const result = closeOver(funType.codomain, evaluate(context.env, term.arg))
-      return { type: result, usage: addUsage(fun.usage, scaleUsage(funType.mult, argUsage)) }
+      const result = closeOver(
+        funType.codomain,
+        evaluate(context.env, term.arg),
+      )
+      return {
+        type: result,
+        usage: addUsage(fun.usage, scaleUsage(funType.mult, argUsage)),
+      }
     }
     case 'ann': {
       inferUniverse(context, term.type)
@@ -637,20 +1065,31 @@ export function infer(context: Context, term: Term): Inferred {
       const type = evaluate(context.env, term.type)
       check(context, term.left, type)
       check(context, term.right, type)
-      return { type: { v: 'type', level }, usage: zeroUsage(context.level) }
+      return {
+        type: { v: 'type', level },
+        usage: zeroUsage(context.level),
+      }
     }
     case 'refl': {
       inferUniverse(context, term.type)
       const type = evaluate(context.env, term.type)
       check(context, term.value, type)
       const value = evaluate(context.env, term.value)
-      return { type: idValue(type, value, value), usage: zeroUsage(context.level) }
+      return {
+        type: idValue(type, value, value),
+        usage: zeroUsage(context.level),
+      }
     }
     case 'j': {
       const proof = infer(context, term.proof)
-      if (proof.type.v !== 'id') throw new TypeError('J needs an identity proof')
+      if (proof.type.v !== 'id')
+        throw new TypeError('J needs an identity proof')
       const { type: aType, left: a, right: b } = proof.type
-      check(context, term.motive, motivePiType(context, aType, a, term.level))
+      check(
+        context,
+        term.motive,
+        motivePiType(context, aType, a, term.level),
+      )
       const motive = evaluate(context.env, term.motive)
       const reflA: Value = { v: 'refl', type: aType, value: a }
       const baseType = applyValue(applyValue(motive, a), reflA)
@@ -661,38 +1100,68 @@ export function infer(context: Context, term: Term): Inferred {
     }
     case 'sigma': {
       const domainLevel = inferUniverse(context, term.domain)
-      const inner = bind(context, 'many', evaluate(context.env, term.domain))
+      const inner = bind(
+        context,
+        'many',
+        evaluate(context.env, term.domain),
+      )
       const codomainLevel = inferUniverse(inner, term.codomain)
-      return { type: { v: 'type', level: maxLevel(domainLevel, codomainLevel) }, usage: zeroUsage(context.level) }
+      return {
+        type: {
+          v: 'type',
+          level: maxLevel(domainLevel, codomainLevel),
+        },
+        usage: zeroUsage(context.level),
+      }
     }
     case 'fst': {
       const pair = infer(context, term.pair)
       const pairType = force(pair.type)
-      if (pairType.v !== 'sigma') throw new TypeError('fst of a non-pair')
+      if (pairType.v !== 'sigma')
+        throw new TypeError('fst of a non-pair')
       return { type: pairType.domain, usage: pair.usage }
     }
     case 'snd': {
       const pair = infer(context, term.pair)
       const pairType = force(pair.type)
-      if (pairType.v !== 'sigma') throw new TypeError('snd of a non-pair')
+      if (pairType.v !== 'sigma')
+        throw new TypeError('snd of a non-pair')
       const first = applyFst(evaluate(context.env, term.pair))
-      return { type: closeOver(pairType.codomain, first), usage: pair.usage }
+      return {
+        type: closeOver(pairType.codomain, first),
+        usage: pair.usage,
+      }
     }
     case 'self': {
       // formation: Self x. T : Type i, where T is typed with x standing for the self type itself
-      const selfType: Value = { v: 'self', body: { env: context.env, body: term.body } }
+      const selfType: Value = {
+        v: 'self',
+        body: { env: context.env, body: term.body },
+      }
       const inner = bind(context, 'many', selfType)
       const level = inferUniverse(inner, term.body)
-      return { type: { v: 'type', level }, usage: zeroUsage(context.level) }
+      return {
+        type: { v: 'type', level },
+        usage: zeroUsage(context.level),
+      }
     }
     case 'pair':
-      throw new TypeError('cannot infer a bare pair; annotate it or check it against a sigma type')
+      throw new TypeError(
+        'cannot infer a bare pair; annotate it or check it against a sigma type',
+      )
     case 'lam':
-      throw new TypeError('cannot infer a bare function; annotate it or check it against a pi type')
+      throw new TypeError(
+        'cannot infer a bare function; annotate it or check it against a pi type',
+      )
   }
 }
 
-function motivePiType(context: Context, aType: Value, a: Value, level: Level): Value {
+function motivePiType(
+  context: Context,
+  aType: Value,
+  a: Value,
+  level: Level,
+): Value {
   return {
     v: 'pi',
     mult: 'many',
@@ -702,53 +1171,96 @@ function motivePiType(context: Context, aType: Value, a: Value, level: Level): V
       body: {
         tag: 'pi',
         mult: 'many',
-        domain: { tag: 'id', type: { tag: 'var', index: 2 }, left: { tag: 'var', index: 1 }, right: { tag: 'var', index: 0 } },
+        domain: {
+          tag: 'id',
+          type: { tag: 'var', index: 2 },
+          left: { tag: 'var', index: 1 },
+          right: { tag: 'var', index: 0 },
+        },
         codomain: { tag: 'type', level },
       },
     },
   }
 }
 
-export function check(context: Context, term: Term, expected: Value): Usage {
+export function check(
+  context: Context,
+  term: Term,
+  expected: Value,
+): Usage {
   expected = force(expected)
   if (term.tag === 'lam') {
-    if (expected.v !== 'pi') throw new TypeError('a function must be checked against a pi type')
+    if (expected.v !== 'pi')
+      throw new TypeError(
+        'a function must be checked against a pi type',
+      )
     const inner = bind(context, expected.mult, expected.domain)
-    const bodyType = closeOver(expected.codomain, neutralVar(context.level))
+    const bodyType = closeOver(
+      expected.codomain,
+      neutralVar(context.level),
+    )
     const bodyUsage = check(inner, term.body, bodyType)
     if (!fitsMult(bodyUsage[0]!, expected.mult)) {
-      throw new TypeError(`linearity: a ${showMult(expected.mult)} argument was used ${showMult(bodyUsage[0]!)} times`)
+      throw new TypeError(
+        `linearity: a ${showMult(
+          expected.mult,
+        )} argument was used ${showMult(bodyUsage[0]!)} times`,
+      )
     }
     return bodyUsage.slice(1)
   }
   if (term.tag === 'refl') {
-    if (expected.v !== 'id') throw new TypeError('refl must be checked against an identity type')
+    if (expected.v !== 'id')
+      throw new TypeError(
+        'refl must be checked against an identity type',
+      )
     if (!convert(context.level, expected.left, expected.right)) {
-      throw new TypeError('refl: the two sides of the identity are not definitionally equal')
+      throw new TypeError(
+        'refl: the two sides of the identity are not definitionally equal',
+      )
     }
     check(context, term.value, expected.type)
     return zeroUsage(context.level)
   }
   if (term.tag === 'pair') {
-    if (expected.v !== 'sigma') throw new TypeError('a pair must be checked against a sigma type')
+    if (expected.v !== 'sigma')
+      throw new TypeError('a pair must be checked against a sigma type')
     const firstUsage = check(context, term.first, expected.domain)
-    const secondType = closeOver(expected.codomain, evaluate(context.env, term.first))
+    const secondType = closeOver(
+      expected.codomain,
+      evaluate(context.env, term.first),
+    )
     const secondUsage = check(context, term.second, secondType)
     return addUsage(scaleUsage(expected.mult, firstUsage), secondUsage)
   }
   if (expected.v === 'self') {
     // self introduction: a term has type Self x. T exactly when it has type T[x := itself]
-    return check(context, term, closeOver(expected.body, evaluate(context.env, term)))
+    return check(
+      context,
+      term,
+      closeOver(expected.body, evaluate(context.env, term)),
+    )
   }
   const actual = infer(context, term)
   const actualType = force(actual.type)
   // self elimination: a term of type Self x. T may be used at T[x := itself]
-  if (actualType.v === 'self' && !subtype(context.level, actualType, expected)) {
-    const unfolded = closeOver(actualType.body, evaluate(context.env, term))
+  if (
+    actualType.v === 'self' &&
+    !subtype(context.level, actualType, expected)
+  ) {
+    const unfolded = closeOver(
+      actualType.body,
+      evaluate(context.env, term),
+    )
     if (subtype(context.level, unfolded, expected)) return actual.usage
   }
   if (!subtype(context.level, actual.type, expected)) {
-    throw new TypeError(`type mismatch:\n  expected ${showValue(context.level, expected)}\n  found    ${showValue(context.level, actual.type)}`)
+    throw new TypeError(
+      `type mismatch:\n  expected ${showValue(
+        context.level,
+        expected,
+      )}\n  found    ${showValue(context.level, actual.type)}`,
+    )
   }
   return actual.usage
 }
@@ -776,7 +1288,9 @@ export function showTerm(term: Term): string {
     case 'type':
       return `Type ${showLevel(term.level)}`
     case 'pi':
-      return `(${showMult(term.mult)} ${showTerm(term.domain)}) -> ${showTerm(term.codomain)}`
+      return `(${showMult(term.mult)} ${showTerm(
+        term.domain,
+      )}) -> ${showTerm(term.codomain)}`
     case 'lam':
       return `\\ ${showTerm(term.body)}`
     case 'app':
@@ -784,13 +1298,17 @@ export function showTerm(term: Term): string {
     case 'ann':
       return `(${showTerm(term.term)} : ${showTerm(term.type)})`
     case 'id':
-      return `Id ${showTerm(term.type)} ${showTerm(term.left)} ${showTerm(term.right)}`
+      return `Id ${showTerm(term.type)} ${showTerm(
+        term.left,
+      )} ${showTerm(term.right)}`
     case 'refl':
       return `refl`
     case 'j':
       return `J(${showTerm(term.proof)})`
     case 'sigma':
-      return `(${showMult(term.mult)} ${showTerm(term.domain)}) * ${showTerm(term.codomain)}`
+      return `(${showMult(term.mult)} ${showTerm(
+        term.domain,
+      )}) * ${showTerm(term.codomain)}`
     case 'pair':
       return `(${showTerm(term.first)}, ${showTerm(term.second)})`
     case 'fst':
@@ -803,13 +1321,25 @@ export function showTerm(term: Term): string {
 }
 
 // instantiate a level-polymorphic term: replace a level variable with a concrete level throughout
-export function instantiateLevel(term: Term, name: string, replacement: Level): Term {
+export function instantiateLevel(
+  term: Term,
+  name: string,
+  replacement: Level,
+): Term {
   const go = (t: Term): Term => {
     switch (t.tag) {
       case 'type':
-        return { tag: 'type', level: substLevel(t.level, name, replacement) }
+        return {
+          tag: 'type',
+          level: substLevel(t.level, name, replacement),
+        }
       case 'pi':
-        return { tag: 'pi', mult: t.mult, domain: go(t.domain), codomain: go(t.codomain) }
+        return {
+          tag: 'pi',
+          mult: t.mult,
+          domain: go(t.domain),
+          codomain: go(t.codomain),
+        }
       case 'lam':
         return { tag: 'lam', body: go(t.body) }
       case 'app':
@@ -817,13 +1347,29 @@ export function instantiateLevel(term: Term, name: string, replacement: Level): 
       case 'ann':
         return { tag: 'ann', term: go(t.term), type: go(t.type) }
       case 'id':
-        return { tag: 'id', type: go(t.type), left: go(t.left), right: go(t.right) }
+        return {
+          tag: 'id',
+          type: go(t.type),
+          left: go(t.left),
+          right: go(t.right),
+        }
       case 'refl':
         return { tag: 'refl', type: go(t.type), value: go(t.value) }
       case 'j':
-        return { tag: 'j', proof: go(t.proof), motive: go(t.motive), base: go(t.base), level: substLevel(t.level, name, replacement) }
+        return {
+          tag: 'j',
+          proof: go(t.proof),
+          motive: go(t.motive),
+          base: go(t.base),
+          level: substLevel(t.level, name, replacement),
+        }
       case 'sigma':
-        return { tag: 'sigma', mult: t.mult, domain: go(t.domain), codomain: go(t.codomain) }
+        return {
+          tag: 'sigma',
+          mult: t.mult,
+          domain: go(t.domain),
+          codomain: go(t.codomain),
+        }
       case 'pair':
         return { tag: 'pair', first: go(t.first), second: go(t.second) }
       case 'fst':

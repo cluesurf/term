@@ -3,7 +3,11 @@
 
 import type { Diagnostic } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
-import type { Expression, Program, Statement } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@/code/compile/node'
 
 function collectReads(expr: Expression, read: Set<string>): void {
   switch (expr.form) {
@@ -44,13 +48,18 @@ function collectReads(expr: Expression, read: Set<string>): void {
   }
 }
 
-function walk(body: Array<Statement>, declared: Map<string, Statement>, read: Set<string>): void {
+function walk(
+  body: Array<Statement>,
+  declared: Map<string, Statement>,
+  read: Set<string>,
+): void {
   for (const statement of body) {
     switch (statement.form) {
       case 'let':
         collectReads(statement.init, read)
         // a re-`save` to an existing name counts as a use of the binding's slot; only record first declaration
-        if (!declared.has(statement.name)) declared.set(statement.name, statement)
+        if (!declared.has(statement.name))
+          declared.set(statement.name, statement)
         break
       case 'assign':
         collectReads(statement.target, read)
@@ -78,15 +87,18 @@ function walk(body: Array<Statement>, declared: Map<string, Statement>, read: Se
         break
       case 'match':
         collectReads(statement.subject, read)
-        for (const branch of statement.cases) walk(branch.body, declared, read)
-        if (statement.otherwise) walk(statement.otherwise, declared, read)
+        for (const branch of statement.cases)
+          walk(branch.body, declared, read)
+        if (statement.otherwise)
+          walk(statement.otherwise, declared, read)
         break
       case 'if':
         for (const branch of statement.branches) {
           collectReads(branch.cond, read)
           walk(branch.body, declared, read)
         }
-        if (statement.otherwise) walk(statement.otherwise, declared, read)
+        if (statement.otherwise)
+          walk(statement.otherwise, declared, read)
         break
       default:
         break
@@ -94,7 +106,10 @@ function walk(body: Array<Statement>, declared: Map<string, Statement>, read: Se
   }
 }
 
-export function findUnused(program: Program, file: string): Array<Diagnostic> {
+export function findUnused(
+  program: Program,
+  file: string,
+): Array<Diagnostic> {
   const warnings: Array<Diagnostic> = []
   for (const statement of program) {
     if (statement.form !== 'function') continue
@@ -103,7 +118,13 @@ export function findUnused(program: Program, file: string): Array<Diagnostic> {
     walk(statement.body, declared, read)
     for (const [name, decl] of declared) {
       if (!read.has(name)) {
-        warnings.push(diagnose('unused-binding', { file, span: decl.span, message: `"${name}" is never used` }))
+        warnings.push(
+          diagnose('unused-binding', {
+            file,
+            span: decl.span,
+            message: `"${name}" is never used`,
+          }),
+        )
       }
     }
   }

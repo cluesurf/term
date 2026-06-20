@@ -3,7 +3,9 @@ import os from 'os'
 
 export function showBanner(): void {
   console.log('')
-  console.log(chalk.green.bold('  seed') + chalk.gray(' - the Seed toolkit'))
+  console.log(
+    chalk.green.bold('  seed') + chalk.gray(' - the Seed toolkit'),
+  )
   console.log('')
   console.log(chalk.white('  Usage: seed <verb> [objects] [options]'))
   console.log('')
@@ -43,7 +45,9 @@ export function showInfo(): void {
   console.log('')
   console.log(chalk.green.bold('seed') + ' ' + chalk.gray('0.4.0'))
   console.log('')
-  console.log(chalk.white('  Platform:  ') + os.platform() + ' ' + os.arch())
+  console.log(
+    chalk.white('  Platform:  ') + os.platform() + ' ' + os.arch(),
+  )
   console.log(chalk.white('  Node:      ') + process.version)
   console.log(chalk.white('  Home:      ') + os.homedir())
   console.log('')

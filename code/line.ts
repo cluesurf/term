@@ -22,8 +22,25 @@ import { callLook } from './call/look'
 import { logFail, warn } from './tint'
 
 const COMMANDS = [
-  'load', 'save', 'toss', 'link', 'seek', 'host',
-  'make', 'test', 'time', 'profile', 'boot', 'wash', 'walk', 'move', 'note', 'show', 'form', 'lint', 'look',
+  'load',
+  'save',
+  'toss',
+  'link',
+  'seek',
+  'host',
+  'make',
+  'test',
+  'time',
+  'profile',
+  'boot',
+  'wash',
+  'walk',
+  'move',
+  'note',
+  'show',
+  'form',
+  'lint',
+  'look',
 ]
 
 function editDistance(a: string, b: string): number {
@@ -229,7 +246,8 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('fail-on-regression', {
           type: 'number',
-          description: 'Fail if any benchmark regresses by more than N%',
+          description:
+            'Fail if any benchmark regresses by more than N%',
         })
         .option('markdown', {
           type: 'boolean',
@@ -247,7 +265,9 @@ const cli = yargs(hideBin(process.argv))
         json: argv.json,
         save: argv.save,
         compare: argv.compare,
-        failOnRegression: argv['fail-on-regression'] as number | undefined,
+        failOnRegression: argv['fail-on-regression'] as
+          | number
+          | undefined,
         markdown: argv.markdown,
         history: argv.history,
       })
@@ -373,15 +393,18 @@ const cli = yargs(hideBin(process.argv))
       yargs
         .positional('paths', {
           type: 'string',
-          description: 'Files or directories to format (default: current directory)',
+          description:
+            'Files or directories to format (default: current directory)',
         })
         .option('check', {
           type: 'boolean',
-          description: 'Report which files would change without writing (for CI)',
+          description:
+            'Report which files would change without writing (for CI)',
         })
         .option('list', {
           type: 'boolean',
-          description: 'Print formatted source to stdout instead of writing',
+          description:
+            'Print formatted source to stdout instead of writing',
         }),
     async argv => {
       await callForm({
@@ -399,11 +422,16 @@ const cli = yargs(hideBin(process.argv))
       yargs
         .positional('target', {
           type: 'string',
-          description: 'A package path (@cluesurf/bind/code/browser/dom) or a .tree file',
+          description:
+            'A package path (@cluesurf/bind/code/browser/dom) or a .tree file',
         })
         .option('json', { type: 'boolean', description: 'Output JSON' })
         .option('csv', { type: 'boolean', description: 'Output CSV' })
-        .option('kind', { type: 'string', choices: ['form', 'task'] as const, description: 'Only forms or only tasks' }),
+        .option('kind', {
+          type: 'string',
+          choices: ['form', 'task'] as const,
+          description: 'Only forms or only tasks',
+        }),
     async argv => {
       await callLook({
         root,
@@ -421,7 +449,8 @@ const cli = yargs(hideBin(process.argv))
       yargs
         .positional('paths', {
           type: 'string',
-          description: 'Files or directories to lint (default: current directory)',
+          description:
+            'Files or directories to lint (default: current directory)',
         })
         .option('fix', {
           type: 'boolean',
@@ -483,9 +512,15 @@ async function main(): Promise<void> {
   if (!COMMANDS.includes(cmd)) {
     const suggestion = suggestCommand(cmd)
     if (suggestion) {
-      logFail(`Unknown command "${cmd}". Did you mean ${warn(`seed ${suggestion}`)}?`)
+      logFail(
+        `Unknown command "${cmd}". Did you mean ${warn(
+          `seed ${suggestion}`,
+        )}?`,
+      )
     } else {
-      logFail(`Unknown command "${cmd}". Run "seed" for a list of commands.`)
+      logFail(
+        `Unknown command "${cmd}". Run "seed" for a list of commands.`,
+      )
     }
     process.exit(1)
   }

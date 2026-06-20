@@ -12,7 +12,9 @@ function expectBlame(name: string, source: string): void {
   const result = compile({ file: 'bad.tree', text: source })
   if (result.ok) {
     fail++
-    console.log(`FAIL  ${name}  (compiled cleanly, expected a blamed type error)`)
+    console.log(
+      `FAIL  ${name}  (compiled cleanly, expected a blamed type error)`,
+    )
     return
   }
   const markers = result.diagnostics[0]?.markers ?? []
@@ -22,12 +24,14 @@ function expectBlame(name: string, source: string): void {
     console.log(
       render(result.diagnostics[0]!, source.split('\n'), false)
         .split('\n')
-        .map((l) => `      ${l}`)
+        .map(l => `      ${l}`)
         .join('\n'),
     )
   } else {
     fail++
-    console.log(`FAIL  ${name}  (only ${markers.length} span, expected multi-span)`)
+    console.log(
+      `FAIL  ${name}  (only ${markers.length} span, expected multi-span)`,
+    )
   }
 }
 
@@ -55,7 +59,11 @@ function expectOk(name: string, source: string): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (${result.diagnostics.map((d) => d.message).join('; ')})`)
+    console.log(
+      `FAIL  ${name}  (${result.diagnostics
+        .map(d => d.message)
+        .join('; ')})`,
+    )
   }
 }
 

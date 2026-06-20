@@ -27,7 +27,9 @@ function holdToNpmRange(hold: MarkHold): string {
   }
 }
 
-function manifestToPackageJson(manifest: DeckManifest): Record<string, unknown> {
+function manifestToPackageJson(
+  manifest: DeckManifest,
+): Record<string, unknown> {
   const fullName = manifest.host
     ? `@${manifest.host}/${manifest.name}`
     : manifest.name
@@ -122,13 +124,26 @@ export async function callHost(input: {
     }
 
     // write merged package.json
-    await fsp.writeFile(pkgPath, JSON.stringify(merged, null, 2) + '\n', 'utf-8')
-    logStep(`Wrote package.json for ${String(merged.name)}@${String(merged.version)}`)
+    await fsp.writeFile(
+      pkgPath,
+      JSON.stringify(merged, null, 2) + '\n',
+      'utf-8',
+    )
+    logStep(
+      `Wrote package.json for ${String(merged.name)}@${String(
+        merged.version,
+      )}`,
+    )
 
     if (input.dryRun) {
       console.log('')
       console.log(fade('  Dry run. Generated package.json:'))
-      console.log(fade('  ' + JSON.stringify(merged, null, 2).split('\n').join('\n  ')))
+      console.log(
+        fade(
+          '  ' +
+            JSON.stringify(merged, null, 2).split('\n').join('\n  '),
+        ),
+      )
       return
     }
 

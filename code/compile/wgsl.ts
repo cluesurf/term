@@ -3,7 +3,12 @@
 // no closures). Numbers map to i32, booleans to bool. See note/research/vibe/computation/plans/07-codegen.md.
 // Pure, browser-safe.
 
-import type { Expression, Program, Statement, Type } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+  Type,
+} from '@/code/compile/node'
 import { exhausted, unsupported } from '@/code/compile/backend'
 
 function snake(name: string): string {
@@ -25,7 +30,21 @@ function wgslType(type: Type | undefined): string {
   }
 }
 
-const OP: Record<string, string> = { '&&': '&&', '||': '||', '==': '==', '!=': '!=', '<': '<', '<=': '<=', '>': '>', '>=': '>=', '+': '+', '-': '-', '*': '*', '/': '/', '%': '%' }
+const OP: Record<string, string> = {
+  '&&': '&&',
+  '||': '||',
+  '==': '==',
+  '!=': '!=',
+  '<': '<',
+  '<=': '<=',
+  '>': '>',
+  '>=': '>=',
+  '+': '+',
+  '-': '-',
+  '*': '*',
+  '/': '/',
+  '%': '%',
+}
 
 export function emitWgsl(program: Program): string {
   const pad = (d: number) => '  '.repeat(d)
@@ -36,7 +55,9 @@ export function emitWgsl(program: Program): string {
         return String(node.value)
       case 'float':
         // an f32 literal needs a decimal point so it is a float, not an i32
-        return Number.isInteger(node.value) ? `${node.value}.0` : String(node.value)
+        return Number.isInteger(node.value)
+          ? `${node.value}.0`
+          : String(node.value)
       case 'boolean':
         return node.value ? 'true' : 'false'
       case 'variable':
@@ -65,26 +86,41 @@ export function emitWgsl(program: Program): string {
     }
   }
 
-  const block = (body: Array<Statement>, d: number): string => body.map((s) => `${pad(d)}${stmt(s, d)}`).filter(Boolean).join('\n')
+  const block = (body: Array<Statement>, d: number): string =>
+    body
+      .map(s => `${pad(d)}${stmt(s, d)}`)
+      .filter(Boolean)
+      .join('\n')
 
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
       case 'let':
-        return `${node.mutable ? 'var' : 'let'} ${snake(node.name)} = ${expr(node.init)};`
+        return `${node.mutable ? 'var' : 'let'} ${snake(
+          node.name,
+        )} = ${expr(node.init)};`
       case 'assign':
-        return node.op === '=' ? `${expr(node.target)} = ${expr(node.value)};` : `${expr(node.target)} ${node.op} ${expr(node.value)};`
+        return node.op === '='
+          ? `${expr(node.target)} = ${expr(node.value)};`
+          : `${expr(node.target)} ${node.op} ${expr(node.value)};`
       case 'expression':
         return `${expr(node.expr)};`
       case 'return':
         return node.value ? `return ${expr(node.value)};` : 'return;'
       case 'while':
-        return `while (${expr(node.cond)}) {\n${block(node.body, d + 1)}\n${pad(d)}}`
+        return `while (${expr(node.cond)}) {\n${block(
+          node.body,
+          d + 1,
+        )}\n${pad(d)}}`
       case 'if': {
         let out = ''
         node.branches.forEach((b, i) => {
-          out += `${i ? ' else ' : ''}if (${expr(b.cond)}) {\n${block(b.body, d + 1)}\n${pad(d)}}`
+          out += `${i ? ' else ' : ''}if (${expr(b.cond)}) {\n${block(
+            b.body,
+            d + 1,
+          )}\n${pad(d)}}`
         })
-        if (node.otherwise) out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`
+        if (node.otherwise)
+          out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`
         return out
       }
       case 'break':
@@ -118,9 +154,19 @@ export function emitWgsl(program: Program): string {
   for (const s of program) {
     if (s.form !== 'function') continue
     if (s.generics.length > 0) continue // WGSL is monomorphic: run monomorphization first
-    const params = s.params.map((p) => `${snake(p.name)}: ${wgslType(p.type)}`).join(', ')
-    const result = s.result && s.result.kind !== 'unit' ? ` -> ${wgslType(s.result)}` : ''
-    out.push(`fn ${snake(s.name)}(${params})${result} {\n${block(s.body, 1)}\n}`)
+    const params = s.params
+      .map(p => `${snake(p.name)}: ${wgslType(p.type)}`)
+      .join(', ')
+    const result =
+      s.result && s.result.kind !== 'unit'
+        ? ` -> ${wgslType(s.result)}`
+        : ''
+    out.push(
+      `fn ${snake(s.name)}(${params})${result} {\n${block(
+        s.body,
+        1,
+      )}\n}`,
+    )
   }
   return out.join('\n\n') + '\n'
 }

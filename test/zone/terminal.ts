@@ -12,7 +12,11 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 

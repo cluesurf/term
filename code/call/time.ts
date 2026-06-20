@@ -1,12 +1,25 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import { logGood, logFail, logStep, logWarn, formatError, fade } from '../tint'
+import {
+  logGood,
+  logFail,
+  logStep,
+  logWarn,
+  formatError,
+  fade,
+} from '../tint'
 import { render } from '../parser/diagnostic'
 import { collectTreeFiles } from './files'
 import { compileBenchmarks, runBenchmarks } from '../time/runner'
 import { CompileFailure } from '../time/execute'
 import { buildSuite, formatTable, formatJson } from '../time/output'
-import { compareResults, formatComparison, formatMarkdown, shouldFail, buildHistoryEntry } from '../time/compare'
+import {
+  compareResults,
+  formatComparison,
+  formatMarkdown,
+  shouldFail,
+  buildHistoryEntry,
+} from '../time/compare'
 import type { BenchmarkResult } from '../time/stats'
 
 export async function callTime(input: {
@@ -39,21 +52,32 @@ export async function callTime(input: {
       const relative = path.relative(input.root, file)
       let module
       try {
-        module = compileBenchmarks({ text, file: relative, filter: input.filter })
+        module = compileBenchmarks({
+          text,
+          file: relative,
+          filter: input.filter,
+        })
       } catch (err) {
         if (err instanceof CompileFailure) {
-          logWarn(`${relative}: ${err.diagnostics.length} compilation error(s)`)
-          for (const diagnostic of err.diagnostics) console.error(render(diagnostic, text.split('\n')))
+          logWarn(
+            `${relative}: ${err.diagnostics.length} compilation error(s)`,
+          )
+          for (const diagnostic of err.diagnostics)
+            console.error(render(diagnostic, text.split('\n')))
           continue
         }
         throw err
       }
       if (module.benchmarks.length === 0) continue
-      allResults.push(...(await runBenchmarks({ module, root: input.root })))
+      allResults.push(
+        ...(await runBenchmarks({ module, root: input.root })),
+      )
     }
 
     if (allResults.length === 0) {
-      logFail('No benchmarks found (define a zero-argument `task time-...`)')
+      logFail(
+        'No benchmarks found (define a zero-argument `task time-...`)',
+      )
       process.exit(1)
     }
 
@@ -70,20 +94,39 @@ export async function callTime(input: {
     if (input.save) {
       const dir = path.join(input.root, '.seed', 'time')
       await fs.mkdir(dir, { recursive: true })
-      await fs.writeFile(path.join(dir, `${input.save}.json`), formatJson(suite))
+      await fs.writeFile(
+        path.join(dir, `${input.save}.json`),
+        formatJson(suite),
+      )
       logGood(`Saved baseline "${input.save}"`)
 
       const historyDir = path.join(dir, 'history')
       await fs.mkdir(historyDir, { recursive: true })
-      await fs.writeFile(path.join(historyDir, `${Date.now()}.json`), JSON.stringify(buildHistoryEntry({ suite }), null, 2))
+      await fs.writeFile(
+        path.join(historyDir, `${Date.now()}.json`),
+        JSON.stringify(buildHistoryEntry({ suite }), null, 2),
+      )
     }
 
     if (input.compare) {
-      const comparePath = path.join(input.root, '.seed', 'time', `${input.compare}.json`)
+      const comparePath = path.join(
+        input.root,
+        '.seed',
+        'time',
+        `${input.compare}.json`,
+      )
       try {
-        const baselineSuite = JSON.parse(await fs.readFile(comparePath, 'utf-8'))
-        const baseline = { results: baselineSuite.results ?? baselineSuite.benchmarks ?? [] }
-        const comparison = compareResults({ current: allResults, baseline })
+        const baselineSuite = JSON.parse(
+          await fs.readFile(comparePath, 'utf-8'),
+        )
+        const baseline = {
+          results:
+            baselineSuite.results ?? baselineSuite.benchmarks ?? [],
+        }
+        const comparison = compareResults({
+          current: allResults,
+          baseline,
+        })
 
         if (input.markdown) {
           console.log(formatMarkdown({ result: comparison, suite }))
@@ -92,10 +135,19 @@ export async function callTime(input: {
           console.log(formatComparison(comparison))
         }
 
-        if (comparison.regressions > 0) logWarn(`${comparison.regressions} regression(s) detected`)
+        if (comparison.regressions > 0)
+          logWarn(`${comparison.regressions} regression(s) detected`)
 
-        if (input.failOnRegression != null && shouldFail({ result: comparison, maxRegressionPct: input.failOnRegression })) {
-          logFail(`Regression exceeds ${input.failOnRegression}% threshold`)
+        if (
+          input.failOnRegression != null &&
+          shouldFail({
+            result: comparison,
+            maxRegressionPct: input.failOnRegression,
+          })
+        ) {
+          logFail(
+            `Regression exceeds ${input.failOnRegression}% threshold`,
+          )
           process.exit(1)
         }
       } catch {
@@ -114,16 +166,30 @@ export async function callTime(input: {
   }
 }
 
-async function showHistory(input: { root: string; name: string }): Promise<void> {
+async function showHistory(input: {
+  root: string
+  name: string
+}): Promise<void> {
   const historyDir = path.join(input.root, '.seed', 'time', 'history')
   try {
-    const files = (await fs.readdir(historyDir)).filter((f) => f.endsWith('.json')).sort().slice(-20)
+    const files = (await fs.readdir(historyDir))
+      .filter(f => f.endsWith('.json'))
+      .sort()
+      .slice(-20)
     const entries: Array<{ timestamp: string; mean_ns: number }> = []
 
     for (const file of files) {
-      const data = JSON.parse(await fs.readFile(path.join(historyDir, file), 'utf-8'))
-      const bench = data.benchmarks?.find((b: { name: string }) => b.name === input.name)
-      if (bench) entries.push({ timestamp: data.timestamp ?? file, mean_ns: bench.mean_ns })
+      const data = JSON.parse(
+        await fs.readFile(path.join(historyDir, file), 'utf-8'),
+      )
+      const bench = data.benchmarks?.find(
+        (b: { name: string }) => b.name === input.name,
+      )
+      if (bench)
+        entries.push({
+          timestamp: data.timestamp ?? file,
+          mean_ns: bench.mean_ns,
+        })
     }
 
     if (entries.length === 0) {
@@ -135,7 +201,14 @@ async function showHistory(input: { root: string; name: string }): Promise<void>
     console.log(`History for "${input.name}" (last ${entries.length}):`)
     for (const entry of entries) {
       const ns = entry.mean_ns
-      const time = ns < 1_000 ? `${ns.toFixed(1)}ns` : ns < 1_000_000 ? `${(ns / 1_000).toFixed(1)}us` : ns < 1_000_000_000 ? `${(ns / 1_000_000).toFixed(1)}ms` : `${(ns / 1_000_000_000).toFixed(2)}s`
+      const time =
+        ns < 1_000
+          ? `${ns.toFixed(1)}ns`
+          : ns < 1_000_000
+          ? `${(ns / 1_000).toFixed(1)}us`
+          : ns < 1_000_000_000
+          ? `${(ns / 1_000_000).toFixed(1)}ms`
+          : `${(ns / 1_000_000_000).toFixed(2)}s`
       console.log(fade(`  ${entry.timestamp.slice(0, 19)}  ${time}`))
     }
   } catch {

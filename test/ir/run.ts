@@ -6,11 +6,16 @@ import { render } from '@/code/parser/diagnostic'
 let pass = 0
 let fail = 0
 
-function expectContains(name: string, source: string, needle: string): void {
+function expectContains(
+  name: string,
+  source: string,
+  needle: string,
+): void {
   const result = compile({ file: 'ir.tree', text: source })
   if (!result.ok) {
     fail++
-    for (const d of result.diagnostics) console.log(render(d, source.split('\n'), false))
+    for (const d of result.diagnostics)
+      console.log(render(d, source.split('\n'), false))
     console.log(`FAIL  ${name}  (did not compile)`)
     return
   }
@@ -19,7 +24,9 @@ function expectContains(name: string, source: string, needle: string): void {
     console.log(`ok    ${name}  (emitted "${needle.trim()}")`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (expected "${needle}" in:\n${result.typescript})`)
+    console.log(
+      `FAIL  ${name}  (expected "${needle}" in:\n${result.typescript})`,
+    )
   }
 }
 

@@ -17,7 +17,10 @@ export const preferHostForConstant: Rule = {
     if (s.form !== 'let' || !s.mutable) return
     if (context.reassigned.has(s.name)) return
 
-    const keyword: Span = { start: s.span.start, end: { line: s.span.start.line, column: s.span.start.column + 4 } }
+    const keyword: Span = {
+      start: s.span.start,
+      end: { line: s.span.start.line, column: s.span.start.column + 4 },
+    }
     const fixable = context.slice(keyword) === 'save'
     context.report({
       message: `"${s.name}" is never reassigned; use \`host\` instead of \`save\``,

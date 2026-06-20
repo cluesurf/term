@@ -41,7 +41,8 @@ export class Net {
 
   private remove(id: number): void {
     const n = arity[this.nodes.get(id)!]
-    for (let slot = 0; slot <= n; slot++) this.link.delete(`${id}:${slot}`)
+    for (let slot = 0; slot <= n; slot++)
+      this.link.delete(`${id}:${slot}`)
     this.nodes.delete(id)
   }
 
@@ -50,7 +51,15 @@ export class Net {
     for (const id of this.nodes.keys()) {
       if (this.interface.has(id)) continue // the boundary is inert
       const peer = this.peer({ node: id, slot: 0 })
-      if (peer && peer.slot === 0 && peer.node !== id && this.nodes.has(peer.node) && !this.interface.has(peer.node) && peer.node > id) return [id, peer.node]
+      if (
+        peer &&
+        peer.slot === 0 &&
+        peer.node !== id &&
+        this.nodes.has(peer.node) &&
+        !this.interface.has(peer.node) &&
+        peer.node > id
+      )
+        return [id, peer.node]
     }
     return undefined
   }

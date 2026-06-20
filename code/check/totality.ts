@@ -13,16 +13,28 @@
 
 import type { Diagnostic } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
-import type { Expression, Program, Statement, Type } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+  Type,
+} from '@/code/compile/node'
 
-export type TotalityReport = { errors: Array<Diagnostic>; warnings: Array<Diagnostic> }
+export type TotalityReport = {
+  errors: Array<Diagnostic>
+  warnings: Array<Diagnostic>
+}
 
-export function checkTotality(program: Program, file: string): TotalityReport {
+export function checkTotality(
+  program: Program,
+  file: string,
+): TotalityReport {
   const errors: Array<Diagnostic> = []
   const warnings: Array<Diagnostic> = []
 
   for (const statement of program) {
-    if (statement.form === 'record-type') checkPositivity(statement, file, errors)
+    if (statement.form === 'record-type')
+      checkPositivity(statement, file, errors)
   }
   checkTermination(program, file, warnings)
 
@@ -33,7 +45,11 @@ export function checkTotality(program: Program, file: string): TotalityReport {
 
 // does `name` occur in `type` at a negative position, given the current polarity? Positive (true) is fine;
 // negative (false) is the violation. Function parameters flip polarity; array elements and results keep it.
-function negativeOccurrence(name: string, type: Type, positive: boolean): boolean {
+function negativeOccurrence(
+  name: string,
+  type: Type,
+  positive: boolean,
+): boolean {
   switch (type.kind) {
     case 'named':
       return type.name === name && !positive
@@ -41,21 +57,34 @@ function negativeOccurrence(name: string, type: Type, positive: boolean): boolea
       return negativeOccurrence(name, type.element, positive)
     case 'function':
       // a parameter is contravariant (its polarity flips); the result keeps the current polarity
-      return type.params.some((p) => negativeOccurrence(name, p, !positive)) || negativeOccurrence(name, type.result, positive)
+      return (
+        type.params.some(p => negativeOccurrence(name, p, !positive)) ||
+        negativeOccurrence(name, type.result, positive)
+      )
     default:
       return false
   }
 }
 
-function checkPositivity(statement: Extract<Statement, { form: 'record-type' }>, file: string, errors: Array<Diagnostic>): void {
+function checkPositivity(
+  statement: Extract<Statement, { form: 'record-type' }>,
+  file: string,
+  errors: Array<Diagnostic>,
+): void {
   const name = statement.name
   const fields = [
     ...statement.fields,
-    ...statement.variants.flatMap((variant) => variant.fields),
+    ...statement.variants.flatMap(variant => variant.fields),
   ]
   for (const field of fields) {
     if (negativeOccurrence(name, field.type, true)) {
-      errors.push(diagnose('non-positive', { file, span: statement.span, message: `"${name}" occurs in a non-positive position in field "${field.name}"` }))
+      errors.push(
+        diagnose('non-positive', {
+          file,
+          span: statement.span,
+          message: `"${name}" occurs in a non-positive position in field "${field.name}"`,
+        }),
+      )
     }
   }
 }
@@ -64,11 +93,31 @@ function checkPositivity(statement: Extract<Statement, { form: 'record-type' }>,
 
 // is `arg` a strictly smaller value than the parameter `paramName`? Structural (a member of the parameter) or
 // numeric descent (param minus a positive literal, or param divided by an integer above one).
-function strictlyDecreases(arg: Expression, paramName: string): boolean {
-  if (arg.form === 'member') return arg.target.form === 'variable' && arg.target.name === paramName
-  if (arg.form === 'binary' && arg.left.form === 'variable' && arg.left.name === paramName) {
-    if (arg.op === '-' && arg.right.form === 'integer' && Number(arg.right.value) > 0) return true
-    if (arg.op === '/' && arg.right.form === 'integer' && Number(arg.right.value) > 1) return true
+function strictlyDecreases(
+  arg: Expression,
+  paramName: string,
+): boolean {
+  if (arg.form === 'member')
+    return (
+      arg.target.form === 'variable' && arg.target.name === paramName
+    )
+  if (
+    arg.form === 'binary' &&
+    arg.left.form === 'variable' &&
+    arg.left.name === paramName
+  ) {
+    if (
+      arg.op === '-' &&
+      arg.right.form === 'integer' &&
+      Number(arg.right.value) > 0
+    )
+      return true
+    if (
+      arg.op === '/' &&
+      arg.right.form === 'integer' &&
+      Number(arg.right.value) > 1
+    )
+      return true
     if (arg.op === '%') return true
   }
   return false
@@ -78,12 +127,18 @@ function strictlyDecreases(arg: Expression, paramName: string): boolean {
 // every self-call. Mutual-recursion cycles are conservatively treated as unverified. Returns the per-function
 // verdict so both the warning pass and the transparency gate can use it.
 function terminationVerdict(program: Program): Map<string, boolean> {
-  const functions = new Map<string, Extract<Statement, { form: 'function' }>>()
-  for (const statement of program) if (statement.form === 'function') functions.set(statement.name, statement)
+  const functions = new Map<
+    string,
+    Extract<Statement, { form: 'function' }>
+  >()
+  for (const statement of program)
+    if (statement.form === 'function')
+      functions.set(statement.name, statement)
   const names = new Set(functions.keys())
 
   const edges = new Map<string, Set<string>>()
-  for (const [name, statement] of functions) edges.set(name, collectCalledNames(statement.body, names))
+  for (const [name, statement] of functions)
+    edges.set(name, collectCalledNames(statement.body, names))
 
   const reaches = (from: string): Set<string> => {
     const seen = new Set<string>()
@@ -103,16 +158,17 @@ function terminationVerdict(program: Program): Map<string, boolean> {
       verdict.set(name, true) // not recursive: trivially terminating
       continue
     }
-    const paramNames = statement.params.map((p) => p.name)
+    const paramNames = statement.params.map(p => p.name)
     const calls: Array<Array<Expression>> = []
     collectSelfCalls(statement.body, name, calls)
     let positions = new Set<number>(paramNames.map((_, i) => i))
     for (const args of calls) {
       const decreasing = new Set<number>()
       for (let i = 0; i < paramNames.length && i < args.length; i++) {
-        if (strictlyDecreases(args[i]!, paramNames[i]!)) decreasing.add(i)
+        if (strictlyDecreases(args[i]!, paramNames[i]!))
+          decreasing.add(i)
       }
-      positions = new Set([...positions].filter((i) => decreasing.has(i)))
+      positions = new Set([...positions].filter(i => decreasing.has(i)))
     }
     verdict.set(name, calls.length > 0 && positions.size > 0) // direct, decreasing recursion is verified
   }
@@ -122,52 +178,84 @@ function terminationVerdict(program: Program): Map<string, boolean> {
 // the set of functions whose termination is verified (used to gate transparent definitions in the elaborator)
 export function terminatingFunctions(program: Program): Set<string> {
   const verdict = terminationVerdict(program)
-  return new Set([...verdict].filter(([, ok]) => ok).map(([name]) => name))
+  return new Set(
+    [...verdict].filter(([, ok]) => ok).map(([name]) => name),
+  )
 }
 
-function checkTermination(program: Program, file: string, warnings: Array<Diagnostic>): void {
+function checkTermination(
+  program: Program,
+  file: string,
+  warnings: Array<Diagnostic>,
+): void {
   const verdict = terminationVerdict(program)
-  const byName = new Map<string, Extract<Statement, { form: 'function' }>>()
-  for (const statement of program) if (statement.form === 'function') byName.set(statement.name, statement)
+  const byName = new Map<
+    string,
+    Extract<Statement, { form: 'function' }>
+  >()
+  for (const statement of program)
+    if (statement.form === 'function')
+      byName.set(statement.name, statement)
   for (const [name, ok] of verdict) {
     if (ok) continue
     const statement = byName.get(name)!
     const calls: Array<Array<Expression>> = []
     collectSelfCalls(statement.body, name, calls)
-    const reason = calls.length === 0
-      ? `"${name}" is part of a mutual-recursion cycle whose termination is not verified`
-      : `"${name}" calls itself without an argument that provably decreases`
-    warnings.push(diagnose('non-terminating', { file, span: statement.span, message: reason }))
+    const reason =
+      calls.length === 0
+        ? `"${name}" is part of a mutual-recursion cycle whose termination is not verified`
+        : `"${name}" calls itself without an argument that provably decreases`
+    warnings.push(
+      diagnose('non-terminating', {
+        file,
+        span: statement.span,
+        message: reason,
+      }),
+    )
   }
 }
 
 // collect the names of all functions called within the body (restricted to the given set), for the call graph
-function collectCalledNames(body: Array<Statement>, names: Set<string>): Set<string> {
+function collectCalledNames(
+  body: Array<Statement>,
+  names: Set<string>,
+): Set<string> {
   const found = new Set<string>()
-  collectAllCalls(body, (callee) => {
+  collectAllCalls(body, callee => {
     if (names.has(callee)) found.add(callee)
   })
   return found
 }
 
 // the argument lists of every call to `name` within the body (direct self-recursion)
-function collectSelfCalls(body: Array<Statement>, name: string, out: Array<Array<Expression>>): void {
+function collectSelfCalls(
+  body: Array<Statement>,
+  name: string,
+  out: Array<Array<Expression>>,
+): void {
   walkCalls(body, (callee, args) => {
     if (callee === name) out.push(args)
   })
 }
 
 // every called function name within the body, passed to `onCall`, for building the call graph
-function collectAllCalls(body: Array<Statement>, onCall: (callee: string) => void): void {
-  walkCalls(body, (callee) => onCall(callee))
+function collectAllCalls(
+  body: Array<Statement>,
+  onCall: (callee: string) => void,
+): void {
+  walkCalls(body, callee => onCall(callee))
 }
 
 // walk a statement body, invoking `visit` for every call expression with a variable callee
-function walkCalls(body: Array<Statement>, visit: (callee: string, args: Array<Expression>) => void): void {
+function walkCalls(
+  body: Array<Statement>,
+  visit: (callee: string, args: Array<Expression>) => void,
+): void {
   const visitExpression = (node: Expression): void => {
     switch (node.form) {
       case 'call':
-        if (node.callee.form === 'variable') visit(node.callee.name, node.args)
+        if (node.callee.form === 'variable')
+          visit(node.callee.name, node.args)
         visitExpression(node.callee)
         node.args.forEach(visitExpression)
         break
@@ -188,13 +276,13 @@ function walkCalls(body: Array<Statement>, visit: (callee: string, args: Array<E
         node.items.forEach(visitExpression)
         break
       case 'map':
-        node.entries.forEach((entry) => {
+        node.entries.forEach(entry => {
           visitExpression(entry.key)
           visitExpression(entry.value)
         })
         break
       case 'record':
-        node.fields.forEach((field) => visitExpression(field.value))
+        node.fields.forEach(field => visitExpression(field.value))
         break
       default:
         break

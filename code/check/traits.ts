@@ -8,13 +8,17 @@ import type { Diagnostic } from '@/code/parser/diagnostic'
 import { diagnose, nearest } from '@/code/parser/diagnostic'
 import type { Program } from '@/code/compile/node'
 
-export function checkTraits(program: Program, file: string): Array<Diagnostic> {
+export function checkTraits(
+  program: Program,
+  file: string,
+): Array<Diagnostic> {
   const diagnostics: Array<Diagnostic> = []
 
   // register every mask and the methods it declares
   const masks = new Map<string, Array<string>>()
   for (const statement of program) {
-    if (statement.form === 'mask') masks.set(statement.name, statement.methods)
+    if (statement.form === 'mask')
+      masks.set(statement.name, statement.methods)
   }
   const maskNames = [...masks.keys()]
 
@@ -52,13 +56,15 @@ export function checkTraits(program: Program, file: string): Array<Diagnostic> {
       continue
     }
     const provided = new Set(statement.methods)
-    const missing = required.filter((m) => !provided.has(m))
+    const missing = required.filter(m => !provided.has(m))
     if (missing.length > 0) {
       diagnostics.push(
         diagnose('incomplete-instance', {
           file,
           span: statement.span,
-          message: `"${statement.target}" implements "${statement.mask}" but is missing: ${missing.join(', ')}`,
+          message: `"${statement.target}" implements "${
+            statement.mask
+          }" but is missing: ${missing.join(', ')}`,
         }),
       )
     }

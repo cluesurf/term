@@ -3,9 +3,16 @@
 // note/research/vibe/computation/plans/05-ir.md); more passes (CFG, monomorphization, Perceus reuse) layer on.
 // Pure and browser-safe.
 
-import type { Expression, Program, Statement } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@/code/compile/node'
 
-type Folded = { kind: 'integer'; value: number } | { kind: 'boolean'; value: boolean } | undefined
+type Folded =
+  | { kind: 'integer'; value: number }
+  | { kind: 'boolean'; value: boolean }
+  | undefined
 
 function foldArithmetic(op: string, a: number, b: number): Folded {
   switch (op) {
@@ -16,7 +23,9 @@ function foldArithmetic(op: string, a: number, b: number): Folded {
     case '*':
       return { kind: 'integer', value: a * b }
     case '/':
-      return b === 0 ? undefined : { kind: 'integer', value: Math.trunc(a / b) }
+      return b === 0
+        ? undefined
+        : { kind: 'integer', value: Math.trunc(a / b) }
     case '%':
       return b === 0 ? undefined : { kind: 'integer', value: a % b }
     case '==':
@@ -48,8 +57,17 @@ function simplifyExpression(node: Expression): Expression {
 
       // constant folding
       if (left.form === 'integer' && right.form === 'integer') {
-        const folded = foldArithmetic(node.op, Number(left.value), Number(right.value))
-        if (folded) return { ...folded, form: folded.kind, span: node.span } as Expression
+        const folded = foldArithmetic(
+          node.op,
+          Number(left.value),
+          Number(right.value),
+        )
+        if (folded)
+          return {
+            ...folded,
+            form: folded.kind,
+            span: node.span,
+          } as Expression
       }
 
       // algebraic identities
@@ -64,7 +82,8 @@ function simplifyExpression(node: Expression): Expression {
         case '*':
           if (isInteger(right, 1)) return left
           if (isInteger(left, 1)) return right
-          if (isInteger(right, 0) || isInteger(left, 0)) return { form: 'integer', value: 0, span: node.span }
+          if (isInteger(right, 0) || isInteger(left, 0))
+            return { form: 'integer', value: 0, span: node.span }
           break
         case '/':
           if (isInteger(right, 1)) return left
@@ -78,15 +97,31 @@ function simplifyExpression(node: Expression): Expression {
     case 'unary':
       return { ...node, operand: simplifyExpression(node.operand) }
     case 'call':
-      return { ...node, callee: simplifyExpression(node.callee), args: node.args.map(simplifyExpression) }
+      return {
+        ...node,
+        callee: simplifyExpression(node.callee),
+        args: node.args.map(simplifyExpression),
+      }
     case 'array':
       return { ...node, items: node.items.map(simplifyExpression) }
     case 'member':
       return { ...node, target: simplifyExpression(node.target) }
     case 'record':
-      return { ...node, fields: node.fields.map((f) => ({ name: f.name, value: simplifyExpression(f.value) })) }
+      return {
+        ...node,
+        fields: node.fields.map(f => ({
+          name: f.name,
+          value: simplifyExpression(f.value),
+        })),
+      }
     case 'map':
-      return { ...node, entries: node.entries.map((e) => ({ key: simplifyExpression(e.key), value: simplifyExpression(e.value) })) }
+      return {
+        ...node,
+        entries: node.entries.map(e => ({
+          key: simplifyExpression(e.key),
+          value: simplifyExpression(e.value),
+        })),
+      }
     default:
       return node
   }
@@ -101,20 +136,40 @@ function simplifyStatement(node: Statement): Statement {
     case 'let':
       return { ...node, init: simplifyExpression(node.init) }
     case 'assign':
-      return { ...node, target: simplifyExpression(node.target), value: simplifyExpression(node.value) }
+      return {
+        ...node,
+        target: simplifyExpression(node.target),
+        value: simplifyExpression(node.value),
+      }
     case 'expression':
       return { ...node, expr: simplifyExpression(node.expr) }
     case 'return':
-      return { ...node, value: node.value ? simplifyExpression(node.value) : undefined }
+      return {
+        ...node,
+        value: node.value ? simplifyExpression(node.value) : undefined,
+      }
     case 'while':
-      return { ...node, cond: simplifyExpression(node.cond), body: simplifyBody(node.body) }
+      return {
+        ...node,
+        cond: simplifyExpression(node.cond),
+        body: simplifyBody(node.body),
+      }
     case 'for-each':
-      return { ...node, iterable: simplifyExpression(node.iterable), body: simplifyBody(node.body) }
+      return {
+        ...node,
+        iterable: simplifyExpression(node.iterable),
+        body: simplifyBody(node.body),
+      }
     case 'if':
       return {
         ...node,
-        branches: node.branches.map((b) => ({ cond: simplifyExpression(b.cond), body: simplifyBody(b.body) })),
-        otherwise: node.otherwise ? simplifyBody(node.otherwise) : undefined,
+        branches: node.branches.map(b => ({
+          cond: simplifyExpression(b.cond),
+          body: simplifyBody(b.body),
+        })),
+        otherwise: node.otherwise
+          ? simplifyBody(node.otherwise)
+          : undefined,
       }
     case 'function':
       return { ...node, body: simplifyBody(node.body) }
@@ -133,76 +188,155 @@ function simplifyStatement(node: Statement): Statement {
 
 // the call this function forwards to verbatim (a free function or a native member), or undefined if it is not a
 // trivial pass-through. Awaited / argument-reordering / argument-augmenting wrappers do not qualify.
-function forwarderTarget(fn: Extract<Statement, { form: 'function' }>): Expression | undefined {
+function forwarderTarget(
+  fn: Extract<Statement, { form: 'function' }>,
+): Expression | undefined {
   if (fn.body.length !== 1) return undefined
   const ret = fn.body[0]!
-  if (ret.form !== 'return' || !ret.value || ret.value.form !== 'call') return undefined
+  if (ret.form !== 'return' || !ret.value || ret.value.form !== 'call')
+    return undefined
   const call = ret.value
   if (call.args.length !== fn.params.length) return undefined
   for (let i = 0; i < fn.params.length; i++) {
     const arg = call.args[i]!
-    if (arg.form !== 'variable' || arg.name !== fn.params[i]!.name) return undefined
+    if (arg.form !== 'variable' || arg.name !== fn.params[i]!.name)
+      return undefined
   }
-  if (call.callee.form === 'variable' && call.callee.name !== fn.name) return call.callee
+  if (call.callee.form === 'variable' && call.callee.name !== fn.name)
+    return call.callee
   if (call.callee.form === 'member') return call.callee
   return undefined
 }
 
-function rewriteExpression(node: Expression, forwarders: Map<string, Expression>): Expression {
+function rewriteExpression(
+  node: Expression,
+  forwarders: Map<string, Expression>,
+): Expression {
   switch (node.form) {
     case 'binary':
-      return { ...node, left: rewriteExpression(node.left, forwarders), right: rewriteExpression(node.right, forwarders) }
+      return {
+        ...node,
+        left: rewriteExpression(node.left, forwarders),
+        right: rewriteExpression(node.right, forwarders),
+      }
     case 'unary':
-      return { ...node, operand: rewriteExpression(node.operand, forwarders) }
+      return {
+        ...node,
+        operand: rewriteExpression(node.operand, forwarders),
+      }
     case 'call': {
       let callee = rewriteExpression(node.callee, forwarders)
-      const args = node.args.map((a) => rewriteExpression(a, forwarders))
+      const args = node.args.map(a => rewriteExpression(a, forwarders))
       // collapse a chain of wrappers in one pass, guarding against a forwarder cycle
       const seen = new Set<string>()
-      while (callee.form === 'variable' && forwarders.has(callee.name) && !seen.has(callee.name)) {
+      while (
+        callee.form === 'variable' &&
+        forwarders.has(callee.name) &&
+        !seen.has(callee.name)
+      ) {
         seen.add(callee.name)
         callee = forwarders.get(callee.name)!
       }
       return { ...node, callee, args }
     }
     case 'array':
-      return { ...node, items: node.items.map((i) => rewriteExpression(i, forwarders)) }
+      return {
+        ...node,
+        items: node.items.map(i => rewriteExpression(i, forwarders)),
+      }
     case 'member':
-      return { ...node, target: rewriteExpression(node.target, forwarders) }
+      return {
+        ...node,
+        target: rewriteExpression(node.target, forwarders),
+      }
     case 'record':
-      return { ...node, fields: node.fields.map((f) => ({ name: f.name, value: rewriteExpression(f.value, forwarders) })) }
+      return {
+        ...node,
+        fields: node.fields.map(f => ({
+          name: f.name,
+          value: rewriteExpression(f.value, forwarders),
+        })),
+      }
     case 'map':
-      return { ...node, entries: node.entries.map((e) => ({ key: rewriteExpression(e.key, forwarders), value: rewriteExpression(e.value, forwarders) })) }
+      return {
+        ...node,
+        entries: node.entries.map(e => ({
+          key: rewriteExpression(e.key, forwarders),
+          value: rewriteExpression(e.value, forwarders),
+        })),
+      }
     case 'await':
       return { ...node, expr: rewriteExpression(node.expr, forwarders) }
     case 'closure':
-      return { ...node, body: node.body.map((s) => rewriteStatement(s, forwarders)) }
+      return {
+        ...node,
+        body: node.body.map(s => rewriteStatement(s, forwarders)),
+      }
     default:
       return node
   }
 }
 
-function rewriteStatement(node: Statement, forwarders: Map<string, Expression>): Statement {
-  const body = (b: Array<Statement>) => b.map((s) => rewriteStatement(s, forwarders))
+function rewriteStatement(
+  node: Statement,
+  forwarders: Map<string, Expression>,
+): Statement {
+  const body = (b: Array<Statement>) =>
+    b.map(s => rewriteStatement(s, forwarders))
   switch (node.form) {
     case 'let':
       return { ...node, init: rewriteExpression(node.init, forwarders) }
     case 'assign':
-      return { ...node, target: rewriteExpression(node.target, forwarders), value: rewriteExpression(node.value, forwarders) }
+      return {
+        ...node,
+        target: rewriteExpression(node.target, forwarders),
+        value: rewriteExpression(node.value, forwarders),
+      }
     case 'expression':
       return { ...node, expr: rewriteExpression(node.expr, forwarders) }
     case 'return':
-      return { ...node, value: node.value ? rewriteExpression(node.value, forwarders) : undefined }
+      return {
+        ...node,
+        value: node.value
+          ? rewriteExpression(node.value, forwarders)
+          : undefined,
+      }
     case 'throw':
-      return { ...node, value: rewriteExpression(node.value, forwarders) }
+      return {
+        ...node,
+        value: rewriteExpression(node.value, forwarders),
+      }
     case 'while':
-      return { ...node, cond: rewriteExpression(node.cond, forwarders), body: body(node.body) }
+      return {
+        ...node,
+        cond: rewriteExpression(node.cond, forwarders),
+        body: body(node.body),
+      }
     case 'for-each':
-      return { ...node, iterable: rewriteExpression(node.iterable, forwarders), body: body(node.body) }
+      return {
+        ...node,
+        iterable: rewriteExpression(node.iterable, forwarders),
+        body: body(node.body),
+      }
     case 'if':
-      return { ...node, branches: node.branches.map((b) => ({ cond: rewriteExpression(b.cond, forwarders), body: body(b.body) })), otherwise: node.otherwise ? body(node.otherwise) : undefined }
+      return {
+        ...node,
+        branches: node.branches.map(b => ({
+          cond: rewriteExpression(b.cond, forwarders),
+          body: body(b.body),
+        })),
+        otherwise: node.otherwise ? body(node.otherwise) : undefined,
+      }
     case 'match':
-      return { ...node, subject: rewriteExpression(node.subject, forwarders), cases: node.cases.map((c) => ({ label: c.label, body: body(c.body) })), otherwise: node.otherwise ? body(node.otherwise) : undefined }
+      return {
+        ...node,
+        subject: rewriteExpression(node.subject, forwarders),
+        cases: node.cases.map(c => ({
+          label: c.label,
+          body: body(c.body),
+        })),
+        otherwise: node.otherwise ? body(node.otherwise) : undefined,
+      }
     case 'hold':
       return { ...node, expr: rewriteExpression(node.expr, forwarders) }
     case 'function':
@@ -214,7 +348,10 @@ function rewriteStatement(node: Statement, forwarders: Map<string, Expression>):
 
 // count every `variable` occurrence by name (callee or value position), so a wrapper still used as a first-class
 // value (passed as a callback) is kept while one that is only ever called directly is dropped
-function countReferences(node: Expression, counts: Map<string, number>): void {
+function countReferences(
+  node: Expression,
+  counts: Map<string, number>,
+): void {
   switch (node.form) {
     case 'variable':
       counts.set(node.name, (counts.get(node.name) ?? 0) + 1)
@@ -228,19 +365,19 @@ function countReferences(node: Expression, counts: Map<string, number>): void {
       break
     case 'call':
       countReferences(node.callee, counts)
-      node.args.forEach((a) => countReferences(a, counts))
+      node.args.forEach(a => countReferences(a, counts))
       break
     case 'array':
-      node.items.forEach((i) => countReferences(i, counts))
+      node.items.forEach(i => countReferences(i, counts))
       break
     case 'member':
       countReferences(node.target, counts)
       break
     case 'record':
-      node.fields.forEach((f) => countReferences(f.value, counts))
+      node.fields.forEach(f => countReferences(f.value, counts))
       break
     case 'map':
-      node.entries.forEach((e) => {
+      node.entries.forEach(e => {
         countReferences(e.key, counts)
         countReferences(e.value, counts)
       })
@@ -249,15 +386,19 @@ function countReferences(node: Expression, counts: Map<string, number>): void {
       countReferences(node.expr, counts)
       break
     case 'closure':
-      node.body.forEach((s) => countReferencesStatement(s, counts))
+      node.body.forEach(s => countReferencesStatement(s, counts))
       break
     default:
       break
   }
 }
 
-function countReferencesStatement(node: Statement, counts: Map<string, number>): void {
-  const body = (b: Array<Statement>) => b.forEach((s) => countReferencesStatement(s, counts))
+function countReferencesStatement(
+  node: Statement,
+  counts: Map<string, number>,
+): void {
+  const body = (b: Array<Statement>) =>
+    b.forEach(s => countReferencesStatement(s, counts))
   switch (node.form) {
     case 'let':
       countReferences(node.init, counts)
@@ -284,7 +425,7 @@ function countReferencesStatement(node: Statement, counts: Map<string, number>):
       body(node.body)
       break
     case 'if':
-      node.branches.forEach((b) => {
+      node.branches.forEach(b => {
         countReferences(b.cond, counts)
         body(b.body)
       })
@@ -292,7 +433,7 @@ function countReferencesStatement(node: Statement, counts: Map<string, number>):
       break
     case 'match':
       countReferences(node.subject, counts)
-      node.cases.forEach((c) => body(c.body))
+      node.cases.forEach(c => body(c.body))
       if (node.otherwise) body(node.otherwise)
       break
     case 'hold':
@@ -308,7 +449,10 @@ function countReferencesStatement(node: Statement, counts: Map<string, number>):
 
 // `roots` are the entry module's public functions: kept even when unreferenced. Only internal (imported) wrappers are
 // eligible to be dropped once their calls are inlined away.
-function inlineForwarders(program: Program, roots?: Set<string>): Program {
+function inlineForwarders(
+  program: Program,
+  roots?: Set<string>,
+): Program {
   const forwarders = new Map<string, Expression>()
   for (const node of program) {
     if (node.form === 'function') {
@@ -317,11 +461,19 @@ function inlineForwarders(program: Program, roots?: Set<string>): Program {
     }
   }
   if (forwarders.size === 0) return program
-  const rewritten = program.map((s) => rewriteStatement(s, forwarders))
+  const rewritten = program.map(s => rewriteStatement(s, forwarders))
   const counts = new Map<string, number>()
   for (const s of rewritten) countReferencesStatement(s, counts)
   // drop wrapper definitions whose calls were all inlined away (no remaining reference) and that are not public roots
-  return rewritten.filter((n) => !(n.form === 'function' && forwarders.has(n.name) && (counts.get(n.name) ?? 0) === 0 && !roots?.has(n.name)))
+  return rewritten.filter(
+    n =>
+      !(
+        n.form === 'function' &&
+        forwarders.has(n.name) &&
+        (counts.get(n.name) ?? 0) === 0 &&
+        !roots?.has(n.name)
+      ),
+  )
 }
 
 // drop ambient host globals (`host document, name <document>` -> a foreign-aliased `let`) that nothing references.
@@ -334,14 +486,28 @@ function dropUnusedHostGlobals(program: Program): Program {
   for (const s of program) countReferencesStatement(s, counts)
   // a function of the same name is the real binding for that name; drop the host global so it does not redeclare it
   // (bind's `Event` global vs the framework's `event` render helper). Also drop host globals nothing references.
-  const functionNames = new Set(program.filter((n) => n.form === 'function').map((n: any) => n.name as string))
+  const functionNames = new Set(
+    program
+      .filter(n => n.form === 'function')
+      .map((n: any) => n.name as string),
+  )
   return program.filter(
-    (n) => !(n.form === 'let' && n.foreign !== undefined && ((counts.get(n.name) ?? 0) === 0 || functionNames.has(n.name))),
+    n =>
+      !(
+        n.form === 'let' &&
+        n.foreign !== undefined &&
+        ((counts.get(n.name) ?? 0) === 0 || functionNames.has(n.name))
+      ),
   )
 }
 
 // run the simplifier over a whole program: first collapse pass-through wrappers, drop unused host globals, then fold
 // constants / identities
-export function simplify(program: Program, roots?: Set<string>): Program {
-  return dropUnusedHostGlobals(inlineForwarders(program, roots)).map(simplifyStatement)
+export function simplify(
+  program: Program,
+  roots?: Set<string>,
+): Program {
+  return dropUnusedHostGlobals(inlineForwarders(program, roots)).map(
+    simplifyStatement,
+  )
 }

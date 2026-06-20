@@ -66,9 +66,16 @@ const INTERPOLATION_MATCHERS: Array<TokenKind> = [
   TokenKind.Space,
 ]
 
-const TEXT_MATCHERS: Array<TokenKind> = [TokenKind.OpenBrace, TokenKind.CloseAngle, TokenKind.Chunk]
+const TEXT_MATCHERS: Array<TokenKind> = [
+  TokenKind.OpenBrace,
+  TokenKind.CloseAngle,
+  TokenKind.Chunk,
+]
 
-const NAME_MATCHERS: Array<TokenKind> = [TokenKind.OpenBrace, TokenKind.Name]
+const NAME_MATCHERS: Array<TokenKind> = [
+  TokenKind.OpenBrace,
+  TokenKind.Name,
+]
 
 const DEFAULT_MATCHERS: Array<TokenKind> = [
   TokenKind.CloseBrace,
@@ -118,7 +125,10 @@ const PATTERN: Record<TokenKind, RegExp> = {
   [TokenKind.Chunk]: /^(?:\\[<>{}]|\{+(?![a-zA-Z_])|[^>{\\])+/,
 }
 
-export function tokenize(source: { file: string; text: string }): TokenResult {
+export function tokenize(source: {
+  file: string
+  text: string
+}): TokenResult {
   const tokens: TokenList = {
     file: source.file,
     text: source.text,
@@ -167,7 +177,10 @@ export function tokenize(source: { file: string; text: string }): TokenResult {
 
         const token: Token = {
           kind,
-          span: { start: { line, column }, end: { line, column: column + size } },
+          span: {
+            start: { line, column },
+            end: { line, column: column + size },
+          },
           text,
         }
         append(token)
@@ -203,12 +216,28 @@ export function tokenize(source: { file: string; text: string }): TokenResult {
       }
 
       if (!matched && previous) {
-        return { ok: false, diagnostics: [diagnose('syntax-error', { file: source.file, span: previous.span })] }
+        return {
+          ok: false,
+          diagnostics: [
+            diagnose('syntax-error', {
+              file: source.file,
+              span: previous.span,
+            }),
+          ],
+        }
       }
     }
 
     if (lineText.length && previous) {
-      return { ok: false, diagnostics: [diagnose('syntax-error', { file: source.file, span: previous.span })] }
+      return {
+        ok: false,
+        diagnostics: [
+          diagnose('syntax-error', {
+            file: source.file,
+            span: previous.span,
+          }),
+        ],
+      }
     }
   }
 

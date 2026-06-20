@@ -5,16 +5,34 @@
 import { compile } from '@/code/compile/compile'
 import type { Resolver } from '@/code/compile/load'
 import type { CompileCache } from '@/code/compile/cache'
-import type { Expression, Program, Statement } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@/code/compile/node'
 import { showType } from '@/code/compile/node'
-import type { Position as SeedPosition, Severity, Span } from '@/code/parser/diagnostic'
+import type {
+  Position as SeedPosition,
+  Severity,
+  Span,
+} from '@/code/parser/diagnostic'
 
 // LSP geometry: 0-based line/character, exactly the compiler's own coordinates, so spans map across unchanged.
 export type LspPosition = { line: number; character: number }
 export type LspRange = { start: LspPosition; end: LspPosition }
-export type LspDiagnostic = { range: LspRange; severity: number; code: number; source: string; message: string }
+export type LspDiagnostic = {
+  range: LspRange
+  severity: number
+  code: number
+  source: string
+  message: string
+}
 
-const SEVERITY: Record<Severity, number> = { error: 1, warning: 2, info: 3 }
+const SEVERITY: Record<Severity, number> = {
+  error: 1,
+  warning: 2,
+  info: 3,
+}
 
 export const toRange = (span: Span): LspRange => ({
   start: { line: span.start.line, character: span.start.column },
@@ -29,7 +47,7 @@ export function analyze(
   const source = 'seed'
   if (!result.ok) {
     return {
-      diagnostics: result.diagnostics.map((d) => ({
+      diagnostics: result.diagnostics.map(d => ({
         range: toRange(d.span),
         severity: SEVERITY[d.severity],
         code: d.code,
@@ -40,7 +58,7 @@ export function analyze(
   }
   return {
     program: result.program,
-    diagnostics: result.warnings.map((d) => ({
+    diagnostics: result.warnings.map(d => ({
       range: toRange(d.span),
       severity: SEVERITY[d.severity],
       code: d.code,
@@ -52,32 +70,47 @@ export function analyze(
 
 // position p is within span (inclusive), comparing line then column
 export function within(span: Span, p: LspPosition): boolean {
-  const after = (a: SeedPosition) => p.line > a.line || (p.line === a.line && p.character >= a.column)
-  const before = (b: SeedPosition) => p.line < b.line || (p.line === b.line && p.character <= b.column)
+  const after = (a: SeedPosition) =>
+    p.line > a.line || (p.line === a.line && p.character >= a.column)
+  const before = (b: SeedPosition) =>
+    p.line < b.line || (p.line === b.line && p.character <= b.column)
   return after(span.start) && before(span.end)
 }
 
 // the size of a span, for picking the narrowest match (a small column delta on one line beats a multi-line span)
 function spanSize(span: Span): number {
-  return (span.end.line - span.start.line) * 100000 + (span.end.column - span.start.column)
+  return (
+    (span.end.line - span.start.line) * 100000 +
+    (span.end.column - span.start.column)
+  )
 }
 
 // the inferred type of the narrowest typed expression under the cursor, as a string, or undefined if none
-export function hoverAt(program: Program, position: LspPosition): string | undefined {
+export function hoverAt(
+  program: Program,
+  position: LspPosition,
+): string | undefined {
   let best: { span: Span; type: string } | undefined
-  forEachExpression(program, (node) => {
+  forEachExpression(program, node => {
     if (!node.type || !within(node.span, position)) return
-    if (!best || spanSize(node.span) < spanSize(best.span)) best = { span: node.span, type: showType(node.type) }
+    if (!best || spanSize(node.span) < spanSize(best.span))
+      best = { span: node.span, type: showType(node.type) }
   })
   return best?.type
 }
 
 // visit every expression in the program (used for hover and any future position-based feature)
-export function forEachExpression(program: Program, visit: (node: Expression) => void): void {
+export function forEachExpression(
+  program: Program,
+  visit: (node: Expression) => void,
+): void {
   for (const statement of program) walkStatement(statement, visit)
 }
 
-function walkStatement(node: Statement, visit: (node: Expression) => void): void {
+function walkStatement(
+  node: Statement,
+  visit: (node: Expression) => void,
+): void {
   switch (node.form) {
     case 'let':
       walkExpression(node.init, visit)
@@ -100,33 +133,37 @@ function walkStatement(node: Statement, visit: (node: Expression) => void): void
       break
     case 'while':
       walkExpression(node.cond, visit)
-      node.body.forEach((s) => walkStatement(s, visit))
+      node.body.forEach(s => walkStatement(s, visit))
       break
     case 'if':
       for (const branch of node.branches) {
         walkExpression(branch.cond, visit)
-        branch.body.forEach((s) => walkStatement(s, visit))
+        branch.body.forEach(s => walkStatement(s, visit))
       }
-      node.otherwise?.forEach((s) => walkStatement(s, visit))
+      node.otherwise?.forEach(s => walkStatement(s, visit))
       break
     case 'for-each':
       walkExpression(node.iterable, visit)
-      node.body.forEach((s) => walkStatement(s, visit))
+      node.body.forEach(s => walkStatement(s, visit))
       break
     case 'match':
       walkExpression(node.subject, visit)
-      for (const branch of node.cases) branch.body.forEach((s) => walkStatement(s, visit))
-      node.otherwise?.forEach((s) => walkStatement(s, visit))
+      for (const branch of node.cases)
+        branch.body.forEach(s => walkStatement(s, visit))
+      node.otherwise?.forEach(s => walkStatement(s, visit))
       break
     case 'function':
-      node.body.forEach((s) => walkStatement(s, visit))
+      node.body.forEach(s => walkStatement(s, visit))
       break
     default:
       break
   }
 }
 
-function walkExpression(node: Expression, visit: (node: Expression) => void): void {
+function walkExpression(
+  node: Expression,
+  visit: (node: Expression) => void,
+): void {
   visit(node)
   switch (node.form) {
     case 'binary':
@@ -138,10 +175,10 @@ function walkExpression(node: Expression, visit: (node: Expression) => void): vo
       break
     case 'call':
       walkExpression(node.callee, visit)
-      node.args.forEach((a) => walkExpression(a, visit))
+      node.args.forEach(a => walkExpression(a, visit))
       break
     case 'array':
-      node.items.forEach((i) => walkExpression(i, visit))
+      node.items.forEach(i => walkExpression(i, visit))
       break
     case 'map':
       for (const entry of node.entries) {
@@ -150,7 +187,7 @@ function walkExpression(node: Expression, visit: (node: Expression) => void): vo
       }
       break
     case 'record':
-      node.fields.forEach((f) => walkExpression(f.value, visit))
+      node.fields.forEach(f => walkExpression(f.value, visit))
       break
     case 'member':
       walkExpression(node.target, visit)

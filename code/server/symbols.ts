@@ -4,17 +4,41 @@
 // completion, and signature help are all thin queries over this index. Spans are 0-based, matching the compiler and
 // the LSP wire.
 
-import type { Expression, Program, Statement, Type } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+  Type,
+} from '@/code/compile/node'
 import { showType } from '@/code/compile/node'
 import type { Span } from '@/code/parser/diagnostic'
 import type { LspPosition } from '@/code/server/analyze'
 import { within } from '@/code/server/analyze'
 
-export type SymbolKind = 'function' | 'type' | 'variant' | 'trait' | 'parameter' | 'local'
-export type Definition = { name: string; kind: SymbolKind; span: Span; detail: string }
+export type SymbolKind =
+  | 'function'
+  | 'type'
+  | 'variant'
+  | 'trait'
+  | 'parameter'
+  | 'local'
+export type Definition = {
+  name: string
+  kind: SymbolKind
+  span: Span
+  detail: string
+}
 export type Reference = { name: string; span: Span }
 // the names a function makes available, with the span where each is introduced (for scope-aware completion)
-export type FunctionScope = { span: Span; locals: Array<{ name: string; kind: SymbolKind; detail: string; span: Span }> }
+export type FunctionScope = {
+  span: Span
+  locals: Array<{
+    name: string
+    kind: SymbolKind
+    detail: string
+    span: Span
+  }>
+}
 
 export type SymbolIndex = {
   definitions: Map<string, Definition>
@@ -22,11 +46,18 @@ export type SymbolIndex = {
   functions: Array<Definition>
   scopes: Array<FunctionScope>
   // a function name -> its parameter types and result, for signature help
-  signatures: Map<string, { params: Array<{ name: string; type: string }>; result: string }>
+  signatures: Map<
+    string,
+    { params: Array<{ name: string; type: string }>; result: string }
+  >
 }
 
-function signatureText(node: Extract<Statement, { form: 'function' }>): string {
-  const params = node.params.map((p) => `${p.name}: ${showType(p.type ?? { kind: 'unknown' })}`).join(', ')
+function signatureText(
+  node: Extract<Statement, { form: 'function' }>,
+): string {
+  const params = node.params
+    .map(p => `${p.name}: ${showType(p.type ?? { kind: 'unknown' })}`)
+    .join(', ')
   return `(${params}) -> ${showType(node.result ?? { kind: 'unit' })}`
 }
 
@@ -35,9 +66,17 @@ export function buildIndex(program: Program): SymbolIndex {
   const references: Array<Reference> = []
   const functions: Array<Definition> = []
   const scopes: Array<FunctionScope> = []
-  const signatures = new Map<string, { params: Array<{ name: string; type: string }>; result: string }>()
+  const signatures = new Map<
+    string,
+    { params: Array<{ name: string; type: string }>; result: string }
+  >()
 
-  const define = (name: string, kind: SymbolKind, span: Span, detail: string): Definition => {
+  const define = (
+    name: string,
+    kind: SymbolKind,
+    span: Span,
+    detail: string,
+  ): Definition => {
     const def = { name, kind, span, detail }
     if (!definitions.has(name)) definitions.set(name, def)
     return def
@@ -47,17 +86,36 @@ export function buildIndex(program: Program): SymbolIndex {
   for (const statement of program) {
     switch (statement.form) {
       case 'function': {
-        const def = define(statement.name, 'function', statement.span, signatureText(statement))
+        const def = define(
+          statement.name,
+          'function',
+          statement.span,
+          signatureText(statement),
+        )
         functions.push(def)
         signatures.set(statement.name, {
-          params: statement.params.map((p) => ({ name: p.name, type: showType(p.type ?? { kind: 'unknown' }) })),
+          params: statement.params.map(p => ({
+            name: p.name,
+            type: showType(p.type ?? { kind: 'unknown' }),
+          })),
           result: showType(statement.result ?? { kind: 'unit' }),
         })
         break
       }
       case 'record-type': {
-        define(statement.name, 'type', statement.span, statement.variants.length ? 'enum' : 'struct')
-        for (const v of statement.variants) define(v.name, 'variant', statement.span, `${statement.name} variant`)
+        define(
+          statement.name,
+          'type',
+          statement.span,
+          statement.variants.length ? 'enum' : 'struct',
+        )
+        for (const v of statement.variants)
+          define(
+            v.name,
+            'variant',
+            statement.span,
+            `${statement.name} variant`,
+          )
         break
       }
       case 'mask':
@@ -77,7 +135,7 @@ export function buildIndex(program: Program): SymbolIndex {
         break
       case 'record':
         references.push({ name: node.name, span: node.span })
-        node.fields.forEach((f) => expr(f.value))
+        node.fields.forEach(f => expr(f.value))
         break
       case 'binary':
         expr(node.left)
@@ -100,7 +158,7 @@ export function buildIndex(program: Program): SymbolIndex {
         node.items.forEach(expr)
         break
       case 'map':
-        node.entries.forEach((e) => {
+        node.entries.forEach(e => {
           expr(e.key)
           expr(e.value)
         })
@@ -110,12 +168,20 @@ export function buildIndex(program: Program): SymbolIndex {
     }
   }
 
-  const walkStatements = (body: Array<Statement>, locals: FunctionScope['locals']): void => {
+  const walkStatements = (
+    body: Array<Statement>,
+    locals: FunctionScope['locals'],
+  ): void => {
     for (const s of body) {
       switch (s.form) {
         case 'let':
           expr(s.init)
-          locals.push({ name: s.name, kind: 'local', detail: showType(s.type ?? { kind: 'unknown' }), span: s.span })
+          locals.push({
+            name: s.name,
+            kind: 'local',
+            detail: showType(s.type ?? { kind: 'unknown' }),
+            span: s.span,
+          })
           break
         case 'assign':
           expr(s.target)
@@ -137,11 +203,16 @@ export function buildIndex(program: Program): SymbolIndex {
           break
         case 'for-each':
           expr(s.iterable)
-          locals.push({ name: s.item, kind: 'local', detail: 'iteration item', span: s.span })
+          locals.push({
+            name: s.item,
+            kind: 'local',
+            detail: 'iteration item',
+            span: s.span,
+          })
           walkStatements(s.body, locals)
           break
         case 'if':
-          s.branches.forEach((b) => {
+          s.branches.forEach(b => {
             expr(b.cond)
             walkStatements(b.body, locals)
           })
@@ -149,7 +220,7 @@ export function buildIndex(program: Program): SymbolIndex {
           break
         case 'match':
           expr(s.subject)
-          s.cases.forEach((c) => walkStatements(c.body, locals))
+          s.cases.forEach(c => walkStatements(c.body, locals))
           if (s.otherwise) walkStatements(s.otherwise, locals)
           break
         default:
@@ -160,7 +231,7 @@ export function buildIndex(program: Program): SymbolIndex {
 
   for (const statement of program) {
     if (statement.form !== 'function') continue
-    const locals: FunctionScope['locals'] = statement.params.map((p) => ({
+    const locals: FunctionScope['locals'] = statement.params.map(p => ({
       name: p.name,
       kind: 'parameter' as const,
       detail: showType(p.type ?? { kind: 'unknown' }),
@@ -174,7 +245,10 @@ export function buildIndex(program: Program): SymbolIndex {
 }
 
 // the reference whose span contains the position (the narrowest, for nested calls)
-export function referenceAt(index: SymbolIndex, position: LspPosition): Reference | undefined {
+export function referenceAt(
+  index: SymbolIndex,
+  position: LspPosition,
+): Reference | undefined {
   let best: Reference | undefined
   for (const ref of index.references) {
     if (!within(ref.span, position)) continue
@@ -184,8 +258,13 @@ export function referenceAt(index: SymbolIndex, position: LspPosition): Referenc
 }
 
 // every reference (and the definition) of a name, for find-references and rename
-export function occurrencesOf(index: SymbolIndex, name: string): Array<Span> {
-  const out = index.references.filter((r) => r.name === name).map((r) => r.span)
+export function occurrencesOf(
+  index: SymbolIndex,
+  name: string,
+): Array<Span> {
+  const out = index.references
+    .filter(r => r.name === name)
+    .map(r => r.span)
   const def = index.definitions.get(name)
   if (def) out.push(def.span)
   return out
@@ -193,13 +272,21 @@ export function occurrencesOf(index: SymbolIndex, name: string): Array<Span> {
 
 // the names visible at a position: every top-level definition plus the enclosing function's parameters and the
 // locals introduced before the cursor
-export function scopeAt(index: SymbolIndex, position: LspPosition): Array<Definition> {
+export function scopeAt(
+  index: SymbolIndex,
+  position: LspPosition,
+): Array<Definition> {
   const out: Array<Definition> = [...index.definitions.values()]
-  const fn = index.scopes.find((s) => within(s.span, position))
+  const fn = index.scopes.find(s => within(s.span, position))
   if (fn) {
     for (const local of fn.locals) {
       if (local.kind === 'parameter' || before(local.span, position)) {
-        out.push({ name: local.name, kind: local.kind, span: local.span, detail: local.detail })
+        out.push({
+          name: local.name,
+          kind: local.kind,
+          span: local.span,
+          detail: local.detail,
+        })
       }
     }
   }
@@ -207,15 +294,32 @@ export function scopeAt(index: SymbolIndex, position: LspPosition): Array<Defini
 }
 
 // the innermost call enclosing the position, with the active argument index, for signature help
-export function callAt(program: Program, position: LspPosition): { name: string; activeParam: number } | undefined {
-  let best: { name: string; activeParam: number; span: Span } | undefined
+export function callAt(
+  program: Program,
+  position: LspPosition,
+): { name: string; activeParam: number } | undefined {
+  let best:
+    | { name: string; activeParam: number; span: Span }
+    | undefined
   const visit = (node: Expression): void => {
     switch (node.form) {
       case 'call': {
-        if (within(node.span, position) && node.callee.form === 'variable') {
+        if (
+          within(node.span, position) &&
+          node.callee.form === 'variable'
+        ) {
           // the active parameter is the count of arguments that begin before the cursor
-          const activeParam = Math.max(0, node.args.filter((a) => before(a.span, position)).length - (node.args.some((a) => within(a.span, position)) ? 1 : 0))
-          if (!best || size(node.span) < size(best.span)) best = { name: node.callee.name, activeParam, span: node.span }
+          const activeParam = Math.max(
+            0,
+            node.args.filter(a => before(a.span, position)).length -
+              (node.args.some(a => within(a.span, position)) ? 1 : 0),
+          )
+          if (!best || size(node.span) < size(best.span))
+            best = {
+              name: node.callee.name,
+              activeParam,
+              span: node.span,
+            }
         }
         visit(node.callee)
         node.args.forEach(visit)
@@ -238,10 +342,10 @@ export function callAt(program: Program, position: LspPosition): { name: string;
         node.items.forEach(visit)
         break
       case 'record':
-        node.fields.forEach((f) => visit(f.value))
+        node.fields.forEach(f => visit(f.value))
         break
       case 'map':
-        node.entries.forEach((e) => {
+        node.entries.forEach(e => {
           visit(e.key)
           visit(e.value)
         })
@@ -279,7 +383,7 @@ export function callAt(program: Program, position: LspPosition): { name: string;
           walk(s.body)
           break
         case 'if':
-          s.branches.forEach((b) => {
+          s.branches.forEach(b => {
             visit(b.cond)
             walk(b.body)
           })
@@ -287,7 +391,7 @@ export function callAt(program: Program, position: LspPosition): { name: string;
           break
         case 'match':
           visit(s.subject)
-          s.cases.forEach((c) => walk(c.body))
+          s.cases.forEach(c => walk(c.body))
           if (s.otherwise) walk(s.otherwise)
           break
         case 'function':
@@ -299,14 +403,22 @@ export function callAt(program: Program, position: LspPosition): { name: string;
     }
   }
   walk(program)
-  return best ? { name: best.name, activeParam: best.activeParam } : undefined
+  return best
+    ? { name: best.name, activeParam: best.activeParam }
+    : undefined
 }
 
 function size(span: Span): number {
-  return (span.end.line - span.start.line) * 100000 + (span.end.column - span.start.column)
+  return (
+    (span.end.line - span.start.line) * 100000 +
+    (span.end.column - span.start.column)
+  )
 }
 
 // is the position at or after the start of a span (a local is in scope once its declaration has begun)
 function before(span: Span, p: LspPosition): boolean {
-  return p.line > span.start.line || (p.line === span.start.line && p.character >= span.start.column)
+  return (
+    p.line > span.start.line ||
+    (p.line === span.start.line && p.character >= span.start.column)
+  )
 }

@@ -9,12 +9,18 @@ import { parse } from '@/code/parser/tree'
 
 export type Source = { file: string; text: string }
 // resolve an import path (e.g. `@cluesurf/base/code/maybe`) from the importing file to its source, or undefined
-export type Resolver = (importPath: string, fromFile: string) => Source | undefined
+export type Resolver = (
+  importPath: string,
+  fromFile: string,
+) => Source | undefined
 
 // the text of a name node (a keyword or an import-path token), or a group's head name
 function nameText(node: Node | undefined): string | undefined {
   if (!node) return undefined
-  if (node.kind === 'name') return node.parts.map((p) => (p.kind === 'chunk' ? p.text : '')).join('')
+  if (node.kind === 'name')
+    return node.parts
+      .map(p => (p.kind === 'chunk' ? p.text : ''))
+      .join('')
   if (node.kind === 'group') return nameText(node.nodes[0])
   return undefined
 }
@@ -35,7 +41,10 @@ function loadPaths(tree: RootNode): Array<string> {
 }
 
 // the entry plus every module it transitively loads, dependencies first (so forms are defined before use)
-export function collectModules(entry: Source, resolve: Resolver): { sources: Array<Source>; diagnostics: Array<Diagnostic> } {
+export function collectModules(
+  entry: Source,
+  resolve: Resolver,
+): { sources: Array<Source>; diagnostics: Array<Diagnostic> } {
   const diagnostics: Array<Diagnostic> = []
   const ordered: Array<Source> = []
   const done = new Set<string>()

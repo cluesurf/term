@@ -27,9 +27,17 @@ function ok(name: string, cond: boolean, info = ''): void {
 // infer's own diagnostics are ignored here on purpose: we want to observe the KERNEL's independent verdict.
 function frontEnd(text: string): Program {
   const parsed = parse({ file: 't.tree', text })
-  if (!parsed.ok) throw new Error('parse failed: ' + parsed.diagnostics.map((d) => d.message).join('; '))
+  if (!parsed.ok)
+    throw new Error(
+      'parse failed: ' +
+        parsed.diagnostics.map(d => d.message).join('; '),
+    )
   const built = mill(expandTemplates(parsed.tree), 't.tree')
-  if (!built.ok) throw new Error('mill failed: ' + built.diagnostics.map((d) => d.message).join('; '))
+  if (!built.ok)
+    throw new Error(
+      'mill failed: ' +
+        built.diagnostics.map(d => d.message).join('; '),
+    )
   resolve(built.program, 't.tree')
   check(built.program, 't.tree')
   return built.program
@@ -232,52 +240,154 @@ const BAD_ASSIGN = `task wrong-assign
 
 function main(): void {
   const fib = elaborateReport(frontEnd(RECURSIVE_FIB), 't.tree')
-  ok('recursive fibonacci is verified by the kernel', fib.verified.includes('fibonacci'), JSON.stringify(fib.verified))
-  ok('recursive fibonacci has no kernel diagnostics', fib.diagnostics.length === 0, fib.diagnostics.map((d) => d.message).join('; '))
+  ok(
+    'recursive fibonacci is verified by the kernel',
+    fib.verified.includes('fibonacci'),
+    JSON.stringify(fib.verified),
+  )
+  ok(
+    'recursive fibonacci has no kernel diagnostics',
+    fib.diagnostics.length === 0,
+    fib.diagnostics.map(d => d.message).join('; '),
+  )
 
   const two = elaborateReport(frontEnd(TWO_FUNCTIONS), 't.tree')
-  ok('cross-function calls verify (both functions)', two.verified.includes('double') && two.verified.includes('quadruple'), JSON.stringify(two.verified))
-  ok('cross-function program has no kernel diagnostics', two.diagnostics.length === 0)
+  ok(
+    'cross-function calls verify (both functions)',
+    two.verified.includes('double') &&
+      two.verified.includes('quadruple'),
+    JSON.stringify(two.verified),
+  )
+  ok(
+    'cross-function program has no kernel diagnostics',
+    two.diagnostics.length === 0,
+  )
 
   const eq = elaborateReport(frontEnd(USES_EQUALITY), 't.tree')
-  ok('== verifies via the erased polymorphic equality (QTT)', eq.verified.includes('same'), JSON.stringify(eq.verified))
-  ok('equality program has no kernel diagnostics', eq.diagnostics.length === 0, eq.diagnostics.map((d) => d.message).join('; '))
+  ok(
+    '== verifies via the erased polymorphic equality (QTT)',
+    eq.verified.includes('same'),
+    JSON.stringify(eq.verified),
+  )
+  ok(
+    'equality program has no kernel diagnostics',
+    eq.diagnostics.length === 0,
+    eq.diagnostics.map(d => d.message).join('; '),
+  )
 
   const wrongResult = elaborateReport(frontEnd(WRONG_RESULT), 't.tree')
-  ok('kernel catches a wrong result type', wrongResult.diagnostics.some((d) => d.message.startsWith('kernel:')), JSON.stringify(wrongResult.diagnostics.map((d) => d.message)))
-  ok('the rejected function is not in the verified set', !wrongResult.verified.includes('bad'))
+  ok(
+    'kernel catches a wrong result type',
+    wrongResult.diagnostics.some(d => d.message.startsWith('kernel:')),
+    JSON.stringify(wrongResult.diagnostics.map(d => d.message)),
+  )
+  ok(
+    'the rejected function is not in the verified set',
+    !wrongResult.verified.includes('bad'),
+  )
 
-  const wrongArgument = elaborateReport(frontEnd(WRONG_ARGUMENT), 't.tree')
-  ok('kernel catches a wrong argument type', wrongArgument.diagnostics.some((d) => d.message.startsWith('kernel:')), JSON.stringify(wrongArgument.diagnostics.map((d) => d.message)))
+  const wrongArgument = elaborateReport(
+    frontEnd(WRONG_ARGUMENT),
+    't.tree',
+  )
+  ok(
+    'kernel catches a wrong argument type',
+    wrongArgument.diagnostics.some(d =>
+      d.message.startsWith('kernel:'),
+    ),
+    JSON.stringify(wrongArgument.diagnostics.map(d => d.message)),
+  )
 
   const generic = elaborateReport(frontEnd(GENERIC), 't.tree')
-  ok('generic identity is verified by the kernel', generic.verified.includes('identity'), JSON.stringify(generic.verified))
-  ok('generic call resolves the type argument by unification', generic.verified.includes('use-identity'), JSON.stringify(generic.verified))
-  ok('generic program has no kernel diagnostics', generic.diagnostics.length === 0, generic.diagnostics.map((d) => d.message).join('; '))
+  ok(
+    'generic identity is verified by the kernel',
+    generic.verified.includes('identity'),
+    JSON.stringify(generic.verified),
+  )
+  ok(
+    'generic call resolves the type argument by unification',
+    generic.verified.includes('use-identity'),
+    JSON.stringify(generic.verified),
+  )
+  ok(
+    'generic program has no kernel diagnostics',
+    generic.diagnostics.length === 0,
+    generic.diagnostics.map(d => d.message).join('; '),
+  )
 
-  const genericMismatch = elaborateReport(frontEnd(GENERIC_MISMATCH), 't.tree')
-  ok('generic function over a shared type variable verifies', genericMismatch.verified.includes('pair-equal'), JSON.stringify(genericMismatch.verified))
-  ok('kernel catches a mismatched generic call (type variable disagreement)', genericMismatch.diagnostics.some((d) => d.message.startsWith('kernel:')), JSON.stringify(genericMismatch.diagnostics.map((d) => d.message)))
+  const genericMismatch = elaborateReport(
+    frontEnd(GENERIC_MISMATCH),
+    't.tree',
+  )
+  ok(
+    'generic function over a shared type variable verifies',
+    genericMismatch.verified.includes('pair-equal'),
+    JSON.stringify(genericMismatch.verified),
+  )
+  ok(
+    'kernel catches a mismatched generic call (type variable disagreement)',
+    genericMismatch.diagnostics.some(d =>
+      d.message.startsWith('kernel:'),
+    ),
+    JSON.stringify(genericMismatch.diagnostics.map(d => d.message)),
+  )
 
   // ---- effect layer: mutation, loops, match ----
   const whileLoop = elaborateReport(frontEnd(WHILE_LOOP), 't.tree')
-  ok('effectful function with mutation + while loop is kernel-verified', whileLoop.verified.includes('sum-below'), JSON.stringify(whileLoop.verified))
-  ok('while-loop program has no kernel diagnostics', whileLoop.diagnostics.length === 0, whileLoop.diagnostics.map((d) => d.message).join('; '))
+  ok(
+    'effectful function with mutation + while loop is kernel-verified',
+    whileLoop.verified.includes('sum-below'),
+    JSON.stringify(whileLoop.verified),
+  )
+  ok(
+    'while-loop program has no kernel diagnostics',
+    whileLoop.diagnostics.length === 0,
+    whileLoop.diagnostics.map(d => d.message).join('; '),
+  )
 
   const forEach = elaborateReport(frontEnd(FOR_EACH), 't.tree')
-  ok('for-each over an array is kernel-verified (element type flows to the loop variable)', forEach.verified.includes('sum-pair'), JSON.stringify(forEach.verified))
-  ok('for-each program has no kernel diagnostics', forEach.diagnostics.length === 0, forEach.diagnostics.map((d) => d.message).join('; '))
+  ok(
+    'for-each over an array is kernel-verified (element type flows to the loop variable)',
+    forEach.verified.includes('sum-pair'),
+    JSON.stringify(forEach.verified),
+  )
+  ok(
+    'for-each program has no kernel diagnostics',
+    forEach.diagnostics.length === 0,
+    forEach.diagnostics.map(d => d.message).join('; '),
+  )
 
   const match = elaborateReport(frontEnd(MATCH), 't.tree')
-  ok('match on an enum is kernel-verified', match.verified.includes('code-of'), JSON.stringify(match.verified))
-  ok('match program has no kernel diagnostics', match.diagnostics.length === 0, match.diagnostics.map((d) => d.message).join('; '))
+  ok(
+    'match on an enum is kernel-verified',
+    match.verified.includes('code-of'),
+    JSON.stringify(match.verified),
+  )
+  ok(
+    'match program has no kernel diagnostics',
+    match.diagnostics.length === 0,
+    match.diagnostics.map(d => d.message).join('; '),
+  )
 
   const badAssign = elaborateReport(frontEnd(BAD_ASSIGN), 't.tree')
-  ok('kernel catches an ill-typed assignment in an effectful body', badAssign.diagnostics.some((d) => d.message.startsWith('kernel:')), JSON.stringify(badAssign.diagnostics.map((d) => d.message)))
+  ok(
+    'kernel catches an ill-typed assignment in an effectful body',
+    badAssign.diagnostics.some(d => d.message.startsWith('kernel:')),
+    JSON.stringify(badAssign.diagnostics.map(d => d.message)),
+  )
 
   const async = elaborateReport(frontEnd(ASYNC), 't.tree')
-  ok('async function and awaiting caller are kernel-verified', async.verified.includes('double-async') && async.verified.includes('use-async'), JSON.stringify(async.verified))
-  ok('async program has no kernel diagnostics', async.diagnostics.length === 0, async.diagnostics.map((d) => d.message).join('; '))
+  ok(
+    'async function and awaiting caller are kernel-verified',
+    async.verified.includes('double-async') &&
+      async.verified.includes('use-async'),
+    JSON.stringify(async.verified),
+  )
+  ok(
+    'async program has no kernel diagnostics',
+    async.diagnostics.length === 0,
+    async.diagnostics.map(d => d.message).join('; '),
+  )
 
   console.log(`\nelaborate: ${pass} pass, ${fail} fail`)
 }

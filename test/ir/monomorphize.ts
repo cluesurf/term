@@ -50,28 +50,61 @@ task run-string
 `
 
 function functionNames(program: Program): Array<string> {
-  return program.filter((s) => s.form === 'function').map((s) => (s as { name: string }).name)
+  return program
+    .filter(s => s.form === 'function')
+    .map(s => (s as { name: string }).name)
 }
 
 function main(): void {
   const result = monomorphize(frontEnd(SOURCE))
   const names = functionNames(result)
 
-  ok('the generic original is dropped', !names.includes('identity'), names.join(','))
-  ok('specialized at number', names.includes('identity__number'), names.join(','))
-  ok('specialized at string', names.includes('identity__string'), names.join(','))
+  ok(
+    'the generic original is dropped',
+    !names.includes('identity'),
+    names.join(','),
+  )
+  ok(
+    'specialized at number',
+    names.includes('identity__number'),
+    names.join(','),
+  )
+  ok(
+    'specialized at string',
+    names.includes('identity__string'),
+    names.join(','),
+  )
 
   // the specialized identity__number has a concrete number parameter (no generic name)
-  const spec = result.find((s) => s.form === 'function' && s.name === 'identity__number')
-  ok('specialization has a concrete param type', spec !== undefined && spec.form === 'function' && spec.params[0]!.type?.kind === 'number')
-  ok('specialization has no generics', spec !== undefined && spec.form === 'function' && spec.generics.length === 0)
+  const spec = result.find(
+    s => s.form === 'function' && s.name === 'identity__number',
+  )
+  ok(
+    'specialization has a concrete param type',
+    spec !== undefined &&
+      spec.form === 'function' &&
+      spec.params[0]!.type?.kind === 'number',
+  )
+  ok(
+    'specialization has no generics',
+    spec !== undefined &&
+      spec.form === 'function' &&
+      spec.generics.length === 0,
+  )
 
   // the call in run-number was rewritten to the specialized name
-  const runNumber = result.find((s) => s.form === 'function' && s.name === 'run-number')
+  const runNumber = result.find(
+    s => s.form === 'function' && s.name === 'run-number',
+  )
   let rewritten = false
   if (runNumber && runNumber.form === 'function') {
-    const ret = runNumber.body.find((b) => b.form === 'return')
-    if (ret && ret.form === 'return' && ret.value?.form === 'call' && ret.value.callee.form === 'variable') {
+    const ret = runNumber.body.find(b => b.form === 'return')
+    if (
+      ret &&
+      ret.form === 'return' &&
+      ret.value?.form === 'call' &&
+      ret.value.callee.form === 'variable'
+    ) {
       rewritten = ret.value.callee.name === 'identity__number'
     }
   }

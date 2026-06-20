@@ -60,14 +60,19 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
 async function main(): Promise<void> {
   const result = compile({ file: 'function.tree', text: SOURCE })
   if (!result.ok) {
-    for (const d of result.diagnostics) console.log(render(d, SOURCE.split('\n'), false))
+    for (const d of result.diagnostics)
+      console.log(render(d, SOURCE.split('\n'), false))
     console.log('\nfunction: 0 pass, 1 fail')
     return
   }
@@ -76,7 +81,10 @@ async function main(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'seed-function-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
-  const mod = (await import(pathToFileURL(file).href)) as { runTwice: () => number; runDirect: () => number }
+  const mod = (await import(pathToFileURL(file).href)) as {
+    runTwice: () => number
+    runDirect: () => number
+  }
 
   expect('apply-twice increment 5 === 7', mod.runTwice(), 7)
   expect('apply-twice double 5 === 20', mod.runDirect(), 20)

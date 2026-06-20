@@ -8,12 +8,26 @@ import type { Resolver, Source } from '@/code/compile/load'
 import type { Program } from '@/code/compile/node'
 
 // the platforms a native module can target; an import already under one of these is concrete, not abstract
-export const NATIVE_ENVS = ['node', 'browser', 'rust', 'swift', 'javascript', 'kotlin', 'shared'] as const
+export const NATIVE_ENVS = [
+  'node',
+  'browser',
+  'rust',
+  'swift',
+  'javascript',
+  'kotlin',
+  'shared',
+] as const
 export type NativeEnv = (typeof NATIVE_ENVS)[number]
 
 // the file extension a target's native runtime source uses
 export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
-  node: 'ts', browser: 'ts', javascript: 'ts', rust: 'rs', swift: 'swift', kotlin: 'kt', shared: 'txt',
+  node: 'ts',
+  browser: 'ts',
+  javascript: 'ts',
+  rust: 'rs',
+  swift: 'swift',
+  kotlin: 'kt',
+  shared: 'txt',
 }
 
 // ---- native runtime preludes ----
@@ -27,7 +41,8 @@ export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
 export function globalDockNames(program: Program): Array<string> {
   const names: Array<string> = []
   for (const node of program) {
-    if (node.form === 'native' && node.module.startsWith('global:')) names.push(node.module.slice('global:'.length))
+    if (node.form === 'native' && node.module.startsWith('global:'))
+      names.push(node.module.slice('global:'.length))
   }
   return [...new Set(names)]
 }
@@ -39,7 +54,11 @@ export function runtimePath(env: NativeEnv, name: string): string {
 
 // build the native prelude for a target: the concatenation of every runtime-shim file the program's global docks
 // reference and that actually exists. `readRuntime(path)` returns the raw source for a runtime path, or undefined.
-export function nativePrelude(program: Program, env: NativeEnv, readRuntime: (path: string) => string | undefined): string {
+export function nativePrelude(
+  program: Program,
+  env: NativeEnv,
+  readRuntime: (path: string) => string | undefined,
+): string {
   const parts: Array<string> = []
   for (const name of globalDockNames(program)) {
     const source = readRuntime(runtimePath(env, name))
@@ -49,17 +68,24 @@ export function nativePrelude(program: Program, env: NativeEnv, readRuntime: (pa
 }
 
 // rewrite an abstract native import to the env-specific one, or return undefined if it is not an abstract native path
-export function nativeImportFor(importPath: string, env: NativeEnv): string | undefined {
+export function nativeImportFor(
+  importPath: string,
+  env: NativeEnv,
+): string | undefined {
   const match = importPath.match(/^(.*\/native)\/([^/]+)(\/.*)?$/)
   if (!match) return undefined
   const segment = match[2]!
-  if ((NATIVE_ENVS as ReadonlyArray<string>).includes(segment)) return undefined // already concrete (e.g. native/node/...)
+  if ((NATIVE_ENVS as ReadonlyArray<string>).includes(segment))
+    return undefined // already concrete (e.g. native/node/...)
   return `${match[1]}/${env}/${segment}${match[3] ?? ''}`
 }
 
 // wrap a resolver so that abstract native imports resolve to the chosen platform's implementation. The env-specific
 // module is preferred; if it does not exist, the original path is tried (so a not-yet-ported module still resolves).
-export function withNativeEnv(env: NativeEnv, base: Resolver): Resolver {
+export function withNativeEnv(
+  env: NativeEnv,
+  base: Resolver,
+): Resolver {
   return (importPath: string, fromFile: string): Source | undefined => {
     const rewritten = nativeImportFor(importPath, env)
     if (rewritten) {

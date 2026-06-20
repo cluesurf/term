@@ -11,7 +11,8 @@ export type Message = {
   error?: { code: number; message: string }
 }
 
-const byteLength = (text: string): number => new TextEncoder().encode(text).length
+const byteLength = (text: string): number =>
+  new TextEncoder().encode(text).length
 
 // frame a message for the wire
 export function encode(message: Message): string {

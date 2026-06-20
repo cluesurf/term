@@ -16,7 +16,10 @@ export class CompileFailure extends Error {
 }
 
 // compile a self-contained `.tree` file to a runnable TypeScript module plus its checked program (for discovery).
-export function compileToModule(input: { text: string; file: string }): { code: string; program: Program } {
+export function compileToModule(input: {
+  text: string
+  file: string
+}): { code: string; program: Program } {
   const result = compile({ file: input.file, text: input.text })
   if (!result.ok) throw new CompileFailure(result.diagnostics)
   return { code: result.typescript, program: result.program }
@@ -24,26 +27,51 @@ export function compileToModule(input: { text: string; file: string }): { code: 
 
 // transpile the emitted TypeScript to an ES module and write it into a fresh temp directory under the project. Returns
 // the directory; the caller writes a `harness.mjs` beside `module.mjs` and runs it.
-export async function prepareModuleDir(input: { root: string; code: string; tag: string }): Promise<string> {
+export async function prepareModuleDir(input: {
+  root: string
+  code: string
+  tag: string
+}): Promise<string> {
   const { transform } = await import('esbuild')
-  const js = (await transform(input.code, { loader: 'ts', format: 'esm', target: 'node18' })).code
-  const dir = path.join(input.root, '.seed', 'tmp', `${input.tag}-${process.pid}-${Date.now()}`)
+  const js = (
+    await transform(input.code, {
+      loader: 'ts',
+      format: 'esm',
+      target: 'node18',
+    })
+  ).code
+  const dir = path.join(
+    input.root,
+    '.seed',
+    'tmp',
+    `${input.tag}-${process.pid}-${Date.now()}`,
+  )
   await fs.mkdir(dir, { recursive: true })
   await fs.writeFile(path.join(dir, 'module.mjs'), js)
   return dir
 }
 
 // run an ES module with the current `node` binary and return its stdout. `gc` exposes `global.gc` for memory work.
-export function runNode(input: { file: string; cwd: string; gc?: boolean }): Promise<string> {
+export function runNode(input: {
+  file: string
+  cwd: string
+  gc?: boolean
+}): Promise<string> {
   return new Promise((resolve, reject) => {
     const args = input.gc ? ['--expose-gc', input.file] : [input.file]
     const child = spawn(process.execPath, args, { cwd: input.cwd })
     let out = ''
     let err = ''
-    child.stdout.on('data', (d) => (out += String(d)))
-    child.stderr.on('data', (d) => (err += String(d)))
+    child.stdout.on('data', d => (out += String(d)))
+    child.stderr.on('data', d => (err += String(d)))
     child.on('error', reject)
-    child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(err.trim() || `node exited with code ${code}`))))
+    child.on('close', code =>
+      code === 0
+        ? resolve(out)
+        : reject(
+            new Error(err.trim() || `node exited with code ${code}`),
+          ),
+    )
   })
 }
 

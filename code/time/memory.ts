@@ -2,7 +2,12 @@
 // before and after so the heap delta reflects what the program retained, not transient allocation. CPU profiling is
 // intentionally not here yet (profiling the compiled artifact's hotspots is a separate, later piece).
 
-import { compileToModule, prepareModuleDir, runNode, cleanupDir } from '@/code/time/execute'
+import {
+  compileToModule,
+  prepareModuleDir,
+  runNode,
+  cleanupDir,
+} from '@/code/time/execute'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
@@ -25,13 +30,32 @@ const HARNESS = `async function main() {
 main().catch((e) => { console.error(e); process.exit(1) })
 `
 
-export async function runMemoryProfile(input: { text: string; file: string; root: string; name: string }): Promise<MemoryResult> {
-  const { code } = compileToModule({ text: input.text, file: input.file })
-  const dir = await prepareModuleDir({ root: input.root, code, tag: 'memory' })
+export async function runMemoryProfile(input: {
+  text: string
+  file: string
+  root: string
+  name: string
+}): Promise<MemoryResult> {
+  const { code } = compileToModule({
+    text: input.text,
+    file: input.file,
+  })
+  const dir = await prepareModuleDir({
+    root: input.root,
+    code,
+    tag: 'memory',
+  })
   try {
     await fs.writeFile(path.join(dir, 'harness.mjs'), HARNESS)
-    const stdout = await runNode({ file: path.join(dir, 'harness.mjs'), cwd: dir, gc: true })
-    const usage: { before: { heapUsed: number }; after: { heapUsed: number; rss: number } } = JSON.parse(stdout)
+    const stdout = await runNode({
+      file: path.join(dir, 'harness.mjs'),
+      cwd: dir,
+      gc: true,
+    })
+    const usage: {
+      before: { heapUsed: number }
+      after: { heapUsed: number; rss: number }
+    } = JSON.parse(stdout)
     return {
       name: input.name,
       heap_used_before_bytes: usage.before.heapUsed,
@@ -49,7 +73,8 @@ export function formatBytes(n: number): string {
   const abs = Math.abs(n)
   if (abs < 1024) return `${sign}${abs}B`
   if (abs < 1024 * 1024) return `${sign}${(abs / 1024).toFixed(1)}KB`
-  if (abs < 1024 * 1024 * 1024) return `${sign}${(abs / 1024 / 1024).toFixed(2)}MB`
+  if (abs < 1024 * 1024 * 1024)
+    return `${sign}${(abs / 1024 / 1024).toFixed(2)}MB`
   return `${sign}${(abs / 1024 / 1024 / 1024).toFixed(2)}GB`
 }
 

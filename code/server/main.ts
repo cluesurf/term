@@ -11,7 +11,8 @@ function main(): void {
   process.stdin.setEncoding('utf8')
   process.stdin.on('data', (chunk: string) => {
     for (const message of reader.append(chunk)) {
-      for (const outgoing of server.dispatch(message)) process.stdout.write(encode(outgoing))
+      for (const outgoing of server.dispatch(message))
+        process.stdout.write(encode(outgoing))
       if (message.method === 'exit') process.exit(0)
     }
   })

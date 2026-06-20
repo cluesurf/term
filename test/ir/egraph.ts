@@ -5,7 +5,12 @@ import { optimize, showExpr } from '@/code/ir/egraph'
 
 const int = (value: number): Expr => ({ t: 'int', value })
 const v = (name: string): Expr => ({ t: 'var', name })
-const op = (o: string, left: Expr, right: Expr): Expr => ({ t: 'op', op: o, left, right })
+const op = (o: string, left: Expr, right: Expr): Expr => ({
+  t: 'op',
+  op: o,
+  left,
+  right,
+})
 
 let pass = 0
 let fail = 0
@@ -28,30 +33,70 @@ function main(): void {
   // constant folding: 2 + 3 -> 5
   expect('2 + 3', optimize(op('+', int(2), int(3))), '5')
   // nested folding: 6 * 7 + 0 -> 42
-  expect('6 * 7 + 0', optimize(op('+', op('*', int(6), int(7)), int(0))), '42')
+  expect(
+    '6 * 7 + 0',
+    optimize(op('+', op('*', int(6), int(7)), int(0))),
+    '42',
+  )
   // cancellation: (a * 2) / 2 -> a   (a rule no peephole pass would find without the right order)
-  expect('(a * 2) / 2', optimize(op('/', op('*', v('a'), int(2)), int(2))), 'a')
+  expect(
+    '(a * 2) / 2',
+    optimize(op('/', op('*', v('a'), int(2)), int(2))),
+    'a',
+  )
   // commutative cancellation: (2 * a) / 2 -> a
-  expect('(2 * a) / 2', optimize(op('/', op('*', int(2), v('a')), int(2))), 'a')
+  expect(
+    '(2 * a) / 2',
+    optimize(op('/', op('*', int(2), v('a')), int(2))),
+    'a',
+  )
   // a * 0 -> 0
   expect('a * 0', optimize(op('*', v('a'), int(0))), '0')
   // mixed: (a + 0) * 1 -> a
-  expect('(a + 0) * 1', optimize(op('*', op('+', v('a'), int(0)), int(1))), 'a')
+  expect(
+    '(a + 0) * 1',
+    optimize(op('*', op('+', v('a'), int(0)), int(1))),
+    'a',
+  )
 
   // guard: a genuinely irreducible expression must be preserved, not corrupted or wrongly collapsed
-  expect('a + b preserved', optimize(op('+', v('a'), v('b'))), '(a + b)')
-  expect('a - b preserved', optimize(op('-', v('a'), v('b'))), '(a - b)')
+  expect(
+    'a + b preserved',
+    optimize(op('+', v('a'), v('b'))),
+    '(a + b)',
+  )
+  expect(
+    'a - b preserved',
+    optimize(op('-', v('a'), v('b'))),
+    '(a - b)',
+  )
   // guard: commutativity must not change a non-commutative subtraction's meaning
-  expect('a / b preserved (not a)', optimize(op('/', v('a'), v('b'))), '(a / b)')
+  expect(
+    'a / b preserved (not a)',
+    optimize(op('/', v('a'), v('b'))),
+    '(a / b)',
+  )
   // guard: distinct variables are not conflated
-  expect('(a + b) - b stays (not folded to a, no such rule)', optimize(op('-', op('+', v('a'), v('b')), v('b'))), '((a + b) - b)')
+  expect(
+    '(a + b) - b stays (not folded to a, no such rule)',
+    optimize(op('-', op('+', v('a'), v('b')), v('b'))),
+    '((a + b) - b)',
+  )
 
   // x - x -> 0
   expect('a - a', optimize(op('-', v('a'), v('a'))), '0')
   // constant reassociation: (a + 2) + 3 -> a + 5
-  expect('(a + 2) + 3', optimize(op('+', op('+', v('a'), int(2)), int(3))), '(a + 5)')
+  expect(
+    '(a + 2) + 3',
+    optimize(op('+', op('+', v('a'), int(2)), int(3))),
+    '(a + 5)',
+  )
   // and multiplicative: (a * 2) * 4 -> a * 8
-  expect('(a * 2) * 4', optimize(op('*', op('*', v('a'), int(2)), int(4))), '(a * 8)')
+  expect(
+    '(a * 2) * 4',
+    optimize(op('*', op('*', v('a'), int(2)), int(4))),
+    '(a * 8)',
+  )
 
   console.log(`\negraph: ${pass} pass, ${fail} fail`)
 }

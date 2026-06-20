@@ -17,9 +17,21 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 // a structural fingerprint, ignoring layout and comments, to prove the formatter never changes meaning
-function shape(node: { kind: string; nodes?: Array<unknown>; parts?: Array<{ kind: string; text?: string }>; value?: unknown; token?: { text: string } }): string {
-  if (node.kind === 'group' || node.kind === 'root') return `${node.kind}(${(node.nodes ?? []).map((n) => shape(n as never)).join(',')})`
-  if (node.kind === 'name' || node.kind === 'text') return `${node.kind}:${(node.parts ?? []).map((p) => p.text ?? '{}').join('')}`
+function shape(node: {
+  kind: string
+  nodes?: Array<unknown>
+  parts?: Array<{ kind: string; text?: string }>
+  value?: unknown
+  token?: { text: string }
+}): string {
+  if (node.kind === 'group' || node.kind === 'root')
+    return `${node.kind}(${(node.nodes ?? [])
+      .map(n => shape(n as never))
+      .join(',')})`
+  if (node.kind === 'name' || node.kind === 'text')
+    return `${node.kind}:${(node.parts ?? [])
+      .map(p => p.text ?? '{}')
+      .join('')}`
   return `lit:${node.token?.text ?? node.value}`
 }
 function shapeOf(text: string): string {
@@ -46,23 +58,46 @@ const SOURCE = `task find-fibonacci
 function main(): void {
   const once = format({ file: 's.tree', text: SOURCE })
   const twice = format({ file: 's.tree', text: once })
-  ok('idempotent: format(format(x)) === format(x)', once === twice, JSON.stringify(once))
-  ok('meaning preserved: same structure after formatting', shapeOf(SOURCE) === shapeOf(once))
+  ok(
+    'idempotent: format(format(x)) === format(x)',
+    once === twice,
+    JSON.stringify(once),
+  )
+  ok(
+    'meaning preserved: same structure after formatting',
+    shapeOf(SOURCE) === shapeOf(once),
+  )
 
   // a short value list stays inline (round-trips and fits)
-  ok('short value list stays inline', once.includes('take n, like number'), once)
+  ok(
+    'short value list stays inline',
+    once.includes('take n, like number'),
+    once,
+  )
   // a call with arguments stacks its arguments (would flatten ambiguously if inlined)
-  ok('nested call arguments are stacked', /call add\n\s+loan n\n\s+mark 1/.test(once), once)
+  ok(
+    'nested call arguments are stacked',
+    /call add\n\s+loan n\n\s+mark 1/.test(once),
+    once,
+  )
 
   // a stacked value list that could fit on one line is normalized to the inline form
   const stacked = `save\n  a\n  mark 0\n`
   const formatted = format({ file: 's.tree', text: stacked })
-  ok('normalizes stacked value list to inline', formatted.trim() === 'save a, mark 0', JSON.stringify(formatted))
+  ok(
+    'normalizes stacked value list to inline',
+    formatted.trim() === 'save a, mark 0',
+    JSON.stringify(formatted),
+  )
 
   // comments are preserved
   const commented = `task f\n  # a leading comment\n  back n\n`
   const out = format({ file: 's.tree', text: commented })
-  ok('preserves comments', out.includes('# a leading comment'), JSON.stringify(out))
+  ok(
+    'preserves comments',
+    out.includes('# a leading comment'),
+    JSON.stringify(out),
+  )
 
   console.log(`\nformat: ${pass} pass, ${fail} fail`)
 }

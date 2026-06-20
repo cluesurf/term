@@ -3,7 +3,12 @@
 // node:fs. We compile a program that only ever names `file`, transpile + import it, and run real file operations on a
 // temp file. Proves the Tier-3 architecture end to end. Run: npx tsx test/stdlib/io.ts
 
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -22,7 +27,9 @@ const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
   if (!path.startsWith(prefix)) return undefined
   const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
-  return existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
+  return existsSync(file)
+    ? { file, text: readFileSync(file, 'utf8') }
+    : undefined
 }
 // the node target: abstract native imports resolve to native/node/*
 const resolve = withNativeEnv('node', stdlib)
@@ -35,7 +42,11 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
@@ -47,19 +58,31 @@ const readRuntime = (path: string): string | undefined => {
   return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }
 
-async function loadProgram(source: string): Promise<Record<string, (...a: Array<unknown>) => unknown>> {
-  const result = compile({ file: 'main.tree', text: source }, { resolve })
+async function loadProgram(
+  source: string,
+): Promise<Record<string, (...a: Array<unknown>) => unknown>> {
+  const result = compile(
+    { file: 'main.tree', text: source },
+    { resolve },
+  )
   if (!result.ok) {
-    for (const d of result.diagnostics) console.log(render(d, source.split('\n'), false))
+    for (const d of result.diagnostics)
+      console.log(render(d, source.split('\n'), false))
     throw new Error('compile failed')
   }
   // prepend any node runtime shim the program docks (e.g. the regex shim wrapping new RegExp), same as the build does
   const prelude = nativePrelude(result.program, 'node', readRuntime)
-  const js = transformSync(`${prelude}\n${result.typescript}`, { loader: 'ts', format: 'esm' }).code
+  const js = transformSync(`${prelude}\n${result.typescript}`, {
+    loader: 'ts',
+    format: 'esm',
+  }).code
   const dir = mkdtempSync(join(tmpdir(), 'seed-io-'))
   const file = join(dir, 'module.mjs')
   writeFileSync(file, js)
-  return (await import(pathToFileURL(file).href)) as Record<string, (...a: Array<unknown>) => unknown>
+  return (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...a: Array<unknown>) => unknown
+  >
 }
 
 // the program only ever names `file` — the node platform is hidden behind the API
@@ -754,6 +777,19 @@ task encoded-active
       text <active>
 `
 
+// secure random: cryptographically secure bytes as hex text. A request for 16 bytes is a 32-char hex string. The
+// generator is OS-backed (node randomBytes); two draws differ. Synchronous on every host.
+const SECURE_RANDOM = `load @cluesurf/base/code/cryptography/random
+  find bytes
+
+task draw
+  take size, like number
+  like text
+  send back
+    call bytes
+      read size
+`
+
 // network/http: GET through the host fetch (a data: URL needs no server), reading status + body off the response
 const HTTP = `load @cluesurf/base/code/network/http
   find get
@@ -819,39 +855,130 @@ async function main(): Promise<void> {
   expect('float: square-root(9.0) is 3', fl.rootOf!(), 3)
   expect('float: round-down(3.7) is 3', fl.floorOf!(), 3)
   expect('float: power(2.0, 3.0) is 8', fl.powOf!(), 8)
-  expect('float: 7.0 / 2.0 is 3.5 (not truncated like integer division)', fl.divOf!(), 3.5)
+  expect(
+    'float: 7.0 / 2.0 is 3.5 (not truncated like integer division)',
+    fl.divOf!(),
+    3.5,
+  )
 
   const ht = await loadProgram(HTTP)
-  expect('network/http: get reads the body (data URL via host fetch)', await ht.fetchBody!('data:text/plain,hello%20seed'), 'hello seed')
-  expect('network/http: get reads the status', await ht.fetchStatus!('data:text/plain,x'), 200)
+  expect(
+    'network/http: get reads the body (data URL via host fetch)',
+    await ht.fetchBody!('data:text/plain,hello%20seed'),
+    'hello seed',
+  )
+  expect(
+    'network/http: get reads the status',
+    await ht.fetchStatus!('data:text/plain,x'),
+    200,
+  )
 
   const js = await loadProgram(JSON_PROG)
-  expect('json: parse + get-field + as-number reads a number field', js.readCount!('{"count":42,"name":"seed"}'), 42)
-  expect('json: get-field + as-text reads a string field', js.readName!('{"count":42,"name":"seed"}'), 'seed')
-  expect('json: get-item + as-number indexes an array', js.itemNumber!('[10,20,30]'), 20)
+  expect(
+    'json: parse + get-field + as-number reads a number field',
+    js.readCount!('{"count":42,"name":"seed"}'),
+    42,
+  )
+  expect(
+    'json: get-field + as-text reads a string field',
+    js.readName!('{"count":42,"name":"seed"}'),
+    'seed',
+  )
+  expect(
+    'json: get-item + as-number indexes an array',
+    js.itemNumber!('[10,20,30]'),
+    20,
+  )
   expect('json: as-boolean reads a bool', js.boolOf!('true'), true)
-  expect('json: stringify(parse) round-trips through the host JSON', js.roundTrip!('{"a":1,"b":[2,3]}'), '{"a":1,"b":[2,3]}')
-  expect('json: a JSON object literal in seed source parses (brace fix)', js.literalObject!(), 7)
+  expect(
+    'json: stringify(parse) round-trips through the host JSON',
+    js.roundTrip!('{"a":1,"b":[2,3]}'),
+    '{"a":1,"b":[2,3]}',
+  )
+  expect(
+    'json: a JSON object literal in seed source parses (brace fix)',
+    js.literalObject!(),
+    7,
+  )
 
   const jd = await loadProgram(JSON_DECODE)
-  expect('json: decode a typed `form` from JSON (text field)', jd.nameOf!('{"name":"seed","age":3,"active":true}'), 'seed')
-  expect('json: decode a typed `form` from JSON (number field)', jd.ageOf!('{"name":"seed","age":3,"active":true}'), 3)
+  expect(
+    'json: decode a typed `form` from JSON (text field)',
+    jd.nameOf!('{"name":"seed","age":3,"active":true}'),
+    'seed',
+  )
+  expect(
+    'json: decode a typed `form` from JSON (number field)',
+    jd.ageOf!('{"name":"seed","age":3,"active":true}'),
+    3,
+  )
 
   const je = await loadProgram(JSON_ENCODE)
-  expect('json: encode a typed `form` to JSON, text field survives the round-trip', je.encodedName!(), 'seed')
-  expect('json: encode a typed `form` to JSON, number field survives the round-trip', je.encodedAge!(), 3)
-  expect('json: encode a typed `form` to JSON, boolean field survives the round-trip', je.encodedActive!(), true)
+  expect(
+    'json: encode a typed `form` to JSON, text field survives the round-trip',
+    je.encodedName!(),
+    'seed',
+  )
+  expect(
+    'json: encode a typed `form` to JSON, number field survives the round-trip',
+    je.encodedAge!(),
+    3,
+  )
+  expect(
+    'json: encode a typed `form` to JSON, boolean field survives the round-trip',
+    je.encodedActive!(),
+    true,
+  )
+
+  const sr = await loadProgram(SECURE_RANDOM)
+  const draw16 = sr.draw!(16) as string
+  expect(
+    'crypto/random: 16 bytes is a 32-char hex string',
+    draw16.length === 32 && /^[0-9a-f]+$/.test(draw16),
+    true,
+  )
+  expect(
+    'crypto/random: two draws differ (not a constant)',
+    sr.draw!(16) !== sr.draw!(16),
+    true,
+  )
 
   const rx = await loadProgram(REGEX)
-  expect('regex/matches accepts a matching string', rx.isDigits!('12345'), true)
-  expect('regex/matches rejects a non-matching string', rx.isDigits!('12a45'), false)
-  expect('regex/replace replaces all matches', rx.stripVowels!('seedlang'), 's**dl*ng')
-  expect('regex/find returns the first match', rx.firstNumber!('abc42def7'), '42')
+  expect(
+    'regex/matches accepts a matching string',
+    rx.isDigits!('12345'),
+    true,
+  )
+  expect(
+    'regex/matches rejects a non-matching string',
+    rx.isDigits!('12a45'),
+    false,
+  )
+  expect(
+    'regex/replace replaces all matches',
+    rx.stripVowels!('seedlang'),
+    's**dl*ng',
+  )
+  expect(
+    'regex/find returns the first match',
+    rx.firstNumber!('abc42def7'),
+    '42',
+  )
 
   const ud = await loadProgram(UUID)
   const id = ud.makeId!() as string
-  expect('uuid/version4 returns a 36-char id', typeof id === 'string' && id.length === 36, true)
-  expect('uuid/version4 is dashed (8-4-4-4-12)', /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id), true)
+  expect(
+    'uuid/version4 returns a 36-char id',
+    typeof id === 'string' && id.length === 36,
+    true,
+  )
+  expect(
+    'uuid/version4 is dashed (8-4-4-4-12)',
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      id,
+    ),
+    true,
+  )
 
   const rn = await loadProgram(RANDOM)
   const u = rn.unit!() as number
@@ -861,83 +988,202 @@ async function main(): Promise<void> {
   expect('random/integer(1,6) is in range', r >= 1 && r <= 6, true)
 
   const sg = await loadProgram(STRING)
-  expect('text/string: to-upper uppercases', sg.shout!('hello'), 'HELLO')
-  expect('text/string: trim strips whitespace', sg.trimmed!('  hi  '), 'hi')
-  expect('text/string: repeat repeats n times', sg.tripled!('ab'), 'ababab')
-  expect('text/string: starts-with detects the prefix', sg.hasPrefix!('seedlang', 'seed'), true)
-  expect('text/string: replace replaces all occurrences', sg.swapped!('a-a-a'), 'b-b-b')
+  expect(
+    'text/string: to-upper uppercases',
+    sg.shout!('hello'),
+    'HELLO',
+  )
+  expect(
+    'text/string: trim strips whitespace',
+    sg.trimmed!('  hi  '),
+    'hi',
+  )
+  expect(
+    'text/string: repeat repeats n times',
+    sg.tripled!('ab'),
+    'ababab',
+  )
+  expect(
+    'text/string: starts-with detects the prefix',
+    sg.hasPrefix!('seedlang', 'seed'),
+    true,
+  )
+  expect(
+    'text/string: replace replaces all occurrences',
+    sg.swapped!('a-a-a'),
+    'b-b-b',
+  )
 
   const hm = await loadProgram(HMAC)
-  expect('cryptography/hmac: sha256 matches the RFC test vector', await hm.mac!('key', 'The quick brown fox jumps over the lazy dog'), 'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8')
+  expect(
+    'cryptography/hmac: sha256 matches the RFC test vector',
+    await hm.mac!('key', 'The quick brown fox jumps over the lazy dog'),
+    'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8',
+  )
 
   const hv = await loadProgram(HSV)
   expect('color/hsv: pure red has value 100', hv.redValue!(), 100)
-  expect('color/hsv: pure red has saturation 100', hv.redSaturation!(), 100)
+  expect(
+    'color/hsv: pure red has saturation 100',
+    hv.redSaturation!(),
+    100,
+  )
   expect('color/hsv: gray has saturation 0', hv.graySaturation!(), 0)
 
   const hc = await loadProgram(HEXCOLOR)
-  expect('color/hex: rgb(255,0,128) formats as #ff0080', hc.hexOf!(), '#ff0080')
+  expect(
+    'color/hex: rgb(255,0,128) formats as #ff0080',
+    hc.hexOf!(),
+    '#ff0080',
+  )
 
   const b6 = await loadProgram(ENCODE)
-  expect('text/base64: encodes a known vector', b6.b64!('hello'), 'aGVsbG8=')
-  expect('text/base64: round-trips through the host Buffer', b6.unB64!(b6.b64!('seed encodings')), 'seed encodings')
+  expect(
+    'text/base64: encodes a known vector',
+    b6.b64!('hello'),
+    'aGVsbG8=',
+  )
+  expect(
+    'text/base64: round-trips through the host Buffer',
+    b6.unB64!(b6.b64!('seed encodings')),
+    'seed encodings',
+  )
 
   const hx = await loadProgram(HEXCODE)
   expect('text/hex: encodes a known vector', hx.hexed!('hi'), '6869')
-  expect('text/hex: round-trips through the host Buffer', hx.unHexed!(hx.hexed!('cluesurf')), 'cluesurf')
+  expect(
+    'text/hex: round-trips through the host Buffer',
+    hx.unHexed!(hx.hexed!('cluesurf')),
+    'cluesurf',
+  )
 
   const dg = await loadProgram(DIGEST)
-  expect('cryptography/digest: sha256 matches the known vector for "abc"', await dg.sha!('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
-  expect('cryptography/digest: md5 matches the known vector for "abc"', await dg.md!('abc'), '900150983cd24fb0d6963f7d28e17f72')
+  expect(
+    'cryptography/digest: sha256 matches the known vector for "abc"',
+    await dg.sha!('abc'),
+    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+  )
+  expect(
+    'cryptography/digest: md5 matches the known vector for "abc"',
+    await dg.md!('abc'),
+    '900150983cd24fb0d6963f7d28e17f72',
+  )
 
   const ma = await loadProgram(MATH)
   expect('math: absolute delegates to host Math.abs', ma.absNeg!(), 7)
   expect('math: power delegates to host Math.pow', ma.twoToTen!(), 1024)
-  expect('math: square-root delegates to host Math.sqrt', ma.rootOf!(), 12)
+  expect(
+    'math: square-root delegates to host Math.sqrt',
+    ma.rootOf!(),
+    12,
+  )
   expect('math: clamp composes from the interface', ma.clampHigh!(), 10)
   expect('math: greatest-common-divisor (pure)', ma.gcdOf!(), 6)
   expect('math: factorial (pure)', ma.factOf!(), 120)
 
   // the delegating interface is thrown away in the compiled output: the wrapper chain collapses to the native call
-  const mathOut = compile({ file: 'main.tree', text: MATH }, { resolve })
+  const mathOut = compile(
+    { file: 'main.tree', text: MATH },
+    { resolve },
+  )
   const mathTs = mathOut.ok ? mathOut.typescript : ''
-  expect('math: the absolute wrapper is inlined away (no function absolute)', mathTs.includes('function absolute'), false)
-  expect('math: the power wrapper is inlined away (no function power)', mathTs.includes('function power'), false)
-  expect('math: power compiles to a direct host call (math.pow)', mathTs.includes('math.pow'), true)
-  expect('math: absolute compiles to a direct host call (math.abs)', mathTs.includes('math.abs'), true)
-  expect('math: a non-forwarder (factorial) is kept', mathTs.includes('function factorial'), true)
+  expect(
+    'math: the absolute wrapper is inlined away (no function absolute)',
+    mathTs.includes('function absolute'),
+    false,
+  )
+  expect(
+    'math: the power wrapper is inlined away (no function power)',
+    mathTs.includes('function power'),
+    false,
+  )
+  expect(
+    'math: power compiles to a direct host call (math.pow)',
+    mathTs.includes('math.pow'),
+    true,
+  )
+  expect(
+    'math: absolute compiles to a direct host call (math.abs)',
+    mathTs.includes('math.abs'),
+    true,
+  )
+  expect(
+    'math: a non-forwarder (factorial) is kept',
+    mathTs.includes('function factorial'),
+    true,
+  )
 
   const hl = await loadProgram(HSL)
   expect('color/hsl: pure blue has hue 240', hl.blueHue!(), 240)
   expect('color/hsl: pure green has hue 120', hl.greenHue!(), 120)
   expect('color/hsl: white has saturation 0', hl.whiteSaturation!(), 0)
   expect('color/hsl: pure red has lightness 50', hl.redLightness!(), 50)
-  expect('color/hsl: hsl(0,100,50) converts back to red (255)', hl.backToRed!(), 255)
-  expect('color/hsl: hsl(120,100,50) converts back to green channel (255)', hl.backToGreenChannel!(), 255)
-  expect('color/hsl: hsl(0,0,100) converts back to white (blue 255)', hl.whiteBackBlue!(), 255)
+  expect(
+    'color/hsl: hsl(0,100,50) converts back to red (255)',
+    hl.backToRed!(),
+    255,
+  )
+  expect(
+    'color/hsl: hsl(120,100,50) converts back to green channel (255)',
+    hl.backToGreenChannel!(),
+    255,
+  )
+  expect(
+    'color/hsl: hsl(0,0,100) converts back to white (blue 255)',
+    hl.whiteBackBlue!(),
+    255,
+  )
 
   const en = await loadProgram(ENVIRONMENT)
   const cwd = en.cwd!() as string
-  expect('environment: directory reads the working dir (non-empty)', typeof cwd === 'string' && cwd.length > 0, true)
+  expect(
+    'environment: directory reads the working dir (non-empty)',
+    typeof cwd === 'string' && cwd.length > 0,
+    true,
+  )
 
   const ti = await loadProgram(TIME)
   const epoch = ti.epoch!() as number
-  expect('time: now returns a positive epoch', typeof epoch === 'number' && epoch > 0, true)
+  expect(
+    'time: now returns a positive epoch',
+    typeof epoch === 'number' && epoch > 0,
+    true,
+  )
 
   const pr = await loadProgram(PROCESS)
   const plat = pr.plat!() as string
-  expect('process: platform reads the host global (non-empty string)', typeof plat === 'string' && plat.length > 0, true)
+  expect(
+    'process: platform reads the host global (non-empty string)',
+    typeof plat === 'string' && plat.length > 0,
+    true,
+  )
 
   const co = await loadProgram(CONSOLE)
-  expect('console: log forwards to the host console and returns unit', co.say!('') === undefined, true)
+  expect(
+    'console: log forwards to the host console and returns unit',
+    co.say!('') === undefined,
+    true,
+  )
 
   const lg = await loadProgram(LOG)
-  expect('log: info forwards to the host console and returns unit', lg.noteInfo!('') === undefined, true)
-  expect('log: warn forwards to the host console and returns unit', lg.noteWarn!('') === undefined, true)
+  expect(
+    'log: info forwards to the host console and returns unit',
+    lg.noteInfo!('') === undefined,
+    true,
+  )
+  expect(
+    'log: warn forwards to the host console and returns unit',
+    lg.noteWarn!('') === undefined,
+    true,
+  )
 
   const c = await loadProgram(CLOCK)
   const t0 = c.getNow!() as number
-  expect('clock: now returns a positive number (node perf_hooks)', typeof t0 === 'number' && t0 > 0, true)
+  expect(
+    'clock: now returns a positive number (node perf_hooks)',
+    typeof t0 === 'number' && t0 > 0,
+    true,
+  )
   const t1 = (await c.sleepThenNow!(5)) as number
   expect('clock: sleep then now advances time', t1 >= t0, true)
 
@@ -947,65 +1193,230 @@ async function main(): Promise<void> {
   const missing = join(dir, 'nope.txt')
 
   const content = await m.roundTrip!(path)
-  expect('file: write then read round-trips through node fs', content, 'hello world')
-  expect('file: the file really exists on disk after write', existsSync(path), true)
+  expect(
+    'file: write then read round-trips through node fs',
+    content,
+    'hello world',
+  )
+  expect(
+    'file: the file really exists on disk after write',
+    existsSync(path),
+    true,
+  )
   expect('file: test reports an existing file', m.exists!(path), true)
   expect('file: test reports a missing file', m.exists!(missing), false)
 
   // cross-target: the SAME public `file` module compiles for every platform, each forwarding to its own native impl,
   // emitting that platform's file API. The program only ever names `file`.
   const fileSrc = stdlib('@cluesurf/base/code/file')!.text
-  const compileFor = (env: 'node' | 'rust' | 'swift' | 'kotlin') => compile({ file: 'file.tree', text: fileSrc }, { resolve: withNativeEnv(env, stdlib) })
+  const compileFor = (env: 'node' | 'rust' | 'swift' | 'kotlin') =>
+    compile(
+      { file: 'file.tree', text: fileSrc },
+      { resolve: withNativeEnv(env, stdlib) },
+    )
 
   const nodeR = compileFor('node')
-  expect('file compiles for the node target (node:fs)', nodeR.ok && nodeR.typescript.includes('fs.readFile'), true)
+  expect(
+    'file compiles for the node target (node:fs)',
+    nodeR.ok && nodeR.typescript.includes('fs.readFile'),
+    true,
+  )
   const rustR = compileFor('rust')
-  expect('file compiles for the rust target (io runtime)', rustR.ok && emitRust(rustR.program).includes('io::file_read'), true)
+  expect(
+    'file compiles for the rust target (io runtime)',
+    rustR.ok && emitRust(rustR.program).includes('io::file_read'),
+    true,
+  )
   const swiftR = compileFor('swift')
-  expect('file compiles for the swift target (io runtime)', swiftR.ok && emitSwift(swiftR.program).includes('io.fileRead'), true)
+  expect(
+    'file compiles for the swift target (io runtime)',
+    swiftR.ok && emitSwift(swiftR.program).includes('io.fileRead'),
+    true,
+  )
   const kotlinR = compileFor('kotlin')
-  expect('file compiles for the kotlin target (io runtime)', kotlinR.ok && emitKotlin(kotlinR.program).includes('io.fileRead'), true)
+  expect(
+    'file compiles for the kotlin target (io runtime)',
+    kotlinR.ok && emitKotlin(kotlinR.program).includes('io.fileRead'),
+    true,
+  )
 
   // the public digest interface compiles for every target, each wrapping that platform's built-in crypto
-  const digestSrc = stdlib('@cluesurf/base/code/cryptography/digest')!.text
-  const digestFor = (env: 'node' | 'rust' | 'swift' | 'kotlin') => compile({ file: 'd.tree', text: digestSrc }, { resolve: withNativeEnv(env, stdlib) })
+  const digestSrc = stdlib(
+    '@cluesurf/base/code/cryptography/digest',
+  )!.text
+  const digestFor = (env: 'node' | 'rust' | 'swift' | 'kotlin') =>
+    compile(
+      { file: 'd.tree', text: digestSrc },
+      { resolve: withNativeEnv(env, stdlib) },
+    )
   const dNode = digestFor('node')
-  expect('digest compiles for node (node:crypto createHash)', dNode.ok && dNode.typescript.includes('createHash'), true)
+  expect(
+    'digest compiles for node (node:crypto createHash)',
+    dNode.ok && dNode.typescript.includes('createHash'),
+    true,
+  )
   const dRust = digestFor('rust')
-  expect('digest compiles for rust (crypto shim, RustCrypto)', dRust.ok && emitRust(dRust.program).includes('crypto::sha256'), true)
+  expect(
+    'digest compiles for rust (crypto shim, RustCrypto)',
+    dRust.ok && emitRust(dRust.program).includes('crypto::sha256'),
+    true,
+  )
   const dSwift = digestFor('swift')
-  expect('digest compiles for swift (crypto shim, CryptoKit)', dSwift.ok && emitSwift(dSwift.program).includes('crypto.sha256'), true)
+  expect(
+    'digest compiles for swift (crypto shim, CryptoKit)',
+    dSwift.ok && emitSwift(dSwift.program).includes('crypto.sha256'),
+    true,
+  )
   const dKotlin = digestFor('kotlin')
-  expect('digest compiles for kotlin (crypto shim, java.security)', dKotlin.ok && emitKotlin(dKotlin.program).includes('crypto.sha256'), true)
+  expect(
+    'digest compiles for kotlin (crypto shim, java.security)',
+    dKotlin.ok && emitKotlin(dKotlin.program).includes('crypto.sha256'),
+    true,
+  )
   const dBrowser = digestFor('browser')
-  expect('digest compiles for browser (Web Crypto subtle shim)', dBrowser.ok && dBrowser.typescript.includes('crypto.sha256'), true)
+  expect(
+    'digest compiles for browser (Web Crypto subtle shim)',
+    dBrowser.ok && dBrowser.typescript.includes('crypto.sha256'),
+    true,
+  )
 
   // the public string interface compiles for every target, each using that platform's string ops
   const stringSrc = stdlib('@cluesurf/base/code/text/string')!.text
-  const stringFor = (env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin') => compile({ file: 's.tree', text: stringSrc }, { resolve: withNativeEnv(env, stdlib) })
-  expect('string compiles for node (host toUpperCase)', (() => { const r = stringFor('node'); return r.ok && r.typescript.includes('toUpperCase') })(), true)
-  expect('string compiles for browser (host toUpperCase)', (() => { const r = stringFor('browser'); return r.ok && r.typescript.includes('toUpperCase') })(), true)
-  expect('string compiles for rust (text shim)', (() => { const r = stringFor('rust'); return r.ok && emitRust(r.program).includes('text::upper') })(), true)
-  expect('string compiles for swift (text shim)', (() => { const r = stringFor('swift'); return r.ok && emitSwift(r.program).includes('text.upper') })(), true)
-  expect('string compiles for kotlin (text shim)', (() => { const r = stringFor('kotlin'); return r.ok && emitKotlin(r.program).includes('text.upper') })(), true)
+  const stringFor = (
+    env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin',
+  ) =>
+    compile(
+      { file: 's.tree', text: stringSrc },
+      { resolve: withNativeEnv(env, stdlib) },
+    )
+  expect(
+    'string compiles for node (host toUpperCase)',
+    (() => {
+      const r = stringFor('node')
+      return r.ok && r.typescript.includes('toUpperCase')
+    })(),
+    true,
+  )
+  expect(
+    'string compiles for browser (host toUpperCase)',
+    (() => {
+      const r = stringFor('browser')
+      return r.ok && r.typescript.includes('toUpperCase')
+    })(),
+    true,
+  )
+  expect(
+    'string compiles for rust (text shim)',
+    (() => {
+      const r = stringFor('rust')
+      return r.ok && emitRust(r.program).includes('text::upper')
+    })(),
+    true,
+  )
+  expect(
+    'string compiles for swift (text shim)',
+    (() => {
+      const r = stringFor('swift')
+      return r.ok && emitSwift(r.program).includes('text.upper')
+    })(),
+    true,
+  )
+  expect(
+    'string compiles for kotlin (text shim)',
+    (() => {
+      const r = stringFor('kotlin')
+      return r.ok && emitKotlin(r.program).includes('text.upper')
+    })(),
+    true,
+  )
 
   // the public regex interface compiles for every target, each wrapping that platform's regex engine
   const regexSrc = stdlib('@cluesurf/base/code/regex')!.text
-  const regexFor = (env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin') => compile({ file: 'r.tree', text: regexSrc }, { resolve: withNativeEnv(env, stdlib) })
-  expect('regex compiles for node (regex shim)', (() => { const r = regexFor('node'); return r.ok && r.typescript.includes('regex.matches') })(), true)
-  expect('regex compiles for rust (regex shim)', (() => { const r = regexFor('rust'); return r.ok && emitRust(r.program).includes('regex::matches') })(), true)
-  expect('regex compiles for swift (regex shim)', (() => { const r = regexFor('swift'); return r.ok && emitSwift(r.program).includes('regex.matches') })(), true)
-  expect('regex compiles for kotlin (regex shim)', (() => { const r = regexFor('kotlin'); return r.ok && emitKotlin(r.program).includes('regex.matches') })(), true)
+  const regexFor = (
+    env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin',
+  ) =>
+    compile(
+      { file: 'r.tree', text: regexSrc },
+      { resolve: withNativeEnv(env, stdlib) },
+    )
+  expect(
+    'regex compiles for node (regex shim)',
+    (() => {
+      const r = regexFor('node')
+      return r.ok && r.typescript.includes('regex.matches')
+    })(),
+    true,
+  )
+  expect(
+    'regex compiles for rust (regex shim)',
+    (() => {
+      const r = regexFor('rust')
+      return r.ok && emitRust(r.program).includes('regex::matches')
+    })(),
+    true,
+  )
+  expect(
+    'regex compiles for swift (regex shim)',
+    (() => {
+      const r = regexFor('swift')
+      return r.ok && emitSwift(r.program).includes('regex.matches')
+    })(),
+    true,
+  )
+  expect(
+    'regex compiles for kotlin (regex shim)',
+    (() => {
+      const r = regexFor('kotlin')
+      return r.ok && emitKotlin(r.program).includes('regex.matches')
+    })(),
+    true,
+  )
 
   // the public http interface compiles for every target, each wrapping that platform's HTTP library
   const httpSrc = stdlib('@cluesurf/base/code/network/http')!.text
-  const httpFor = (env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin') => compile({ file: 'h.tree', text: httpSrc }, { resolve: withNativeEnv(env, stdlib) })
-  expect('http compiles for node (fetch shim)', (() => { const r = httpFor('node'); return r.ok && r.typescript.includes('http.request') })(), true)
-  expect('http compiles for rust (http shim)', (() => { const r = httpFor('rust'); return r.ok && emitRust(r.program).includes('http::request') })(), true)
-  expect('http compiles for swift (http shim)', (() => { const r = httpFor('swift'); return r.ok && emitSwift(r.program).includes('http.request') })(), true)
-  expect('http compiles for kotlin (http shim)', (() => { const r = httpFor('kotlin'); return r.ok && emitKotlin(r.program).includes('http.request') })(), true)
+  const httpFor = (
+    env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin',
+  ) =>
+    compile(
+      { file: 'h.tree', text: httpSrc },
+      { resolve: withNativeEnv(env, stdlib) },
+    )
+  expect(
+    'http compiles for node (fetch shim)',
+    (() => {
+      const r = httpFor('node')
+      return r.ok && r.typescript.includes('http.request')
+    })(),
+    true,
+  )
+  expect(
+    'http compiles for rust (http shim)',
+    (() => {
+      const r = httpFor('rust')
+      return r.ok && emitRust(r.program).includes('http::request')
+    })(),
+    true,
+  )
+  expect(
+    'http compiles for swift (http shim)',
+    (() => {
+      const r = httpFor('swift')
+      return r.ok && emitSwift(r.program).includes('http.request')
+    })(),
+    true,
+  )
+  expect(
+    'http compiles for kotlin (http shim)',
+    (() => {
+      const r = httpFor('kotlin')
+      return r.ok && emitKotlin(r.program).includes('http.request')
+    })(),
+    true,
+  )
 
-  console.log(`\nio: ${pass} pass, ${fail} fail  (public file API -> hidden node native -> real fs; + cross-target compile)`)
+  console.log(
+    `\nio: ${pass} pass, ${fail} fail  (public file API -> hidden node native -> real fs; + cross-target compile)`,
+  )
   if (fail > 0) process.exit(1)
 }
 

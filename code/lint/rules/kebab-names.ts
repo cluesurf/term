@@ -7,7 +7,7 @@ import type { Rule } from '@/code/lint/rule'
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 
 function offenders(names: Array<string>): Array<string> {
-  return names.filter((n) => n.length > 0 && !KEBAB.test(n))
+  return names.filter(n => n.length > 0 && !KEBAB.test(n))
 }
 
 export const kebabNames: Rule = {
@@ -21,11 +21,15 @@ export const kebabNames: Rule = {
     const s = target.node
     let names: Array<string> = []
     if (s.form === 'let') names = [s.name]
-    else if (s.form === 'function') names = [s.name, ...s.params.map((p) => p.name)]
+    else if (s.form === 'function')
+      names = [s.name, ...s.params.map(p => p.name)]
     else if (s.form === 'record-type') names = [s.name]
     else return
     for (const name of offenders(names)) {
-      context.report({ message: `the name "${name}" should be kebab-case`, span: s.span })
+      context.report({
+        message: `the name "${name}" should be kebab-case`,
+        span: s.span,
+      })
     }
   },
 }

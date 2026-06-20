@@ -19,8 +19,13 @@ export function toTrits(value: bigint): Trit[] {
   while (v !== 0n) {
     // remainder in {0,1,2}, then shift 2 down to -1 so digits stay balanced
     let r = ((v % 3n) + 3n) % 3n
-    if (r === 2n) { trits.push(-1); v = (v + 1n) / 3n }
-    else { trits.push(Number(r) as Trit); v = (v - r) / 3n }
+    if (r === 2n) {
+      trits.push(-1)
+      v = (v + 1n) / 3n
+    } else {
+      trits.push(Number(r) as Trit)
+      v = (v - r) / 3n
+    }
   }
   return trits
 }
@@ -38,14 +43,14 @@ export function fromTrits(trits: readonly Trit[]): bigint {
 
 // negate, just flip every digit's sign. This is the gift of balanced ternary: no two's complement, no sign bit.
 export function negateTrits(trits: readonly Trit[]): Trit[] {
-  return trits.map((t) => (-t) as Trit)
+  return trits.map(t => -t as Trit)
 }
 
 // the printable balanced-ternary string, most significant first (e.g. 5 -> "+--", since 5 = 9 - 3 - 1)
 export function tritString(value: bigint): string {
   const trits = toTrits(value)
   return trits
-    .map((t) => GLYPH[String(t)]!)
+    .map(t => GLYPH[String(t)]!)
     .reverse()
     .join('')
 }
@@ -77,7 +82,10 @@ export function tritWordRange(n: number): { min: bigint; max: bigint } {
 // pad or check a digit array to a fixed width (used when storing a fixed-resolution word)
 export function toFixedTrits(value: bigint, width: number): Trit[] {
   const trits = toTrits(value)
-  if (trits.length > width) throw new Error(`value ${value} needs ${trits.length} trits, exceeds width ${width}`)
+  if (trits.length > width)
+    throw new Error(
+      `value ${value} needs ${trits.length} trits, exceeds width ${width}`,
+    )
   while (trits.length < width) trits.push(0)
   return trits
 }

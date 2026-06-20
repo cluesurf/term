@@ -27,12 +27,17 @@ function keyTrits(key: string): Trit[] {
   const out: Trit[] = []
   for (const ch of key) {
     const trits = toTrits(BigInt(ch.codePointAt(0)!))
-    for (let i = 0; i < TRITS_PER_CODEPOINT; i++) out.push(trits[i] ?? 0)
+    for (let i = 0; i < TRITS_PER_CODEPOINT; i++)
+      out.push(trits[i] ?? 0)
   }
   return out
 }
 
-function descend<V>(root: TrieNode<V>, trits: Trit[], create: boolean): TrieNode<V> | undefined {
+function descend<V>(
+  root: TrieNode<V>,
+  trits: Trit[],
+  create: boolean,
+): TrieNode<V> | undefined {
   let node = root
   for (const t of trits) {
     const slot = t + 1
@@ -47,7 +52,11 @@ function descend<V>(root: TrieNode<V>, trits: Trit[], create: boolean): TrieNode
   return node
 }
 
-export function set<V>(map: TernaryMap<V>, key: string, value: V): void {
+export function set<V>(
+  map: TernaryMap<V>,
+  key: string,
+  value: V,
+): void {
   const node = descend(map.root, keyTrits(key), true)!
   if (!node.entry) map.size += 1
   node.entry = { key, value }
@@ -69,10 +78,14 @@ export function remove<V>(map: TernaryMap<V>, key: string): boolean {
   return true
 }
 
-export function size<V>(map: TernaryMap<V>): number { return map.size }
+export function size<V>(map: TernaryMap<V>): number {
+  return map.size
+}
 
 // every stored entry, in trit order (a stable, content-sorted traversal)
-export function entries<V>(map: TernaryMap<V>): { key: string; value: V }[] {
+export function entries<V>(
+  map: TernaryMap<V>,
+): { key: string; value: V }[] {
   const out: { key: string; value: V }[] = []
   const walk = (node: TrieNode<V>): void => {
     if (node.entry) out.push(node.entry)
@@ -82,5 +95,9 @@ export function entries<V>(map: TernaryMap<V>): { key: string; value: V }[] {
   return out
 }
 
-export function keys<V>(map: TernaryMap<V>): string[] { return entries(map).map((e) => e.key) }
-export function values<V>(map: TernaryMap<V>): V[] { return entries(map).map((e) => e.value) }
+export function keys<V>(map: TernaryMap<V>): string[] {
+  return entries(map).map(e => e.key)
+}
+export function values<V>(map: TernaryMap<V>): V[] {
+  return entries(map).map(e => e.value)
+}

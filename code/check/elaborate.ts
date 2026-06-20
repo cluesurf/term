@@ -17,19 +17,55 @@
 
 import type { Diagnostic, Span } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
-import type { Expression, Program, Proof, Statement, Type } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Proof,
+  Statement,
+  Type,
+} from '@/code/compile/node'
 import type { Context, Term, Value } from '@/code/check/judge'
-import { TypeError, areConvertible, bind, check, closeOver, contextWithSignature, defineConstant, evaluate, freshMeta, infer, litLevel, neutralVar, quote, resetDefinitions, resetMetas, showTerm } from '@/code/check/judge'
+import {
+  TypeError,
+  areConvertible,
+  bind,
+  check,
+  closeOver,
+  contextWithSignature,
+  defineConstant,
+  evaluate,
+  freshMeta,
+  infer,
+  litLevel,
+  neutralVar,
+  quote,
+  resetDefinitions,
+  resetMetas,
+  showTerm,
+} from '@/code/check/judge'
 import { terminatingFunctions } from '@/code/check/totality'
 
 // ---- term builders ----
 const constant = (name: string): Term => ({ tag: 'const', name })
 const variable = (index: number): Term => ({ tag: 'var', index })
 const TYPE0: Term = { tag: 'type', level: litLevel(0) }
-const arrow = (domain: Term, codomain: Term): Term => ({ tag: 'pi', mult: 'many', domain, codomain })
-const erasedPi = (domain: Term, codomain: Term): Term => ({ tag: 'pi', mult: 0, domain, codomain })
+const arrow = (domain: Term, codomain: Term): Term => ({
+  tag: 'pi',
+  mult: 'many',
+  domain,
+  codomain,
+})
+const erasedPi = (domain: Term, codomain: Term): Term => ({
+  tag: 'pi',
+  mult: 0,
+  domain,
+  codomain,
+})
 function apply(fun: Term, ...args: Array<Term>): Term {
-  return args.reduce<Term>((f, a) => ({ tag: 'app', fun: f, arg: a }), fun)
+  return args.reduce<Term>(
+    (f, a) => ({ tag: 'app', fun: f, arg: a }),
+    fun,
+  )
 }
 
 // ---- the base signature: base types and primitive operations as postulated kernel constants ----
@@ -40,12 +76,18 @@ const boolean = constant('Boolean')
 
 // a polymorphic, runtime-erased type argument is bound with multiplicity 0: present for typing, gone at run time.
 // equal : (0 A : Type 0) -> A -> A -> Boolean    (so == works at any type, with the witness type erased)
-const polyEquality = erasedPi(TYPE0, arrow(variable(0), arrow(variable(1), boolean)))
+const polyEquality = erasedPi(
+  TYPE0,
+  arrow(variable(0), arrow(variable(1), boolean)),
+)
 // cond : (0 A : Type 0) -> Boolean -> A -> A -> A    (the if-as-value eliminator, result type erased)
-const conditional = erasedPi(TYPE0, arrow(boolean, arrow(variable(1), arrow(variable(2), variable(3)))))
+const conditional = erasedPi(
+  TYPE0,
+  arrow(boolean, arrow(variable(1), arrow(variable(2), variable(3)))),
+)
 
 const BASE_SIGNATURE: Array<{ name: string; type: Term }> = [
-  ...BASE_TYPES.map((name) => ({ name, type: TYPE0 })),
+  ...BASE_TYPES.map(name => ({ name, type: TYPE0 })),
   // a canonical inhabitant per base type, so a literal elaborates to a genuine term of that type
   { name: 'numberValue', type: number },
   { name: 'stringValue', type: constant('String') },
@@ -74,20 +116,46 @@ const BASE_SIGNATURE: Array<{ name: string; type: Term }> = [
   { name: 'cond', type: conditional },
   // arrays: a type former and its constructors (element type erased)
   { name: 'Array', type: arrow(TYPE0, TYPE0) },
-  { name: 'arrayEmpty', type: erasedPi(TYPE0, apply(constant('Array'), variable(0))) },
-  { name: 'arrayPush', type: erasedPi(TYPE0, arrow(apply(constant('Array'), variable(0)), arrow(variable(1), apply(constant('Array'), variable(2))))) },
+  {
+    name: 'arrayEmpty',
+    type: erasedPi(TYPE0, apply(constant('Array'), variable(0))),
+  },
+  {
+    name: 'arrayPush',
+    type: erasedPi(
+      TYPE0,
+      arrow(
+        apply(constant('Array'), variable(0)),
+        arrow(variable(1), apply(constant('Array'), variable(2))),
+      ),
+    ),
+  },
 ]
 
 // surface binary operators to their primitive constant name (== / != are polymorphic, handled separately)
 const OPERATOR: Record<string, string> = {
-  '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', '%': 'mod',
-  '<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge', '&&': 'and', '||': 'or',
+  '+': 'add',
+  '-': 'sub',
+  '*': 'mul',
+  '/': 'div',
+  '%': 'mod',
+  '<': 'lt',
+  '<=': 'le',
+  '>': 'gt',
+  '>=': 'ge',
+  '&&': 'and',
+  '||': 'or',
 }
 
 // translate a surface type to a kernel type term at a given context depth. A named generic resolves to the de
 // Bruijn variable of its binder (generics are bound first, as erased type parameters); a base or known named type
 // resolves to its constant. Returns null if the type has no kernel encoding yet.
-function kernelTypeAt(type: Type | undefined, depth: number, generics: Map<string, number>, known: Set<string>): Term | null {
+function kernelTypeAt(
+  type: Type | undefined,
+  depth: number,
+  generics: Map<string, number>,
+  known: Set<string>,
+): Term | null {
   if (!type) return null
   switch (type.kind) {
     case 'number':
@@ -113,9 +181,13 @@ function kernelTypeAt(type: Type | undefined, depth: number, generics: Map<strin
 }
 
 // the closed kernel case (no generics in scope), for signatures of named types and the like
-const kernelType = (type: Type | undefined, known: Set<string>): Term | null => kernelTypeAt(type, 0, new Map(), known)
+const kernelType = (
+  type: Type | undefined,
+  known: Set<string>,
+): Term | null => kernelTypeAt(type, 0, new Map(), known)
 
-const isUnit = (term: Term): boolean => term.tag === 'const' && term.name === 'Unit'
+const isUnit = (term: Term): boolean =>
+  term.tag === 'const' && term.name === 'Unit'
 
 // thrown to abandon checking a construct the effect layer cannot represent yet (distinct from a real type error,
 // which surfaces as the kernel's TypeError). A declined function is left to the surface checker, with no diagnostic.
@@ -127,14 +199,24 @@ function need<T>(value: T | null): T {
 
 // the elaboration result: kernel diagnostics, plus which functions the kernel actually verified (versus declined
 // as outside the covered fragment). The `verified` set is what proves the kernel did the work, not a rubber stamp.
-export type ElaborationReport = { diagnostics: Array<Diagnostic>; verified: Array<string>; discharged: Array<Span> }
+export type ElaborationReport = {
+  diagnostics: Array<Diagnostic>
+  verified: Array<string>
+  discharged: Array<Span>
+}
 
 // the pipeline entry point: just the diagnostics
-export function elaborate(program: Program, file: string): Array<Diagnostic> {
+export function elaborate(
+  program: Program,
+  file: string,
+): Array<Diagnostic> {
   return elaborateReport(program, file).diagnostics
 }
 
-export function elaborateReport(program: Program, file: string): ElaborationReport {
+export function elaborateReport(
+  program: Program,
+  file: string,
+): ElaborationReport {
   resetMetas()
   resetDefinitions()
   const terminating = terminatingFunctions(program) // gate for transparent definitions
@@ -145,7 +227,8 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
 
   // named types we postulate as constants (record-types / enums), so they can appear in signatures
   const namedTypes = new Set<string>()
-  for (const statement of program) if (statement.form === 'record-type') namedTypes.add(statement.name)
+  for (const statement of program)
+    if (statement.form === 'record-type') namedTypes.add(statement.name)
 
   // data: encode each record-type as kernel constants. A struct gets a constructor (make__r) and one projection
   // per field (r__field); an enum gets a constructor per variant and a non-dependent eliminator (match__e). All
@@ -160,38 +243,76 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
     const self = constant(statement.name)
     if (statement.variants.length > 0) {
       // an enum: a constructor per variant (carrying its field types) and a match eliminator
-      const ok = statement.variants.every((variant) => variant.fields.every((f) => kernelType(f.type, namedTypes)))
+      const ok = statement.variants.every(variant =>
+        variant.fields.every(f => kernelType(f.type, namedTypes)),
+      )
       if (!ok) continue
       for (const variant of statement.variants) {
-        const fieldTypes = variant.fields.map((f) => kernelType(f.type, namedTypes)!)
-        dataSignature.push({ name: variant.name, type: fieldTypes.reduceRight<Term>((codomain, domain) => arrow(domain, codomain), self) })
+        const fieldTypes = variant.fields.map(
+          f => kernelType(f.type, namedTypes)!,
+        )
+        dataSignature.push({
+          name: variant.name,
+          type: fieldTypes.reduceRight<Term>(
+            (codomain, domain) => arrow(domain, codomain),
+            self,
+          ),
+        })
         variantToEnum.set(variant.name, statement.name)
       }
-      variantNames.set(statement.name, statement.variants.map((v) => v.name))
+      variantNames.set(
+        statement.name,
+        statement.variants.map(v => v.name),
+      )
       // match__e : (0 A : Type0) -> e -> A -> ... -> A  (one branch result per variant; fields are not bound by
       // the surface match, so each branch is just a value of the result type). Built inside-out: the result A sits
       // under (subject + n branch) binders, and branch i's domain A sits under (subject + i-1) binders.
       const n = statement.variants.length
       let eliminator: Term = variable(n + 1) // result A, deepest
-      for (let i = n; i >= 1; i--) eliminator = arrow(variable(i), eliminator) // branch i domain = A at index i
+      for (let i = n; i >= 1; i--)
+        eliminator = arrow(variable(i), eliminator) // branch i domain = A at index i
       eliminator = erasedPi(TYPE0, arrow(self, eliminator))
-      dataSignature.push({ name: `match__${statement.name}`, type: eliminator })
+      dataSignature.push({
+        name: `match__${statement.name}`,
+        type: eliminator,
+      })
       // derive the enum's self-type encoding: e = Self x. (P : e -> Type0) -> P v0 -> .. -> P vn -> P x. The enum
       // type then *is* its self-encoding (a transparent definition), not merely an opaque postulate. Constructors
       // and the eliminator above are exactly its introduction and elimination forms.
-      const variants = statement.variants.map((v) => v.name)
+      const variants = statement.variants.map(v => v.name)
       let body: Term = apply(variable(n), variable(n + 1)) // P x
-      for (let i = n - 1; i >= 0; i--) body = arrow(apply(variable(i), constant(variants[i]!)), body) // P v_i -> ..
+      for (let i = n - 1; i >= 0; i--)
+        body = arrow(apply(variable(i), constant(variants[i]!)), body) // P v_i -> ..
       body = arrow(arrow(self, TYPE0), body) // (P : e -> Type0) -> ..
-      enumEncodings.push({ name: statement.name, encoding: { tag: 'self', body } })
+      enumEncodings.push({
+        name: statement.name,
+        encoding: { tag: 'self', body },
+      })
     } else {
       // a struct: a constructor and one projection per field
-      const ok = statement.fields.every((f) => kernelType(f.type, namedTypes))
+      const ok = statement.fields.every(f =>
+        kernelType(f.type, namedTypes),
+      )
       if (!ok) continue
-      const fieldTypes = statement.fields.map((f) => kernelType(f.type, namedTypes)!)
-      dataSignature.push({ name: `make__${statement.name}`, type: fieldTypes.reduceRight<Term>((codomain, domain) => arrow(domain, codomain), self) })
-      for (const field of statement.fields) dataSignature.push({ name: `${statement.name}__${field.name}`, type: arrow(self, kernelType(field.type, namedTypes)!) })
-      recordFields.set(statement.name, statement.fields.map((f) => f.name))
+      const fieldTypes = statement.fields.map(
+        f => kernelType(f.type, namedTypes)!,
+      )
+      dataSignature.push({
+        name: `make__${statement.name}`,
+        type: fieldTypes.reduceRight<Term>(
+          (codomain, domain) => arrow(domain, codomain),
+          self,
+        ),
+      })
+      for (const field of statement.fields)
+        dataSignature.push({
+          name: `${statement.name}__${field.name}`,
+          type: arrow(self, kernelType(field.type, namedTypes)!),
+        })
+      recordFields.set(
+        statement.name,
+        statement.fields.map(f => f.name),
+      )
     }
   }
 
@@ -200,7 +321,9 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
   // the quantitative kernel and its type witnesses are erased at run time.
   const signature: Array<{ name: string; type: Term }> = [
     ...BASE_SIGNATURE,
-    ...namedTypes.size ? [...namedTypes].map((name) => ({ name, type: TYPE0 })) : [],
+    ...(namedTypes.size
+      ? [...namedTypes].map(name => ({ name, type: TYPE0 }))
+      : []),
     ...dataSignature,
   ]
   const functionType = new Map<string, Term>()
@@ -212,12 +335,28 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
     statement.generics.forEach((g, i) => generics.set(g.name, i))
     const arity = statement.generics.length + statement.params.length
     // result is at full depth (after all generic + value binders); each param at the depth before its own binder
-    const resultType = kernelTypeAt(statement.result, arity, generics, namedTypes)
-    const paramTypes = statement.params.map((p, i) => kernelTypeAt(p.type, statement.generics.length + i, generics, namedTypes))
-    if (!resultType || paramTypes.some((t) => t === null)) continue
+    const resultType = kernelTypeAt(
+      statement.result,
+      arity,
+      generics,
+      namedTypes,
+    )
+    const paramTypes = statement.params.map((p, i) =>
+      kernelTypeAt(
+        p.type,
+        statement.generics.length + i,
+        generics,
+        namedTypes,
+      ),
+    )
+    if (!resultType || paramTypes.some(t => t === null)) continue
     // build inside-out: result, then value params (many), then erased generic type params (0)
-    let type = (paramTypes as Array<Term>).reduceRight<Term>((codomain, domain) => arrow(domain, codomain), resultType)
-    for (let i = 0; i < statement.generics.length; i++) type = erasedPi(TYPE0, type)
+    let type = (paramTypes as Array<Term>).reduceRight<Term>(
+      (codomain, domain) => arrow(domain, codomain),
+      resultType,
+    )
+    for (let i = 0; i < statement.generics.length; i++)
+      type = erasedPi(TYPE0, type)
     functionType.set(statement.name, type)
     functionGenerics.set(statement.name, statement.generics.length)
     representable.add(statement.name)
@@ -230,7 +369,8 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
   // recursive reference safe.
   for (const { name, encoding } of enumEncodings) {
     try {
-      if (infer(baseContext, encoding).type.v === 'type') defineConstant(name, evaluate([], encoding))
+      if (infer(baseContext, encoding).type.v === 'type')
+        defineConstant(name, evaluate([], encoding))
     } catch {
       // the encoding did not form: keep the postulated type, no derivation
     }
@@ -242,7 +382,11 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
   type Scope = Map<string, number> // surface name -> the context level at which it was bound
 
   // elaborate an expression to a kernel term in the given context, or null if out of the covered fragment
-  function expr(node: Expression, scope: Scope, context: Context): Term | null {
+  function expr(
+    node: Expression,
+    scope: Scope,
+    context: Context,
+  ): Term | null {
     switch (node.form) {
       case 'integer':
       case 'float':
@@ -255,7 +399,8 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
         return constant('unitValue')
       case 'variable': {
         const level = scope.get(node.name)
-        if (level !== undefined) return variable(context.level - level - 1)
+        if (level !== undefined)
+          return variable(context.level - level - 1)
         if (functionType.has(node.name)) return constant(node.name) // a nullary function used as a value
         return null
       }
@@ -276,24 +421,40 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
           } catch {
             return null
           }
-          return apply(constant(node.op === '==' ? 'equal' : 'notequal'), witness, left, right)
+          return apply(
+            constant(node.op === '==' ? 'equal' : 'notequal'),
+            witness,
+            left,
+            right,
+          )
         }
         const op = OPERATOR[node.op]
         if (!op) return null
         return apply(constant(op), left, right)
       }
       case 'call': {
-        if (node.callee.form !== 'variable' || !functionType.has(node.callee.name)) return null
+        if (
+          node.callee.form !== 'variable' ||
+          !functionType.has(node.callee.name)
+        )
+          return null
         // a generic call gets a fresh metavariable per type parameter; the kernel solves them from the value
         // arguments by unification (the type witnesses are erased, multiplicity 0)
-        const typeArguments = Array.from({ length: functionGenerics.get(node.callee.name) ?? 0 }, () => freshMeta(TYPE0_VALUE))
+        const typeArguments = Array.from(
+          { length: functionGenerics.get(node.callee.name) ?? 0 },
+          () => freshMeta(TYPE0_VALUE),
+        )
         const args: Array<Term> = []
         for (const argument of node.args) {
           const term = expr(argument, scope, context)
           if (!term) return null
           args.push(term)
         }
-        return apply(constant(node.callee.name), ...typeArguments, ...args)
+        return apply(
+          constant(node.callee.name),
+          ...typeArguments,
+          ...args,
+        )
       }
       case 'member': {
         // p.field -> apply the field projection, after learning p's record type from the kernel
@@ -306,8 +467,10 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
         } catch {
           return null
         }
-        if (recordName === null || !recordFields.has(recordName)) return null
-        if (!recordFields.get(recordName)!.includes(node.name)) return null
+        if (recordName === null || !recordFields.has(recordName))
+          return null
+        if (!recordFields.get(recordName)!.includes(node.name))
+          return null
         return apply(constant(`${recordName}__${node.name}`), target)
       }
       case 'record': {
@@ -323,7 +486,7 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
         }
         const order = recordFields.get(node.name)
         if (!order) return null
-        const byName = new Map(node.fields.map((f) => [f.name, f.value]))
+        const byName = new Map(node.fields.map(f => [f.name, f.value]))
         const args: Array<Term> = []
         for (const fieldName of order) {
           const value = byName.get(fieldName)
@@ -350,13 +513,17 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
           element = freshMeta(TYPE0_VALUE)
         } else {
           try {
-            element = quote(context.level, infer(context, items[0]!).type)
+            element = quote(
+              context.level,
+              infer(context, items[0]!).type,
+            )
           } catch {
             return null
           }
         }
         let result = apply(constant('arrayEmpty'), element)
-        for (const item of items) result = apply(constant('arrayPush'), element, result, item)
+        for (const item of items)
+          result = apply(constant('arrayPush'), element, result, item)
         return result
       }
       default:
@@ -367,13 +534,21 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
   // elaborate a statement body to a single kernel term of the result type, or null if out of the fragment. The
   // result type is carried as a value and re-quoted at the current depth wherever a term is needed, so generic
   // result types stay correctly indexed under inner binders.
-  function body(statements: Array<Statement>, scope: Scope, context: Context, resultValue: Value): Term | null {
+  function body(
+    statements: Array<Statement>,
+    scope: Scope,
+    context: Context,
+    resultValue: Value,
+  ): Term | null {
     if (statements.length === 0) return null
     const [head, ...tail] = statements
     switch (head!.form) {
       case 'return': {
         if (tail.length > 0) return null // unreachable code after a return
-        if (!head!.value) return isUnit(quote(context.level, resultValue)) ? constant('unitValue') : null
+        if (!head!.value)
+          return isUnit(quote(context.level, resultValue))
+            ? constant('unitValue')
+            : null
         return expr(head!.value, scope, context)
       }
       case 'let': {
@@ -393,8 +568,15 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
         // model `let x = v; rest` as an immediately-applied lambda: (\ (x : T). rest) v. The codomain is the result
         // type quoted one binder deeper (so any generic reference is shifted past the new binding).
         const lambda: Term = { tag: 'lam', body: rest }
-        const piType: Term = arrow(quote(context.level, valueType), quote(context.level + 1, resultValue))
-        const annotated: Term = { tag: 'ann', term: lambda, type: piType }
+        const piType: Term = arrow(
+          quote(context.level, valueType),
+          quote(context.level + 1, resultValue),
+        )
+        const annotated: Term = {
+          tag: 'ann',
+          term: lambda,
+          type: piType,
+        }
         return apply(annotated, value)
       }
       case 'if': {
@@ -407,9 +589,20 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
         for (let i = head!.branches.length - 1; i >= 0; i--) {
           const branch = head!.branches[i]!
           const condition = expr(branch.cond, scope, context)
-          const consequent = body(branch.body, scope, context, resultValue)
+          const consequent = body(
+            branch.body,
+            scope,
+            context,
+            resultValue,
+          )
           if (!condition || !consequent) return null
-          result = apply(constant('cond'), quote(context.level, resultValue), condition, consequent, result)
+          result = apply(
+            constant('cond'),
+            quote(context.level, resultValue),
+            condition,
+            consequent,
+            result,
+          )
         }
         return result
       }
@@ -424,7 +617,10 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
         if (!subject) return null
         let enumName: string | null = null
         try {
-          const type = quote(context.level, infer(context, subject).type)
+          const type = quote(
+            context.level,
+            infer(context, subject).type,
+          )
           if (type.tag === 'const') enumName = type.name
         } catch {
           return null
@@ -433,13 +629,18 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
         if (!order) return null
         const branches: Array<Term> = []
         for (const variant of order) {
-          const branch = head!.cases.find((c) => c.label === variant)
+          const branch = head!.cases.find(c => c.label === variant)
           if (!branch) return null // non-exhaustive against the eliminator: decline
           const term = body(branch.body, scope, context, resultValue)
           if (!term) return null
           branches.push(term)
         }
-        return apply(constant(`match__${enumName}`), quote(context.level, resultValue), subject, ...branches)
+        return apply(
+          constant(`match__${enumName}`),
+          quote(context.level, resultValue),
+          subject,
+          ...branches,
+        )
       }
       default:
         return null
@@ -449,11 +650,20 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
   // check an explicit proof of `left == right`. 'ok' = proved, 'fail' = an explicit tactic that did not work,
   // 'open' = no proof or a tactic not yet supported (the linear prover then gets a chance). Implemented tactics:
   // `melt` / `calm` (definitional equality) and `cite` (a previously proven lemma of the same equality).
-  function checkProof(proof: Array<Proof> | undefined, level: number, left: Value, right: Value): 'ok' | 'fail' | 'open' {
-    if (!proof || proof.length === 0) return areConvertible(level, left, right) ? 'ok' : 'open'
+  function checkProof(
+    proof: Array<Proof> | undefined,
+    level: number,
+    left: Value,
+    right: Value,
+  ): 'ok' | 'fail' | 'open' {
+    if (!proof || proof.length === 0)
+      return areConvertible(level, left, right) ? 'ok' : 'open'
     if (proof.length > 1) return 'open' // a sequence of top-level tactics is not lowered yet
     const tactic = proof[0]!
-    const here = { left: showTerm(quote(level, left)), right: showTerm(quote(level, right)) }
+    const here = {
+      left: showTerm(quote(level, left)),
+      right: showTerm(quote(level, right)),
+    }
     switch (tactic.head) {
       case 'melt':
       case 'calm':
@@ -462,13 +672,19 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
         const lemma = tactic.arg ? lemmas.get(tactic.arg) : undefined
         if (!lemma) return 'fail'
         // a cited lemma must state the same equality, in either orientation (== is symmetric)
-        return (lemma.left === here.left && lemma.right === here.right) || (lemma.left === here.right && lemma.right === here.left) ? 'ok' : 'fail'
+        return (lemma.left === here.left &&
+          lemma.right === here.right) ||
+          (lemma.left === here.right && lemma.right === here.left)
+          ? 'ok'
+          : 'fail'
       }
       case 'turn': {
         // symmetry: prove a == b by citing the reversed lemma b == a
         const lemma = tactic.arg ? lemmas.get(tactic.arg) : undefined
         if (!lemma) return 'fail'
-        return lemma.left === here.right && lemma.right === here.left ? 'ok' : 'fail'
+        return lemma.left === here.right && lemma.right === here.left
+          ? 'ok'
+          : 'fail'
       }
       case 'link': {
         // transitivity: a chain of cited lemmas a == m, m == ..., == b whose ends match the goal
@@ -482,7 +698,8 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
           eqs.push(lemma)
         }
         if (eqs[0]!.left !== here.left) return 'fail'
-        for (let i = 0; i < eqs.length - 1; i++) if (eqs[i]!.right !== eqs[i + 1]!.left) return 'fail'
+        for (let i = 0; i < eqs.length - 1; i++)
+          if (eqs[i]!.right !== eqs[i + 1]!.left) return 'fail'
         return eqs[eqs.length - 1]!.right === here.right ? 'ok' : 'fail'
       }
       default:
@@ -494,7 +711,12 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
   // it stays the authority); control flow, mutation, loops, and match are typed structurally. This covers the
   // effectful surface (it is not a pure proof term). Throws Decline if anything is unrepresentable, or the
   // kernel's TypeError on a genuine mismatch. Threads the context through bindings.
-  function checkCommands(statements: Array<Statement>, scope: Scope, context: Context, resultValue: Value): void {
+  function checkCommands(
+    statements: Array<Statement>,
+    scope: Scope,
+    context: Context,
+    resultValue: Value,
+  ): void {
     let sc = scope
     let ctx = context
     for (const statement of statements) {
@@ -523,7 +745,12 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
           infer(ctx, need(expr(statement.expr, sc, ctx))) // ensure it is well-typed
           break
         case 'return':
-          if (statement.value) check(ctx, need(expr(statement.value, sc, ctx)), resultValue)
+          if (statement.value)
+            check(
+              ctx,
+              need(expr(statement.value, sc, ctx)),
+              resultValue,
+            )
           else if (!isUnitValue(resultValue)) throw new Decline()
           break
         case 'if':
@@ -531,7 +758,8 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
             check(ctx, need(expr(branch.cond, sc, ctx)), BOOLEAN_VALUE)
             checkCommands(branch.body, sc, ctx, resultValue)
           }
-          if (statement.otherwise) checkCommands(statement.otherwise, sc, ctx, resultValue)
+          if (statement.otherwise)
+            checkCommands(statement.otherwise, sc, ctx, resultValue)
           break
         case 'while':
           check(ctx, need(expr(statement.cond, sc, ctx)), BOOLEAN_VALUE)
@@ -539,19 +767,38 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
           break
         case 'for-each': {
           const iterable = need(expr(statement.iterable, sc, ctx))
-          const iterableType = quote(ctx.level, infer(ctx, iterable).type)
-          if (iterableType.tag !== 'app' || iterableType.fun.tag !== 'const' || iterableType.fun.name !== 'Array') throw new Decline()
+          const iterableType = quote(
+            ctx.level,
+            infer(ctx, iterable).type,
+          )
+          if (
+            iterableType.tag !== 'app' ||
+            iterableType.fun.tag !== 'const' ||
+            iterableType.fun.name !== 'Array'
+          )
+            throw new Decline()
           const elementType = evaluate(ctx.env, iterableType.arg)
           const innerScope = new Map(sc).set(statement.item, ctx.level)
-          checkCommands(statement.body, innerScope, bind(ctx, 'many', elementType), resultValue)
+          checkCommands(
+            statement.body,
+            innerScope,
+            bind(ctx, 'many', elementType),
+            resultValue,
+          )
           break
         }
         case 'match': {
           const subject = need(expr(statement.subject, sc, ctx))
           const subjectType = quote(ctx.level, infer(ctx, subject).type)
-          if (subjectType.tag !== 'const' || !variantNames.has(subjectType.name)) throw new Decline()
-          for (const branch of statement.cases) checkCommands(branch.body, sc, ctx, resultValue)
-          if (statement.otherwise) checkCommands(statement.otherwise, sc, ctx, resultValue)
+          if (
+            subjectType.tag !== 'const' ||
+            !variantNames.has(subjectType.name)
+          )
+            throw new Decline()
+          for (const branch of statement.cases)
+            checkCommands(branch.body, sc, ctx, resultValue)
+          if (statement.otherwise)
+            checkCommands(statement.otherwise, sc, ctx, resultValue)
           break
         }
         case 'throw':
@@ -571,12 +818,28 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
                 infer(ctx, right)
                 const leftValue = evaluate(ctx.env, left)
                 const rightValue = evaluate(ctx.env, right)
-                const verdict = checkProof(statement.proof, ctx.level, leftValue, rightValue)
+                const verdict = checkProof(
+                  statement.proof,
+                  ctx.level,
+                  leftValue,
+                  rightValue,
+                )
                 if (verdict === 'ok') {
                   discharged.push(statement.span)
-                  if (statement.name) lemmas.set(statement.name, { left: showTerm(quote(ctx.level, leftValue)), right: showTerm(quote(ctx.level, rightValue)) })
+                  if (statement.name)
+                    lemmas.set(statement.name, {
+                      left: showTerm(quote(ctx.level, leftValue)),
+                      right: showTerm(quote(ctx.level, rightValue)),
+                    })
                 } else if (verdict === 'fail') {
-                  diagnostics.push(diagnose('invalid-proof', { file, span: statement.span, message: 'this proof does not establish the equality' }))
+                  diagnostics.push(
+                    diagnose('invalid-proof', {
+                      file,
+                      span: statement.span,
+                      message:
+                        'this proof does not establish the equality',
+                    }),
+                  )
                 }
                 // 'open' (no proof, or a tactic not yet supported): leave it to the linear prover
               } catch {
@@ -596,12 +859,19 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
   }
 
   for (const statement of program) {
-    if (statement.form !== 'function' || !representable.has(statement.name)) continue
+    if (
+      statement.form !== 'function' ||
+      !representable.has(statement.name)
+    )
+      continue
     // peel the function's kernel type pi-by-pi to build the body context: the leading generic binders, then the
     // value parameters (named into scope), leaving the result type. This handles generics and dependency uniformly.
     let context = baseContext
     const scope: Scope = new Map()
-    let remaining: Value = evaluate([], functionType.get(statement.name)!)
+    let remaining: Value = evaluate(
+      [],
+      functionType.get(statement.name)!,
+    )
     for (let i = 0; i < statement.generics.length; i++) {
       if (remaining.v !== 'pi') break
       const witness = neutralVar(context.level)
@@ -632,7 +902,12 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
         // verified functions are included.
         if (terminating.has(statement.name)) {
           let lambda: Term = term
-          for (let i = 0; i < statement.generics.length + statement.params.length; i++) lambda = { tag: 'lam', body: lambda }
+          for (
+            let i = 0;
+            i < statement.generics.length + statement.params.length;
+            i++
+          )
+            lambda = { tag: 'lam', body: lambda }
           defineConstant(statement.name, evaluate([], lambda))
         }
       } else {
@@ -641,7 +916,13 @@ export function elaborateReport(program: Program, file: string): ElaborationRepo
       verified.push(statement.name)
     } catch (error) {
       if (error instanceof TypeError) {
-        diagnostics.push(diagnose('type-mismatch', { file, span: statement.span, message: `kernel: ${error.message}` }))
+        diagnostics.push(
+          diagnose('type-mismatch', {
+            file,
+            span: statement.span,
+            message: `kernel: ${error.message}`,
+          }),
+        )
       }
       // Decline (unrepresentable) or any other error: leave this function to the surface checker, no diagnostic
     }

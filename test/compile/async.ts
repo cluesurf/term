@@ -27,27 +27,46 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
 async function main(): Promise<void> {
   const result = compile({ file: 'async.tree', text: SOURCE })
   if (!result.ok) {
-    for (const d of result.diagnostics) console.log(render(d, SOURCE.split('\n'), false))
+    for (const d of result.diagnostics)
+      console.log(render(d, SOURCE.split('\n'), false))
     console.log('\nasync: 0 pass, 1 fail')
     return
   }
   console.log('--- emitted TypeScript ---')
   console.log(result.typescript)
-  expect('emits async function', result.typescript.includes('async function fetchAnswer'), true)
-  expect('emits Promise return', result.typescript.includes('Promise<number>'), true)
-  expect('emits await', result.typescript.includes('await fetchAnswer()'), true)
+  expect(
+    'emits async function',
+    result.typescript.includes('async function fetchAnswer'),
+    true,
+  )
+  expect(
+    'emits Promise return',
+    result.typescript.includes('Promise<number>'),
+    true,
+  )
+  expect(
+    'emits await',
+    result.typescript.includes('await fetchAnswer()'),
+    true,
+  )
 
   const dir = mkdtempSync(join(tmpdir(), 'seed-async-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
-  const mod = (await import(pathToFileURL(file).href)) as { run: () => Promise<number> }
+  const mod = (await import(pathToFileURL(file).href)) as {
+    run: () => Promise<number>
+  }
   expect('async run() resolves to 42', await mod.run(), 42)
 
   console.log(`\nasync: ${pass} pass, ${fail} fail`)

@@ -46,9 +46,7 @@ export async function callTest(input: {
   }
 }
 
-async function hasDeckTree(input: {
-  root: string
-}): Promise<boolean> {
+async function hasDeckTree(input: { root: string }): Promise<boolean> {
   const fs = await import('fs/promises')
   const path = await import('path')
   try {
@@ -80,7 +78,10 @@ async function findTestFiles(input: {
         const text = await fs.readFile(full, 'utf-8')
         if (/^test /m.test(text)) {
           if (input.filter) {
-            if (full.includes(input.filter) || text.includes(input.filter)) {
+            if (
+              full.includes(input.filter) ||
+              text.includes(input.filter)
+            ) {
               results.push(full)
             }
           } else {
@@ -118,7 +119,13 @@ async function runSeedTests(input: {
     return
   }
 
-  console.log(fade(`  Found ${files.length} test file${files.length === 1 ? '' : 's'}`))
+  console.log(
+    fade(
+      `  Found ${files.length} test file${
+        files.length === 1 ? '' : 's'
+      }`,
+    ),
+  )
 
   let passed = 0
   let failed = 0

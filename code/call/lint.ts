@@ -26,18 +26,27 @@ function toDiagnostic(finding: Finding, file: string): Diagnostic {
 // dropped (the first one in source order wins).
 function applyEdits(text: string, edits: Array<TextEdit>): string {
   const lineStarts = [0]
-  for (let i = 0; i < text.length; i++) if (text[i] === '\n') lineStarts.push(i + 1)
-  const offset = (pos: { line: number; column: number }) => (lineStarts[pos.line] ?? text.length) + pos.column
+  for (let i = 0; i < text.length; i++)
+    if (text[i] === '\n') lineStarts.push(i + 1)
+  const offset = (pos: { line: number; column: number }) =>
+    (lineStarts[pos.line] ?? text.length) + pos.column
 
   const ranges = edits
-    .map((e) => ({ start: offset(e.span.start), end: offset(e.span.end), text: e.text }))
+    .map(e => ({
+      start: offset(e.span.start),
+      end: offset(e.span.end),
+      text: e.text,
+    }))
     .sort((a, b) => b.start - a.start)
 
   let result = text
   let lastStart = Infinity
   for (const range of ranges) {
     if (range.end > lastStart) continue // overlaps an already-applied edit; skip
-    result = result.slice(0, range.start) + range.text + result.slice(range.end)
+    result =
+      result.slice(0, range.start) +
+      range.text +
+      result.slice(range.end)
     lastStart = range.start
   }
   return result
@@ -69,14 +78,20 @@ export async function callLint(input: {
     if (findings.length === 0) continue
 
     if (input.fix) {
-      const fixes = findings.map((f) => f.fix).filter((f): f is TextEdit => Boolean(f))
-      const fixedText = fixes.length > 0 ? applyEdits(text, fixes) : text
+      const fixes = findings
+        .map(f => f.fix)
+        .filter((f): f is TextEdit => Boolean(f))
+      const fixedText =
+        fixes.length > 0 ? applyEdits(text, fixes) : text
       if (fixes.length > 0) {
         await fs.writeFile(file, fixedText, 'utf-8')
         totalFixed += fixes.length
       }
       // re-lint to report what the fixes did not resolve
-      const remaining = analyze({ file: relative, text: fixedText }).lint()
+      const remaining = analyze({
+        file: relative,
+        text: fixedText,
+      }).lint()
       const lines = fixedText.split('\n')
       for (const finding of remaining) {
         if (finding.severity === 'error') totalErrors++
@@ -93,7 +108,12 @@ export async function callLint(input: {
     }
   }
 
-  if (totalFixed > 0) console.log(fade(`  applied ${totalFixed} fix${totalFixed === 1 ? '' : 'es'}`))
+  if (totalFixed > 0)
+    console.log(
+      fade(
+        `  applied ${totalFixed} fix${totalFixed === 1 ? '' : 'es'}`,
+      ),
+    )
   if (totalFindings === 0) logGood('No lint findings')
   else logWarnSummary(totalFindings, totalErrors)
   if (totalErrors > 0) process.exit(1)
@@ -102,8 +122,10 @@ export async function callLint(input: {
 function logWarnSummary(findings: number, errors: number): void {
   const warnings = findings - errors
   const parts: Array<string> = []
-  if (errors > 0) parts.push(`${errors} error${errors === 1 ? '' : 's'}`)
-  if (warnings > 0) parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`)
+  if (errors > 0)
+    parts.push(`${errors} error${errors === 1 ? '' : 's'}`)
+  if (warnings > 0)
+    parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`)
   if (errors > 0) logFail(parts.join(', '))
   else console.log(fade(`  ${parts.join(', ')}`))
 }

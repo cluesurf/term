@@ -62,32 +62,43 @@ task name-of
 async function main(): Promise<void> {
   const result = compile({ file: 'enum.tree', text: EXHAUSTIVE })
   if (!result.ok) {
-    for (const d of result.diagnostics) console.log(render(d, EXHAUSTIVE.split('\n'), false))
+    for (const d of result.diagnostics)
+      console.log(render(d, EXHAUSTIVE.split('\n'), false))
     console.log('\nenum: 0 pass, 1 fail')
     return
   }
   console.log('--- emitted TypeScript ---')
   console.log(result.typescript)
-  ok('emits discriminated union', result.typescript.includes('type Color ='))
+  ok(
+    'emits discriminated union',
+    result.typescript.includes('type Color ='),
+  )
   ok('emits variant tag', result.typescript.includes('form: "green"'))
-  ok('emits match as form switch', result.typescript.includes('.form === "red"'))
+  ok(
+    'emits match as form switch',
+    result.typescript.includes('.form === "red"'),
+  )
 
   // run it: name-of(green) === "green"
   const dir = mkdtempSync(join(tmpdir(), 'seed-enum-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
-  const mod = (await import(pathToFileURL(file).href)) as { run: () => string }
+  const mod = (await import(pathToFileURL(file).href)) as {
+    run: () => string
+  }
   ok('run() returns "green"', mod.run() === 'green', `got ${mod.run()}`)
 
   // exhaustiveness: the missing-case version is a compile error
   const bad = compile({ file: 'enum.tree', text: NON_EXHAUSTIVE })
   ok(
     'non-exhaustive match caught',
-    !bad.ok && bad.diagnostics.some((d) => d.name === 'non-exhaustive'),
-    bad.ok ? 'compiled cleanly' : bad.diagnostics.map((d) => d.name).join(','),
+    !bad.ok && bad.diagnostics.some(d => d.name === 'non-exhaustive'),
+    bad.ok
+      ? 'compiled cleanly'
+      : bad.diagnostics.map(d => d.name).join(','),
   )
   if (!bad.ok) {
-    const d = bad.diagnostics.find((x) => x.name === 'non-exhaustive')
+    const d = bad.diagnostics.find(x => x.name === 'non-exhaustive')
     if (d) console.log(`      (${d.message})`)
   }
 

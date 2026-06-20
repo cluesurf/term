@@ -1,6 +1,12 @@
 import { loadManifest, showMark } from '@cluesurf/deck.tree'
 import chalk from 'chalk'
-import { logFail, formatError, name, mark as markColor, fade } from '../tint'
+import {
+  logFail,
+  formatError,
+  name,
+  mark as markColor,
+  fade,
+} from '../tint'
 
 export async function callNote(input: {
   root: string
@@ -14,7 +20,10 @@ export async function callNote(input: {
 
     console.log('')
     console.log(
-      '  ' + chalk.bold(name(fullName)) + ' ' + markColor(showMark(manifest.mark)),
+      '  ' +
+        chalk.bold(name(fullName)) +
+        ' ' +
+        markColor(showMark(manifest.mark)),
     )
 
     if (manifest.head) {

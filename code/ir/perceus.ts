@@ -31,7 +31,10 @@ function reads(inst: Inst): Array<string> {
 }
 
 // run Perceus over a straight-line function body. params are the owned inputs.
-export function perceus(params: Array<string>, body: Array<Inst>): Array<Inst> {
+export function perceus(
+  params: Array<string>,
+  body: Array<Inst>,
+): Array<Inst> {
   // last-use index of each variable (the point where its owned reference is consumed)
   const lastUse = new Map<string, number>()
   body.forEach((inst, i) => {
@@ -41,13 +44,15 @@ export function perceus(params: Array<string>, body: Array<Inst>): Array<Inst> {
   // arity of each record binding, for reuse matching
   const arity = new Map<string, number>()
   for (const inst of body) {
-    if (inst.op === 'let' && inst.value.kind === 'make') arity.set(inst.name, inst.value.args.length)
+    if (inst.op === 'let' && inst.value.kind === 'make')
+      arity.set(inst.name, inst.value.args.length)
   }
 
   const out: Array<Inst> = []
 
   // a parameter never used must be dropped at entry (it was owned but consumed nowhere)
-  for (const p of params) if (!lastUse.has(p)) out.push({ op: 'drop', name: p })
+  for (const p of params)
+    if (!lastUse.has(p)) out.push({ op: 'drop', name: p })
 
   body.forEach((inst, i) => {
     // a non-last use needs a dup: we are taking a reference while the value lives on for a later use
@@ -56,14 +61,18 @@ export function perceus(params: Array<string>, body: Array<Inst>): Array<Inst> {
     }
     out.push(inst)
     // a binding that is never read is dead: drop it right after it is created
-    if (inst.op === 'let' && !lastUse.has(inst.name)) out.push({ op: 'drop', name: inst.name })
+    if (inst.op === 'let' && !lastUse.has(inst.name))
+      out.push({ op: 'drop', name: inst.name })
   })
 
   return reuse(out, arity)
 }
 
 // FBIP: a `drop x` of a record immediately followed by a `let y = make(...)` of the same arity reuses x's cell
-function reuse(insts: Array<Inst>, arity: Map<string, number>): Array<Inst> {
+function reuse(
+  insts: Array<Inst>,
+  arity: Map<string, number>,
+): Array<Inst> {
   const out: Array<Inst> = []
   for (let i = 0; i < insts.length; i++) {
     const here = insts[i]!
@@ -77,7 +86,11 @@ function reuse(insts: Array<Inst>, arity: Map<string, number>): Array<Inst> {
       next.value.args.length === arity.get(here.name)
     ) {
       // reuse the dropped cell for the new construction; the drop is subsumed by the reuse
-      out.push({ op: 'let', name: next.name, value: { ...next.value, reuse: here.name } })
+      out.push({
+        op: 'let',
+        name: next.name,
+        value: { ...next.value, reuse: here.name },
+      })
       i++ // skip the consumed `let`
     } else {
       out.push(here)
@@ -90,17 +103,24 @@ function reuse(insts: Array<Inst>, arity: Map<string, number>): Array<Inst> {
 // balanced ownership. A value owned at the branch is consumed on every path: if one branch uses it (consuming at
 // last use) and the other does not, a `drop` is inserted in the other branch so neither leaks nor double-frees.
 // This generalizes the straight-line `perceus` to the CFG. Booleans / conditions are treated as copyable (no RC).
-export function perceusControl(params: Array<string>, body: Array<Inst>): Array<Inst> {
+export function perceusControl(
+  params: Array<string>,
+  body: Array<Inst>,
+): Array<Inst> {
   const [out, liveIn] = processBlock(body, new Set<string>())
   // an owned parameter never used on any path is dropped at entry
   const entryDrops: Array<Inst> = []
-  for (const p of params) if (!liveIn.has(p)) entryDrops.push({ op: 'drop', name: p })
+  for (const p of params)
+    if (!liveIn.has(p)) entryDrops.push({ op: 'drop', name: p })
   return [...entryDrops, ...out]
 }
 
 // process a block backward. `liveAfter` is the set of variables that must remain owned when the block exits.
 // Returns the rewritten block and the set live at entry.
-function processBlock(insts: Array<Inst>, liveAfter: Set<string>): [Array<Inst>, Set<string>] {
+function processBlock(
+  insts: Array<Inst>,
+  liveAfter: Set<string>,
+): [Array<Inst>, Set<string>] {
   const live = new Set(liveAfter)
   const reversed: Array<Inst> = []
   for (let i = insts.length - 1; i >= 0; i--) {
@@ -109,17 +129,28 @@ function processBlock(insts: Array<Inst>, liveAfter: Set<string>): [Array<Inst>,
       const [thenOut, thenIn] = processBlock(inst.then, live)
       const [elseOut, elseIn] = processBlock(inst.else, live)
       // a variable owned at the if but consumed in only one branch must be dropped in the other
-      const dropInElse = [...thenIn].filter((v) => !elseIn.has(v) && !live.has(v)).map((v): Inst => ({ op: 'drop', name: v }))
-      const dropInThen = [...elseIn].filter((v) => !thenIn.has(v) && !live.has(v)).map((v): Inst => ({ op: 'drop', name: v }))
-      reversed.push({ op: 'if', cond: inst.cond, then: [...dropInThen, ...thenOut], else: [...dropInElse, ...elseOut] })
+      const dropInElse = [...thenIn]
+        .filter(v => !elseIn.has(v) && !live.has(v))
+        .map((v): Inst => ({ op: 'drop', name: v }))
+      const dropInThen = [...elseIn]
+        .filter(v => !thenIn.has(v) && !live.has(v))
+        .map((v): Inst => ({ op: 'drop', name: v }))
+      reversed.push({
+        op: 'if',
+        cond: inst.cond,
+        then: [...dropInThen, ...thenOut],
+        else: [...dropInElse, ...elseOut],
+      })
       for (const v of thenIn) live.add(v)
       for (const v of elseIn) live.add(v)
       continue
     }
     const def = inst.op === 'let' ? inst.name : undefined
     const dups: Array<Inst> = []
-    for (const v of reads(inst)) if (live.has(v)) dups.push({ op: 'dup', name: v }) // used again later: take a reference
-    if (def && inst.op === 'let' && !live.has(def)) reversed.push({ op: 'drop', name: def }) // a dead binding
+    for (const v of reads(inst))
+      if (live.has(v)) dups.push({ op: 'dup', name: v }) // used again later: take a reference
+    if (def && inst.op === 'let' && !live.has(def))
+      reversed.push({ op: 'drop', name: def }) // a dead binding
     reversed.push(inst)
     for (const d of dups) reversed.push(d)
     if (def) live.delete(def)
@@ -138,12 +169,18 @@ export function showInst(inst: Inst): string {
       return `return ${inst.name}`
     case 'let': {
       const v = inst.value
-      if (v.kind === 'make') return `let ${inst.name} = make ${v.ctor}(${v.args.join(', ')})${v.reuse ? ` reuse ${v.reuse}` : ''}`
-      if (v.kind === 'call') return `let ${inst.name} = ${v.fn}(${v.args.join(', ')})`
+      if (v.kind === 'make')
+        return `let ${inst.name} = make ${v.ctor}(${v.args.join(
+          ', ',
+        )})${v.reuse ? ` reuse ${v.reuse}` : ''}`
+      if (v.kind === 'call')
+        return `let ${inst.name} = ${v.fn}(${v.args.join(', ')})`
       if (v.kind === 'var') return `let ${inst.name} = ${v.name}`
       return `let ${inst.name} = lit`
     }
     case 'if':
-      return `if ${inst.cond} { ${inst.then.map(showInst).join('; ')} } else { ${inst.else.map(showInst).join('; ')} }`
+      return `if ${inst.cond} { ${inst.then
+        .map(showInst)
+        .join('; ')} } else { ${inst.else.map(showInst).join('; ')} }`
   }
 }

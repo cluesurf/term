@@ -13,7 +13,10 @@ export type Linear = { terms: Map<string, number>; constant: number }
 type Inequality = { linear: Linear; strict: boolean }
 
 // ---- linear expression builders ----
-export function linear(terms: Record<string, number>, constant = 0): Linear {
+export function linear(
+  terms: Record<string, number>,
+  constant = 0,
+): Linear {
   return { terms: new Map(Object.entries(terms)), constant }
 }
 
@@ -31,11 +34,18 @@ function plus(a: Linear, b: Linear): Linear {
 
 // ---- public comparison builders (each returns an Inequality in `<= 0` / `< 0` form) ----
 // a <= b   ->   a - b <= 0
-export const atMost = (a: Linear, b: Linear): Inequality => ({ linear: plus(a, scale(b, -1)), strict: false })
+export const atMost = (a: Linear, b: Linear): Inequality => ({
+  linear: plus(a, scale(b, -1)),
+  strict: false,
+})
 // a < b    ->   a - b < 0
-export const below = (a: Linear, b: Linear): Inequality => ({ linear: plus(a, scale(b, -1)), strict: true })
+export const below = (a: Linear, b: Linear): Inequality => ({
+  linear: plus(a, scale(b, -1)),
+  strict: true,
+})
 // a >= b   ->   b - a <= 0
-export const atLeast = (a: Linear, b: Linear): Inequality => atMost(b, a)
+export const atLeast = (a: Linear, b: Linear): Inequality =>
+  atMost(b, a)
 // a > b    ->   b - a < 0
 export const above = (a: Linear, b: Linear): Inequality => below(b, a)
 
@@ -46,7 +56,9 @@ function negate(ineq: Inequality): Inequality {
 
 function variables(ineqs: Array<Inequality>): Array<string> {
   const set = new Set<string>()
-  for (const ineq of ineqs) for (const v of ineq.linear.terms.keys()) if (Math.abs(ineq.linear.terms.get(v)!) > 1e-12) set.add(v)
+  for (const ineq of ineqs)
+    for (const v of ineq.linear.terms.keys())
+      if (Math.abs(ineq.linear.terms.get(v)!) > 1e-12) set.add(v)
   return [...set]
 }
 
@@ -55,7 +67,10 @@ function coeff(ineq: Inequality, v: string): number {
 }
 
 // eliminate one variable by Fourier-Motzkin: combine each positive-coefficient row with each negative one
-function eliminate(ineqs: Array<Inequality>, v: string): Array<Inequality> {
+function eliminate(
+  ineqs: Array<Inequality>,
+  v: string,
+): Array<Inequality> {
   const positive: Array<Inequality> = []
   const negative: Array<Inequality> = []
   const free: Array<Inequality> = []
@@ -82,7 +97,17 @@ function eliminate(ineqs: Array<Inequality>, v: string): Array<Inequality> {
 function unsatisfiable(ineqs: Array<Inequality>): boolean {
   // integer tightening: the program variables are integers, so a strict `l < 0` is exactly `l + 1 <= 0`. Tightening
   // up front makes the procedure integer-sound (it now proves e.g. n > 0 => n >= 1, which is false over rationals).
-  let system = ineqs.map((ineq) => (ineq.strict ? { linear: { terms: ineq.linear.terms, constant: ineq.linear.constant + 1 }, strict: false } : ineq))
+  let system = ineqs.map(ineq =>
+    ineq.strict
+      ? {
+          linear: {
+            terms: ineq.linear.terms,
+            constant: ineq.linear.constant + 1,
+          },
+          strict: false,
+        }
+      : ineq,
+  )
   for (const v of variables(system)) system = eliminate(system, v)
   // every remaining constraint is `constant <= 0`; a positive constant is a contradiction
   for (const ineq of system) {
@@ -92,7 +117,10 @@ function unsatisfiable(ineqs: Array<Inequality>): boolean {
 }
 
 // does the conjunction of assumptions imply the goal? (the verification condition is valid)
-export function proves(assumptions: Array<Inequality>, goal: Inequality): boolean {
+export function proves(
+  assumptions: Array<Inequality>,
+  goal: Inequality,
+): boolean {
   // valid iff assumptions AND not(goal) is unsatisfiable
   return unsatisfiable([...assumptions, negate(goal)])
 }

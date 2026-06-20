@@ -13,7 +13,11 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
@@ -25,19 +29,32 @@ const modules = new Map<string, string>([
   // `c` bears from `a` (transitive re-export)
   ['@app/c', 'bear @app/a\n'],
 ])
-const resolve = (path: string): Source | undefined => (modules.has(path) ? { file: path, text: modules.get(path)! } : undefined)
+const resolve = (path: string): Source | undefined =>
+  modules.has(path)
+    ? { file: path, text: modules.get(path)! }
+    : undefined
 
 // importing the bearing module exposes the beared definition
 const direct = compile(
-  { file: 'main.tree', text: 'load @app/a\n  find widget\n\ntask one\n  like number\n  save w\n    make widget\n      bind size, mark 5\n  send back, read w/size\n' },
+  {
+    file: 'main.tree',
+    text: 'load @app/a\n  find widget\n\ntask one\n  like number\n  save w\n    make widget\n      bind size, mark 5\n  send back, read w/size\n',
+  },
   { resolve },
 )
 expect('a re-exports widget from b', direct.ok, true)
-expect('the re-exported form is usable (field read type-checks)', direct.ok && direct.typescript.includes('size'), true)
+expect(
+  'the re-exported form is usable (field read type-checks)',
+  direct.ok && direct.typescript.includes('size'),
+  true,
+)
 
 // re-export is transitive
 const transitive = compile(
-  { file: 'main.tree', text: 'load @app/c\n  find widget\n\ntask two\n  like number\n  save w\n    make widget\n      bind size, mark 9\n  send back, read w/size\n' },
+  {
+    file: 'main.tree',
+    text: 'load @app/c\n  find widget\n\ntask two\n  like number\n  save w\n    make widget\n      bind size, mark 9\n  send back, read w/size\n',
+  },
   { resolve },
 )
 expect('bear is transitive (c -> a -> b)', transitive.ok, true)

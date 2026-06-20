@@ -10,18 +10,30 @@ export const FALSE: Bool3 = -1
 export const UNKNOWN: Bool3 = 0
 export const TRUE: Bool3 = 1
 
-export function fromBoolean(value: boolean): Bool3 { return value ? TRUE : FALSE }
+export function fromBoolean(value: boolean): Bool3 {
+  return value ? TRUE : FALSE
+}
 
 // to a definite boolean (unknown counts as false, the conservative read)
-export function toBoolean(value: Bool3): boolean { return value === TRUE }
+export function toBoolean(value: Bool3): boolean {
+  return value === TRUE
+}
 
 // strong Kleene three-valued connectives: and is min, or is max, not is negation
-export function not(a: Bool3): Bool3 { return (-a) as Bool3 }
-export function and(a: Bool3, b: Bool3): Bool3 { return Math.min(a, b) as Bool3 }
-export function or(a: Bool3, b: Bool3): Bool3 { return Math.max(a, b) as Bool3 }
+export function not(a: Bool3): Bool3 {
+  return -a as Bool3
+}
+export function and(a: Bool3, b: Bool3): Bool3 {
+  return Math.min(a, b) as Bool3
+}
+export function or(a: Bool3, b: Bool3): Bool3 {
+  return Math.max(a, b) as Bool3
+}
 
 // material implication a -> b = (not a) or b, in three-valued logic
-export function implies(a: Bool3, b: Bool3): Bool3 { return or(not(a), b) }
+export function implies(a: Bool3, b: Bool3): Bool3 {
+  return or(not(a), b)
+}
 
 // exclusive or, true when exactly one side is true and neither is unknown, unknown if either is unknown
 export function xor(a: Bool3, b: Bool3): Bool3 {
@@ -30,6 +42,10 @@ export function xor(a: Bool3, b: Bool3): Bool3 {
 }
 
 // is the value definite (not unknown)
-export function isDefinite(a: Bool3): boolean { return a !== UNKNOWN }
+export function isDefinite(a: Bool3): boolean {
+  return a !== UNKNOWN
+}
 
-export function toString(a: Bool3): string { return a === TRUE ? 'true' : a === FALSE ? 'false' : 'unknown' }
+export function toString(a: Bool3): string {
+  return a === TRUE ? 'true' : a === FALSE ? 'false' : 'unknown'
+}

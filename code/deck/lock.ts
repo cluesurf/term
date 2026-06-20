@@ -2,16 +2,35 @@
 // our own parser and serialize it back deterministically (stable ordering), guaranteeing reproducible installs.
 // See note/research/vibe/computation/plans/16-package-manager.md. Browser-safe.
 
-import type { GroupNode, NameNode, Node, RootNode } from '@/code/parser/tree'
+import type {
+  GroupNode,
+  NameNode,
+  Node,
+  RootNode,
+} from '@/code/parser/tree'
 import { parse } from '@/code/parser/tree'
 
-export type LockRequest = { name: string; range: string; locked: string }
+export type LockRequest = {
+  name: string
+  range: string
+  locked: string
+}
 export type LockDependency = { name: string; version: string }
-export type LockLink = { ref: string; hash: string; deps: Array<LockDependency> }
-export type Lockfile = { base: string; requests: Array<LockRequest>; links: Array<LockLink> }
+export type LockLink = {
+  ref: string
+  hash: string
+  deps: Array<LockDependency>
+}
+export type Lockfile = {
+  base: string
+  requests: Array<LockRequest>
+  links: Array<LockLink>
+}
 
 function nameText(name: NameNode): string {
-  return name.parts.map((p) => (p.kind === 'chunk' ? p.text : '')).join('')
+  return name.parts
+    .map(p => (p.kind === 'chunk' ? p.text : ''))
+    .join('')
 }
 function headName(group: GroupNode): string | undefined {
   const first = group.nodes[0]
@@ -24,14 +43,21 @@ function rest(group: GroupNode): Array<Node> {
 function value(group: GroupNode): string {
   const arg = rest(group)[0]
   if (!arg) return ''
-  if (arg.kind === 'text') return arg.parts.map((p) => (p.kind === 'chunk' ? p.text : '')).join('')
+  if (arg.kind === 'text')
+    return arg.parts
+      .map(p => (p.kind === 'chunk' ? p.text : ''))
+      .join('')
   if (arg.kind === 'name') return nameText(arg)
   if (arg.kind === 'group') return headName(arg) ?? ''
   return ''
 }
 // find a child group by head keyword
-function child(group: GroupNode, keyword: string): GroupNode | undefined {
-  for (const node of rest(group)) if (node.kind === 'group' && headName(node) === keyword) return node
+function child(
+  group: GroupNode,
+  keyword: string,
+): GroupNode | undefined {
+  for (const node of rest(group))
+    if (node.kind === 'group' && headName(node) === keyword) return node
   return undefined
 }
 
@@ -59,10 +85,17 @@ export function parseLockfile(text: string): Lockfile {
       for (const node of rest(group)) {
         if (node.kind === 'group' && headName(node) === 'load') {
           const markGroup = child(node, 'mark')
-          deps.push({ name: value(node), version: markGroup ? value(markGroup) : '' })
+          deps.push({
+            name: value(node),
+            version: markGroup ? value(markGroup) : '',
+          })
         }
       }
-      lock.links.push({ ref: value(group), hash: hashGroup ? value(hashGroup) : '', deps })
+      lock.links.push({
+        ref: value(group),
+        hash: hashGroup ? value(hashGroup) : '',
+        deps,
+      })
     }
   }
   return lock
@@ -72,7 +105,9 @@ export function serializeLockfile(lock: Lockfile): string {
   const lines: Array<string> = [`base <${lock.base}>`, '']
 
   // deterministic ordering: requests by name, links by ref, deps by name
-  const requests = [...lock.requests].sort((a, b) => a.name.localeCompare(b.name))
+  const requests = [...lock.requests].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )
   for (const request of requests) {
     lines.push(`load ${request.name}`)
     lines.push(`  mark <${request.range}>`)
@@ -80,11 +115,15 @@ export function serializeLockfile(lock: Lockfile): string {
     lines.push('')
   }
 
-  const links = [...lock.links].sort((a, b) => a.ref.localeCompare(b.ref))
+  const links = [...lock.links].sort((a, b) =>
+    a.ref.localeCompare(b.ref),
+  )
   for (const link of links) {
     lines.push(`link <${link.ref}>`)
     lines.push(`  hash <${link.hash}>`)
-    const deps = [...link.deps].sort((a, b) => a.name.localeCompare(b.name))
+    const deps = [...link.deps].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )
     for (const dep of deps) {
       lines.push(`  load ${dep.name}`)
       lines.push(`    mark <${dep.version}>`)

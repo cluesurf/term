@@ -47,7 +47,11 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
@@ -55,7 +59,8 @@ async function main(): Promise<void> {
   const result = compile({ file: 'data.tree', text: SOURCE })
   if (!result.ok) {
     const lines = SOURCE.split('\n')
-    for (const d of result.diagnostics) console.log(render(d, lines, false))
+    for (const d of result.diagnostics)
+      console.log(render(d, lines, false))
     console.log('\ncompile/data: 0 pass, 1 fail')
     return
   }
@@ -65,7 +70,9 @@ async function main(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'seed-data-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
-  const mod = (await import(pathToFileURL(file).href)) as { run: () => number }
+  const mod = (await import(pathToFileURL(file).href)) as {
+    run: () => number
+  }
 
   expect('run() sums x coords', mod.run(), 7)
 

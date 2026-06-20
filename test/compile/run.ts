@@ -62,15 +62,22 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
-async function loadModule(source: string): Promise<Record<string, (n: number) => number>> {
+async function loadModule(
+  source: string,
+): Promise<Record<string, (n: number) => number>> {
   const result = compile({ file: 'fibonacci.tree', text: source })
   if (!result.ok) {
     const lines = source.split('\n')
-    for (const d of result.diagnostics) console.log(render(d, lines, false))
+    for (const d of result.diagnostics)
+      console.log(render(d, lines, false))
     throw new Error('compile failed')
   }
   console.log('--- emitted TypeScript ---')
@@ -78,7 +85,10 @@ async function loadModule(source: string): Promise<Record<string, (n: number) =>
   const dir = mkdtempSync(join(tmpdir(), 'seed-compile-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
-  return (await import(pathToFileURL(file).href)) as Record<string, (n: number) => number>
+  return (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (n: number) => number
+  >
 }
 
 async function main(): Promise<void> {
@@ -91,8 +101,16 @@ async function main(): Promise<void> {
   const recursion = await loadModule(FIB_RECURSION)
   expect('recursion fib(0)', recursion.findFibonacciViaRecursion!(0), 0)
   expect('recursion fib(1)', recursion.findFibonacciViaRecursion!(1), 1)
-  expect('recursion fib(10)', recursion.findFibonacciViaRecursion!(10), 55)
-  expect('recursion fib(15)', recursion.findFibonacciViaRecursion!(15), 610)
+  expect(
+    'recursion fib(10)',
+    recursion.findFibonacciViaRecursion!(10),
+    55,
+  )
+  expect(
+    'recursion fib(15)',
+    recursion.findFibonacciViaRecursion!(15),
+    610,
+  )
 
   console.log(`\ncompile: ${pass} pass, ${fail} fail`)
 }

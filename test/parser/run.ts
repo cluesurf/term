@@ -13,7 +13,8 @@ function check(name: string, source: string, expected: string): void {
     fail++
     const lines = source.split('\n')
     console.log(`FAIL  ${name}  (unexpected diagnostics)`)
-    for (const d of result.diagnostics) console.log(render(d, lines, false))
+    for (const d of result.diagnostics)
+      console.log(render(d, lines, false))
     return
   }
   const got = printTree(result.tree)
@@ -27,7 +28,11 @@ function check(name: string, source: string, expected: string): void {
   }
 }
 
-function checkError(name: string, source: string, expectedName: string): void {
+function checkError(
+  name: string,
+  source: string,
+  expectedName: string,
+): void {
   const result = parse({ file: 'test.tree', text: source })
   if (result.ok) {
     fail++
@@ -71,10 +76,18 @@ function main(): void {
 
   // deeper nesting
   // the indent-2 line `j` attaches to `h`, the head of the indent-1 line, alongside `i`
-  check('deep nest', `a b c d e f g\n  h i\n    j`, `a\n  b\n    c\n      d\n        e\n          f\n            g\n  h\n    i\n    j`)
+  check(
+    'deep nest',
+    `a b c d e f g\n  h i\n    j`,
+    `a\n  b\n    c\n      d\n        e\n          f\n            g\n  h\n    i\n    j`,
+  )
 
   // errors
-  checkError('invalid indentation', `foo\n    bar`, 'invalid-indentation')
+  checkError(
+    'invalid indentation',
+    `foo\n    bar`,
+    'invalid-indentation',
+  )
   checkError('number as head', `123 term`, 'invalid-nesting')
   checkError('number then node', `foo 123 bar`, 'invalid-nesting')
 

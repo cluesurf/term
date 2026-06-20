@@ -3,7 +3,11 @@
 // for the language server to render and apply. Pure and browser-safe. See plans/19-format-and-lint.
 
 import type { Severity, Span } from '@/code/parser/diagnostic'
-import type { Expression, Program, Statement } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@/code/compile/node'
 import type { Finding, LintContext, Rule } from '@/code/lint/rule'
 import { kebabNames } from '@/code/lint/rules/kebab-names'
 import { noRedundantArithmetic } from '@/code/lint/rules/no-redundant-arithmetic'
@@ -11,7 +15,12 @@ import { preferHostForConstant } from '@/code/lint/rules/prefer-host-for-constan
 import { noEmptyBlock } from '@/code/lint/rules/no-empty-block'
 
 // the default rule set, keyed by stable code for config and suppression
-export const RULES: Array<Rule> = [kebabNames, noRedundantArithmetic, preferHostForConstant, noEmptyBlock]
+export const RULES: Array<Rule> = [
+  kebabNames,
+  noRedundantArithmetic,
+  preferHostForConstant,
+  noEmptyBlock,
+]
 
 export type LintConfig = {
   // per-rule severity override; `off` disables the rule
@@ -20,7 +29,10 @@ export type LintConfig = {
   suppress?: Map<number, Set<string>>
 }
 
-function eachExpression(expr: Expression, visit: (e: Expression) => void): void {
+function eachExpression(
+  expr: Expression,
+  visit: (e: Expression) => void,
+): void {
   visit(expr)
   switch (expr.form) {
     case 'binary':
@@ -32,19 +44,19 @@ function eachExpression(expr: Expression, visit: (e: Expression) => void): void 
       break
     case 'call':
       eachExpression(expr.callee, visit)
-      expr.args.forEach((a) => eachExpression(a, visit))
+      expr.args.forEach(a => eachExpression(a, visit))
       break
     case 'array':
-      expr.items.forEach((i) => eachExpression(i, visit))
+      expr.items.forEach(i => eachExpression(i, visit))
       break
     case 'map':
-      expr.entries.forEach((e) => {
+      expr.entries.forEach(e => {
         eachExpression(e.key, visit)
         eachExpression(e.value, visit)
       })
       break
     case 'record':
-      expr.fields.forEach((f) => eachExpression(f.value, visit))
+      expr.fields.forEach(f => eachExpression(f.value, visit))
       break
     case 'member':
       eachExpression(expr.target, visit)
@@ -57,9 +69,14 @@ function eachExpression(expr: Expression, visit: (e: Expression) => void): void 
   }
 }
 
-function eachStatement(stmt: Statement, onStatement: (s: Statement) => void, onExpression: (e: Expression) => void): void {
+function eachStatement(
+  stmt: Statement,
+  onStatement: (s: Statement) => void,
+  onExpression: (e: Expression) => void,
+): void {
   onStatement(stmt)
-  const block = (body: Array<Statement>) => body.forEach((s) => eachStatement(s, onStatement, onExpression))
+  const block = (body: Array<Statement>) =>
+    body.forEach(s => eachStatement(s, onStatement, onExpression))
   switch (stmt.form) {
     case 'let':
       eachExpression(stmt.init, onExpression)
@@ -72,7 +89,7 @@ function eachStatement(stmt: Statement, onStatement: (s: Statement) => void, onE
       eachExpression(stmt.expr, onExpression)
       break
     case 'if':
-      stmt.branches.forEach((b) => {
+      stmt.branches.forEach(b => {
         eachExpression(b.cond, onExpression)
         block(b.body)
       })
@@ -84,7 +101,7 @@ function eachStatement(stmt: Statement, onStatement: (s: Statement) => void, onE
       break
     case 'match':
       eachExpression(stmt.subject, onExpression)
-      stmt.cases.forEach((c) => block(c.body))
+      stmt.cases.forEach(c => block(c.body))
       if (stmt.otherwise) block(stmt.otherwise)
       break
     case 'for-each':
@@ -113,28 +130,42 @@ function reassignedNames(program: Program): Set<string> {
   const names = new Set<string>()
   const onExpression = () => {}
   const onStatement = (s: Statement) => {
-    if (s.form === 'assign' && s.target.form === 'variable') names.add(s.target.name)
+    if (s.form === 'assign' && s.target.form === 'variable')
+      names.add(s.target.name)
   }
   for (const s of program) eachStatement(s, onStatement, onExpression)
   return names
 }
 
-export function lint(program: Program, file: string, source: string, config: LintConfig = {}): Array<Finding> {
+export function lint(
+  program: Program,
+  file: string,
+  source: string,
+  config: LintConfig = {},
+): Array<Finding> {
   const findings: Array<Finding> = []
   const reassigned = reassignedNames(program)
   const lines = source.split('\n')
   const slice = (span: Span): string => {
-    if (span.start.line === span.end.line) return (lines[span.start.line] ?? '').slice(span.start.column, span.end.column)
-    const first = (lines[span.start.line] ?? '').slice(span.start.column)
+    if (span.start.line === span.end.line)
+      return (lines[span.start.line] ?? '').slice(
+        span.start.column,
+        span.end.column,
+      )
+    const first = (lines[span.start.line] ?? '').slice(
+      span.start.column,
+    )
     const middle = lines.slice(span.start.line + 1, span.end.line)
     const last = (lines[span.end.line] ?? '').slice(0, span.end.column)
     return [first, ...middle, last].join('\n')
   }
 
-  const enabled = RULES.filter((r) => config.severity?.[r.code] !== 'off')
+  const enabled = RULES.filter(r => config.severity?.[r.code] !== 'off')
 
   for (const rule of enabled) {
-    const severity = (config.severity?.[rule.code] as Severity | undefined) ?? rule.severity
+    const severity =
+      (config.severity?.[rule.code] as Severity | undefined) ??
+      rule.severity
     const context: LintContext = {
       file,
       source,
@@ -142,13 +173,24 @@ export function lint(program: Program, file: string, source: string, config: Lin
       slice,
       report(finding) {
         // honor inline suppression (`# lint off Lxxx` on the line above the node)
-        if (config.suppress?.get(finding.span.start.line)?.has(rule.code)) return
-        findings.push({ rule: rule.name, code: rule.code, severity, ...finding })
+        if (
+          config.suppress?.get(finding.span.start.line)?.has(rule.code)
+        )
+          return
+        findings.push({
+          rule: rule.name,
+          code: rule.code,
+          severity,
+          ...finding,
+        })
       },
     }
-    const onStatement = (node: Statement) => rule.check({ kind: 'statement', node }, context)
-    const onExpression = (node: Expression) => rule.check({ kind: 'expression', node }, context)
-    for (const stmt of program) eachStatement(stmt, onStatement, onExpression)
+    const onStatement = (node: Statement) =>
+      rule.check({ kind: 'statement', node }, context)
+    const onExpression = (node: Expression) =>
+      rule.check({ kind: 'expression', node }, context)
+    for (const stmt of program)
+      eachStatement(stmt, onStatement, onExpression)
   }
 
   return findings

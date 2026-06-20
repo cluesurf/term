@@ -23,7 +23,11 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
@@ -37,9 +41,21 @@ async function main(): Promise<void> {
   console.log('--- emitted TypeScript ---')
   console.log(result.typescript)
 
-  expect('emits signal', result.typescript.includes('const [count, setCount] = signal(0)'), true)
-  expect('emits handler', result.typescript.includes('function onClick()'), true)
-  expect('emits setter call', result.typescript.includes('setCount(count() + 1)'), true)
+  expect(
+    'emits signal',
+    result.typescript.includes('const [count, setCount] = signal(0)'),
+    true,
+  )
+  expect(
+    'emits handler',
+    result.typescript.includes('function onClick()'),
+    true,
+  )
+  expect(
+    'emits setter call',
+    result.typescript.includes('setCount(count() + 1)'),
+    true,
+  )
 
   // write inside the project so `@/code/zone/reactive` resolves under tsx, then run it
   const here = dirname(fileURLToPath(import.meta.url))
@@ -47,7 +63,9 @@ async function main(): Promise<void> {
   mkdirSync(dir, { recursive: true })
   const file = join(dir, 'counter.ts')
   writeFileSync(file, result.typescript)
-  const mod = (await import(pathToFileURL(file).href)) as { counter: () => { count: () => number; onClick: () => void } }
+  const mod = (await import(pathToFileURL(file).href)) as {
+    counter: () => { count: () => number; onClick: () => void }
+  }
 
   const component = mod.counter()
   expect('initial state', component.count(), 0)

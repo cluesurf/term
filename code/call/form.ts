@@ -30,11 +30,14 @@ export async function callForm(input: {
     const relative = path.relative(input.root, file)
     const analysis = analyze({ file: relative, text })
 
-    const errors = analysis.diagnostics.filter((d) => d.severity === 'error')
+    const errors = analysis.diagnostics.filter(
+      d => d.severity === 'error',
+    )
     if (errors.length > 0) {
       broken++
       logFail(`${relative} could not be parsed`)
-      for (const error of errors) console.error(render(error, text.split('\n')))
+      for (const error of errors)
+        console.error(render(error, text.split('\n')))
       continue
     }
 
@@ -54,7 +57,9 @@ export async function callForm(input: {
 
   if (broken > 0) process.exit(1)
   if (input.check && changed > 0) {
-    logFail(`${changed} file${changed === 1 ? '' : 's'} need formatting`)
+    logFail(
+      `${changed} file${changed === 1 ? '' : 's'} need formatting`,
+    )
     process.exit(1)
   }
   if (changed === 0) logGood('All files already formatted')

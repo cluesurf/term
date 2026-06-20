@@ -7,7 +7,13 @@ import { toTrits, type Trit } from '@/code/engine/data/trit'
 
 export type Rope =
   | { form: 'leaf'; text: string; length: number }
-  | { form: 'branch'; left: Rope; right: Rope; length: number; depth: number }
+  | {
+      form: 'branch'
+      left: Rope
+      right: Rope
+      length: number
+      depth: number
+    }
 
 const MAX_LEAF = 64 // codepoints per leaf chunk
 const REBALANCE_DEPTH = 32 // rebuild when the tree gets this deep relative to its size
@@ -18,34 +24,55 @@ export function fromString(text: string): Rope {
 }
 
 function build(points: string[]): Rope {
-  if (points.length <= MAX_LEAF) return { form: 'leaf', text: points.join(''), length: points.length }
+  if (points.length <= MAX_LEAF)
+    return {
+      form: 'leaf',
+      text: points.join(''),
+      length: points.length,
+    }
   const mid = points.length >> 1
   return branch(build(points.slice(0, mid)), build(points.slice(mid)))
 }
 
-function depthOf(r: Rope): number { return r.form === 'leaf' ? 0 : r.depth }
-
-function branch(left: Rope, right: Rope): Rope {
-  return { form: 'branch', left, right, length: left.length + right.length, depth: 1 + Math.max(depthOf(left), depthOf(right)) }
+function depthOf(r: Rope): number {
+  return r.form === 'leaf' ? 0 : r.depth
 }
 
-export function length(r: Rope): number { return r.length }
+function branch(left: Rope, right: Rope): Rope {
+  return {
+    form: 'branch',
+    left,
+    right,
+    length: left.length + right.length,
+    depth: 1 + Math.max(depthOf(left), depthOf(right)),
+  }
+}
+
+export function length(r: Rope): number {
+  return r.length
+}
 
 export function concat(a: Rope, b: Rope): Rope {
   if (a.length === 0) return b
   if (b.length === 0) return a
   const joined = branch(a, b)
-  return depthOf(joined) > REBALANCE_DEPTH ? fromString(toString(joined)) : joined
+  return depthOf(joined) > REBALANCE_DEPTH
+    ? fromString(toString(joined))
+    : joined
 }
 
 // the codepoint (as a string) at an index, O(log n)
 export function charAt(r: Rope, index: number): string {
-  if (index < 0 || index >= r.length) throw new Error(`index ${index} out of range (length ${r.length})`)
+  if (index < 0 || index >= r.length)
+    throw new Error(`index ${index} out of range (length ${r.length})`)
   let node = r
   let i = index
   while (node.form === 'branch') {
     if (i < node.left.length) node = node.left
-    else { i -= node.left.length; node = node.right }
+    else {
+      i -= node.left.length
+      node = node.right
+    }
   }
   return Array.from(node.text)[i]!
 }
@@ -60,18 +87,29 @@ export function tritsAt(r: Rope, index: number): Trit[] {
   return toTrits(BigInt(codePointAt(r, index)))
 }
 
-export function slice(r: Rope, start: number, end: number = r.length): Rope {
+export function slice(
+  r: Rope,
+  start: number,
+  end: number = r.length,
+): Rope {
   const s = Math.max(0, start)
   const e = Math.min(r.length, end)
   if (s >= e) return { form: 'leaf', text: '', length: 0 }
   if (r.form === 'leaf') {
     const points = Array.from(r.text).slice(s, e)
-    return { form: 'leaf', text: points.join(''), length: points.length }
+    return {
+      form: 'leaf',
+      text: points.join(''),
+      length: points.length,
+    }
   }
   const leftLen = r.left.length
   if (e <= leftLen) return slice(r.left, s, e)
   if (s >= leftLen) return slice(r.right, s - leftLen, e - leftLen)
-  return concat(slice(r.left, s, leftLen), slice(r.right, 0, e - leftLen))
+  return concat(
+    slice(r.left, s, leftLen),
+    slice(r.right, 0, e - leftLen),
+  )
 }
 
 export function toString(r: Rope): string {

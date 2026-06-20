@@ -8,18 +8,49 @@
 // marked SEED-UNSUPPORTED rather than silently miscompiled. Run monomorphization first (generic functions are dropped
 // here). Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
-import type { Expression, Program, Statement, Type } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+  Type,
+} from '@/code/compile/node'
 import { exhausted, unsupported } from '@/code/compile/backend'
 
 function mangle(name: string): string {
   return name.replace(/-/g, '_')
 }
 
-const ARITH: Record<string, string> = { '+': 'add', '-': 'sub', '*': 'mul', '/': 'sdiv', '%': 'srem' }
-const PRED: Record<string, string> = { '==': 'eq', '!=': 'ne', '<': 'slt', '<=': 'sle', '>': 'sgt', '>=': 'sge' }
+const ARITH: Record<string, string> = {
+  '+': 'add',
+  '-': 'sub',
+  '*': 'mul',
+  '/': 'sdiv',
+  '%': 'srem',
+}
+const PRED: Record<string, string> = {
+  '==': 'eq',
+  '!=': 'ne',
+  '<': 'slt',
+  '<=': 'sle',
+  '>': 'sgt',
+  '>=': 'sge',
+}
 // the floating-point counterparts: `fadd`/.../`fdiv` for arithmetic, ordered `fcmp` predicates for comparison
-const FARITH: Record<string, string> = { '+': 'fadd', '-': 'fsub', '*': 'fmul', '/': 'fdiv', '%': 'frem' }
-const FPRED: Record<string, string> = { '==': 'oeq', '!=': 'one', '<': 'olt', '<=': 'ole', '>': 'ogt', '>=': 'oge' }
+const FARITH: Record<string, string> = {
+  '+': 'fadd',
+  '-': 'fsub',
+  '*': 'fmul',
+  '/': 'fdiv',
+  '%': 'frem',
+}
+const FPRED: Record<string, string> = {
+  '==': 'oeq',
+  '!=': 'one',
+  '<': 'olt',
+  '<=': 'ole',
+  '>': 'ogt',
+  '>=': 'oge',
+}
 
 type LlvmType = 'i64' | 'double' | 'ptr' | 'void'
 // the LLVM representation of a checked type: strings are managed pointers, unit is void, floats are double, everything
@@ -49,8 +80,18 @@ export function emitLlvm(program: Program): string {
     if (existing) return existing
     const name = `@.str.${interned.size}`
     const bytes = [...Buffer.from(value, 'utf8')]
-    const escaped = bytes.map((b) => (b >= 0x20 && b < 0x7f && b !== 0x22 && b !== 0x5c ? String.fromCharCode(b) : `\\${b.toString(16).padStart(2, '0')}`)).join('')
-    globals.push(`${name} = private unnamed_addr constant [${bytes.length + 1} x i8] c"${escaped}\\00"`)
+    const escaped = bytes
+      .map(b =>
+        b >= 0x20 && b < 0x7f && b !== 0x22 && b !== 0x5c
+          ? String.fromCharCode(b)
+          : `\\${b.toString(16).padStart(2, '0')}`,
+      )
+      .join('')
+    globals.push(
+      `${name} = private unnamed_addr constant [${
+        bytes.length + 1
+      } x i8] c"${escaped}\\00"`,
+    )
     interned.set(value, name)
     return name
   }
@@ -60,17 +101,38 @@ export function emitLlvm(program: Program): string {
     if (s.form !== 'function' || s.generics.length > 0) continue // generic functions are removed by monomorphization
     functions.push(emitFunction(s, internString))
   }
-  return [...RUNTIME_DECLS, '', ...globals, globals.length ? '' : null, ...functions].filter((l) => l !== null).join('\n') + '\n'
+  return (
+    [
+      ...RUNTIME_DECLS,
+      '',
+      ...globals,
+      globals.length ? '' : null,
+      ...functions,
+    ]
+      .filter(l => l !== null)
+      .join('\n') + '\n'
+  )
 }
 
-function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString: (value: string) => string): string {
+function emitFunction(
+  fn: Extract<Statement, { form: 'function' }>,
+  internString: (value: string) => string,
+): string {
   let temp = 0
   let labelN = 0
   const fresh = () => `%t${temp++}`
   const freshLabel = (base: string) => `${base}${labelN++}`
-  const blocks: Array<{ name: string; lines: Array<string>; done: boolean }> = []
+  const blocks: Array<{
+    name: string
+    lines: Array<string>
+    done: boolean
+  }> = []
   const block = (name: string) => {
-    const b = { name, lines: [], done: false } as { name: string; lines: Array<string>; done: boolean }
+    const b = { name, lines: [], done: false } as {
+      name: string
+      lines: Array<string>
+      done: boolean
+    }
     blocks.push(b)
     return b
   }
@@ -79,7 +141,10 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
   // every local lives in a typed stack slot, allocated once in the entry block
   const allocas: Array<string> = []
   const slot = new Map<string, { reg: string; ty: LlvmType }>()
-  const ensureSlot = (name: string, ty: LlvmType): { reg: string; ty: LlvmType } => {
+  const ensureSlot = (
+    name: string,
+    ty: LlvmType,
+  ): { reg: string; ty: LlvmType } => {
     let s = slot.get(name)
     if (!s) {
       s = { reg: `%${mangle(name)}.addr`, ty }
@@ -95,7 +160,9 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
         return String(node.value)
       case 'float':
         // a double constant needs a decimal point (`3` is an i64 literal, `3.0` is a double)
-        return Number.isInteger(node.value) ? `${node.value}.0` : String(node.value)
+        return Number.isInteger(node.value)
+          ? `${node.value}.0`
+          : String(node.value)
       case 'boolean':
         return node.value ? '1' : '0'
       case 'string':
@@ -114,7 +181,11 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
         const v = expr(node.operand)
         const t = fresh()
         if (node.op === '-') {
-          cur.lines.push(node.operand.type?.kind === 'float' ? `${t} = fneg double ${v}` : `${t} = sub i64 0, ${v}`)
+          cur.lines.push(
+            node.operand.type?.kind === 'float'
+              ? `${t} = fneg double ${v}`
+              : `${t} = sub i64 0, ${v}`,
+          )
         } else {
           const c = fresh()
           cur.lines.push(`${c} = icmp eq i64 ${v}, 0`)
@@ -129,12 +200,16 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
           const r = expr(node.right)
           if (node.op === '+') {
             const t = fresh()
-            cur.lines.push(`${t} = call ptr @seed_str_concat(ptr ${l}, ptr ${r})`)
+            cur.lines.push(
+              `${t} = call ptr @seed_str_concat(ptr ${l}, ptr ${r})`,
+            )
             return t
           }
           if (node.op === '==' || node.op === '!=') {
             const e = fresh()
-            cur.lines.push(`${e} = call i64 @seed_str_equal(ptr ${l}, ptr ${r})`)
+            cur.lines.push(
+              `${e} = call i64 @seed_str_equal(ptr ${l}, ptr ${r})`,
+            )
             if (node.op === '==') return e
             const t = fresh()
             cur.lines.push(`${t} = xor i64 ${e}, 1`)
@@ -147,14 +222,24 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
         const r = expr(node.right)
         const t = fresh()
         // float operands use the floating-point instructions on `double`; integers use the i64 ones
-        const isFloat = node.left.type?.kind === 'float' || node.right.type?.kind === 'float'
+        const isFloat =
+          node.left.type?.kind === 'float' ||
+          node.right.type?.kind === 'float'
         if (ARITH[node.op]) {
-          cur.lines.push(isFloat ? `${t} = ${FARITH[node.op]} double ${l}, ${r}` : `${t} = ${ARITH[node.op]} i64 ${l}, ${r}`)
+          cur.lines.push(
+            isFloat
+              ? `${t} = ${FARITH[node.op]} double ${l}, ${r}`
+              : `${t} = ${ARITH[node.op]} i64 ${l}, ${r}`,
+          )
           return t
         }
         if (PRED[node.op]) {
           const c = fresh()
-          cur.lines.push(isFloat ? `${c} = fcmp ${FPRED[node.op]} double ${l}, ${r}` : `${c} = icmp ${PRED[node.op]} i64 ${l}, ${r}`)
+          cur.lines.push(
+            isFloat
+              ? `${c} = fcmp ${FPRED[node.op]} double ${l}, ${r}`
+              : `${c} = icmp ${PRED[node.op]} i64 ${l}, ${r}`,
+          )
           cur.lines.push(`${t} = zext i1 ${c} to i64`)
           return t
         }
@@ -163,26 +248,40 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
         const c = fresh()
         cur.lines.push(`${la} = icmp ne i64 ${l}, 0`)
         cur.lines.push(`${ra} = icmp ne i64 ${r}, 0`)
-        cur.lines.push(`${c} = ${node.op === '&&' ? 'and' : 'or'} i1 ${la}, ${ra}`)
+        cur.lines.push(
+          `${c} = ${node.op === '&&' ? 'and' : 'or'} i1 ${la}, ${ra}`,
+        )
         cur.lines.push(`${t} = zext i1 ${c} to i64`)
         return t
       }
       case 'call': {
         // a couple of builtins lower straight to the runtime; everything else is a direct call, args typed by value
-        const callee = node.callee.form === 'variable' ? mangle(node.callee.name) : '0'
-        if ((callee === 'length' || callee === 'size') && node.args[0]?.type?.kind === 'string') {
+        const callee =
+          node.callee.form === 'variable'
+            ? mangle(node.callee.name)
+            : '0'
+        if (
+          (callee === 'length' || callee === 'size') &&
+          node.args[0]?.type?.kind === 'string'
+        ) {
           const t = fresh()
-          cur.lines.push(`${t} = call i64 @seed_str_length(ptr ${expr(node.args[0]!)})`)
+          cur.lines.push(
+            `${t} = call i64 @seed_str_length(ptr ${expr(
+              node.args[0]!,
+            )})`,
+          )
           return t
         }
-        const args = node.args.map((a) => `${llty(a.type)} ${expr(a)}`)
+        const args = node.args.map(a => `${llty(a.type)} ${expr(a)}`)
         const retType = llty(node.type)
         if (retType === 'void') {
           cur.lines.push(`call void @${callee}(${args.join(', ')})`)
           return '0'
         }
         const t = fresh()
-        cur.lines.push(`${t} = call ${retType} @${callee}(${args.join(', ')})`)
+        cur.lines.push(
+          `${t} = call ${retType} @${callee}(${args.join(', ')})`,
+        )
         return t
       }
       case 'array':
@@ -232,7 +331,9 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
           cur.lines.push(`${old} = load ptr, ptr ${s.reg}`)
           const rhs = expr(node.value)
           const t = fresh()
-          cur.lines.push(`${t} = call ptr @seed_str_concat(ptr ${old}, ptr ${rhs})`)
+          cur.lines.push(
+            `${t} = call ptr @seed_str_concat(ptr ${old}, ptr ${rhs})`,
+          )
           v = t
         } else {
           const old = fresh()
@@ -240,7 +341,11 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
           const rhs = expr(node.value)
           const t = fresh()
           const op = node.op[0]!
-          cur.lines.push(`${t} = ${s.ty === 'double' ? FARITH[op] : ARITH[op]} ${s.ty} ${old}, ${rhs}`)
+          cur.lines.push(
+            `${t} = ${s.ty === 'double' ? FARITH[op] : ARITH[op]} ${
+              s.ty
+            } ${old}, ${rhs}`,
+          )
           v = t
         }
         cur.lines.push(`store ${s.ty} ${v}, ptr ${s.reg}`)
@@ -337,11 +442,20 @@ function emitFunction(fn: Extract<Statement, { form: 'function' }>, internString
     cur.lines.push(`store ${ty} %${mangle(p.name)}, ptr ${s.reg}`)
   }
   fn.body.forEach(stmt)
-  if (!cur.done) cur.lines.push(llty(fn.result) === 'void' ? 'ret void' : 'ret i64 0')
+  if (!cur.done)
+    cur.lines.push(
+      llty(fn.result) === 'void' ? 'ret void' : 'ret i64 0',
+    )
 
   blocks[0]!.lines = [...allocas, ...blocks[0]!.lines]
-  const params = fn.params.map((p) => `${llty(p.type)} %${mangle(p.name)}`).join(', ')
+  const params = fn.params
+    .map(p => `${llty(p.type)} %${mangle(p.name)}`)
+    .join(', ')
   const retType = llty(fn.result)
-  const body = blocks.map((b) => `${b.name}:\n${b.lines.map((l) => `  ${l}`).join('\n')}`).join('\n')
-  return `define ${retType} @${mangle(fn.name)}(${params}) {\n${body}\n}`
+  const body = blocks
+    .map(b => `${b.name}:\n${b.lines.map(l => `  ${l}`).join('\n')}`)
+    .join('\n')
+  return `define ${retType} @${mangle(
+    fn.name,
+  )}(${params}) {\n${body}\n}`
 }

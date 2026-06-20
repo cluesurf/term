@@ -6,12 +6,20 @@
 // backend supports everything the language will ever have" is enforced by the type checker, not by hope. If a form
 // ever does reach it at runtime (e.g. a hand-built AST), it throws loudly rather than emitting silent wrong code.
 export function exhausted(node: never): never {
-  throw new Error(`backend: unhandled AST form ${JSON.stringify((node as { form?: unknown }).form)}`)
+  throw new Error(
+    `backend: unhandled AST form ${JSON.stringify(
+      (node as { form?: unknown }).form,
+    )}`,
+  )
 }
 
 // A target that cannot express a form (a GPU shader cannot throw; bare LLVM has no managed map) emits this marker
 // instead of silently dropping or miscompiling the construct. The marker is a comment in the target's syntax, so the
 // generated source still parses but the gap is visible and greppable (SEED-UNSUPPORTED), never silent.
-export function unsupported(target: string, form: string, comment: string): string {
+export function unsupported(
+  target: string,
+  form: string,
+  comment: string,
+): string {
   return `${comment} SEED-UNSUPPORTED on ${target}: "${form}" is outside this target's fragment`
 }

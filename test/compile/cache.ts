@@ -14,7 +14,11 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
@@ -35,34 +39,69 @@ const helper: Source = {
 function entryText(constant: number): string {
   return `load @app/helper\n  find triple\n\ntask run\n  like number\n  back\n    call triple\n      mark ${constant}\n`
 }
-const resolve = (path: string): Source | undefined => (path === '@app/helper' ? helper : undefined)
+const resolve = (path: string): Source | undefined =>
+  path === '@app/helper' ? helper : undefined
 
 // 1. cached output equals uncached output, exactly
 const plain = compile({ file: 'a.tree', text: DOUBLE })
 const cache = new CompileCache()
 const cached = compile({ file: 'a.tree', text: DOUBLE }, { cache })
-expect('cache: uncached and cached compile to the same TypeScript', cached.ok && plain.ok && cached.typescript === plain.typescript, true)
+expect(
+  'cache: uncached and cached compile to the same TypeScript',
+  cached.ok && plain.ok && cached.typescript === plain.typescript,
+  true,
+)
 
 // 2. an unchanged re-compile is an output-cache hit (no extra misses)
 const missesBefore = cache.misses
 const again = compile({ file: 'a.tree', text: DOUBLE }, { cache })
-expect('cache: re-compiling unchanged source adds no misses', cache.misses, missesBefore)
-expect('cache: the hit returns the same output object', again === cached, true)
+expect(
+  'cache: re-compiling unchanged source adds no misses',
+  cache.misses,
+  missesBefore,
+)
+expect(
+  'cache: the hit returns the same output object',
+  again === cached,
+  true,
+)
 
 // 3. editing the entry but not the helper reuses the helper's mill (the helper is not re-milled)
 const graph = new CompileCache()
-const first = compile({ file: 'entry.tree', text: entryText(5) }, { resolve, cache: graph })
-expect('graph: first compile of the loaded program succeeds', first.ok, true)
+const first = compile(
+  { file: 'entry.tree', text: entryText(5) },
+  { resolve, cache: graph },
+)
+expect(
+  'graph: first compile of the loaded program succeeds',
+  first.ok,
+  true,
+)
 const millMissesAfterFirst = graph.misses
-const second = compile({ file: 'entry.tree', text: entryText(9) }, { resolve, cache: graph })
+const second = compile(
+  { file: 'entry.tree', text: entryText(9) },
+  { resolve, cache: graph },
+)
 expect('graph: editing the entry still compiles', second.ok, true)
 // the entry changed (new graph key, new entry mill) but the helper text is identical: exactly one new mill miss for
 // the entry, plus one output miss for the new graph key. The helper mill is a hit, not a miss.
-expect('graph: only the changed entry (and the new graph key) miss, the helper is reused', graph.misses - millMissesAfterFirst, 2)
+expect(
+  'graph: only the changed entry (and the new graph key) miss, the helper is reused',
+  graph.misses - millMissesAfterFirst,
+  2,
+)
 
 // hashText is content-addressed: same text same hash, different text different hash
-expect('hash: identical text hashes identically', hashText('abc') === hashText('abc'), true)
-expect('hash: different text hashes differently', hashText('abc') !== hashText('abd'), true)
+expect(
+  'hash: identical text hashes identically',
+  hashText('abc') === hashText('abc'),
+  true,
+)
+expect(
+  'hash: different text hashes differently',
+  hashText('abc') !== hashText('abd'),
+  true,
+)
 
 console.log(`\ncache: ${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

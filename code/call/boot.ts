@@ -1,9 +1,7 @@
 import { logFail, logStep, formatError } from '../tint'
 import { runCommand } from './make'
 
-export async function callBoot(input: {
-  root: string
-}): Promise<void> {
+export async function callBoot(input: { root: string }): Promise<void> {
   logStep('Starting app...')
 
   try {
@@ -21,7 +19,11 @@ export async function callBoot(input: {
     }
 
     if (hasStartScript) {
-      await runCommand({ cmd: 'pnpm', args: ['start'], cwd: input.root })
+      await runCommand({
+        cmd: 'pnpm',
+        args: ['start'],
+        cwd: input.root,
+      })
     } else {
       logFail('No start/boot script found in package.json')
       process.exit(1)

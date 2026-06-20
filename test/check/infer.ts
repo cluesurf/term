@@ -12,17 +12,29 @@ function expectOk(name: string, source: string): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (${result.diagnostics.map((d) => d.message).join('; ')})`)
+    console.log(
+      `FAIL  ${name}  (${result.diagnostics
+        .map(d => d.message)
+        .join('; ')})`,
+    )
   }
 }
 function expectError(name: string, source: string, code: string): void {
   const result = compile({ file: 'i.tree', text: source })
-  if (!result.ok && result.diagnostics.some((d) => d.name === code)) {
+  if (!result.ok && result.diagnostics.some(d => d.name === code)) {
     pass++
-    console.log(`ok    ${name}  (${result.diagnostics.find((d) => d.name === code)!.message})`)
+    console.log(
+      `ok    ${name}  (${
+        result.diagnostics.find(d => d.name === code)!.message
+      })`,
+    )
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, codes=${result.ok ? '' : result.diagnostics.map((d) => d.name).join(',')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, codes=${
+        result.ok ? '' : result.diagnostics.map(d => d.name).join(',')
+      })`,
+    )
   }
 }
 
@@ -102,18 +114,35 @@ task good
   send back n
 `,
     })
-    if (result.ok && result.warnings.some((w) => w.name === 'unused-binding' && w.message.includes('unused'))) {
+    if (
+      result.ok &&
+      result.warnings.some(
+        w =>
+          w.name === 'unused-binding' && w.message.includes('unused'),
+      )
+    ) {
       pass++
-      console.log(`ok    unused binding warned (not fatal)  (${result.warnings[0]!.message})`)
+      console.log(
+        `ok    unused binding warned (not fatal)  (${
+          result.warnings[0]!.message
+        })`,
+      )
     } else {
       fail++
-      console.log(`FAIL  unused binding warning (ok=${result.ok}, warnings=${result.ok ? result.warnings.length : 'n/a'})`)
+      console.log(
+        `FAIL  unused binding warning (ok=${result.ok}, warnings=${
+          result.ok ? result.warnings.length : 'n/a'
+        })`,
+      )
     }
   }
 
   // a fully-used function produces no warnings
   {
-    const result = compile({ file: 'i.tree', text: `task clean\n  take n\n  save m, loan n\n  back m\n` })
+    const result = compile({
+      file: 'i.tree',
+      text: `task clean\n  take n\n  save m, loan n\n  back m\n`,
+    })
     if (result.ok && result.warnings.length === 0) {
       pass++
       console.log('ok    no warnings when all used')

@@ -10,20 +10,29 @@
     "make": "npx esbuild code/line.ts --bundle --platform=node --format=esm --outfile=host/line.js --banner:js='#!/usr/bin/env node'",
     "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
     "test": "vitest run",
+    "lint": "eslint \"code/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "host": "pnpm make && npm publish --access=public"
   },
+  "prettier": "@cluesurf/wash/flow.json",
   "dependencies": {
     "@cluesurf/deck.tree": "file:../deck.tree",
+    "@hono/node-server": "^1.13.7",
     "chalk": "^5.4.1",
     "esbuild": "^0.27.0",
+    "hono": "^4.6.14",
     "pg": "^8.13.1",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
+    "@cluesurf/wash": "^0.6.10",
     "@types/node": "^22.19.13",
     "@types/pg": "^8.11.10",
     "@types/yargs": "^17.0.33",
     "concurrently": "^9.2.1",
+    "eslint": "^9.26.0",
+    "jiti": "^2.4.2",
+    "prettier": "^3.6.2",
     "tsc-alias": "^1.8.16",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"

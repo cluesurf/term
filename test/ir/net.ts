@@ -18,8 +18,14 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 // wire each auxiliary port of `binary` to a fresh eraser, so the net is closed
 function closeAux(net: Net, binary: number): void {
-  net.wire({ node: binary, slot: 1 }, { node: net.node('era'), slot: 0 })
-  net.wire({ node: binary, slot: 2 }, { node: net.node('era'), slot: 0 })
+  net.wire(
+    { node: binary, slot: 1 },
+    { node: net.node('era'), slot: 0 },
+  )
+  net.wire(
+    { node: binary, slot: 2 },
+    { node: net.node('era'), slot: 0 },
+  )
 }
 
 function count(net: Net, label: Label): number {
@@ -59,7 +65,10 @@ function main(): void {
     net.wire({ node: c, slot: 0 }, { node: e, slot: 0 })
     closeAux(net, c)
     net.normalize()
-    ok('era ~ con erases the constructor (cascades to empty)', net.size() === 0)
+    ok(
+      'era ~ con erases the constructor (cascades to empty)',
+      net.size() === 0,
+    )
   }
 
   // con meeting dup commutes: one step removes the pair and creates two of each (duplication through)
@@ -71,7 +80,10 @@ function main(): void {
     closeAux(net, c)
     closeAux(net, d)
     net.step() // a single commutation
-    ok('con ~ dup commutes into two con and two dup', count(net, 'con') === 2 && count(net, 'dup') === 2)
+    ok(
+      'con ~ dup commutes into two con and two dup',
+      count(net, 'con') === 2 && count(net, 'dup') === 2,
+    )
     ok('commutation recorded one rewrite', net.rewrites === 1)
   }
 

@@ -9,31 +9,69 @@ import type { Expression, Statement } from '@/code/compile/node'
 export type Terminator =
   | { kind: 'return' } // leaves the function
   | { kind: 'jump'; target: number } // unconditional edge
-  | { kind: 'branch'; condition: Expression; whenTrue: number; whenFalse: number } // if / while header
-  | { kind: 'loop'; item: string; iterable: Expression; body: number; after: number } // for-each header
-  | { kind: 'switch'; subject: Expression; cases: Array<{ label: string; target: number }>; otherwise: number } // match
+  | {
+      kind: 'branch'
+      condition: Expression
+      whenTrue: number
+      whenFalse: number
+    } // if / while header
+  | {
+      kind: 'loop'
+      item: string
+      iterable: Expression
+      body: number
+      after: number
+    } // for-each header
+  | {
+      kind: 'switch'
+      subject: Expression
+      cases: Array<{ label: string; target: number }>
+      otherwise: number
+    } // match
 
-export type Block = { id: number; body: Array<Statement>; terminator: Terminator }
+export type Block = {
+  id: number
+  body: Array<Statement>
+  terminator: Terminator
+}
 export type Cfg = { entry: number; blocks: Array<Block> }
 
 type Loop = { breakTo: number; continueTo: number }
 
-const CONTROL = new Set(['if', 'while', 'for-each', 'match', 'return', 'break', 'continue'])
-const isControl = (statement: Statement): boolean => CONTROL.has(statement.form)
+const CONTROL = new Set([
+  'if',
+  'while',
+  'for-each',
+  'match',
+  'return',
+  'break',
+  'continue',
+])
+const isControl = (statement: Statement): boolean =>
+  CONTROL.has(statement.form)
 
 export function buildCfg(body: Array<Statement>): Cfg {
   const blocks: Array<Block> = []
   const create = (): Block => {
-    const block: Block = { id: blocks.length, body: [], terminator: { kind: 'return' } }
+    const block: Block = {
+      id: blocks.length,
+      body: [],
+      terminator: { kind: 'return' },
+    }
     blocks.push(block)
     return block
   }
 
   // build a statement sequence; on normal completion control flows to `next`. Returns the entry block id.
-  function sequence(statements: Array<Statement>, next: number, loop: Loop | undefined): number {
+  function sequence(
+    statements: Array<Statement>,
+    next: number,
+    loop: Loop | undefined,
+  ): number {
     if (statements.length === 0) return next
     let split = 0
-    while (split < statements.length && !isControl(statements[split]!)) split++
+    while (split < statements.length && !isControl(statements[split]!))
+      split++
     if (split === statements.length) {
       // an all-straight-line run: one block that jumps onward
       const block = create()
@@ -52,7 +90,11 @@ export function buildCfg(body: Array<Statement>): Cfg {
   }
 
   // build a single control-flow statement; returns its entry block id
-  function control(statement: Statement, next: number, loop: Loop | undefined): number {
+  function control(
+    statement: Statement,
+    next: number,
+    loop: Loop | undefined,
+  ): number {
     switch (statement.form) {
       case 'return': {
         const block = create()
@@ -62,43 +104,83 @@ export function buildCfg(body: Array<Statement>): Cfg {
       }
       case 'break': {
         const block = create()
-        block.terminator = { kind: 'jump', target: loop ? loop.breakTo : next }
+        block.terminator = {
+          kind: 'jump',
+          target: loop ? loop.breakTo : next,
+        }
         return block.id
       }
       case 'continue': {
         const block = create()
-        block.terminator = { kind: 'jump', target: loop ? loop.continueTo : next }
+        block.terminator = {
+          kind: 'jump',
+          target: loop ? loop.continueTo : next,
+        }
         return block.id
       }
       case 'if': {
         // build the else side, then chain each branch's condition in front of it
-        let chain = statement.otherwise ? sequence(statement.otherwise, next, loop) : next
+        let chain = statement.otherwise
+          ? sequence(statement.otherwise, next, loop)
+          : next
         for (let i = statement.branches.length - 1; i >= 0; i--) {
           const branch = statement.branches[i]!
           const whenTrue = sequence(branch.body, next, loop)
           const header = create()
-          header.terminator = { kind: 'branch', condition: branch.cond, whenTrue, whenFalse: chain }
+          header.terminator = {
+            kind: 'branch',
+            condition: branch.cond,
+            whenTrue,
+            whenFalse: chain,
+          }
           chain = header.id
         }
         return chain
       }
       case 'while': {
         const header = create()
-        const bodyEntry = sequence(statement.body, header.id, { breakTo: next, continueTo: header.id })
-        header.terminator = { kind: 'branch', condition: statement.cond, whenTrue: bodyEntry, whenFalse: next }
+        const bodyEntry = sequence(statement.body, header.id, {
+          breakTo: next,
+          continueTo: header.id,
+        })
+        header.terminator = {
+          kind: 'branch',
+          condition: statement.cond,
+          whenTrue: bodyEntry,
+          whenFalse: next,
+        }
         return header.id
       }
       case 'for-each': {
         const header = create()
-        const bodyEntry = sequence(statement.body, header.id, { breakTo: next, continueTo: header.id })
-        header.terminator = { kind: 'loop', item: statement.item, iterable: statement.iterable, body: bodyEntry, after: next }
+        const bodyEntry = sequence(statement.body, header.id, {
+          breakTo: next,
+          continueTo: header.id,
+        })
+        header.terminator = {
+          kind: 'loop',
+          item: statement.item,
+          iterable: statement.iterable,
+          body: bodyEntry,
+          after: next,
+        }
         return header.id
       }
       case 'match': {
-        const cases = statement.cases.map((branch) => ({ label: branch.label, target: sequence(branch.body, next, loop) }))
-        const otherwise = statement.otherwise ? sequence(statement.otherwise, next, loop) : next
+        const cases = statement.cases.map(branch => ({
+          label: branch.label,
+          target: sequence(branch.body, next, loop),
+        }))
+        const otherwise = statement.otherwise
+          ? sequence(statement.otherwise, next, loop)
+          : next
         const block = create()
-        block.terminator = { kind: 'switch', subject: statement.subject, cases, otherwise }
+        block.terminator = {
+          kind: 'switch',
+          subject: statement.subject,
+          cases,
+          otherwise,
+        }
         return block.id
       }
       default: {
@@ -129,6 +211,9 @@ export function successors(terminator: Terminator): Array<number> {
     case 'loop':
       return [terminator.body, terminator.after]
     case 'switch':
-      return [...terminator.cases.map((c) => c.target), terminator.otherwise]
+      return [
+        ...terminator.cases.map(c => c.target),
+        terminator.otherwise,
+      ]
   }
 }

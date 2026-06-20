@@ -7,13 +7,19 @@ import type { Rule } from '@/code/lint/rule'
 function emptyBlocks(s: Statement): boolean {
   switch (s.form) {
     case 'if':
-      return s.branches.some((b) => b.body.length === 0) || s.otherwise?.length === 0
+      return (
+        s.branches.some(b => b.body.length === 0) ||
+        s.otherwise?.length === 0
+      )
     case 'while':
     case 'for-each':
     case 'function':
       return s.body.length === 0
     case 'match':
-      return s.cases.some((c) => c.body.length === 0) || s.otherwise?.length === 0
+      return (
+        s.cases.some(c => c.body.length === 0) ||
+        s.otherwise?.length === 0
+      )
     default:
       return false
   }
@@ -28,7 +34,10 @@ export const noEmptyBlock: Rule = {
   check(target, context) {
     if (target.kind !== 'statement') return
     if (emptyBlocks(target.node)) {
-      context.report({ message: 'this block has no body', span: target.node.span })
+      context.report({
+        message: 'this block has no body',
+        span: target.node.span,
+      })
     }
   },
 }

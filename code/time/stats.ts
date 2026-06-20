@@ -14,13 +14,21 @@ export type BenchmarkResult = {
   timings_ns: Array<number>
 }
 
-export function computeStats(name: string, timings: Array<number>): BenchmarkResult {
+export function computeStats(
+  name: string,
+  timings: Array<number>,
+): BenchmarkResult {
   const sorted = [...timings].sort((a, b) => a - b)
   const count = sorted.length || 1
   const sum = sorted.reduce((a, b) => a + b, 0)
   const mean = sum / count
-  const median = sorted.length % 2 === 1 ? sorted[(sorted.length - 1) / 2]! : (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) / 2
-  const variance = sorted.reduce((a, b) => a + (b - mean) ** 2, 0) / count
+  const median =
+    sorted.length % 2 === 1
+      ? sorted[(sorted.length - 1) / 2]!
+      : (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) /
+        2
+  const variance =
+    sorted.reduce((a, b) => a + (b - mean) ** 2, 0) / count
   const stdDev = Math.sqrt(variance)
   return {
     name,

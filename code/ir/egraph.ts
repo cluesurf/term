@@ -40,7 +40,7 @@ class EGraph {
 
   // add a node, returning its (canonical) e-class id
   add(op: string, args: Array<number>): number {
-    const node: ENode = { op, args: args.map((a) => this.find(a)) }
+    const node: ENode = { op, args: args.map(a => this.find(a)) }
     const k = key(node)
     const existing = this.hashcons.get(k)
     if (existing !== undefined) return this.find(existing)
@@ -91,7 +91,10 @@ class EGraph {
       case 'var':
         return this.add(`var:${expr.name}`, [])
       case 'op':
-        return this.add(expr.op, [this.build(expr.left), this.build(expr.right)])
+        return this.add(expr.op, [
+          this.build(expr.left),
+          this.build(expr.right),
+        ])
     }
   }
 
@@ -106,7 +109,9 @@ class EGraph {
       // constant folding
       if (li !== undefined && ri !== undefined) {
         const folded = fold(node.op, li, ri)
-        if (folded !== undefined) changed = this.union(id, this.add(`int:${folded}`, [])) || changed
+        if (folded !== undefined)
+          changed =
+            this.union(id, this.add(`int:${folded}`, [])) || changed
       }
 
       // commutativity
@@ -115,24 +120,40 @@ class EGraph {
       }
 
       // identities
-      if (node.op === '+' && ri === 0) changed = this.union(id, l) || changed
-      if (node.op === '+' && li === 0) changed = this.union(id, r) || changed
-      if (node.op === '-' && ri === 0) changed = this.union(id, l) || changed
-      if (node.op === '*' && ri === 1) changed = this.union(id, l) || changed
-      if (node.op === '*' && li === 1) changed = this.union(id, r) || changed
-      if (node.op === '*' && (ri === 0 || li === 0)) changed = this.union(id, this.add('int:0', [])) || changed
-      if (node.op === '/' && ri === 1) changed = this.union(id, l) || changed
+      if (node.op === '+' && ri === 0)
+        changed = this.union(id, l) || changed
+      if (node.op === '+' && li === 0)
+        changed = this.union(id, r) || changed
+      if (node.op === '-' && ri === 0)
+        changed = this.union(id, l) || changed
+      if (node.op === '*' && ri === 1)
+        changed = this.union(id, l) || changed
+      if (node.op === '*' && li === 1)
+        changed = this.union(id, r) || changed
+      if (node.op === '*' && (ri === 0 || li === 0))
+        changed = this.union(id, this.add('int:0', [])) || changed
+      if (node.op === '/' && ri === 1)
+        changed = this.union(id, l) || changed
 
       // (a * b) / b  ->  a
       if (node.op === '/') {
         for (const inner of this.classNodes(l)) {
-          if (inner.op === '*' && this.find(inner.args[1]!) === this.find(r)) changed = this.union(id, inner.args[0]!) || changed
-          if (inner.op === '*' && this.find(inner.args[0]!) === this.find(r)) changed = this.union(id, inner.args[1]!) || changed
+          if (
+            inner.op === '*' &&
+            this.find(inner.args[1]!) === this.find(r)
+          )
+            changed = this.union(id, inner.args[0]!) || changed
+          if (
+            inner.op === '*' &&
+            this.find(inner.args[0]!) === this.find(r)
+          )
+            changed = this.union(id, inner.args[1]!) || changed
         }
       }
 
       // x - x  ->  0
-      if (node.op === '-' && this.find(l) === this.find(r)) changed = this.union(id, this.add('int:0', [])) || changed
+      if (node.op === '-' && this.find(l) === this.find(r))
+        changed = this.union(id, this.add('int:0', [])) || changed
 
       // constant reassociation: (a + k1) + k2  ->  a + (k1 + k2); likewise for *. With commutativity this also
       // catches (k1 + a) + k2 and the multiplicative forms, so scattered constants collapse to one.
@@ -142,7 +163,15 @@ class EGraph {
           const innerConstant = this.intValue(inner.args[1]!)
           if (innerConstant === undefined) continue
           const combined = fold(node.op, innerConstant, ri)
-          if (combined !== undefined) changed = this.union(id, this.add(node.op, [inner.args[0]!, this.add(`int:${combined}`, [])])) || changed
+          if (combined !== undefined)
+            changed =
+              this.union(
+                id,
+                this.add(node.op, [
+                  inner.args[0]!,
+                  this.add(`int:${combined}`, []),
+                ]),
+              ) || changed
         }
       }
     }
@@ -151,7 +180,8 @@ class EGraph {
 
   private classNodes(id: number): Array<ENode> {
     const out: Array<ENode> = []
-    for (const k of this.classes.get(this.find(id))!) out.push(this.nodes.get(k)!)
+    for (const k of this.classes.get(this.find(id))!)
+      out.push(this.nodes.get(k)!)
     return out
   }
 
@@ -192,9 +222,16 @@ class EGraph {
     }
     const rebuild = (id: number): Expr => {
       const node = bestNode.get(this.find(id))!
-      if (node.op.startsWith('int:')) return { t: 'int', value: Number(node.op.slice(4)) }
-      if (node.op.startsWith('var:')) return { t: 'var', name: node.op.slice(4) }
-      return { t: 'op', op: node.op, left: rebuild(node.args[0]!), right: rebuild(node.args[1]!) }
+      if (node.op.startsWith('int:'))
+        return { t: 'int', value: Number(node.op.slice(4)) }
+      if (node.op.startsWith('var:'))
+        return { t: 'var', name: node.op.slice(4) }
+      return {
+        t: 'op',
+        op: node.op,
+        left: rebuild(node.args[0]!),
+        right: rebuild(node.args[1]!),
+      }
     }
     return rebuild(root)
   }
@@ -230,6 +267,8 @@ export function showExpr(expr: Expr): string {
     case 'var':
       return expr.name
     case 'op':
-      return `(${showExpr(expr.left)} ${expr.op} ${showExpr(expr.right)})`
+      return `(${showExpr(expr.left)} ${expr.op} ${showExpr(
+        expr.right,
+      )})`
   }
 }

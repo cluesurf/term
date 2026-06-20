@@ -16,13 +16,20 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { parse } from '@/code/parser/tree'
-import type { GroupNode, NameNode, Node, RootNode } from '@/code/parser/tree'
+import type {
+  GroupNode,
+  NameNode,
+  Node,
+  RootNode,
+} from '@/code/parser/tree'
 import { parsePackage, storePath } from '@/code/deck/resolve'
 import type { Lockfile } from '@/code/deck/lock'
 import { serializeLockfile } from '@/code/deck/lock'
 
 function nameText(name: NameNode): string {
-  return name.parts.map((p) => (p.kind === 'chunk' ? p.text : '')).join('')
+  return name.parts
+    .map(p => (p.kind === 'chunk' ? p.text : ''))
+    .join('')
 }
 function headName(group: GroupNode): string | undefined {
   const first = group.nodes[0]
@@ -34,24 +41,35 @@ function rest(group: GroupNode): Array<Node> {
 function value(group: GroupNode): string {
   const arg = rest(group)[0]
   if (!arg) return ''
-  if (arg.kind === 'text') return arg.parts.map((p) => (p.kind === 'chunk' ? p.text : '')).join('')
+  if (arg.kind === 'text')
+    return arg.parts
+      .map(p => (p.kind === 'chunk' ? p.text : ''))
+      .join('')
   if (arg.kind === 'name') return nameText(arg)
   if (arg.kind === 'group') return headName(arg) ?? ''
   return ''
 }
-function child(group: GroupNode, keyword: string): GroupNode | undefined {
-  for (const node of rest(group)) if (node.kind === 'group' && headName(node) === keyword) return node
+function child(
+  group: GroupNode,
+  keyword: string,
+): GroupNode | undefined {
+  for (const node of rest(group))
+    if (node.kind === 'group' && headName(node) === keyword) return node
   return undefined
 }
 
-export type Manifest = { name: string; version: string; deps: Array<{ name: string; range: string }> }
+export type Manifest = {
+  name: string
+  version: string
+  deps: Array<{ name: string; range: string }>
+}
 
 export function parseDeck(text: string): Manifest {
   const manifest: Manifest = { name: '', version: '', deps: [] }
   const result = parse({ file: 'deck.tree', text })
   if (!result.ok) return manifest
   const tree: RootNode = result.tree
-  const deckGroup = tree.nodes.find((g) => headName(g) === 'deck')
+  const deckGroup = tree.nodes.find(g => headName(g) === 'deck')
   if (!deckGroup) return manifest
   manifest.name = value(deckGroup)
   const markGroup = child(deckGroup, 'mark')
@@ -59,39 +77,69 @@ export function parseDeck(text: string): Manifest {
   for (const node of rest(deckGroup)) {
     if (node.kind === 'group' && headName(node) === 'link') {
       const range = child(node, 'mark')
-      manifest.deps.push({ name: value(node), range: range ? value(range) : '*' })
+      manifest.deps.push({
+        name: value(node),
+        range: range ? value(range) : '*',
+      })
     }
   }
   return manifest
 }
 
 function sha512(text: string): string {
-  return `sha512-${createHash('sha512').update(text).digest('hex').slice(0, 32)}`
+  return `sha512-${createHash('sha512')
+    .update(text)
+    .digest('hex')
+    .slice(0, 32)}`
 }
 
 // pick a version from the registry for a range (exact, or `*` / `<*>` = highest available)
-function pickVersion(registryDir: string, host: string, deck: string, range: string): string | undefined {
+function pickVersion(
+  registryDir: string,
+  host: string,
+  deck: string,
+  range: string,
+): string | undefined {
   const dir = join(registryDir, host, deck)
   if (!existsSync(dir)) return undefined
-  const versions = readdirSync(dir).filter((v) => existsSync(join(dir, v, 'deck.tree')))
+  const versions = readdirSync(dir).filter(v =>
+    existsSync(join(dir, v, 'deck.tree')),
+  )
   if (versions.length === 0) return undefined
   const cleaned = range.replace(/[<>]/g, '').trim()
-  if (cleaned !== '*' && cleaned !== '' && versions.includes(cleaned)) return cleaned
+  if (cleaned !== '*' && cleaned !== '' && versions.includes(cleaned))
+    return cleaned
   // highest version (lexical sort is fine for the test's simple versions)
   return versions.sort().reverse()[0]
 }
 
-export type InstallResult = { ok: true; lockfile: Lockfile } | { ok: false; error: string }
+export type InstallResult =
+  | { ok: true; lockfile: Lockfile }
+  | { ok: false; error: string }
 
 // install a project's dependencies. registryDir holds <host>/<deck>/<version>/ packages; storeHome is the
 // content-addressed store root (the ~/.seed equivalent, parameterized for testing).
-export function install(projectDir: string, registryDir: string, storeHome: string): InstallResult {
-  const manifestText = readFileSync(join(projectDir, 'deck.tree'), 'utf8')
+export function install(
+  projectDir: string,
+  registryDir: string,
+  storeHome: string,
+): InstallResult {
+  const manifestText = readFileSync(
+    join(projectDir, 'deck.tree'),
+    'utf8',
+  )
   const manifest = parseDeck(manifestText)
-  const lockfile: Lockfile = { base: manifest.version || '0.0.0', requests: [], links: [] }
+  const lockfile: Lockfile = {
+    base: manifest.version || '0.0.0',
+    requests: [],
+    links: [],
+  }
   const visited = new Map<string, string>() // "name" -> resolved version
 
-  function resolveDep(depName: string, range: string): string | undefined {
+  function resolveDep(
+    depName: string,
+    range: string,
+  ): string | undefined {
     const { host, name } = parsePackage(depName)
     const version = pickVersion(registryDir, host, name, range)
     if (!version) return undefined
@@ -109,7 +157,9 @@ export function install(projectDir: string, registryDir: string, storeHome: stri
     const hash = sha512(readFileSync(join(target, 'deck.tree'), 'utf8'))
 
     // transitive: resolve the dependency's own dependencies
-    const depManifest = parseDeck(readFileSync(join(target, 'deck.tree'), 'utf8'))
+    const depManifest = parseDeck(
+      readFileSync(join(target, 'deck.tree'), 'utf8'),
+    )
     const deps: Array<{ name: string; version: string }> = []
     for (const d of depManifest.deps) {
       const v = resolveDep(d.name, d.range)
@@ -120,17 +170,26 @@ export function install(projectDir: string, registryDir: string, storeHome: stri
     // link into the project's local store: project/link/<host>/<name> -> store version
     const linkDir = join(projectDir, 'link', host, name)
     mkdirSync(dirname(linkDir), { recursive: true })
-    if (existsSync(linkDir)) rmSync(linkDir, { recursive: true, force: true })
+    if (existsSync(linkDir))
+      rmSync(linkDir, { recursive: true, force: true })
     symlinkSync(target, linkDir)
     return version
   }
 
   for (const dep of manifest.deps) {
     const version = resolveDep(dep.name, dep.range)
-    if (!version) return { ok: false, error: `cannot resolve ${dep.name}` }
-    lockfile.requests.push({ name: dep.name, range: dep.range, locked: version })
+    if (!version)
+      return { ok: false, error: `cannot resolve ${dep.name}` }
+    lockfile.requests.push({
+      name: dep.name,
+      range: dep.range,
+      locked: version,
+    })
   }
 
-  writeFileSync(join(projectDir, 'deck.lock.tree'), serializeLockfile(lockfile))
+  writeFileSync(
+    join(projectDir, 'deck.lock.tree'),
+    serializeLockfile(lockfile),
+  )
   return { ok: true, lockfile }
 }

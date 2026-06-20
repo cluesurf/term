@@ -4,28 +4,55 @@
 
 import { toCamel } from '@/code/compile/typescript'
 import type { Program } from '@/code/compile/node'
-import { compileToModule, prepareModuleDir, runNode, cleanupDir } from '@/code/time/execute'
+import {
+  compileToModule,
+  prepareModuleDir,
+  runNode,
+  cleanupDir,
+} from '@/code/time/execute'
 import { computeStats, type BenchmarkResult } from '@/code/time/stats'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
 export type Benchmark = { name: string; entry: string }
-export type CompiledBenchmarks = { code: string; benchmarks: Array<Benchmark> }
-
-// find the benchmark functions in a program: zero-argument top-level functions named `time-*`.
-export function discoverBenchmarks(program: Program, filter?: string): Array<Benchmark> {
-  return program
-    .filter((s): s is Extract<Program[number], { form: 'function' }> => s.form === 'function' && s.params.length === 0 && /^time-/.test(s.name))
-    .filter((s) => !filter || s.name.includes(filter))
-    .map((s) => ({ name: s.name, entry: toCamel(s.name) }))
+export type CompiledBenchmarks = {
+  code: string
+  benchmarks: Array<Benchmark>
 }
 
-export function compileBenchmarks(input: { text: string; file: string; filter?: string }): CompiledBenchmarks {
-  const { code, program } = compileToModule({ text: input.text, file: input.file })
+// find the benchmark functions in a program: zero-argument top-level functions named `time-*`.
+export function discoverBenchmarks(
+  program: Program,
+  filter?: string,
+): Array<Benchmark> {
+  return program
+    .filter(
+      (s): s is Extract<Program[number], { form: 'function' }> =>
+        s.form === 'function' &&
+        s.params.length === 0 &&
+        /^time-/.test(s.name),
+    )
+    .filter(s => !filter || s.name.includes(filter))
+    .map(s => ({ name: s.name, entry: toCamel(s.name) }))
+}
+
+export function compileBenchmarks(input: {
+  text: string
+  file: string
+  filter?: string
+}): CompiledBenchmarks {
+  const { code, program } = compileToModule({
+    text: input.text,
+    file: input.file,
+  })
   return { code, benchmarks: discoverBenchmarks(program, input.filter) }
 }
 
-function buildHarness(input: { benchmarks: Array<Benchmark>; warmup: number; iterations: number }): string {
+function buildHarness(input: {
+  benchmarks: Array<Benchmark>
+  warmup: number
+  iterations: number
+}): string {
   return `import * as M from './module.mjs'
 const specs = ${JSON.stringify(input.benchmarks)}
 const warmup = ${input.warmup}, iterations = ${input.iterations}
@@ -57,7 +84,11 @@ export async function runBenchmarks(input: {
   iterations?: number
 }): Promise<Array<BenchmarkResult>> {
   if (input.module.benchmarks.length === 0) return []
-  const dir = await prepareModuleDir({ root: input.root, code: input.module.code, tag: 'time' })
+  const dir = await prepareModuleDir({
+    root: input.root,
+    code: input.module.code,
+    tag: 'time',
+  })
   try {
     const harness = buildHarness({
       benchmarks: input.module.benchmarks,
@@ -65,9 +96,13 @@ export async function runBenchmarks(input: {
       iterations: input.iterations ?? 100,
     })
     await fs.writeFile(path.join(dir, 'harness.mjs'), harness)
-    const stdout = await runNode({ file: path.join(dir, 'harness.mjs'), cwd: dir })
-    const samples: Array<{ name: string; timings: Array<number> }> = JSON.parse(stdout)
-    return samples.map((s) => computeStats(s.name, s.timings))
+    const stdout = await runNode({
+      file: path.join(dir, 'harness.mjs'),
+      cwd: dir,
+    })
+    const samples: Array<{ name: string; timings: Array<number> }> =
+      JSON.parse(stdout)
+    return samples.map(s => computeStats(s.name, s.timings))
   } finally {
     await cleanupDir(dir)
   }

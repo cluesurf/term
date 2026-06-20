@@ -18,12 +18,26 @@ function flatten(node: Node): string {
       const [head, ...kids] = node.nodes
       const h = head ? flatten(head) : ''
       const optional = node.optional ? '?' : ''
-      return kids.length ? `${h}${optional} ${kids.map(flatten).join(', ')}` : `${h}${optional}`
+      return kids.length
+        ? `${h}${optional} ${kids.map(flatten).join(', ')}`
+        : `${h}${optional}`
     }
     case 'name':
-      return node.parts.map((p) => (p.kind === 'chunk' ? p.text : `{{${p.group ? flatten(p.group) : ''}}}`)).join('')
+      return node.parts
+        .map(p =>
+          p.kind === 'chunk'
+            ? p.text
+            : `{{${p.group ? flatten(p.group) : ''}}}`,
+        )
+        .join('')
     case 'text':
-      return `<${node.parts.map((p) => (p.kind === 'chunk' ? p.text : `{{${p.group ? flatten(p.group) : ''}}}`)).join('')}>`
+      return `<${node.parts
+        .map(p =>
+          p.kind === 'chunk'
+            ? p.text
+            : `{{${p.group ? flatten(p.group) : ''}}}`,
+        )
+        .join('')}>`
     case 'integer':
     case 'decimal':
     case 'radix':
@@ -39,7 +53,9 @@ function shape(node: Node): string {
     case 'root':
       return `R(${node.nodes.map(shape).join(',')})`
     case 'group':
-      return `G${node.optional ? '?' : ''}(${node.nodes.map(shape).join(',')})`
+      return `G${node.optional ? '?' : ''}(${node.nodes
+        .map(shape)
+        .join(',')})`
     case 'name':
       return `n:${flatten(node)}`
     case 'text':
@@ -54,7 +70,7 @@ function isLeaf(node: Node): boolean {
 }
 
 function comments(group: GroupNode, indent: string): Array<string> {
-  return (group.comments ?? []).map((c) => `${indent}${c.text.trim()}`)
+  return (group.comments ?? []).map(c => `${indent}${c.text.trim()}`)
 }
 
 // does this group (or any descendant) carry a comment? Inlining would drop those comments, so such groups stack.
@@ -69,9 +85,16 @@ function formatGroup(group: GroupNode, depth: number): Array<string> {
   const flat = flatten(group)
 
   // inline when it fits, carries no comments to preserve, and re-parses to the same structure (meaning preserved)
-  if (!group.nodes.some(hasComment) && indent.length + flat.length <= WIDTH) {
+  if (
+    !group.nodes.some(hasComment) &&
+    indent.length + flat.length <= WIDTH
+  ) {
     const reparsed = parse({ file: 'format', text: flat })
-    if (reparsed.ok && reparsed.tree.nodes.length === 1 && shape(reparsed.tree.nodes[0]!) === shape(group)) {
+    if (
+      reparsed.ok &&
+      reparsed.tree.nodes.length === 1 &&
+      shape(reparsed.tree.nodes[0]!) === shape(group)
+    ) {
       lines.push(`${indent}${flat}`)
       return lines
     }
@@ -81,8 +104,13 @@ function formatGroup(group: GroupNode, depth: number): Array<string> {
   const [head, ...kids] = group.nodes
   let split = 0
   while (split < kids.length && isLeaf(kids[split]!)) split++
-  const headParts = [head ? flatten(head) : '', ...kids.slice(0, split).map(flatten)].filter(Boolean)
-  lines.push(`${indent}${headParts.join(' ')}${group.optional ? '?' : ''}`)
+  const headParts = [
+    head ? flatten(head) : '',
+    ...kids.slice(0, split).map(flatten),
+  ].filter(Boolean)
+  lines.push(
+    `${indent}${headParts.join(' ')}${group.optional ? '?' : ''}`,
+  )
   for (const kid of kids.slice(split)) {
     if (kid.kind === 'group') lines.push(...formatGroup(kid, depth + 1))
     else lines.push(`${'  '.repeat(depth + 1)}${flatten(kid)}`)
@@ -92,7 +120,11 @@ function formatGroup(group: GroupNode, depth: number): Array<string> {
 
 export function formatTree(tree: RootNode): string {
   // one blank line between top-level definitions; comments ride with their group
-  return tree.nodes.map((group) => formatGroup(group, 0).join('\n')).join('\n\n') + '\n'
+  return (
+    tree.nodes
+      .map(group => formatGroup(group, 0).join('\n'))
+      .join('\n\n') + '\n'
+  )
 }
 
 // format source text. Tolerant: if it does not parse, the original text is returned unchanged.

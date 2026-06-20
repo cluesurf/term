@@ -4,7 +4,11 @@
 // program once and dispatches every enabled rule per node, so N rules cost one traversal. See plans/19-format-and-lint.
 
 import type { Severity, Span } from '@/code/parser/diagnostic'
-import type { Expression, Program, Statement } from '@/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@/code/compile/node'
 
 // a source replacement: the editor swaps the text in `span` for `text`. The unit of every autofix and of the
 // formatter's output, so the language server applies both the same way.
@@ -28,7 +32,11 @@ export type LintContext = {
   source: string
   reassigned: Set<string>
   slice(span: Span): string
-  report(finding: Omit<Finding, 'rule' | 'code' | 'severity'> & { fix?: TextEdit }): void
+  report(
+    finding: Omit<Finding, 'rule' | 'code' | 'severity'> & {
+      fix?: TextEdit
+    },
+  ): void
 }
 
 export type LintNode =

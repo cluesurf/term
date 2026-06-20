@@ -1,5 +1,11 @@
 import { createInterface } from 'node:readline'
-import { mkdtempSync, writeFileSync, existsSync, readFileSync, realpathSync } from 'node:fs'
+import {
+  mkdtempSync,
+  writeFileSync,
+  existsSync,
+  readFileSync,
+  realpathSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -10,7 +16,8 @@ import type { Diagnostic } from '../parser/diagnostic'
 import { logStep, logFail, logGood, fade, bold } from '../tint'
 
 // the keywords that begin a top-level definition; anything else typed at the prompt is an expression to evaluate
-const DEFINITION = /^(task|form|load|mask|dock|suit|bear|deck|note|hold)\b/
+const DEFINITION =
+  /^(task|form|load|mask|dock|suit|bear|deck|note|hold)\b/
 
 export type FeedResult =
   | { kind: 'definition'; text: string }
@@ -33,34 +40,59 @@ export class Repl {
     if (DEFINITION.test(trimmed.trimStart())) {
       // a definition: accept it only if the program still compiles with it added
       const trial = [...this.definitions, trimmed].join('\n\n')
-      const result = compile({ file: 'repl.tree', text: trial }, { resolve: this.resolve })
-      if (!result.ok) return { kind: 'error', text: formatDiagnostics(result.diagnostics) }
+      const result = compile(
+        { file: 'repl.tree', text: trial },
+        { resolve: this.resolve },
+      )
+      if (!result.ok)
+        return {
+          kind: 'error',
+          text: formatDiagnostics(result.diagnostics),
+        }
       this.definitions.push(trimmed)
       const name = trimmed.trimStart().split(/\s+/)[1] ?? ''
       return { kind: 'definition', text: name }
     }
 
     // an expression: wrap it as `task seed-repl-eval / send back / <expr>` and run the wrapper
-    const wrapped = `task seed-repl-eval\n  send back\n${trimmed.split('\n').map((l) => `    ${l}`).join('\n')}`
+    const wrapped = `task seed-repl-eval\n  send back\n${trimmed
+      .split('\n')
+      .map(l => `    ${l}`)
+      .join('\n')}`
     const full = [...this.definitions, wrapped].join('\n\n')
-    const result = compile({ file: 'repl.tree', text: full }, { resolve: this.resolve })
-    if (!result.ok) return { kind: 'error', text: formatDiagnostics(result.diagnostics) }
+    const result = compile(
+      { file: 'repl.tree', text: full },
+      { resolve: this.resolve },
+    )
+    if (!result.ok)
+      return {
+        kind: 'error',
+        text: formatDiagnostics(result.diagnostics),
+      }
     try {
       const value = await run(result.typescript)
       return { kind: 'value', text: display(value) }
     } catch (error) {
-      return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
+      return {
+        kind: 'error',
+        text: error instanceof Error ? error.message : String(error),
+      }
     }
   }
 }
 
 // transpile the emitted TypeScript to an ES module, import it, and return the value of the eval wrapper
 async function run(typescript: string): Promise<unknown> {
-  const js = transformSync(typescript, { loader: 'ts', format: 'esm' }).code
+  const js = transformSync(typescript, {
+    loader: 'ts',
+    format: 'esm',
+  }).code
   const dir = mkdtempSync(join(tmpdir(), 'seed-repl-'))
   const file = join(dir, 'repl.mjs')
   writeFileSync(file, js)
-  const module = (await import(pathToFileURL(file).href)) as { seedReplEval?: () => unknown }
+  const module = (await import(pathToFileURL(file).href)) as {
+    seedReplEval?: () => unknown
+  }
   return module.seedReplEval ? module.seedReplEval() : undefined
 }
 
@@ -72,20 +104,25 @@ function display(value: unknown): string {
 }
 
 function formatDiagnostics(diagnostics: Array<Diagnostic>): string {
-  return diagnostics.map((d) => `${d.name}: ${d.message}`).join('\n')
+  return diagnostics.map(d => `${d.name}: ${d.message}`).join('\n')
 }
 
 // resolve `@cluesurf/base/...` imports to the stdlib that ships with this package, if it can be found on disk
 export function stdlibResolver(): Resolver | undefined {
   const here = dirname(fileURLToPath(import.meta.url))
-  const candidates = [join(here, '..', '..', '..', 'base.tree'), join(here, '..', '..', 'base.tree')]
-  const base = candidates.find((c) => existsSync(c))
+  const candidates = [
+    join(here, '..', '..', '..', 'base.tree'),
+    join(here, '..', '..', 'base.tree'),
+  ]
+  const base = candidates.find(c => existsSync(c))
   if (!base) return undefined
   return (path: string): Source | undefined => {
     const prefix = '@cluesurf/base/'
     if (!path.startsWith(prefix)) return undefined
     const file = join(base, `${path.slice(prefix.length)}.tree`)
-    return existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
+    return existsSync(file)
+      ? { file, text: readFileSync(file, 'utf8') }
+      : undefined
   }
 }
 
@@ -99,22 +136,40 @@ export function linkResolver(root: string): Resolver {
     if (!match) return undefined
     const [, pkg, rest] = match
     const base = join(linkDir, pkg!)
-    for (const candidate of [join(base, `${rest}.tree`), join(base, rest!, 'base.tree'), join(base, rest!, 'note.tree')]) {
+    for (const candidate of [
+      join(base, `${rest}.tree`),
+      join(base, rest!, 'base.tree'),
+      join(base, rest!, 'note.tree'),
+    ]) {
       // canonicalize through the `link/` symlink so a file reached via a linked package and via its real path dedup
       // to one module (lets a package reference itself by name, e.g. `bear @cluesurf/site/code/dom/view`)
-      if (existsSync(candidate)) return { file: realpathSync(candidate), text: readFileSync(candidate, 'utf8') }
+      if (existsSync(candidate))
+        return {
+          file: realpathSync(candidate),
+          text: readFileSync(candidate, 'utf8'),
+        }
     }
     return undefined
   }
 }
 
-export async function callWalk(_input: { root: string }): Promise<void> {
+export async function callWalk(_input: {
+  root: string
+}): Promise<void> {
   logStep('Seed REPL')
-  console.log(fade('  Type a definition (task / form / load) to add it, an expression to evaluate it, or `exit`.'))
+  console.log(
+    fade(
+      '  Type a definition (task / form / load) to add it, an expression to evaluate it, or `exit`.',
+    ),
+  )
   console.log(fade('  Finish a multi-line block with a blank line.\n'))
 
   const repl = new Repl(stdlibResolver())
-  const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: bold('seed> ') })
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: bold('seed> '),
+  })
   let buffer: Array<string> = []
 
   const flush = async (): Promise<void> => {
@@ -123,12 +178,13 @@ export async function callWalk(_input: { root: string }): Promise<void> {
     if (!block.trim()) return
     const result = await repl.feed(block)
     if (result.kind === 'value') console.log(result.text)
-    else if (result.kind === 'definition') console.log(fade(`  added ${result.text}`))
+    else if (result.kind === 'definition')
+      console.log(fade(`  added ${result.text}`))
     else if (result.kind === 'error') logFail(result.text)
   }
 
   rl.prompt()
-  rl.on('line', async (line) => {
+  rl.on('line', async line => {
     if (line.trim() === 'exit') return rl.close()
     if (line.trim() === '') {
       await flush()
@@ -137,7 +193,8 @@ export async function callWalk(_input: { root: string }): Promise<void> {
     }
     buffer.push(line)
     // a single-line expression evaluates immediately; an indented block waits for a blank line
-    if (buffer.length === 1 && !DEFINITION.test(line.trimStart())) await flush()
+    if (buffer.length === 1 && !DEFINITION.test(line.trimStart()))
+      await flush()
     rl.prompt()
   })
   rl.on('close', () => {

@@ -13,42 +13,69 @@ function expectOk(name: string, source: string): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (${result.diagnostics.map((d) => d.message).join('; ')})`)
+    console.log(
+      `FAIL  ${name}  (${result.diagnostics
+        .map(d => d.message)
+        .join('; ')})`,
+    )
   }
 }
 
 function expectUnproven(name: string, source: string): void {
   const result = compile({ file: 'h.tree', text: source })
-  if (!result.ok && result.diagnostics.some((d) => d.name === 'unproven')) {
+  if (
+    !result.ok &&
+    result.diagnostics.some(d => d.name === 'unproven')
+  ) {
     pass++
     console.log(`ok    ${name}  (${result.diagnostics[0]!.message})`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, codes=${result.ok ? '' : result.diagnostics.map((d) => d.name).join(',')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, codes=${
+        result.ok ? '' : result.diagnostics.map(d => d.name).join(',')
+      })`,
+    )
   }
 }
 
-function expectWarning(name: string, source: string, code: string): void {
+function expectWarning(
+  name: string,
+  source: string,
+  code: string,
+): void {
   const result = compile({ file: 'h.tree', text: source })
   const warnings = result.ok ? result.warnings : []
-  if (result.ok && warnings.some((d) => d.name === code)) {
+  if (result.ok && warnings.some(d => d.name === code)) {
     pass++
-    console.log(`ok    ${name}  (${warnings.find((d) => d.name === code)!.message})`)
+    console.log(
+      `ok    ${name}  (${
+        warnings.find(d => d.name === code)!.message
+      })`,
+    )
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, warnings=${warnings.map((d) => d.name).join(',')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, warnings=${warnings
+        .map(d => d.name)
+        .join(',')})`,
+    )
   }
 }
 
 function expectDischarged(name: string, source: string): void {
   const result = compile({ file: 'h.tree', text: source })
   const warnings = result.ok ? result.warnings : []
-  if (result.ok && !warnings.some((d) => d.name === 'unchecked-hold')) {
+  if (result.ok && !warnings.some(d => d.name === 'unchecked-hold')) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, warnings=${warnings.map((d) => d.name).join(',')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, warnings=${warnings
+        .map(d => d.name)
+        .join(',')})`,
+    )
   }
 }
 

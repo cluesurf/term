@@ -20,7 +20,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const SPAN: Span = { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 0, offset: 0 } }
+const SPAN: Span = {
+  start: { line: 0, column: 0, offset: 0 },
+  end: { line: 0, column: 0, offset: 0 },
+}
 
 function record(name: string, fieldType: Type): Program {
   const statement: Statement = {
@@ -38,7 +41,11 @@ function frontEnd(text: string): Program {
   const parsed = parse({ file: 't.tree', text })
   if (!parsed.ok) throw new Error('parse failed')
   const built = mill(parsed.tree, 't.tree')
-  if (!built.ok) throw new Error('mill failed: ' + built.diagnostics.map((d) => d.message).join('; '))
+  if (!built.ok)
+    throw new Error(
+      'mill failed: ' +
+        built.diagnostics.map(d => d.message).join('; '),
+    )
   resolve(built.program, 't.tree')
   check(built.program, 't.tree')
   return built.program
@@ -107,31 +114,74 @@ task pong
 function main(): void {
   // ---- positivity ----
   // a self-reference to the left of an arrow (a parameter) is negative: rejected
-  const negative: Type = { kind: 'function', params: [{ kind: 'named', name: 'bad' }], result: { kind: 'number' } }
-  const negativeReport = checkTotality(record('bad', negative), 't.tree')
-  ok('strict positivity rejects a negative self-occurrence', negativeReport.errors.some((d) => d.name === 'non-positive'), JSON.stringify(negativeReport.errors.map((d) => d.name)))
+  const negative: Type = {
+    kind: 'function',
+    params: [{ kind: 'named', name: 'bad' }],
+    result: { kind: 'number' },
+  }
+  const negativeReport = checkTotality(
+    record('bad', negative),
+    't.tree',
+  )
+  ok(
+    'strict positivity rejects a negative self-occurrence',
+    negativeReport.errors.some(d => d.name === 'non-positive'),
+    JSON.stringify(negativeReport.errors.map(d => d.name)),
+  )
 
   // a self-reference only in the result (positive) is fine
-  const positive: Type = { kind: 'function', params: [{ kind: 'number' }], result: { kind: 'named', name: 'good' } }
-  const positiveReport = checkTotality(record('good', positive), 't.tree')
-  ok('strict positivity accepts a positive self-occurrence', positiveReport.errors.length === 0, JSON.stringify(positiveReport.errors.map((d) => d.name)))
+  const positive: Type = {
+    kind: 'function',
+    params: [{ kind: 'number' }],
+    result: { kind: 'named', name: 'good' },
+  }
+  const positiveReport = checkTotality(
+    record('good', positive),
+    't.tree',
+  )
+  ok(
+    'strict positivity accepts a positive self-occurrence',
+    positiveReport.errors.length === 0,
+    JSON.stringify(positiveReport.errors.map(d => d.name)),
+  )
 
   // an ordinary first-order record is fine
-  const plainRecord = checkTotality(record('point', { kind: 'number' }), 't.tree')
-  ok('strict positivity accepts a first-order field', plainRecord.errors.length === 0)
+  const plainRecord = checkTotality(
+    record('point', { kind: 'number' }),
+    't.tree',
+  )
+  ok(
+    'strict positivity accepts a first-order field',
+    plainRecord.errors.length === 0,
+  )
 
   // ---- termination ----
   const fib = checkTotality(frontEnd(FIB), 't.tree')
-  ok('termination accepts decreasing recursion (fibonacci)', fib.warnings.every((d) => d.name !== 'non-terminating'), JSON.stringify(fib.warnings.map((d) => d.message)))
+  ok(
+    'termination accepts decreasing recursion (fibonacci)',
+    fib.warnings.every(d => d.name !== 'non-terminating'),
+    JSON.stringify(fib.warnings.map(d => d.message)),
+  )
 
   const loop = checkTotality(frontEnd(LOOP), 't.tree')
-  ok('termination flags non-decreasing recursion', loop.warnings.some((d) => d.name === 'non-terminating'), JSON.stringify(loop.warnings.map((d) => d.name)))
+  ok(
+    'termination flags non-decreasing recursion',
+    loop.warnings.some(d => d.name === 'non-terminating'),
+    JSON.stringify(loop.warnings.map(d => d.name)),
+  )
 
   const plain = checkTotality(frontEnd(PLAIN), 't.tree')
-  ok('termination is silent for non-recursive functions', plain.warnings.length === 0)
+  ok(
+    'termination is silent for non-recursive functions',
+    plain.warnings.length === 0,
+  )
 
   const mutual = checkTotality(frontEnd(MUTUAL), 't.tree')
-  ok('termination flags mutual recursion (via the call graph)', mutual.warnings.some((d) => d.name === 'non-terminating'), JSON.stringify(mutual.warnings.map((d) => d.message)))
+  ok(
+    'termination flags mutual recursion (via the call graph)',
+    mutual.warnings.some(d => d.name === 'non-terminating'),
+    JSON.stringify(mutual.warnings.map(d => d.message)),
+  )
 
   console.log(`\ntotality: ${pass} pass, ${fail} fail`)
 }

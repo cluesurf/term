@@ -1,6 +1,12 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import { logGood, logFail, logStep, logWarn, formatError } from '../tint'
+import {
+  logGood,
+  logFail,
+  logStep,
+  logWarn,
+  formatError,
+} from '../tint'
 import { render } from '../parser/diagnostic'
 import { compileToModule, CompileFailure } from '../time/execute'
 import { runMemoryProfile, formatMemoryResult } from '../time/memory'
@@ -40,25 +46,41 @@ export async function callProfile(input: {
 
 // CPU profiling of the compiled artifact's own hotspots is not wired yet. We still compile the file so the user gets
 // real feedback if it does not build, then point them at memory profiling, which is available.
-async function profileCpu(input: { root: string; filePath: string }): Promise<void> {
+async function profileCpu(input: {
+  root: string
+  filePath: string
+}): Promise<void> {
   logStep('CPU profiling...')
   const text = await fs.readFile(input.filePath, 'utf-8')
   try {
-    compileToModule({ text, file: path.relative(input.root, input.filePath) })
+    compileToModule({
+      text,
+      file: path.relative(input.root, input.filePath),
+    })
   } catch (err) {
     if (err instanceof CompileFailure) {
       logFail(`${err.diagnostics.length} compilation error(s)`)
-      for (const diagnostic of err.diagnostics) console.error(render(diagnostic, text.split('\n')))
+      for (const diagnostic of err.diagnostics)
+        console.error(render(diagnostic, text.split('\n')))
       process.exit(1)
     }
     throw err
   }
-  logWarn('CPU profiling is not available yet. The file compiles. Use `seed profile memory <file>` for now.')
+  logWarn(
+    'CPU profiling is not available yet. The file compiles. Use `seed profile memory <file>` for now.',
+  )
 }
 
-async function profileMemory(input: { root: string; filePath: string; track?: boolean }): Promise<void> {
+async function profileMemory(input: {
+  root: string
+  filePath: string
+  track?: boolean
+}): Promise<void> {
   logStep('Memory profiling...')
-  if (input.track) logWarn('Timeline tracking is not available yet; reporting a single before/after measurement.')
+  if (input.track)
+    logWarn(
+      'Timeline tracking is not available yet; reporting a single before/after measurement.',
+    )
 
   const text = await fs.readFile(input.filePath, 'utf-8')
   try {
@@ -75,7 +97,8 @@ async function profileMemory(input: { root: string; filePath: string; track?: bo
   } catch (err) {
     if (err instanceof CompileFailure) {
       logFail(`${err.diagnostics.length} compilation error(s)`)
-      for (const diagnostic of err.diagnostics) console.error(render(diagnostic, text.split('\n')))
+      for (const diagnostic of err.diagnostics)
+        console.error(render(diagnostic, text.split('\n')))
       process.exit(1)
     }
     logFail(formatError(err))

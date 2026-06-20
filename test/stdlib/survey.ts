@@ -17,7 +17,9 @@ const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
   if (!path.startsWith(prefix)) return undefined
   const file = join(base, `${path.slice(prefix.length)}.tree`)
-  return existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
+  return existsSync(file)
+    ? { file, text: readFileSync(file, 'utf8') }
+    : undefined
 }
 // the survey compiles against the node target, so a public module's abstract `native/<x>` import resolves to the
 // node implementation (native/node/<x>); modules that do not use native imports are unaffected
@@ -31,7 +33,11 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(
+        got,
+      )}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
@@ -47,15 +53,35 @@ function compiles(file: string): boolean {
 
 // the core modules that must always compile (the standard library's load-bearing surface)
 const CORE = [
-  'boolean.tree', 'maybe.tree', 'result.tree', 'pair.tree', 'list.tree', 'float.tree',
-  'file.tree', 'clock.tree', 'color.tree', 'console.tree', 'process.tree', 'error.tree',
-  'hash.tree', 'range.tree', 'time.tree', 'log.tree', 'input.tree',
-  'command.tree', 'text.tree', 'date.tree', 'channel.tree', 'network.tree', 'socket.tree',
-  'task.tree', 'cryptography.tree',
+  'boolean.tree',
+  'maybe.tree',
+  'result.tree',
+  'pair.tree',
+  'list.tree',
+  'float.tree',
+  'file.tree',
+  'clock.tree',
+  'color.tree',
+  'console.tree',
+  'process.tree',
+  'error.tree',
+  'hash.tree',
+  'range.tree',
+  'time.tree',
+  'log.tree',
+  'input.tree',
+  'command.tree',
+  'text.tree',
+  'date.tree',
+  'channel.tree',
+  'network.tree',
+  'socket.tree',
+  'task.tree',
+  'cryptography.tree',
 ]
 
 // no module may crash the compiler (parser robustness)
-const all = readdirSync(codeDir).filter((f) => f.endsWith('.tree'))
+const all = readdirSync(codeDir).filter(f => f.endsWith('.tree'))
 let crashed = 0
 let ok = 0
 for (const file of all) {
@@ -73,8 +99,14 @@ expect('every non-empty core module compiles', ok >= 58, true)
 
 // a curated set of load-bearing modules must compile individually
 for (const file of CORE) {
-  expect(`core module compiles: ${file}`, existsSync(join(codeDir, file)) ? compiles(file) : 'missing', true)
+  expect(
+    `core module compiles: ${file}`,
+    existsSync(join(codeDir, file)) ? compiles(file) : 'missing',
+    true,
+  )
 }
 
-console.log(`\nstdlib survey: ${pass} pass, ${fail} fail  (${ok}/${all.length} modules compile)`)
+console.log(
+  `\nstdlib survey: ${pass} pass, ${fail} fail  (${ok}/${all.length} modules compile)`,
+)
 if (fail > 0) process.exit(1)

@@ -12,20 +12,61 @@ export type RootNode = { kind: 'root'; nodes: Array<GroupNode> }
 export type Comment = { text: string; span: Span }
 export type GroupNode = {
   kind: 'group'
-  nodes: Array<GroupNode | NameNode | TextNode | IntegerNode | DecimalNode | RadixNode>
+  nodes: Array<
+    | GroupNode
+    | NameNode
+    | TextNode
+    | IntegerNode
+    | DecimalNode
+    | RadixNode
+  >
   parent?: GroupNode | InterpolationNode
   optional?: boolean
   // CST trivia: comments written on the lines above this group. The formatter re-emits them; lint reads
   // suppressions. This is what makes the tree a concrete syntax tree rather than a bare AST.
   comments?: Array<Comment>
 }
-export type NameNode = { kind: 'name'; parts: Array<ChunkNode | InterpolationNode>; parent?: GroupNode }
-export type TextNode = { kind: 'text'; parts: Array<ChunkNode | InterpolationNode>; parent?: GroupNode }
-export type InterpolationNode = { kind: 'interpolation'; depth: number; group?: GroupNode; parent?: NameNode | TextNode }
-export type ChunkNode = { kind: 'chunk'; text: string; token: Token; parent?: NameNode | TextNode }
-export type IntegerNode = { kind: 'integer'; value: number; token: Token; parent?: GroupNode }
-export type DecimalNode = { kind: 'decimal'; value: number; token: Token; parent?: GroupNode }
-export type RadixNode = { kind: 'radix'; value: number; radix: number; token: Token; parent?: GroupNode }
+export type NameNode = {
+  kind: 'name'
+  parts: Array<ChunkNode | InterpolationNode>
+  parent?: GroupNode
+}
+export type TextNode = {
+  kind: 'text'
+  parts: Array<ChunkNode | InterpolationNode>
+  parent?: GroupNode
+}
+export type InterpolationNode = {
+  kind: 'interpolation'
+  depth: number
+  group?: GroupNode
+  parent?: NameNode | TextNode
+}
+export type ChunkNode = {
+  kind: 'chunk'
+  text: string
+  token: Token
+  parent?: NameNode | TextNode
+}
+export type IntegerNode = {
+  kind: 'integer'
+  value: number
+  token: Token
+  parent?: GroupNode
+}
+export type DecimalNode = {
+  kind: 'decimal'
+  value: number
+  token: Token
+  parent?: GroupNode
+}
+export type RadixNode = {
+  kind: 'radix'
+  value: number
+  radix: number
+  token: Token
+  parent?: GroupNode
+}
 
 export type Node =
   | RootNode
@@ -46,12 +87,22 @@ type Frame = { line: Array<Node>; levels: Array<Node>; level: number }
 
 function setParent(child: { parent?: unknown }, parent: unknown) {
   // non-enumerable so the tree can be serialized without circular references
-  Object.defineProperty(child, 'parent', { value: parent, enumerable: false, writable: true })
+  Object.defineProperty(child, 'parent', {
+    value: parent,
+    enumerable: false,
+    writable: true,
+  })
 }
 
-function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagnostic>): RootNode {
+function buildTree(
+  events: Array<Event>,
+  file: string,
+  diagnostics: Array<Diagnostic>,
+): RootNode {
   const root: RootNode = { kind: 'root', nodes: [] }
-  const stack: Array<Frame> = [{ line: [root], levels: [root], level: 0 }]
+  const stack: Array<Frame> = [
+    { line: [root], levels: [root], level: 0 },
+  ]
 
   const top = () => stack[stack.length - 1]!
   const base = () => top().line[top().line.length - 1]!
@@ -63,7 +114,13 @@ function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagno
   }
   const unexpected = (event: Event) => {
     const token = 'token' in event ? (event.token as Token) : undefined
-    diagnostics.push(diagnose('unexpected-node', { file, span: token ? token.span : zeroSpan(), message: `unexpected ${event.kind} here` }))
+    diagnostics.push(
+      diagnose('unexpected-node', {
+        file,
+        span: token ? token.span : zeroSpan(),
+        message: `unexpected ${event.kind} here`,
+      }),
+    )
   }
 
   // comments seen since the last group; attached as leading trivia to the next group opened (CST)
@@ -72,7 +129,10 @@ function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagno
   for (const event of events) {
     switch (event.kind) {
       case EventKind.Comment:
-        pendingComments.push({ text: event.token.text, span: event.token.span })
+        pendingComments.push({
+          text: event.token.text,
+          span: event.token.span,
+        })
         break
       case EventKind.OpenGroup: {
         const here = base()
@@ -129,10 +189,17 @@ function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagno
       case EventKind.OpenInterpolation: {
         const here = base()
         if (here.kind === 'name' || here.kind === 'text') {
-          const interpolation: InterpolationNode = { kind: 'interpolation', depth: event.depth }
+          const interpolation: InterpolationNode = {
+            kind: 'interpolation',
+            depth: event.depth,
+          }
           here.parts.push(interpolation)
           setParent(interpolation, here)
-          stack.push({ line: [interpolation], levels: [interpolation], level: 0 })
+          stack.push({
+            line: [interpolation],
+            levels: [interpolation],
+            level: 0,
+          })
         } else {
           unexpected(event)
         }
@@ -146,12 +213,20 @@ function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagno
         if (here.kind === 'name') {
           const text = event.token.text
           const optional = text.includes('?')
-          const chunk: ChunkNode = { kind: 'chunk', text: optional ? text.replace(/\?/g, '') : text, token: event.token }
+          const chunk: ChunkNode = {
+            kind: 'chunk',
+            text: optional ? text.replace(/\?/g, '') : text,
+            token: event.token,
+          }
           here.parts.push(chunk)
           setParent(chunk, here)
           if (optional && here.parent) here.parent.optional = true
         } else if (here.kind === 'text') {
-          const chunk: ChunkNode = { kind: 'chunk', text: event.token.text, token: event.token }
+          const chunk: ChunkNode = {
+            kind: 'chunk',
+            text: event.token.text,
+            token: event.token,
+          }
           here.parts.push(chunk)
           setParent(chunk, here)
         } else {
@@ -162,7 +237,11 @@ function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagno
       case EventKind.Integer: {
         const here = base()
         if (here.kind === 'group') {
-          const node: IntegerNode = { kind: 'integer', value: event.value, token: event.token }
+          const node: IntegerNode = {
+            kind: 'integer',
+            value: event.value,
+            token: event.token,
+          }
           here.nodes.push(node)
           setParent(node, here)
         } else if (here.kind === 'root') {
@@ -181,7 +260,11 @@ function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagno
       case EventKind.Decimal: {
         const here = base()
         if (here.kind === 'group') {
-          const node: DecimalNode = { kind: 'decimal', value: event.value, token: event.token }
+          const node: DecimalNode = {
+            kind: 'decimal',
+            value: event.value,
+            token: event.token,
+          }
           here.nodes.push(node)
           setParent(node, here)
         } else {
@@ -192,7 +275,12 @@ function buildTree(events: Array<Event>, file: string, diagnostics: Array<Diagno
       case EventKind.Radix: {
         const here = base()
         if (here.kind === 'group') {
-          const node: RadixNode = { kind: 'radix', value: event.value, radix: event.radix, token: event.token }
+          const node: RadixNode = {
+            kind: 'radix',
+            value: event.value,
+            radix: event.radix,
+            token: event.token,
+          }
           here.nodes.push(node)
           setParent(node, here)
         } else {
@@ -225,37 +313,60 @@ function zeroSpan(): Span {
 }
 
 // The strict entry. Parse text to a tree, or return diagnostics.
-export function parse(source: { file: string; text: string }): ParseResult {
+export function parse(source: {
+  file: string
+  text: string
+}): ParseResult {
   const tokenResult = tokenize(source)
-  if (!tokenResult.ok) return { ok: false, diagnostics: tokenResult.diagnostics }
+  if (!tokenResult.ok)
+    return { ok: false, diagnostics: tokenResult.diagnostics }
 
   const eventResult = buildEvents(tokenResult.tokens)
-  if (!eventResult.ok) return { ok: false, diagnostics: eventResult.diagnostics }
+  if (!eventResult.ok)
+    return { ok: false, diagnostics: eventResult.diagnostics }
 
   const diagnostics: Array<Diagnostic> = []
-  const tree = buildTree(eventResult.stream.events, source.file, diagnostics)
+  const tree = buildTree(
+    eventResult.stream.events,
+    source.file,
+    diagnostics,
+  )
   if (diagnostics.length) return { ok: false, diagnostics }
   return { ok: true, tree }
 }
 
 // The tolerant entry. Never fails. Returns whatever tree it built plus any diagnostics. For the language server.
-export function parseTolerant(source: { file: string; text: string }): { tree: RootNode; diagnostics: Array<Diagnostic> } {
+export function parseTolerant(source: { file: string; text: string }): {
+  tree: RootNode
+  diagnostics: Array<Diagnostic>
+} {
   const empty: RootNode = { kind: 'root', nodes: [] }
   const tokenResult = tokenize(source)
-  if (!tokenResult.ok) return { tree: empty, diagnostics: tokenResult.diagnostics }
+  if (!tokenResult.ok)
+    return { tree: empty, diagnostics: tokenResult.diagnostics }
   const eventResult = buildEvents(tokenResult.tokens)
-  if (!eventResult.ok) return { tree: empty, diagnostics: eventResult.diagnostics }
+  if (!eventResult.ok)
+    return { tree: empty, diagnostics: eventResult.diagnostics }
   const diagnostics: Array<Diagnostic> = []
-  const tree = buildTree(eventResult.stream.events, source.file, diagnostics)
+  const tree = buildTree(
+    eventResult.stream.events,
+    source.file,
+    diagnostics,
+  )
   return { tree, diagnostics }
 }
 
 // Render a name or text node inline (e.g. inside interpolation or as a head value).
-function renderParts(parts: Array<ChunkNode | InterpolationNode>): string {
+function renderParts(
+  parts: Array<ChunkNode | InterpolationNode>,
+): string {
   let out = ''
   for (const part of parts) {
     if (part.kind === 'chunk') out += part.text
-    else out += `${'{'.repeat(part.depth)}${part.group ? renderInline(part.group) : ''}${'}'.repeat(part.depth)}`
+    else
+      out += `${'{'.repeat(part.depth)}${
+        part.group ? renderInline(part.group) : ''
+      }${'}'.repeat(part.depth)}`
   }
   return out
 }
@@ -265,7 +376,9 @@ function renderInline(group: GroupNode): string {
   const [head, ...rest] = group.nodes
   const headText = head ? renderHead(head) : ''
   if (rest.length === 0) return headText
-  return `${headText}(${rest.map((n) => (n.kind === 'group' ? renderInline(n) : renderHead(n))).join(', ')})`
+  return `${headText}(${rest
+    .map(n => (n.kind === 'group' ? renderInline(n) : renderHead(n)))
+    .join(', ')})`
 }
 
 function renderHead(node: Node): string {
@@ -293,7 +406,11 @@ export function printTree(tree: RootNode): string {
   const walk = (group: GroupNode, depth: number) => {
     const [head, ...rest] = group.nodes
     const indent = '  '.repeat(depth)
-    lines.push(`${indent}${head ? renderHead(head) : ''}${group.optional ? '?' : ''}`)
+    lines.push(
+      `${indent}${head ? renderHead(head) : ''}${
+        group.optional ? '?' : ''
+      }`,
+    )
     for (const child of rest) {
       if (child.kind === 'group') walk(child, depth + 1)
       else lines.push(`${'  '.repeat(depth + 1)}${renderHead(child)}`)

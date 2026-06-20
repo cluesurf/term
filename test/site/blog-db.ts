@@ -14,13 +14,24 @@ import { fileURLToPath } from 'node:url'
 let pass = 0
 let fail = 0
 function ok(name: string, cond: boolean, info = ''): void {
-  if (cond) { pass++; console.log(`ok    ${name}`) } else { fail++; console.log(`FAIL  ${name}  ${info}`) }
+  if (cond) {
+    pass++
+    console.log(`ok    ${name}`)
+  } else {
+    fail++
+    console.log(`FAIL  ${name}  ${info}`)
+  }
 }
 
-const SEED = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const SEED = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+)
 const DECK = path.resolve(SEED, '..')
 const resolve = projectResolver(SEED, 'node')
-const CONN = process.env.DATABASE_URL ?? 'postgresql://lancepollard@localhost:5432/postgres'
+const CONN =
+  process.env.DATABASE_URL ??
+  'postgresql://lancepollard@localhost:5432/postgres'
 
 type Post = { id: string; title: string; body: string }
 type Repo = {
@@ -34,22 +45,51 @@ type Repo = {
 
 async function main(): Promise<void> {
   const entry = path.join(DECK, 'site.tree/test/site/post.tree')
-  const result = compile({ file: entry, text: fs.readFileSync(entry, 'utf8') }, { resolve })
-  ok('repository compiles against the abstract db', result.ok, result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)))
-  if (!result.ok) { console.log(`\nblog-db: ${pass} pass, ${fail} fail`); return }
+  const result = compile(
+    { file: entry, text: fs.readFileSync(entry, 'utf8') },
+    { resolve },
+  )
+  ok(
+    'repository compiles against the abstract db',
+    result.ok,
+    result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)),
+  )
+  if (!result.ok) {
+    console.log(`\nblog-db: ${pass} pass, ${fail} fail`)
+    return
+  }
 
   // userland never imports pg: the compiled output references the `postgres` namespace from the prelude shim, never the
   // driver directly.
-  ok('compiled userland has no pg import', !/from ['"]pg['"]/.test(result.typescript))
+  ok(
+    'compiled userland has no pg import',
+    !/from ['"]pg['"]/.test(result.typescript),
+  )
 
   // prepend the runtime shim (the native-env prelude), then bundle with pg left external (resolved from node_modules)
-  const shim = fs.readFileSync(path.join(DECK, 'site.tree/code/base/native/node/runtime/postgres.ts'), 'utf8')
+  const shim = fs.readFileSync(
+    path.join(
+      DECK,
+      'site.tree/code/base/native/node/runtime/postgres.ts',
+    ),
+    'utf8',
+  )
   // run the bundle inside the seed package so node resolves the external `pg` from its node_modules
   const tmp = path.join(SEED, 'test', 'tmp')
   fs.mkdirSync(tmp, { recursive: true })
   const dir = fs.mkdtempSync(path.join(tmp, 'blogdb-'))
-  fs.writeFileSync(path.join(dir, 'app.ts'), `${shim}\n${result.typescript}`)
-  const bundled = await build({ entryPoints: [path.join(dir, 'app.ts')], bundle: true, format: 'esm', platform: 'node', external: ['pg'], write: false })
+  fs.writeFileSync(
+    path.join(dir, 'app.ts'),
+    `${shim}\n${result.typescript}`,
+  )
+  const bundled = await build({
+    entryPoints: [path.join(dir, 'app.ts')],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    external: ['pg'],
+    write: false,
+  })
   const code = bundled.outputFiles[0]!.text
   ok('bundles to a single node module', code.length > 0)
   const file = path.join(dir, 'app.mjs')
@@ -61,8 +101,16 @@ async function main(): Promise<void> {
     await M.setup(CONN)
     ok('connects to Postgres + ensures schema', true)
   } catch (e) {
-    ok('connects to Postgres + ensures schema', false, String((e as Error).message))
-    console.log(`\nblog-db: ${pass} pass, ${fail} fail  (is Postgres running? set DATABASE_URL)`); fs.rmSync(dir, { recursive: true, force: true }); return
+    ok(
+      'connects to Postgres + ensures schema',
+      false,
+      String((e as Error).message),
+    )
+    console.log(
+      `\nblog-db: ${pass} pass, ${fail} fail  (is Postgres running? set DATABASE_URL)`,
+    )
+    fs.rmSync(dir, { recursive: true, force: true })
+    return
   }
 
   await M.run('DELETE FROM post', []) // start clean
@@ -71,11 +119,27 @@ async function main(): Promise<void> {
 
   const posts = await M.listPosts()
   ok('two posts persisted', posts.length === 2, JSON.stringify(posts))
-  ok('first post read back', posts[0]?.id === 'p1' && posts[0]?.title === 'First Post' && posts[0]?.body === 'Hello world', JSON.stringify(posts[0]))
-  ok('second post read back', posts[1]?.id === 'p2' && posts[1]?.title === 'Second Post', JSON.stringify(posts[1]))
+  ok(
+    'first post read back',
+    posts[0]?.id === 'p1' &&
+      posts[0]?.title === 'First Post' &&
+      posts[0]?.body === 'Hello world',
+    JSON.stringify(posts[0]),
+  )
+  ok(
+    'second post read back',
+    posts[1]?.id === 'p2' && posts[1]?.title === 'Second Post',
+    JSON.stringify(posts[1]),
+  )
 
   const one = await M.getPost('p2')
-  ok('get-by-id reads a single post', one?.id === 'p2' && one?.title === 'Second Post' && one?.body === 'More text', JSON.stringify(one))
+  ok(
+    'get-by-id reads a single post',
+    one?.id === 'p2' &&
+      one?.title === 'Second Post' &&
+      one?.body === 'More text',
+    JSON.stringify(one),
+  )
 
   if (M.close) await M.close()
   fs.rmSync(dir, { recursive: true, force: true })

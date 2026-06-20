@@ -16,7 +16,10 @@ function normalize(mantissa: bigint, exponent: number): TernaryFloat {
   if (mantissa === 0n) return { mantissa: 0n, exponent: 0 }
   let m = mantissa
   let e = exponent
-  while (m % 3n === 0n) { m /= 3n; e += 1 }
+  while (m % 3n === 0n) {
+    m /= 3n
+    e += 1
+  }
   return { mantissa: m, exponent: e }
 }
 
@@ -38,8 +41,12 @@ export function float(mantissa: bigint, exponent = 0): TernaryFloat {
 }
 
 // from a JS number: pull out a base-3 mantissa and exponent within the precision
-export function fromNumber(value: number, precision = DEFAULT_PRECISION): TernaryFloat {
-  if (value === 0 || !Number.isFinite(value)) return { mantissa: 0n, exponent: 0 }
+export function fromNumber(
+  value: number,
+  precision = DEFAULT_PRECISION,
+): TernaryFloat {
+  if (value === 0 || !Number.isFinite(value))
+    return { mantissa: 0n, exponent: 0 }
   // scale up by 3^precision, round to an integer mantissa, exponent = -precision, then normalize
   const scale = 3 ** precision
   const mantissa = BigInt(Math.round(value * scale))
@@ -50,9 +57,15 @@ export function toNumber(value: TernaryFloat): number {
   return Number(value.mantissa) * 3 ** value.exponent
 }
 
-export function negate(a: TernaryFloat): TernaryFloat { return { mantissa: -a.mantissa, exponent: a.exponent } }
+export function negate(a: TernaryFloat): TernaryFloat {
+  return { mantissa: -a.mantissa, exponent: a.exponent }
+}
 
-export function add(a: TernaryFloat, b: TernaryFloat, precision = DEFAULT_PRECISION): TernaryFloat {
+export function add(
+  a: TernaryFloat,
+  b: TernaryFloat,
+  precision = DEFAULT_PRECISION,
+): TernaryFloat {
   if (a.mantissa === 0n) return round(b, precision)
   if (b.mantissa === 0n) return round(a, precision)
   // align to the lower exponent, then add the integer mantissas exactly
@@ -62,12 +75,23 @@ export function add(a: TernaryFloat, b: TernaryFloat, precision = DEFAULT_PRECIS
   return round(normalize(am + bm, e), precision)
 }
 
-export function subtract(a: TernaryFloat, b: TernaryFloat, precision = DEFAULT_PRECISION): TernaryFloat {
+export function subtract(
+  a: TernaryFloat,
+  b: TernaryFloat,
+  precision = DEFAULT_PRECISION,
+): TernaryFloat {
   return add(a, negate(b), precision)
 }
 
-export function multiply(a: TernaryFloat, b: TernaryFloat, precision = DEFAULT_PRECISION): TernaryFloat {
-  return round(normalize(a.mantissa * b.mantissa, a.exponent + b.exponent), precision)
+export function multiply(
+  a: TernaryFloat,
+  b: TernaryFloat,
+  precision = DEFAULT_PRECISION,
+): TernaryFloat {
+  return round(
+    normalize(a.mantissa * b.mantissa, a.exponent + b.exponent),
+    precision,
+  )
 }
 
 export function compare(a: TernaryFloat, b: TernaryFloat): -1 | 0 | 1 {

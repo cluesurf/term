@@ -10,24 +10,45 @@ let fail = 0
 // a hold with a working proof emits no unproven / unchecked / invalid-proof diagnostic
 function expectProved(name: string, source: string): void {
   const result = compile({ file: 'p.tree', text: source })
-  const bad = result.ok ? result.warnings.filter((d) => d.name === 'unchecked-hold') : result.diagnostics
+  const bad = result.ok
+    ? result.warnings.filter(d => d.name === 'unchecked-hold')
+    : result.diagnostics
   if (result.ok && bad.length === 0) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, ${(result.ok ? bad : result.diagnostics).map((d) => d.name).join(',')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, ${(result.ok
+        ? bad
+        : result.diagnostics
+      )
+        .map(d => d.name)
+        .join(',')})`,
+    )
   }
 }
 
 function expectInvalidProof(name: string, source: string): void {
   const result = compile({ file: 'p.tree', text: source })
-  if (!result.ok && result.diagnostics.some((d) => d.name === 'invalid-proof')) {
+  if (
+    !result.ok &&
+    result.diagnostics.some(d => d.name === 'invalid-proof')
+  ) {
     pass++
-    console.log(`ok    ${name}  (${result.diagnostics.find((d) => d.name === 'invalid-proof')!.message})`)
+    console.log(
+      `ok    ${name}  (${
+        result.diagnostics.find(d => d.name === 'invalid-proof')!
+          .message
+      })`,
+    )
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, ${result.ok ? '' : result.diagnostics.map((d) => d.name).join(',')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, ${
+        result.ok ? '' : result.diagnostics.map(d => d.name).join(',')
+      })`,
+    )
   }
 }
 

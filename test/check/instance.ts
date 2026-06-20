@@ -12,17 +12,29 @@ function expectOk(name: string, source: string): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (${result.diagnostics.map((d) => d.message).join('; ')})`)
+    console.log(
+      `FAIL  ${name}  (${result.diagnostics
+        .map(d => d.message)
+        .join('; ')})`,
+    )
   }
 }
 function expectError(name: string, source: string, code: string): void {
   const result = compile({ file: 's.tree', text: source })
-  if (!result.ok && result.diagnostics.some((d) => d.name === code)) {
+  if (!result.ok && result.diagnostics.some(d => d.name === code)) {
     pass++
-    console.log(`ok    ${name}  (${result.diagnostics.find((d) => d.name === code)!.message})`)
+    console.log(
+      `ok    ${name}  (${
+        result.diagnostics.find(d => d.name === code)!.message
+      })`,
+    )
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, codes=${result.ok ? '' : result.diagnostics.map((d) => d.name).join(',')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, codes=${
+        result.ok ? '' : result.diagnostics.map(d => d.name).join(',')
+      })`,
+    )
   }
 }
 

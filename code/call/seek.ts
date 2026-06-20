@@ -1,9 +1,14 @@
 import { verifyInstall } from '@cluesurf/deck.tree'
-import { logGood, logFail, logWarn, formatError, name, fade } from '../tint'
+import {
+  logGood,
+  logFail,
+  logWarn,
+  formatError,
+  name,
+  fade,
+} from '../tint'
 
-export async function callSeek(input: {
-  root: string
-}): Promise<void> {
+export async function callSeek(input: { root: string }): Promise<void> {
   try {
     const result = await verifyInstall({ root: input.root })
 

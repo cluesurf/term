@@ -32,11 +32,18 @@ function main(): void {
   const lock = parseLockfile(SAMPLE)
   expect('base version', lock.base, '0.0.1')
   expect('one request', lock.requests.length, 1)
-  expect('request parsed', lock.requests[0], { name: '@termsurf/wolf', range: '*', locked: '0.0.1' })
+  expect('request parsed', lock.requests[0], {
+    name: '@termsurf/wolf',
+    range: '*',
+    locked: '0.0.1',
+  })
   expect('one link', lock.links.length, 1)
   expect('link ref', lock.links[0]?.ref, '@termsurf/wolf:0.0.1')
   expect('link hash', lock.links[0]?.hash, 'sha512-abc')
-  expect('link dep', lock.links[0]?.deps[0], { name: '@termsurf/note', version: '0.0.1' })
+  expect('link dep', lock.links[0]?.deps[0], {
+    name: '@termsurf/note',
+    version: '0.0.1',
+  })
 
   // deterministic round-trip: serialize -> parse -> serialize is stable
   const once = serializeLockfile(lock)
@@ -60,7 +67,11 @@ function main(): void {
     ],
     links: [],
   }
-  expect('ordering is deterministic', serializeLockfile(shuffled), serializeLockfile(sorted))
+  expect(
+    'ordering is deterministic',
+    serializeLockfile(shuffled),
+    serializeLockfile(sorted),
+  )
 
   console.log(`\nlock: ${pass} pass, ${fail} fail`)
 }

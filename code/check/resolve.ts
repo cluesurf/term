@@ -5,11 +5,20 @@
 
 import type { Diagnostic } from '@/code/parser/diagnostic'
 import { diagnose, nearest } from '@/code/parser/diagnostic'
-import type { Binding, Expression, Program, Statement } from '@/code/compile/node'
+import type {
+  Binding,
+  Expression,
+  Program,
+  Statement,
+} from '@/code/compile/node'
 
 type Scope = Map<string, Binding>
 
-export function resolve(program: Program, file: string, origin?: WeakMap<Statement, string>): Array<Diagnostic> {
+export function resolve(
+  program: Program,
+  file: string,
+  origin?: WeakMap<Statement, string>,
+): Array<Diagnostic> {
   const diagnostics: Array<Diagnostic> = []
 
   // the file currently being resolved. With a merged multi-module program, `file` is only the entry; `origin` maps
@@ -20,11 +29,17 @@ export function resolve(program: Program, file: string, origin?: WeakMap<Stateme
   const global: Scope = new Map()
   for (const statement of program) {
     if (statement.form === 'function') {
-      global.set(statement.name, { kind: 'function', arity: statement.params.length })
+      global.set(statement.name, {
+        kind: 'function',
+        arity: statement.params.length,
+      })
       // a form method is callable by its bare name (`call unwrap-or`); receiver dispatch picks the form later.
       // a real top-level function of the same name wins, so only register the bare name if it is still free.
       if (statement.method && !global.has(statement.method.name)) {
-        global.set(statement.method.name, { kind: 'function', arity: statement.params.length })
+        global.set(statement.method.name, {
+          kind: 'function',
+          arity: statement.params.length,
+        })
       }
     } else if (statement.form === 'native') {
       // a native module alias (from `dock load`) is a defined name; member calls on it are the FFI
@@ -35,10 +50,19 @@ export function resolve(program: Program, file: string, origin?: WeakMap<Stateme
   // the JS intrinsics the generated bindings (bind.tree's native.tree) use to express operators, control flow, and
   // dynamic member access. They are not user definitions; the backend lowers them to real operations. Always in scope.
   const INTRINSICS = [
-    'native-test', 'native-test-else', 'debug', 'compute-binary-operation', 'compute-prefixed-unary-operation',
-    'call-keyword', 'set-dynamic-aspect', 'get-dynamic-aspect', 'delete-dynamic-aspect', 'try',
+    'native-test',
+    'native-test-else',
+    'debug',
+    'compute-binary-operation',
+    'compute-prefixed-unary-operation',
+    'call-keyword',
+    'set-dynamic-aspect',
+    'get-dynamic-aspect',
+    'delete-dynamic-aspect',
+    'try',
   ]
-  for (const intrinsic of INTRINSICS) global.set(intrinsic, { kind: 'builtin' })
+  for (const intrinsic of INTRINSICS)
+    global.set(intrinsic, { kind: 'builtin' })
 
   const stack: Array<Scope> = [global]
 
@@ -52,7 +76,8 @@ export function resolve(program: Program, file: string, origin?: WeakMap<Stateme
 
   const known = (): Array<string> => {
     const names = new Set<string>()
-    for (const scope of stack) for (const name of scope.keys()) names.add(name)
+    for (const scope of stack)
+      for (const name of scope.keys()) names.add(name)
     return [...names]
   }
 
@@ -73,7 +98,9 @@ export function resolve(program: Program, file: string, origin?: WeakMap<Stateme
               file: currentFile,
               span: node.span,
               message: `the name "${node.name}" is not defined`,
-              hint: suggestion ? `did you mean "${suggestion}"?` : undefined,
+              hint: suggestion
+                ? `did you mean "${suggestion}"?`
+                : undefined,
             }),
           )
         }
@@ -172,7 +199,8 @@ export function resolve(program: Program, file: string, origin?: WeakMap<Stateme
         break
       case 'function': {
         stack.push(new Map())
-        for (const param of node.params) declare(param.name, { kind: 'parameter' })
+        for (const param of node.params)
+          declare(param.name, { kind: 'parameter' })
         for (const statement of node.body) resolveStatement(statement)
         stack.pop()
         break

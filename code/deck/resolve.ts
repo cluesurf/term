@@ -4,7 +4,12 @@
 // and 11-elaboration.md). Browser-safe: no host APIs. A file-existence check is injected, so it is testable and
 // usable in the sandbox.
 
-export type LoadKind = 'relative' | 'absolute' | 'package' | 'native' | 'glob'
+export type LoadKind =
+  | 'relative'
+  | 'absolute'
+  | 'package'
+  | 'native'
+  | 'glob'
 
 export type Resolution =
   | { kind: 'file'; path: string }
@@ -39,7 +44,8 @@ function joinPath(base: string, rest: string): string {
 export function classifyLoad(target: string, native = false): LoadKind {
   if (native) return 'native'
   if (target.includes('*')) return 'glob'
-  if (target.startsWith('./') || target.startsWith('../')) return 'relative'
+  if (target.startsWith('./') || target.startsWith('../'))
+    return 'relative'
   if (target.startsWith('/')) return 'absolute'
   return 'package' // @host/deck or a bare name
 }
@@ -51,8 +57,14 @@ export function fileCandidates(path: string): Array<string> {
 }
 
 // resolve a relative or absolute file path, trying the extension fallbacks
-export function resolveFile(target: string, fromFile: string, exists: Exists): Resolution {
-  const base = target.startsWith('/') ? target : joinPath(dirname(fromFile), target)
+export function resolveFile(
+  target: string,
+  fromFile: string,
+  exists: Exists,
+): Resolution {
+  const base = target.startsWith('/')
+    ? target
+    : joinPath(dirname(fromFile), target)
   for (const candidate of fileCandidates(base)) {
     if (exists(candidate)) return { kind: 'file', path: candidate }
   }
@@ -60,20 +72,32 @@ export function resolveFile(target: string, fromFile: string, exists: Exists): R
 }
 
 // parse a package target: @host/name, or @host/name/sub/path
-export function parsePackage(target: string): { host: string; name: string; subpath?: string } {
+export function parsePackage(target: string): {
+  host: string
+  name: string
+  subpath?: string
+} {
   if (target.startsWith('@')) {
     const parts = target.slice(1).split('/')
     const host = parts[0] ?? ''
     const name = parts[1] ?? ''
-    const subpath = parts.length > 2 ? parts.slice(2).join('/') : undefined
+    const subpath =
+      parts.length > 2 ? parts.slice(2).join('/') : undefined
     return { host, name, subpath }
   }
   const parts = target.split('/')
-  return { host: '', name: parts[0] ?? '', subpath: parts.length > 1 ? parts.slice(1).join('/') : undefined }
+  return {
+    host: '',
+    name: parts[0] ?? '',
+    subpath: parts.length > 1 ? parts.slice(1).join('/') : undefined,
+  }
 }
 
 // walk up from a file to find the enclosing deck root (the directory holding deck.tree)
-export function findDeckRoot(fromFile: string, exists: Exists): string | undefined {
+export function findDeckRoot(
+  fromFile: string,
+  exists: Exists,
+): string | undefined {
   let dir = dirname(fromFile)
   while (true) {
     if (exists(`${dir}/deck.tree`)) return dir
@@ -85,7 +109,12 @@ export function findDeckRoot(fromFile: string, exists: Exists): string | undefin
 }
 
 // the global content-addressed store path for a package version
-export function storePath(home: string, host: string, deck: string, version: string): string {
+export function storePath(
+  home: string,
+  host: string,
+  deck: string,
+  version: string,
+): string {
   return `${home}/.seed/deck/link/${host}/${deck}/${version}`
 }
 
@@ -95,7 +124,12 @@ export function treePath(home: string, hash: string): string {
 }
 
 // the unified entry: resolve any load target
-export function resolveLoad(target: string, fromFile: string, exists: Exists, native = false): Resolution {
+export function resolveLoad(
+  target: string,
+  fromFile: string,
+  exists: Exists,
+  native = false,
+): Resolution {
   switch (classifyLoad(target, native)) {
     case 'native':
       return { kind: 'native', module: target.replace(/^<|>$/g, '') }
