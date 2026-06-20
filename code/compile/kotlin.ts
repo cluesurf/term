@@ -185,6 +185,8 @@ export function emitKotlin(program: Program): string {
         return JSON.stringify(node.value)
       case 'unit':
         return 'Unit'
+      case 'null':
+        return 'null'
       case 'variable':
       case 'hole':
         return camel(node.name)

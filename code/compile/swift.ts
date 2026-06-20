@@ -465,6 +465,9 @@ export function emitSwift(program: Program): string {
         return JSON.stringify(node.value)
       case 'unit':
         return '()'
+      case 'null':
+        // null in the dynamic currency (`Any`) is Foundation's null object, the JSON-null representation
+        return 'NSNull()'
       case 'variable':
       case 'hole':
         return vname(node.name)

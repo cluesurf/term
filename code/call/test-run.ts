@@ -64,8 +64,27 @@ export async function runTestFile(input: {
       .join('\n')
     return { ok: false, results: [], failure: `${diag}\ndid not compile` }
   }
+  // a proof obligation that the compiler could not discharge is only a warning, but for `seed test` an unproven
+  // `hold` is a failure: a stated proposition with no accepted proof must not pass. (A false proof is already a hard
+  // `invalid-proof` error above.) So an unchecked hold fails the file, the same as a failing test.
+  const unproven = (result.warnings ?? []).filter(
+    d => d.name === 'unchecked-hold',
+  )
+  if (unproven.length > 0) {
+    const lines = text.split('\n')
+    const diag = unproven.map(d => render(d, lines, false)).join('\n')
+    return {
+      ok: false,
+      results: [],
+      failure: `${diag}\n${unproven.length} unproven hold${
+        unproven.length === 1 ? '' : 's'
+      }`,
+    }
+  }
+  // a file with no runnable `test` tasks but a clean compile is a pass: any `hold` / `rule` proofs it carries were
+  // checked during that compile (and an unproven or false one already failed above). So a proof-only file passes here.
   if (names.length === 0) {
-    return { ok: false, results: [], failure: 'no tests found' }
+    return { ok: true, results: [] }
   }
   const prelude = nativePrelude(result.program, input.env, input.readRuntime)
   const js = transformSync(`${prelude}\n${result.typescript}`, {

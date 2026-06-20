@@ -225,6 +225,9 @@ export function emitRust(program: Program): string {
         return `${JSON.stringify(node.value)}.to_string()`
       case 'unit':
         return '()'
+      case 'null':
+        // null lives in the dynamic currency, which is `serde_json::Value` on rust
+        return 'serde_json::Value::Null'
       case 'variable':
       case 'hole':
         return vname(node.name)

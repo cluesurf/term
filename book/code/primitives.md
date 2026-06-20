@@ -64,6 +64,17 @@ host color
   term blue
 ```
 
+## Null (`null`)
+
+The host null literal, for the `dynamic` / host boundary: JSON null, a JS `null` handed to an FFI, the value `is-null` tests for. It is typed `dynamic` and emitted as each host's null (`null` on node and kotlin, `serde_json::Value::Null` on rust, `NSNull()` on swift).
+
+```tree
+send back
+  null
+```
+
+`null` is distinct from `void` / `unit` (no value, emitted as `undefined`). For an *optional* value in ordinary typed code, prefer `maybe` / `make none` over `null`. Reserve `null` for the host / `dynamic` boundary.
+
 ## Type Annotations for Primitives
 
 | Seed Type | Meaning |

@@ -27,6 +27,7 @@ import type {
 } from '@/code/compile/node'
 import {
   BOOLEAN,
+  DYNAMIC,
   FLOAT,
   NUMBER,
   STRING,
@@ -267,6 +268,10 @@ export function check(
         break
       case 'unit':
         type = UNIT
+        break
+      case 'null':
+        // the host null literal lives in the dynamic currency, consistent with any host value
+        type = DYNAMIC
         break
       case 'hole':
         type = UNKNOWN

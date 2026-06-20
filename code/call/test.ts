@@ -1,7 +1,7 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { logGood, logFail, logStep, formatError, fade } from '../tint'
 import { runCommand, projectResolver } from './make'
 import { runTestFile } from './test-run'
-import { stdlibRuntime } from './walk'
 
 export async function callTest(input: {
   root: string
@@ -78,7 +78,9 @@ async function findTestFiles(input: {
         await walk(full)
       } else if (entry.name.endsWith('.tree')) {
         const text = await fs.readFile(full, 'utf-8')
-        if (/^test /m.test(text)) {
+        // a file is collected if it carries runnable tests (`test`) OR proof obligations (`hold` / `rule`); both are
+        // verified by `seed test` -- tests by running, proofs by the kernel during compilation.
+        if (/^(test|hold|rule) /m.test(text)) {
           if (input.filter) {
             if (
               full.includes(input.filter) ||
@@ -131,9 +133,12 @@ async function runSeedTests(input: {
   )
 
   // every test file compiles and runs in-process with the project resolver, so each `test` block executes and its
-  // `want hold` / `want miss` assertion is reported, not merely that the file compiled.
+  // `want hold` / `want miss` assertion is reported, not merely that the file compiled. The native runtime is read by
+  // the path nativePrelude derives from each module's RESOLVED file (the `seed link` / import location), not a
+  // hardcoded base.tree path, exactly as `seed boot` runs compiled code.
   const resolve = projectResolver(input.root)
-  const readRuntime = stdlibRuntime()
+  const readRuntime = (p: string): string | undefined =>
+    existsSync(p) ? readFileSync(p, 'utf8') : undefined
   let pass = 0
   let fail = 0
 
@@ -153,6 +158,11 @@ async function runSeedTests(input: {
         fail++
         logFail(`    ${run.failure.split('\n').pop()}`)
         continue
+      }
+      if (run.results.length === 0) {
+        // a proof-only file: it compiled clean, so its `hold` / `rule` proofs were kernel-checked
+        pass++
+        console.log(`    ${fade('ok')}  proofs checked`)
       }
       for (const r of run.results) {
         if (r.held) {

@@ -391,6 +391,9 @@ export function mill(tree: RootNode, file: string): MillResult {
         return args[0]
           ? toExpression(args[0], scope)
           : { form: 'integer', value: 0, span }
+      // the host null literal: `null`, for the dynamic / host boundary
+      case 'null':
+        return { form: 'null', span }
       case 'text': {
         const value = args[0]
         if (value && value.kind === 'text')

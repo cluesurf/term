@@ -324,6 +324,8 @@ function makeEmitter(
         return JSON.stringify(node.value)
       case 'unit':
         return 'undefined'
+      case 'null':
+        return 'null'
       case 'variable':
         return toCamel(node.name)
       case 'hole':

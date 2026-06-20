@@ -881,6 +881,7 @@ function emitFunction(
         return handle
       }
       case 'await':
+      case 'null':
         cur.lines.push(unsupported('LLVM', node.form, ';'))
         return '0'
       default:

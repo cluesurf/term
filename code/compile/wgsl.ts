@@ -79,6 +79,7 @@ export function emitWgsl(input: Program): string {
       // dynamic dispatch). They surface as a marked poison value, never silently miscompiled to 0.
       case 'string':
       case 'unit':
+      case 'null':
       case 'map':
       case 'record':
       case 'member':

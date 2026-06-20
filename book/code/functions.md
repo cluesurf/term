@@ -182,6 +182,20 @@ fork case, read color
     send back, text <blue>
 ```
 
+### Negation (`fork lack`)
+
+`fork lack` negates a boolean. It sits in the `fork` family next to `test` and `case`, and lowers to a unary `!`. There is no `not` operator and no `fork lack` is the way to invert a predicate (the comparison verbs already come in pairs: `is-equal` / `is-unequal`, `is-above` / `is-below`).
+
+```tree
+send back
+  fork lack
+    call is-equal
+      read a
+      read b
+```
+
+This returns whether `a` and `b` differ. (Equivalent here to `call is-unequal`, but `fork lack` negates any boolean expression, not just a comparison.)
+
 Destructure fields with `base`:
 
 ```tree
