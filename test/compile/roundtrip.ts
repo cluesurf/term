@@ -63,9 +63,11 @@ const stdlib = (path: string): Source | undefined => {
     : undefined
 }
 
-// read a native runtime shim's raw source from the stdlib (the path already carries the real extension, no `.tree`).
-// This is what `nativePrelude` calls: the shim source lives in base.tree, the compiler only knows where to look.
+// read a native runtime shim's raw source (the path already carries the real extension, no `.tree`). `nativePrelude`
+// now resolves shims next to the module that docks them (an absolute path), so try that directly first; fall back to
+// the `@cluesurf/base/...` import-path form for any dock whose origin file was not recorded.
 const readRuntime = (path: string): string | undefined => {
+  if (existsSync(path)) return readFileSync(path, 'utf8')
   const prefix = '@cluesurf/base/'
   if (!path.startsWith(prefix)) return undefined
   const file = join(baseTree, path.slice(prefix.length))
@@ -585,6 +587,10 @@ base64 = "0.22"
 hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
 rand = "0.8"
+aes-gcm = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chrono = "0.4"
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
@@ -1049,6 +1055,171 @@ task compute
       call bytes
         mark 16
 `
+// AES-256-GCM: encrypt a plaintext then decrypt it, asserting the round-trip recovers the original (boolean, so it is
+// print-format agnostic). Key is 32 bytes / 64 hex, nonce is 12 bytes / 24 hex. Exercises each platform's AEAD
+// library (rust aes-gcm, swift CryptoKit AES.GCM, kotlin javax.crypto), all agreeing on the ciphertext || tag layout.
+const CIPHER_PROG = `load @cluesurf/base/code/cryptography/cipher
+  find encrypt
+  find decrypt
+
+task compute
+  mark async
+  like boolean
+  save sealed
+    call encrypt
+      text <00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff>
+      text <000102030405060708090a0b>
+      text <attack at dawn>
+      wait true
+  save opened
+    call decrypt
+      text <00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff>
+      text <000102030405060708090a0b>
+      read sealed
+      wait true
+  send back
+    call is-equal
+      read opened
+      text <attack at dawn>
+`
+// Ed25519 signatures: generate a key pair, sign a message, verify it (boolean round-trip, print-format agnostic).
+// Exercises each platform's Ed25519 (rust ed25519-dalek, swift CryptoKit Curve25519, kotlin java.security).
+const SIGNATURE_PROG = `load @cluesurf/base/code/cryptography/signature
+  find make-key-pair
+  find sign
+  find verify
+
+task compute
+  mark async
+  like boolean
+  save pair
+    call make-key-pair
+      wait true
+  save proof
+    call sign
+      read pair/private-key
+      text <ship sails at noon>
+      wait true
+  send back
+    call verify
+      read pair/public-key
+      text <ship sails at noon>
+      read proof
+      wait true
+`
+// environment variable: PATH is always set in a spawned process, so reading it yields a non-empty string. Asserts as
+// a boolean via the host environment (rust std::env, swift ProcessInfo, kotlin System.getenv).
+const ENV_VAR_PROG = `load @cluesurf/base/code/environment
+  find variable
+
+task compute
+  like boolean
+  send back
+    call is-unequal
+      call variable
+        text <PATH>
+      text <>
+`
+// directory make plus metadata: make a directory then confirm is-directory reports it. Exercises the io shim's
+// dir-make and is-directory on each platform (rust std::fs, swift FileManager, kotlin java.io.File).
+const DIR_MAKE_PROG = `load @cluesurf/base/code/file/directory
+  find make
+load @cluesurf/base/code/file/metadata
+  find is-directory
+
+task compute
+  like boolean
+  call make
+    text </tmp/seed-roundtrip-fsdir>
+  send back
+    call is-directory
+      text </tmp/seed-roundtrip-fsdir>
+`
+// directory remove: make then remove a directory, then confirm it no longer exists (returns false).
+const DIR_REMOVE_PROG = `load @cluesurf/base/code/file/directory
+  find make
+  find remove
+  find exists
+
+task compute
+  like boolean
+  call make
+    text </tmp/seed-roundtrip-fsdir-two>
+  call remove
+    text </tmp/seed-roundtrip-fsdir-two>
+  send back
+    call exists
+      text </tmp/seed-roundtrip-fsdir-two>
+`
+// calendar: build a UTC timestamp, format it to ISO 8601, parse it back, and shift it a month. Asserts three
+// invariants at once (format matches the exact cross-platform string, parse inverts format, add-months is
+// calendar-aware) as a single boolean. Exercises each platform's date library (rust chrono, swift Foundation,
+// kotlin java.time), all agreeing on the 2026-06-19T12:34:56.000Z shape.
+const CALENDAR_PROG = `load @cluesurf/base/code/calendar
+  find make-utc
+  find format
+  find parse
+  find month
+  find add-months
+
+task compute
+  like boolean
+  save m
+    call make-utc
+      mark 2026
+      mark 6
+      mark 19
+      mark 12
+      mark 34
+      mark 56
+  send back
+    call and
+      call and
+        call is-equal
+          call format
+            read m
+          text <2026-06-19T12:34:56.000Z>
+        call is-equal
+          call parse
+            text <2026-06-19T12:34:56.000Z>
+          read m
+      call is-equal
+        call month
+          call add-months
+            read m
+            mark 1
+        mark 7
+`
+// X25519 ECDH: two key pairs derive the same shared secret from opposite sides (the agreement property), asserted as
+// a boolean. Exercises each platform's X25519 (rust x25519-dalek, swift CryptoKit, kotlin java.security).
+const KEY_AGREEMENT_PROG = `load @cluesurf/base/code/cryptography/key-agreement
+  find make-key-pair
+  find shared-secret
+
+task compute
+  mark async
+  like boolean
+  save a
+    call make-key-pair
+      wait true
+  save b
+    call make-key-pair
+      wait true
+  save ab
+    call shared-secret
+      read a/private-key
+      read b/public-key
+      wait true
+  save ba
+    call shared-secret
+      read b/private-key
+      read a/public-key
+      wait true
+  send back
+    call is-equal
+      read ab
+      read ba
+`
 // json: parse a JSON array (no braces -- seed text literals interpolate single { ), index it, read the number.
 // as-number(get-item(parse("[10,20,30]"), 1)) == 20.0, through each platform's host JSON.
 const JSON_RT_PROG = `load @cluesurf/base/code/json
@@ -1465,7 +1636,125 @@ function main(): void {
     'true',
     false,
   )
-
+  // AES-256-GCM authenticated encryption round-trips on all three (rust aes-gcm, swift CryptoKit, kotlin javax.crypto)
+  runSwiftCrypto(
+    'swift + crypto/cipher: AES-256-GCM encrypt + decrypt round-trips (CryptoKit)',
+    frontEnd(CIPHER_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinCrypto(
+    'kotlin + crypto/cipher: AES-256-GCM encrypt + decrypt round-trips (javax.crypto)',
+    frontEnd(CIPHER_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: crypto/cipher AES-256-GCM encrypt + decrypt round-trips (aes-gcm)',
+    frontEnd(CIPHER_PROG, true, 'rust'),
+    'true',
+    true,
+  )
+  // Ed25519 sign + verify round-trips on all three (rust ed25519-dalek, swift CryptoKit, kotlin java.security)
+  runSwiftCrypto(
+    'swift + crypto/signature: Ed25519 sign + verify round-trips (CryptoKit)',
+    frontEnd(SIGNATURE_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinCrypto(
+    'kotlin + crypto/signature: Ed25519 sign + verify round-trips (java.security)',
+    frontEnd(SIGNATURE_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: crypto/signature Ed25519 sign + verify round-trips (ed25519-dalek)',
+    frontEnd(SIGNATURE_PROG, true, 'rust'),
+    'true',
+    true,
+  )
+  // environment variable: PATH is non-empty, read through the host environment
+  runSwiftText(
+    'swift + environment: variable(PATH) is non-empty (ProcessInfo)',
+    frontEnd(ENV_VAR_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + environment: variable(PATH) is non-empty (System.getenv)',
+    frontEnd(ENV_VAR_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: environment variable(PATH) is non-empty (std::env)',
+    frontEnd(ENV_VAR_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  // directory make + metadata is-directory
+  runSwiftText(
+    'swift + file/directory: make then is-directory (FileManager)',
+    frontEnd(DIR_MAKE_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + file/directory: make then is-directory (java.io.File)',
+    frontEnd(DIR_MAKE_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: file/directory make then is-directory (std::fs)',
+    frontEnd(DIR_MAKE_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  // directory remove: gone afterward
+  runSwiftText(
+    'swift + file/directory: make then remove leaves it absent (FileManager)',
+    frontEnd(DIR_REMOVE_PROG, true, 'swift'),
+    'false',
+  )
+  runKotlinText(
+    'kotlin + file/directory: make then remove leaves it absent (java.io.File)',
+    frontEnd(DIR_REMOVE_PROG, true, 'kotlin'),
+    'false',
+  )
+  runRustCargo(
+    'rust + cargo: file/directory make then remove leaves it absent (std::fs)',
+    frontEnd(DIR_REMOVE_PROG, true, 'rust'),
+    'false',
+    false,
+  )
+  // calendar: ISO format + parse + calendar-aware add-months agree across the platform date libraries
+  runSwiftText(
+    'swift + calendar: ISO format + parse + add-months (Foundation)',
+    frontEnd(CALENDAR_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + calendar: ISO format + parse + add-months (java.time)',
+    frontEnd(CALENDAR_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: calendar ISO format + parse + add-months (chrono)',
+    frontEnd(CALENDAR_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  // X25519 ECDH: both sides derive the same shared secret, on each platform's key-agreement library
+  runSwiftCrypto(
+    'swift + crypto/key-agreement: X25519 shared secret agrees (CryptoKit)',
+    frontEnd(KEY_AGREEMENT_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinCrypto(
+    'kotlin + crypto/key-agreement: X25519 shared secret agrees (java.security)',
+    frontEnd(KEY_AGREEMENT_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: crypto/key-agreement X25519 shared secret agrees (x25519-dalek)',
+    frontEnd(KEY_AGREEMENT_PROG, true, 'rust'),
+    'true',
+    true,
+  )
   // json to "runs" via the host JSON: rust serde_json (cargo), swift JSONSerialization. kotlin needs org.json on the
   // classpath (not in the JDK), so it is compile-checked, not run here.
   runRustCargo(

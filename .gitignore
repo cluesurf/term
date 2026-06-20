@@ -1,6 +1,7 @@
 /hold
 /host
 /node_modules
+/.seed
 
 # scratch dev runners / probes, at any depth
 tmp/

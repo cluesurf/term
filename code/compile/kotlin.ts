@@ -11,7 +11,7 @@ import type {
   Statement,
   Type,
 } from '@/code/compile/node'
-import { exhausted } from '@/code/compile/backend'
+import { exhausted, mapCollect } from '@/code/compile/backend'
 
 function camel(name: string): string {
   return name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
@@ -178,8 +178,15 @@ export function emitKotlin(program: Program): string {
         return `${node.op}${expr(node.operand)}`
       case 'binary':
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
-      case 'call':
+      case 'call': {
+        // keys / values on a Map materialize to a List (the `.keys` / `.values` views are not Lists)
+        const collected = mapCollect(node.callee)
+        if (collected) {
+          return `${expr(collected.target)}.${collected.name}.toList()`
+        }
+
         return `${expr(node.callee)}(${node.args.map(expr).join(', ')})`
+      }
       case 'array':
         return `listOf(${node.items.map(expr).join(', ')})`
       case 'map':
@@ -216,8 +223,8 @@ export function emitKotlin(program: Program): string {
           last && last.form === 'return' && last.value
             ? expr(last.value)
             : last
-            ? stmt(last, 0)
-            : ''
+              ? stmt(last, 0)
+              : ''
         return `{ ${params} -> ${[...lead, tail]
           .filter(Boolean)
           .join('; ')} }`

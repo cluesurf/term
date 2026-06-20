@@ -11,6 +11,7 @@ import {
 } from 'fs'
 import { compile } from '../compile/compile'
 import { CompileCache } from '../compile/cache'
+import { projectCache } from './cache-store'
 import { withNativeEnv } from '../compile/native'
 import type { NativeEnv } from '../compile/native'
 import type { Resolver } from '../compile/load'
@@ -101,7 +102,7 @@ export function projectResolver(
 // the caller decides how to report and whether to fail.
 export function compileProject(
   root: string,
-  cache?: CompileCache,
+  cache: CompileCache = projectCache(root),
 ): { compiled: number; failed: number; errors: Array<string> } {
   const files = findTreeFiles(root)
   const resolve = projectResolver(root)
@@ -136,7 +137,7 @@ export function compileProject(
 // watch the project's .tree files and recompile incrementally on change (a shared cache reuses unchanged modules).
 // Debounced so a burst of saves triggers one rebuild. Runs until the process is killed.
 export function watchProject(root: string): void {
-  const cache = new CompileCache()
+  const cache = projectCache(root)
   const build = (label: string): void => {
     const { compiled, failed, errors } = compileProject(root, cache)
     for (const error of errors) logFail(error)

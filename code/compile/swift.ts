@@ -11,7 +11,7 @@ import type {
   Statement,
   Type,
 } from '@/code/compile/node'
-import { exhausted } from '@/code/compile/backend'
+import { exhausted, mapCollect } from '@/code/compile/backend'
 
 // Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
 // `default`, etc.) it must be backtick-escaped, in both the declaration and every reference.
@@ -262,10 +262,17 @@ export function emitSwift(program: Program): string {
           node.right,
           bind,
         )})`
-      case 'call':
+      case 'call': {
+        // keys / values on a Dictionary materialize to an Array (the `.keys` / `.values` views are not Arrays)
+        const collected = mapCollect(node.callee)
+        if (collected) {
+          return `Array(${expr(collected.target, bind)}.${collected.name})`
+        }
+
         return `${expr(node.callee, bind)}(${node.args
           .map(a => expr(a, bind))
           .join(', ')})`
+      }
       case 'array':
         return `[${node.items.map(i => expr(i, bind)).join(', ')}]`
       case 'map':
@@ -312,8 +319,8 @@ export function emitSwift(program: Program): string {
           last && last.form === 'return' && last.value
             ? expr(last.value, bind)
             : last
-            ? stmt(last, 0, bind)
-            : ''
+              ? stmt(last, 0, bind)
+              : ''
         return `{ (${params}) in ${[...lead, tail]
           .filter(Boolean)
           .join('; ')} }`

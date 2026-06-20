@@ -452,7 +452,15 @@ export function mill(tree: RootNode, file: string): MillResult {
           span,
         }
         if (resultLike) closure.result = parseLikeType(resultLike)
-        if (decl.some(isWaitTrue)) closure.async = true
+        // async is marked by `mark async` or a direct `wait true` (mirrors the top-level task rule)
+        const closureMarkedAsync = decl.some(
+          n =>
+            n.kind === 'group' &&
+            headName(n) === 'mark' &&
+            rest(n)[0]?.kind === 'group' &&
+            headName(rest(n)[0] as GroupNode) === 'async',
+        )
+        if (closureMarkedAsync || decl.some(isWaitTrue)) closure.async = true
         return closure
       }
       case 'call':
@@ -1397,7 +1405,13 @@ export function mill(tree: RootNode, file: string): MillResult {
         }
       }
       if (module && alias)
-        out.push({ form: 'native', alias, module, span: spanOf(child) })
+        out.push({
+          form: 'native',
+          alias,
+          module,
+          span: spanOf(child),
+          file,
+        })
     }
     return out
   }

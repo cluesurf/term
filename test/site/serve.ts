@@ -5,6 +5,7 @@
 
 import { compile } from '@/code/compile/compile'
 import { projectResolver } from '@/code/call/make'
+import { nativePrelude } from '@/code/compile/native'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -30,12 +31,14 @@ async function main(): Promise<void> {
   // userland never imports hono: the compiled output references the `httpServer` namespace from the prelude shim
   ok('compiled output has no hono import', !/from ['"]hono['"]/.test(result.typescript))
 
-  // prepend the hono runtime shim (the native-env prelude), then bundle with hono left external (from node_modules)
-  const shim = fs.readFileSync(path.join(DECK, 'site.tree/code/http/native/node/runtime/serve.ts'), 'utf8')
+  // the native-env prelude (the same one `seed boot` prepends): nativePrelude auto-discovers the <global:transport>
+  // shim next to the module that docks it. Then bundle with hono left external (from node_modules).
+  const readRuntime = (p: string): string | undefined => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined)
+  const prelude = nativePrelude(result.program, 'node', readRuntime)
   const tmp = path.join(SEED, 'test', 'tmp')
   fs.mkdirSync(tmp, { recursive: true })
   const dir = fs.mkdtempSync(path.join(tmp, 'serve-'))
-  fs.writeFileSync(path.join(dir, 'app.ts'), `${shim}\n${result.typescript}`)
+  fs.writeFileSync(path.join(dir, 'app.ts'), `${prelude}\n${result.typescript}`)
   const bundled = await build({
     entryPoints: [path.join(dir, 'app.ts')],
     bundle: true, format: 'esm', platform: 'node',

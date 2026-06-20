@@ -11,7 +11,11 @@ import type {
   Statement,
   Type,
 } from '@/code/compile/node'
-import { exhausted, unsupported } from '@/code/compile/backend'
+import {
+  exhausted,
+  mapCollect,
+  unsupported,
+} from '@/code/compile/backend'
 
 // `self` is fine in Rust as a name only in methods; as a free identifier rename it. Names snake_case.
 function vname(name: string): string {
@@ -106,8 +110,8 @@ export function emitRust(program: Program): string {
     node.form === 'variable'
       ? node.name
       : node.form === 'member'
-      ? rootVariable(node.target)
-      : undefined
+        ? rootVariable(node.target)
+        : undefined
 
   const expr = (node: Expression): string => {
     switch (node.form) {
@@ -132,7 +136,22 @@ export function emitRust(program: Program): string {
       case 'binary':
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
       case 'call': {
-        const args = node.args.map(expr).join(', ')
+        // keys / values on a map materialize an owned `Vec` (a `keys()` iterator yields references, so `.cloned()`)
+        const collected = mapCollect(node.callee)
+        if (collected) {
+          return `${expr(collected.target)}.${collected.name}().cloned().collect::<Vec<_>>()`
+        }
+
+        // Rust moves a `String` passed by value, so a local string used as an argument more than once would not
+        // compile. Strings are immutable values here, so cloning a bare string-variable argument is semantically
+        // transparent and always compiles (String: Clone). This frees callers from manual ownership juggling.
+        const args = node.args
+          .map(a =>
+            a.form === 'variable' && a.type?.kind === 'string'
+              ? `${expr(a)}.clone()`
+              : expr(a),
+          )
+          .join(', ')
         // a slashed callee (`fs/read-to-string`) is a module path: emit Rust `::` segments. A field holding a closure
         // is invoked with parens (`(r.handle)(x)`), distinguishing it from a method call.
         if (node.callee.form === 'member') {

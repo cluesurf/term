@@ -3,8 +3,17 @@
 // Run: npx tsx test/compile/cache.ts
 
 import { compile } from '@/code/compile/compile'
-import { CompileCache, hashText } from '@/code/compile/cache'
+import {
+  CompileCache,
+  hashText,
+  hashFields,
+} from '@/code/compile/cache'
+import type { CacheStore } from '@/code/compile/cache'
+import { diskCacheStore } from '@/code/call/cache-store'
 import type { Source } from '@/code/compile/load'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as nodePath from 'node:path'
 
 let pass = 0
 let fail = 0
@@ -102,6 +111,75 @@ expect(
   hashText('abc') !== hashText('abd'),
   true,
 )
+
+// hashFields is unambiguous: length-prefixing prevents a concatenation collision
+expect(
+  'hash: hashFields avoids the concatenation collision (a|bc vs ab|c)',
+  hashFields(['a', 'bc']) !== hashFields(['ab', 'c']),
+  true,
+)
+
+// ---- Tier 1: persistence + versioned keys ----
+
+// an in-memory CacheStore standing in for `.seed/cache`, so a second cache simulates a cold process sharing the store
+function memStore(): CacheStore {
+  const map = new Map<string, string>()
+  return {
+    load: (kind, key) => map.get(`${kind}/${key}`),
+    save: (kind, key, value) => {
+      map.set(`${kind}/${key}`, value)
+    },
+  }
+}
+
+// 4. a cold cache sharing the store hits disk instead of rebuilding, and returns identical output
+const store = memStore()
+const warm = new CompileCache(store, 'v1')
+const warmResult = compile({ file: 'p.tree', text: DOUBLE }, { cache: warm })
+const cold = new CompileCache(store, 'v1')
+const coldResult = compile(
+  { file: 'p.tree', text: DOUBLE },
+  { cache: cold },
+)
+expect('persist: cold cache rebuilds nothing', cold.misses, 0)
+expect('persist: cold cache hits the store', cold.diskHits > 0, true)
+expect(
+  'persist: cold output equals warm output',
+  coldResult.ok &&
+    warmResult.ok &&
+    coldResult.typescript === warmResult.typescript,
+  true,
+)
+
+// 5. a different compiler version does NOT reuse the prior entries (no stale hit across a toolchain change)
+const upgraded = new CompileCache(store, 'v2')
+compile({ file: 'p.tree', text: DOUBLE }, { cache: upgraded })
+expect(
+  'version: a new compiler version misses the old store entries',
+  upgraded.misses > 0,
+  true,
+)
+
+// 6. an edited source misses (content-addressed, even cold)
+const edited = new CompileCache(store, 'v1')
+compile({ file: 'p.tree', text: `${DOUBLE}\n` }, { cache: edited })
+expect('persist: edited source misses', edited.misses > 0, true)
+
+// 7. the real on-disk store round-trips (atomic writes), giving a cold hit
+const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-'))
+const disk = diskCacheStore(dir)
+compile(
+  { file: 'd.tree', text: DOUBLE },
+  { cache: new CompileCache(disk, 'v1') },
+)
+const diskCold = new CompileCache(disk, 'v1')
+compile({ file: 'd.tree', text: DOUBLE }, { cache: diskCold })
+expect(
+  'disk: a cold cache hits the on-disk entry',
+  diskCold.diskHits > 0 && diskCold.misses === 0,
+  true,
+)
+fs.rmSync(dir, { recursive: true, force: true })
 
 console.log(`\ncache: ${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

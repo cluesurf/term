@@ -9,7 +9,7 @@ import type {
   Statement,
   Type,
 } from '@/code/compile/node'
-import { exhausted } from '@/code/compile/backend'
+import { exhausted, mapCollect } from '@/code/compile/backend'
 
 const PRECEDENCE: Record<BinaryOp, number> = {
   '||': 1,
@@ -116,6 +116,14 @@ export function toCamel(name: string): string {
       .map(p => p.charAt(0).toUpperCase() + p.slice(1))
       .join('')
   return RESERVED.has(camel) ? `${camel}_` : camel
+}
+
+// a kebab / snake name to a SCREAMING_SNAKE constant (`database-url` -> `DATABASE_URL`), for environment variable names
+export function toConstant(name: string): string {
+  return name
+    .split(/[-_]/)
+    .map(p => p.toUpperCase())
+    .join('_')
 }
 
 // a member name a seed name compiles to, uppercasing whole-segment acronyms so a host FFI call matches the platform
@@ -305,10 +313,17 @@ function makeEmitter(variants: Set<string>) {
         return toCamel(node.name)
       case 'hole':
         return toCamel(node.name)
-      case 'call':
+      case 'call': {
+        // keys / values on a map materialize to an array (a `Map` iterator is not the list the stdlib returns)
+        const collected = mapCollect(node.callee)
+        if (collected) {
+          return `Array.from(${expression(collected.target)}.${collected.name}())`
+        }
+
         return `${expression(node.callee)}(${node.args
           .map(arg => expression(arg))
           .join(', ')})`
+      }
       case 'array':
         return `[${node.items
           .map(item => expression(item))

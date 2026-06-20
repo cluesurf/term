@@ -103,11 +103,13 @@ task round-trip
       wait true
 
 task exists
+  mark async
   take p, like text
   like boolean
   send back
     call test
       read p
+      wait true
 `
 
 // clock: forwards to node:perf_hooks (now) + node:timers/promises (sleep), hidden behind the API
@@ -156,6 +158,66 @@ task cwd
   like text
   send back
     call directory
+
+task var-of
+  take name, like text
+  like text
+  send back
+    call variable
+      read name
+`
+
+// file metadata: size and kind, over the host stat. Total (missing path reads 0 and false).
+const FILE_META = `load @cluesurf/base/code/file/metadata
+  find size
+  find is-directory
+  find is-file
+
+task size-of
+  take path, like text
+  like number
+  send back
+    call size
+      read path
+
+task dir-check
+  take path, like text
+  like boolean
+  send back
+    call is-directory
+      read path
+
+task file-check
+  take path, like text
+  like boolean
+  send back
+    call is-file
+      read path
+`
+
+// directory operations: make, exists, remove. make and remove are recursive and best effort.
+const FILE_DIR = `load @cluesurf/base/code/file/directory
+  find make
+  find remove
+  find exists
+
+task make-dir
+  take path, like text
+  like boolean
+  call make
+    read path
+  send back
+    call exists
+      read path
+
+task remove-dir
+  take path, like text
+  like boolean
+  call remove
+    read path
+  send back
+    call exists
+      read path
 `
 
 const TIME = `load @cluesurf/base/code/time
@@ -790,6 +852,190 @@ task draw
       read size
 `
 
+// AES-256-GCM authenticated encryption: encrypt then decrypt round-trips back to the plaintext (via SubtleCrypto on
+// node). Key and nonce are hex; the ciphertext (with the appended tag) is hex.
+const CIPHER = `load @cluesurf/base/code/cryptography/cipher
+  find encrypt
+  find decrypt
+
+task seal
+  mark async
+  take key, like text
+  take nonce, like text
+  take plain, like text
+  like text
+  send back
+    call encrypt
+      read key
+      read nonce
+      read plain
+      wait true
+
+task open
+  mark async
+  take key, like text
+  take nonce, like text
+  take cipher, like text
+  like text
+  send back
+    call decrypt
+      read key
+      read nonce
+      read cipher
+      wait true
+`
+
+// Ed25519 signatures: generate a key pair, sign a message with the private key, verify with the public key (via
+// SubtleCrypto on node). Keys and signatures are hex. A tampered message must fail verification.
+const SIGNATURE = `load @cluesurf/base/code/cryptography/signature
+  find make-key-pair
+  find sign
+  find verify
+
+task round-trip
+  mark async
+  take message, like text
+  like boolean
+  save pair
+    call make-key-pair
+      wait true
+  save proof
+    call sign
+      read pair/private-key
+      read message
+      wait true
+  send back
+    call verify
+      read pair/public-key
+      read message
+      read proof
+      wait true
+
+task tampered
+  mark async
+  take message, like text
+  take other, like text
+  like boolean
+  save pair
+    call make-key-pair
+      wait true
+  save proof
+    call sign
+      read pair/private-key
+      read message
+      wait true
+  send back
+    call verify
+      read pair/public-key
+      read other
+      read proof
+      wait true
+`
+
+// calendar: UTC formatting / components / construction / arithmetic over an epoch-millis timestamp (via the host
+// Date). Formatting is ISO 8601 with millisecond precision; arithmetic on fixed units is pure, months delegate.
+const CALENDAR = `load @cluesurf/base/code/calendar
+  find make-utc
+  find format
+  find parse
+  find year
+  find month
+  find add-days
+  find add-months
+  find to-parts
+
+task stamp
+  like number
+  send back
+    call make-utc
+      mark 2026
+      mark 6
+      mark 19
+      mark 12
+      mark 34
+      mark 56
+
+task formatted
+  take m, like number
+  like text
+  send back
+    call format
+      read m
+
+task parsed
+  take text, like text
+  like number
+  send back
+    call parse
+      read text
+
+task year-of
+  take m, like number
+  like integer
+  send back
+    call year
+      read m
+
+task next-day
+  take m, like number
+  like text
+  send back
+    call format
+      call add-days
+        read m
+        mark 1
+
+task next-month
+  take m, like number
+  like integer
+  send back
+    call month
+      call add-months
+        read m
+        mark 1
+
+task parts-weekday
+  take m, like number
+  like integer
+  save parts
+    call to-parts
+      read m
+  send back
+    read parts/weekday
+`
+
+// X25519 ECDH key agreement: two parties generate key pairs, exchange public keys, and derive the same shared secret
+// (via SubtleCrypto on node). The agreement property -- secret(a.private, b.public) == secret(b.private, a.public) --
+// is what makes a shared key possible.
+const KEY_AGREEMENT = `load @cluesurf/base/code/cryptography/key-agreement
+  find make-key-pair
+  find shared-secret
+
+task agree
+  mark async
+  like boolean
+  save a
+    call make-key-pair
+      wait true
+  save b
+    call make-key-pair
+      wait true
+  save ab
+    call shared-secret
+      read a/private-key
+      read b/public-key
+      wait true
+  save ba
+    call shared-secret
+      read b/private-key
+      read a/public-key
+      wait true
+  send back
+    call is-equal
+      read ab
+      read ba
+`
+
 // network/http: GET through the host fetch (a data: URL needs no server), reading status + body off the response
 const HTTP = `load @cluesurf/base/code/network/http
   find get
@@ -940,6 +1186,74 @@ async function main(): Promise<void> {
   expect(
     'crypto/random: two draws differ (not a constant)',
     sr.draw!(16) !== sr.draw!(16),
+    true,
+  )
+
+  const cp = await loadProgram(CIPHER)
+  const cipherKey =
+    '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
+  const cipherNonce = '000102030405060708090a0b'
+  const sealed = (await cp.seal!(
+    cipherKey,
+    cipherNonce,
+    'attack at dawn',
+  )) as string
+  expect(
+    'crypto/cipher: ciphertext is non-empty hex',
+    /^[0-9a-f]+$/.test(sealed) && sealed.length > 0,
+    true,
+  )
+  expect(
+    'crypto/cipher: decrypt(encrypt(x)) round-trips the plaintext (AES-256-GCM)',
+    await cp.open!(cipherKey, cipherNonce, sealed),
+    'attack at dawn',
+  )
+
+  const sigMod = await loadProgram(SIGNATURE)
+  expect(
+    'crypto/signature: verify(sign(message)) is true (Ed25519)',
+    await sigMod.roundTrip!('ship sails at noon'),
+    true,
+  )
+  expect(
+    'crypto/signature: a tampered message fails verification',
+    await sigMod.tampered!('ship sails at noon', 'ship sails at dusk'),
+    false,
+  )
+
+  const cal = await loadProgram(CALENDAR)
+  const stamp = cal.stamp!() as number
+  expect(
+    'calendar: make-utc + format gives the ISO 8601 UTC string',
+    cal.formatted!(stamp),
+    '2026-06-19T12:34:56.000Z',
+  )
+  expect(
+    'calendar: parse is the inverse of format',
+    cal.parsed!('2026-06-19T12:34:56.000Z'),
+    stamp,
+  )
+  expect('calendar: year component (UTC)', cal.yearOf!(stamp), 2026)
+  expect(
+    'calendar: add-days crosses into the next day',
+    cal.nextDay!(stamp),
+    '2026-06-20T12:34:56.000Z',
+  )
+  expect(
+    'calendar: add-months is calendar-aware (June -> July)',
+    cal.nextMonth!(stamp),
+    7,
+  )
+  expect(
+    'calendar: to-parts weekday matches the host Date (0=Sunday)',
+    cal.partsWeekday!(stamp),
+    new Date(stamp).getUTCDay(),
+  )
+
+  const ka = await loadProgram(KEY_AGREEMENT)
+  expect(
+    'crypto/key-agreement: both parties derive the same X25519 shared secret',
+    await ka.agree!(),
     true,
   )
 
@@ -1141,6 +1455,32 @@ async function main(): Promise<void> {
     typeof cwd === 'string' && cwd.length > 0,
     true,
   )
+  process.env.SEED_TEST_VAR = 'present'
+  expect(
+    'environment: variable reads an env var',
+    en.varOf!('SEED_TEST_VAR'),
+    'present',
+  )
+  expect(
+    'environment: variable returns empty for an unset var',
+    en.varOf!('SEED_DEFINITELY_UNSET_VAR'),
+    '',
+  )
+
+  const metaDir = mkdtempSync(join(tmpdir(), 'seed-meta-'))
+  const metaFile = join(metaDir, 'note.txt')
+  writeFileSync(metaFile, 'twelve bytes')
+  const fm = await loadProgram(FILE_META)
+  expect('file/metadata: size reads the byte length', fm.sizeOf!(metaFile), 12)
+  expect('file/metadata: is-file is true for a file', fm.fileCheck!(metaFile), true)
+  expect('file/metadata: is-directory is false for a file', fm.dirCheck!(metaFile), false)
+  expect('file/metadata: is-directory is true for a directory', fm.dirCheck!(metaDir), true)
+  expect('file/metadata: size of a missing path is 0', fm.sizeOf!(join(metaDir, 'nope')), 0)
+
+  const fd = await loadProgram(FILE_DIR)
+  const newDir = join(metaDir, 'made', 'deep')
+  expect('file/directory: make creates the directory (recursive)', fd.makeDir!(newDir), true)
+  expect('file/directory: remove deletes the directory', fd.removeDir!(newDir), false)
 
   const ti = await loadProgram(TIME)
   const epoch = ti.epoch!() as number
@@ -1203,8 +1543,16 @@ async function main(): Promise<void> {
     existsSync(path),
     true,
   )
-  expect('file: test reports an existing file', m.exists!(path), true)
-  expect('file: test reports a missing file', m.exists!(missing), false)
+  expect(
+    'file: test reports an existing file',
+    await m.exists!(path),
+    true,
+  )
+  expect(
+    'file: test reports a missing file',
+    await m.exists!(missing),
+    false,
+  )
 
   // cross-target: the SAME public `file` module compiles for every platform, each forwarding to its own native impl,
   // emitting that platform's file API. The program only ever names `file`.
@@ -1237,6 +1585,26 @@ async function main(): Promise<void> {
   expect(
     'file compiles for the kotlin target (io runtime)',
     kotlinR.ok && emitKotlin(kotlinR.program).includes('io.fileRead'),
+    true,
+  )
+  // browser: the same file module compiles to TypeScript that drives the OPFS shim (io.fileRead), and the OPFS
+  // runtime (navigator.storage.getDirectory) is pulled into the prelude. Browser has no host here, so this is a
+  // compile + shim-wiring check, not a run.
+  const browserR = compile(
+    { file: 'file.tree', text: fileSrc },
+    { resolve: withNativeEnv('browser', stdlib) },
+  )
+  expect(
+    'file compiles for the browser target (OPFS io shim)',
+    browserR.ok && browserR.typescript.includes('io.fileRead'),
+    true,
+  )
+  expect(
+    'file pulls the OPFS runtime into the browser prelude',
+    browserR.ok &&
+      nativePrelude(browserR.program, 'browser', readRuntime).includes(
+        'navigator.storage.getDirectory',
+      ),
     true,
   )
 

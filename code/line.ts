@@ -320,11 +320,29 @@ const cli = yargs(hideBin(process.argv))
     },
   )
   .command(
-    'boot',
-    'Start the app',
-    () => {},
-    async () => {
-      await callBoot({ root })
+    'boot [entry]',
+    'Compile and run an app (entry, or the deck.tree boot entry)',
+    yargs =>
+      yargs
+        .positional('entry', {
+          type: 'string',
+          description: 'Entry .tree module (defaults to deck.tree boot)',
+        })
+        .option('port', {
+          type: 'number',
+          description: 'Port to serve on',
+        })
+        .option('env', {
+          type: 'string',
+          description: 'Target env (node, browser)',
+        }),
+    async argv => {
+      await callBoot({
+        root,
+        entry: argv.entry,
+        port: argv.port,
+        env: argv.env as never,
+      })
     },
   )
   .command(

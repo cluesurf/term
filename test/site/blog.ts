@@ -68,7 +68,7 @@ function textOf(node: any): string {
 }
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'site.tree/test/site/blog.tree')
+  const entry = path.join(DECK, 'site.tree/test/site/face/blog.tree')
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },

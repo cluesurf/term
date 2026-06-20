@@ -1,3 +1,23 @@
+import type { Expression } from '@/code/compile/node'
+
+// `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
+// Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),
+// .toList()), but they all detect the same shape here: a call whose callee is `<map>.keys` or `<map>.values`. Returns
+// the receiver expression and the operation name, or undefined when the callee is not a map keys/values access.
+export function mapCollect(
+  callee: Expression,
+): { target: Expression; name: 'keys' | 'values' } | undefined {
+  if (
+    callee.form === 'member' &&
+    callee.target.type?.kind === 'map' &&
+    (callee.name === 'keys' || callee.name === 'values')
+  ) {
+    return { target: callee.target, name: callee.name }
+  }
+
+  return undefined
+}
+
 // Shared backend machinery. Every code generator must handle every AST form, on every target.
 //
 // `exhausted` makes that a COMPILE-TIME invariant. Route the `default` branch of any form switch through it: when a

@@ -238,8 +238,9 @@ export type Statement =
       methods: Array<string>
       span: Span
     }
-  // a native module binding (`dock load / load <node:fs/promises>, name fs`): the env-specific FFI for the stdlib
-  | { form: 'native'; alias: string; module: string; span: Span }
+  // a native module binding (`dock load / load <node:fs/promises>, name fs`): the env-specific FFI for the stdlib.
+  // `file` is the module this dock lives in, so a `<global:X>` runtime shim can be found next to it (`./runtime/X.ext`).
+  | { form: 'native'; alias: string; module: string; span: Span; file?: string }
   // a component (view) definition, lowered from the `zone` DSL (book/site navigation, state, forms)
   | {
       form: 'zone'

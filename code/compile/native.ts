@@ -37,32 +37,71 @@ export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
 // program docks, and for each one whose runtime file exists it returns that source. The compiler holds the convention
 // (where runtime files live, per-target extension), never the content. The build prepends the prelude before emit.
 
-// the `<global:X>` namespaces a program docks (the candidates for a runtime-shim prelude)
-export function globalDockNames(program: Program): Array<string> {
-  const names: Array<string> = []
+// the `<global:X>` docks in a program: the namespace name plus the module file the dock lives in (so its runtime shim
+// can be found next to that module). The candidates for a runtime-shim prelude.
+export function globalDocks(
+  program: Program,
+): Array<{ name: string; file?: string }> {
+  const docks: Array<{ name: string; file?: string }> = []
   for (const node of program) {
     if (node.form === 'native' && node.module.startsWith('global:'))
-      names.push(node.module.slice('global:'.length))
+      docks.push({
+        name: node.module.slice('global:'.length),
+        file: node.file,
+      })
   }
-  return [...new Set(names)]
+  return docks
 }
 
-// the stdlib import path of a target's runtime shim for a namespace (a raw source file, not a `.tree` module)
+// the distinct namespace names a program docks (kept for callers that only need names)
+export function globalDockNames(program: Program): Array<string> {
+  return [...new Set(globalDocks(program).map(d => d.name))]
+}
+
+// the posix directory of a path (the resolver yields posix paths; native.ts stays browser-safe, no node `path`)
+function directoryOf(file: string): string {
+  const i = file.lastIndexOf('/')
+  return i >= 0 ? file.slice(0, i) : '.'
+}
+
+// a runtime shim lives next to the module that docks it: `<dir-of-module>/runtime/<name>.<ext>`. This is the primary
+// location, so a shim is found in whatever package its impl lives in (base.tree, site.tree, an app, ...).
+export function runtimePathFor(
+  file: string,
+  env: NativeEnv,
+  name: string,
+): string {
+  return `${directoryOf(file)}/runtime/${name}.${RUNTIME_EXTENSION[env]}`
+}
+
+// the stdlib import path of a target's runtime shim for a namespace (the fallback when a dock has no recorded origin)
 export function runtimePath(env: NativeEnv, name: string): string {
   return `@cluesurf/base/code/native/${env}/runtime/${name}.${RUNTIME_EXTENSION[env]}`
 }
 
 // build the native prelude for a target: the concatenation of every runtime-shim file the program's global docks
-// reference and that actually exists. `readRuntime(path)` returns the raw source for a runtime path, or undefined.
+// reference and that actually exists. Each shim is looked up next to the module that docks it (its origin file), with
+// the base.tree path as a fallback. `readRuntime(path)` returns the raw source for a runtime path, or undefined.
 export function nativePrelude(
   program: Program,
   env: NativeEnv,
   readRuntime: (path: string) => string | undefined,
 ): string {
   const parts: Array<string> = []
-  for (const name of globalDockNames(program)) {
-    const source = readRuntime(runtimePath(env, name))
-    if (source) parts.push(source)
+  const added = new Set<string>()
+  for (const { name, file } of globalDocks(program)) {
+    const candidates = file
+      ? [runtimePathFor(file, env, name), runtimePath(env, name)]
+      : [runtimePath(env, name)]
+    for (const candidate of candidates) {
+      if (added.has(candidate)) break
+      const source = readRuntime(candidate)
+      if (source !== undefined) {
+        added.add(candidate)
+        parts.push(source)
+        break
+      }
+    }
   }
   return parts.join('\n')
 }

@@ -5,6 +5,7 @@
 
 import { compile } from '@/code/compile/compile'
 import { projectResolver } from '@/code/call/make'
+import { nativePrelude } from '@/code/compile/native'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -44,7 +45,7 @@ type Repo = {
 }
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'site.tree/test/site/post.tree')
+  const entry = path.join(DECK, 'site.tree/test/site/back/post.tree')
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },
@@ -66,21 +67,18 @@ async function main(): Promise<void> {
     !/from ['"]pg['"]/.test(result.typescript),
   )
 
-  // prepend the runtime shim (the native-env prelude), then bundle with pg left external (resolved from node_modules)
-  const shim = fs.readFileSync(
-    path.join(
-      DECK,
-      'site.tree/code/base/native/node/runtime/postgres.ts',
-    ),
-    'utf8',
-  )
+  // the native-env prelude (the same one `seed boot` prepends): nativePrelude auto-discovers the <global:postgres> shim
+  // next to the module that docks it. Then bundle with pg left external (resolved from node_modules).
+  const readRuntime = (p: string): string | undefined =>
+    fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
+  const prelude = nativePrelude(result.program, 'node', readRuntime)
   // run the bundle inside the seed package so node resolves the external `pg` from its node_modules
   const tmp = path.join(SEED, 'test', 'tmp')
   fs.mkdirSync(tmp, { recursive: true })
   const dir = fs.mkdtempSync(path.join(tmp, 'blogdb-'))
   fs.writeFileSync(
     path.join(dir, 'app.ts'),
-    `${shim}\n${result.typescript}`,
+    `${prelude}\n${result.typescript}`,
   )
   const bundled = await build({
     entryPoints: [path.join(dir, 'app.ts')],
