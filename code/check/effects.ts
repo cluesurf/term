@@ -274,9 +274,13 @@ export function checkEffects(
           break
         }
         case 'call':
+          // `wait false` is fire-and-forget: an async call deliberately left un-awaited, so it is exempt. Otherwise
+          // async resolution awaits async calls by default; a leftover un-awaited async call in a sync context is an
+          // error only when it was not marked background.
           if (
             !awaited &&
             !inAsync &&
+            !node.background &&
             node.callee.form === 'variable' &&
             isAsyncName(node.callee.name)
           ) {
@@ -284,10 +288,7 @@ export function checkEffects(
               diagnose('effect-error', {
                 file,
                 span: node.span,
-                message:
-                  `"${node.callee.name}" is async and must be awaited (add ` +
-                  '`wait true`' +
-                  ` to the call)`,
+                message: `"${node.callee.name}" is async; await it, or mark it fire-and-forget with \`wait false\``,
               }),
             )
           }

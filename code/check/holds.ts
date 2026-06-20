@@ -162,12 +162,19 @@ export function checkHolds(
   const diagnostics: Array<Diagnostic> = []
 
   for (const statement of program) {
-    if (statement.form !== 'function') continue
-    // base assumptions from parameter refinements: a natural-number parameter is >= 0
-    const base = statement.params
-      .filter(p => p.refine === 'natural')
-      .map(p => atLeast(linear({ [p.name]: 1 }), linear({}, 0)))
-    walkHolds(statement.body, base, diagnostics, file)
+    if (statement.form === 'function') {
+      // base assumptions from parameter refinements: a natural-number parameter is >= 0
+      const base = statement.params
+        .filter(p => p.refine === 'natural')
+        .map(p => atLeast(linear({ [p.name]: 1 }), linear({}, 0)))
+      walkHolds(statement.body, base, diagnostics, file)
+    } else if (statement.form === 'hold') {
+      // a top-level `hold` declared at module scope: prove it with no assumptions (it has no enclosing parameters).
+      // This is what lets a value-arithmetic obligation at the top level (e.g. `add 3 3 == 6`) be discharged by the
+      // linear prover, the same as one inside a function body. The kernel pass (elaborate) handles the definitional
+      // fragment and records its discharges, which the caller drops from these diagnostics.
+      walkHolds([statement], [], diagnostics, file)
+    }
   }
 
   return diagnostics

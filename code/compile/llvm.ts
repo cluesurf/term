@@ -1018,6 +1018,8 @@ function emitFunction(
       case 'throw':
       case 'break':
       case 'continue':
+      case 'exit':
+      case 'debug':
       case 'function':
       case 'record-type':
       case 'mask':

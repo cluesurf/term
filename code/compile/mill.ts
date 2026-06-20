@@ -125,15 +125,21 @@ function parseProof(node: GroupNode): Proof {
   return proof
 }
 
-// is this node `wait true` (the async marker)?
-function isWaitTrue(node: Node): boolean {
+// is this node `wait true` (force await) or `wait false` (fire-and-forget, never await)?
+function isWaitWith(node: Node, value: 'true' | 'false'): boolean {
   if (node.kind !== 'group' || headName(node) !== 'wait') return false
   const arg = node.nodes[1]
   return (
     arg !== undefined &&
     arg.kind === 'group' &&
-    headName(arg) === 'true'
+    headName(arg) === value
   )
+}
+function isWaitTrue(node: Node): boolean {
+  return isWaitWith(node, 'true')
+}
+function isWaitFalse(node: Node): boolean {
+  return isWaitWith(node, 'false')
 }
 
 // is this node an annotation `note <name>` (or the retired `mark <name>`)? Tags / markers like `note async`,
@@ -426,6 +432,28 @@ export function mill(tree: RootNode, file: string): MillResult {
           value && value.kind === 'group' ? headName(value) : undefined
         return { form: 'boolean', value: flag === 'true', span }
       }
+      // boolean conjunction / disjunction: `meet and / <a> / <b> / ...` folds its operands with `&&`, `meet or` with
+      // `||`. The operands are the children after the `and` / `or` marker. (The `call and` / `call or` builtin forms
+      // still work; `meet` is the clean keyword surface.)
+      case 'meet': {
+        const variant =
+          args[0] && args[0].kind === 'group'
+            ? headName(args[0] as GroupNode)
+            : undefined
+        const op: BinaryOp = variant === 'or' ? '||' : '&&'
+        const operands = args
+          .slice(1)
+          .map(node => toExpression(node, scope))
+        if (operands.length === 0)
+          return { form: 'boolean', value: variant !== 'or', span }
+        return operands.reduce((left, right) => ({
+          form: 'binary',
+          op,
+          left,
+          right,
+          span,
+        }))
+      }
       case 'make':
         return makeExpression(group, scope)
       case 'task': {
@@ -579,11 +607,13 @@ export function mill(tree: RootNode, file: string): MillResult {
     const calleeName =
       target && target.kind === 'group' ? headName(target) : undefined
     const span = spanOf(group)
-    // `wait true` marks the call to be awaited; it is not an argument
+    // `wait true` forces an await; `wait false` is fire-and-forget (never awaited). Neither is an argument. A bare call
+    // is auto-awaited later by async resolution when the callee turns out to be async.
     const awaited = parts.slice(1).some(isWaitTrue)
+    const background = parts.slice(1).some(isWaitFalse)
     const callArgs = parts
       .slice(1)
-      .filter(a => !isWaitTrue(a))
+      .filter(a => !isWaitTrue(a) && !isWaitFalse(a))
       .map(a => toExpression(a, scope))
 
     let result: Expression
@@ -621,7 +651,13 @@ export function mill(tree: RootNode, file: string): MillResult {
         calleeName && calleeName.includes('/')
           ? pathExpression(calleeName, span)
           : { form: 'variable', name: calleeName ?? '', span }
-      result = { form: 'call', callee, args: callArgs, span }
+      result = {
+        form: 'call',
+        callee,
+        args: callArgs,
+        span,
+        ...(background ? { background: true } : {}),
+      }
     }
     return awaited ? { form: 'await', expr: result, span } : result
   }
@@ -871,19 +907,42 @@ export function mill(tree: RootNode, file: string): MillResult {
           // `send back, X` and multiline `send back` / `<X>` parse as send > [back, X] (value is send's second
           // child). `send back X` on one line parses as send > [back > [X]] (value nested under back). Accept both.
           const backGroup = rest(node)[0]
-          if (
-            backGroup &&
-            backGroup.kind === 'group' &&
-            headName(backGroup) === 'back'
-          ) {
-            const value = rest(node)[1] ?? rest(backGroup)[0]
+          const sendVariant =
+            backGroup && backGroup.kind === 'group'
+              ? headName(backGroup)
+              : undefined
+          if (sendVariant === 'back') {
+            const value = rest(node)[1] ?? rest(backGroup as GroupNode)[0]
             out.push({
               form: 'return',
               value: value ? toExpression(value, scope) : undefined,
               span,
             })
+          } else if (sendVariant === 'kink') {
+            // `send kink <kink>`: raise a recoverable error. The error-channel counterpart to `send back` -- it
+            // returns the result's `error` arm wrapping the kink the user constructed. The enclosing task must return
+            // a `result`. See note/library/seed/error-model.md.
+            const value =
+              rest(node)[1] ?? rest(backGroup as GroupNode)[0]
+            out.push({
+              form: 'return',
+              value: {
+                form: 'record',
+                name: 'error',
+                fields: [
+                  {
+                    name: 'value',
+                    value: value
+                      ? toExpression(value, scope)
+                      : { form: 'unit', span },
+                  },
+                ],
+                span,
+              },
+              span,
+            })
           } else {
-            fail(node, 'send must be followed by back')
+            fail(node, 'send must be followed by back or kink')
           }
           break
         }
@@ -955,9 +1014,36 @@ export function mill(tree: RootNode, file: string): MillResult {
         case 'turn':
           out.push({ form: 'continue', span })
           break
-        case 'halt':
-          out.push({ form: 'break', span })
+        // `move next` is continue. A bare `move <ref>` statement (a reference move used for effect) stays an
+        // expression statement, so only `move next` is intercepted here.
+        case 'move': {
+          const arg = rest(node)[0]
+          if (arg && arg.kind === 'group' && headName(arg) === 'next') {
+            out.push({ form: 'continue', span })
+            break
+          }
+          out.push({
+            form: 'expression',
+            expr: toExpression(node, scope),
+            span,
+          })
           break
+        }
+        // `halt` (and `halt fork`) break the current loop or block. `halt flow` (program exit) and `halt code`
+        // (debugger) are distinguished by their argument.
+        case 'halt': {
+          const arg = rest(node)[0]
+          const which =
+            arg && arg.kind === 'group' ? headName(arg) : undefined
+          if (which === 'flow') {
+            out.push({ form: 'exit', span })
+          } else if (which === 'code') {
+            out.push({ form: 'debug', span })
+          } else {
+            out.push({ form: 'break', span })
+          }
+          break
+        }
         case 'walk': {
           const parts = rest(node)
           const variant =

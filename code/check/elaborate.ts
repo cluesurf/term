@@ -807,46 +807,9 @@ export function elaborateReport(
         case 'hold': {
           // the kernel fallback / proof layer. A non-linear `a == b` hold is discharged when the two sides are
           // definitionally equal (delta makes a transparent `double(n)` equal to `add(n, n)`), or by an explicit
-          // proof tree. A named hold that is discharged is registered as a lemma for later `cite`.
-          const goal = statement.expr
-          if (goal.form === 'binary' && goal.op === '==') {
-            const left = expr(goal.left, sc, ctx)
-            const right = expr(goal.right, sc, ctx)
-            if (left && right) {
-              try {
-                infer(ctx, left)
-                infer(ctx, right)
-                const leftValue = evaluate(ctx.env, left)
-                const rightValue = evaluate(ctx.env, right)
-                const verdict = checkProof(
-                  statement.proof,
-                  ctx.level,
-                  leftValue,
-                  rightValue,
-                )
-                if (verdict === 'ok') {
-                  discharged.push(statement.span)
-                  if (statement.name)
-                    lemmas.set(statement.name, {
-                      left: showTerm(quote(ctx.level, leftValue)),
-                      right: showTerm(quote(ctx.level, rightValue)),
-                    })
-                } else if (verdict === 'fail') {
-                  diagnostics.push(
-                    diagnose('invalid-proof', {
-                      file,
-                      span: statement.span,
-                      message:
-                        'this proof does not establish the equality',
-                    }),
-                  )
-                }
-                // 'open' (no proof, or a tactic not yet supported): leave it to the linear prover
-              } catch {
-                // the sides did not elaborate / type-check: leave it to the linear prover
-              }
-            }
-          }
+          // proof tree. A named hold that is discharged is registered as a lemma for later `cite`. An undischarged
+          // hold here is left to the linear prover (topLevel = false, so no unchecked flag).
+          checkHold(statement, sc, ctx)
           break // never decline on a hold; the linear prover handles the rest
         }
         case 'break':
@@ -855,6 +818,55 @@ export function elaborateReport(
         default:
           throw new Decline() // a nested declaration or anything else unhandled
       }
+    }
+  }
+
+  // check one `hold` proof obligation (an `a == b` claim plus an optional proof tree) by the KERNEL, in a given
+  // scope/context. Used both inside a function body and at the top level. Discharges when the sides are definitionally
+  // equal or an explicit proof tree (`calm`/`cite`/`turn`/`link`) closes it, recording the span so the linear prover
+  // drops it; a discharged named hold becomes a citable lemma. A false explicit proof is an `invalid-proof` error.
+  // Anything the kernel leaves open is handled by the linear prover (`checkHolds`), which now walks both function
+  // bodies AND top-level holds, so it is the single place that flags an unproven obligation.
+  function checkHold(
+    statement: Extract<Statement, { form: 'hold' }>,
+    scope: Scope,
+    context: Context,
+  ): void {
+    const goal = statement.expr
+    if (goal.form !== 'binary' || goal.op !== '==') return
+    const left = expr(goal.left, scope, context)
+    const right = expr(goal.right, scope, context)
+    if (!left || !right) return
+    try {
+      infer(context, left)
+      infer(context, right)
+      const leftValue = evaluate(context.env, left)
+      const rightValue = evaluate(context.env, right)
+      const verdict = checkProof(
+        statement.proof,
+        context.level,
+        leftValue,
+        rightValue,
+      )
+      if (verdict === 'ok') {
+        discharged.push(statement.span)
+        if (statement.name)
+          lemmas.set(statement.name, {
+            left: showTerm(quote(context.level, leftValue)),
+            right: showTerm(quote(context.level, rightValue)),
+          })
+      } else if (verdict === 'fail') {
+        diagnostics.push(
+          diagnose('invalid-proof', {
+            file,
+            span: statement.span,
+            message: 'this proof does not establish the equality',
+          }),
+        )
+      }
+      // 'open': leave it to the linear prover (checkHolds)
+    } catch {
+      // the sides did not elaborate / type-check: leave it to the linear prover
     }
   }
 
@@ -926,6 +938,15 @@ export function elaborateReport(
       }
       // Decline (unrepresentable) or any other error: leave this function to the surface checker, no diagnostic
     }
+  }
+
+  // top-level proof obligations: a `hold` declared at module scope is kernel-checked here, AFTER the function loop has
+  // registered every terminating function as a transparent definition, so a definitional proof can reduce through
+  // them (e.g. `double 3` unfolds to `add 3 3`). Whatever the kernel leaves open is handled by the linear prover
+  // (`checkHolds`), which also walks top-level holds.
+  for (const statement of program) {
+    if (statement.form === 'hold')
+      checkHold(statement, new Map(), baseContext)
   }
 
   return { diagnostics, verified, discharged }

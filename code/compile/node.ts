@@ -102,6 +102,9 @@ export type Expression =
       args: Array<Expression>
       span: Span
       type?: Type
+      // `wait false`: a fire-and-forget call. It is made but never awaited, even when the callee is async, and it does
+      // not make the caller async. Async resolution skips it; without this flag an async call is awaited by default.
+      background?: boolean
     }
   | { form: 'array'; items: Array<Expression>; span: Span; type?: Type }
   | {
@@ -208,6 +211,10 @@ export type Statement =
   | { form: 'break'; span: Span }
   | { form: 'continue'; span: Span }
   | { form: 'return'; value?: Expression; span: Span }
+  // stop the whole program (`halt flow`), lowered to each host's process exit
+  | { form: 'exit'; span: Span }
+  // a debugger breakpoint (`halt code`)
+  | { form: 'debug'; span: Span }
   // throw an error value (the `bust` keyword)
   | { form: 'throw'; value: Expression; span: Span }
   // a verification condition: the expression must be provably true (refinement layer 2). An optional `name` makes

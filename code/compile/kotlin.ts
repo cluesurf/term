@@ -431,6 +431,10 @@ export function emitKotlin(program: Program): string {
         return 'break'
       case 'continue':
         return 'continue'
+      case 'exit':
+        return 'kotlin.system.exitProcess(0)'
+      case 'debug':
+        return '// breakpoint'
       case 'function': {
         const generics = genericClause(node)
         const params = node.params

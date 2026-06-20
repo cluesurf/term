@@ -63,9 +63,9 @@ task run
 `,
   )
 
-  // await outside an async task
-  expectEffectError(
-    'await is rejected in a synchronous task',
+  // a task that awaits is INFERRED async (no task-level marker needed) -- async resolution makes it async
+  expectOk(
+    'a task that awaits is inferred async',
     `${FETCH}
 task run
   send back
@@ -88,13 +88,29 @@ task run
 `,
   )
 
-  // an async call left unawaited in a synchronous task
-  expectEffectError(
-    'unawaited async call in a synchronous task is rejected',
+  // an async call with no `wait true` is AUTO-AWAITED by inference (the caller becomes async), so it is not an error
+  expectOk(
+    'an unawaited async call is auto-awaited (inference)',
     `${FETCH}
 task run
   send back
     call fetch
+`,
+  )
+
+  // fire-and-forget: an async call marked `wait false` is intentionally not awaited and the caller stays synchronous
+  expectOk(
+    'a `wait false` async call is allowed (fire-and-forget)',
+    `${FETCH}
+task run
+  send back
+    code 0
+
+task kick
+  call fetch
+    wait false
+  send back
+    code 0
 `,
   )
 

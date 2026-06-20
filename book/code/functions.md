@@ -182,6 +182,30 @@ fork case, read color
     send back, text <blue>
 ```
 
+### Boolean Logic (`meet and` / `meet or`)
+
+`meet and` folds its operands with `&&`, `meet or` with `||`. Two or more operands as children:
+
+```tree
+send back
+  meet and
+    call is-list
+      read a
+    call is-list
+      read b
+```
+→ `(is-list(a) && is-list(b))`
+
+```tree
+send back
+  meet or
+    read ready
+    read forced
+```
+→ `(ready || forced)`
+
+(`call and` / `call or` also map to `&&` / `||`; `meet` is the clean keyword surface and chains 3+ operands.)
+
 ### Negation (`fork lack`)
 
 `fork lack` negates a boolean. It sits in the `fork` family next to `test` and `case`, and lowers to a unary `!`. There is no `not` operator and no `fork lack` is the way to invert a predicate (the comparison verbs already come in pairs: `is-equal` / `is-unequal`, `is-above` / `is-below`).

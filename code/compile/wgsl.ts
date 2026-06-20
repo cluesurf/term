@@ -141,6 +141,9 @@ export function emitWgsl(input: Program): string {
         return 'break;'
       case 'continue':
         return 'continue;'
+      case 'exit':
+      case 'debug':
+        return unsupported('WGSL', node.form, '//')
       case 'for-each':
         // WGSL has no iterator protocol; a ranged `for` over an array index is the data-parallel form. Emit a marker
         // until the front-end lowers `for-each` to an indexed loop.

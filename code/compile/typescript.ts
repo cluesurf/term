@@ -684,6 +684,10 @@ function makeEmitter(
         return 'break'
       case 'continue':
         return 'continue'
+      case 'exit':
+        return 'process.exit(0)'
+      case 'debug':
+        return 'debugger'
       case 'record-type': {
         // an enum becomes a discriminated union; a struct becomes an interface
         if (node.variants.length > 0) {

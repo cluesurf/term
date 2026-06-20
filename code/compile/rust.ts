@@ -554,6 +554,10 @@ export function emitRust(program: Program): string {
         return 'break;'
       case 'continue':
         return 'continue;'
+      case 'exit':
+        return 'std::process::exit(0);'
+      case 'debug':
+        return '// breakpoint';
       case 'function': {
         // a generic parameter appears in a signature two ways: as a declared name (`head t` that survived as a named
         // type) or as a free inference variable. Collect both. Each free variable gets a fresh letter, mapped by id so

@@ -774,6 +774,10 @@ export function emitSwift(program: Program): string {
         return 'break'
       case 'continue':
         return 'continue'
+      case 'exit':
+        return 'exit(0)'
+      case 'debug':
+        return '// breakpoint'
       case 'function': {
         const generics = genericClause(node) // sets varNames for the param/result/body emission that follows
         const params = node.params
