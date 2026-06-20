@@ -344,6 +344,7 @@ hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
 rand = "0.8"
 reqwest = { version = "0.12", features = ["rustls-tls"] }
+serde_json = "1"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 
 [[bin]]
@@ -619,6 +620,24 @@ task compute
       mark 5
       mark 5
 `
+// json: parse a JSON array (no braces -- seed text literals interpolate single { ), index it, read the number.
+// as-number(get-item(parse("[10,20,30]"), 1)) == 20.0, through each platform's host JSON.
+const JSON_RT_PROG = `load @cluesurf/base/code/json
+  find parse
+  find get-item
+  find as-number
+
+task compute
+  like boolean
+  send back
+    call is-equal
+      call as-number
+        call get-item
+          call parse
+            text <[10,20,30]>
+          mark 1
+      20.0
+`
 // float: real floating-point math. square-root(9.0) == 3.0 exactly (asserted as a boolean to avoid print-format
 // differences: rust prints "3", swift/kotlin print "3.0").
 const FLOAT_PROG = `load @cluesurf/base/code/float
@@ -774,6 +793,11 @@ function main(): void {
   runSwiftText('swift + random: integer(5,5) is 5 (via Int.random)', frontEnd(RANDOM_PROG, true, 'swift'), '5')
   runKotlinText('kotlin + random: integer(5,5) is 5 (via kotlin Random)', frontEnd(RANDOM_PROG, true, 'kotlin'), '5')
   runRustCargo('rust + cargo: random integer(5,5) is 5 (via the rand crate)', frontEnd(RANDOM_PROG, true, 'rust'), '5', false)
+
+  // json to "runs" via the host JSON: rust serde_json (cargo), swift JSONSerialization. kotlin needs org.json on the
+  // classpath (not in the JDK), so it is compile-checked, not run here.
+  runRustCargo('rust + cargo: json parse + index + as-number via serde_json', frontEnd(JSON_RT_PROG, true, 'rust'), 'true', false)
+  runSwiftText('swift + json: parse + index + as-number via JSONSerialization', frontEnd(JSON_RT_PROG, true, 'swift'), 'true')
 
   // float math to "runs" on all three (square-root(9.0) == 3.0 via each platform's float library)
   runSwiftText('swift + float: square-root(9.0) == 3.0 (via Foundation)', frontEnd(FLOAT_PROG, true, 'swift'), 'true')

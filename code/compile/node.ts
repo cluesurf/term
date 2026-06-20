@@ -14,6 +14,9 @@ export type Type =
   | { kind: 'string' }
   | { kind: 'unit' }
   | { kind: 'unknown' }
+  // the host's dynamic value: a JS `any`, a rust `serde_json::Value`, a swift / kotlin `Any`. The opaque result of
+  // `json.parse`, navigated by the json accessors. Distinct from `unknown` (an inference hole that defaults to number).
+  | { kind: 'dynamic' }
   | { kind: 'array'; element: Type }
   | { kind: 'map'; key: Type; value: Type }
   | { kind: 'named'; name: string; args?: Array<Type> }
@@ -26,6 +29,7 @@ export const BOOLEAN: Type = { kind: 'boolean' }
 export const STRING: Type = { kind: 'string' }
 export const UNIT: Type = { kind: 'unit' }
 export const UNKNOWN: Type = { kind: 'unknown' }
+export const DYNAMIC: Type = { kind: 'dynamic' }
 
 export type BinaryOp = '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '<=' | '>' | '>=' | '&&' | '||'
 export type UnaryOp = '-' | '!'
@@ -144,6 +148,8 @@ export function showType(type: Type): string {
       return 'number'
     case 'float':
       return 'float'
+    case 'dynamic':
+      return 'dynamic'
     case 'boolean':
       return 'boolean'
     case 'string':

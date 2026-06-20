@@ -7,7 +7,7 @@ import type { Diagnostic, Span } from '@/code/parser/diagnostic'
 import { diagnose } from '@/code/parser/diagnostic'
 import type { GroupNode, NameNode, Node, RootNode } from '@/code/parser/tree'
 import type { BinaryOp, DockArgument, DockCall, DockMethod, DockRoute, DockTake, Expression, Program, Proof, Statement, Type, ZoneAttribute, ZoneNode } from '@/code/compile/node'
-import { BOOLEAN, FLOAT, NUMBER, STRING, UNIT, UNKNOWN } from '@/code/compile/node'
+import { BOOLEAN, DYNAMIC, FLOAT, NUMBER, STRING, UNIT, UNKNOWN } from '@/code/compile/node'
 
 // like-type names to surface types
 const TYPE_NAME: Record<string, Type> = {
@@ -16,6 +16,8 @@ const TYPE_NAME: Record<string, Type> = {
   'natural-number': NUMBER, integer: NUMBER, number: NUMBER,
   // floating point: `decimal` / `float` and the sized floats are the distinct float type
   decimal: FLOAT, float: FLOAT, f32: FLOAT, f64: FLOAT,
+  // the host's dynamic value (the opaque result of json parse)
+  dynamic: DYNAMIC, json: DYNAMIC,
   text: STRING, boolean: BOOLEAN, void: UNIT, unit: UNIT,
   // bind's native primitives ARE seed's primitives (a JS string is seed's `string`, etc.): map them to the same
   // surface type so a seed value passes to a bind method param and vice versa, with no subtyping needed.

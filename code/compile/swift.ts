@@ -90,6 +90,8 @@ export function emitSwift(program: Program): string {
         return 'Int'
       case 'float':
         return 'Double'
+      case 'dynamic':
+        return 'Any'
       case 'variable':
         return varNames.get(type.id) ?? 'Int' // a free variable not in this function's scope: default to Int
       case 'unknown':

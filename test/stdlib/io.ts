@@ -552,15 +552,12 @@ task first-number
       read m
 `
 
-// json: parse to the json-value ADT, navigate, read leaves; stringify a typed value; round-trip via stringify-value
+// json: parse the host JSON to the opaque dynamic value, navigate it, read leaves; round-trip via stringify
 const JSON_PROG = `load @cluesurf/base/code/json
   find parse
   find stringify
-  find stringify-value
   find get-field
   find get-item
-
-load @cluesurf/base/code/json/value
   find as-number
   find as-text
   find as-boolean
@@ -607,18 +604,9 @@ task round-trip
   take text, like text
   like text
   send back
-    call stringify-value
+    call stringify
       call parse
         read text
-
-task dump-list
-  like text
-  send back
-    call stringify
-      make list
-        mark 1
-        mark 2
-        mark 3
 `
 
 // network/http: GET through the host fetch (a data: URL needs no server), reading status + body off the response
@@ -697,8 +685,7 @@ async function main(): Promise<void> {
   expect('json: get-field + as-text reads a string field', js.fieldText!('{"count":42,"name":"seed"}'), 'seed')
   expect('json: get-item + as-number indexes an array', js.itemNumber!('[10,20,30]'), 20)
   expect('json: as-boolean reads a bool', js.boolOf!('true'), true)
-  expect('json: stringify-value round-trips parsed JSON', js.roundTrip!('{"a":1,"b":[2,3]}'), '{"a":1,"b":[2,3]}')
-  expect('json: stringify serializes a typed value', js.dumpList!(), '[1,2,3]')
+  expect('json: stringify(parse) round-trips through the host JSON', js.roundTrip!('{"a":1,"b":[2,3]}'), '{"a":1,"b":[2,3]}')
 
   const rx = await loadProgram(REGEX)
   expect('regex/matches accepts a matching string', rx.isDigits!('12345'), true)

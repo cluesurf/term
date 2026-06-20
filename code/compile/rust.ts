@@ -40,6 +40,8 @@ function rustType(type: Type | undefined): string {
       return 'i64'
     case 'float':
       return 'f64'
+    case 'dynamic':
+      return 'serde_json::Value'
     case 'variable':
     case 'unknown':
       return 'i64'

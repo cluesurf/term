@@ -84,6 +84,8 @@ function tsType(type: Type | undefined): string {
     case 'number':
     case 'float':
       return 'number'
+    case 'dynamic':
+      return 'any'
     case 'variable':
     case 'unknown':
     case undefined:

@@ -79,6 +79,8 @@ export function emitKotlin(program: Program): string {
         return 'Long'
       case 'float':
         return 'Double'
+      case 'dynamic':
+        return 'Any'
       case 'variable':
         return varNames.get(type.id) ?? 'Long'
       case 'unknown':
