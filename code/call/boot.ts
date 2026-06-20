@@ -7,7 +7,7 @@ import {
 } from 'fs'
 import { buildSync, version as esbuildVersion } from 'esbuild'
 import { compile } from '../compile/compile'
-import { projectResolver } from './make'
+import { projectResolver, resolveTreeFile } from './make'
 import { nativePrelude } from '../compile/native'
 import type { NativeEnv } from '../compile/native'
 import { hashText } from '../compile/cache'
@@ -50,19 +50,25 @@ export function findProjectRoot(start: string): string {
   }
 }
 
-// the entry module's path: an explicit argument, or the `boot <path>` directive in the nearest `deck.tree` manifest
+// resolve a bare entry path to its on-disk `.tree` file. A `boot ./hook/blog` directive names the module, not the file,
+// so apply Seed's candidate order (`hook/blog.tree`, `hook/blog/base.tree`, ...). An already-exact path is taken as-is.
+function resolveEntry(base: string): string | undefined {
+  return resolveTreeFile(base) ?? (existsSync(base) ? base : undefined)
+}
+
+// the entry module's file: an explicit argument, or the `boot <path>` directive in the nearest `deck.tree` manifest
 export function findEntry(
   cwd: string,
   entry: string | undefined,
 ): string | undefined {
-  if (entry) return path.resolve(cwd, entry)
+  if (entry) return resolveEntry(path.resolve(cwd, entry))
   let dir = cwd
   for (;;) {
     const manifest = path.join(dir, 'deck.tree')
     if (existsSync(manifest)) {
       const text = readFileSync(manifest, 'utf8')
       const match = text.match(/(?:^|\n)\s*boot\s+(\S+)/)
-      if (match) return path.resolve(dir, match[1]!)
+      if (match) return resolveEntry(path.resolve(dir, match[1]!))
       return undefined
     }
     const up = path.dirname(dir)

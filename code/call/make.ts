@@ -7,6 +7,7 @@ import {
   writeFileSync,
   readFileSync,
   realpathSync,
+  existsSync,
   watch as fsWatch,
 } from 'fs'
 import { compile } from '../compile/compile'
@@ -43,6 +44,19 @@ function findTreeFiles(
   return out
 }
 
+// the on-disk file a bare module path points at, applying Seed's candidate order (`foo.tree`, then `foo/base.tree`,
+// then `foo/note.tree`). Returns the first that exists, else undefined. Shared by the build resolver and `seed boot`.
+export function resolveTreeFile(base: string): string | undefined {
+  for (const candidate of [
+    `${base}.tree`,
+    path.join(base, 'base.tree'),
+    path.join(base, 'note.tree'),
+  ]) {
+    if (existsSync(candidate)) return candidate
+  }
+  return undefined
+}
+
 // the resolver a project build uses: the bundled stdlib (`@cluesurf/base/...`) plus the project's own `.tree` files,
 // wrapped so abstract native imports resolve to the target platform's implementation (default node)
 export function projectResolver(
@@ -52,22 +66,13 @@ export function projectResolver(
   const stdlib = stdlibResolver()
   const linked = linkResolver(root)
   const tryFile = (b: string) => {
-    for (const candidate of [
-      `${b}.tree`,
-      path.join(b, 'base.tree'),
-      path.join(b, 'note.tree'),
-    ]) {
-      try {
-        // canonicalize so a file reached via a symlink (e.g. a self-referencing linked package) dedups to one module
-        return {
-          file: realpathSync(candidate),
-          text: readFileSync(candidate, 'utf8'),
-        }
-      } catch {
-        // try the next candidate
-      }
+    const candidate = resolveTreeFile(b)
+    if (!candidate) return undefined
+    // canonicalize so a file reached via a symlink (e.g. a self-referencing linked package) dedups to one module
+    return {
+      file: realpathSync(candidate),
+      text: readFileSync(candidate, 'utf8'),
     }
-    return undefined
   }
   const base: Resolver = (importPath, fromFile) => {
     // a relative import resolves against the importing file (the framework's modules import each other this way)

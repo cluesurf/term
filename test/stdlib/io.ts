@@ -238,6 +238,52 @@ task walk-dir
       read path
 `
 
+// path: filesystem path string manipulation over the host path library. Scalar text/boolean, no list involved.
+const PATH = `load @cluesurf/base/code/path
+  find join
+  find directory
+  find file-name
+  find file-extension
+  find is-absolute
+
+task join-of
+  take base, like text
+  take name, like text
+  like text
+  send back
+    call join
+      read base
+      read name
+
+task dir-of
+  take target, like text
+  like text
+  send back
+    call directory
+      read target
+
+task name-of
+  take target, like text
+  like text
+  send back
+    call file-name
+      read target
+
+task ext-of
+  take target, like text
+  like text
+  send back
+    call file-extension
+      read target
+
+task absolute-of
+  take target, like text
+  like boolean
+  send back
+    call is-absolute
+      read target
+`
+
 const TIME = `load @cluesurf/base/code/time
   find time
 
@@ -1713,6 +1759,15 @@ async function main(): Promise<void> {
     (fd.walkDir!(join(metaDir, 'nope')) as Array<string>).length,
     0,
   )
+
+  const pa = await loadProgram(PATH)
+  expect('path: join combines a base and a name', pa.joinOf!('/a/b', 'c.txt'), '/a/b/c.txt')
+  expect('path: directory is everything before the last segment', pa.dirOf!('/a/b/c.txt'), '/a/b')
+  expect('path: file-name is the last segment', pa.nameOf!('/a/b/c.txt'), 'c.txt')
+  expect('path: file-extension carries its dot', pa.extOf!('/a/b/c.txt'), '.txt')
+  expect('path: file-extension is empty when there is none', pa.extOf!('/a/b/c'), '')
+  expect('path: is-absolute is true for a rooted path', pa.absoluteOf!('/a/b'), true)
+  expect('path: is-absolute is false for a relative path', pa.absoluteOf!('a/b'), false)
 
   const ti = await loadProgram(TIME)
   const epoch = ti.epoch!() as number
