@@ -31,6 +31,23 @@ const FIB_LOOP = `task find-fibonacci-via-loop
   send back a
 `
 
+// a conditional in value position (`save x / fork test / ...`): lowers to a ternary chain, not statement branching
+const CONDITIONAL_EXPRESSION = `task classify
+  take n
+  like text
+  save label
+    fork test
+      hook test
+        call is-above
+          loan n
+          mark 0
+      hook hold
+        text <positive>
+      hook miss
+        text <non-positive>
+  send back, read label
+`
+
 const FIB_RECURSION = `task find-fibonacci-via-recursion
   take n
   fork test
@@ -111,6 +128,32 @@ async function main(): Promise<void> {
     recursion.findFibonacciViaRecursion!(15),
     610,
   )
+
+  // a value-position conditional emits a ternary and computes the right branch at runtime
+  const conditional = compile({
+    file: 'classify.tree',
+    text: CONDITIONAL_EXPRESSION,
+  })
+  if (!conditional.ok) {
+    const lines = CONDITIONAL_EXPRESSION.split('\n')
+    for (const d of conditional.diagnostics)
+      console.log(render(d, lines, false))
+    throw new Error('conditional compile failed')
+  }
+  expect(
+    'conditional expression emits a ternary',
+    / \? .* : /.test(conditional.typescript),
+    true,
+  )
+  const dir = mkdtempSync(join(tmpdir(), 'seed-conditional-'))
+  const file = join(dir, 'module.ts')
+  writeFileSync(file, conditional.typescript)
+  const mod = (await import(pathToFileURL(file).href)) as {
+    classify: (n: number) => string
+  }
+  expect('classify(5)', mod.classify(5), 'positive')
+  expect('classify(-3)', mod.classify(-3), 'non-positive')
+  expect('classify(0)', mod.classify(0), 'non-positive')
 
   console.log(`\ncompile: ${pass} pass, ${fail} fail`)
 }

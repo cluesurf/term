@@ -23,6 +23,7 @@ import type {
   Program,
   Statement,
   Type,
+  ZoneNode,
 } from '@/code/compile/node'
 import {
   BOOLEAN,
@@ -355,6 +356,28 @@ export function check(
         // await unwraps an async result; we model the result type as the inner type
         type = inferExpression(node.expr, env)
         break
+      case 'conditional': {
+        // a value-position conditional: each branch's condition is a boolean and every branch (plus the otherwise)
+        // yields the same result type, which is the type of the whole expression
+        const result = fresh()
+        for (const branch of node.branches) {
+          expect(
+            inferExpression(branch.cond, env),
+            BOOLEAN,
+            branch.cond.span,
+            'conditional condition',
+          )
+          unify(result, inferExpression(branch.value, env), branch.value.span)
+        }
+        if (node.otherwise)
+          unify(
+            result,
+            inferExpression(node.otherwise, env),
+            node.otherwise.span,
+          )
+        type = result
+        break
+      }
       case 'member': {
         // variant-field access: inside a `case <v>` branch, the narrowed subject exposes that variant's fields,
         // with the subject's type arguments substituted for the enum's generics (maybe<number> -> value : number)
@@ -790,6 +813,61 @@ export function check(
     checkBody(node.body, env, signature.result)
   }
 
+  // type-check a zone's view: infer each embedded expression with the zone's params in scope, threading `save` bindings
+  function checkZone(node: Extract<Statement, { form: 'zone' }>): void {
+    currentBounds = []
+    const env: Env = new Map(moduleEnv)
+    for (const param of node.params)
+      env.set(param.name, {
+        vars: [],
+        type: seedType(param.type, new Map()),
+      })
+    checkZoneNodes(node.body, env)
+  }
+
+  function checkZoneNodes(nodes: Array<ZoneNode>, env: Env): void {
+    for (const node of nodes) {
+      switch (node.form) {
+        case 'element':
+          for (const attribute of node.attributes)
+            inferExpression(attribute.value, env)
+          for (const prop of node.props) inferExpression(prop.value, env)
+          checkZoneNodes(node.children, env)
+          break
+        case 'read':
+          inferExpression(node.value, env)
+          break
+        case 'save':
+          env.set(node.name, {
+            vars: [],
+            type: inferExpression(node.value, env),
+          })
+          break
+        case 'fork':
+          for (const branch of node.branches) {
+            inferExpression(branch.cond, env)
+            checkZoneNodes(branch.body, new Map(env))
+          }
+          if (node.otherwise)
+            checkZoneNodes(node.otherwise, new Map(env))
+          break
+        case 'walk': {
+          const iterable = resolve(inferExpression(node.iterable, env))
+          const inner = new Map(env)
+          inner.set(node.item, {
+            vars: [],
+            type: iterable.kind === 'array' ? iterable.element : fresh(),
+          })
+          checkZoneNodes(node.body, inner)
+          break
+        }
+        case 'text':
+        case 'slot':
+          break
+      }
+    }
+  }
+
   const topLevelSkip = new Set([
     'record-type',
     'mask',
@@ -822,6 +900,9 @@ export function check(
       (only === undefined || statement.name === only)
     )
       checkFunction(statement)
+    // zones are type-checked whole-program (not part of the per-definition incremental path yet)
+    else if (statement.form === 'zone' && only === undefined)
+      checkZone(statement)
   }
 
   // deeply resolve, mapping unsolved generic variables back to their names (component: code/check/zonk.ts)

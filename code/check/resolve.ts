@@ -10,6 +10,7 @@ import type {
   Expression,
   Program,
   Statement,
+  ZoneNode,
 } from '@/code/compile/node'
 
 export type Scope = Map<string, Binding>
@@ -146,6 +147,23 @@ export function resolve(
       case 'await':
         resolveExpression(node.expr)
         break
+      case 'closure': {
+        // a function literal (a callback, e.g. an effect's `run`): resolve its body with its params in scope, so names
+        // used only inside the closure still get their binding (needed for unknown-name checks and import collection)
+        stack.push(new Map())
+        for (const param of node.params)
+          declare(param.name, { kind: 'parameter' })
+        for (const statement of node.body) resolveStatement(statement)
+        stack.pop()
+        break
+      }
+      case 'conditional':
+        for (const branch of node.branches) {
+          resolveExpression(branch.cond)
+          resolveExpression(branch.value)
+        }
+        if (node.otherwise) resolveExpression(node.otherwise)
+        break
       default:
         break
     }
@@ -215,6 +233,60 @@ export function resolve(
         for (const statement of node.body) resolveStatement(statement)
         stack.pop()
         break
+      }
+      // a zone (view component): resolve names in its body the same as a function (params in scope, `save` declares)
+      case 'zone': {
+        stack.push(new Map())
+        for (const param of node.params)
+          declare(param.name, { kind: 'parameter' })
+        resolveZoneNodes(node.body)
+        stack.pop()
+        break
+      }
+    }
+  }
+
+  // resolve names inside a zone's view tree: attribute / event / read expressions, `save` (which declares a local),
+  // and the recursive children / branches / list bodies
+  function resolveZoneNodes(nodes: Array<ZoneNode>): void {
+    for (const node of nodes) {
+      switch (node.form) {
+        case 'element':
+          for (const attribute of node.attributes)
+            resolveExpression(attribute.value)
+          for (const prop of node.props) resolveExpression(prop.value)
+          resolveZoneNodes(node.children)
+          break
+        case 'read':
+          resolveExpression(node.value)
+          break
+        case 'save':
+          resolveExpression(node.value)
+          declare(node.name, { kind: 'local' })
+          break
+        case 'fork':
+          for (const branch of node.branches) {
+            resolveExpression(branch.cond)
+            stack.push(new Map())
+            resolveZoneNodes(branch.body)
+            stack.pop()
+          }
+          if (node.otherwise) {
+            stack.push(new Map())
+            resolveZoneNodes(node.otherwise)
+            stack.pop()
+          }
+          break
+        case 'walk':
+          resolveExpression(node.iterable)
+          stack.push(new Map())
+          declare(node.item, { kind: 'local' })
+          resolveZoneNodes(node.body)
+          stack.pop()
+          break
+        case 'text':
+        case 'slot':
+          break
       }
     }
   }

@@ -81,6 +81,15 @@ export function emitWgsl(program: Program): string {
       case 'await':
       case 'closure':
         return `0 /* ${unsupported('WGSL', node.form, '').trim()} */`
+      case 'conditional': {
+        // a value-position conditional lowers to a chain of `select(falseValue, trueValue, condition)`
+        const tail = node.otherwise ? expr(node.otherwise) : '0'
+        return node.branches.reduceRight(
+          (rest, branch) =>
+            `select(${rest}, ${expr(branch.value)}, ${expr(branch.cond)})`,
+          tail,
+        )
+      }
       default:
         return exhausted(node)
     }

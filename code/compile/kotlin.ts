@@ -264,6 +264,15 @@ export function emitKotlin(program: Program): string {
           .filter(Boolean)
           .join('; ')} }`
       }
+      case 'conditional': {
+        // a value-position conditional lowers to a Kotlin if / else-if / else expression chain
+        const tail = node.otherwise ? expr(node.otherwise) : 'Unit'
+        return node.branches.reduceRight(
+          (rest, branch) =>
+            `if (${expr(branch.cond)}) ${expr(branch.value)} else ${rest}`,
+          tail,
+        )
+      }
       default:
         return exhausted(node)
     }
@@ -305,6 +314,33 @@ export function emitKotlin(program: Program): string {
         return `${target}[(${arg[0]}).toInt()]`
       case 'includes':
         return `${target}.contains(${arg[0]})`
+      case 'indexOf':
+        return `${target}.indexOf(${arg[0]}).toLong()`
+      case 'concat':
+        return `(${target} + ${arg[0]}).toMutableList()`
+      case 'slice':
+        return arg[1] !== undefined
+          ? `${target}.subList((${arg[0]}).toInt(), (${arg[1]}).toInt()).toMutableList()`
+          : `${target}.subList((${arg[0]}).toInt(), ${target}.size).toMutableList()`
+      case 'toReversed':
+        return `${target}.reversed().toMutableList()`
+      case 'join':
+        return `${target}.joinToString(${arg[0]})`
+      case 'map':
+        return `${target}.map(${arg[0]}).toMutableList()`
+      case 'filter':
+        return `${target}.filter(${arg[0]}).toMutableList()`
+      case 'some':
+        return `${target}.any(${arg[0]})`
+      case 'every':
+        return `${target}.all(${arg[0]})`
+      case 'reduce':
+        return `${target}.fold(${arg[1]}, ${arg[0]})`
+      case 'findIndex':
+        return `${target}.indexOfFirst(${arg[0]}).toLong()`
+      case 'flat':
+        // flattening a non-nested list is a shallow copy (JS `[1,2,3].flat()` is `[1,2,3]`)
+        return `${target}.toMutableList()`
       default:
         return ''
     }

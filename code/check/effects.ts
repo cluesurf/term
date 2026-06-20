@@ -143,6 +143,13 @@ function calledNames(
       case 'record':
         node.fields.forEach(f => expr(f.value))
         break
+      case 'conditional':
+        node.branches.forEach(b => {
+          expr(b.cond)
+          expr(b.value)
+        })
+        if (node.otherwise) expr(node.otherwise)
+        break
       default:
         break
     }
@@ -312,6 +319,13 @@ export function checkEffects(
           node.fields.forEach(field =>
             visitExpression(field.value, false),
           )
+          break
+        case 'conditional':
+          node.branches.forEach(branch => {
+            visitExpression(branch.cond, false)
+            visitExpression(branch.value, false)
+          })
+          if (node.otherwise) visitExpression(node.otherwise, false)
           break
         default:
           break

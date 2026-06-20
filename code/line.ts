@@ -12,6 +12,7 @@ import { callTest } from './call/test'
 import { callTime } from './call/time'
 import { callBoot } from './call/boot'
 import { callServe } from './call/serve'
+import { callDaemon } from './call/daemon'
 import { callWash } from './call/wash'
 import { callWalk } from './call/walk'
 import { callMove } from './call/move'
@@ -35,6 +36,7 @@ const COMMANDS = [
   'profile',
   'boot',
   'serve',
+  'daemon',
   'wash',
   'walk',
   'move',
@@ -375,6 +377,17 @@ const cli = yargs(hideBin(process.argv))
         port: argv.port,
         env: argv.env as never,
       })
+    },
+  )
+  .command(
+    'daemon',
+    'Run the long-lived compiler daemon (shared warm analyzer)',
+    yargs =>
+      yargs
+        .option('port', { type: 'number', description: 'Port to serve on' })
+        .option('env', { type: 'string', description: 'Target env' }),
+    async argv => {
+      await callDaemon({ root, port: argv.port, env: argv.env as never })
     },
   )
   .command(

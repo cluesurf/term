@@ -12,6 +12,7 @@ import type {
   Type,
 } from '@/code/compile/node'
 import {
+  ARRAY_OP_BOUND,
   collectionCall,
   collectionRead,
   exhausted,
@@ -140,6 +141,118 @@ function collectVars(type: Type | undefined, into: Set<number>): void {
   }
 }
 
+// the generic variable ids and names that sit at the element position of an array used with `includes` / `indexOf`,
+// which need an `Equatable` bound (Array.contains / firstIndex(of:) require it). Walks the function body's calls.
+function collectArrayEq(body: Array<Statement>): {
+  ids: Set<number>
+  names: Set<string>
+} {
+  const ids = new Set<number>()
+  const names = new Set<string>()
+  const record = (callee: Expression): void => {
+    const op = collectionCall(callee)
+    if (!op || op.kind !== 'array') return
+    if (ARRAY_OP_BOUND[op.op] !== 'eq') return
+
+    const element =
+      op.target.type?.kind === 'array'
+        ? op.target.type.element
+        : undefined
+    if (element?.kind === 'variable') ids.add(element.id)
+    else if (element?.kind === 'named')
+      names.add(element.name.toUpperCase())
+  }
+  const visitExpr = (e: Expression | undefined): void => {
+    if (!e) return
+    switch (e.form) {
+      case 'call':
+        record(e.callee)
+        visitExpr(e.callee)
+        e.args.forEach(visitExpr)
+        break
+      case 'binary':
+        visitExpr(e.left)
+        visitExpr(e.right)
+        break
+      case 'unary':
+        visitExpr(e.operand)
+        break
+      case 'member':
+        visitExpr(e.target)
+        break
+      case 'array':
+        e.items.forEach(visitExpr)
+        break
+      case 'map':
+        e.entries.forEach(en => {
+          visitExpr(en.key)
+          visitExpr(en.value)
+        })
+        break
+      case 'record':
+        e.fields.forEach(f => visitExpr(f.value))
+        break
+      case 'await':
+        visitExpr(e.expr)
+        break
+      case 'closure':
+        visitStmts(e.body)
+        break
+      default:
+        break
+    }
+  }
+  const visitStmts = (stmts: Array<Statement>): void => {
+    for (const s of stmts) {
+      switch (s.form) {
+        case 'let':
+          visitExpr(s.init)
+          break
+        case 'assign':
+          visitExpr(s.target)
+          visitExpr(s.value)
+          break
+        case 'expression':
+          visitExpr(s.expr)
+          break
+        case 'return':
+          visitExpr(s.value)
+          break
+        case 'throw':
+          visitExpr(s.value)
+          break
+        case 'hold':
+          visitExpr(s.expr)
+          break
+        case 'while':
+          visitExpr(s.cond)
+          visitStmts(s.body)
+          break
+        case 'for-each':
+          visitExpr(s.iterable)
+          visitStmts(s.body)
+          break
+        case 'if':
+          s.branches.forEach(b => {
+            visitExpr(b.cond)
+            visitStmts(b.body)
+          })
+          if (s.otherwise) visitStmts(s.otherwise)
+          break
+        case 'match':
+          visitExpr(s.subject)
+          s.cases.forEach(c => visitStmts(c.body))
+          if (s.otherwise) visitStmts(s.otherwise)
+          break
+        default:
+          break
+      }
+    }
+  }
+  visitStmts(body)
+  return { ids, names }
+}
+
 export function emitSwift(program: Program): string {
   const pad = (d: number) => '  '.repeat(d)
   // a function's free inference variables become named generic parameters; this maps each to its letter for the
@@ -156,7 +269,9 @@ export function emitSwift(program: Program): string {
       case undefined:
         return 'Void'
       case 'array':
-        return `[${swiftType(type.element)}]`
+        // a reference class wrapping an Array, so a list mutated in place (`push`) through one binding is seen through
+        // every binding. A bare Swift Array is a value type and would not carry the mutation across a copy.
+        return `SeedList<${swiftType(type.element)}>`
       case 'map':
         // a reference class wrapping a Dictionary, so a map mutated through one binding (a `set.insert`) is seen
         // through every binding. A bare Swift Dictionary is a value type and would not carry the mutation across a copy.
@@ -225,12 +340,20 @@ export function emitSwift(program: Program): string {
     }
     node.params.forEach(p => markKeys(p.type, false))
     markKeys(node.result, false)
+    // generics used as an array element with `includes` / `indexOf` need `Equatable` (a map key's `Hashable` implies it)
+    const arrayEq = collectArrayEq(node.body)
+    const bound = (
+      name: string,
+      isKey: boolean,
+      isEq: boolean,
+    ): string =>
+      isKey ? `${name}: Hashable` : isEq ? `${name}: Equatable` : name
     const fresh: Array<string> = []
     for (const id of ids) {
       const letter = pool.find(l => !used.has(l)) ?? `T${id}`
       used.add(letter)
       varNames.set(id, letter)
-      fresh.push(keyIds.has(id) ? `${letter}: Hashable` : letter)
+      fresh.push(bound(letter, keyIds.has(id), arrayEq.ids.has(id)))
     }
     // declared generics that actually appear in the signature (as named types) are kept; the rest are dropped
     const namedInSig = new Set<string>()
@@ -252,7 +375,7 @@ export function emitSwift(program: Program): string {
     scan(node.result)
     const keptDeclared = declared
       .filter(d => namedInSig.has(d))
-      .map(d => (keyNames.has(d) ? `${d}: Hashable` : d))
+      .map(d => bound(d, keyNames.has(d), arrayEq.names.has(d)))
     const all = [...keptDeclared, ...fresh]
     return all.length ? `<${all.join(', ')}>` : ''
   }
@@ -294,6 +417,25 @@ export function emitSwift(program: Program): string {
       if (indices.size > 0) formKeyIndices.set(node.name, indices)
     }
   }
+  // native dock module aliases (`dns`, `fs`): a call to one returning a list yields a plain Array that must be wrapped
+  const aliases = new Set<string>()
+  for (const node of program)
+    if (node.form === 'native') aliases.add(node.alias)
+  const rootName = (node: Expression): string | undefined =>
+    node.form === 'variable'
+      ? node.name
+      : node.form === 'member'
+        ? rootName(node.target)
+        : undefined
+  // true while emitting a list-returning function: a native dock call returned directly (a plain Array from the shim,
+  // which has no access to the SeedList class) is wrapped in the seed list's SeedList handle to match the return type
+  let fnReturnsArray = false
+  const isNativeCall = (node: Expression): boolean => {
+    if (node.form !== 'call' || node.callee.form !== 'member')
+      return false
+    const root = rootName(node.callee)
+    return root !== undefined && aliases.has(root)
+  }
 
   // within a matched branch, a subject variable's fields are bound to locals; `subject/field` reads that local
   type Bindings = Map<string, Set<string>>
@@ -334,14 +476,29 @@ export function emitSwift(program: Program): string {
           .map(a => expr(a, bind))
           .join(', ')})`
       }
-      case 'array':
-        return `[${node.items.map(i => expr(i, bind)).join(', ')}]`
-      case 'map':
+      case 'array': {
+        // an empty literal gives Swift nothing to infer the element from, so name it explicitly
+        const arg =
+          node.type?.kind === 'array'
+            ? `<${swiftType(node.type.element)}>`
+            : ''
+        return `SeedList${arg}([${node.items
+          .map(i => expr(i, bind))
+          .join(', ')}])`
+      }
+      case 'map': {
+        const arg =
+          node.type?.kind === 'map'
+            ? `<${swiftType(node.type.key)}, ${swiftType(
+                node.type.value,
+              )}>`
+            : ''
         return node.entries.length === 0
-          ? 'SeedMap()'
-          : `SeedMap([${node.entries
+          ? `SeedMap${arg}()`
+          : `SeedMap${arg}([${node.entries
               .map(e => `${expr(e.key, bind)}: ${expr(e.value, bind)}`)
               .join(', ')}])`
+      }
       case 'record': {
         // leading-dot construction: Swift infers the enum/struct type from context
         if (variantSet.has(node.name)) {
@@ -361,11 +518,8 @@ export function emitSwift(program: Program): string {
         // `map.size` / `array.length` read the count (a map goes through its wrapper's `data`; an array is plain)
         const read = collectionRead(node)
         if (read) {
-          const handle =
-            read.kind === 'map'
-              ? `${expr(read.target, bind)}.data`
-              : expr(read.target, bind)
-          return `${handle}.count`
+          // both a map and an array (SeedMap / SeedList) read their length through the wrapper's `.data`
+          return `${expr(read.target, bind)}.data.count`
         }
 
         // a matched variant's field reads the bound local; otherwise a normal field access
@@ -396,6 +550,18 @@ export function emitSwift(program: Program): string {
           .filter(Boolean)
           .join('; ')} }`
       }
+      case 'conditional': {
+        // a value-position conditional lowers to a ternary chain
+        const tail = node.otherwise ? expr(node.otherwise, bind) : '()'
+        return node.branches.reduceRight(
+          (rest, branch) =>
+            `(${expr(branch.cond, bind)} ? ${expr(
+              branch.value,
+              bind,
+            )} : ${rest})`,
+          tail,
+        )
+      }
       default:
         return exhausted(node)
     }
@@ -421,23 +587,53 @@ export function emitSwift(program: Program): string {
         case 'delete':
           return `${target}.removing(${arg[0]})`
         case 'keys':
-          return `Array(${target}.data.keys)`
+          return `SeedList(Array(${target}.data.keys))`
         case 'values':
-          return `Array(${target}.data.values)`
+          return `SeedList(Array(${target}.data.values))`
         default:
           return ''
       }
     }
 
+    // arrays go through the SeedList wrapper (`.data` is its Array, `.appending` / `.popping` mutate). An op returning a
+    // list wraps a new SeedList; `String(describing:)` renders any element for `join` with no bound.
+    const data = `${target}.data`
     switch (op.op) {
       case 'push':
-        return `${target}.append(${arg[0]})`
+        return `${target}.appending(${arg[0]})`
       case 'pop':
-        return `${target}.removeLast()`
+        return `${target}.popping()`
       case 'at':
-        return `${target}[${arg[0]}]`
+        return `${data}[${arg[0]}]`
       case 'includes':
-        return `${target}.contains(${arg[0]})`
+        return `${data}.contains(${arg[0]})`
+      case 'indexOf':
+        return `Int(${data}.firstIndex(of: ${arg[0]}) ?? -1)`
+      case 'concat':
+        return `SeedList(${data} + ${arg[0]}.data)`
+      case 'slice':
+        return arg[1] !== undefined
+          ? `SeedList(Array(${data}[${arg[0]}..<${arg[1]}]))`
+          : `SeedList(Array(${data}[${arg[0]}...]))`
+      case 'toReversed':
+        return `SeedList(${data}.reversed())`
+      case 'join':
+        return `${data}.map { String(describing: $0) }.joined(separator: ${arg[0]})`
+      case 'map':
+        return `SeedList(${data}.map(${arg[0]}))`
+      case 'filter':
+        return `SeedList(${data}.filter(${arg[0]}))`
+      case 'some':
+        return `${data}.contains(where: ${arg[0]})`
+      case 'every':
+        return `${data}.allSatisfy(${arg[0]})`
+      case 'reduce':
+        return `${data}.reduce(${arg[1]}, ${arg[0]})`
+      case 'findIndex':
+        return `Int(${data}.firstIndex(where: ${arg[0]}) ?? -1)`
+      case 'flat':
+        // flattening a non-nested list is a shallow copy (JS `[1,2,3].flat()` is `[1,2,3]`)
+        return `SeedList(${data})`
       default:
         return ''
     }
@@ -475,9 +671,11 @@ export function emitSwift(program: Program): string {
       case 'expression':
         return expr(node.expr, bind)
       case 'return':
-        return node.value
-          ? `return ${expr(node.value, bind)}`
-          : 'return'
+        if (!node.value) return 'return'
+        // a list-returning function that returns a native dock call directly wraps the shim's plain Array
+        return fnReturnsArray && isNativeCall(node.value)
+          ? `return SeedList(${expr(node.value, bind)})`
+          : `return ${expr(node.value, bind)}`
       case 'throw':
         return `throw ${
           node.value.form === 'string'
@@ -490,11 +688,18 @@ export function emitSwift(program: Program): string {
           d + 1,
           bind,
         )}\n${pad(d)}}`
-      case 'for-each':
-        return `for ${vname(node.item)} in ${expr(
-          node.iterable,
+      case 'for-each': {
+        // a list is a SeedList; iterate its backing `.data` Array
+        const iterable =
+          node.iterable.type?.kind === 'array'
+            ? `${expr(node.iterable, bind)}.data`
+            : expr(node.iterable, bind)
+        return `for ${vname(node.item)} in ${iterable} {\n${block(
+          node.body,
+          d + 1,
           bind,
-        )} {\n${block(node.body, d + 1, bind)}\n${pad(d)}}`
+        )}\n${pad(d)}}`
+      }
       case 'match': {
         // a native `switch`: the compiler checks exhaustiveness, so no fallthrough-return is needed. Each variant's
         // fields bind to locals; field access on the subject inside the branch rewrites to those locals.
@@ -563,12 +768,15 @@ export function emitSwift(program: Program): string {
           .map(
             p => `${pad(d + 1)}var ${vname(p.name)} = ${vname(p.name)}`,
           )
+        const previousReturnsArray = fnReturnsArray
+        fnReturnsArray = node.result?.kind === 'array'
         const bodyText = [
           ...shadows,
           block(node.body, d + 1, new Map()),
         ]
           .filter(Boolean)
           .join('\n')
+        fnReturnsArray = previousReturnsArray
         return `func ${camel(
           node.name,
         )}${generics}(${params})${asyncMark}${throwsMark} -> ${swiftType(
@@ -658,6 +866,18 @@ export function emitSwift(program: Program): string {
         '    init(_ data: [K: V] = [:]) { self.data = data }',
         '    @discardableResult func setting(_ key: K, _ value: V) -> SeedMap<K, V> { data[key] = value; return self }',
         '    @discardableResult func removing(_ key: K) -> Bool { let had = data[key] != nil; data.removeValue(forKey: key); return had }',
+        '}',
+      ].join('\n'),
+    )
+  // the reference wrapper for lists (a class so an in-place `push` persists across a copy); emitted only when used
+  if (body.some(b => b.includes('SeedList')))
+    prelude.push(
+      [
+        'final class SeedList<T> {',
+        '    var data: [T]',
+        '    init(_ data: [T] = []) { self.data = data }',
+        '    @discardableResult func appending(_ item: T) -> Int { data.append(item); return data.count }',
+        '    @discardableResult func popping() -> T { return data.removeLast() }',
         '}',
       ].join('\n'),
     )

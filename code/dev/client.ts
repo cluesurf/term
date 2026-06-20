@@ -23,6 +23,9 @@ export interface HmrEnvironment {
   reimport(url: string, timestamp: number): Promise<unknown>
   // the accept callback a boundary module registered (via the hot API), if any
   acceptOf(boundary: string): ((module: unknown) => void) | undefined
+  // the dispose hook a boundary module registered, run BEFORE the fresh module replaces it so it can snapshot its
+  // state (signal values) and tear down its current view. Already bound to that boundary's persistent `data` bucket.
+  disposeOf?(boundary: string): (() => void) | undefined
   log(message: string): void
 }
 
@@ -40,6 +43,9 @@ export async function applyHmr(
     return
   }
   for (const update of message.updates) {
+    // snapshot + tear down the OLD module before it is replaced, so its state survives into the fresh one
+    const dispose = environment.disposeOf?.(update.boundary)
+    if (dispose) dispose()
     const fresh = await environment.reimport(
       update.accepted,
       update.timestamp,
@@ -70,6 +76,10 @@ const environment = {
   reload: () => location.reload(),
   reimport: (url, t) => import(url.split('?')[0] + '?t=' + t),
   acceptOf: (boundary) => registry.get(boundary)?.accept,
+  disposeOf: (boundary) => {
+    const entry = registry.get(boundary)
+    return entry && entry.dispose ? () => entry.dispose(entry.data) : undefined
+  },
   log: (message) => console.log('[seed]', message),
 }
 const source = new EventSource(${JSON.stringify(hmrUrl)})

@@ -163,6 +163,13 @@ export function buildIndex(program: Program): SymbolIndex {
           expr(e.value)
         })
         break
+      case 'conditional':
+        node.branches.forEach(b => {
+          expr(b.cond)
+          expr(b.value)
+        })
+        if (node.otherwise) expr(node.otherwise)
+        break
       default:
         break
     }

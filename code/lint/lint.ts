@@ -64,6 +64,13 @@ function eachExpression(
     case 'await':
       eachExpression(expr.expr, visit)
       break
+    case 'conditional':
+      expr.branches.forEach(b => {
+        eachExpression(b.cond, visit)
+        eachExpression(b.value, visit)
+      })
+      if (expr.otherwise) eachExpression(expr.otherwise, visit)
+      break
     default:
       break
   }

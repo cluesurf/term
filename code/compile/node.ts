@@ -133,6 +133,15 @@ export type Expression =
       span: Span
       type?: Type
     }
+  // a conditional in value position (`save x / fork test / hook test <cond> / hook hold <value> / hook miss <else>`):
+  // each branch is a (cond, value) pair, with an optional final `otherwise`. Emits as a ternary chain.
+  | {
+      form: 'conditional'
+      branches: Array<{ cond: Expression; value: Expression }>
+      otherwise?: Expression
+      span: Span
+      type?: Type
+    }
   // a hole: an unresolved reference, may be runtime-deferred
   | {
       form: 'hole'

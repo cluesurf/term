@@ -43,6 +43,13 @@ function collectReads(expr: Expression, read: Set<string>): void {
     case 'record':
       for (const field of expr.fields) collectReads(field.value, read)
       break
+    case 'conditional':
+      for (const branch of expr.branches) {
+        collectReads(branch.cond, read)
+        collectReads(branch.value, read)
+      }
+      if (expr.otherwise) collectReads(expr.otherwise, read)
+      break
     default:
       break
   }

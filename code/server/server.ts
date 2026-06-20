@@ -6,8 +6,9 @@
 // (main.ts) pumps stdin/stdout into it.
 
 import type { Message } from '@/code/server/protocol'
-import { analyze, hoverAt, toRange } from '@/code/server/analyze'
+import { hoverAt, toRange } from '@/code/server/analyze'
 import type { LspDiagnostic, LspPosition } from '@/code/server/analyze'
+import { IncrementalAnalyzer } from '@/code/server/incremental'
 import {
   buildIndex,
   referenceAt,
@@ -16,7 +17,6 @@ import {
   callAt,
 } from '@/code/server/symbols'
 import type { SymbolIndex, SymbolKind } from '@/code/server/symbols'
-import { CompileCache } from '@/code/compile/cache'
 import type { Resolver } from '@/code/compile/load'
 import type { Program } from '@/code/compile/node'
 
@@ -87,10 +87,21 @@ export class LanguageServer {
   private readonly documents = new Map<string, string>()
   private readonly programs = new Map<string, Program>()
   private readonly indexes = new Map<string, SymbolIndex>()
-  private readonly cache = new CompileCache()
+  // one incremental analyzer per document: an edit re-checks only the definitions that changed (the firewall), so
+  // diagnostics on keystroke are near-instant. See code/server/incremental.ts.
+  private readonly analyzers = new Map<string, IncrementalAnalyzer>()
   private shuttingDown = false
 
   constructor(private readonly resolve?: Resolver) {}
+
+  private analyzerFor(uri: string): IncrementalAnalyzer {
+    let analyzer = this.analyzers.get(uri)
+    if (!analyzer) {
+      analyzer = new IncrementalAnalyzer(this.resolve)
+      this.analyzers.set(uri, analyzer)
+    }
+    return analyzer
+  }
 
   dispatch(message: Message): Array<Message> {
     switch (message.method) {
@@ -285,10 +296,7 @@ export class LanguageServer {
   // recompile a document, store its typed program and symbol index, and produce the diagnostics notification
   private refresh(uri: string, text: string): Message {
     this.documents.set(uri, text)
-    const result = analyze(
-      { file: uri, text },
-      { resolve: this.resolve, cache: this.cache },
-    )
+    const result = this.analyzerFor(uri).analyze({ file: uri, text })
     if (result.program) {
       this.programs.set(uri, result.program)
       this.indexes.set(uri, buildIndex(result.program))

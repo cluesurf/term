@@ -284,6 +284,13 @@ function walkCalls(
       case 'record':
         node.fields.forEach(field => visitExpression(field.value))
         break
+      case 'conditional':
+        node.branches.forEach(branch => {
+          visitExpression(branch.cond)
+          visitExpression(branch.value)
+        })
+        if (node.otherwise) visitExpression(node.otherwise)
+        break
       default:
         break
     }

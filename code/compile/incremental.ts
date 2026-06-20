@@ -18,14 +18,17 @@ import type {
   Expression,
 } from '@/code/compile/node'
 import type { Diagnostic } from '@/code/parser/diagnostic'
-import { resolve as resolveNames, buildGlobalScope } from '@/code/check/resolve'
+import {
+  resolve as resolveNames,
+  buildGlobalScope,
+} from '@/code/check/resolve'
 import type { Scope } from '@/code/check/resolve'
 import { check as inferTypes } from '@/code/check/infer'
 import { emitTypeScript } from '@/code/compile/typescript'
 
 export type MergedProgram =
   | { ok: true; program: Program }
-  | { ok: false; diagnostics: Array<Diagnostic> }
+  | { ok: false; diagnostics: Diagnostic[] }
 
 // two milled programs are equal when their STRUCTURE is, ignoring spans. A comment-only or reformatting edit shifts
 // every span but changes no AST, so it must backdate (leave dependents green). Spans are provenance for diagnostics,
@@ -33,6 +36,7 @@ export type MergedProgram =
 function withoutSpans(_key: string, value: unknown): unknown {
   return _key === 'span' ? undefined : value
 }
+
 function milledEquals(a: MilledUnit, b: MilledUnit): boolean {
   return (
     hashText(JSON.stringify(a, withoutSpans)) ===
@@ -66,8 +70,11 @@ export class QueryCompiler {
       `mill:${file}`,
       () => {
         const parsed = this.parsed(file)
-        if (!parsed.ok)
+
+        if (!parsed.ok) {
           return { ok: false, diagnostics: parsed.diagnostics }
+        }
+
         return mill(expandTemplates(parsed.tree, templates), file)
       },
       milledEquals,
@@ -76,14 +83,20 @@ export class QueryCompiler {
 
   // the merged program over a set of modules (a query depending on each module's mill). Recomputes only when some
   // module's milled output actually changed, not merely its source text.
-  program(files: Array<string>): MergedProgram {
+  program(files: string[]): MergedProgram {
     return this.db.query(`program:${files.join('|')}`, () => {
       const program: Program = []
+
       for (const file of files) {
         const unit = this.milled(file)
-        if (!unit.ok) return { ok: false, diagnostics: unit.diagnostics }
+
+        if (!unit.ok) {
+          return { ok: false, diagnostics: unit.diagnostics }
+        }
+
         program.push(...unit.program)
       }
+
       return { ok: true, program }
     })
   }
@@ -93,14 +106,15 @@ export class QueryCompiler {
   // each per-definition query backdates to its own slice, so a body edit invalidates only that definition's body
   // check, never its callers (which depend on its SIGNATURE, not its body). This is the Salsa firewall on real defs.
 
-  private functions(files: Array<string>): Map<string, FunctionDef> {
+  private functions(files: string[]): Map<string, FunctionDef> {
     const merged = this.program(files)
+
     return merged.ok ? functionDefs(merged.program) : new Map()
   }
 
   // the set of defined function names. Backdates while the set is unchanged (so a body / signature edit, which does
   // not add or remove a name, does not invalidate dependents that only ask "what names exist").
-  defNames(files: Array<string>): Array<string> {
+  defNames(files: string[]): string[] {
     return this.db.query(
       'defNames',
       () => [...this.functions(files).keys()].sort(),
@@ -110,31 +124,41 @@ export class QueryCompiler {
 
   // a definition's SIGNATURE (params + result, span-free). The firewall boundary: callers depend on this. Backdates
   // when only the body changes, so a body edit never advances it.
-  signature(files: Array<string>, name: string): string {
+  signature(files: string[], name: string): string {
     return this.db.query(`signature:${name}`, () => {
       const fn = this.functions(files).get(name)
+
       return fn
-        ? structureKey({ params: fn.params.map(p => p.type), result: fn.result })
+        ? structureKey({
+            params: fn.params.map(p => p.type),
+            result: fn.result,
+          })
         : ''
     })
   }
 
   // a definition's body fingerprint + the function names it calls. Backdates when the body is structurally unchanged.
   bodyRefs(
-    files: Array<string>,
+    files: string[],
     name: string,
-  ): { bodyKey: string; refs: Array<string> } {
+  ): { bodyKey: string; refs: string[] } {
     return this.db.query(
       `bodyRefs:${name}`,
       () => {
         const fn = this.functions(files).get(name)
-        if (!fn) return { bodyKey: '', refs: [] }
+
+        if (!fn) {
+          return { bodyKey: '', refs: [] }
+        }
+
         return {
           bodyKey: structureKey(fn.body),
           refs: [...collectCallRefs(fn.body)].sort(),
         }
       },
-      (a, b) => a.bodyKey === b.bodyKey && a.refs.join(',') === b.refs.join(','),
+      (a, b) =>
+        a.bodyKey === b.bodyKey &&
+        a.refs.join(',') === b.refs.join(','),
     )
   }
 
@@ -142,15 +166,16 @@ export class QueryCompiler {
   // name set, and each defined callee's SIGNATURE (never the callee's body). So editing a callee body leaves this
   // green; editing a callee signature re-checks it.
   checkDef(
-    files: Array<string>,
+    files: string[],
     name: string,
-  ): { name: string; unresolved: Array<string> } {
+  ): { name: string; unresolved: string[] } {
     return this.db.query(
       `checkDef:${name}`,
       () => {
         const { refs } = this.bodyRefs(files, name)
         const defined = new Set(this.defNames(files))
-        const unresolved: Array<string> = []
+        const unresolved: string[] = []
+
         for (const ref of refs) {
           if (defined.has(ref)) {
             void this.signature(files, ref) // the firewall dependency: the callee's signature
@@ -158,6 +183,7 @@ export class QueryCompiler {
             unresolved.push(ref)
           }
         }
+
         return { name, unresolved }
       },
       (a, b) => a.unresolved.join(',') === b.unresolved.join(','),
@@ -167,14 +193,15 @@ export class QueryCompiler {
   // ---- the functional per-definition pipeline (real resolve; stage 1) ----
 
   // the merged program (or empty on a compile error)
-  private merged(files: Array<string>): Program {
+  private merged(files: string[]): Program {
     const result = this.program(files)
+
     return result.ok ? result.program : []
   }
 
   // the global name scope (names -> kind/arity + intrinsics), built once. Backdates while the name set + arities are
   // unchanged, so editing a body does not invalidate it.
-  nameIndex(files: Array<string>): Scope {
+  nameIndex(files: string[]): Scope {
     return this.db.query(
       'nameIndex',
       () => buildGlobalScope(this.merged(files)),
@@ -184,7 +211,7 @@ export class QueryCompiler {
 
   // one function's raw (unresolved) definition, sliced from the merged program. Backdates per function (span-free).
   functionSource(
-    files: Array<string>,
+    files: string[],
     name: string,
   ): FunctionDef | undefined {
     return this.db.query(
@@ -197,20 +224,30 @@ export class QueryCompiler {
   // resolve one function's body against the global scope, functionally (on a clone, so the result is a stable cached
   // value). Depends only on this function's source + the name index, so editing a sibling does not re-resolve it.
   resolvedDef(
-    files: Array<string>,
+    files: string[],
     name: string,
-  ): { def: FunctionDef | undefined; diagnostics: Array<Diagnostic> } {
+  ): { def: FunctionDef | undefined; diagnostics: Diagnostic[] } {
     return this.db.query(
       `resolved:${name}`,
       () => {
         const source = this.functionSource(files, name)
-        if (!source) return { def: undefined, diagnostics: [] }
+
+        if (!source) {
+          return { def: undefined, diagnostics: [] }
+        }
+
         const scope = this.nameIndex(files)
         const clone = structuredClone(source)
-        const diagnostics = resolveNames([clone], '<entry>', undefined, {
-          scope,
-          only: name,
-        })
+        const diagnostics = resolveNames(
+          [clone],
+          '<entry>',
+          undefined,
+          {
+            scope,
+            only: name,
+          },
+        )
+
         return { def: clone, diagnostics }
       },
       (a, b) =>
@@ -219,28 +256,61 @@ export class QueryCompiler {
     )
   }
 
-  // type-check one function functionally: infer its resolved clone against the program's signatures + forms, checking
-  // only that function's body. Registers each defined callee's signature as a dependency (the firewall). The typed
-  // clone is a stable cached value, so a callee body edit leaves it structurally unchanged (its dependents firewall).
+  // the type-checking context: the program with every function BODY stripped. Infer only needs other definitions'
+  // signatures + the forms / enums, never their bodies, so this backdates on a body edit. That is what lets a
+  // function be type-checked without depending on its siblings' bodies (the firewall, on real inference).
+  private signatureContext(files: string[]): Program {
+    return this.db.query(
+      'signatureContext',
+      () =>
+        this.merged(files).map(statement =>
+          statement.form === 'function'
+            ? { ...statement, body: [] }
+            : statement,
+        ),
+      (a, b) => structureKey(a) === structureKey(b),
+    )
+  }
+
+  // type-check one function functionally: infer its resolved clone against the signature context (other definitions'
+  // signatures + the forms), checking only that function's body. Depends on its own resolved body, each defined
+  // callee's signature, and the signature context -- none of which a sibling's body edit changes. So a callee body
+  // edit does not re-type-check this function. The typed clone is the stable cached value.
   typedDef(
-    files: Array<string>,
+    files: string[],
     name: string,
-  ): { def: FunctionDef | undefined; diagnostics: Array<Diagnostic> } {
+  ): { def: FunctionDef | undefined; diagnostics: Diagnostic[] } {
     return this.db.query(
       `typed:${name}`,
       () => {
         const resolved = this.resolvedDef(files, name)
-        if (!resolved.def) return { def: undefined, diagnostics: [] }
+
+        if (!resolved.def) {
+          return { def: undefined, diagnostics: [] }
+        }
+
         // firewall: depend on each defined callee's signature, never its body
         const defined = new Set(this.defNames(files))
-        for (const ref of collectCallRefs(resolved.def.body))
-          if (defined.has(ref)) void this.signature(files, ref)
-        // a program whose `name` entry is the resolved clone (for table context), checking only it -> types the clone
+
+        for (const ref of collectCallRefs(resolved.def.body)) {
+          if (defined.has(ref)) {
+            void this.signature(files, ref)
+          }
+        }
+
+        // the context is bodies-stripped declarations; swap in this function's real resolved body, check only it
         const clone = resolved.def
-        const program = this.merged(files).map(s =>
+        const program = this.signatureContext(files).map(s =>
           s.form === 'function' && s.name === name ? clone : s,
         )
-        const diagnostics = inferTypes(program, '<entry>', undefined, name)
+
+        const diagnostics = inferTypes(
+          program,
+          '<entry>',
+          undefined,
+          name,
+        )
+
         return { def: clone, diagnostics }
       },
       (a, b) =>
@@ -253,24 +323,32 @@ export class QueryCompiler {
 
   // emit one function's TypeScript from its typed clone. Depends on `typedDef(name)`, which backdates when the
   // function is unchanged, so editing a sibling never re-emits this one (the emit-level firewall).
-  emitDef(files: Array<string>, name: string): string {
+  emitDef(files: string[], name: string): string {
     return this.db.query(`emit:${name}`, () => {
       const typed = this.typedDef(files, name)
+
       return typed.def ? emitTypeScript([typed.def]) : ''
     })
   }
 
   // the whole program's TypeScript, assembled from the per-definition emits plus the non-function statements (forms,
   // native docks). A one-function edit re-emits only that function.
-  emitProgram(files: Array<string>): string {
+  emitProgram(files: string[]): string {
     return this.db.query(`emit`, () => {
       const program = this.merged(files)
-      const parts: Array<string> = []
+      const parts: string[] = []
       const others = program.filter(s => s.form !== 'function')
-      if (others.length) parts.push(emitTypeScript(others))
-      for (const statement of program)
-        if (statement.form === 'function')
+
+      if (others.length) {
+        parts.push(emitTypeScript(others))
+      }
+
+      for (const statement of program) {
+        if (statement.form === 'function') {
           parts.push(this.emitDef(files, statement.name))
+        }
+      }
+
       return parts.filter(p => p.length > 0).join('\n\n')
     })
   }
@@ -294,8 +372,13 @@ type FunctionDef = Extract<Statement, { form: 'function' }>
 // the function definitions in a program, last-of-name winning (matching the merged-emit dedup)
 function functionDefs(program: Program): Map<string, FunctionDef> {
   const map = new Map<string, FunctionDef>()
-  for (const statement of program)
-    if (statement.form === 'function') map.set(statement.name, statement)
+
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      map.set(statement.name, statement)
+    }
+  }
+
   return map
 }
 
@@ -305,13 +388,18 @@ function structureKey(value: unknown): string {
 }
 
 // the function names CALLED in a body (a `call` whose callee is a bare name). Not locals / params / member calls.
-function collectCallRefs(statements: Array<Statement>): Set<string> {
+function collectCallRefs(statements: Statement[]): Set<string> {
   const refs = new Set<string>()
+
   const expr = (node: Expression): void => {
     switch (node.form) {
       case 'call':
-        if (node.callee.form === 'variable') refs.add(node.callee.name)
-        else expr(node.callee)
+        if (node.callee.form === 'variable') {
+          refs.add(node.callee.name)
+        } else {
+          expr(node.callee)
+        }
+
         node.args.forEach(expr)
         break
       case 'binary':
@@ -342,12 +430,24 @@ function collectCallRefs(statements: Array<Statement>): Set<string> {
       case 'closure':
         body(node.body)
         break
+      case 'conditional':
+        node.branches.forEach(b => {
+          expr(b.cond)
+          expr(b.value)
+        })
+
+        if (node.otherwise) {
+          expr(node.otherwise)
+        }
+
+        break
       default:
         break
     }
   }
-  const body = (list: Array<Statement>): void => {
-    for (const statement of list)
+
+  const body = (list: Statement[]): void => {
+    for (const statement of list) {
       switch (statement.form) {
         case 'let':
           expr(statement.init)
@@ -360,7 +460,10 @@ function collectCallRefs(statements: Array<Statement>): Set<string> {
           expr(statement.expr)
           break
         case 'return':
-          if (statement.value) expr(statement.value)
+          if (statement.value) {
+            expr(statement.value)
+          }
+
           break
         case 'throw':
           expr(statement.value)
@@ -373,7 +476,11 @@ function collectCallRefs(statements: Array<Statement>): Set<string> {
             expr(br.cond)
             body(br.body)
           })
-          if (statement.otherwise) body(statement.otherwise)
+
+          if (statement.otherwise) {
+            body(statement.otherwise)
+          }
+
           break
         case 'while':
           expr(statement.cond)
@@ -382,7 +489,11 @@ function collectCallRefs(statements: Array<Statement>): Set<string> {
         case 'match':
           expr(statement.subject)
           statement.cases.forEach(c => body(c.body))
-          if (statement.otherwise) body(statement.otherwise)
+
+          if (statement.otherwise) {
+            body(statement.otherwise)
+          }
+
           break
         case 'for-each':
           expr(statement.iterable)
@@ -394,8 +505,11 @@ function collectCallRefs(statements: Array<Statement>): Set<string> {
         default:
           break
       }
+    }
   }
+
   body(statements)
+
   return refs
 }
 

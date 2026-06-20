@@ -47,7 +47,11 @@ function rustType(type: Type | undefined): string {
     case undefined:
       return '()'
     case 'array':
-      return `Vec<${rustType(type.element)}>`
+      // like the map: a shared, interior-mutable handle, so a list mutated in place (`push`) through one binding is
+      // seen through every binding -- the JS reference semantics the stdlib list relies on.
+      return `std::rc::Rc<std::cell::RefCell<Vec<${rustType(
+        type.element,
+      )}>>>`
     case 'map':
       // a shared, interior-mutable handle, so a map mutated through one binding (a `set.insert`) is seen through every
       // binding even after the owning struct is moved. `Rc` is `Clone`, so passing a map shares it, never moving it.
@@ -148,6 +152,15 @@ export function emitRust(program: Program): string {
   }
   // within a match arm, which subject variable is narrowed to which variant (so `subject/field` reads the bound local)
   const narrowing = new Map<string, string>()
+  // true while emitting the body of a function whose return type is a list: a native dock call returned directly (the
+  // shim hands back a plain `Vec`) is wrapped in the seed list's Rc<RefCell> handle to match the declared return type
+  let fnReturnsArray = false
+  const isNativeCall = (node: Expression): boolean => {
+    if (node.form !== 'call' || node.callee.form !== 'member')
+      return false
+    const root = rootVariable(node.callee)
+    return root !== undefined && aliases.has(root)
+  }
   // for each form, which of its generic parameters (by index) flow into a map KEY position inside its fields. A `set<t>`
   // stores `items: hash<t, bool>`, so its index 0 is a key; a method generic that fills that slot needs `Eq + Hash`.
   const formKeyIndices = new Map<string, Set<number>>()
@@ -240,7 +253,9 @@ export function emitRust(program: Program): string {
         return `${expr(node.callee)}(${args})`
       }
       case 'array':
-        return `vec![${node.items.map(expr).join(', ')}]`
+        return `std::rc::Rc::new(std::cell::RefCell::new(vec![${node.items
+          .map(expr)
+          .join(', ')}]))`
       case 'record': {
         const owner = variantOwner.get(node.name)
         if (owner) {
@@ -262,11 +277,8 @@ export function emitRust(program: Program): string {
         // Vec). Rendered as i64, the seed number type.
         const read = collectionRead(node)
         if (read) {
-          const handle =
-            read.kind === 'map'
-              ? `${expr(read.target)}.borrow()`
-              : expr(read.target)
-          return `(${handle}.len() as i64)`
+          // both a map and an array read their length through the Rc<RefCell> handle
+          return `(${expr(read.target)}.borrow().len() as i64)`
         }
 
         return memberPath(node)
@@ -295,6 +307,15 @@ export function emitRust(program: Program): string {
           .join(' ')
         return `Box::new(move |${params}| { ${body} })`
       }
+      case 'conditional': {
+        // a value-position conditional lowers to an if / else-if / else expression chain
+        const tail = node.otherwise ? expr(node.otherwise) : '()'
+        return node.branches.reduceRight(
+          (rest, branch) =>
+            `if ${expr(branch.cond)} { ${expr(branch.value)} } else { ${rest} }`,
+          tail,
+        )
+      }
       default:
         return exhausted(node)
     }
@@ -302,7 +323,9 @@ export function emitRust(program: Program): string {
 
   // lower a native map / list operation to rust, going through the Rc<RefCell> handle (`.borrow()` / `.borrow_mut()`).
   // The return shapes match the JS collection API the stdlib forms expect: `set` yields the map (an Rc clone), `delete`
-  // / `push` yield a boolean / the new length, `keys` / `values` materialize a new `Vec`, sizes are i64.
+  // / `push` yield a boolean / the new length, `keys` / `values` / list-returning ops materialize a new handle, i64 sizes.
+  const wrapList = (vec: string): string =>
+    `std::rc::Rc::new(std::cell::RefCell::new(${vec}))`
   const collectionExpr = (
     op: CollectionOp,
     args: Array<Expression>,
@@ -320,53 +343,68 @@ export function emitRust(program: Program): string {
         case 'delete':
           return `${target}.borrow_mut().remove(&${arg[0]}).is_some()`
         case 'keys':
-          return `${target}.borrow().keys().cloned().collect::<Vec<_>>()`
+          return wrapList(
+            `${target}.borrow().keys().cloned().collect::<Vec<_>>()`,
+          )
         case 'values':
-          return `${target}.borrow().values().cloned().collect::<Vec<_>>()`
+          return wrapList(
+            `${target}.borrow().values().cloned().collect::<Vec<_>>()`,
+          )
         default:
           return ''
       }
     }
 
-    // arrays are plain `Vec` (owned, and locals emit as `let mut`, so in-place mutation works without a shared handle).
-    // the closure ops take a `Box<dyn Fn>` and clone each element into it; iterator adapters collect back to a `Vec`.
+    // arrays go through the Rc<RefCell<Vec>> handle. The closure ops take a `Box<dyn Fn>` and clone each element into
+    // it; an op returning a list materializes a new handle (`wrapList`); the in-place ops use `borrow_mut`.
+    const data = `${target}.borrow()`
     switch (op.op) {
       case 'push':
-        return `{ ${target}.push(${arg[0]}); ${target}.len() as i64 }`
+        return `{ ${target}.borrow_mut().push(${arg[0]}); ${data}.len() as i64 }`
       case 'pop':
-        return `${target}.pop().unwrap()`
+        return `${target}.borrow_mut().pop().unwrap()`
       case 'at':
-        return `${target}[(${arg[0]}) as usize].clone()`
+        return `${data}[(${arg[0]}) as usize].clone()`
       case 'includes':
-        return `${target}.contains(&${arg[0]})`
+        return `${data}.contains(&${arg[0]})`
       case 'indexOf':
-        return `${target}.iter().position(|e| *e == ${arg[0]}).map(|i| i as i64).unwrap_or(-1)`
+        return `${data}.iter().position(|e| *e == ${arg[0]}).map(|i| i as i64).unwrap_or(-1)`
       case 'concat':
-        return `[${target}, ${arg[0]}].concat()`
+        return wrapList(
+          `[${data}.clone(), ${arg[0]}.borrow().clone()].concat()`,
+        )
       case 'slice':
         // one argument slices to the end (JS `slice(start)`); two slices a range
-        return arg[1] !== undefined
-          ? `${target}[(${arg[0]} as usize)..(${arg[1]} as usize)].to_vec()`
-          : `${target}[(${arg[0]} as usize)..].to_vec()`
+        return wrapList(
+          arg[1] !== undefined
+            ? `${data}[(${arg[0]} as usize)..(${arg[1]} as usize)].to_vec()`
+            : `${data}[(${arg[0]} as usize)..].to_vec()`,
+        )
       case 'toReversed':
-        return `${target}.iter().rev().cloned().collect::<Vec<_>>()`
+        return wrapList(
+          `${data}.iter().rev().cloned().collect::<Vec<_>>()`,
+        )
       case 'join':
-        return `${target}.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(&${arg[0]})`
+        return `${data}.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(&${arg[0]})`
       case 'map':
-        return `${target}.iter().map(|e| ${arg[0]}(e.clone())).collect::<Vec<_>>()`
+        return wrapList(
+          `${data}.iter().map(|e| ${arg[0]}(e.clone())).collect::<Vec<_>>()`,
+        )
       case 'filter':
-        return `${target}.iter().filter(|e| ${arg[0]}((*e).clone())).cloned().collect::<Vec<_>>()`
+        return wrapList(
+          `${data}.iter().filter(|e| ${arg[0]}((*e).clone())).cloned().collect::<Vec<_>>()`,
+        )
       case 'some':
-        return `${target}.iter().any(|e| ${arg[0]}(e.clone()))`
+        return `${data}.iter().any(|e| ${arg[0]}(e.clone()))`
       case 'every':
-        return `${target}.iter().all(|e| ${arg[0]}(e.clone()))`
+        return `${data}.iter().all(|e| ${arg[0]}(e.clone()))`
       case 'reduce':
-        return `${target}.iter().fold(${arg[1]}, |acc, e| ${arg[0]}(acc, e.clone()))`
+        return `${data}.iter().fold(${arg[1]}, |acc, e| ${arg[0]}(acc, e.clone()))`
       case 'findIndex':
-        return `${target}.iter().position(|e| ${arg[0]}(e.clone())).map(|i| i as i64).unwrap_or(-1)`
+        return `${data}.iter().position(|e| ${arg[0]}(e.clone())).map(|i| i as i64).unwrap_or(-1)`
       case 'flat':
-        // flatten is only defined for a list of lists; it cannot be typed over an arbitrary element, so it panics here
-        return `unimplemented!("flatten is only defined for a list of lists")`
+        // flattening a non-nested list is a shallow copy (JS `[1,2,3].flat()` is `[1,2,3]`)
+        return wrapList(`${data}.clone()`)
       default:
         return ''
     }
@@ -410,7 +448,11 @@ export function emitRust(program: Program): string {
       case 'expression':
         return `${expr(node.expr)};`
       case 'return':
-        return node.value ? `return ${expr(node.value)};` : 'return;'
+        if (!node.value) return 'return;'
+        // a list-returning function that returns a native dock call directly wraps the shim's plain `Vec`
+        return fnReturnsArray && isNativeCall(node.value)
+          ? `return ${wrapList(expr(node.value))};`
+          : `return ${expr(node.value)};`
       case 'throw':
         return `panic!("{}", ${
           node.value.form === 'string'
@@ -422,10 +464,18 @@ export function emitRust(program: Program): string {
           node.body,
           d + 1,
         )}\n${pad(d)}}`
-      case 'for-each':
-        return `for ${vname(node.item)} in ${expr(
-          node.iterable,
-        )} {\n${block(node.body, d + 1)}\n${pad(d)}}`
+      case 'for-each': {
+        // a list is an Rc<RefCell<Vec>>; iterate an owned clone of its elements so the loop binds `T`, not `&T`, and
+        // does not hold a borrow across the body
+        const iterable =
+          node.iterable.type?.kind === 'array'
+            ? `${expr(node.iterable)}.borrow().clone()`
+            : expr(node.iterable)
+        return `for ${vname(node.item)} in ${iterable} {\n${block(
+          node.body,
+          d + 1,
+        )}\n${pad(d)}}`
+      }
       case 'match': {
         // match a clone of the subject: a variant pattern binds (moves out) the variant's fields, so matching the
         // original would partially move it and break a branch that also uses the whole subject (`return self`). Our
@@ -595,6 +645,8 @@ export function emitRust(program: Program): string {
         // reassigned parameters are shadowed by `let mut` (Rust parameters are immutable)
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
+        // a parameter mutated in place by a `push` / `pop` is also rebound `let mut` (Rust parameters are immutable)
+        arrayBounds.mutated.forEach(name => mutated.add(name))
         const shadows = node.params
           .filter(p => mutated.has(p.name))
           .map(
@@ -603,9 +655,12 @@ export function emitRust(program: Program): string {
                 p.name,
               )};`,
           )
+        const previousReturnsArray = fnReturnsArray
+        fnReturnsArray = node.result?.kind === 'array'
         const bodyText = [...shadows, block(node.body, d + 1)]
           .filter(Boolean)
           .join('\n')
+        fnReturnsArray = previousReturnsArray
         const asyncMark = node.async ? 'async ' : ''
         return `${asyncMark}fn ${snake(
           node.name,
@@ -706,20 +761,31 @@ function collectArrayBounds(body: Array<Statement>): {
   displayIds: Set<number>
   eqNames: Set<string>
   displayNames: Set<string>
+  mutated: Set<string>
 } {
   const eqIds = new Set<number>()
   const displayIds = new Set<number>()
   const eqNames = new Set<string>()
   const displayNames = new Set<string>()
+  // arrays mutated in place (`push` / `pop`); a parameter so mutated must be rebound `let mut`
+  const mutated = new Set<string>()
   const record = (callee: Expression): void => {
     const op = collectionCall(callee)
     if (!op || op.kind !== 'array') return
+
+    if (
+      (op.op === 'push' || op.op === 'pop') &&
+      op.target.form === 'variable'
+    )
+      mutated.add(op.target.name)
 
     const need = ARRAY_OP_BOUND[op.op]
     if (!need) return
 
     const element =
-      op.target.type?.kind === 'array' ? op.target.type.element : undefined
+      op.target.type?.kind === 'array'
+        ? op.target.type.element
+        : undefined
     if (element?.kind === 'variable')
       (need === 'eq' ? eqIds : displayIds).add(element.id)
     else if (element?.kind === 'named')
@@ -815,5 +881,5 @@ function collectArrayBounds(body: Array<Statement>): {
     }
   }
   visitStmts(body)
-  return { eqIds, displayIds, eqNames, displayNames }
+  return { eqIds, displayIds, eqNames, displayNames, mutated }
 }

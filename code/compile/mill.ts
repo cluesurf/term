@@ -468,6 +468,61 @@ export function mill(tree: RootNode, file: string): MillResult {
         if (closureMarkedAsync || decl.some(isWaitTrue)) closure.async = true
         return closure
       }
+      case 'fork': {
+        // a conditional in value position: `fork test / hook test <cond> / hook hold <value> / hook miss <else>`.
+        // `fork case` (a match) is not yet supported as a value, so it falls through to the generic call path below.
+        const variant =
+          args[0] && args[0].kind === 'group'
+            ? headName(args[0] as GroupNode)
+            : undefined
+        if (variant !== 'case') {
+          const branches: Array<{ cond: Expression; value: Expression }> =
+            []
+          let otherwise: Expression | undefined
+          let pendingCond: Expression | undefined
+          const valueOf = (nodes: Array<Node>): Expression =>
+            nodes[0] ? toExpression(nodes[0], scope) : { form: 'unit', span }
+          for (const child of args) {
+            if (child.kind !== 'group' || headName(child) !== 'hook')
+              continue
+            const inner = rest(child)
+            const variantName =
+              inner[0] && inner[0].kind === 'group'
+                ? headName(inner[0])
+                : undefined
+            const bodyNodes = inner.slice(1)
+            if (variantName === 'test') {
+              if (pendingCond)
+                branches.push({ cond: pendingCond, value: { form: 'unit', span } })
+              pendingCond = bodyNodes[0]
+                ? toExpression(bodyNodes[0], scope)
+                : { form: 'boolean', value: false, span }
+            } else if (variantName === 'hold') {
+              branches.push({
+                cond: pendingCond ?? { form: 'boolean', value: true, span },
+                value: valueOf(bodyNodes),
+              })
+              pendingCond = undefined
+            } else if (variantName === 'miss') {
+              if (pendingCond) {
+                branches.push({ cond: pendingCond, value: { form: 'unit', span } })
+                pendingCond = undefined
+              }
+              otherwise = valueOf(bodyNodes)
+            }
+          }
+          if (pendingCond)
+            branches.push({ cond: pendingCond, value: { form: 'unit', span } })
+          return { form: 'conditional', branches, otherwise, span }
+        }
+        // fall through to the generic keyword path for `fork case`
+        return {
+          form: 'call',
+          callee: { form: 'variable', name: 'fork', span },
+          args: args.map(a => toExpression(a, scope)),
+          span,
+        }
+      }
       case 'call':
         return callExpression(group, scope)
       case 'bind': {
@@ -1643,13 +1698,21 @@ export function mill(tree: RootNode, file: string): MillResult {
           })
           break
         }
-        case 'read':
+        case 'read': {
+          // a dynamic text node. Its value is the expression of the read's child (`read count`, or
+          // `read / call read-signal / bind self, read value`), not the `read` group itself (which would be
+          // mis-read as accessing a variable literally named after the child's head, e.g. "call").
+          const child = rest(node)[0]
           out.push({
             form: 'read',
-            value: toExpression(node, scope),
+            value:
+              child && child.kind === 'group'
+                ? toExpression(child, scope)
+                : toExpression(node, scope),
             span,
           })
           break
+        }
         case 'slot': {
           const n = rest(node)[0]
           const nm = n && n.kind === 'group' ? headName(n) : undefined

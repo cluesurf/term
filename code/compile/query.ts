@@ -42,12 +42,20 @@ export class Database {
     return this.runCount.get(key) ?? 0
   }
 
-  // set (or change) an input. Bumps the global revision and the durability's last-changed marker.
+  // set (or change) an input. Setting it to its current value is a no-op (content-addressed: re-saving identical
+  // source invalidates nothing). A real change bumps the global revision and the durability's last-changed marker.
   setInput(
     key: string,
     value: unknown,
     durability: Durability = LOW,
   ): void {
+    const existing = this.inputs.get(key)
+    if (
+      existing &&
+      Object.is(existing.value, value) &&
+      existing.durability === durability
+    )
+      return
     this.revision += 1
     this.inputs.set(key, { value, changedAt: this.revision, durability })
     this.lastChanged[durability] = this.revision

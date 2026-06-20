@@ -7,7 +7,22 @@ import type {
   Expression,
   Program,
   Statement,
+  ZoneNode,
 } from '@/code/compile/node'
+
+// the render-runtime primitives emitZone (code/compile/typescript.ts) synthesizes as raw calls in a zone's output.
+// They never appear as call nodes in the AST, so reference-counting cannot see them. When a program contains any zone,
+// treat this fixed ABI as referenced so forwarder-inlining never drops `element` / `text` (single-call forwarders).
+const ZONE_RUNTIME = [
+  'element',
+  'text',
+  'dynamic',
+  'attribute',
+  'event',
+  'append',
+  'show',
+  'each',
+]
 
 type Folded =
   | { kind: 'integer'; value: number }
@@ -121,6 +136,17 @@ function simplifyExpression(node: Expression): Expression {
           key: simplifyExpression(e.key),
           value: simplifyExpression(e.value),
         })),
+      }
+    case 'conditional':
+      return {
+        ...node,
+        branches: node.branches.map(b => ({
+          cond: simplifyExpression(b.cond),
+          value: simplifyExpression(b.value),
+        })),
+        otherwise: node.otherwise
+          ? simplifyExpression(node.otherwise)
+          : undefined,
       }
     default:
       return node
@@ -272,6 +298,17 @@ function rewriteExpression(
         ...node,
         body: node.body.map(s => rewriteStatement(s, forwarders)),
       }
+    case 'conditional':
+      return {
+        ...node,
+        branches: node.branches.map(b => ({
+          cond: rewriteExpression(b.cond, forwarders),
+          value: rewriteExpression(b.value, forwarders),
+        })),
+        otherwise: node.otherwise
+          ? rewriteExpression(node.otherwise, forwarders)
+          : undefined,
+      }
     default:
       return node
   }
@@ -388,6 +425,13 @@ function countReferences(
     case 'closure':
       node.body.forEach(s => countReferencesStatement(s, counts))
       break
+    case 'conditional':
+      node.branches.forEach(b => {
+        countReferences(b.cond, counts)
+        countReferences(b.value, counts)
+      })
+      if (node.otherwise) countReferences(node.otherwise, counts)
+      break
     default:
       break
   }
@@ -442,8 +486,52 @@ function countReferencesStatement(
     case 'function':
       body(node.body)
       break
+    case 'zone':
+      // the render-runtime ABI emitZone will synthesize, plus the user expressions inside the view tree
+      for (const name of ZONE_RUNTIME)
+        counts.set(name, (counts.get(name) ?? 0) + 1)
+      countReferencesZone(node.body, counts)
+      break
     default:
       break
+  }
+}
+
+// count name references inside a zone's view tree (attribute / event / read / save / fork / walk expressions) so a
+// user helper used only from a zone is not mistaken for dead code
+function countReferencesZone(
+  nodes: Array<ZoneNode>,
+  counts: Map<string, number>,
+): void {
+  for (const node of nodes) {
+    switch (node.form) {
+      case 'element':
+        for (const attribute of node.attributes)
+          countReferences(attribute.value, counts)
+        for (const prop of node.props) countReferences(prop.value, counts)
+        countReferencesZone(node.children, counts)
+        break
+      case 'read':
+        countReferences(node.value, counts)
+        break
+      case 'save':
+        countReferences(node.value, counts)
+        break
+      case 'fork':
+        for (const branch of node.branches) {
+          countReferences(branch.cond, counts)
+          countReferencesZone(branch.body, counts)
+        }
+        if (node.otherwise) countReferencesZone(node.otherwise, counts)
+        break
+      case 'walk':
+        countReferences(node.iterable, counts)
+        countReferencesZone(node.body, counts)
+        break
+      case 'text':
+      case 'slot':
+        break
+    }
   }
 }
 

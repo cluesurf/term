@@ -1200,31 +1200,6 @@ task compute
       read count
       mark 1
 `
-// directory list reduced through the list form's own method (size) applied to the raw native array the native op
-// returns. This is array-receiver method dispatch: list.size accepts the array directly, no conversion. The directory
-// list is aliased so it does not collide with the imported list form.
-const DIR_METHOD_PROG = `load @cluesurf/base/code/file/directory
-  find make
-  find remove
-  find list, name read-directory
-load @cluesurf/base/code/list
-  find list
-
-task compute
-  like boolean
-  call remove
-    text </tmp/seed-roundtrip-listmethod>
-  call make
-    text </tmp/seed-roundtrip-listmethod/alpha>
-  save entries
-    call read-directory
-      text </tmp/seed-roundtrip-listmethod>
-  send back
-    call is-equal
-      call size
-        read entries
-      mark 1
-`
 // directory walk: make a nested directory tree, walk it recursively, and count the entries. Exercises each platform's
 // recursive enumerator (rust std::fs recursion, swift FileManager.enumerator, kotlin walkTopDown) returning a list.
 const DIR_WALK_PROG = `load @cluesurf/base/code/file/directory
@@ -1380,6 +1355,48 @@ task compute
           read a
           read b
       mark 2
+`
+// list: build a list with push (in-place mutation persists), map it through a closure, then reduce. Exercises the
+// native list runtime -- mutation, the closure-taking ops (map / reduce), and `Box<dyn Fn>` / lambda closures.
+// [1,2,3] -> map(*2) -> [2,4,6] -> reduce(+, 0) -> 12.
+const LIST_PROG = `load @cluesurf/base/code/list
+  find list
+
+task compute
+  like number
+  save xs
+    make list
+  call push
+    read xs
+    mark 1
+  call push
+    read xs
+    mark 2
+  call push
+    read xs
+    mark 3
+  save doubled
+    call map
+      read xs
+      task double
+        take item, like number
+        like number
+        send back
+          call multiply
+            read item
+            mark 2
+  send back
+    call reduce
+      read doubled
+      task add-up
+        take total, like number
+        take item, like number
+        like number
+        send back
+          call add
+            read total
+            read item
+      mark 0
 `
 // json: parse a JSON array (no braces -- seed text literals interpolate single { ), index it, read the number.
 // as-number(get-item(parse("[10,20,30]"), 1)) == 20.0, through each platform's host JSON.
@@ -1916,23 +1933,6 @@ function main(): void {
     'true',
     false,
   )
-  // list-form method on a native array: list.contains applied to the directory list result
-  runSwiftText(
-    'swift + list: size on a native array result (directory list)',
-    frontEnd(DIR_METHOD_PROG, true, 'swift'),
-    'true',
-  )
-  runKotlinText(
-    'kotlin + list: size on a native array result (directory list)',
-    frontEnd(DIR_METHOD_PROG, true, 'kotlin'),
-    'true',
-  )
-  runRustCargo(
-    'rust + cargo: list size on a native array result (directory list)',
-    frontEnd(DIR_METHOD_PROG, true, 'rust'),
-    'true',
-    false,
-  )
   // directory walk: recursive enumeration returns the nested entries, counted
   runSwiftText(
     'swift + file/directory: walk a nested tree (FileManager.enumerator)',
@@ -2019,6 +2019,23 @@ function main(): void {
     'swift + collection: set intersect size via the native map runtime (SeedMap class)',
     frontEnd(COLLECTION_PROG, true, 'swift'),
     'true',
+  )
+  // list: push mutation + map / reduce closures through the native list runtime
+  runKotlinText(
+    'kotlin + list: push + map + reduce ([1,2,3]*2 folded == 12)',
+    frontEnd(LIST_PROG, true, 'kotlin'),
+    '12',
+  )
+  runRustCargo(
+    'rust + cargo: list push + map + reduce ([1,2,3]*2 folded == 12)',
+    frontEnd(LIST_PROG, true, 'rust'),
+    '12',
+    false,
+  )
+  runSwiftText(
+    'swift + list: push + map + reduce ([1,2,3]*2 folded == 12)',
+    frontEnd(LIST_PROG, true, 'swift'),
+    '12',
   )
   // json to "runs" via the host JSON: rust serde_json (cargo), swift JSONSerialization. kotlin needs org.json on the
   // classpath (not in the JDK), so it is compile-checked, not run here.

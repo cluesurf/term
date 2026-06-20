@@ -12,6 +12,7 @@ import type {
 } from '@/code/compile/node'
 import { showType } from '@/code/compile/node'
 import type {
+  Diagnostic,
   Position as SeedPosition,
   Severity,
   Span,
@@ -39,32 +40,28 @@ export const toRange = (span: Span): LspRange => ({
   end: { line: span.end.line, character: span.end.column },
 })
 
+// one compiler diagnostic to the LSP shape (shared by the whole-program and incremental analyzers)
+export function toLspDiagnostic(d: Diagnostic): LspDiagnostic {
+  return {
+    range: toRange(d.span),
+    severity: SEVERITY[d.severity],
+    code: d.code,
+    source: 'seed',
+    message: d.hint ? `${d.message} (${d.hint})` : d.message,
+  }
+}
+
 export function analyze(
   document: { file: string; text: string },
   options?: { resolve?: Resolver; cache?: CompileCache },
 ): { diagnostics: Array<LspDiagnostic>; program?: Program } {
   const result = compile(document, options)
-  const source = 'seed'
   if (!result.ok) {
-    return {
-      diagnostics: result.diagnostics.map(d => ({
-        range: toRange(d.span),
-        severity: SEVERITY[d.severity],
-        code: d.code,
-        source,
-        message: d.hint ? `${d.message} (${d.hint})` : d.message,
-      })),
-    }
+    return { diagnostics: result.diagnostics.map(toLspDiagnostic) }
   }
   return {
     program: result.program,
-    diagnostics: result.warnings.map(d => ({
-      range: toRange(d.span),
-      severity: SEVERITY[d.severity],
-      code: d.code,
-      source,
-      message: d.hint ? `${d.message} (${d.hint})` : d.message,
-    })),
+    diagnostics: result.warnings.map(toLspDiagnostic),
   }
 }
 

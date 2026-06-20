@@ -290,6 +290,8 @@ function emitFunction(
       case 'member':
       case 'await':
       case 'closure':
+      // a value-position conditional needs basic blocks + phi nodes, which this scalar-only backend does not yet model
+      case 'conditional':
         cur.lines.push(unsupported('LLVM', node.form, ';'))
         return '0'
       default:

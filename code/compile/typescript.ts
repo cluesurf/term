@@ -8,6 +8,7 @@ import type {
   Program,
   Statement,
   Type,
+  ZoneNode,
 } from '@/code/compile/node'
 import { exhausted, mapCollect } from '@/code/compile/backend'
 
@@ -292,7 +293,7 @@ function collectAssigned(
   }
 }
 
-function makeEmitter(variants: Set<string>) {
+function makeEmitter(variants: Set<string>, hmr = false) {
   const pad = (depth: number) => '  '.repeat(depth)
   let assignedNames = new Set<string>()
 
@@ -375,6 +376,20 @@ function makeEmitter(variants: Set<string>) {
         const text = `${left} ${node.op} ${right}`
         return precedence < parentPrecedence ? `(${text})` : text
       }
+      case 'conditional': {
+        // a value-position conditional lowers to a ternary chain: cond0 ? value0 : cond1 ? value1 : otherwise
+        const tail = node.otherwise
+          ? expression(node.otherwise)
+          : 'undefined'
+        const text = node.branches.reduceRight(
+          (rest, branch) =>
+            `${expression(branch.cond)} ? ${expression(
+              branch.value,
+            )} : ${rest}`,
+          tail,
+        )
+        return parentPrecedence > 0 ? `(${text})` : text
+      }
       default:
         return exhausted(node)
     }
@@ -386,6 +401,183 @@ function makeEmitter(variants: Set<string>) {
       .map(s => `${pad(depth + 1)}${statement(s, depth + 1)}`)
       .join('\n')
     return `{\n${inner}\n${pad(depth)}}`
+  }
+
+  // emit a zone (view component) to a function that builds its DOM via the render runtime: `save` declares state /
+  // computeds, `element` / `text` make nodes, `read` makes a reactive text node (`dynamic`), attributes / events wire
+  // them, and each top-level view node is attached under the host param. fork / walk lower to `show` / `each`. The
+  // render runtime (element / text / dynamic / attribute / event / append / show / each) is imported by the zone's
+  // own module. See note/seed/plan/zone-components.md.
+  const emitZone = (
+    node: Extract<Statement, { form: 'zone' }>,
+  ): string => {
+    let counter = 0
+    const next = (): string => `view${counter++}`
+
+    // build a node into `out`, returning its variable name. Render-runtime calls are positional, in the param order of
+    // each task in code/zone/render.tree: element(tag), text(value), dynamic(source), attribute(node, name, value),
+    // event(node, name, handler).
+    const build = (zone: ZoneNode, out: Array<string>): string => {
+      const ref = next()
+      if (zone.form === 'text')
+        out.push(`const ${ref} = text(${JSON.stringify(zone.value)})`)
+      else if (zone.form === 'read')
+        out.push(`const ${ref} = dynamic(() => ${expression(zone.value)})`)
+      else if (zone.form === 'element') {
+        out.push(`const ${ref} = element(${JSON.stringify(zone.name)})`)
+        for (const attribute of zone.attributes)
+          out.push(
+            attribute.event
+              ? `event(${ref}, ${JSON.stringify(
+                  attribute.name,
+                )}, () => ${expression(attribute.value)})`
+              : `attribute(${ref}, ${JSON.stringify(
+                  attribute.name,
+                )}, ${expression(attribute.value)})`,
+          )
+        for (const child of zone.children) attach(child, ref, out)
+      } else out.push(`const ${ref} = text("")`)
+      return ref
+    }
+
+    // the positional render calls for the control-flow nodes (host comes first)
+    const showCall = (
+      host: string,
+      zone: Extract<ZoneNode, { form: 'fork' }>,
+    ): string => {
+      const branch = zone.branches[0]
+      return `show(${host}, () => ${
+        branch ? expression(branch.cond) : 'false'
+      }, ${fragment([], branch ? branch.body : [])}, ${fragment(
+        [],
+        zone.otherwise ?? [],
+      )})`
+    }
+    const eachCall = (
+      host: string,
+      zone: Extract<ZoneNode, { form: 'walk' }>,
+    ): string =>
+      `each(${host}, ${expression(zone.iterable)}, ${fragment(
+        [toCamel(zone.item)],
+        zone.body,
+      )})`
+
+    // attach a child under `parent`: nodes are built + appended; fork / walk lower to show / each. When `collect` is
+    // given (the top level under the host in HMR mode), record the single removable node per child: a built element /
+    // text ref directly, a fork / walk wrapped in a container so its whole subtree can be removed on hot-swap.
+    const attach = (
+      zone: ZoneNode,
+      parent: string,
+      out: Array<string>,
+      collect?: Array<string>,
+    ): void => {
+      if (zone.form === 'fork') {
+        if (collect) {
+          const part = next()
+          out.push(`const ${part} = element("seed-part")`)
+          out.push(showCall(part, zone))
+          out.push(`append(${parent}, ${part})`)
+          collect.push(part)
+        } else out.push(showCall(parent, zone))
+      } else if (zone.form === 'walk') {
+        if (collect) {
+          const part = next()
+          out.push(`const ${part} = element("seed-part")`)
+          out.push(eachCall(part, zone))
+          out.push(`append(${parent}, ${part})`)
+          collect.push(part)
+        } else out.push(eachCall(parent, zone))
+      } else if (zone.form !== 'slot') {
+        const ref = build(zone, out)
+        out.push(`append(${parent}, ${ref})`)
+        if (collect) collect.push(ref)
+      }
+    }
+
+    // a body list as a thunk `(params) => view` returning one node (children attached under a fragment element).
+    // Not an IIFE: it is the `then` / `other` / `build` callback the render runtime invokes.
+    const fragment = (
+      params: Array<string>,
+      body: Array<ZoneNode>,
+    ): string => {
+      const out: Array<string> = [
+        `const frag = element("seed-fragment")`,
+      ]
+      for (const child of body) attach(child, 'frag', out)
+      out.push('return frag')
+      return `(${params.join(', ')}) => { ${out.join('; ')} }`
+    }
+
+    // a top-level `save` whose value creates a signal (`save count / call make-signal / ...`). Its value is preserved
+    // across a hot-swap, so in HMR mode it is seeded from the snapshot kept by the dev client.
+    const isSignalSave = (
+      child: Extract<ZoneNode, { form: 'save' }>,
+    ): boolean =>
+      child.value.form === 'call' &&
+      child.value.callee.form === 'variable' &&
+      child.value.callee.name === 'make-signal'
+
+    const params = node.params
+      .map(p => `${toCamel(p.name)}: ${tsType(p.type)}`)
+      .join(', ')
+    const host = node.params[0] ? toCamel(node.params[0].name) : 'host'
+    // the zone's key in the hot snapshot / remount map is its exported (camelCase) name, so the accept callback can
+    // look the component up on the fresh module namespace by the same key
+    const name = JSON.stringify(toCamel(node.name))
+    const lines: Array<string> = []
+    const signals: Array<string> = []
+
+    // HMR: read the saved signal snapshot for this zone (if the dev client kept one), and open an ownership scope so
+    // every effect created while building the view can be torn down together on the next hot-swap.
+    if (hmr) {
+      lines.push(
+        `const __seed = (hot && hot.data.signals && hot.data.signals[${name}]) || {}`,
+      )
+      lines.push(`const __scope = openScope()`)
+    }
+
+    for (const child of node.body)
+      if (child.form === 'save') {
+        if (hmr && isSignalSave(child)) {
+          signals.push(child.name)
+          const key = JSON.stringify(child.name)
+          const init =
+            child.value.form === 'call' && child.value.args[0]
+              ? expression(child.value.args[0])
+              : 'undefined'
+          lines.push(
+            `const ${toCamel(
+              child.name,
+            )} = makeSignal(${key} in __seed ? __seed[${key}] : ${init})`,
+          )
+        } else
+          lines.push(
+            `const ${toCamel(child.name)} = ${expression(child.value)}`,
+          )
+      }
+
+    const roots: Array<string> = []
+    for (const child of node.body)
+      if (child.form !== 'save')
+        attach(child, host, lines, hmr ? roots : undefined)
+
+    // HMR: close the scope and register this instance (host, live signals, scope, root nodes) so the dev client can
+    // snapshot its state, tear it down, and re-mount it from the fresh module on the next change.
+    if (hmr) {
+      lines.push(`closeScope()`)
+      const sigObject = signals
+        .map(s => `${JSON.stringify(s)}: ${toCamel(s)}`)
+        .join(', ')
+      lines.push(
+        `if (hot) (hot.data.instances || (hot.data.instances = [])).push(` +
+          `{ zone: ${name}, host: ${host}, signals: { ${sigObject} }, ` +
+          `scope: __scope, nodes: [${roots.join(', ')}] })`,
+      )
+    }
+
+    return `export function ${toCamel(
+      node.name,
+    )}(${params}) {\n  ${lines.join('\n  ')}\n}`
   }
 
   const statement = (node: Statement, depth: number): string => {
@@ -527,8 +719,10 @@ function makeEmitter(variants: Set<string>) {
         // a `dock load` native binding: emitted as a host import at the top of the module, not inline here
         return ''
       case 'zone':
+        // a view component: emit a builder over the render runtime (element / text / dynamic / show / each)
+        return emitZone(node)
       case 'dock':
-        // view (zone) and routing/CLI (dock) DSLs are lowered by the dedicated zone compiler (code/zone), not here
+        // routing/CLI (dock) DSL is lowered elsewhere, not here
         return ''
       default:
         return exhausted(node)
@@ -538,12 +732,17 @@ function makeEmitter(variants: Set<string>) {
   return { statement, expression }
 }
 
-export function emitTypeScript(program: Program): string {
-  const variants = new Set<string>()
+export function emitTypeScript(
+  program: Program,
+  // `variants` carries the enum variant names defined across the WHOLE program. In per-module mode a module that builds
+  // `make some` may not itself define `maybe`, so without this its variant constructors would lose their `form` tag.
+  options?: { hmr?: boolean; variants?: Set<string> },
+): string {
+  const variants = new Set<string>(options?.variants)
   for (const node of program)
     if (node.form === 'record-type')
       for (const v of node.variants) variants.add(v.name)
-  const emitter = makeEmitter(variants)
+  const emitter = makeEmitter(variants, options?.hmr ?? false)
   // native module bindings (`dock load`) become host imports at the top. A `<global:X>` binding refers to a host
   // global (console, process, ...) — no import; alias it to the global (unless the alias already is the global name).
   const natives = program.filter(

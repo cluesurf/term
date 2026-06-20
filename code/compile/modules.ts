@@ -93,6 +93,13 @@ function walkExpr(
       walkType(expr.result, types)
       walkStatements(expr.body, values, types)
       break
+    case 'conditional':
+      expr.branches.forEach(b => {
+        walkExpr(b.cond, values, types)
+        walkExpr(b.value, values, types)
+      })
+      if (expr.otherwise) walkExpr(expr.otherwise, values, types)
+      break
     default:
       break
   }
@@ -208,6 +215,57 @@ export interface ModuleEmit {
   isZone: boolean
 }
 
+// the render-runtime names a zone module's emitted code calls but that never appear as call nodes in its AST (emitZone
+// synthesizes them, as does the HMR wiring). They are added to the module's value imports so the dev server resolves
+// them to their real source modules. The first group is the view ABI; the second is the hot-reload bookkeeping.
+const ZONE_MODULE_RUNTIME = [
+  'element',
+  'text',
+  'dynamic',
+  'attribute',
+  'event',
+  'append',
+  'show',
+  'each',
+  'open-scope',
+  'close-scope',
+  'make-signal',
+  'read-signal',
+  'dispose-scope',
+  'remove',
+]
+
+// the hot handle, declared once per zone module before the component functions (which reference it). `__seedHot` is a
+// global the dev client installs; outside the dev server it is absent, so `hot` is undefined and the wiring is inert.
+function hotPrelude(): string {
+  return `const hot = typeof __seedHot !== "undefined" ? __seedHot(import.meta.url) : undefined`
+}
+
+// the hot boundary, registered once per zone module after the component functions. On a change the dev client calls
+// `dispose` (snapshot each instance's signals, tear down its effects, remove its nodes, remember its host) then
+// `accept` with the fresh module (re-mount each remembered host from the new code, restoring the snapshot).
+function hotEpilogue(): string {
+  return `if (hot) {
+  hot.dispose((data) => {
+    data.signals = {}
+    data.remount = []
+    for (const inst of (data.instances || [])) {
+      const snapshot = {}
+      for (const key in inst.signals) snapshot[key] = readSignal(inst.signals[key])
+      data.signals[inst.zone] = snapshot
+      disposeScope(inst.scope)
+      for (const node of inst.nodes) remove(node)
+      data.remount.push({ zone: inst.zone, host: inst.host })
+    }
+    data.instances = []
+  })
+  hot.accept((mod) => {
+    for (const entry of (hot.data.remount || [])) mod[entry.zone](entry.host)
+    hot.data.remount = []
+  })
+}`
+}
+
 // emit one ESM module per source file. `urlForFile` maps a source file to the URL the browser imports it by. Returns,
 // per source file, the emitted code plus its dependency edges and zone flag (for the dev server's graph + HMR).
 export function emitModules(
@@ -225,12 +283,24 @@ export function emitModules(
   }
 
   const defined = definedNames(program, origin)
+  // every enum variant name across all modules, so a module building `make some` emits the `form` discriminant even
+  // when the enum (`maybe`) is defined in another module
+  const variants = new Set<string>()
+  for (const statement of program)
+    if (statement.form === 'record-type')
+      for (const v of statement.variants) variants.add(v.name)
   const out = new Map<string, ModuleEmit>()
 
   for (const [file, statements] of byFile) {
     const values = new Set<string>()
     const types = new Set<string>()
     walkStatements(statements, values, types)
+
+    // a zone module is a self-accepting HMR boundary: it emits state-preserving hot wiring (see below), which calls a
+    // few render-runtime helpers that are not otherwise in the module's AST. Add them so they get imported.
+    const isZone = statements.some(s => s.form === 'zone')
+    if (isZone)
+      for (const helper of ZONE_MODULE_RUNTIME) values.add(helper)
 
     // group cross-module references by their defining file
     const valueImports = new Map<string, Set<string>>()
@@ -256,15 +326,22 @@ export function emitModules(
           .join(', ')} } from "${urlForFile(dep)}"`,
       )
 
-    const body = emitTypeScript(statements)
+    // zone modules emit HMR-aware component bodies (signals seeded from the kept snapshot, instances registered)
+    const body = emitTypeScript(statements, { hmr: isZone, variants })
     const depFiles = new Set<string>([
       ...valueImports.keys(),
       ...typeImports.keys(),
     ])
+    const pieces = [
+      lines.join('\n'),
+      isZone ? hotPrelude() : '',
+      body,
+      isZone ? hotEpilogue() : '',
+    ].filter(Boolean)
     out.set(file, {
-      code: lines.length ? `${lines.join('\n')}\n\n${body}` : body,
+      code: pieces.join('\n\n'),
       imports: [...depFiles],
-      isZone: statements.some(s => s.form === 'zone'),
+      isZone,
     })
   }
 

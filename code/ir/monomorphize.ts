@@ -128,6 +128,13 @@ function visitCalls(
       case 'record':
         node.fields.forEach(f => expr(f.value))
         break
+      case 'conditional':
+        node.branches.forEach(b => {
+          expr(b.cond)
+          expr(b.value)
+        })
+        if (node.otherwise) expr(node.otherwise)
+        break
       default:
         break
     }
