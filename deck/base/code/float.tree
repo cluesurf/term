@@ -9,6 +9,11 @@ load @cluesurf/base/code/native/float
   find do-absolute
   find do-sine
   find do-cosine
+  find do-tangent
+  find do-arc-sine
+  find do-arc-cosine
+  find do-arc-tangent
+  find do-arc-tangent-of
 
 task square-root
   take value, like decimal
@@ -67,3 +72,40 @@ task cosine
   send back
     call do-cosine
       read value
+
+task tangent
+  take value, like decimal
+  like decimal
+  send back
+    call do-tangent
+      read value
+
+task arc-sine
+  take value, like decimal
+  like decimal
+  send back
+    call do-arc-sine
+      read value
+
+task arc-cosine
+  take value, like decimal
+  like decimal
+  send back
+    call do-arc-cosine
+      read value
+
+task arc-tangent
+  take value, like decimal
+  like decimal
+  send back
+    call do-arc-tangent
+      read value
+
+task arc-tangent-of
+  take y, like decimal
+  take x, like decimal
+  like decimal
+  send back
+    call do-arc-tangent-of
+      read y
+      read x

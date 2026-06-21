@@ -1,0 +1,124 @@
+# Vector-2D: a 2-component 32-bit-float vector. Pure float math. `plus` / `minus` combine, `scale` by a scalar, `dot` is the scalar product, `cross` the scalar (z-component) cross product, `length` the magnitude, `normalize` the unit vector, `distance` the gap.
+
+load @cluesurf/base/code/float
+  find square-root
+
+form vector-2
+  link x, like decimal
+  link y, like decimal
+
+  task plus
+    take self
+    take other, like vector-2
+    like vector-2
+    send back
+      make vector-2
+        bind x
+          call add
+            read self/x
+            read other/x
+        bind y
+          call add
+            read self/y
+            read other/y
+
+  task minus
+    take self
+    take other, like vector-2
+    like vector-2
+    send back
+      make vector-2
+        bind x
+          call subtract
+            read self/x
+            read other/x
+        bind y
+          call subtract
+            read self/y
+            read other/y
+
+  task scale
+    take self
+    take factor, like decimal
+    like vector-2
+    send back
+      make vector-2
+        bind x
+          call multiply
+            read self/x
+            read factor
+        bind y
+          call multiply
+            read self/y
+            read factor
+
+  task dot
+    take self
+    take other, like vector-2
+    like decimal
+    send back
+      call add
+        call multiply
+          read self/x
+          read other/x
+        call multiply
+          read self/y
+          read other/y
+
+  task cross
+    take self
+    take other, like vector-2
+    like decimal
+    send back
+      call subtract
+        call multiply
+          read self/x
+          read other/y
+        call multiply
+          read self/y
+          read other/x
+
+  task length
+    take self
+    like decimal
+    send back
+      call square-root
+        call dot
+          read self
+          read self
+
+  task normalize
+    take self
+    like vector-2
+    save magnitude
+      call length
+        read self
+    send back
+      make vector-2
+        bind x
+          call divide
+            read self/x
+            read magnitude
+        bind y
+          call divide
+            read self/y
+            read magnitude
+
+  task distance
+    take self
+    take other, like vector-2
+    like decimal
+    send back
+      call length
+        call minus
+          read self
+          read other
+
+task make-vector-2
+  take x, like decimal
+  take y, like decimal
+  like vector-2
+  send back
+    make vector-2
+      bind x, read x
+      bind y, read y

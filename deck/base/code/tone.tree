@@ -1,0 +1,62 @@
+
+# Tone code: encode a hex string into a compact, human-readable code by re-lettering each hex nibble through the
+# 16-character consonant-only alphabet `mndbtkhsfvzxcwlr` (from termsurf/tone), grouped into 4-letter runs with `-`.
+# Ported from mesh/deck/belt/code/tool/tone.ts (the encode half). Used for content-hashed asset names
+# (`/base/look-<tone>.css`, cutting-edge cache-busting) and opaque ids. A 16-hex-char input -> `4-4-4-4` (16 letters).
+
+load @cluesurf/base/code/list
+  find list
+  find push
+  find join
+
+load @cluesurf/base/code/text
+  find char-at
+  find index-of
+  find split
+
+host hex-alpha, text <0123456789abcdef>
+
+host tone-alpha, text <mndbtkhsfvzxcwlr>
+
+task tone-encode
+  take hex, like text
+  like text
+  save chars
+    call split
+      read hex
+      text <>
+  save out
+    make list
+  save count, mark 0
+  walk list, read chars
+    hook next
+      take site, name ch
+      fork test
+        hook test
+          call is-equal
+            read count
+            mark 4
+        hook hold
+          call push
+            bind list, read out
+            bind item, text <->
+          save count, mark 0
+      save i
+        call index-of
+          read hex-alpha
+          read ch
+          mark 0
+      call push
+        bind list, read out
+        bind item
+          call char-at
+            read tone-alpha
+            read i
+      save count
+        call add
+          read count
+          mark 1
+  send back
+    call join
+      read out
+      text <>

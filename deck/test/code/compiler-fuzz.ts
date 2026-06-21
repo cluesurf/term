@@ -16,8 +16,46 @@
  * toward new compiler behavior.
  */
 
+import { writeFileSync } from 'node:fs'
 import { compile } from '@cluesurf/make/code/compile/compile'
 import { makeRng, type Rng } from './property'
+
+/** A small seed corpus of valid, self-contained Seed programs. */
+export const DEFAULT_FUZZ_CORPUS: string[] = [
+  `task answer
+  like number
+  send back
+    mark 42
+`,
+  `form point
+  link x, like number
+  link y, like number
+`,
+  `task add-one
+  take n, like number
+  like number
+  send back
+    call add
+      read n
+      mark 1
+`,
+  `task pick
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read a
+        read b
+    hook hold
+      send back
+        read a
+    hook miss
+      send back
+        read b
+`,
+]
 
 // the head words the compiler recognizes - swapping these stresses the mill
 const KEYWORDS = [
@@ -122,6 +160,11 @@ export function fuzzCompiler(input: {
   runs?: number
   seed?: number
   mutationsPerRun?: number
+  // if set, the input currently under test is written here BEFORE each
+  // compile. A non-terminating input cannot be caught in-process, so an
+  // out-of-process watchdog kills the run and reads this file to recover
+  // the exact input that hung the compiler.
+  probeFile?: string
 }): FuzzReport {
   const runs = input.runs ?? 2000
   const rng = makeRng(input.seed ?? 1)
@@ -141,6 +184,7 @@ export function fuzzCompiler(input: {
     const k = 1 + Math.floor(rng.next() * (input.mutationsPerRun ?? 4))
     for (let m = 0; m < k; m++) text = mutate(text, corpus, rng)
 
+    if (input.probeFile) writeFileSync(input.probeFile, text)
     const result = tryCompile(text)
     if ('crash' in result) {
       crashes.push({ input: text, error: result.crash, generation: i })

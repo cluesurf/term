@@ -7,4 +7,9 @@ object fmath {
     fun abs(v: Double): Double = kotlin.math.abs(v)
     fun sin(v: Double): Double = kotlin.math.sin(v)
     fun cos(v: Double): Double = kotlin.math.cos(v)
+    fun tan(v: Double): Double = kotlin.math.tan(v)
+    fun asin(v: Double): Double = kotlin.math.asin(v)
+    fun acos(v: Double): Double = kotlin.math.acos(v)
+    fun atan(v: Double): Double = kotlin.math.atan(v)
+    fun atan2(y: Double, x: Double): Double = kotlin.math.atan2(y, x)
 }

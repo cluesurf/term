@@ -10,6 +10,7 @@ load @cluesurf/base/code/native/text/string
   find do-ends-with
   find do-replace
   find do-slice
+  find do-concat
 
 task to-upper
   take input, like text
@@ -89,3 +90,13 @@ task slice
       read input
       read start
       read end
+
+# join two strings end to end
+task concat
+  take input, like text
+  take other, like text
+  like text
+  send back
+    call do-concat
+      read input
+      read other

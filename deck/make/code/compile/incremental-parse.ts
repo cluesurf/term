@@ -67,3 +67,106 @@ export function splitTopLevel(source: string): TopBlock[] {
 
   return blocks
 }
+
+// shift every span in a parsed node by `delta` lines, so a block parsed in isolation (line 0) sits at its real
+// position in the file. Mutates in place (the cache stores the block-relative tree and re-positions by delta).
+function shiftSpan(span: Span, delta: number): void {
+  span.start.line += delta
+  span.end.line += delta
+}
+
+function shiftNode(node: Node, delta: number): void {
+  switch (node.kind) {
+    case 'group':
+      for (const comment of node.comments ?? []) {
+        shiftSpan(comment.span, delta)
+      }
+      for (const child of node.nodes) {
+        shiftNode(child, delta)
+      }
+      break
+    case 'name':
+    case 'text':
+      for (const part of node.parts) {
+        shiftNode(part, delta)
+      }
+      break
+    case 'chunk':
+    case 'integer':
+    case 'decimal':
+    case 'radix':
+      shiftSpan(node.token.span, delta)
+      break
+    case 'interpolation':
+      if (node.group) {
+        shiftNode(node.group, delta)
+      }
+      break
+  }
+}
+
+// the cache an incremental session carries between edits: a definition's parse keyed by its content hash, with the
+// line it is currently positioned at (so a reuse re-positions by the delta rather than re-shifting from zero)
+export type ParseCache = Map<
+  string,
+  { groups: GroupNode[]; shiftedTo: number }
+>
+
+// parse a file definition-by-definition, reusing the cached parse of every block whose text is unchanged and parsing
+// only the changed / new ones. The merged tree is identical to a whole-file parse; `reused` / `parsed` report the
+// incremental win. Unchanged blocks that merely moved are re-positioned by a cheap span shift, never re-lexed.
+export function incrementalParse(
+  file: string,
+  source: string,
+  cache: ParseCache,
+): { tree: RootNode; reused: number; parsed: number } {
+  const blocks = splitTopLevel(source)
+  const nodes: GroupNode[] = []
+  const used = new Set<string>()
+  let reused = 0
+  let parsed = 0
+
+  for (const block of blocks) {
+    const cached = cache.get(block.hash)
+
+    if (cached && !used.has(block.hash)) {
+      const delta = block.startLine - cached.shiftedTo
+      if (delta !== 0) {
+        for (const group of cached.groups) {
+          shiftNode(group, delta)
+        }
+        cached.shiftedTo = block.startLine
+      }
+
+      nodes.push(...cached.groups)
+      used.add(block.hash)
+      reused++
+    } else {
+      // a changed / new block, or a duplicate of one already used this pass: parse fresh
+      const result = parse({ file, text: block.text })
+      const groups = result.ok ? result.tree.nodes : []
+
+      for (const group of groups) {
+        shiftNode(group, block.startLine)
+      }
+
+      // cache only the first occurrence of a hash (a duplicate definition re-parses each pass, which is correct)
+      if (!used.has(block.hash)) {
+        cache.set(block.hash, { groups, shiftedTo: block.startLine })
+        used.add(block.hash)
+      }
+
+      nodes.push(...groups)
+      parsed++
+    }
+  }
+
+  // drop cache entries for definitions no longer in the file, so the cache tracks the live set
+  for (const hash of [...cache.keys()]) {
+    if (!used.has(hash)) {
+      cache.delete(hash)
+    }
+  }
+
+  return { tree: { kind: 'root', nodes }, reused, parsed }
+}

@@ -1,0 +1,69 @@
+note <Tests for 4x4 matrices: identity cells, matrix product of identities, and transforming a vector by the identity.>
+
+load @cluesurf/base/code/line/float/32/matrix-4
+  find matrix-4
+  find identity-matrix-4
+  find get
+  find times
+  find transform
+
+load @cluesurf/base/code/line/float/32/vector-4
+  find vector-4
+  find make-vector-4
+
+test <identity has ones on the diagonal>
+  want hold
+    call is-equal
+      call get
+        call identity-matrix-4
+        code 1
+        code 1
+      1.0
+
+test <identity has zeros off the diagonal>
+  want hold
+    call is-equal
+      call get
+        call identity-matrix-4
+        code 0
+        code 1
+      0.0
+
+test <identity times identity keeps the diagonal one>
+  want hold
+    call is-equal
+      call get
+        call times
+          call identity-matrix-4
+          call identity-matrix-4
+        code 2
+        code 2
+      1.0
+
+test <transform by identity returns the vector unchanged (x)>
+  save v
+    call transform
+      call identity-matrix-4
+      call make-vector-4
+        7.0
+        2.0
+        3.0
+        4.0
+  want hold
+    call is-equal
+      read v/x
+      7.0
+
+test <transform by identity returns the vector unchanged (z)>
+  save v
+    call transform
+      call identity-matrix-4
+      call make-vector-4
+        7.0
+        2.0
+        9.0
+        4.0
+  want hold
+    call is-equal
+      read v/z
+      9.0

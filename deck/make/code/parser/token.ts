@@ -265,26 +265,35 @@ export function tokenize(source: {
         break
       }
 
-      if (!matched && previous) {
+      // no matcher consumed any input. If we never advance we loop
+      // forever, so always stop here - even with no previous token (an
+      // unlexable first character, e.g. a leading tab, lands here). Point
+      // the error at the previous token when there is one, otherwise at
+      // the current position.
+      if (!matched) {
         return {
           ok: false,
           diagnostics: [
             diagnose('syntax-error', {
               file: source.file,
-              span: previous.span,
+              span: previous
+                ? previous.span
+                : { start: { line, column }, end: { line, column: column + 1 } },
             }),
           ],
         }
       }
     }
 
-    if (lineText.length && previous) {
+    if (lineText.length) {
       return {
         ok: false,
         diagnostics: [
           diagnose('syntax-error', {
             file: source.file,
-            span: previous.span,
+            span: previous
+              ? previous.span
+              : { start: { line, column }, end: { line, column: column + 1 } },
           }),
         ],
       }

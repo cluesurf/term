@@ -1,0 +1,97 @@
+note <Tests for quaternions: Hamilton product with identity, conjugate, length, normalize, from-axis-angle, slerp.>
+
+load @cluesurf/base/code/line/float/32/quaternion
+  find quaternion
+  find make-quaternion
+  find times
+  find conjugate
+  find length
+  find normalize
+  find from-axis-angle
+  find slerp
+
+test <identity times a quaternion returns it>
+  save q
+    call times
+      call make-quaternion
+        0.0
+        0.0
+        0.0
+        1.0
+      call make-quaternion
+        1.0
+        2.0
+        3.0
+        4.0
+  want hold
+    call is-equal
+      read q/x
+      1.0
+
+test <conjugate negates the vector part>
+  save q
+    call conjugate
+      call make-quaternion
+        1.0
+        2.0
+        3.0
+        4.0
+  want hold
+    call is-equal
+      read q/x
+      -1.0
+
+test <length of one-two-two-zero is three>
+  want hold
+    call is-equal
+      call length
+        call make-quaternion
+          1.0
+          2.0
+          2.0
+          0.0
+      3.0
+
+test <normalize scales to unit length>
+  save q
+    call normalize
+      call make-quaternion
+        0.0
+        0.0
+        0.0
+        2.0
+  want hold
+    call is-equal
+      read q/w
+      1.0
+
+test <from-axis-angle with zero angle is the identity>
+  save q
+    call from-axis-angle
+      0.0
+      0.0
+      1.0
+      0.0
+  want hold
+    call is-equal
+      read q/w
+      1.0
+
+test <slerp between equal quaternions returns the same>
+  save q
+    call slerp
+      call make-quaternion
+        0.0
+        0.0
+        0.0
+        1.0
+      call make-quaternion
+        0.0
+        0.0
+        0.0
+        1.0
+      0.5
+  want hold
+    call is-equal
+      read q/w
+      1.0

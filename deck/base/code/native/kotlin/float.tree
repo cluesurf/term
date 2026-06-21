@@ -60,3 +60,40 @@ task do-cosine
   send back
     call fmath/cos
       read value
+
+task do-tangent
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/tan
+      read value
+
+task do-arc-sine
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/asin
+      read value
+
+task do-arc-cosine
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/acos
+      read value
+
+task do-arc-tangent
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/atan
+      read value
+
+task do-arc-tangent-of
+  take y, like decimal
+  take x, like decimal
+  like decimal
+  send back
+    call fmath/atan2
+      read y
+      read x

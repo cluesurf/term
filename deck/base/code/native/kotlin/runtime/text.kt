@@ -1,4 +1,5 @@
 object text {
+    fun concat(a: String, b: String): String = a + b
     fun upper(s: String): String = s.uppercase()
     fun lower(s: String): String = s.lowercase()
     fun trim(s: String): String = s.trim()

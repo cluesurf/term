@@ -1,0 +1,80 @@
+note <Tests for 3D vectors: plus, dot, cross, length, distance.>
+
+load @cluesurf/base/code/line/float/32/vector-3
+  find vector-3
+  find make-vector-3
+  find plus
+  find dot
+  find cross
+  find length
+  find distance
+
+test <plus adds component-wise>
+  save v
+    call plus
+      call make-vector-3
+        1.0
+        2.0
+        3.0
+      call make-vector-3
+        4.0
+        5.0
+        6.0
+  want hold
+    call is-equal
+      read v/x
+      5.0
+
+test <dot is the scalar product>
+  want hold
+    call is-equal
+      call dot
+        call make-vector-3
+          1.0
+          2.0
+          3.0
+        call make-vector-3
+          4.0
+          5.0
+          6.0
+      32.0
+
+test <cross of x and y unit vectors is the z unit vector>
+  save v
+    call cross
+      call make-vector-3
+        1.0
+        0.0
+        0.0
+      call make-vector-3
+        0.0
+        1.0
+        0.0
+  want hold
+    call is-equal
+      read v/z
+      1.0
+
+test <length of a three-four-zero vector is five>
+  want hold
+    call is-equal
+      call length
+        call make-vector-3
+          3.0
+          4.0
+          0.0
+      5.0
+
+test <distance between origin and three-four-zero is five>
+  want hold
+    call is-equal
+      call distance
+        call make-vector-3
+          0.0
+          0.0
+          0.0
+        call make-vector-3
+          3.0
+          4.0
+          0.0
+      5.0

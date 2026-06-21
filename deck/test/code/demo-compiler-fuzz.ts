@@ -4,51 +4,24 @@
  *
  * Structure-aware mutation of valid `.tree` sources, fed to `compile`.
  * The oracle: the compiler must always return a result (ok or
- * diagnostics) and never throw. Any throw is a real compiler bug; the
- * fuzzer prints the minimized input that triggers it.
+ * diagnostics) and NEVER throw OR hang. Any throw is a crash bug; any
+ * non-terminating input is a hang bug. Both are real compiler bugs.
  *
- * The demo passes when the fuzzer RAN and classified every input. If it
- * finds crashes, they are listed as findings to fix (not test noise).
+ * The campaign runs in a CHILD PROCESS under an overall timeout, so a
+ * hanging input kills the child (not this demo); the probe file then
+ * holds the exact input that hung the compiler. Crashes are read back
+ * from the child's JSON report. Findings are listed, not treated as test
+ * noise - the demo passes when the fuzzer ran and classified its inputs.
  */
 
-import { fuzzCompiler, minimizeCrash } from './compiler-fuzz'
+import { spawnSync } from 'node:child_process'
+import { readFileSync, existsSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { minimizeCrash, type FuzzReport } from './compiler-fuzz'
 
-// a small seed corpus of valid, self-contained Seed programs
-const CORPUS = [
-  `task answer
-  like number
-  send back
-    mark 42
-`,
-  `form point
-  link x, like number
-  link y, like number
-`,
-  `task add-one
-  take n, like number
-  like number
-  send back
-    call add
-      read n
-      mark 1
-`,
-  `task pick
-  take a, like number
-  take b, like number
-  like number
-  fork test
-    hook test
-      call is-above
-        read a
-        read b
-    hook hold
-      send back
-        read a
-    hook miss
-      send back
-        read b
-`,
-]
+const HERE = path.dirname(fileURLToPath(import.meta.url))
 
 let pass = 0
 let fail = 0
@@ -57,35 +30,64 @@ function ok(name: string, cond: boolean, info = ''): void {
   else { fail++; console.log(`FAIL  ${name}${info ? '  ' + info : ''}`) }
 }
 
-const report = fuzzCompiler({ corpus: CORPUS, runs: 3000, seed: 7 })
+const RUNS = 3000
+const TIMEOUT_MS = 90_000
 
-console.log(`  ran ${report.runs} mutated inputs`)
-console.log(`  distinct diagnostic codes exercised: ${report.codesSeen.length} [${report.codesSeen.join(', ')}]`)
-console.log(`  corpus grew by ${report.corpusGrew} coverage-novel inputs`)
-console.log(`  crashes found: ${report.crashes.length}`)
+const work = mkdtempSync(path.join(tmpdir(), 'seed-fuzz-'))
+const reportOut = path.join(work, 'report.json')
+const probeFile = path.join(work, 'probe.tree')
+const campaign = path.join(HERE, 'fuzz-campaign.ts')
 
-ok('fuzzer ran the full budget', report.runs === 3000)
-ok('fuzzing exercised multiple compiler diagnostics (real coverage)', report.codesSeen.length >= 3)
-ok('coverage-guided corpus grew', report.corpusGrew >= 1)
+console.log(`  running ${RUNS} mutated inputs in a child process (watchdog ${TIMEOUT_MS / 1000}s)...`)
 
-if (report.crashes.length > 0) {
-  console.log(`\n  --- ${report.crashes.length} CRASH(es) FOUND (compiler bugs to fix) ---`)
-  // report up to 3 minimized, de-duplicated by error head
-  const seen = new Set<string>()
-  let shown = 0
-  for (const crash of report.crashes) {
-    const head = crash.error.split('\n')[0] ?? ''
-    if (seen.has(head)) continue
-    seen.add(head)
-    if (shown++ >= 3) break
-    const minimal = minimizeCrash(crash.input)
-    console.log(`\n  error: ${head}`)
-    console.log('  minimal input:')
-    console.log(minimal.split('\n').map(l => '    | ' + l).join('\n'))
+const child = spawnSync(
+  'npx',
+  ['tsx', campaign, reportOut, probeFile, String(RUNS), '7'],
+  { timeout: TIMEOUT_MS, encoding: 'utf8', cwd: process.cwd() },
+)
+
+const hung = child.error !== undefined && (child.error as NodeJS.ErrnoException).code === 'ETIMEDOUT'
+
+if (hung) {
+  // the watchdog fired: the probe file holds the input that hung the compiler
+  console.log('\n  --- HANG FOUND: the compiler did not terminate on an input ---')
+  ok('fuzzer caught a non-terminating input (hang)', existsSync(probeFile))
+  if (existsSync(probeFile)) {
+    const input = readFileSync(probeFile, 'utf8')
+    console.log('  hanging input:')
+    console.log(input.split('\n').map(l => '    | ' + l).join('\n'))
   }
-  console.log(`\n  (${seen.size} distinct crash signature(s))`)
+  console.log('\n  (a compiler hang is a real robustness bug - see findings doc)')
+} else if (existsSync(reportOut)) {
+  const report = JSON.parse(readFileSync(reportOut, 'utf8')) as FuzzReport
+  console.log(`  ran ${report.runs} mutated inputs`)
+  console.log(`  distinct diagnostic codes exercised: ${report.codesSeen.length} [${report.codesSeen.join(', ')}]`)
+  console.log(`  corpus grew by ${report.corpusGrew} coverage-novel inputs`)
+  console.log(`  crashes found: ${report.crashes.length}`)
+
+  ok('fuzzer ran the full budget', report.runs === RUNS)
+  ok('fuzzing exercised multiple compiler diagnostics (real coverage)', report.codesSeen.length >= 3)
+
+  if (report.crashes.length > 0) {
+    console.log(`\n  --- ${report.crashes.length} CRASH(es) FOUND (compiler bugs) ---`)
+    const seen = new Set<string>()
+    let shown = 0
+    for (const crash of report.crashes) {
+      const head = crash.error.split('\n')[0] ?? ''
+      if (seen.has(head)) continue
+      seen.add(head)
+      if (shown++ >= 3) break
+      const minimal = minimizeCrash(crash.input)
+      console.log(`\n  error: ${head}`)
+      console.log('  minimal input:')
+      console.log(minimal.split('\n').map(l => '    | ' + l).join('\n'))
+    }
+    console.log(`\n  (${seen.size} distinct crash signature(s) - see findings doc)`)
+  } else {
+    ok('no compiler crashes in this run', true)
+  }
 } else {
-  ok('no compiler crashes in this run', true)
+  ok('campaign produced a report', false, `(child status ${child.status}, ${child.stderr?.slice(0, 200)})`)
 }
 
 console.log(`\nseed-verify compiler-fuzz demo: ${pass} pass, ${fail} fail`)

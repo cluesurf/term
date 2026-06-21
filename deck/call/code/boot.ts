@@ -58,7 +58,7 @@ function nodeValue(group: GroupNode): string {
 
 // bump to invalidate every boot cache at once (turborepo's `global_cache_key`). Change this on any boot-pipeline change
 // that the per-build hash does not already capture (e.g. a new prelude assembly rule).
-const BOOT_CACHE_EPOCH = '1'
+const BOOT_CACHE_EPOCH = '2'
 
 // the directory (cwd or an ancestor) that holds the `link/` package links a build resolves through; falls back to cwd
 export function findProjectRoot(start: string): string {

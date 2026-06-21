@@ -1,0 +1,63 @@
+note <Tests for string concat and the text utilities join + count-occurrences.>
+
+load @cluesurf/base/code/text/string
+  find concat
+
+load @cluesurf/base/code/text/util
+  find join
+  find count-occurrences
+
+load @cluesurf/base/code/list
+  find list
+
+test <concat joins two strings>
+  want hold
+    call is-equal
+      call concat
+        text <foo>
+        text <bar>
+      text <foobar>
+
+test <join places the separator between items>
+  save parts
+    make list
+  call parts/push
+    text <a>
+  call parts/push
+    text <b>
+  call parts/push
+    text <c>
+  want hold
+    call is-equal
+      call join
+        read parts
+        text <->
+      text <a-b-c>
+
+test <join of a single item has no separator>
+  save parts
+    make list
+  call parts/push
+    text <solo>
+  want hold
+    call is-equal
+      call join
+        read parts
+        text <->
+      text <solo>
+
+test <count-occurrences counts non-overlapping matches>
+  want hold
+    call is-equal
+      call count-occurrences
+        text <abababab>
+        text <ab>
+      mark 4
+
+test <count-occurrences is zero when absent>
+  want hold
+    call is-equal
+      call count-occurrences
+        text <hello world>
+        text <xyz>
+      mark 0

@@ -1,0 +1,53 @@
+note <Tests for 4D vectors: plus, dot, length.>
+
+load @cluesurf/base/code/line/float/32/vector-4
+  find vector-4
+  find make-vector-4
+  find plus
+  find dot
+  find length
+
+test <plus adds component-wise>
+  save v
+    call plus
+      call make-vector-4
+        1.0
+        2.0
+        3.0
+        4.0
+      call make-vector-4
+        5.0
+        6.0
+        7.0
+        8.0
+  want hold
+    call is-equal
+      read v/w
+      12.0
+
+test <dot is the scalar product>
+  want hold
+    call is-equal
+      call dot
+        call make-vector-4
+          1.0
+          0.0
+          0.0
+          2.0
+        call make-vector-4
+          3.0
+          0.0
+          0.0
+          4.0
+      11.0
+
+test <length of the unit-sum vector is two>
+  want hold
+    call is-equal
+      call length
+        call make-vector-4
+          1.0
+          1.0
+          1.0
+          1.0
+      2.0

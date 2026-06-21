@@ -1865,54 +1865,6 @@ task compute
       read xs
       code 1
 `
-// iterator: the lazy pull-based walk -- from-list, a map adapter, and a fold sink, exercising closures stored in the
-// walk's pull field and a mutable cursor box. (1 + 2 + 3) doubled and summed == 12.
-const ITERATOR_PROG = `load @cluesurf/base/code/walk
-  find walk
-  find from-list
-  find map
-  find fold
-
-load @cluesurf/base/code/list
-  find list
-
-task compute
-  like number
-  save xs
-    make list
-  call push
-    read xs
-    code 1
-  call push
-    read xs
-    code 2
-  call push
-    read xs
-    code 3
-  save doubled
-    call map
-      call from-list
-        read xs
-      task double
-        take item, like number
-        like number
-        send back
-          call multiply
-            read item
-            code 2
-  send back
-    call fold
-      read doubled
-      code 0
-      task add-up
-        take total, like number
-        take item, like number
-        like number
-        send back
-          call add
-            read total
-            read item
-`
 // json: parse a JSON array (no braces -- seed text literals interpolate single { ), index it, read the number.
 // as-number(get-item(parse("[10,20,30]"), 1)) == 20.0, through each platform's host JSON.
 const JSON_RT_PROG = `load @cluesurf/base/code/json
@@ -1982,6 +1934,51 @@ task compute
     call is-equal
       call square-root
         9.0
+      3.0
+`
+// arc-trig: arc-cosine(1.0) == 0.0 through each platform's float library (Math.acos / f64.acos / Foundation / kotlin.math)
+const TRIG_PROG = `load @cluesurf/base/code/float
+  find arc-cosine
+
+task compute
+  like boolean
+  send back
+    call is-equal
+      call arc-cosine
+        1.0
+      0.0
+`
+// vector-3: length(3,4,0) == 5 through the concrete float vector form
+const VECTOR3_PROG = `load @cluesurf/base/code/line/float/32/vector-3
+  find make-vector-3
+  find length
+
+task compute
+  like boolean
+  send back
+    call is-equal
+      call length
+        call make-vector-3
+          3.0
+          4.0
+          0.0
+      5.0
+`
+// quaternion: length(1,2,2,0) == 3 through the concrete float quaternion form
+const QUATERNION_PROG = `load @cluesurf/base/code/line/float/32/quaternion
+  find make-quaternion
+  find length
+
+task compute
+  like boolean
+  send back
+    call is-equal
+      call length
+        call make-quaternion
+          1.0
+          2.0
+          2.0
+          0.0
       3.0
 `
 // time: now() is non-deterministic, so assert it is a positive epoch (boolean -> "true")
@@ -2902,6 +2899,10 @@ function main(): void {
     frontEnd(LIST_SET_PROG, true, 'swift'),
     '99',
   )
+  // NOTE: the iterator (walk) runs on node (test/tree/walk.tree) but cannot yet round-trip on the strict backends for
+  // the SAME reason as deque below: a generic `head t` value whose method/field returns `maybe<t>` emits a raw `Maybe`
+  // (no type argument) because `t` is not monomorphized to the concrete element. Fixing this one monomorphization gap
+  // unblocks the whole generic-container family (walk, deque, queue, stack) cross-backend.
   // NOTE: a cross-backend deque round-trip (push-front/back via shift/unshift) is blocked not by those ops -- list.set
   // above proves splice/shift/unshift lower on every backend -- but by a separate compiler gap: a generic `head t`
   // container started from an empty list leaves `t` unbound, so a strict backend cannot unify its `maybe<t>` return
@@ -2947,6 +2948,58 @@ function main(): void {
   runRustCargo(
     'rust + cargo: float square-root(9.0) == 3.0 (via f64 methods)',
     frontEnd(FLOAT_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+
+  // arc-trigonometry to "runs" on all three (arc-cosine(1) == 0 via each float library)
+  runSwiftText(
+    'swift + float: arc-cosine(1.0) == 0.0 (via Foundation)',
+    frontEnd(TRIG_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + float: arc-cosine(1.0) == 0.0 (via kotlin.math)',
+    frontEnd(TRIG_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: float arc-cosine(1.0) == 0.0 (via f64 methods)',
+    frontEnd(TRIG_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+
+  // linear algebra (concrete float forms) to "runs" on all three: vector-3 + quaternion length
+  runSwiftText(
+    'swift + vector-3: length(3,4,0) == 5',
+    frontEnd(VECTOR3_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + vector-3: length(3,4,0) == 5',
+    frontEnd(VECTOR3_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: vector-3 length(3,4,0) == 5',
+    frontEnd(VECTOR3_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  runSwiftText(
+    'swift + quaternion: length(1,2,2,0) == 3',
+    frontEnd(QUATERNION_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + quaternion: length(1,2,2,0) == 3',
+    frontEnd(QUATERNION_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: quaternion length(1,2,2,0) == 3',
+    frontEnd(QUATERNION_PROG, true, 'rust'),
     'true',
     false,
   )

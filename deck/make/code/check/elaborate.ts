@@ -1209,22 +1209,56 @@ export function elaborateReport(
   // subject so that the instantiated pattern equals the subject. `depth` tracks binders crossed inside the pattern (a
   // var at or above `depth` is a hole; below it is locally bound). Returns false on any clash. Used to instantiate a
   // cited lemma against the goal.
+  // collect the free de Bruijn variable indices of a (closed-context) term. Used to decide which variables a generalized
+  // induction hypothesis quantifies over.
+  function freeVarIndices(term: Term, depth = 0, acc = new Set<number>()): Set<number> {
+    switch (term.tag) {
+      case 'var':
+        if (term.index - depth >= 0) {acc.add(term.index - depth)}
+
+        return acc
+      case 'app':
+        freeVarIndices(term.fun, depth, acc)
+        freeVarIndices(term.arg, depth, acc)
+
+        return acc
+      case 'lam':
+        freeVarIndices(term.body, depth + 1, acc)
+
+        return acc
+      default:
+        return acc
+    }
+  }
+
+  // `holes` (optional) is a set of base de Bruijn indices that are ALSO pattern holes, beyond the leading `binders`. This
+  // is how a GENERALIZED induction hypothesis is matched: the induction's non-recursive variables (the other `mark`s)
+  // become holes at their own context indices, so the hypothesis can fire at any instance of them (e.g. a threaded
+  // accumulator that changes along the recursion). Holes are honored only at depth 0 (the equational goals are
+  // first-order), so a captured subject can never carry an escaping local binder.
   function matchPattern(
     pattern: Term,
     subject: Term,
     binders: number,
     depth: number,
     subst: Map<number, Term>,
+    holes?: Set<number>,
   ): boolean {
-    if (pattern.tag === 'var' && pattern.index - depth >= 0 && pattern.index - depth < binders) {
-      const hole = pattern.index - depth
-      const prior = subst.get(hole)
+    if (pattern.tag === 'var') {
+      const base = pattern.index - depth
+      const isBinderHole = base >= 0 && base < binders
+      const isSetHole =
+        holes !== undefined && depth === 0 && holes.has(base)
 
-      if (prior) {return termsEqual(prior, subject)}
+      if (isBinderHole || isSetHole) {
+        const prior = subst.get(base)
 
-      subst.set(hole, subject)
+        if (prior) {return termsEqual(prior, subject)}
 
-      return true
+        subst.set(base, subject)
+
+        return true
+      }
     }
 
     if (pattern.tag !== subject.tag) {return false}
@@ -1237,13 +1271,13 @@ export function elaborateReport(
       case 'app':
         return (
           subject.tag === 'app' &&
-          matchPattern(pattern.fun, subject.fun, binders, depth, subst) &&
-          matchPattern(pattern.arg, subject.arg, binders, depth, subst)
+          matchPattern(pattern.fun, subject.fun, binders, depth, subst, holes) &&
+          matchPattern(pattern.arg, subject.arg, binders, depth, subst, holes)
         )
       case 'lam':
         return (
           subject.tag === 'lam' &&
-          matchPattern(pattern.body, subject.body, binders, depth + 1, subst)
+          matchPattern(pattern.body, subject.body, binders, depth + 1, subst, holes)
         )
       default:
         // other shapes (pi, sigma, id, ...) do not occur in the first-order equational lemmas we cite
@@ -1258,22 +1292,30 @@ export function elaborateReport(
     binders: number,
     depth: number,
     subst: Map<number, Term>,
+    holes?: Set<number>,
   ): Term | null {
-    if (rhs.tag === 'var' && rhs.index - depth >= 0 && rhs.index - depth < binders) {
-      const value = subst.get(rhs.index - depth)
+    if (rhs.tag === 'var') {
+      const base = rhs.index - depth
+      const isBinderHole = base >= 0 && base < binders
+      const isSetHole =
+        holes !== undefined && depth === 0 && holes.has(base)
 
-      return value ?? null
+      if (isBinderHole || isSetHole) {
+        const value = subst.get(base)
+
+        return value ?? null
+      }
     }
 
     switch (rhs.tag) {
       case 'app': {
-        const fun = instantiate(rhs.fun, binders, depth, subst)
-        const arg = instantiate(rhs.arg, binders, depth, subst)
+        const fun = instantiate(rhs.fun, binders, depth, subst, holes)
+        const arg = instantiate(rhs.arg, binders, depth, subst, holes)
 
         return fun && arg ? { tag: 'app', fun, arg } : null
       }
       case 'lam': {
-        const body = instantiate(rhs.body, binders, depth + 1, subst)
+        const body = instantiate(rhs.body, binders, depth + 1, subst, holes)
 
         return body ? { tag: 'lam', body } : null
       }
@@ -1286,12 +1328,12 @@ export function elaborateReport(
   // replace it with the instantiated rhs. Returns the rewritten term, or null if the lemma does not fire anywhere.
   function rewriteOnce(
     target: Term,
-    rule: { binderCount: number; lhs: Term; rhs: Term },
+    rule: { binderCount: number; lhs: Term; rhs: Term; holes?: Set<number> },
   ): Term | null {
     const subst = new Map<number, Term>()
 
-    if (matchPattern(rule.lhs, target, rule.binderCount, 0, subst)) {
-      const rhs = instantiate(rule.rhs, rule.binderCount, 0, subst)
+    if (matchPattern(rule.lhs, target, rule.binderCount, 0, subst, rule.holes)) {
+      const rhs = instantiate(rule.rhs, rule.binderCount, 0, subst, rule.holes)
 
       if (rhs) {return rhs}
     }
@@ -1322,7 +1364,7 @@ export function elaborateReport(
   // rewrite set cannot loop. Each rewrite replaces a subterm by a provably equal one, so the result equals the input.
   function rewriteWithLemmas(
     target: Term,
-    rules: { binderCount: number; lhs: Term; rhs: Term }[],
+    rules: { binderCount: number; lhs: Term; rhs: Term; holes?: Set<number> }[],
     fuel: number,
   ): Term {
     let current = target
@@ -1659,6 +1701,9 @@ export function elaborateReport(
     caseRight: Value,
     hypotheses: [Value, Value][],
     citedLemmas: string[],
+    // GENERALIZED induction hypotheses: rewrite rules whose `holes` are the induction's non-recursive variables, so the
+    // hypothesis fires at any instance of them (the strong-induction principle, needed for accumulator recursions).
+    generalIH: { binderCount: number; lhs: Term; rhs: Term; holes: Set<number> }[] = [],
   ): boolean {
     const acOperators = new Set<string>()
     const commutative = new Set<string>()
@@ -1681,12 +1726,15 @@ export function elaborateReport(
     for (const op of commutative)
       {if (associative.has(op)) {acOperators.add(op)}}
 
-    const rewriteRules: { binderCount: number; lhs: Term; rhs: Term }[] =
+    const rewriteRules: { binderCount: number; lhs: Term; rhs: Term; holes?: Set<number> }[] =
       hypotheses.map(([ihLeft, ihRight]) => ({
         binderCount: 0,
         lhs: quote(level, ihLeft),
         rhs: quote(level, ihRight),
       }))
+
+    // the generalized induction hypotheses fire before the cited lemmas, instantiating their hole variables on demand
+    for (const gih of generalIH) {rewriteRules.push(gih)}
 
     for (const name of citedLemmas) {
       const rule = lemmaRules.get(name)
@@ -1719,6 +1767,7 @@ export function elaborateReport(
       const acRules = rewriteRules.filter(
         rule =>
           rule.binderCount === 0 &&
+          !rule.holes &&
           flattenAc(rule.lhs, acOperators) !== null,
       )
 
@@ -1823,6 +1872,8 @@ export function elaborateReport(
         splittable: { level: number; enumName: string }[],
         hyps: [Value, Value][],
         depth: number,
+        generalIH: { binderCount: number; lhs: Term; rhs: Term; holes: Set<number> }[] = [],
+        ihLevel = -1,
       ): boolean => {
         const lt = expr(goal.left, scope, ctx)
         const rt = expr(goal.right, scope, ctx)
@@ -1830,6 +1881,10 @@ export function elaborateReport(
         if (!lt || !rt) {return false}
 
         const env = buildSplitEnv(ctx, subst)
+
+        // the generalized IH was quoted at one context level; only apply it where that level still holds (the no-split
+        // attempt). Once a field is split, the context grows and the indices no longer align, so it is dropped there.
+        const gih = ctx.level === ihLevel ? generalIH : []
 
         if (
           closeCase(
@@ -1839,6 +1894,7 @@ export function elaborateReport(
             evaluate(env, rt),
             hyps,
             citedLemmas,
+            gih,
           )
         )
           {return true}
@@ -1997,6 +2053,35 @@ export function elaborateReport(
             enumName: (x.field.type as { name: string }).name,
           }))
 
+        // GENERALIZED induction hypotheses: with no path assumptions, each recursive-field hypothesis is universally
+        // quantified over the induction's OTHER variables (the marks that are not the induction variable). Those appear
+        // free in the hypothesis at de Bruijn indices >= k (the k fields occupy 0..k-1 and stay rigid). Turning them into
+        // holes lets the hypothesis fire at any instance of them, which is what an accumulator recursion needs (a state
+        // threaded through `step` changes along the recursion). Sound: this is the strong-induction principle, valid
+        // precisely because those variables are unconstrained universals (no `have` ties them to the induction variable).
+        const generalIH: {
+          binderCount: number
+          lhs: Term
+          rhs: Term
+          holes: Set<number>
+        }[] =
+          assumptions.length === 0
+            ? hypotheses
+                .map(([ihLeft, ihRight]) => {
+                  const lhs = quote(inner.level, ihLeft)
+                  const rhs = quote(inner.level, ihRight)
+                  const free = new Set<number>()
+                  freeVarIndices(lhs, 0, free)
+                  freeVarIndices(rhs, 0, free)
+                  const holes = new Set<number>()
+
+                  for (const idx of free) {if (idx >= k) {holes.add(idx)}}
+
+                  return { binderCount: 0, lhs, rhs, holes }
+                })
+                .filter(rule => rule.holes.size > 0)
+            : []
+
         if (
           !closeWithFieldSplits(
             inner,
@@ -2012,6 +2097,8 @@ export function elaborateReport(
             splittable,
             hypotheses,
             2,
+            generalIH,
+            inner.level,
           )
         )
           {return false}

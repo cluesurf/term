@@ -1,6 +1,7 @@
 import Foundation
 
 enum text {
+    static func concat(_ a: String, _ b: String) -> String { return a + b }
     static func upper(_ s: String) -> String { return s.uppercased() }
     static func lower(_ s: String) -> String { return s.lowercased() }
     static func trim(_ s: String) -> String { return s.trimmingCharacters(in: .whitespacesAndNewlines) }

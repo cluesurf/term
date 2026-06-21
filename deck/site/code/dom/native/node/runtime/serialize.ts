@@ -40,8 +40,9 @@ type Element = {
   children: { handle: Element }[]
 }
 
-// `node` is a `view` (a `{ handle }` wrapper) or an `element` record directly
-export function serialize(node: { handle?: Element } | Element): string {
+// `node` is a `view` (a `{ handle }` wrapper) or an `element` record directly. Named `serializeNode` (not `serialize`)
+// so it does not collide with the dom layer's own `serialize` task when both are bundled into one module.
+export function serializeNode(node: { handle?: Element } | Element): string {
   const el = ('handle' in node && node.handle ? node.handle : node) as Element
 
   // a text node carries an empty tag
@@ -64,7 +65,7 @@ export function serialize(node: { handle?: Element } | Element): string {
   }
 
   const children = (el.children ?? [])
-    .map(child => serialize(child))
+    .map(child => serializeNode(child))
     .join('')
 
   return `${open}${children}</${el.tag}>`
@@ -73,7 +74,7 @@ export function serialize(node: { handle?: Element } | Element): string {
 // wrap server-rendered body HTML in the document shell: charset/viewport, the title, the JIT stylesheet link, the
 // SSR body, and the client module (which hydrates / takes over navigation). This is the full HTML a server responds
 // with for SSR.
-export function pageShell(body: string, title = 'ClueSurf'): string {
+export function documentShell(body: string, title = 'ClueSurf'): string {
   return (
     '<!doctype html><html lang="en"><head>' +
     '<meta charset="utf-8">' +

@@ -1,0 +1,317 @@
+# Quaternion: a rotation as (x, y, z, w), 32-bit floats. Pure float math, with the algorithms taken from gl-matrix (the canonical reference). `times` is the Hamilton product (named `times` because `multiply` is the number primitive), `conjugate` negates the vector part, `length` / `normalize` give the unit quaternion, `from-axis-angle` builds a rotation, `slerp` does spherical linear interpolation.
+
+load @cluesurf/base/code/float
+  find square-root
+  find sine
+  find cosine
+  find arc-cosine
+
+form quaternion
+  link x, like decimal
+  link y, like decimal
+  link z, like decimal
+  link w, like decimal
+
+  # the Hamilton product self * other (gl-matrix quat.multiply)
+  task times
+    take self
+    take other, like quaternion
+    like quaternion
+    send back
+      make quaternion
+        bind x
+          call subtract
+            call add
+              call add
+                call multiply
+                  read self/x
+                  read other/w
+                call multiply
+                  read self/w
+                  read other/x
+              call multiply
+                read self/y
+                read other/z
+            call multiply
+              read self/z
+              read other/y
+        bind y
+          call subtract
+            call add
+              call add
+                call multiply
+                  read self/y
+                  read other/w
+                call multiply
+                  read self/w
+                  read other/y
+              call multiply
+                read self/z
+                read other/x
+            call multiply
+              read self/x
+              read other/z
+        bind z
+          call subtract
+            call add
+              call add
+                call multiply
+                  read self/z
+                  read other/w
+                call multiply
+                  read self/w
+                  read other/z
+              call multiply
+                read self/x
+                read other/y
+            call multiply
+              read self/y
+              read other/x
+        bind w
+          call subtract
+            call subtract
+              call subtract
+                call multiply
+                  read self/w
+                  read other/w
+                call multiply
+                  read self/x
+                  read other/x
+              call multiply
+                read self/y
+                read other/y
+            call multiply
+              read self/z
+              read other/z
+
+  task conjugate
+    take self
+    like quaternion
+    send back
+      make quaternion
+        bind x
+          call subtract
+            0.0
+            read self/x
+        bind y
+          call subtract
+            0.0
+            read self/y
+        bind z
+          call subtract
+            0.0
+            read self/z
+        bind w, read self/w
+
+  task dot
+    take self
+    take other, like quaternion
+    like decimal
+    send back
+      call add
+        call add
+          call add
+            call multiply
+              read self/x
+              read other/x
+            call multiply
+              read self/y
+              read other/y
+          call multiply
+            read self/z
+            read other/z
+        call multiply
+          read self/w
+          read other/w
+
+  task length
+    take self
+    like decimal
+    send back
+      call square-root
+        call dot
+          read self
+          read self
+
+  task normalize
+    take self
+    like quaternion
+    save magnitude
+      call length
+        read self
+    send back
+      make quaternion
+        bind x
+          call divide
+            read self/x
+            read magnitude
+        bind y
+          call divide
+            read self/y
+            read magnitude
+        bind z
+          call divide
+            read self/z
+            read magnitude
+        bind w
+          call divide
+            read self/w
+            read magnitude
+
+  # spherical linear interpolation between self and other at parameter t (gl-matrix quat.slerp)
+  task slerp
+    take self
+    take other, like quaternion
+    take t, like decimal
+    like quaternion
+    save cosom
+      call dot
+        read self
+        read other
+    save bx, read other/x
+    save by, read other/y
+    save bz, read other/z
+    save bw, read other/w
+    fork test
+      hook test
+        call is-below
+          read cosom
+          0.0
+      hook hold
+        save cosom
+          call subtract
+            0.0
+            read cosom
+        save bx
+          call subtract
+            0.0
+            read other/x
+        save by
+          call subtract
+            0.0
+            read other/y
+        save bz
+          call subtract
+            0.0
+            read other/z
+        save bw
+          call subtract
+            0.0
+            read other/w
+    save scale0, 0.0
+    save scale1, 0.0
+    fork test
+      hook test
+        call is-above
+          call subtract
+            1.0
+            read cosom
+          0.000001
+      hook hold
+        save omega
+          call arc-cosine
+            read cosom
+        save sinom
+          call sine
+            read omega
+        save scale0
+          call divide
+            call sine
+              call multiply
+                call subtract
+                  1.0
+                  read t
+                read omega
+            read sinom
+        save scale1
+          call divide
+            call sine
+              call multiply
+                read t
+                read omega
+            read sinom
+      hook miss
+        save scale0
+          call subtract
+            1.0
+            read t
+        save scale1, read t
+    send back
+      make quaternion
+        bind x
+          call add
+            call multiply
+              read scale0
+              read self/x
+            call multiply
+              read scale1
+              read bx
+        bind y
+          call add
+            call multiply
+              read scale0
+              read self/y
+            call multiply
+              read scale1
+              read by
+        bind z
+          call add
+            call multiply
+              read scale0
+              read self/z
+            call multiply
+              read scale1
+              read bz
+        bind w
+          call add
+            call multiply
+              read scale0
+              read self/w
+            call multiply
+              read scale1
+              read bw
+
+# build a rotation quaternion from a (normalized) axis and an angle in radians (gl-matrix quat.setAxisAngle)
+task from-axis-angle
+  take axis-x, like decimal
+  take axis-y, like decimal
+  take axis-z, like decimal
+  take angle, like decimal
+  like quaternion
+  save half
+    call multiply
+      read angle
+      0.5
+  save s
+    call sine
+      read half
+  send back
+    make quaternion
+      bind x
+        call multiply
+          read s
+          read axis-x
+      bind y
+        call multiply
+          read s
+          read axis-y
+      bind z
+        call multiply
+          read s
+          read axis-z
+      bind w
+        call cosine
+          read half
+
+task make-quaternion
+  take x, like decimal
+  take y, like decimal
+  take z, like decimal
+  take w, like decimal
+  like quaternion
+  send back
+    make quaternion
+      bind x, read x
+      bind y, read y
+      bind z, read z
+      bind w, read w

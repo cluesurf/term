@@ -109,7 +109,13 @@ function buildTree(
   ]
 
   const top = () => stack[stack.length - 1]!
-  const base = () => top().line[top().line.length - 1]!
+  // a sentinel returned when the current line has underflowed (e.g. a
+  // statement indented with no parent, or more closes than opens). Its
+  // `kind` matches none of the real node kinds, so every `here.kind`
+  // check below falls through to `unexpected(event)` and emits a
+  // diagnostic instead of dereferencing undefined (which used to crash).
+  const VOID_NODE = { kind: 'void' } as unknown as Node
+  const base = () => top().line[top().line.length - 1] ?? VOID_NODE
 
   const lift = (frame: Frame, node: Node) => {
     if (frame.line.length === 2) {

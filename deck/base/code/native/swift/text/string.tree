@@ -81,3 +81,12 @@ task do-slice
       read input
       read start
       read end
+
+task do-concat
+  take input, like text
+  take other, like text
+  like text
+  send back
+    call text/concat
+      read input
+      read other

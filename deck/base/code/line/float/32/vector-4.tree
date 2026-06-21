@@ -1,0 +1,157 @@
+# Vector-4D: a 4-component 32-bit-float vector (homogeneous coordinates). Pure float math. `plus` / `minus` combine, `scale` by a scalar, `dot` is the scalar product, `length` the magnitude, `normalize` the unit vector, `distance` the gap.
+
+load @cluesurf/base/code/float
+  find square-root
+
+form vector-4
+  link x, like decimal
+  link y, like decimal
+  link z, like decimal
+  link w, like decimal
+
+  task plus
+    take self
+    take other, like vector-4
+    like vector-4
+    send back
+      make vector-4
+        bind x
+          call add
+            read self/x
+            read other/x
+        bind y
+          call add
+            read self/y
+            read other/y
+        bind z
+          call add
+            read self/z
+            read other/z
+        bind w
+          call add
+            read self/w
+            read other/w
+
+  task minus
+    take self
+    take other, like vector-4
+    like vector-4
+    send back
+      make vector-4
+        bind x
+          call subtract
+            read self/x
+            read other/x
+        bind y
+          call subtract
+            read self/y
+            read other/y
+        bind z
+          call subtract
+            read self/z
+            read other/z
+        bind w
+          call subtract
+            read self/w
+            read other/w
+
+  task scale
+    take self
+    take factor, like decimal
+    like vector-4
+    send back
+      make vector-4
+        bind x
+          call multiply
+            read self/x
+            read factor
+        bind y
+          call multiply
+            read self/y
+            read factor
+        bind z
+          call multiply
+            read self/z
+            read factor
+        bind w
+          call multiply
+            read self/w
+            read factor
+
+  task dot
+    take self
+    take other, like vector-4
+    like decimal
+    send back
+      call add
+        call add
+          call add
+            call multiply
+              read self/x
+              read other/x
+            call multiply
+              read self/y
+              read other/y
+          call multiply
+            read self/z
+            read other/z
+        call multiply
+          read self/w
+          read other/w
+
+  task length
+    take self
+    like decimal
+    send back
+      call square-root
+        call dot
+          read self
+          read self
+
+  task normalize
+    take self
+    like vector-4
+    save magnitude
+      call length
+        read self
+    send back
+      make vector-4
+        bind x
+          call divide
+            read self/x
+            read magnitude
+        bind y
+          call divide
+            read self/y
+            read magnitude
+        bind z
+          call divide
+            read self/z
+            read magnitude
+        bind w
+          call divide
+            read self/w
+            read magnitude
+
+  task distance
+    take self
+    take other, like vector-4
+    like decimal
+    send back
+      call length
+        call minus
+          read self
+          read other
+
+task make-vector-4
+  take x, like decimal
+  take y, like decimal
+  take z, like decimal
+  take w, like decimal
+  like vector-4
+  send back
+    make vector-4
+      bind x, read x
+      bind y, read y
+      bind z, read z
+      bind w, read w

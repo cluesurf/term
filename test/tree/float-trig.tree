@@ -1,0 +1,44 @@
+note <Tests for the arc-trigonometry added to float: exact-zero cases avoid float-equality noise.>
+
+load @cluesurf/base/code/float
+  find tangent
+  find arc-sine
+  find arc-cosine
+  find arc-tangent
+  find arc-tangent-of
+
+test <tangent of zero is zero>
+  want hold
+    call is-equal
+      call tangent
+        0.0
+      0.0
+
+test <arc-sine of zero is zero>
+  want hold
+    call is-equal
+      call arc-sine
+        0.0
+      0.0
+
+test <arc-cosine of one is zero>
+  want hold
+    call is-equal
+      call arc-cosine
+        1.0
+      0.0
+
+test <arc-tangent of zero is zero>
+  want hold
+    call is-equal
+      call arc-tangent
+        0.0
+      0.0
+
+test <arc-tangent-of zero over one is zero>
+  want hold
+    call is-equal
+      call arc-tangent-of
+        0.0
+        1.0
+      0.0

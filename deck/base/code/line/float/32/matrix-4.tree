@@ -1,0 +1,187 @@
+# Matrix-4x4: a 4x4 32-bit-float matrix, stored row-major in a 16-element list. Pure float math. `get` reads a cell, `times` is the matrix product (named `times` because `multiply` is the number primitive), `identity-matrix-4` is the identity, `transform` applies the matrix to a 4D vector. Index math `row * 4 + column` addresses the flat backing list.
+
+load @cluesurf/base/code/list
+  find list
+  find get
+
+load @cluesurf/base/code/line/float/32/vector-4
+  find vector-4
+  find make-vector-4
+
+form matrix-4
+  link cells, like list
+
+  # read the cell at (row, column)
+  task get
+    take self
+    take row, like number
+    take column, like number
+    like decimal
+    send back
+      call get
+        read self/cells
+        call add
+          call multiply
+            read row
+            code 4
+          read column
+
+  # matrix product self * other
+  task times
+    take self
+    take other, like matrix-4
+    like matrix-4
+    save out
+      make list
+    save row, code 0
+    walk test
+      hook test
+        call is-below
+          read row
+          code 4
+      hook step
+        save column, code 0
+        walk test
+          hook test
+            call is-below
+              read column
+              code 4
+          hook step
+            save total, 0.0
+            save k, code 0
+            walk test
+              hook test
+                call is-below
+                  read k
+                  code 4
+              hook step
+                save total
+                  call add
+                    read total
+                    call multiply
+                      call get
+                        read self
+                        read row
+                        read k
+                      call get
+                        read other
+                        read k
+                        read column
+                save k
+                  call add
+                    read k
+                    code 1
+            call out/push
+              read total
+            save column
+              call add
+                read column
+                code 1
+        save row
+          call add
+            read row
+            code 1
+    send back
+      make matrix-4
+        bind cells, read out
+
+  # apply the matrix to a 4D vector (matrix * vector)
+  task transform
+    take self
+    take vector, like vector-4
+    like vector-4
+    send back
+      make-vector-4
+        call row-dot
+          read self
+          code 0
+          read vector
+        call row-dot
+          read self
+          code 1
+          read vector
+        call row-dot
+          read self
+          code 2
+          read vector
+        call row-dot
+          read self
+          code 3
+          read vector
+
+  # the dot of a matrix row with a vector
+  task row-dot
+    take self
+    take row, like number
+    take vector, like vector-4
+    like decimal
+    send back
+      call add
+        call add
+          call add
+            call multiply
+              call get
+                read self
+                read row
+                code 0
+              read vector/x
+            call multiply
+              call get
+                read self
+                read row
+                code 1
+              read vector/y
+          call multiply
+            call get
+              read self
+              read row
+              code 2
+            read vector/z
+        call multiply
+          call get
+            read self
+            read row
+            code 3
+          read vector/w
+
+# the 4x4 identity matrix
+task identity-matrix-4
+  like matrix-4
+  save out
+    make list
+  save row, code 0
+  walk test
+    hook test
+      call is-below
+        read row
+        code 4
+    hook step
+      save column, code 0
+      walk test
+        hook test
+          call is-below
+            read column
+            code 4
+        hook step
+          fork test
+            hook test
+              call is-equal
+                read row
+                read column
+            hook hold
+              call out/push
+                1.0
+            hook miss
+              call out/push
+                0.0
+          save column
+            call add
+              read column
+              code 1
+      save row
+        call add
+          read row
+          code 1
+  send back
+    make matrix-4
+      bind cells, read out

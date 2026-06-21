@@ -13,7 +13,7 @@ import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
 
 // the cache format epoch. Bump to invalidate every persisted entry at once (turborepo's `global_cache_key`). Change
 // this on any change to the cached value shape or the mill/compile pipeline that the per-entry key does not capture.
-export const CACHE_EPOCH = '1'
+export const CACHE_EPOCH = '2'
 
 // cyrb53: a fast, well-distributed 53-bit string hash. A collision only ever causes a stale reuse (never a crash),
 // and at 53 bits that is astronomically unlikely for a source tree.

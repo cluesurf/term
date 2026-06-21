@@ -1,4 +1,5 @@
 mod text {
+    pub fn concat(a: String, b: String) -> String { format!("{}{}", a, b) }
     pub fn upper(s: String) -> String { s.to_uppercase() }
     pub fn lower(s: String) -> String { s.to_lowercase() }
     pub fn trim(s: String) -> String { s.trim().to_string() }

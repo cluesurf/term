@@ -241,12 +241,14 @@ task listen-pop
   take handler
     like task
 
-# serialize the in-memory tree to HTML (the SSR render output), via the runtime shim
+# serialize the in-memory tree to HTML (the SSR render output), via the runtime shim. The shim fns are named
+# `serialize-node` / `document-shell` (not `serialize` / `page-shell`) so they do not collide with these task names
+# when the shim is prepended into the bundle.
 task serialize
   take node, like view
   like text
   send back
-    call html/serialize
+    call html/serialize-node
       read node/handle
 
 # wrap body HTML in the document shell (the SSR response), via the runtime shim
@@ -254,7 +256,7 @@ task page-shell
   take body, like text
   like text
   send back
-    call html/page-shell
+    call html/document-shell
       read body
 
 # no ResizeObserver on the server

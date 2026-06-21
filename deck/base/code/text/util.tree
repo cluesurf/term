@@ -1,0 +1,70 @@
+# Text utilities built on the string primitives: `join` concatenates a list of strings with a separator, `count-occurrences` counts non-overlapping matches of a substring. Pure (over `concat` / `index-of`), so they lower to every backend.
+
+load @cluesurf/base/code/text/string
+  find concat
+
+load @cluesurf/base/code/text
+  find index-of
+
+load @cluesurf/base/code/list
+  find list
+
+# join the items into one string, placing the separator between each
+task join
+  take items, like list
+  take separator, like text
+  like text
+  save out, text <>
+  save first, wave true
+  walk list
+    read items
+    hook next
+      take site, name item
+      fork test
+        hook test
+          read first
+        hook hold
+          save out, read item
+          save first, wave false
+        hook miss
+          save out
+            call concat
+              call concat
+                read out
+                read separator
+              read item
+  send back, read out
+
+# count how many non-overlapping times `part` occurs in `input`
+task count-occurrences
+  take input, like text
+  take part, like text
+  like number
+  save total, code 0
+  save from, code 0
+  walk test
+    hook test
+      wave true
+    hook step
+      save found
+        call index-of
+          read input
+          read part
+          read from
+      fork test
+        hook test
+          call is-below
+            read found
+            code 0
+        hook hold
+          halt
+        hook miss
+          save total
+            call add
+              read total
+              code 1
+          save from
+            call add
+              read found
+              read part/length
+  send back, read total
