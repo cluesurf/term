@@ -4,7 +4,7 @@
 // the booleans and the natural numbers, with zero, successor, induction, and addition, all as self types.
 // Run: npx tsx test/check/foundation.ts
 
-import type { Book, Term } from '@/code/check/kernel'
+import type { Book, Term } from '@cluesurf/make/code/check/kernel'
 import {
   annotate,
   apply,
@@ -17,7 +17,7 @@ import {
   variable,
   normal,
   TypeMismatch,
-} from '@/code/check/kernel'
+} from '@cluesurf/make/code/check/kernel'
 
 const ref = reference
 const eq = (x: Term, y: Term): Term => apply(apply(ref('Equal'), x), y)
@@ -87,11 +87,7 @@ const book: Book = {
   succ: {
     type: pi(ref('Natural'), () => ref('Natural')),
     value: lambda(n =>
-      lambda(P =>
-        lambda(z =>
-          lambda(s => at(s, n, at(n, P, z, s))),
-        ),
-      ),
+      lambda(P => lambda(z => lambda(s => at(s, n, at(n, P, z, s))))),
     ),
   },
 
@@ -204,11 +200,15 @@ function main(): void {
 
   // one plus one normalizes to the same normal form as two: the computation rules fire.
   const onePlusOne = apply(apply(ref('plus'), ref('one')), ref('one'))
-  const normalizedSum = normal(book, annotate(onePlusOne, ref('Natural')))
-  const normalizedTwo = normal(book, annotate(ref('two'), ref('Natural')))
-  if (
-    showTermSafe(normalizedSum) === showTermSafe(normalizedTwo)
-  ) {
+  const normalizedSum = normal(
+    book,
+    annotate(onePlusOne, ref('Natural')),
+  )
+  const normalizedTwo = normal(
+    book,
+    annotate(ref('two'), ref('Natural')),
+  )
+  if (showTermSafe(normalizedSum) === showTermSafe(normalizedTwo)) {
     pass++
     console.log('ok    one plus one computes to two')
   } else {

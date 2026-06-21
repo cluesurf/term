@@ -3,13 +3,13 @@
 // (the erased polymorphic equality used by ==), and that the kernel independently catches type errors.
 // Run: npx tsx test/check/elaborate.ts
 
-import { parse } from '@/code/parser/tree'
-import { expandTemplates } from '@/code/compile/template'
-import { mill } from '@/code/compile/mill'
-import { resolve } from '@/code/check/resolve'
-import { check } from '@/code/check/infer'
-import { elaborateReport } from '@/code/check/elaborate'
-import type { Program } from '@/code/compile/node'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { expandTemplates } from '@cluesurf/make/code/compile/template'
+import { mill } from '@cluesurf/make/code/compile/mill'
+import { resolve } from '@cluesurf/make/code/check/resolve'
+import { check } from '@cluesurf/make/code/check/infer'
+import { elaborateReport } from '@cluesurf/make/code/check/elaborate'
+import type { Program } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0

@@ -1,8 +1,11 @@
 // CLI `hook` DSL dispatch test: compile a command tree, then resolve real argv against it (subcommand descent, flags,
 // positionals, the bound task). Run: npx tsx test/call/hook.ts
 
-import { compile } from '@/code/compile/compile'
-import { commandRoutes, dispatch } from '@/code/call/hook-dispatch'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import {
+  commandRoutes,
+  dispatch,
+} from '@cluesurf/call/code/hook-dispatch'
 
 let pass = 0
 let fail = 0
@@ -56,7 +59,10 @@ hook lock
 function main(): void {
   const r = compile({ file: 'cli.tree', text: SRC }, {})
   if (!r.ok) {
-    console.log('FAIL compile', JSON.stringify(r.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL compile',
+      JSON.stringify(r.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
   const routes = commandRoutes(r.program)
@@ -94,15 +100,27 @@ function main(): void {
 
   // short flag `-t` resolves to the take's full name `title`
   const make = routes.find(c => c.path === 'make')!
-  expect('short flag parsed', make.takes.find(t => t.name === 'title')?.short, 't')
+  expect(
+    'short flag parsed',
+    make.takes.find(t => t.name === 'title')?.short,
+    't',
+  )
   const g = dispatch(routes, ['make', '-t', 'Hello'])
-  expect('short flag dispatches to full name', g.ok && g.args.title, 'Hello')
+  expect(
+    'short flag dispatches to full name',
+    g.ok && g.args.title,
+    'Hello',
+  )
   const g2 = dispatch(routes, ['make', '-t=Hi'])
   expect('short flag = value', g2.ok && g2.args.title, 'Hi')
 
   // masked input flag captured (`wait rise`)
   const lock = routes.find(c => c.path === 'lock')!
-  expect('masked take captured', lock.takes.find(t => t.name === 'code')?.masked, true)
+  expect(
+    'masked take captured',
+    lock.takes.find(t => t.name === 'code')?.masked,
+    true,
+  )
 
   // unknown command
   const f = dispatch(routes, ['nope'])

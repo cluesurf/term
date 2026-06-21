@@ -4,14 +4,14 @@
 // self-encoded Nat lives in Type0 (its own motive's universe), so the recursor can eliminate INTO Nat -- addition
 // and multiplication, which return Nat, type-check and reduce. Run: npx tsx test/check/naturals-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
 import {
   contextWithSignature,
   check,
   evaluate,
   defineConstant,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 const v = (index: number): Term => ({ tag: 'var', index })
 const kc = (name: string): Term => ({ tag: 'const', name })
@@ -132,15 +132,23 @@ function ok(name: string, run: () => void): void {
   }
 }
 // a definitional-equality check: the named term reduces to the expected value, witnessed by refl.
-function computes(name: string, type: Term, lhs: Term, rhs: Term): void {
+function computes(
+  name: string,
+  type: Term,
+  lhs: Term,
+  rhs: Term,
+): void {
   ok(name, () => {
     check(context, refl(type, rhs), evaluate([], idt(type, lhs, rhs)))
   })
 }
 
-ok('Nat is a self type in Type 0 (impredicative bottom universe)', () => {
-  check(context, natTerm, evaluate([], ty(0)))
-})
+ok(
+  'Nat is a self type in Type 0 (impredicative bottom universe)',
+  () => {
+    check(context, natTerm, evaluate([], ty(0)))
+  },
+)
 ok('zero : Nat (self introduction against the self type)', () => {
   check(context, zeroTerm, natValue)
 })
@@ -152,17 +160,42 @@ ok('one = succ zero : Nat', () => {
 })
 
 // addition: it type-checks (it returns Nat, the large recursion the impredicative universe unblocks) and it reduces.
-ok('plus : Nat -> Nat -> Nat type-checks (large recursion, returns Nat)', () => {
-  check(context, plusTerm, evaluate([], natToNatToNat))
-})
-computes('plus zero one = one', kc('Nat'), aps(kc('plus'), kc('zero'), one), one)
-computes('plus one one = two', kc('Nat'), aps(kc('plus'), one, one), two)
-computes('plus two one = three', kc('Nat'), aps(kc('plus'), two, one), three)
+ok(
+  'plus : Nat -> Nat -> Nat type-checks (large recursion, returns Nat)',
+  () => {
+    check(context, plusTerm, evaluate([], natToNatToNat))
+  },
+)
+computes(
+  'plus zero one = one',
+  kc('Nat'),
+  aps(kc('plus'), kc('zero'), one),
+  one,
+)
+computes(
+  'plus one one = two',
+  kc('Nat'),
+  aps(kc('plus'), one, one),
+  two,
+)
+computes(
+  'plus two one = three',
+  kc('Nat'),
+  aps(kc('plus'), two, one),
+  three,
+)
 
 // multiplication, defined in terms of plus: also type-checks and reduces.
 ok('times : Nat -> Nat -> Nat type-checks', () => {
   check(context, timesTerm, evaluate([], natToNatToNat))
 })
-computes('times two two = four', kc('Nat'), aps(kc('times'), two, two), four)
+computes(
+  'times two two = four',
+  kc('Nat'),
+  aps(kc('times'), two, two),
+  four,
+)
 
-console.log(`\nnaturals with arithmetic (decided kernel judge.ts): ${pass} pass, ${fail} fail`)
+console.log(
+  `\nnaturals with arithmetic (decided kernel judge.ts): ${pass} pass, ${fail} fail`,
+)

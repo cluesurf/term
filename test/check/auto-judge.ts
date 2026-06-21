@@ -5,19 +5,23 @@
 // small bounded search whose every candidate is verified by the sound kernel, so a found proof is a real proof.
 // Run: npx tsx test/check/auto-judge.ts
 
-import type { Term } from '@/code/check/judge'
+import type { Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 type Hyp = { name: string; type: Term }
 
 const kc = (name: string): Term => ({ tag: 'const', name })
 const ty = (n: number): Term => ({ tag: 'type', level: litLevel(n) })
-const pi = (mult: 0 | 1 | 'many', domain: Term, codomain: Term): Term => ({
+const pi = (
+  mult: 0 | 1 | 'many',
+  domain: Term,
+  codomain: Term,
+): Term => ({
   tag: 'pi',
   mult,
   domain,

@@ -5,7 +5,7 @@
 // is real. It auto-discovers the pinch-point proof (antisymmetry applied to the ceiling and the floor) and
 // multi-step propositional chains. Run: npx tsx test/check/search-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   contextWithSignature,
@@ -13,7 +13,7 @@ import {
   infer,
   showTerm,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 type Hyp = { name: string; type: Term }
 
@@ -41,7 +41,11 @@ const aps = (fun: Term, ...args: Array<Term>): Term =>
   args.reduce((f, a) => app(f, a), fun)
 
 // the forward-chaining search.
-function search(hyps: Array<Hyp>, goal: Term, depth: number): Term | null {
+function search(
+  hyps: Array<Hyp>,
+  goal: Term,
+  depth: number,
+): Term | null {
   const context = contextWithSignature(hyps)
   const goalValue = evaluate([], goal)
 
@@ -100,7 +104,9 @@ function ok(name: string, found: Term | null, expect?: string): void {
     console.log(`ok    ${name}\n        found: ${showTerm(found)}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (found: ${found ? showTerm(found) : 'nothing'})`)
+    console.log(
+      `FAIL  ${name}  (found: ${found ? showTerm(found) : 'nothing'})`,
+    )
   }
 }
 
@@ -131,11 +137,21 @@ const antisymType = pi(
     kc('Dim'),
     pi(
       'many',
-      le(({ tag: 'var', index: 1 } as Term), { tag: 'var', index: 0 } as Term),
+      le(
+        { tag: 'var', index: 1 } as Term,
+        { tag: 'var', index: 0 } as Term,
+      ),
       pi(
         'many',
-        le({ tag: 'var', index: 1 } as Term, { tag: 'var', index: 2 } as Term),
-        id(kc('Dim'), { tag: 'var', index: 3 } as Term, { tag: 'var', index: 2 } as Term),
+        le(
+          { tag: 'var', index: 1 } as Term,
+          { tag: 'var', index: 2 } as Term,
+        ),
+        id(
+          kc('Dim'),
+          { tag: 'var', index: 3 } as Term,
+          { tag: 'var', index: 2 } as Term,
+        ),
       ),
     ),
   ),
@@ -145,7 +161,10 @@ ok(
   search(
     [
       { name: 'Dim', type: ty(0) },
-      { name: 'Le', type: pi('many', kc('Dim'), pi('many', kc('Dim'), ty(0))) },
+      {
+        name: 'Le',
+        type: pi('many', kc('Dim'), pi('many', kc('Dim'), ty(0))),
+      },
       { name: 'antisym', type: antisymType },
       { name: 'dimension', type: kc('Dim') },
       { name: 'eight', type: kc('Dim') },
@@ -158,4 +177,6 @@ ok(
   'antisym',
 )
 
-console.log(`\nsearch (kernel forward-chaining ATP): ${pass} pass, ${fail} fail`)
+console.log(
+  `\nsearch (kernel forward-chaining ATP): ${pass} pass, ${fail} fail`,
+)

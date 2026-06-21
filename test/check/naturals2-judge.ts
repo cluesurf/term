@@ -4,14 +4,14 @@
 // that coercion the eliminator computes: zero's eliminator reduces to the base case. So the self-typed inductive
 // is NOT fundamentally blocked, only its implicit-coercion sugar is. Run: npx tsx test/check/naturals2-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   defineConstant,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 const v = (i: number): Term => ({ tag: 'var', index: i })
 const kc = (n: string): Term => ({ tag: 'const', name: n })
@@ -24,7 +24,11 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
 })
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
-const ann = (term: Term, type: Term): Term => ({ tag: 'ann', term, type })
+const ann = (term: Term, type: Term): Term => ({
+  tag: 'ann',
+  term,
+  type,
+})
 const self = (body: Term): Term => ({ tag: 'self', body })
 const idt = (type: Term, left: Term, right: Term): Term => ({
   tag: 'id',
@@ -130,10 +134,21 @@ ok('zero : Nat (self introduction, explicit)', () => {
 
 // the eliminator computes: (coerce zero to its unfolded type) applied to motive, base, step reduces to base.
 // so Id (M zero) (elim) base holds by reflexivity, the computation rule for zero firing.
-ok('zero\'s eliminator computes to the base case', () => {
-  const elim = aps(ann(kc('zero'), unfoldZero), kc('M'), kc('base'), kc('step'))
+ok("zero's eliminator computes to the base case", () => {
+  const elim = aps(
+    ann(kc('zero'), unfoldZero),
+    kc('M'),
+    kc('base'),
+    kc('step'),
+  )
   const T = app(kc('M'), kc('zero'))
-  check(context, refl(T, kc('base')), evaluate([], idt(T, elim, kc('base'))))
+  check(
+    context,
+    refl(T, kc('base')),
+    evaluate([], idt(T, elim, kc('base'))),
+  )
 })
 
-console.log(`\nself-typed naturals + computation (judge.ts): ${pass} pass, ${fail} fail`)
+console.log(
+  `\nself-typed naturals + computation (judge.ts): ${pass} pass, ${fail} fail`,
+)

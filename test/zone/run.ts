@@ -7,7 +7,7 @@ import {
   createRoot,
   effect,
   signal,
-} from '@/code/zone/reactive'
+} from '@cluesurf/make/code/zone/reactive'
 
 let pass = 0
 let fail = 0

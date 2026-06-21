@@ -13,14 +13,17 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
-import { compile } from '@/code/compile/compile'
-import { withNativeEnv, nativePrelude } from '@/code/compile/native'
-import { emitTypeScript } from '@/code/compile/typescript'
-import { emitRust } from '@/code/compile/rust'
-import { emitSwift } from '@/code/compile/swift'
-import { emitKotlin } from '@/code/compile/kotlin'
-import type { Source } from '@/code/compile/load'
-import { render } from '@/code/parser/diagnostic'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@cluesurf/make/code/compile/native'
+import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
+import { emitRust } from '@cluesurf/make/code/compile/rust'
+import { emitSwift } from '@cluesurf/make/code/compile/swift'
+import { emitKotlin } from '@cluesurf/make/code/compile/kotlin'
+import type { Source } from '@cluesurf/make/code/compile/load'
+import { render } from '@cluesurf/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
@@ -1490,17 +1493,60 @@ async function main(): Promise<void> {
   )
 
   const by = await loadProgram(BYTES)
-  expect('bytes: from-text -> to-hex (utf8 then hex)', by.hexOf!('hi'), '6869')
-  expect('bytes: text round-trips through utf8 (multibyte)', by.roundTripText!('café'), 'café')
-  expect('bytes: base64 round-trips back to the text', by.roundTripBase64!('café'), 'café')
-  expect('bytes: utf8 length counts bytes not chars (é is 2)', by.byteLength!('café'), 5)
-  expect('bytes: concat two buffers then hex', by.concatHex!(), '61626364')
-  expect('bytes: hex round-trips back to the text', by.hexRoundTrip!('hello'), 'hello')
+  expect(
+    'bytes: from-text -> to-hex (utf8 then hex)',
+    by.hexOf!('hi'),
+    '6869',
+  )
+  expect(
+    'bytes: text round-trips through utf8 (multibyte)',
+    by.roundTripText!('café'),
+    'café',
+  )
+  expect(
+    'bytes: base64 round-trips back to the text',
+    by.roundTripBase64!('café'),
+    'café',
+  )
+  expect(
+    'bytes: utf8 length counts bytes not chars (é is 2)',
+    by.byteLength!('café'),
+    5,
+  )
+  expect(
+    'bytes: concat two buffers then hex',
+    by.concatHex!(),
+    '61626364',
+  )
+  expect(
+    'bytes: hex round-trips back to the text',
+    by.hexRoundTrip!('hello'),
+    'hello',
+  )
   // the minimal-surface verbs: encode/decode with a base parameter, and count as the canonical length
-  expect('bytes: encode verb at base 16 equals hex', (by.encodeIn as (s: string, b: number) => string)('hi', 16), '6869')
-  expect('bytes: encode verb at base 64 equals base64', (by.encodeIn as (s: string, b: number) => string)('hi', 64), Buffer.from('hi').toString('base64'))
-  expect('bytes: decode verb round-trips at base 64', (by.decodeRoundTrip as (s: string, b: number) => string)('café', 64), 'café')
-  expect('bytes: count verb counts bytes (é is 2)', (by.countOf as (s: string) => number)('café'), 5)
+  expect(
+    'bytes: encode verb at base 16 equals hex',
+    (by.encodeIn as (s: string, b: number) => string)('hi', 16),
+    '6869',
+  )
+  expect(
+    'bytes: encode verb at base 64 equals base64',
+    (by.encodeIn as (s: string, b: number) => string)('hi', 64),
+    Buffer.from('hi').toString('base64'),
+  )
+  expect(
+    'bytes: decode verb round-trips at base 64',
+    (by.decodeRoundTrip as (s: string, b: number) => string)(
+      'café',
+      64,
+    ),
+    'café',
+  )
+  expect(
+    'bytes: count verb counts bytes (é is 2)',
+    (by.countOf as (s: string) => number)('café'),
+    5,
+  )
 
   const sr = await loadProgram(SECURE_RANDOM)
   const draw16 = sr.draw!(16) as string
@@ -1869,13 +1915,41 @@ async function main(): Promise<void> {
   )
 
   const pa = await loadProgram(PATH)
-  expect('path: join combines a base and a name', pa.joinOf!('/a/b', 'c.txt'), '/a/b/c.txt')
-  expect('path: directory is everything before the last segment', pa.dirOf!('/a/b/c.txt'), '/a/b')
-  expect('path: file-name is the last segment', pa.nameOf!('/a/b/c.txt'), 'c.txt')
-  expect('path: file-extension carries its dot', pa.extOf!('/a/b/c.txt'), '.txt')
-  expect('path: file-extension is empty when there is none', pa.extOf!('/a/b/c'), '')
-  expect('path: is-absolute is true for a rooted path', pa.absoluteOf!('/a/b'), true)
-  expect('path: is-absolute is false for a relative path', pa.absoluteOf!('a/b'), false)
+  expect(
+    'path: join combines a base and a name',
+    pa.joinOf!('/a/b', 'c.txt'),
+    '/a/b/c.txt',
+  )
+  expect(
+    'path: directory is everything before the last segment',
+    pa.dirOf!('/a/b/c.txt'),
+    '/a/b',
+  )
+  expect(
+    'path: file-name is the last segment',
+    pa.nameOf!('/a/b/c.txt'),
+    'c.txt',
+  )
+  expect(
+    'path: file-extension carries its dot',
+    pa.extOf!('/a/b/c.txt'),
+    '.txt',
+  )
+  expect(
+    'path: file-extension is empty when there is none',
+    pa.extOf!('/a/b/c'),
+    '',
+  )
+  expect(
+    'path: is-absolute is true for a rooted path',
+    pa.absoluteOf!('/a/b'),
+    true,
+  )
+  expect(
+    'path: is-absolute is false for a relative path',
+    pa.absoluteOf!('a/b'),
+    false,
+  )
 
   const ti = await loadProgram(TIME)
   const epoch = ti.epoch!() as number

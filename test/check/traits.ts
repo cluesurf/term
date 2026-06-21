@@ -1,7 +1,7 @@
 // Trait + generics tests: mask/wear/suit instance completeness, trait bounds, and generic functions.
 // Run: npx tsx test/check/traits.ts
 
-import { compile } from '@/code/compile/compile'
+import { compile } from '@cluesurf/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

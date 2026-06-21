@@ -7,7 +7,7 @@ import {
   parsePackage,
   resolveLoad,
   storePath,
-} from '@/code/deck/resolve'
+} from '@cluesurf/make/code/deck/resolve'
 
 let pass = 0
 let fail = 0

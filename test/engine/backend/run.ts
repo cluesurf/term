@@ -1,13 +1,17 @@
 // Validate the TypeScript backend: compile vibe programs to TS, run the compiled version, and confirm it computes
 // the SAME result as the interpreter (the oracle). Run: pnpm call test/machine/backend/run.ts
 
-import type { Expression, Statement, BinaryOp } from '@/code/engine/ast'
-import { run, callFunction } from '@/code/engine/engine'
+import type {
+  Expression,
+  Statement,
+  BinaryOp,
+} from '@cluesurf/make/code/engine/ast'
+import { run, callFunction } from '@cluesurf/make/code/engine/engine'
 import {
   runCompiled,
   runCompiledFunction,
-} from '@/code/engine/backend/typescript'
-import { display, type Value } from '@/code/engine/value'
+} from '@cluesurf/make/code/engine/backend/typescript'
+import { display, type Value } from '@cluesurf/make/code/engine/value'
 
 const int = (value: number): Expression => ({ form: 'integer', value })
 const str = (value: string): Expression => ({ form: 'string', value })

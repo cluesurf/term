@@ -5,8 +5,8 @@
 
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve as resolvePath } from 'node:path'
-import { runTestFile } from '@/code/call/test-run'
-import { projectResolver } from '@/code/call/make'
+import { runTestFile } from '@cluesurf/call/code/test-run'
+import { projectResolver } from '@cluesurf/call/code/make'
 
 async function runFile(file: string): Promise<number> {
   const run = await runTestFile({
@@ -14,7 +14,8 @@ async function runFile(file: string): Promise<number> {
     source: readFileSync(file, 'utf8'),
     resolve: projectResolver(process.cwd()),
     env: 'node',
-    readRuntime: p => (existsSync(p) ? readFileSync(p, 'utf8') : undefined),
+    readRuntime: p =>
+      existsSync(p) ? readFileSync(p, 'utf8') : undefined,
   })
   if (run.failure) {
     console.log(run.failure)

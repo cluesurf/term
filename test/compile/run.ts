@@ -5,8 +5,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { compile } from '@/code/compile/compile'
-import { render } from '@/code/parser/diagnostic'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import { render } from '@cluesurf/make/code/parser/diagnostic'
 
 const FIB_LOOP = `task find-fibonacci-via-loop
   take n

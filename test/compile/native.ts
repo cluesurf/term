@@ -2,9 +2,12 @@
 // the concrete platform impl (node / browser / ...). The user never names a platform; the target the build chooses
 // selects the implementation. Run: npx tsx test/compile/native.ts
 
-import { compile } from '@/code/compile/compile'
-import { withNativeEnv, nativeImportFor } from '@/code/compile/native'
-import type { Source } from '@/code/compile/load'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import {
+  withNativeEnv,
+  nativeImportFor,
+} from '@cluesurf/make/code/compile/native'
+import type { Source } from '@cluesurf/make/code/compile/load'
 
 let pass = 0
 let fail = 0

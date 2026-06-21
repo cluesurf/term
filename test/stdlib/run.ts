@@ -7,9 +7,9 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { compile } from '@/code/compile/compile'
-import type { Source } from '@/code/compile/load'
-import { render } from '@/code/parser/diagnostic'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import type { Source } from '@cluesurf/make/code/compile/load'
+import { render } from '@cluesurf/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base') // deck/seed/deck/base.tree
@@ -1063,10 +1063,26 @@ async function main(): Promise<void> {
   expect('list/sum totals the elements', le.sumOf!(), 10)
   expect('list/index-of finds the position', le.indexOfTwenty!(), 1)
   expect('list/take-first keeps the leading n', le.takeTwoSize!(), 2)
-  expect('list/count returns the length', (le.countOfFour as () => number)(), 4)
-  expect('list/take with side end keeps the trailing n (first of [3,4] is 3)', (le.takeLastTwoFirst as () => number)(), 3)
-  expect('list/drop with side end drops the trailing n', (le.dropLastTwoSize as () => number)(), 2)
-  expect('list/last-index-of finds the last occurrence', (le.lastIndexOfOne as () => number)(), 2)
+  expect(
+    'list/count returns the length',
+    (le.countOfFour as () => number)(),
+    4,
+  )
+  expect(
+    'list/take with side end keeps the trailing n (first of [3,4] is 3)',
+    (le.takeLastTwoFirst as () => number)(),
+    3,
+  )
+  expect(
+    'list/drop with side end drops the trailing n',
+    (le.dropLastTwoSize as () => number)(),
+    2,
+  )
+  expect(
+    'list/last-index-of finds the last occurrence',
+    (le.lastIndexOfOne as () => number)(),
+    2,
+  )
   expect('list/drop-first removes the leading n', le.dropTwoSize!(), 2)
   expect('list/flatten merges one level', le.flattenSize!(), 3)
   expect('list/product multiplies the elements', le.productOf!(), 24)
@@ -1103,7 +1119,11 @@ async function main(): Promise<void> {
   expect('set/add then has finds the value', se.addHas!(), true)
   expect('set/has on a missing value is false', se.missing!(), false)
   expect('set/size counts unique values', se.uniqueSize!(), 2)
-  expect('set/count is the canonical alias of size', (se.uniqueCount as () => number)(), 2)
+  expect(
+    'set/count is the canonical alias of size',
+    (se.uniqueCount as () => number)(),
+    2,
+  )
 
   const st = await loadProgram(STACK)
   expect('stack/push then pop is LIFO', st.pushPop!(), 20)
@@ -1120,7 +1140,11 @@ async function main(): Promise<void> {
   expect('hash/get on a missing key returns none', h.getMissing!(), 99)
   expect('hash/has finds a set key', h.hasKey!(), true)
   expect('hash/size counts entries', h.entryCount!(), 2)
-  expect('hash/count is the canonical alias of size', (h.entryCountVerb as () => number)(), 2)
+  expect(
+    'hash/count is the canonical alias of size',
+    (h.entryCountVerb as () => number)(),
+    2,
+  )
 
   const rg = await loadProgram(RANGE)
   expect('range/length is (end-start)/step', rg.measureRange!(), 5)

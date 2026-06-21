@@ -1,10 +1,13 @@
 // Tests the zone/dock emit: mill the DSL surface to AST, emit it back to `.tree` (the render-runtime call shape),
 // and confirm the emitted source parses and contains the expected runtime calls. Run: npx tsx test/zone/emit.ts
 
-import { parse } from '@/code/parser/tree'
-import { mill } from '@/code/compile/mill'
-import { emitZoneTree, emitDockTree } from '@/code/zone/tree'
-import type { Statement } from '@/code/compile/node'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { mill } from '@cluesurf/make/code/compile/mill'
+import {
+  emitZoneTree,
+  emitDockTree,
+} from '@cluesurf/make/code/zone/tree'
+import type { Statement } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0

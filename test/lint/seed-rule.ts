@@ -5,12 +5,12 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse } from '@/code/parser/tree'
-import { mill } from '@/code/compile/mill'
-import { withNativeEnv } from '@/code/compile/native'
-import { lint } from '@/code/lint/lint'
-import { loadSeedRules } from '@/code/lint/seed-rule'
-import type { Source } from '@/code/compile/load'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { mill } from '@cluesurf/make/code/compile/mill'
+import { withNativeEnv } from '@cluesurf/make/code/compile/native'
+import { lint } from '@cluesurf/make/code/lint/lint'
+import { loadSeedRules } from '@cluesurf/make/code/lint/seed-rule'
+import type { Source } from '@cluesurf/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const seedRoot = resolvePath(here, '..', '..')
@@ -52,7 +52,9 @@ const rules = await loadSeedRules(
 ok('a Seed rule directory loads as plugins', rules.length >= 1)
 ok(
   'the loaded rule keeps its name and code',
-  rules.some(r => r.name === 'no-redundant-arithmetic' && r.code === 'L003'),
+  rules.some(
+    r => r.name === 'no-redundant-arithmetic' && r.code === 'L003',
+  ),
 )
 
 // `call add / read x / code 0` mills to a binary `+` with a zero literal — the L003 case

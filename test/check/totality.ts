@@ -1,12 +1,16 @@
 // Totality tests: strict positivity (hard error) and termination (warning). Run: npx tsx test/check/totality.ts
 
-import { parse } from '@/code/parser/tree'
-import { mill } from '@/code/compile/mill'
-import { resolve } from '@/code/check/resolve'
-import { check } from '@/code/check/infer'
-import { checkTotality } from '@/code/check/totality'
-import type { Program, Statement, Type } from '@/code/compile/node'
-import type { Span } from '@/code/parser/diagnostic'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { mill } from '@cluesurf/make/code/compile/mill'
+import { resolve } from '@cluesurf/make/code/check/resolve'
+import { check } from '@cluesurf/make/code/check/infer'
+import { checkTotality } from '@cluesurf/make/code/check/totality'
+import type {
+  Program,
+  Statement,
+  Type,
+} from '@cluesurf/make/code/compile/node'
+import type { Span } from '@cluesurf/make/code/parser/diagnostic'
 
 let pass = 0
 let fail = 0

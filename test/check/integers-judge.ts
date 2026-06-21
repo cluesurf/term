@@ -4,14 +4,14 @@
 // case. With the self-typed naturals already working, this is the integers built, not postulated. Run:
 // npx tsx test/check/integers-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   defineConstant,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 const v = (i: number): Term => ({ tag: 'var', index: i })
 const kc = (n: string): Term => ({ tag: 'const', name: n })
@@ -24,7 +24,11 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
 })
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
-const ann = (term: Term, type: Term): Term => ({ tag: 'ann', term, type })
+const ann = (term: Term, type: Term): Term => ({
+  tag: 'ann',
+  term,
+  type,
+})
 const self = (body: Term): Term => ({ tag: 'self', body })
 const idt = (type: Term, left: Term, right: Term): Term => ({
   tag: 'id',
@@ -137,24 +141,34 @@ ok('pos nn : Int (a concrete integer types as Int)', () => {
   check(context, app(kc('pos'), kc('nn')), evaluate([], kc('Int')))
 })
 
-ok('negSucc nn : Int (a concrete negative integer types as Int)', () => {
-  check(context, app(kc('negSucc'), kc('nn')), evaluate([], kc('Int')))
-})
+ok(
+  'negSucc nn : Int (a concrete negative integer types as Int)',
+  () => {
+    check(
+      context,
+      app(kc('negSucc'), kc('nn')),
+      evaluate([], kc('Int')),
+    )
+  },
+)
 
-ok("the eliminator on (pos nn) computes to the pos case (pcase nn)", () => {
-  const elim = aps(
-    ann(app(kc('pos'), kc('nn')), unfoldPosNN),
-    kc('M'),
-    kc('pcase'),
-    kc('qcase'),
-  )
-  const T = app(kc('M'), app(kc('pos'), kc('nn')))
-  check(
-    context,
-    refl(T, app(kc('pcase'), kc('nn'))),
-    evaluate([], idt(T, elim, app(kc('pcase'), kc('nn')))),
-  )
-})
+ok(
+  'the eliminator on (pos nn) computes to the pos case (pcase nn)',
+  () => {
+    const elim = aps(
+      ann(app(kc('pos'), kc('nn')), unfoldPosNN),
+      kc('M'),
+      kc('pcase'),
+      kc('qcase'),
+    )
+    const T = app(kc('M'), app(kc('pos'), kc('nn')))
+    check(
+      context,
+      refl(T, app(kc('pcase'), kc('nn'))),
+      evaluate([], idt(T, elim, app(kc('pcase'), kc('nn')))),
+    )
+  },
+)
 
 // A non-dependent fold is the recursor with a constant motive: it defines a total recursive function over the
 // integers by giving one value per constructor. The sign map sends every non-negative (pos n) to true and every
@@ -164,32 +178,40 @@ const signMotive = lam(kc('Bool')) // \ i. Bool   (the constant motive)
 const signPos = lam(kc('tru')) // \ n. true     (the pos case)
 const signNeg = lam(kc('fls')) // \ n. false    (the negSucc case)
 
-ok('sign (pos nn) computes to true (the fold on a non-negative)', () => {
-  const elim = aps(
-    ann(app(kc('pos'), kc('nn')), unfoldPosNN),
-    signMotive,
-    signPos,
-    signNeg,
-  )
-  check(
-    context,
-    refl(kc('Bool'), kc('tru')),
-    evaluate([], idt(kc('Bool'), elim, kc('tru'))),
-  )
-})
+ok(
+  'sign (pos nn) computes to true (the fold on a non-negative)',
+  () => {
+    const elim = aps(
+      ann(app(kc('pos'), kc('nn')), unfoldPosNN),
+      signMotive,
+      signPos,
+      signNeg,
+    )
+    check(
+      context,
+      refl(kc('Bool'), kc('tru')),
+      evaluate([], idt(kc('Bool'), elim, kc('tru'))),
+    )
+  },
+)
 
-ok('sign (negSucc nn) computes to false (the fold on a negative)', () => {
-  const elim = aps(
-    ann(app(kc('negSucc'), kc('nn')), unfoldNegSuccNN),
-    signMotive,
-    signPos,
-    signNeg,
-  )
-  check(
-    context,
-    refl(kc('Bool'), kc('fls')),
-    evaluate([], idt(kc('Bool'), elim, kc('fls'))),
-  )
-})
+ok(
+  'sign (negSucc nn) computes to false (the fold on a negative)',
+  () => {
+    const elim = aps(
+      ann(app(kc('negSucc'), kc('nn')), unfoldNegSuccNN),
+      signMotive,
+      signPos,
+      signNeg,
+    )
+    check(
+      context,
+      refl(kc('Bool'), kc('fls')),
+      evaluate([], idt(kc('Bool'), elim, kc('fls'))),
+    )
+  },
+)
 
-console.log(`\nintegers as a self-typed inductive (judge.ts): ${pass} pass, ${fail} fail`)
+console.log(
+  `\nintegers as a self-typed inductive (judge.ts): ${pass} pass, ${fail} fail`,
+)

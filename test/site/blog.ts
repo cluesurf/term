@@ -3,8 +3,8 @@
 // post" reads the inputs, renders a post (heading + body) into the list, and clears the inputs — and that a second
 // post appends without disturbing the first. Also emits the runnable browser artifacts. Run: npx tsx test/site/blog.ts
 
-import { compile } from '@/code/compile/compile'
-import { projectResolver } from '@/code/call/make'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import { projectResolver } from '@cluesurf/call/code/make'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -79,7 +79,10 @@ function textOf(node: any): string {
 }
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'seed/deck/site/test/site/face/blog.tree')
+  const entry = path.join(
+    DECK,
+    'seed/deck/site/test/site/face/blog.tree',
+  )
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },

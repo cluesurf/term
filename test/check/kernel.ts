@@ -2,7 +2,7 @@
 // and confirm every definition checks. Also confirm a deliberate type mismatch is caught.
 // Run: npx tsx test/check/kernel.ts
 
-import type { Book, Term } from '@/code/check/kernel'
+import type { Book, Term } from '@cluesurf/make/code/check/kernel'
 import {
   annotate,
   apply,
@@ -15,7 +15,7 @@ import {
   variable,
   normal,
   TypeMismatch,
-} from '@/code/check/kernel'
+} from '@cluesurf/make/code/check/kernel'
 
 const ref = reference
 const eq = (x: Term, y: Term): Term => apply(apply(ref('Equal'), x), y)

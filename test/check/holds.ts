@@ -1,7 +1,7 @@
 // End-to-end hold-checking: a `hold` clause proven (or not) from parameter refinements via the prover.
 // Run: npx tsx test/check/holds.ts
 
-import { compile } from '@/code/compile/compile'
+import { compile } from '@cluesurf/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

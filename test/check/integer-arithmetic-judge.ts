@@ -6,14 +6,14 @@
 // across zero. This is the integer ring taking shape from the carrier built in integers-judge. Run:
 // npx tsx test/check/integer-arithmetic-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   defineConstant,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 const v = (i: number): Term => ({ tag: 'var', index: i })
 const kc = (n: string): Term => ({ tag: 'const', name: n })
@@ -50,7 +50,11 @@ const natStep = pi(
 const natBody = pi(
   0,
   pi('many', kc('Nat'), ty(0)),
-  pi('many', app(v(0), kc('zero')), pi('many', natStep, app(v(2), v(3)))),
+  pi(
+    'many',
+    app(v(0), kc('zero')),
+    pi('many', natStep, app(v(2), v(3))),
+  ),
 )
 const natTerm = self(natBody)
 const zeroValue = lam(lam(lam(v(1))))
@@ -91,7 +95,9 @@ const negPosCase = lam(
   ),
 )
 const negNegCase = lam(app(kc('pos'), app(kc('succ'), v(0))))
-const negValue = lam(aps(v(0), intMotive, kc('negPosCase'), kc('negNegCase')))
+const negValue = lam(
+  aps(v(0), intMotive, kc('negPosCase'), kc('negNegCase')),
+)
 
 // integer successor. isucc i = i (\_. Int) posCase negCase, where
 //   posCase n = pos (succ n)                                 -- succ (pos n) = pos (n+1)
@@ -159,22 +165,39 @@ function ok(name: string, run: () => void): void {
 }
 function computes(name: string, lhs: Term, rhs: Term): void {
   ok(name, () => {
-    check(context, refl(kc('Int'), rhs), evaluate([], idt(kc('Int'), lhs, rhs)))
+    check(
+      context,
+      refl(kc('Int'), rhs),
+      evaluate([], idt(kc('Int'), lhs, rhs)),
+    )
   })
 }
 
-ok('neg : Int -> Int type-checks (Int eliminator containing the Nat eliminator)', () => {
-  check(context, negValue, evaluate([], intToInt))
-})
+ok(
+  'neg : Int -> Int type-checks (Int eliminator containing the Nat eliminator)',
+  () => {
+    check(context, negValue, evaluate([], intToInt))
+  },
+)
 computes('neg (pos 0) = pos 0', app(kc('neg'), posZero), posZero)
 computes('neg (pos 1) = -1', app(kc('neg'), posOne), negOne)
 computes('neg (-1) = pos 1', app(kc('neg'), negOne), posOne)
-computes('neg is an involution: neg (neg (pos 1)) = pos 1', app(kc('neg'), app(kc('neg'), posOne)), posOne)
+computes(
+  'neg is an involution: neg (neg (pos 1)) = pos 1',
+  app(kc('neg'), app(kc('neg'), posOne)),
+  posOne,
+)
 
 ok('isucc : Int -> Int type-checks', () => {
   check(context, isuccValue, evaluate([], intToInt))
 })
 computes('isucc (pos 0) = pos 1', app(kc('isucc'), posZero), posOne)
-computes('isucc (-1) = pos 0 (the integer successor steps across zero)', app(kc('isucc'), negOne), posZero)
+computes(
+  'isucc (-1) = pos 0 (the integer successor steps across zero)',
+  app(kc('isucc'), negOne),
+  posZero,
+)
 
-console.log(`\ninteger arithmetic (decided kernel judge.ts): ${pass} pass, ${fail} fail`)
+console.log(
+  `\ninteger arithmetic (decided kernel judge.ts): ${pass} pass, ${fail} fail`,
+)

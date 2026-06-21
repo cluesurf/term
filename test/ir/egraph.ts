@@ -1,7 +1,7 @@
 // E-graph optimizer tests: equality saturation finds the cheapest equivalent form. Run: npx tsx test/ir/egraph.ts
 
-import type { Expr } from '@/code/ir/egraph'
-import { optimize, showExpr } from '@/code/ir/egraph'
+import type { Expr } from '@cluesurf/make/code/ir/egraph'
+import { optimize, showExpr } from '@cluesurf/make/code/ir/egraph'
 
 const int = (value: number): Expr => ({ t: 'int', value })
 const v = (name: string): Expr => ({ t: 'var', name })

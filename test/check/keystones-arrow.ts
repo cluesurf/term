@@ -5,7 +5,13 @@
 // is the arrow. The orderability and its failure one rung up are linear-arithmetic facts the prover discharges.
 // Run: npx tsx test/check/keystones-arrow.ts
 
-import { linear, atMost, atLeast, below, proves } from '@/code/check/refine'
+import {
+  linear,
+  atMost,
+  atLeast,
+  below,
+  proves,
+} from '@cluesurf/make/code/check/refine'
 
 const lit = (n: number) => linear({}, n)
 const isquared = linear({ isquared: 1 }) // the square of the new unit i, a free variable
@@ -23,14 +29,34 @@ function expect(name: string, got: boolean, want: boolean): void {
 }
 
 // ===== the integers are orderable: every square is non-negative =====
-expect('a square is non-negative: 2*2 = 4 >= 0', proves([], atLeast(lit(4), lit(0))), true)
-expect('a square is non-negative: (-3)*(-3) = 9 >= 0', proves([], atLeast(lit(9), lit(0))), true)
-expect('a square is non-negative: 0*0 = 0 >= 0', proves([], atLeast(lit(0), lit(0))), true)
+expect(
+  'a square is non-negative: 2*2 = 4 >= 0',
+  proves([], atLeast(lit(4), lit(0))),
+  true,
+)
+expect(
+  'a square is non-negative: (-3)*(-3) = 9 >= 0',
+  proves([], atLeast(lit(9), lit(0))),
+  true,
+)
+expect(
+  'a square is non-negative: 0*0 = 0 >= 0',
+  proves([], atLeast(lit(0), lit(0))),
+  true,
+)
 
 // the order is one-way (strict, antisymmetric): if a < b then not b < a. with a = 2, b = 5: 2 < 5 holds,
 // and 5 < 2 does not.
-expect('the order is one-way: 2 < 5 holds', proves([], below(lit(2), lit(5))), true)
-expect('the order is one-way: 5 < 2 does not hold', proves([], below(lit(5), lit(2))), false)
+expect(
+  'the order is one-way: 2 < 5 holds',
+  proves([], below(lit(2), lit(5))),
+  true,
+)
+expect(
+  'the order is one-way: 5 < 2 does not hold',
+  proves([], below(lit(5), lit(2))),
+  false,
+)
 
 // ===== the next rung cannot be ordered: i^2 = -1 contradicts orderability =====
 // assume the rung is ordered, so its squares are non-negative (i^2 >= 0), and that it carries i with i^2 = -1
@@ -51,4 +77,6 @@ expect(
 )
 // so the integers are the last orderable rung, and their one-way order is the arrow of time.
 
-console.log(`\narrow of time (refinement prover): ${pass} pass, ${fail} fail`)
+console.log(
+  `\narrow of time (refinement prover): ${pass} pass, ${fail} fail`,
+)

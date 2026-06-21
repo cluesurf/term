@@ -7,9 +7,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
-import { compile } from '@/code/compile/compile'
-import { projectResolver } from '@/code/call/make'
-import { render } from '@/code/parser/diagnostic'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import { projectResolver } from '@cluesurf/call/code/make'
+import { render } from '@cluesurf/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const SEED = resolvePath(here, '..', '..')

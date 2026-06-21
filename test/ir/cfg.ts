@@ -1,9 +1,9 @@
 // Control-flow-graph tests: a function body lowers to basic blocks wired by terminators. Run: npx tsx test/ir/cfg.ts
 
-import { parse } from '@/code/parser/tree'
-import { mill } from '@/code/compile/mill'
-import { buildCfg, successors } from '@/code/ir/cfg'
-import type { Statement } from '@/code/compile/node'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { mill } from '@cluesurf/make/code/compile/mill'
+import { buildCfg, successors } from '@cluesurf/make/code/ir/cfg'
+import type { Statement } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0

@@ -1,8 +1,12 @@
 // Hyperbolic-lattice tests: the {p,3} tessellation tree grows exponentially (the substrate property), and a net
 // places onto distinct cells with a measurable locality. Run: npx tsx test/ir/lattice.ts
 
-import { honeycomb, lattice, place } from '@/code/ir/lattice'
-import { Net } from '@/code/ir/net'
+import {
+  honeycomb,
+  lattice,
+  place,
+} from '@cluesurf/make/code/ir/lattice'
+import { Net } from '@cluesurf/make/code/ir/net'
 
 let pass = 0
 let fail = 0

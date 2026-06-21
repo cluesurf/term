@@ -2,11 +2,20 @@
 // initialize, publishes diagnostics on open, hovers an inferred type, and clears diagnostics on close.
 // Run: npx tsx test/server/run.ts
 
-import { LanguageServer } from '@/code/server/server'
-import { MessageReader, encode } from '@/code/server/protocol'
-import type { Message } from '@/code/server/protocol'
-import { analyze, forEachExpression } from '@/code/server/analyze'
-import { buildIndex, referenceAt } from '@/code/server/symbols'
+import { LanguageServer } from '@cluesurf/flow/code/server'
+import {
+  MessageReader,
+  encode,
+} from '@cluesurf/flow/code/protocol'
+import type { Message } from '@cluesurf/flow/code/protocol'
+import {
+  analyze,
+  forEachExpression,
+} from '@cluesurf/flow/code/analyze'
+import {
+  buildIndex,
+  referenceAt,
+} from '@cluesurf/flow/code/symbols'
 
 let pass = 0
 let fail = 0
@@ -263,12 +272,14 @@ expect(
 
 // initialize advertises the new capabilities
 const caps2 = (
-  (await server.dispatch({
-    jsonrpc: '2.0',
-    id: 20,
-    method: 'initialize',
-    params: {},
-  }))[0]!.result as { capabilities: Record<string, unknown> }
+  (
+    await server.dispatch({
+      jsonrpc: '2.0',
+      id: 20,
+      method: 'initialize',
+      params: {},
+    })
+  )[0]!.result as { capabilities: Record<string, unknown> }
 ).capabilities
 expect(
   'initialize: advertises definition + completion + rename',

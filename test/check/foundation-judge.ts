@@ -3,7 +3,7 @@
 // funext that computes, dependent pairs, and self types. This checks the foundation on the sound kernel that
 // Seed actually uses, not the superseded Type-in-Type kernel.ts. Run: npx tsx test/check/foundation-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   checks,
@@ -14,7 +14,7 @@ import {
   litLevel,
   eqLevel,
   bind,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 // ---- term builders (the judge.ts idiom) ----
 const v = (index: number): Term => ({ tag: 'var', index })
@@ -97,8 +97,9 @@ const idTerm = lam(lam(v(0)))
 ok('identity checks at universe level 0', () =>
   checks(idTerm, instantiateLevel(idTypePoly, 'u', litLevel(0))),
 )
-ok('identity checks at universe level 5 (cumulative, polymorphic)', () =>
-  checks(idTerm, instantiateLevel(idTypePoly, 'u', litLevel(5))),
+ok(
+  'identity checks at universe level 5 (cumulative, polymorphic)',
+  () => checks(idTerm, instantiateLevel(idTypePoly, 'u', litLevel(5))),
 )
 ok('Type 0 has type Type 1', () => checks(ty(0), ty(1)))
 rejects('Type : Type is rejected (Type 0 is not in Type 0)', () => {
@@ -243,25 +244,28 @@ ok('transport along equality (P x -> P y), proved by J', () => {
 
 // transitivity: given p : Id A x y and q : Id A y z, prove Id A x z, by J on q.
 // motive C = \ z'. \ q'. Id A x z' ;  base : Id A x y = p ;  J q C base : Id A x z.
-ok('equality is transitive (Id A x y -> Id A y z -> Id A x z), proved by J', () => {
-  const context = contextWithSignature([
-    { name: 'A', type: ty(0) },
-    { name: 'x', type: kconst('A') },
-    { name: 'y', type: kconst('A') },
-    { name: 'z', type: kconst('A') },
-    { name: 'p', type: id(kconst('A'), kconst('x'), kconst('y')) },
-    { name: 'q', type: id(kconst('A'), kconst('y'), kconst('z')) },
-  ])
-  const motive = lam(lam(id(kconst('A'), kconst('x'), v(1))))
-  const base = kconst('p')
-  const proofTerm = jay(kconst('q'), motive, base, 0)
-  check(
-    context,
-    proofTerm,
-    evaluate([], id(kconst('A'), kconst('x'), kconst('z'))),
-  )
-  return true
-})
+ok(
+  'equality is transitive (Id A x y -> Id A y z -> Id A x z), proved by J',
+  () => {
+    const context = contextWithSignature([
+      { name: 'A', type: ty(0) },
+      { name: 'x', type: kconst('A') },
+      { name: 'y', type: kconst('A') },
+      { name: 'z', type: kconst('A') },
+      { name: 'p', type: id(kconst('A'), kconst('x'), kconst('y')) },
+      { name: 'q', type: id(kconst('A'), kconst('y'), kconst('z')) },
+    ])
+    const motive = lam(lam(id(kconst('A'), kconst('x'), v(1))))
+    const base = kconst('p')
+    const proofTerm = jay(kconst('q'), motive, base, 0)
+    check(
+      context,
+      proofTerm,
+      evaluate([], id(kconst('A'), kconst('x'), kconst('z'))),
+    )
+    return true
+  },
+)
 
 // congruence: given f : A -> B and p : Id A x y, prove Id B (f x) (f y), by J on p.
 // motive C = \ y'. \ p'. Id B (f x) (f y') ;  base : Id B (f x) (f x) = refl ;  J p C base : Id B (f x) (f y).
@@ -302,57 +306,65 @@ ok('equality is a congruence (f respects =), proved by J', () => {
 
 // ===== a Peano signature: successor respects equality (an arithmetic theorem) =====
 // given succ : Nat -> Nat and p : Id Nat m n, prove Id Nat (succ m) (succ n), by J.
-ok('successor respects equality (Id Nat m n -> Id Nat (succ m) (succ n))', () => {
-  const context = contextWithSignature([
-    { name: 'Nat', type: ty(0) },
-    { name: 'succ', type: pi('many', kconst('Nat'), kconst('Nat')) },
-    { name: 'm', type: kconst('Nat') },
-    { name: 'n', type: kconst('Nat') },
-    { name: 'p', type: id(kconst('Nat'), kconst('m'), kconst('n')) },
-  ])
-  const motive = lam(
-    lam(
-      id(
-        kconst('Nat'),
-        app(kconst('succ'), kconst('m')),
-        app(kconst('succ'), v(1)),
+ok(
+  'successor respects equality (Id Nat m n -> Id Nat (succ m) (succ n))',
+  () => {
+    const context = contextWithSignature([
+      { name: 'Nat', type: ty(0) },
+      { name: 'succ', type: pi('many', kconst('Nat'), kconst('Nat')) },
+      { name: 'm', type: kconst('Nat') },
+      { name: 'n', type: kconst('Nat') },
+      { name: 'p', type: id(kconst('Nat'), kconst('m'), kconst('n')) },
+    ])
+    const motive = lam(
+      lam(
+        id(
+          kconst('Nat'),
+          app(kconst('succ'), kconst('m')),
+          app(kconst('succ'), v(1)),
+        ),
       ),
-    ),
-  )
-  const base = refl(kconst('Nat'), app(kconst('succ'), kconst('m')))
-  const proofTerm = jay(kconst('p'), motive, base, 0)
-  check(
-    context,
-    proofTerm,
-    evaluate(
-      [],
-      id(
-        kconst('Nat'),
-        app(kconst('succ'), kconst('m')),
-        app(kconst('succ'), kconst('n')),
+    )
+    const base = refl(kconst('Nat'), app(kconst('succ'), kconst('m')))
+    const proofTerm = jay(kconst('p'), motive, base, 0)
+    check(
+      context,
+      proofTerm,
+      evaluate(
+        [],
+        id(
+          kconst('Nat'),
+          app(kconst('succ'), kconst('m')),
+          app(kconst('succ'), kconst('n')),
+        ),
       ),
-    ),
-  )
-  return true
-})
+    )
+    return true
+  },
+)
 
 // ===== proof erasure (the QTT core): a multiplicity-0 proof may go unused, a linear value must be used once =====
-ok('an erased (0) proof can be dropped while a linear (1) value is used once', () => {
-  const context = contextWithSignature([
-    { name: 'P', type: ty(0) },
-    { name: 'A', type: ty(0) },
-  ])
-  // \ (0 p : P). \ (1 x : A). x   :   (0 _ : P) -> (1 x : A) -> A
-  check(
-    context,
-    lam(lam(v(0))),
-    evaluate([], pi(0, kconst('P'), pi(1, kconst('A'), kconst('A')))),
-  )
-  return true
-})
+ok(
+  'an erased (0) proof can be dropped while a linear (1) value is used once',
+  () => {
+    const context = contextWithSignature([
+      { name: 'P', type: ty(0) },
+      { name: 'A', type: ty(0) },
+    ])
+    // \ (0 p : P). \ (1 x : A). x   :   (0 _ : P) -> (1 x : A) -> A
+    check(
+      context,
+      lam(lam(v(0))),
+      evaluate([], pi(0, kconst('P'), pi(1, kconst('A'), kconst('A')))),
+    )
+    return true
+  },
+)
 
 function main(): void {
-  console.log(`\nfoundation (decided kernel judge.ts): ${pass} pass, ${fail} fail`)
+  console.log(
+    `\nfoundation (decided kernel judge.ts): ${pass} pass, ${fail} fail`,
+  )
   void eqLevel
   void bind
   void emptyContext

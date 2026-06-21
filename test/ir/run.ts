@@ -1,7 +1,7 @@
 // IR simplify pass tests: constant folding and algebraic identities. Run: npx tsx test/ir/run.ts
 
-import { compile } from '@/code/compile/compile'
-import { render } from '@/code/parser/diagnostic'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import { render } from '@cluesurf/make/code/parser/diagnostic'
 
 let pass = 0
 let fail = 0

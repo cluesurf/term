@@ -1,9 +1,12 @@
 // Tests that the mill lowers the zone (component) and dock (routing/CLI) DSL surfaces to the compile AST.
 // Run: npx tsx test/compile/dsl.ts
 
-import { parse } from '@/code/parser/tree'
-import { mill } from '@/code/compile/mill'
-import type { Program, Statement } from '@/code/compile/node'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { mill } from '@cluesurf/make/code/compile/mill'
+import type {
+  Program,
+  Statement,
+} from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0

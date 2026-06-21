@@ -2,8 +2,8 @@
 // instant cache hit, and editing one module only re-mills that module (its importers reuse their parse + mill). This
 // is the engine behind `make --ride` watch mode and the LSP. Run: npx tsx test/compile/watch.ts
 
-import { IncrementalCompiler } from '@/code/compile/watch'
-import type { Source } from '@/code/compile/load'
+import { IncrementalCompiler } from '@cluesurf/make/code/compile/watch'
+import type { Source } from '@cluesurf/make/code/compile/load'
 
 let pass = 0
 let fail = 0

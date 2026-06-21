@@ -1,9 +1,9 @@
 // Linter + unified-analysis tests. Run: npx tsx test/lint/run.ts
 
-import { lint } from '@/code/lint/lint'
-import { analyze } from '@/code/analyze'
-import { parse } from '@/code/parser/tree'
-import { mill } from '@/code/compile/mill'
+import { lint } from '@cluesurf/make/code/lint/lint'
+import { analyze } from '@cluesurf/make/code/analyze'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { mill } from '@cluesurf/make/code/compile/mill'
 
 let pass = 0
 let fail = 0

@@ -1,7 +1,11 @@
 // Perceus / FBIP tests: precise dup/drop insertion from last-use, and in-place reuse. Run: npx tsx test/ir/perceus.ts
 
-import type { Inst } from '@/code/ir/perceus'
-import { perceus, perceusControl, showInst } from '@/code/ir/perceus'
+import type { Inst } from '@cluesurf/make/code/ir/perceus'
+import {
+  perceus,
+  perceusControl,
+  showInst,
+} from '@cluesurf/make/code/ir/perceus'
 
 let pass = 0
 let fail = 0
@@ -27,7 +31,7 @@ function expect(
 const make = (
   ctor: string,
   ...args: Array<string>
-): Inst['value' & keyof Inst] => ({ kind: 'make', ctor, args } as never)
+): Inst['value' & keyof Inst] => ({ kind: 'make', ctor, args }) as never
 
 function main(): void {
   // a value used exactly once is consumed at its last use: no dup

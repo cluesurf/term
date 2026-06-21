@@ -1,15 +1,15 @@
 // Backend tests: the recursive Fibonacci compiles to LLVM IR, Swift, Kotlin, and WGSL with the expected shape.
 // Run: npx tsx test/compile/backends.ts
 
-import { parse } from '@/code/parser/tree'
-import { mill } from '@/code/compile/mill'
-import { resolve } from '@/code/check/resolve'
-import { check } from '@/code/check/infer'
-import { emitSwift } from '@/code/compile/swift'
-import { emitKotlin } from '@/code/compile/kotlin'
-import { emitWgsl } from '@/code/compile/wgsl'
-import { emitLlvm } from '@/code/compile/llvm'
-import type { Program } from '@/code/compile/node'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { mill } from '@cluesurf/make/code/compile/mill'
+import { resolve } from '@cluesurf/make/code/check/resolve'
+import { check } from '@cluesurf/make/code/check/infer'
+import { emitSwift } from '@cluesurf/make/code/compile/swift'
+import { emitKotlin } from '@cluesurf/make/code/compile/kotlin'
+import { emitWgsl } from '@cluesurf/make/code/compile/wgsl'
+import { emitLlvm } from '@cluesurf/make/code/compile/llvm'
+import type { Program } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0

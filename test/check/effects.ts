@@ -1,9 +1,9 @@
 // Effect checking: the async / await discipline. Run: npx tsx test/check/effects.ts
 
-import { compile } from '@/code/compile/compile'
-import { parse } from '@/code/parser/tree'
-import { mill } from '@/code/compile/mill'
-import { effectRows } from '@/code/check/effects'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { mill } from '@cluesurf/make/code/compile/mill'
+import { effectRows } from '@cluesurf/make/code/check/effects'
 
 let pass = 0
 let fail = 0

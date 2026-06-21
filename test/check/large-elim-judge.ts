@@ -9,8 +9,13 @@
 //   - Sigma stays predicative: there are no impredicative strong sums (those reintroduce the paradox).
 // Run: npx tsx test/check/large-elim-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
-import { infer, contextWithSignature, evaluate, litLevel } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
+import {
+  infer,
+  contextWithSignature,
+  evaluate,
+  litLevel,
+} from '@cluesurf/make/code/check/judge'
 
 const kc = (n: string): Term => ({ tag: 'const', name: n })
 const ty = (n: number): Term => ({ tag: 'type', level: litLevel(n) })
@@ -40,17 +45,26 @@ let fail = 0
 function expectLevel(name: string, typeTerm: Term, want: number): void {
   try {
     const universe = infer(context, typeTerm).type
-    if (universe.v === 'type' && universe.level.constant === want && universe.level.vars.size === 0) {
+    if (
+      universe.v === 'type' &&
+      universe.level.constant === want &&
+      universe.level.vars.size === 0
+    ) {
       pass++
       console.log(`ok    ${name} (Type ${want})`)
     } else {
       fail++
-      const got = universe.v === 'type' ? `Type ${universe.level.constant}` : universe.v
+      const got =
+        universe.v === 'type'
+          ? `Type ${universe.level.constant}`
+          : universe.v
       console.log(`FAIL  ${name} (wanted Type ${want}, got ${got})`)
     }
   } catch (error) {
     fail++
-    console.log(`FAIL  ${name}\n  ${error instanceof Error ? error.message : String(error)}`)
+    console.log(
+      `FAIL  ${name}\n  ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 }
 function rejects(name: string, run: () => void): void {
@@ -66,24 +80,54 @@ function rejects(name: string, run: () => void): void {
 
 // the bottom is impredicative: a Pi whose codomain dwells in Type0 (here A) stays in Type0, even when its domain is
 // a HIGH universe. This is exactly the rule that keeps a self-encoded Nat in Type0.
-expectLevel('a Pi into A:Type0 stays in Type 0 even from a B:Type1 domain (impredicative)', pi('many', kc('B'), kc('A')), 0)
-expectLevel('a Pi into A:Type0 stays in Type 0 from a C:Type2 domain (impredicative)', pi('many', kc('C'), kc('A')), 0)
+expectLevel(
+  'a Pi into A:Type0 stays in Type 0 even from a B:Type1 domain (impredicative)',
+  pi('many', kc('B'), kc('A')),
+  0,
+)
+expectLevel(
+  'a Pi into A:Type0 stays in Type 0 from a C:Type2 domain (impredicative)',
+  pi('many', kc('C'), kc('A')),
+  0,
+)
 
 // above the bottom it is predicative: a Pi into B:Type1 takes the max, it does NOT collapse.
-expectLevel('a Pi into B:Type1 from a C:Type2 domain takes the max, Type 2 (predicative above)', pi('many', kc('C'), kc('B')), 2)
-expectLevel('a Pi into B:Type1 from an A:Type0 domain is Type 1 (predicative above)', pi('many', kc('A'), kc('B')), 1)
+expectLevel(
+  'a Pi into B:Type1 from a C:Type2 domain takes the max, Type 2 (predicative above)',
+  pi('many', kc('C'), kc('B')),
+  2,
+)
+expectLevel(
+  'a Pi into B:Type1 from an A:Type0 domain is Type 1 (predicative above)',
+  pi('many', kc('A'), kc('B')),
+  1,
+)
 
 // the hierarchy is still stratified, so this is impredicative-Set, not Type : Type.
-expectLevel('Type 0 : Type 1 (the bottom universe is itself one level up)', ty(0), 1)
-rejects('Type 0 : Type 0 is rejected (no Type : Type, the inconsistent collapse)', () => {
-  // a value of type Type0 whose own type is Type0 would be Type : Type. Type0 has type Type1, so checking it AT
-  // Type0 must fail.
-  const universe = infer(context, ty(0)).type
-  if (!(universe.v === 'type' && universe.level.constant === 0)) throw new Error('Type 0 is not in Type 0')
-})
+expectLevel(
+  'Type 0 : Type 1 (the bottom universe is itself one level up)',
+  ty(0),
+  1,
+)
+rejects(
+  'Type 0 : Type 0 is rejected (no Type : Type, the inconsistent collapse)',
+  () => {
+    // a value of type Type0 whose own type is Type0 would be Type : Type. Type0 has type Type1, so checking it AT
+    // Type0 must fail.
+    const universe = infer(context, ty(0)).type
+    if (!(universe.v === 'type' && universe.level.constant === 0))
+      throw new Error('Type 0 is not in Type 0')
+  },
+)
 
 // Sigma stays predicative: a strong sum into Type0 from a Type1 domain does NOT collapse to Type0. Impredicative
 // strong sums are exactly what reintroduce Girard's paradox, so they must remain at the max.
-expectLevel('Sigma into A:Type0 from a B:Type1 domain is Type 1, not Type 0 (no impredicative strong sums)', sigma('many', kc('B'), kc('A')), 1)
+expectLevel(
+  'Sigma into A:Type0 from a B:Type1 domain is Type 1, not Type 0 (no impredicative strong sums)',
+  sigma('many', kc('B'), kc('A')),
+  1,
+)
 
-console.log(`\nimpredicative bottom universe is sound and bounded (judge.ts): ${pass} pass, ${fail} fail`)
+console.log(
+  `\nimpredicative bottom universe is sound and bounded (judge.ts): ${pass} pass, ${fail} fail`,
+)

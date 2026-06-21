@@ -5,14 +5,14 @@
 // the sharpest demonstration that the impredicative universe earns its place. Everything type-checks and computes.
 // Run: npx tsx test/check/integer-addition-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   defineConstant,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 const v = (i: number): Term => ({ tag: 'var', index: i })
 const kc = (n: string): Term => ({ tag: 'const', name: n })
@@ -49,7 +49,11 @@ const natStep = pi(
 const natBody = pi(
   0,
   pi('many', kc('Nat'), ty(0)),
-  pi('many', app(v(0), kc('zero')), pi('many', natStep, app(v(2), v(3)))),
+  pi(
+    'many',
+    app(v(0), kc('zero')),
+    pi('many', natStep, app(v(2), v(3))),
+  ),
 )
 const natTerm = self(natBody)
 const zeroValue = lam(lam(lam(v(1))))
@@ -83,7 +87,11 @@ const natTerm_ = natTerm
 const natToInt = pi('many', natTerm_, intTerm)
 const intToInt = pi('many', intTerm, intTerm)
 const natToNatToInt = pi('many', natTerm_, natToInt)
-const natToNatToNat = pi('many', natTerm_, pi('many', natTerm_, natTerm_))
+const natToNatToNat = pi(
+  'many',
+  natTerm_,
+  pi('many', natTerm_, natTerm_),
+)
 
 // ===== signed subtraction: intSub m n = m - n as an integer, by recursion on m with motive (\ _. Nat -> Int) =====
 // base (m = 0):    \ n. n (\_.Int) (pos 0) (\ k _. negSucc k)    -- 0 - 0 = 0 ; 0 - (k+1) = negSucc k = -(k+1)
@@ -134,7 +142,12 @@ const addNegCase = lam(
       v(0),
       intMotive,
       lam(aps(kc('intSub'), v(0), app(kc('succ'), v(2)))),
-      lam(app(kc('negSucc'), app(kc('succ'), aps(kc('plus'), v(2), v(0))))),
+      lam(
+        app(
+          kc('negSucc'),
+          app(kc('succ'), aps(kc('plus'), v(2), v(0))),
+        ),
+      ),
     ),
   ),
 )
@@ -152,7 +165,10 @@ const context = contextWithSignature([
   { name: 'pos', type: pi('many', kc('Nat'), kc('Int')) },
   { name: 'negSucc', type: pi('many', kc('Nat'), kc('Int')) },
   { name: 'intSubBase', type: natToInt },
-  { name: 'intSubStep', type: pi('many', natTerm_, pi('many', natToInt, natToInt)) },
+  {
+    name: 'intSubStep',
+    type: pi('many', natTerm_, pi('many', natToInt, natToInt)),
+  },
   { name: 'intSub', type: natToNatToInt },
   { name: 'addPosCase', type: pi('many', natTerm_, intToInt) },
   { name: 'addNegCase', type: pi('many', natTerm_, intToInt) },
@@ -193,27 +209,72 @@ function ok(name: string, run: () => void): void {
 }
 function computes(name: string, lhs: Term, rhs: Term): void {
   ok(name, () => {
-    check(context, refl(kc('Int'), rhs), evaluate([], idt(kc('Int'), lhs, rhs)))
+    check(
+      context,
+      refl(kc('Int'), rhs),
+      evaluate([], idt(kc('Int'), lhs, rhs)),
+    )
   })
 }
 
-ok('intSub : Nat -> Nat -> Int type-checks (motive returns a function type, impredicative)', () => {
-  check(context, intSubValue, evaluate([], natToNatToInt))
-})
-computes('intSub 2 0 = pos 2', aps(kc('intSub'), nat(2), nat(0)), posN(2))
-computes('intSub 2 2 = pos 0', aps(kc('intSub'), nat(2), nat(2)), posN(0))
-computes('intSub 3 1 = pos 2', aps(kc('intSub'), nat(3), nat(1)), posN(2))
+ok(
+  'intSub : Nat -> Nat -> Int type-checks (motive returns a function type, impredicative)',
+  () => {
+    check(context, intSubValue, evaluate([], natToNatToInt))
+  },
+)
+computes(
+  'intSub 2 0 = pos 2',
+  aps(kc('intSub'), nat(2), nat(0)),
+  posN(2),
+)
+computes(
+  'intSub 2 2 = pos 0',
+  aps(kc('intSub'), nat(2), nat(2)),
+  posN(0),
+)
+computes(
+  'intSub 3 1 = pos 2',
+  aps(kc('intSub'), nat(3), nat(1)),
+  posN(2),
+)
 computes('intSub 0 2 = -2', aps(kc('intSub'), nat(0), nat(2)), negN(2))
 computes('intSub 1 3 = -2', aps(kc('intSub'), nat(1), nat(3)), negN(2))
 
 ok('add : Int -> Int -> Int type-checks', () => {
   check(context, addValue, evaluate([], pi('many', intTerm, intToInt)))
 })
-computes('add (pos 1) (pos 2) = pos 3', aps(kc('add'), posN(1), posN(2)), posN(3))
-computes('add (pos 2) (-1) = pos 1', aps(kc('add'), posN(2), negN(1)), posN(1))
-computes('add (-1) (-1) = -2', aps(kc('add'), negN(1), negN(1)), negN(2))
-computes('add (pos 1) (-2) = -1', aps(kc('add'), posN(1), negN(2)), negN(1))
-computes('add (-2) (pos 3) = pos 1', aps(kc('add'), negN(2), posN(3)), posN(1))
-computes('add (pos 0) (pos 0) = pos 0', aps(kc('add'), posN(0), posN(0)), posN(0))
+computes(
+  'add (pos 1) (pos 2) = pos 3',
+  aps(kc('add'), posN(1), posN(2)),
+  posN(3),
+)
+computes(
+  'add (pos 2) (-1) = pos 1',
+  aps(kc('add'), posN(2), negN(1)),
+  posN(1),
+)
+computes(
+  'add (-1) (-1) = -2',
+  aps(kc('add'), negN(1), negN(1)),
+  negN(2),
+)
+computes(
+  'add (pos 1) (-2) = -1',
+  aps(kc('add'), posN(1), negN(2)),
+  negN(1),
+)
+computes(
+  'add (-2) (pos 3) = pos 1',
+  aps(kc('add'), negN(2), posN(3)),
+  posN(1),
+)
+computes(
+  'add (pos 0) (pos 0) = pos 0',
+  aps(kc('add'), posN(0), posN(0)),
+  posN(0),
+)
 
-console.log(`\ninteger addition (decided kernel judge.ts): ${pass} pass, ${fail} fail`)
+console.log(
+  `\ninteger addition (decided kernel judge.ts): ${pass} pass, ${fail} fail`,
+)

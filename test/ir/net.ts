@@ -1,8 +1,8 @@
 // Interaction-combinator tests: the substrate's pure-plane reducer. Annihilation, erasure, and commutation.
 // Run: npx tsx test/ir/net.ts
 
-import { Net } from '@/code/ir/net'
-import type { Label } from '@/code/ir/net'
+import { Net } from '@cluesurf/make/code/ir/net'
+import type { Label } from '@cluesurf/make/code/ir/net'
 
 let pass = 0
 let fail = 0

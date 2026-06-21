@@ -7,21 +7,24 @@ import { execFileSync, spawnSync, spawn } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parse } from '@/code/parser/tree'
-import { mill } from '@/code/compile/mill'
-import { resolve as resolveNames } from '@/code/check/resolve'
-import { check } from '@/code/check/infer'
-import { simplify } from '@/code/ir/simplify'
-import { collectModules } from '@/code/compile/load'
-import type { Source } from '@/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@/code/compile/native'
-import { emitSwift } from '@/code/compile/swift'
-import { emitKotlin } from '@/code/compile/kotlin'
-import { emitLlvm } from '@/code/compile/llvm'
-import { emitRust } from '@/code/compile/rust'
-import { emitTypeScript } from '@/code/compile/typescript'
-import { LLVM_RUNTIME_RUST } from '@/code/compile/llvm-runtime'
-import type { Program } from '@/code/compile/node'
+import { parse } from '@cluesurf/make/code/parser/tree'
+import { mill } from '@cluesurf/make/code/compile/mill'
+import { resolve as resolveNames } from '@cluesurf/make/code/check/resolve'
+import { check } from '@cluesurf/make/code/check/infer'
+import { simplify } from '@cluesurf/make/code/ir/simplify'
+import { collectModules } from '@cluesurf/make/code/compile/load'
+import type { Source } from '@cluesurf/make/code/compile/load'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@cluesurf/make/code/compile/native'
+import { emitSwift } from '@cluesurf/make/code/compile/swift'
+import { emitKotlin } from '@cluesurf/make/code/compile/kotlin'
+import { emitLlvm } from '@cluesurf/make/code/compile/llvm'
+import { emitRust } from '@cluesurf/make/code/compile/rust'
+import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
+import { LLVM_RUNTIME_RUST } from '@cluesurf/make/code/compile/llvm-runtime'
+import type { Program } from '@cluesurf/make/code/compile/node'
 import { readFileSync, existsSync } from 'node:fs'
 
 let pass = 0
@@ -845,7 +848,16 @@ function runLlvmRustExit(
   try {
     execFileSync(
       'rustc',
-      ['--edition', '2021', '--crate-type', 'staticlib', '-O', rs, '-o', lib],
+      [
+        '--edition',
+        '2021',
+        '--crate-type',
+        'staticlib',
+        '-O',
+        rs,
+        '-o',
+        lib,
+      ],
       { stdio: 'pipe' },
     )
   } catch (e) {
@@ -864,7 +876,19 @@ function runLlvmRustExit(
   try {
     execFileSync(
       'clang',
-      ['-arch', arch, '-Wno-override-module', '-x', 'ir', file, '-x', 'none', lib, '-o', exe],
+      [
+        '-arch',
+        arch,
+        '-Wno-override-module',
+        '-x',
+        'ir',
+        file,
+        '-x',
+        'none',
+        lib,
+        '-o',
+        exe,
+      ],
       { stdio: 'pipe' },
     )
   } catch (e) {
@@ -985,7 +1009,6 @@ task compute
       code 0
 `
 
-
 // an iterative Fibonacci: mutation + a while loop (the scalar imperative fragment every native backend supports)
 // a higher-order function: a closure passed as a Box<dyn Fn> param and called twice. apply-twice(double, 5) = 20.
 const CLOSURE = `task apply-twice
@@ -1071,6 +1094,58 @@ task compute
             read n
             read seed
       code 10
+`
+
+// generic trait-bounded dispatch on a native backend: a trait (`mask`) with two instances, and one generic function
+// bounded by it that calls a trait method on its type parameter. On Rust this emits a native `trait` + `impl` blocks +
+// a `T: Sizer` bound, so `run` dispatches box.measure()=7 and circle.measure()=9 through one generic `describe` -> 16.
+const TRAIT_GENERIC = `mask sizer
+  task measure
+    take self
+    like number
+
+form box
+  link n, like number
+  wear sizer
+    task measure
+      take self
+      like number
+      send back
+        read self/n
+
+form circle
+  link r, like number
+  wear sizer
+    task measure
+      take self
+      like number
+      send back
+        read self/r
+
+task describe
+  head t, need sizer
+  take x, like t
+  like number
+  send back
+    call measure
+      read x
+
+task run
+  like number
+  save a
+    call describe
+      make box
+        bind n
+          code 7
+  save b
+    call describe
+      make circle
+        bind r
+          code 9
+  send back
+    call add
+      read a
+      read b
 `
 
 // a sum type (variant / enum) on LLVM: build a tagged value, match on it, read the payload. `make full` is tag 0 with
@@ -2168,6 +2243,30 @@ function main(): void {
     frontEnd(HANDLER),
     'compute(6)',
     18,
+  )
+  runRust(
+    'rust: generic trait-bounded dispatch (native trait + impls)',
+    frontEnd(TRAIT_GENERIC),
+    'run()',
+    16,
+  )
+  runSwift(
+    'swift: generic trait-bounded dispatch (protocol + extensions)',
+    frontEnd(TRAIT_GENERIC),
+    'run()',
+    16,
+  )
+  runKotlin(
+    'kotlin: generic trait-bounded dispatch (interface + overrides)',
+    frontEnd(TRAIT_GENERIC),
+    'run()',
+    16,
+  )
+  runLlvm(
+    'llvm: generic trait-bounded dispatch (monomorphized to instance calls)',
+    frontEnd(TRAIT_GENERIC),
+    '@run()',
+    16,
   )
   runSwift(
     'swift: iterative fibonacci',

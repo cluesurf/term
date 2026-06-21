@@ -1,8 +1,14 @@
 // String/ANSI render target tests: the reactive graph drives a terminal view, updating minimally on change.
 // Run: npx tsx test/zone/terminal.ts
 
-import { signal } from '@/code/zone/reactive'
-import { ansi, group, render, still, text } from '@/code/zone/terminal'
+import { signal } from '@cluesurf/make/code/zone/reactive'
+import {
+  ansi,
+  group,
+  render,
+  still,
+  text,
+} from '@cluesurf/make/code/zone/terminal'
 
 let pass = 0
 let fail = 0

@@ -7,16 +7,16 @@
     "seed": "./host/line.js"
   },
   "scripts": {
-    "make": "npx esbuild code/line.ts --bundle --platform=node --format=esm --packages=external --outfile=host/line.js --banner:js='#!/usr/bin/env node'",
+    "make": "npx esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --outfile=host/line.js --banner:js='#!/usr/bin/env node'",
     "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
     "test": "vitest run",
-    "lint": "eslint \"code/**/*.ts\" \"test/**/*.ts\"",
-    "format": "prettier --write \"code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
+    "lint": "eslint \"deck/make/code/**/*.ts\" \"deck/call/code/**/*.ts\" \"deck/flow/code/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"deck/make/code/**/*.ts\" \"deck/call/code/**/*.ts\" \"deck/flow/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "host": "pnpm make && npm publish --access=public"
   },
   "prettier": "@cluesurf/wash/flow.json",
   "dependencies": {
-    "@cluesurf/deck.tree": "file:../deck.tree",
+    "@cluesurf/deck.tree": "file:./deck/deck",
     "@hono/node-server": "^1.13.7",
     "chalk": "^5.4.1",
     "esbuild": "^0.27.0",

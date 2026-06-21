@@ -1,0 +1,76 @@
+
+load @cluesurf/tree/code/link
+  take mine name
+
+mine deck
+  mine term, term deck
+    mine text
+      mine text, text <@>
+      mine form, form name
+        take host
+      mine text, text </>
+      mine form, form name
+        take name
+    mine form, form head
+      take head
+    mine list
+      mine form, form term
+        take term
+    mine list
+      mine form, form face
+        take face
+    mine form, form link
+      take link
+    mine form, form hook
+      take hook
+    mine form, form read
+      take read
+    mine form, form view
+      take view
+    mine form, form mark
+      take mark
+
+mine head
+  mine term, term head
+    mine text
+      take text
+
+mine word
+  mine term, term word
+    mine text
+      take text
+
+mine face
+  mine term, term face
+    mine text
+      take text
+
+mine host
+  mine term, term host
+    mine text
+      take text
+
+mine link
+  mine term, term link
+    mine text
+      take road
+
+mine hook
+  mine term, term hook
+    mine text
+      take road
+
+mine read
+  mine term, term read
+    mine text
+      take road
+
+mine view
+  mine term, term view
+    mine text
+      take road
+
+mine mark
+  mine term, term mark
+    mine text
+      take mark

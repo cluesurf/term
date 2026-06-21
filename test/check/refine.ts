@@ -8,7 +8,7 @@ import {
   below,
   linear,
   proves,
-} from '@/code/check/refine'
+} from '@cluesurf/make/code/check/refine'
 
 const n = linear({ n: 1 })
 const i = linear({ i: 1 })

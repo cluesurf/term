@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@cluesurf/deck.tree':
-        specifier: file:../deck.tree
-        version: file:../deck.tree
+        specifier: file:./deck/deck
+        version: file:deck/deck
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.26)
@@ -66,8 +66,8 @@ importers:
 
 packages:
 
-  '@cluesurf/deck.tree@file:../deck.tree':
-    resolution: {directory: ../deck.tree, type: directory}
+  '@cluesurf/deck.tree@file:deck/deck':
+    resolution: {directory: deck/deck, type: directory}
 
   '@cluesurf/wash@0.6.12':
     resolution: {integrity: sha512-A+4OOMSY7TsIJzIksD8whhPG4e+V4MaYWdyd2476xzH4K1L47MLxbNMaCCqaLYZMd6iqX8v4i0CBzh0GlfHJgw==}
@@ -1325,7 +1325,7 @@ packages:
 
 snapshots:
 
-  '@cluesurf/deck.tree@file:../deck.tree': {}
+  '@cluesurf/deck.tree@file:deck/deck': {}
 
   '@cluesurf/wash@0.6.12(jiti@2.7.0)(typescript@5.9.3)':
     dependencies:

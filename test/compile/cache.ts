@@ -2,15 +2,15 @@
 // output cache on an unchanged re-compile, and (3) reuse a module's mill across a graph where only a sibling changed.
 // Run: npx tsx test/compile/cache.ts
 
-import { compile } from '@/code/compile/compile'
+import { compile } from '@cluesurf/make/code/compile/compile'
 import {
   CompileCache,
   hashText,
   hashFields,
-} from '@/code/compile/cache'
-import type { CacheStore } from '@/code/compile/cache'
-import { diskCacheStore } from '@/code/call/cache-store'
-import type { Source } from '@/code/compile/load'
+} from '@cluesurf/make/code/compile/cache'
+import type { CacheStore } from '@cluesurf/make/code/compile/cache'
+import { diskCacheStore } from '@cluesurf/call/code/cache-store'
+import type { Source } from '@cluesurf/make/code/compile/load'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as nodePath from 'node:path'
@@ -135,7 +135,10 @@ function memStore(): CacheStore {
 // 4. a cold cache sharing the store hits disk instead of rebuilding, and returns identical output
 const store = memStore()
 const warm = new CompileCache(store, 'v1')
-const warmResult = compile({ file: 'p.tree', text: DOUBLE }, { cache: warm })
+const warmResult = compile(
+  { file: 'p.tree', text: DOUBLE },
+  { cache: warm },
+)
 const cold = new CompileCache(store, 'v1')
 const coldResult = compile(
   { file: 'p.tree', text: DOUBLE },

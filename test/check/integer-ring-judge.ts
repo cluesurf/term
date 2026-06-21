@@ -6,14 +6,14 @@
 // kernel, the arrow keystone's one-way order now a computation over the construction. Run:
 // npx tsx test/check/integer-ring-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   defineConstant,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 const v = (i: number): Term => ({ tag: 'var', index: i })
 const kc = (n: string): Term => ({ tag: 'const', name: n })
@@ -50,7 +50,11 @@ const natStep = pi(
 const natBody = pi(
   0,
   pi('many', kc('Nat'), ty(0)),
-  pi('many', app(v(0), kc('zero')), pi('many', natStep, app(v(2), v(3)))),
+  pi(
+    'many',
+    app(v(0), kc('zero')),
+    pi('many', natStep, app(v(2), v(3))),
+  ),
 )
 const natTerm = self(natBody)
 const zeroValue = lam(lam(lam(v(1))))
@@ -63,7 +67,12 @@ const plusValue = lam(
 // times a b = a (\_. Nat) zero (\ _ r. plus b r)
 const timesValue = lam(
   lam(
-    aps(v(1), lam(kc('Nat')), kc('zero'), lam(lam(aps(kc('plus'), v(2), v(0))))),
+    aps(
+      v(1),
+      lam(kc('Nat')),
+      kc('zero'),
+      lam(lam(aps(kc('plus'), v(2), v(0)))),
+    ),
   ),
 )
 
@@ -103,7 +112,9 @@ const negPosCase = lam(
   ),
 )
 const negNegCase = lam(app(kc('pos'), app(kc('succ'), v(0))))
-const negValue = lam(aps(v(0), intMotive, kc('negPosCase'), kc('negNegCase')))
+const negValue = lam(
+  aps(v(0), intMotive, kc('negPosCase'), kc('negNegCase')),
+)
 
 // ===== multiplication =====
 // mult (pos a) = \ y. y (\_.Int) (\ b. pos (a*b)) (\ b. neg (pos (a*(b+1))))
@@ -137,19 +148,27 @@ const mulNeg = lam(
       lam(
         app(
           kc('pos'),
-          aps(kc('times'), app(kc('succ'), v(2)), app(kc('succ'), v(0))),
+          aps(
+            kc('times'),
+            app(kc('succ'), v(2)),
+            app(kc('succ'), v(0)),
+          ),
         ),
       ),
     ),
   ),
 )
-const multValue = lam(aps(v(0), lam(intToInt), kc('mulPos'), kc('mulNeg')))
+const multValue = lam(
+  aps(v(0), lam(intToInt), kc('mulPos'), kc('mulNeg')),
+)
 
 // ===== the order: lebNat (m <= n) then lebInt (a <= b), both returning Bool =====
 // lebNat = \ m. m (\ _. Nat -> Bool) (\ n. true) (\ m' rec n. n (\_.Bool) false (\ k _. rec k))
 const lebNatBase = lam(kc('true'))
 const lebNatStep = lam(
-  lam(lam(aps(v(0), boolMotive, kc('false'), lam(lam(app(v(3), v(1))))))),
+  lam(
+    lam(aps(v(0), boolMotive, kc('false'), lam(lam(app(v(3), v(1)))))),
+  ),
 )
 const lebNatValue = lam(
   aps(v(0), lam(natToBool), kc('lebNatBase'), kc('lebNatStep')),
@@ -198,12 +217,16 @@ const context = contextWithSignature([
   { name: 'mulPos', type: pi('many', natTerm, intToInt) },
   { name: 'mulNeg', type: pi('many', natTerm, intToInt) },
   { name: 'lebNatBase', type: natToBool },
-  { name: 'lebNatStep', type: pi('many', natTerm, pi('many', natToBool, natToBool)) },
+  {
+    name: 'lebNatStep',
+    type: pi('many', natTerm, pi('many', natToBool, natToBool)),
+  },
   { name: 'lebNat', type: pi('many', natTerm, natToBool) },
   { name: 'lebIntPos', type: pi('many', natTerm, intToBool) },
   { name: 'lebIntNeg', type: pi('many', natTerm, intToBool) },
 ])
-const def = (n: string, t: Term): void => defineConstant(n, evaluate([], t))
+const def = (n: string, t: Term): void =>
+  defineConstant(n, evaluate([], t))
 def('Nat', natTerm)
 def('zero', zeroValue)
 def('succ', succValue)
@@ -246,12 +269,20 @@ function ok(name: string, run: () => void): void {
 }
 function computesInt(name: string, lhs: Term, rhs: Term): void {
   ok(name, () => {
-    check(context, refl(kc('Int'), rhs), evaluate([], idt(kc('Int'), lhs, rhs)))
+    check(
+      context,
+      refl(kc('Int'), rhs),
+      evaluate([], idt(kc('Int'), lhs, rhs)),
+    )
   })
 }
 function order(name: string, lhs: Term, rhs: Term): void {
   ok(name, () => {
-    check(context, refl(kc('Bool'), rhs), evaluate([], idt(kc('Bool'), lhs, rhs)))
+    check(
+      context,
+      refl(kc('Bool'), rhs),
+      evaluate([], idt(kc('Bool'), lhs, rhs)),
+    )
   })
 }
 
@@ -259,23 +290,77 @@ function order(name: string, lhs: Term, rhs: Term): void {
 ok('mult : Int -> Int -> Int type-checks', () => {
   check(context, multValue, evaluate([], pi('many', intTerm, intToInt)))
 })
-computesInt('mult (pos 2) (pos 3) = pos 6', aps(kc('mult'), posN(2), posN(3)), posN(6))
-computesInt('mult (-2) (pos 3) = -6', aps(kc('mult'), negN(2), posN(3)), negN(6))
-computesInt('mult (pos 2) (-3) = -6', aps(kc('mult'), posN(2), negN(3)), negN(6))
-computesInt('mult (-2) (-3) = pos 6', aps(kc('mult'), negN(2), negN(3)), posN(6))
-computesInt('mult (pos 0) (pos 5) = pos 0', aps(kc('mult'), posN(0), posN(5)), posN(0))
-computesInt('mult (pos 1) (pos 5) = pos 5', aps(kc('mult'), posN(1), posN(5)), posN(5))
+computesInt(
+  'mult (pos 2) (pos 3) = pos 6',
+  aps(kc('mult'), posN(2), posN(3)),
+  posN(6),
+)
+computesInt(
+  'mult (-2) (pos 3) = -6',
+  aps(kc('mult'), negN(2), posN(3)),
+  negN(6),
+)
+computesInt(
+  'mult (pos 2) (-3) = -6',
+  aps(kc('mult'), posN(2), negN(3)),
+  negN(6),
+)
+computesInt(
+  'mult (-2) (-3) = pos 6',
+  aps(kc('mult'), negN(2), negN(3)),
+  posN(6),
+)
+computesInt(
+  'mult (pos 0) (pos 5) = pos 0',
+  aps(kc('mult'), posN(0), posN(5)),
+  posN(0),
+)
+computesInt(
+  'mult (pos 1) (pos 5) = pos 5',
+  aps(kc('mult'), posN(1), posN(5)),
+  posN(5),
+)
 
 // the decidable order, the arrow's one-way order as a computation over the integers.
 ok('lebInt : Int -> Int -> Bool type-checks', () => {
-  check(context, lebIntValue, evaluate([], pi('many', intTerm, intToBool)))
+  check(
+    context,
+    lebIntValue,
+    evaluate([], pi('many', intTerm, intToBool)),
+  )
 })
 order('2 <= 5 is true', aps(kc('lebInt'), posN(2), posN(5)), kc('true'))
-order('5 <= 2 is false (one-way)', aps(kc('lebInt'), posN(5), posN(2)), kc('false'))
-order('-3 <= -1 is true', aps(kc('lebInt'), negN(3), negN(1)), kc('true'))
-order('-1 <= -3 is false', aps(kc('lebInt'), negN(1), negN(3)), kc('false'))
-order('-1 <= pos 2 is true (negatives below non-negatives)', aps(kc('lebInt'), negN(1), posN(2)), kc('true'))
-order('pos 2 <= -1 is false', aps(kc('lebInt'), posN(2), negN(1)), kc('false'))
-order('pos 0 <= pos 0 is true (reflexive at a point)', aps(kc('lebInt'), posN(0), posN(0)), kc('true'))
+order(
+  '5 <= 2 is false (one-way)',
+  aps(kc('lebInt'), posN(5), posN(2)),
+  kc('false'),
+)
+order(
+  '-3 <= -1 is true',
+  aps(kc('lebInt'), negN(3), negN(1)),
+  kc('true'),
+)
+order(
+  '-1 <= -3 is false',
+  aps(kc('lebInt'), negN(1), negN(3)),
+  kc('false'),
+)
+order(
+  '-1 <= pos 2 is true (negatives below non-negatives)',
+  aps(kc('lebInt'), negN(1), posN(2)),
+  kc('true'),
+)
+order(
+  'pos 2 <= -1 is false',
+  aps(kc('lebInt'), posN(2), negN(1)),
+  kc('false'),
+)
+order(
+  'pos 0 <= pos 0 is true (reflexive at a point)',
+  aps(kc('lebInt'), posN(0), posN(0)),
+  kc('true'),
+)
 
-console.log(`\ninteger ring with order (decided kernel judge.ts): ${pass} pass, ${fail} fail`)
+console.log(
+  `\ninteger ring with order (decided kernel judge.ts): ${pass} pass, ${fail} fail`,
+)

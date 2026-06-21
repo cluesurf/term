@@ -5,7 +5,7 @@
 // however, is exactly the dependent eliminator, and proving by it is the induction tactic). Run:
 // npx tsx test/check/induction-judge.ts
 
-import type { Mult, Term } from '@/code/check/judge'
+import type { Mult, Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   contextWithSignature,
@@ -13,7 +13,7 @@ import {
   infer,
   showTerm,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 const v = (i: number): Term => ({ tag: 'var', index: i })
 const kc = (n: string): Term => ({ tag: 'const', name: n })
@@ -96,7 +96,12 @@ function ok(name: string, run: () => void): void {
 // the universal goal: forall (n:Nat). Q n
 const goal = pi('many', kc('Nat'), app(kc('Q'), v(0)))
 // the proof by induction: natInd Q qbase qstep
-const proofByInduction = aps(kc('natInd'), kc('Q'), kc('qbase'), kc('qstep'))
+const proofByInduction = aps(
+  kc('natInd'),
+  kc('Q'),
+  kc('qbase'),
+  kc('qstep'),
+)
 
 ok('forall n. Q n, proved by induction (natInd Q qbase qstep)', () => {
   check(context, proofByInduction, evaluate([], goal))
@@ -141,7 +146,9 @@ function search(goalTerm: Term, depth: number): Term | null {
 ok('the search auto-discovers the induction proof', () => {
   const found = search(goal, 4)
   if (!found || !showTerm(found).includes('natInd')) {
-    throw new Error(`search did not find the induction proof (got ${found ? showTerm(found) : 'nothing'})`)
+    throw new Error(
+      `search did not find the induction proof (got ${found ? showTerm(found) : 'nothing'})`,
+    )
   }
   console.log(`        found: ${showTerm(found)}`)
 })

@@ -1,7 +1,7 @@
 // Trait dispatch: a `wear`/`suit` instance's method bodies are preserved (desugared to form-style methods) and a
 // concrete trait-method call dispatches to them, end to end (compile -> run on node). Run: npx tsx test/check/trait-dispatch.ts
 
-import { compile } from '@/code/compile/compile'
+import { compile } from '@cluesurf/make/code/compile/compile'
 import { transformSync } from 'esbuild'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,7 +16,9 @@ function expect(name: string, got: unknown, want: unknown): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`)
+    console.log(
+      `FAIL  ${name}  (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`,
+    )
   }
 }
 
@@ -48,15 +50,27 @@ task direct
 async function main(): Promise<void> {
   const r = compile({ file: 'c.tree', text: SRC }, {})
   if (!r.ok) {
-    console.log('FAIL compile', JSON.stringify(r.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL compile',
+      JSON.stringify(r.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
-  expect('instance method emitted as a function', /function boxMeasure/.test(r.typescript), true)
-  const js = transformSync(r.typescript, { loader: 'ts', format: 'esm' }).code
+  expect(
+    'instance method emitted as a function',
+    /function boxMeasure/.test(r.typescript),
+    true,
+  )
+  const js = transformSync(r.typescript, {
+    loader: 'ts',
+    format: 'esm',
+  }).code
   const dir = mkdtempSync(join(tmpdir(), 'trait-'))
   const f = join(dir, 'm.mjs')
   writeFileSync(f, js)
-  const m = (await import(pathToFileURL(f).href)) as { direct(): number }
+  const m = (await import(pathToFileURL(f).href)) as {
+    direct(): number
+  }
   expect('concrete trait-method call dispatches + runs', m.direct(), 9)
 
   // generic trait-bounded dispatch: a generic function bounded by a trait calls a trait method on its type
@@ -114,7 +128,10 @@ task run
 `
   const g = compile({ file: 'g.tree', text: GENERIC }, {})
   if (!g.ok) {
-    console.log('FAIL generic compile', JSON.stringify(g.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL generic compile',
+      JSON.stringify(g.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
   // the generic body resolves the trait call through a threaded dictionary, not a hard-wired concrete function
@@ -123,12 +140,19 @@ task run
     /\.measure\(/.test(g.typescript),
     true,
   )
-  const gjs = transformSync(g.typescript, { loader: 'ts', format: 'esm' }).code
+  const gjs = transformSync(g.typescript, {
+    loader: 'ts',
+    format: 'esm',
+  }).code
   const gf = join(dir, 'g.mjs')
   writeFileSync(gf, gjs)
   const gm = (await import(pathToFileURL(gf).href)) as { run(): number }
   // box.measure = 7, circle.measure = 9 + 9 = 18, through one generic `describe`
-  expect('two instances dispatch through one generic function', gm.run(), 7 + 18)
+  expect(
+    'two instances dispatch through one generic function',
+    gm.run(),
+    7 + 18,
+  )
 
   console.log(`\ntrait-dispatch: ${pass} pass, ${fail} fail`)
   if (fail) process.exit(1)

@@ -4,8 +4,8 @@
 // (index.html + app.js). The browser impl calls the real DOM via bind (`document.createElement`, `el.setAttribute`,
 // `parent.appendChild`, ...); no FFI shim is needed. Run: npx tsx test/zone/browser.ts
 
-import { compile } from '@/code/compile/compile'
-import { projectResolver } from '@/code/call/make'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import { projectResolver } from '@cluesurf/call/code/make'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -63,7 +63,10 @@ function makeStubElement(tag: string): any {
 }
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'seed/deck/site/code/test/site/app.tree')
+  const entry = path.join(
+    DECK,
+    'seed/deck/site/code/test/site/app.tree',
+  )
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },

@@ -1,6 +1,9 @@
 // Lockfile tests: parse the resolved-graph format and round-trip it deterministically. Run: npx tsx test/deck/lock.ts
 
-import { parseLockfile, serializeLockfile } from '@/code/deck/lock'
+import {
+  parseLockfile,
+  serializeLockfile,
+} from '@cluesurf/make/code/deck/lock'
 
 const SAMPLE = `base <0.0.1>
 

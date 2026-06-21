@@ -4,7 +4,7 @@
     "target": "ES2022",
     "lib": ["es2022"],
     "outDir": "host",
-    "rootDir": "code",
+    "rootDir": ".",
     "sourceMap": true,
     "declaration": true,
     "moduleResolution": "bundler",
@@ -20,9 +20,16 @@
     "noImplicitAny": false,
     "paths": {
       "@/*": ["./*"],
-      "@cluesurf/deck.tree": ["../deck.tree/host/index"]
+      "@cluesurf/make/*": ["./deck/make/*"],
+      "@cluesurf/call/*": ["./deck/call/*"],
+      "@cluesurf/flow/*": ["./deck/flow/*"],
+      "@cluesurf/deck.tree": ["./deck/deck/host/index"]
     }
   },
-  "include": ["code/**/*.ts"],
-  "exclude": ["node_modules", "host", "test"]
+  "include": [
+    "deck/make/code/**/*.ts",
+    "deck/call/code/**/*.ts",
+    "deck/flow/code/**/*.ts"
+  ],
+  "exclude": ["node_modules", "host", "test", "deck/**/host"]
 }

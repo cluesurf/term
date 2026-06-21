@@ -3,13 +3,13 @@
 // (8 <= dimension), and antisymmetry of the order forces it to equal 8. The proof is antisymmetry applied to the
 // two pressures: a real kernel proof term the sound kernel checks. Run: npx tsx test/check/pinch-judge.ts
 
-import type { Term } from '@/code/check/judge'
+import type { Term } from '@cluesurf/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   litLevel,
-} from '@/code/check/judge'
+} from '@cluesurf/make/code/check/judge'
 
 const v = (index: number): Term => ({ tag: 'var', index })
 const kc = (name: string): Term => ({ tag: 'const', name })
@@ -55,7 +55,10 @@ const antisymType = pi(
 
 const signature = [
   { name: 'Dim', type: ty(0) },
-  { name: 'Le', type: pi('many', kc('Dim'), pi('many', kc('Dim'), ty(0))) },
+  {
+    name: 'Le',
+    type: pi('many', kc('Dim'), pi('many', kc('Dim'), ty(0))),
+  },
   { name: 'antisym', type: antisymType },
   { name: 'dimension', type: kc('Dim') },
   { name: 'eight', type: kc('Dim') },
@@ -101,26 +104,43 @@ const pinchProof = aps(
 )
 const pinchGoal = id(kc('Dim'), kc('dimension'), kc('eight'))
 
-ok('the pinch-point: the dimension equals eight, proved structurally by antisymmetry', () => {
-  check(context, pinchProof, evaluate([], pinchGoal))
-})
+ok(
+  'the pinch-point: the dimension equals eight, proved structurally by antisymmetry',
+  () => {
+    check(context, pinchProof, evaluate([], pinchGoal))
+  },
+)
 
 // soundness: the same proof does NOT establish a wrong conclusion (dimension equals something else).
-rejects('the proof does not establish a false equality (dimension = Le)', () => {
-  check(
-    context,
-    pinchProof,
-    evaluate([], id(kc('Dim'), kc('dimension'), kc('Dim'))),
-  )
-})
+rejects(
+  'the proof does not establish a false equality (dimension = Le)',
+  () => {
+    check(
+      context,
+      pinchProof,
+      evaluate([], id(kc('Dim'), kc('dimension'), kc('Dim'))),
+    )
+  },
+)
 
 // soundness: without the floor, antisymmetry cannot conclude (only the ceiling is not enough).
-rejects('only the ceiling, without the floor, does not force eight', () => {
-  check(
-    context,
-    aps(kc('antisym'), kc('dimension'), kc('eight'), kc('ceiling'), kc('ceiling')),
-    evaluate([], pinchGoal),
-  )
-})
+rejects(
+  'only the ceiling, without the floor, does not force eight',
+  () => {
+    check(
+      context,
+      aps(
+        kc('antisym'),
+        kc('dimension'),
+        kc('eight'),
+        kc('ceiling'),
+        kc('ceiling'),
+      ),
+      evaluate([], pinchGoal),
+    )
+  },
+)
 
-console.log(`\npinch-point (structural kernel proof): ${pass} pass, ${fail} fail`)
+console.log(
+  `\npinch-point (structural kernel proof): ${pass} pass, ${fail} fail`,
+)

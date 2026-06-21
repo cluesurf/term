@@ -3,9 +3,9 @@
 // Asserts the schema is created, posts persist, list returns them in order, and get-by-id reads one back.
 // Run: npx tsx test/site/blog-db.ts   (set DATABASE_URL to override the connection)
 
-import { compile } from '@/code/compile/compile'
-import { projectResolver } from '@/code/call/make'
-import { nativePrelude } from '@/code/compile/native'
+import { compile } from '@cluesurf/make/code/compile/compile'
+import { projectResolver } from '@cluesurf/call/code/make'
+import { nativePrelude } from '@cluesurf/make/code/compile/native'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -45,7 +45,10 @@ type Repo = {
 }
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'seed/deck/site/test/site/back/post.tree')
+  const entry = path.join(
+    DECK,
+    'seed/deck/site/test/site/back/post.tree',
+  )
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },

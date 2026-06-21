@@ -1,8 +1,8 @@
 // Lowering tests: the lambda fragment compiles to interaction combinators, and reduction on the net IS beta reduction.
 // Run: npx tsx test/ir/lower-net.ts
 
-import { lower, agentCount } from '@/code/ir/lower-net'
-import type { Term } from '@/code/ir/lower-net'
+import { lower, agentCount } from '@cluesurf/make/code/ir/lower-net'
+import type { Term } from '@cluesurf/make/code/ir/lower-net'
 
 let pass = 0
 let fail = 0
