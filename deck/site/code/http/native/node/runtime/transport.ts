@@ -46,7 +46,7 @@ const ASSET_TYPES: Record<string, string> = {
 
 // binary asset extensions: the asset reader carries these as base64 (a text body can't hold raw bytes), so the
 // transport decodes the body back into a real byte buffer before sending. Kept in sync with the reader's BINARY set.
-const BINARY = new Set([
+const BINARY_TYPES = new Set([
   'png',
   'jpg',
   'jpeg',
@@ -89,7 +89,7 @@ const transport = {
       const assetType = ASSET_TYPES[ext]
       if (assetType) {
         // a binary asset was carried as base64 text; decode it back to bytes so images / fonts / media serve intact
-        if (BINARY.has(ext))
+        if (BINARY_TYPES.has(ext))
           return context.body(Buffer.from(out, 'base64') as never, status, {
             'Content-Type': assetType,
           })

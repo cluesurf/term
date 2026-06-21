@@ -7,6 +7,9 @@
 
 load ../global
   find page
+  find viewport
+  find place
+  find past
 
 load @cluesurf/bind/code/browser/dom/element
   find element
@@ -32,7 +35,6 @@ load ../../view
 dock load
   load <global:resize>, name resize
   load <global:position>, name position
-  load <global:route>, name route
   mark native
 
 task create-element
@@ -179,30 +181,69 @@ task page-shell
   like text
   send back, read body
 
-# the current route path (location.pathname)
+# the current route path (location.pathname), read straight off the bind-typed `location` global
 task page-path
   like text
-  send back, call route/page-path
+  send back, read place/pathname
 
-# set the document title
+# set the document title (document.title = ...)
 task set-title
   take title, like text
-  call route/set-title
-    read title
+  save page/title, read title
 
 # the app mount host (document body), wrapped as a view
 task page-body
   like view
   send back
     make view
-      bind handle, call route/page-body
+      bind handle, read page/body
 
-# run `handler` on back/forward + intercepted same-origin link clicks (SPA navigation)
+# run `handler` on navigation: back/forward (popstate) and intercepted same-origin link clicks (SPA navigation, so an
+# `<a href="/...">` pushes history and re-renders instead of a full reload). The handler + the click closure are bridged
+# through the gradual `any` (real functions at runtime) the way `listen` bridges its handler to addEventListener's union.
 task listen-pop
   take handler
     like task
-  call route/listen-pop
+  host go, like any
     read handler
+  call viewport/add-event-listener
+    text <popstate>
+    read go
+    make none
+  host tap, like any
+    task click
+      take event, like any
+      save anchor, like any
+        call event/target/closest
+          text <a>
+      fork test
+        hook test
+          read anchor
+        hook hold
+          save href, like any
+            call anchor/get-attribute
+              text <href>
+          fork test
+            hook test
+              call and
+                call starts-with
+                  read href
+                  text </>
+                call is-equal
+                  read anchor/host
+                  read place/host
+            hook hold
+              call event/prevent-default
+              call past/push-state
+                text <>
+                text <>
+                make some
+                  bind value, read href
+              call go
+  call page/add-event-listener
+    text <click>
+    read tap
+    make none
 
 # observe an element's width via ResizeObserver (calls `handler` with the content-box width on each resize + once now)
 task observe-size

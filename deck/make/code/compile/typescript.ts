@@ -165,6 +165,10 @@ export function toPascal(name: string): string {
   return camel.charAt(0).toUpperCase() + camel.slice(1)
 }
 
+// opaque per-backend handle types (`dock type / load <any>, name tcp-handle`): seed name -> concrete TS type. Populated
+// per emit so a `like tcp-handle` field emits the declared type rather than a nonexistent class.
+let tsOpaqueTypes = new Map<string, string>()
+
 // a checked type to a TypeScript type
 function tsType(type: Type | undefined): string {
   switch (type?.kind) {
@@ -178,8 +182,11 @@ function tsType(type: Type | undefined): string {
       return `${tsType(type.element)}[]`
     case 'map':
       return `Map<${tsType(type.key)}, ${tsType(type.value)}>`
-    case 'named':
-      return toPascal(type.name)
+    case 'named': {
+      const opaque = tsOpaqueTypes.get(type.name)
+
+      return opaque ?? toPascal(type.name)
+    }
 
     case 'function': {
       const result = type.effects?.includes('async')
@@ -886,6 +893,16 @@ export function emitTypeScript(
   // for `seed boot`. A no-op when there are no routes.
   program = lowerRoutes(program, options?.env ?? 'node')
 
+  // opaque handle types declared by `dock type` shims: seed name -> concrete TS type
+  tsOpaqueTypes = new Map(
+    program
+      .filter(
+        (n): n is Extract<typeof n, { form: 'native' }> =>
+          n.form === 'native' && n.kind === 'type',
+      )
+      .map(n => [n.alias, n.module]),
+  )
+
   const variants = new Set<string>(options?.variants)
 
   for (const node of program)
@@ -909,7 +926,10 @@ export function emitTypeScript(
   )
 
   const imports = natives
-    .filter(node => !node.module.startsWith('global:'))
+    .filter(
+      node =>
+        node.kind !== 'type' && !node.module.startsWith('global:'),
+    )
     .map(
       node =>
         `import * as ${toCamel(node.alias)} from "${node.module}"`,

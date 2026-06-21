@@ -101,6 +101,16 @@ export function hoistKotlinImports(source: string): string {
 
 export function emitKotlin(program: Program): string {
   const pad = (d: number) => '    '.repeat(d)
+  // opaque per-backend handle types (`dock type / load <java.lang.Process>, name child-handle`): seed name -> concrete
+  // kotlin type, so a `like child-handle` field emits the real handle type rather than a nonexistent class.
+  const opaqueTypes = new Map<string, string>(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'native' }> =>
+          n.form === 'native' && n.kind === 'type',
+      )
+      .map(n => [n.alias, n.module]),
+  )
   // declarative native bindings render their `case kotlin` template at call sites
   const binds = collectBinds(program)
   // the Kotlin subclass for a variant label, and each variant's field names (for construction / smart-cast access)
@@ -170,12 +180,17 @@ export function emitKotlin(program: Program): string {
         return `MutableMap<${kotlinType(type.key)}, ${kotlinType(
           type.value,
         )}>`
-      case 'named':
+      case 'named': {
+        const opaque = opaqueTypes.get(type.name)
+
+        if (opaque) {return opaque}
+
         return type.args && type.args.length > 0
           ? `${pascal(type.name)}<${type.args
               .map(kotlinType)
               .join(', ')}>`
           : pascal(type.name)
+      }
       case 'function':
         return `(${type.params
           .map(kotlinType)
@@ -817,11 +832,14 @@ export function emitKotlin(program: Program): string {
     }
   }
 
-  // a `<global:X>` binding (e.g. the linked `io` runtime object) needs no import: it is already in scope
+  // a `<global:X>` binding (e.g. the linked `io` runtime object) needs no import: it is already in scope. A `type` dock
+  // is an inline type reference (a fully-qualified handle type), not an importable module.
   const imports = program
     .filter(
       (n): n is Extract<Statement, { form: 'native' }> =>
-        n.form === 'native' && !n.module.startsWith('global:'),
+        n.form === 'native' &&
+        n.kind !== 'type' &&
+        !n.module.startsWith('global:'),
     )
     .map(
       n =>

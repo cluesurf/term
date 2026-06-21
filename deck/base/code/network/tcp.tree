@@ -1,24 +1,39 @@
+# TCP sockets. The clean uniform interface; each backend wraps its platform networking (node net / tls, rust tokio, swift Network / POSIX, kotlin java.net) behind this API, selected at build time. `connection` is a live duplex stream to a peer; `listener` accepts incoming connections. The platform socket lives in the opaque `dock` handle, typed per backend. Every operation is async, since networking runs over time. Read / write / close live in `tcp/connection`; accept / close live in `tcp/listener`.
 
+load @cluesurf/base/code/native/network/tcp
+  find do-connect
+  find do-listen
+
+# a live TCP connection to a peer
 form connection
-  link dock, mark private
+  link dock, like tcp-stream
   link host, like text
   link port, like size
   link local-host, like text
   link local-port, like size
   link secure, like bool
 
+# a TCP listener accepting incoming connections
 form listener
-  link dock, mark private
+  link dock, like tcp-server
   link host, like text
   link port, like size
 
+# open a connection to `host:port` (TLS when `secure`)
 task connect
   note async
   take host, like text
   take port, like size
   take secure, like bool, fall false
   like connection
+  send back
+    call do-connect
+      read host
+      read port
+      read secure
+      wait true
 
+# bind a listener on `host:port` (TLS when `secure`, using `certificate` / `key`)
 task listen
   note async
   take port, like size
@@ -27,3 +42,11 @@ task listen
   take certificate, like text, need false
   take key, like text, need false
   like listener
+  send back
+    call do-listen
+      read port
+      read host
+      read secure
+      read certificate
+      read key
+      wait true

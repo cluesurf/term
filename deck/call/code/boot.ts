@@ -244,6 +244,19 @@ function buildClientBundle(opts: {
 
     if (!existsSync(cacheFile)) {
       mkdirSync(cacheOut, { recursive: true })
+      // the browser bundle inlines its deps (floating-ui, etc.), so esbuild must resolve bare specifiers. ESM resolves
+      // from the importing file's dir, so link the install's node_modules next to the bundle source.
+      const bundleModules = path.join(cacheOut, 'node_modules')
+      const installModules = path.join(installRoot, 'node_modules')
+
+      if (!existsSync(bundleModules) && existsSync(installModules)) {
+        try {
+          symlinkSync(installModules, bundleModules, 'dir')
+        } catch {
+          // a pre-existing link or a race is fine
+        }
+      }
+
       const srcFile = path.join(cacheOut, 'boot.ts')
       writeFileSync(srcFile, source)
       buildSync({ entryPoints: [srcFile], outfile: cacheFile, ...bundleConfig })

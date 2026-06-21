@@ -6,6 +6,27 @@
 load @cluesurf/bind/code/browser/dom/document
   find document
 
+load @cluesurf/bind/code/browser/dom/window
+  find window
+
+load @cluesurf/bind/code/browser/dom/location
+  find location
+
+load @cluesurf/bind/code/browser/dom/history
+  find history
+
 # the page's document
 host page, name <document>
   like document
+
+# the window (back/forward navigation listener lives here)
+host viewport, name <window>
+  like window
+
+# the URL location (pathname, host) -- the route boot reads this
+host place, name <location>
+  like location
+
+# the session history (pushState for SPA navigation)
+host past, name <history>
+  like history
