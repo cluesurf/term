@@ -1,0 +1,15 @@
+
+# Style formatting (abstract native module). Building a px style fragment from a measured viewport width needs number ->
+# text plus string concat, neither of which base exposes to typed `.tree` code (the `add` builtin is numeric). It is
+# host-trivial (`before + "width:" + n + "px" + after`) but still platform-shaped, so it is env-abstracted like the
+# viewport: the build rewrites this to `native/browser/text-format` or `native/node/text-format` (both assemble the
+# fragment via the host String + concat). The viewport-layout table uses it for the width-dependent middle column at the
+# >=1244 / >=888 / mobile breakpoints, splicing the computed `width:<n>px` between that branch's fixed style prefix and
+# suffix: `width-style "max-width:888px;min-width:576px;" n ""` -> `max-width:888px;min-width:576px;width:<n>px`.
+
+# build `<before>width:<value>px<after>`: the px width spliced between a branch's fixed style prefix and suffix
+task width-style
+  take before, like text
+  take value, like number
+  take after, like text
+  like text

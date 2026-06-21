@@ -1,0 +1,20 @@
+
+# Node (SSR) style formatting: `<before>width:<value>px<after>` through the format runtime shim. Conforms to
+# ../../text-format. The shim is docked as <global:format> (the build prepends it next to this impl), so `width-style`
+# lowers to `format.widthStyle`. Identical behavior to the browser impl -- the server render needs the same px strings for
+# the width-dependent columns.
+
+dock load
+  load <global:format>, name format
+  mark native
+
+task width-style
+  take before, like text
+  take value, like number
+  take after, like text
+  like text
+  send back
+    call format/width-style
+      read before
+      read value
+      read after

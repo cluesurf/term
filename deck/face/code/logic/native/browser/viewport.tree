@@ -33,3 +33,42 @@ task listen-resize
         text <resize>
         read go
         make none
+
+# listen for print start/end: on `beforeprint` add the `print-mode` body class then call `on-before`, on `afterprint`
+# remove it then call `on-after`. Faithful to face's use-viewport (the body-class toggle + the print signal flip).
+# Returns a remover that detaches both listeners. Handlers are bridged through the gradual `any` for addEventListener's
+# listener union, like listen-resize.
+task listen-print
+  take on-before
+    like task
+  take on-after
+    like task
+  like task
+  host before, like any
+    task on-print-before
+      call frame/document/body/class-list/add
+        text <print-mode>
+      call on-before
+  host after, like any
+    task on-print-after
+      call frame/document/body/class-list/remove
+        text <print-mode>
+      call on-after
+  call frame/add-event-listener
+    text <beforeprint>
+    read before
+    make none
+  call frame/add-event-listener
+    text <afterprint>
+    read after
+    make none
+  send back
+    task drop
+      call frame/remove-event-listener
+        text <beforeprint>
+        read before
+        make none
+      call frame/remove-event-listener
+        text <afterprint>
+        read after
+        make none

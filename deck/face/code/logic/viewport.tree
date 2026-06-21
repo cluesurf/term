@@ -1,13 +1,17 @@
 
-# Viewport hook — the Seed port of @cluesurf/face's `use-viewport`. A signal holding the window width, seeded from the
-# current width and kept in sync by a resize listener (the listener detaches via on-cleanup when the owning scope is
-# disposed -- the Solid analogue of useViewport's effect cleanup). Window access is env-abstracted (native/viewport),
-# so the SSR render reads 0 and registers no listener, then the client takes over. `use-viewport-layout` derives the
-# responsive 3-section style table from this signal.
+# Viewport hook — the Seed port of @cluesurf/face's `use-viewport`. A signal holding a `{width, height, print}` record,
+# seeded from the current window size and kept in sync by listeners: a resize listener refreshes width + height, and
+# print listeners flip `print` on `beforeprint` / `afterprint` (the browser native also toggles the `print-mode` body
+# class, matching the React hook). Both listeners detach via on-cleanup when the owning scope is disposed (the Solid
+# analogue of useViewport's effect cleanup). Window access is env-abstracted (native/viewport), so the SSR render reads
+# 0 / false and registers no listeners, then the client takes over. `use-viewport-layout` derives the responsive
+# 3-section style table from this signal (the width === 0 branch is the SSR hidden first-paint shape).
 
 load ./native/viewport
   find current-width
+  find current-height
   find listen-resize
+  find listen-print
 load @cluesurf/site/code/zone/reactive
   find signal
   find make-signal
@@ -15,29 +19,100 @@ load @cluesurf/site/code/zone/reactive
   find write-signal
   find on-cleanup
 
-# create a viewport-width signal that tracks the window
+# the viewport state: window width + height (pixels) and whether a print is in progress
+form viewport
+  link width, like number
+  link height, like number
+  link print, like boolean
+
+# read the live window size into a viewport record (print defaults to false; the print listeners flip it)
+task read-viewport
+  like viewport
+  send back
+    make viewport
+      bind width
+        call current-width
+      bind height
+        call current-height
+      bind print, wave false
+
+# create a viewport signal that tracks the window size + print state
 task make-viewport
   like signal
   save self
     call make-signal
       bind value
-        call current-width
-  # update on every resize; detach on scope dispose
-  save drop
+        call read-viewport
+  # refresh width + height on every resize (print carries over from the current value); detach on scope dispose
+  save drop-resize
     call listen-resize
       task on-resize
         call write-signal
           bind self, read self
           bind value
-            call current-width
+            make viewport
+              bind width
+                call current-width
+              bind height
+                call current-height
+              bind print
+                read self/value/print
   call on-cleanup
-    read drop
+    read drop-resize
+  # flip `print` true on beforeprint, false on afterprint (width + height carry over); detach on scope dispose
+  save drop-print
+    call listen-print
+      task on-before
+        call write-signal
+          bind self, read self
+          bind value
+            make viewport
+              bind width, read self/value/width
+              bind height, read self/value/height
+              bind print, wave true
+      task on-after
+        call write-signal
+          bind self, read self
+          bind value
+            make viewport
+              bind width, read self/value/width
+              bind height, read self/value/height
+              bind print, wave false
+  call on-cleanup
+    read drop-print
   send back, read self
 
-# the current viewport width (a reactive read -- subscribes the calling effect)
-task viewport-width
+# the current viewport state record (a reactive read -- subscribes the calling effect to width / height / print)
+task viewport-state
   take self, like signal
-  like number
+  like viewport
   send back
     call read-signal
       bind self, read self
+
+# the current viewport width (a reactive read)
+task viewport-width
+  take self, like signal
+  like number
+  host state, like viewport
+    call read-signal
+      bind self, read self
+  send back, read state/width
+
+# the current viewport height (a reactive read)
+task viewport-height
+  take self, like signal
+  like number
+  host state, like viewport
+    call read-signal
+      bind self, read self
+  send back, read state/height
+
+# whether a print is in progress (a reactive read)
+task viewport-print
+  take self, like signal
+  like boolean
+  host state, like viewport
+    call read-signal
+      bind self, read self
+  send back, read state/print

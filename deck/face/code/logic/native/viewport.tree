@@ -15,3 +15,13 @@ task listen-resize
   take handler
     like task
   like task
+
+# run `on-before` on `beforeprint` and `on-after` on `afterprint`; returns a remover to detach both (register with
+# on-cleanup). The browser impl also toggles the `print-mode` body class, matching face's use-viewport. On the server
+# both listeners are no-ops (no print events), so the remover is a no-op too.
+task listen-print
+  take on-before
+    like task
+  take on-after
+    like task
+  like task

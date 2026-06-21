@@ -18,3 +18,15 @@ task listen-resize
   send back
     task drop
       save skip, code 0
+
+# no print events on the server, so both handlers are never called and the body class is never toggled. Returns a no-op
+# remover so the caller can register cleanup uniformly across platforms. Conforms to ../../viewport.
+task listen-print
+  take on-before
+    like task
+  take on-after
+    like task
+  like task
+  send back
+    task drop
+      save skip, code 0

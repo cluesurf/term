@@ -1,9 +1,31 @@
 
-# Type — headless typography family, ported from the React type components (mesh/deck/face/code/component/type). The
-# behaviors that are pure CSS are fully headless here (theme keys off the data-attrs); the one that needs measurement
-# (`fitted`, which JS-fits the font size to the container) is the themeable shell + a noted dom-primitive follow-up.
-# Parts: text (base typography: data-size / data-weight), balanced (text-wrap: balance), truncated (line-clamp to
-# data-lines), fitted (scale text to fill its box).
+# Type — headless typography family, ported from the React type components (mesh/deck/face/code/component/type:
+# index.tsx dispatcher, text.tsx core TypeText, shared.tsx, and the use-text hook hook/use-text.ts).
+#
+# The core `text` zone reproduces React `<TypeText>`: one tag (default span) carrying the resolved font + size +
+# weight + leading + line-height + color, with the children inside. React resolves these through `useText` and writes
+# them as a className (font class + font-size class) plus an inline style block (opacity, fontSize, fontWeight,
+# lineHeight, color, and a fade transition while the font swaps). The mapping is preserved EXACTLY:
+#   font   -> the resolved font-family class (`font-<Family>`), e.g. font prop "CrowMark" -> class font-CrowMark
+#   size   -> a number is the inline px font-size; carried on data-size so the theme emits `font-size:<n>px`
+#   weight -> normal | semibold | bold mapped to font-weight 400 | 600 | 700 (data-weight, mapped by the theme)
+#   leading-> heading | body | base mapped to line-height 1.2 | 1.4 | 1 (data-leading, mapped by the theme)
+#   color  -> inline color (carried on data-color so the theme emits `color:<value>`)
+#   tag    -> the rendered element (default span); see the per-tag convenience zones below
+#   direction -> the `dir` attribute (ltr | rtl), preserved verbatim
+#   class  -> extra classes merged in (React `className`)
+#   style  -> inline-style passthrough (React `style`), bound straight to the style attribute
+#
+# Simplified vs React (documented for parity): the seven-phase font-loading fade / cross-fade state machine in
+# use-text.ts (hidden -> real-fade-in / fallback-fade-in -> crossfade-* -> real, with snap / fade-in / late-arrival
+# windows) is collapsed to "render the real font immediately." The structure and every prop are preserved, so static
+# text is functionally identical: the steady state of the React machine (transitionMs === 0, real font shown) IS this
+# render. What is dropped is only the transient fallback-then-swap animation while a web font streams in, plus the
+# `opacity`/`processor`/`script`-inheritance/`registerTextProcessor` runtime, which need the registry + signals layer.
+#
+# Other parts (unchanged from the prior partial port, all pure CSS keyed off data-attrs): balanced (text-wrap:
+# balance), truncated (line-clamp to data-lines), fitted (scale text to fill its box; the measurement loop is a noted
+# dom-primitive follow-up).
 
 load @cluesurf/site/code/zone/render
   find element
@@ -11,16 +33,148 @@ load @cluesurf/site/code/dom/dom
   find view
   find append
 
-# base typography. `size` / `weight` are data attributes a theme maps to font tokens; no baked styles.
+# base typography core — React `<TypeText>` with the default `span` tag. The font / size / weight / leading / color
+# props ride as data attributes the theme maps to the exact CSS values (see lookClasses); `style` is the React inline-
+# style passthrough; `direction` is the `dir` attribute.
 zone text
   take host, like view
   take class
+  take font
   take size
   take weight
+  take leading
+  take color
+  take direction
+  take style
   zone span
     bind data-slot, text <text>
+    bind data-font, read font
     bind data-size, read size
     bind data-weight, read weight
+    bind data-leading, read leading
+    bind data-color, read color
+    bind dir, read direction
+    bind style, read style
+    bind class, read class
+    slot
+
+# heading-tag variants — React `<TypeText tag="h1">` etc. Same typography contract, different rendered element. The
+# renderer needs a literal tag name, so each tag is its own zone (callers pick the one matching the React `tag` prop).
+zone text-h1
+  take host, like view
+  take class
+  take font
+  take size
+  take weight
+  take leading
+  take color
+  take direction
+  take style
+  zone h1
+    bind data-slot, text <text>
+    bind data-font, read font
+    bind data-size, read size
+    bind data-weight, read weight
+    bind data-leading, read leading
+    bind data-color, read color
+    bind dir, read direction
+    bind style, read style
+    bind class, read class
+    slot
+
+zone text-h2
+  take host, like view
+  take class
+  take font
+  take size
+  take weight
+  take leading
+  take color
+  take direction
+  take style
+  zone h2
+    bind data-slot, text <text>
+    bind data-font, read font
+    bind data-size, read size
+    bind data-weight, read weight
+    bind data-leading, read leading
+    bind data-color, read color
+    bind dir, read direction
+    bind style, read style
+    bind class, read class
+    slot
+
+zone text-h3
+  take host, like view
+  take class
+  take font
+  take size
+  take weight
+  take leading
+  take color
+  take direction
+  take style
+  zone h3
+    bind data-slot, text <text>
+    bind data-font, read font
+    bind data-size, read size
+    bind data-weight, read weight
+    bind data-leading, read leading
+    bind data-color, read color
+    bind dir, read direction
+    bind style, read style
+    bind class, read class
+    slot
+
+zone text-p
+  take host, like view
+  take class
+  take font
+  take size
+  take weight
+  take leading
+  take color
+  take direction
+  take style
+  zone p
+    bind data-slot, text <text>
+    bind data-font, read font
+    bind data-size, read size
+    bind data-weight, read weight
+    bind data-leading, read leading
+    bind data-color, read color
+    bind dir, read direction
+    bind style, read style
+    bind class, read class
+    slot
+
+# anchor-tag variant — React `<TypeText tag="a" href=...>`. Adds the href / target / rel passthroughs from the React
+# prop surface alongside the typography contract.
+zone text-a
+  take host, like view
+  take class
+  take font
+  take size
+  take weight
+  take leading
+  take color
+  take direction
+  take style
+  take href
+  take target
+  take rel
+  zone a
+    bind data-slot, text <text>
+    bind data-font, read font
+    bind data-size, read size
+    bind data-weight, read weight
+    bind data-leading, read leading
+    bind data-color, read color
+    bind dir, read direction
+    bind style, read style
+    bind href, read href
+    bind target, read target
+    bind rel, read rel
     bind class, read class
     slot
 

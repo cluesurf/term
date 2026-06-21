@@ -205,10 +205,16 @@ const definition = new Map<string, Value>()
 
 // fuel bounds how deeply transparent definitions may unfold during one conversion, so a recursive (or pathological
 // self-referential) definition can be made transparent without the checker ever looping. Exhausting fuel makes the
-// unfold stuck (conversion returns not-equal): sound but incomplete, never wrong.
+// unfold stuck (conversion returns not-equal): sound but incomplete, never wrong. Raising the cap only lets MORE true
+// equalities be found (it never makes non-convertible terms convertible), so it is always sound. It is set generously
+// because transparent definitions are termination-gated (only a function proven terminating is made transparent, see
+// check/elaborate.ts), so they always halt on their own. The cap is a backstop for self-referential type unfolding, not
+// a real bound on computation, and a low value wrongly rejected legitimate deep-but-finite proofs (a Lie bracket of a
+// bracket, a multiplication table chained several deep). A successful conversion returns early, so the cost is paid
+// only by a conversion that genuinely needs to unfold this far.
 let unfoldFuel = 0
 
-const MAX_UNFOLD = 32
+const MAX_UNFOLD = 1024
 
 export function defineConstant(name: string, value: Value): void {
   definition.set(name, value)

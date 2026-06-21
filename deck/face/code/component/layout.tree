@@ -1,0 +1,76 @@
+
+# Layout — the Seed port of @cluesurf/face's three-section shell (Layout + the use-viewport / use-viewport-layout
+# system). It creates the viewport signal, derives the responsive style table from it, and applies the inline-style
+# strings reactively to the container / grid / middle divs. The page fills the middle `slot`; clue.surf registers no
+# sidebars, so the left / right rails stay empty (their style strings still resolve, but no content mounts in them).
+#
+# Reactivity: each region's `style` is `bind style, call <region>-style, read vp`. The value is a `call` (not a literal),
+# so the zone compiler wraps it in an effect (Solid `bind-attribute`): the getter reads the viewport signal (subscribing
+# the effect to width / print), runs get-layout-3-section, and returns that region's string. On resize / print the
+# signal writes, the effects re-run, and the three divs restyle -- the faithful runtime of the React hook + Layout.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/viewport
+  find make-viewport
+  find viewport-width
+  find viewport-print
+load ../logic/viewport-layout
+  find get-layout-3-section
+  find layout-style
+
+# the live layout style table for the current viewport state (a reactive read: subscribes the calling effect to width +
+# print, then runs the pure breakpoint table)
+task layout-now
+  take self
+  like layout-style
+  send back
+    call get-layout-3-section
+      call viewport-width
+        read self
+      call viewport-print
+        read self
+
+# per-region style getters, each a reactive read used as a `bind style, call ...` value
+task container-style
+  take self
+  like text
+  host now, like layout-style
+    call layout-now
+      read self
+  send back, read now/container
+
+task grid-style
+  take self
+  like text
+  host now, like layout-style
+    call layout-now
+      read self
+  send back, read now/grid
+
+task middle-style
+  take self
+  like text
+  host now, like layout-style
+    call layout-now
+      read self
+  send back, read now/middle
+
+# the three-section shell. The page mounts into the middle column via `slot`.
+zone layout
+  take host, like view
+  save vp
+    call make-viewport
+  zone div
+    bind data-slot, text <layout-container>
+    bind style, call container-style, read vp
+    zone div
+      bind data-slot, text <layout-grid>
+      bind style, call grid-style, read vp
+      zone div
+        bind data-slot, text <layout-middle>
+        bind style, call middle-style, read vp
+        slot

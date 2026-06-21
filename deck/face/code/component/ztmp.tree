@@ -1,0 +1,13 @@
+
+load @cluesurf/site/code/zone/render
+  find element
+  find text
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone ztmp
+  take host, like view
+  zone div
+    bind class, text <a [&\>tr]:b ['*_'] c>
+    slot

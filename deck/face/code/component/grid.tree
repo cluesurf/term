@@ -1,10 +1,15 @@
 
-# Grid — headless responsive grid, ported from the React grid family (mesh/deck/face/code/component/grid). The
-# container is a CSS grid; the column count comes from the pure `compute-fit` logic (logic/grid) fed by the measured
-# container width, applied as a reactive `columns` style/class. Parts: grid (container), grid-item. The theme owns
-# display:grid + gap; `columns` drives grid-template-columns. The JS-measured + virtualized variants (block / flow /
-# virtual) add a ResizeObserver + scroll windowing on top (a dom primitive, the remaining piece); the CSS-grid base
-# here is fully headless + ready to theme.
+# Grid — headless container-query responsive grid, ported from the React block-cq grid
+# (mesh/deck/face/code/component/grid/block-cq.tsx + index.tsx dispatcher + shared.ts computeFit). This is the pure-CSS
+# variant the landing uses (the dispatcher routes a `maxColumns` grid here): the column count switches in `@container`
+# queries, never JS, so there is zero first-paint shift and rows are flex-wrap so the LAST partial row aligns
+# independently of the full rows above. The `look` DSL owns the actual per-config CSS (the `grid-cq-*` classes in
+# site/style/look.tree: `container-type: inline-size`, the `.row` flex-wrap + gaps + justify, the `.cell` flex column,
+# the default + `@container` column rules). The caller passes the matching config class. Parts: grid (container that
+# carries the config class + holds the `.row`), grid-item (the `.cell` flex column wrapping one child).
+#
+# computeFit (the JS fitter the block / block-css / virtual variants reuse) lives in logic/grid; it is verified to match
+# shared.ts exactly. block-cq itself needs no fitter -- the browser does the column math from the `@container` rules.
 
 load @cluesurf/site/code/zone/render
   find element
@@ -12,20 +17,26 @@ load @cluesurf/site/code/dom/dom
   find view
   find append
 
+# the grid container. `class` is the config class (e.g. `grid-cq-2-372`): the theme gives it `container-type:
+# inline-size` and styles `.row` / `.cell` descendants. The single `.row` holds the cells; flex-wrap there centers /
+# aligns each row (including the partial last row) on its own, the one layout CSS Grid cannot do without subgrid hacks.
 zone grid
   take host, like view
   take class
-  take columns
   zone div
     bind data-slot, text <grid>
-    bind data-columns, read columns
     bind class, read class
-    slot
+    zone div
+      bind class, text <row>
+      slot
 
+# one grid cell — a flex column so its child can grow to fill the row-stretched height (matches the React `.bcqg-cell`).
+# The per-config `@container` rules in the theme size this `.cell` via its `flex` basis + `min-width` (scoped under the
+# config class as `.grid-cq-* .cell`, so the bare `.cell` / `.row` names never leak to other components).
 zone grid-item
   take host, like view
   take class
   zone div
     bind data-slot, text <grid-item>
-    bind class, read class
+    bind class, text <cell>
     slot

@@ -20,12 +20,24 @@ task compute-fit
   take gap, like number
   take child-count, like number
   like grid-fit
-  # nothing to lay out: an unmeasured container (<= 1px) or no children
+  # nothing to lay out: an unmeasured container (<= 1px) or no children. The React `computeFit` short-circuits on
+  # `containerWidth <= 1 || childCount === 0`; expressed here as two early-outs that both return {0, 0} (child-count is a
+  # count, so `<= 0` is exactly `=== 0`).
   fork test
     hook test
       call is-maximum
         read container-width
         code 1
+    hook hold
+      send back
+        make grid-fit
+          bind columns, code 0
+          bind item-width, code 0
+  fork test
+    hook test
+      call is-maximum
+        read child-count
+        code 0
     hook hold
       send back
         make grid-fit
