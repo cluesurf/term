@@ -1,4 +1,4 @@
-# node TCP listener operations. Forwards to the linked tcp runtime shim, operating on the listener's raw node Server. accept wraps the incoming socket as a connection. Internal: reached only through the public TCP API.
+# kotlin TCP listener operations. Forwards to the linked tcp runtime shim, operating on the listener's java ServerSocket handle. accept wraps the incoming socket as a connection. Internal: reached only through the public TCP API.
 
 dock load
   load <global:tcp>, name tcp

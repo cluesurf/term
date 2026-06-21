@@ -1,131 +1,53 @@
+# rust TCP implementation. Forwards to the linked tcp runtime shim (tokio::net). Declares the opaque handle types a connection / listener hold (an Arc-wrapped tokio TcpStream / TcpListener). Internal: reached only through the public TCP API.
+
+dock type
+  load <std::sync::Arc<tokio::net::TcpStream>>, name tcp-stream
+  load <std::sync::Arc<tokio::net::TcpListener>>, name tcp-server
+
+dock load
+  load <global:tcp>, name tcp
 
 load @cluesurf/base/code/network/tcp
   find connection
   find listener
 
-task connect
+task do-connect
   note async
   take host, like text
-  take port, like size
-  take secure, like bool, fall wave false
-
-  save addr
-    call format
-      text <{}:{}>
+  take port, like number
+  take secure, like boolean
+  like connection
+  save raw
+    call tcp/connect
       read host
       read port
-
-  fork test
-    hook test
       read secure
-    hook hold
-      save tcp-stream
-        call tokio/net/tcp-stream/connect
-          note async
-          read addr
-          halt kink
-      save connector
-        call tokio-rustls/tls-connector/from
-          call rustls/client-config/builder/new
-            call build
-      save tls-stream
-        call connector/connect
-          note async
-          call rustls/server-name/try-from
-            read host
-            halt kink
-          read tcp-stream
-          halt kink
-      save local-addr
-        call tls-stream/get-ref/0/local-addr
-          halt kink
-      send back
-        make connection
-          bind dock, read tls-stream
-          bind host, read host
-          bind port, read port
-          bind local-host, call local-addr/ip/to-string
-          bind local-port, call local-addr/port
-          bind secure, wave true
-    hook miss
-      save raw
-        call tokio/net/tcp-stream/connect
-          note async
-          read addr
-          halt kink
-      save local-addr
-        call raw/local-addr
-          halt kink
-      send back
-        make connection
-          bind dock, read raw
-          bind host, read host
-          bind port, read port
-          bind local-host, call local-addr/ip/to-string
-          bind local-port, call local-addr/port
-          bind secure, wave false
+      wait true
+  send back
+    make connection
+      bind dock, read raw
+      bind host, read host
+      bind port, read port
+      bind secure, read secure
 
-task listen
+task do-listen
   note async
-  take port, like size
-  take host, like text, fall text <0.0.0.0>
-  take secure, like bool, fall wave false
+  take port, like number
+  take host, like text
+  take secure, like boolean
   take certificate, like text, need false
   take key, like text, need false
-
-  save addr
-    call format
-      text <{}:{}>
-      read host
+  like listener
+  save raw
+    call tcp/listen
       read port
-
-  fork test
-    hook test
+      read host
       read secure
-    hook hold
-      save cert-data
-        call tokio/fs/read
-          note async
-          read certificate
-          halt kink
-      save key-data
-        call tokio/fs/read
-          note async
-          read key
-          halt kink
-      save certs
-        call rustls-pemfile/certs
-          call cursor/new, read cert-data
-          halt kink
-      save keys
-        call rustls-pemfile/pkcs8-private-keys
-          call cursor/new, read key-data
-          halt kink
-      save config
-        call rustls/server-config/builder/new
-          call with-no-client-auth
-          call with-single-cert
-            read certs
-            call keys/remove/0
-            halt kink
-      save raw
-        call tokio/net/tcp-listener/bind
-          note async
-          read addr
-          halt kink
-      send back
-        make listener
-          bind dock, read raw
-          bind host, read host
-          bind port, read port
-    hook miss
-      save raw
-        call tokio/net/tcp-listener/bind
-          note async
-          read addr
-          halt kink
-      send back
-        make listener
-          bind dock, read raw
-          bind host, read host
-          bind port, read port
+      read certificate
+      read key
+      wait true
+  send back
+    make listener
+      bind dock, read raw
+      bind host, read host
+      bind port, read port

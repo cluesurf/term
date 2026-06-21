@@ -88,9 +88,17 @@ task page-shell
 task page-path
   like text
 
-# set the document title (per-route, from a route's `seed title` directive)
+# set the document title (per-route, from a route's `seed title` directive). On the server it stashes the title for the
+# document shell; in the browser it sets document.title.
 task set-title
   take title, like text
+
+# set a SEO meta tag (per-route, from a route's `seed description` / `seed og:image` / etc. directives), declared
+# separately from the component. On the server it stashes the tag for the document shell <head>; in the browser it
+# upserts the live <meta> element. `name` is the meta key (og:* / article:* render as `property`, the rest as `name`).
+task set-meta
+  take name, like text
+  take content, like text
 
 # the app mount host (document body). The boot mounts the matched route's component here.
 task page-body

@@ -1,138 +1,40 @@
+# swift UDP socket operations. Forwards to the linked udp runtime shim, operating on the socket's file descriptor. Internal: reached only through the public UDP API.
 
 dock load
-  load <Network>, name network
+  load <global:udp>, name udp
 
 load @cluesurf/base/code/network/udp
   find socket
-
-load @cluesurf/base/code/network/udp/socket
   find datagram
 
-task send
+task do-send
   note async
   take socket, like socket
   take data, like text
   take host, like text
-  take port, like size
+  take port, like number
+  like number
+  send back
+    call udp/send
+      read socket/dock
+      read data
+      read host
+      read port
+      wait true
 
-  save conn
-    call nw-connection
-      text <host>
-      call nw-endpoint/host
-        read host
-        text <port>
-        call nw-endpoint/port
-          call uint16, read port
-      text <using>
-      call nw-parameters/udp
-
-  call conn/start
-    text <queue>
-    call dispatch-queue/main
-
-  save content
-    call data/data
-      text <using>
-      text <.utf8>
-
-  call make-continuation
-    note async
-    task resolve
-      take ok
-      take fail
-      call conn/send
-        text <content>
-        read content
-        text <contentContext>
-        call nw-connection/content-context/default-message
-        text <isComplete>
-        wave true
-        text <completion>
-        call nw-connection/send-completion/content-processed
-          task on-send
-            take error
-            fork test
-              hook test
-                call is-some, read error
-              hook hold
-                call fail, read error
-              hook miss
-                call ok
-
-  send back, call data/count
-
-task receive
+task do-receive
   note async
   take socket, like socket
+  like datagram
+  send back
+    call udp/receive
+      read socket/dock
+      wait true
 
-  save raw, read socket/dock
-
-  save nw-conn
-    call make-continuation
-      note async
-      task resolve
-        take ok
-        take fail
-        save raw/new-connection-handler
-          task on-connection
-            take conn
-            call conn/start
-              text <queue>
-              call dispatch-queue/main
-            call conn/receive
-              text <minimumIncompleteLength>
-              code 1
-              text <maximumLength>
-              code 65536
-              task on-receive
-                take content
-                take context
-                take is-complete
-                take error
-                fork test
-                  hook test
-                    call is-some, read error
-                  hook hold
-                    call fail, read error
-                  hook miss
-                    save remote
-                      call conn/current-path/remote-endpoint
-                    call ok
-                      make datagram
-                        bind data
-                          fork test
-                            hook test
-                              call is-some, read content
-                            hook hold
-                              call string
-                                text <data>
-                                read content
-                                text <encoding>
-                                text <.utf8>
-                            hook miss
-                              text <>
-                        bind host
-                          fork test
-                            hook test
-                              call is-some, read remote
-                            hook hold
-                              call remote/description
-                            hook miss
-                              text <0.0.0.0>
-                        bind port, code 0
-
-  send back, read nw-conn
-
-task stream
+task do-close
   note async
   take socket, like socket
-
-  save raw, read socket/dock
-  send back, read raw
-
-task close
-  note async
-  take socket, like socket
-
-  save raw, read socket/dock
-  call raw/cancel
+  like void
+  call udp/close
+    read socket/dock
+    wait true

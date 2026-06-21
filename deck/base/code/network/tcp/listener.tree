@@ -6,7 +6,7 @@ load @cluesurf/base/code/network/tcp
 
 load @cluesurf/base/code/native/network/tcp/listener
   find do-accept
-  find do-close
+  find do-close-listener
 
 # wait for and return the next incoming connection
 task accept
@@ -23,6 +23,6 @@ task close
   note async
   take listener, like listener
   send back
-    call do-close
+    call do-close-listener
       read listener
       wait true

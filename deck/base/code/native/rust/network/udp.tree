@@ -1,35 +1,26 @@
+# rust UDP implementation. Forwards to the linked udp runtime shim (tokio::net::UdpSocket). Declares the opaque handle type a socket holds (an Arc-wrapped tokio UdpSocket). Internal: reached only through the public UDP API.
+
+dock type
+  load <std::sync::Arc<tokio::net::UdpSocket>>, name udp-handle
+
+dock load
+  load <global:udp>, name udp
 
 load @cluesurf/base/code/network/udp
   find socket
 
-task open
+task do-open
   note async
-  take port, like size, need false
-  take host, like text, fall text <0.0.0.0>
-
-  save bind-port
-    fork test
-      hook test
-        call is-some, read port
-      hook hold
-        read port
-      hook miss
-        code 0
-
-  save addr
-    call format
-      text <{}:{}>
-      read host
-      read bind-port
-
+  take port, like number
+  take host, like text
+  like socket
   save raw
-    call tokio/net/udp-socket/bind
-      note async
-      read addr
-      halt kink
-
+    call udp/open
+      read port
+      read host
+      wait true
   send back
     make socket
       bind dock, read raw
       bind host, read host
-      bind port, read bind-port
+      bind port, read port

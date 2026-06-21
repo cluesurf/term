@@ -1,4 +1,4 @@
-# node UDP socket operations. Forwards to the linked udp runtime shim, operating on the socket's raw node dgram Socket. Internal: reached only through the public UDP API.
+# kotlin UDP socket operations. Forwards to the linked udp runtime shim, operating on the socket's java DatagramSocket handle. Internal: reached only through the public UDP API.
 
 dock load
   load <global:udp>, name udp

@@ -335,19 +335,46 @@ function lowerZone(
         ),
       )
     } else if (node.form === 'slot') {
-      // if (children) append(parent, children())
+      // the slot outlet renders the caller's children into `parent`. The thunk is called WITH the parent: a content
+      // thunk (`() => view`, the common case) ignores the arg and returns a node, which is appended; a layout's page
+      // thunk (`(parent) => page(parent)`) builds straight into the parent and returns nothing, so nothing is appended
+      // (no wrapper element). This is what lets a route's `layout` wrap its page with no extra DOM node.
+      //   if (children) { const __slot = children(parent); if (__slot) append(parent, __slot) }
       out.push({
         form: 'if',
         branches: [
           {
             cond: variable('children'),
             body: [
-              exprStatement(
-                call('append', [
-                  variable(parent),
-                  { form: 'call', callee: variable('children'), args: [], span },
-                ]),
-              ),
+              {
+                form: 'let',
+                name: '__slot',
+                init: {
+                  form: 'call',
+                  callee: variable('children'),
+                  args: [variable(parent)],
+                  span,
+                },
+                mutable: false,
+                span,
+              },
+              {
+                form: 'if',
+                branches: [
+                  {
+                    cond: variable('__slot'),
+                    body: [
+                      exprStatement(
+                        call('append', [
+                          variable(parent),
+                          variable('__slot'),
+                        ]),
+                      ),
+                    ],
+                  },
+                ],
+                span,
+              },
             ],
           },
         ],

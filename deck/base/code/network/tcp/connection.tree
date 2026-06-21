@@ -6,7 +6,7 @@ load @cluesurf/base/code/network/tcp
 load @cluesurf/base/code/native/network/tcp/connection
   find do-read
   find do-write
-  find do-close
+  find do-close-stream
 
 # read the next chunk of incoming data (empty text at end of stream)
 task read
@@ -35,6 +35,6 @@ task close
   note async
   take connection, like connection
   send back
-    call do-close
+    call do-close-stream
       read connection
       wait true

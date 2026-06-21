@@ -1,8 +1,8 @@
-# swift TCP implementation. Forwards to the linked tcp runtime shim (POSIX sockets). Declares the opaque handle types a connection / listener hold (the socket file descriptor, Int32). Internal: reached only through the public TCP API.
+# kotlin TCP implementation. Forwards to the linked tcp runtime shim (java.net / javax.net.ssl). Declares the opaque handle types a connection / listener hold (the raw java Socket / ServerSocket). Internal: reached only through the public TCP API.
 
 dock type
-  load <Int32>, name tcp-stream
-  load <Int32>, name tcp-server
+  load <java.net.Socket>, name tcp-stream
+  load <java.net.ServerSocket>, name tcp-server
 
 dock load
   load <global:tcp>, name tcp

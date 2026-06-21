@@ -191,6 +191,55 @@ task set-title
   take title, like text
   save page/title, read title
 
+# upsert a SEO meta tag live (SPA navigation): reuse the existing element for this key if present, else create one and
+# append it to <head>. og:* / article:* use `property`, the rest use `name` (matching the SSR shell). String pieces are
+# joined with `add` (the `+` builtin concatenates text).
+task set-meta
+  take name, like text
+  take content, like text
+  save attr, like text
+    fork test
+      hook test
+        call name/starts-with
+          text <og:>
+      hook hold
+        text <property>
+      hook miss
+        text <name>
+  save selector, like text
+    call add
+      call add
+        call add
+          call add
+            text <meta[>
+            read attr
+          text <=">
+        read name
+      text <"]>
+  save existing, like any
+    call page/head/query-selector
+      read selector
+  fork test
+    hook test
+      read existing
+    hook hold
+      call existing/set-attribute
+        text <content>
+        read content
+    hook miss
+      save tag, like any
+        call page/create-element
+          text <meta>
+          make none
+      call tag/set-attribute
+        read attr
+        read name
+      call tag/set-attribute
+        text <content>
+        read content
+      call page/head/append-child
+        read tag
+
 # the app mount host (document body), wrapped as a view
 task page-body
   like view

@@ -66,21 +66,63 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     const component = route.component!
     const body: Statement[] = []
 
-    const title = route.directives.find(d => d.name === 'title')
+    // a route's `seed` directives become the page's SEO metadata, declared separately from the component (Remix-style):
+    // `title` sets the document title; `layout` (handled below) wraps the page; every other directive (`description`,
+    // `og:image`, `twitter:card`, ...) becomes a meta tag. On the server these render into the <head>; in the browser
+    // they update the live document on navigation.
+    const layout = route.directives.find(
+      d => d.name === 'layout' && d.value?.form === 'string',
+    )
+    const layoutName =
+      layout?.value?.form === 'string' ? layout.value.value : undefined
 
-    if (title?.value) {
-      body.push(exprStatement(call('set-title', [title.value])))
-    }
+    for (const directive of route.directives) {
+      if (!directive.value || directive.name === 'layout') {
+        continue
+      }
 
-    const args: Expression[] = [variable('host')]
-
-    for (const prop of component.props) {
-      if (prop.value) {
-        args.push(prop.value)
+      if (directive.name === 'title') {
+        body.push(exprStatement(call('set-title', [directive.value])))
+      } else {
+        body.push(
+          exprStatement(
+            call('set-meta', [string(directive.name), directive.value]),
+          ),
+        )
       }
     }
 
-    body.push(exprStatement(call(component.name, args)))
+    // the page's props, passed after the host
+    const props: Expression[] = []
+
+    for (const prop of component.props) {
+      if (prop.value) {
+        props.push(prop.value)
+      }
+    }
+
+    if (layoutName) {
+      // wrap the page in its layout (a slotted zone): `layout(host, (slot) => page(slot, ...props))`. The layout renders
+      // its chrome with a `slot` outlet; the page builds straight into that outlet. This is the Remix / RR / Next shared
+      // layout, declared separately from the page via the route's `layout <name>` directive.
+      const pageThunk: Expression = {
+        form: 'closure',
+        params: [{ name: 'slot' }],
+        body: [
+          exprStatement(call(component.name, [variable('slot'), ...props])),
+        ],
+        span,
+      }
+
+      body.push(
+        exprStatement(call(layoutName, [variable('host'), pageThunk])),
+      )
+    } else {
+      body.push(
+        exprStatement(call(component.name, [variable('host'), ...props])),
+      )
+    }
+
     body.push({ form: 'return', span })
 
     return {

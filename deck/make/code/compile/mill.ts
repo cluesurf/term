@@ -3199,6 +3199,10 @@ export function mill(tree: RootNode, file: string): MillResult {
 
   const program: Program = []
 
+  // import aliases: `load @m / find X, name Y` makes Y a local synonym for X in THIS file. The alias is rewritten to X
+  // before the module merge, so a flat-namespace collision is never introduced (Y never reaches the merged program).
+  const aliases = new Map<string, string>()
+
   for (const group of tree.nodes) {
     const keyword = headName(group)
 
@@ -3314,7 +3318,23 @@ export function mill(tree: RootNode, file: string): MillResult {
       keyword === 'bear' ||
       keyword === 'deck'
     ) {
-      // module directives: resolved by the loader (code/compile/load.ts), not statements
+      // module directives: the loader (code/compile/load.ts) resolves the path. Here we only capture `find X, name Y`
+      // import aliases so the local name Y can be rewritten to X below.
+      if (keyword === 'load') {
+        for (const child of rest(group)) {
+          if (child.kind !== 'group' || headName(child) !== 'find') {continue}
+
+          const parts = rest(child).filter(p => p.kind === 'group')
+          const target = parts[0] ? headName(parts[0]) : undefined
+          const nameGroup = parts.find(p => headName(p) === 'name')
+          const local =
+            nameGroup && rest(nameGroup)[0]?.kind === 'group'
+              ? headName(rest(nameGroup)[0])
+              : undefined
+
+          if (target && local && local !== target) {aliases.set(local, target)}
+        }
+      }
     } else if (keyword === 'note') {
       // top-level documentation: not a statement
     } else {
@@ -3323,6 +3343,38 @@ export function mill(tree: RootNode, file: string): MillResult {
   }
 
   if (diagnostics.length) {return { ok: false, diagnostics }}
+
+  // apply import aliases. A reference is either a `variable` expression (covers reads, calls, and `make` constructors,
+  // which all lower to a variable callee) or a `named` type. Definitions are `function`/form nodes, not `variable`, and
+  // the alias name is imported (never defined here), so every match is a genuine reference. String literals and member
+  // field names are plain strings, never visited as nodes, so they are untouched.
+  if (aliases.size) {
+    const rewriteName = (name: string): string => aliases.get(name) ?? name
+
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (const item of node) {walk(item)}
+        return
+      }
+
+      if (!node || typeof node !== 'object') {return}
+
+      const record = node as Record<string, unknown>
+
+      if (record.form === 'variable' && typeof record.name === 'string') {
+        record.name = rewriteName(record.name)
+      } else if (record.kind === 'named' && typeof record.name === 'string') {
+        record.name = rewriteName(record.name)
+      }
+
+      for (const key in record) {
+        const value = record[key]
+        if (value && typeof value === 'object') {walk(value)}
+      }
+    }
+
+    walk(program)
+  }
 
   return { ok: true, program }
 }

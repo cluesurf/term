@@ -1,57 +1,31 @@
+# swift TCP listener operations. Forwards to the linked tcp runtime shim, operating on the listener's socket file descriptor. accept wraps the incoming socket as a connection. Internal: reached only through the public TCP API.
+
+dock load
+  load <global:tcp>, name tcp
 
 load @cluesurf/base/code/network/tcp
   find listener
   find connection
 
-task accept
+task do-accept
   note async
   take listener, like listener
-
-  save raw, read listener/dock
-
-  save nw-conn
-    call make-continuation
-      note async
-      task resolve
-        take ok
-        take fail
-        save raw/new-connection-handler
-          task on-connection
-            take conn
-            call conn/start
-              text <queue>
-              call dispatch-queue/main
-            call ok, read conn
-
-  save remote
-    call nw-conn/current-path/remote-endpoint
-
+  like connection
+  save raw
+    call tcp/accept
+      read listener/dock
+      wait true
   send back
     make connection
-      bind dock, read nw-conn
-      bind host
-        fork test
-          hook test
-            call is-some, read remote
-          hook hold
-            call remote/description
-          hook miss
-            text <0.0.0.0>
+      bind dock, read raw
+      bind host, read listener/host
       bind port, read listener/port
-      bind local-host, read listener/host
-      bind local-port, read listener/port
       bind secure, wave false
 
-task close
+task do-close-listener
   note async
   take listener, like listener
-
-  save raw, read listener/dock
-  call raw/cancel
-
-task stream
-  note async
-  take listener, like listener
-
-  save raw, read listener/dock
-  send back, read raw
+  like void
+  call tcp/close-server
+    read listener/dock
+    wait true

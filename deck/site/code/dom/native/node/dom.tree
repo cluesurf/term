@@ -228,8 +228,19 @@ task page-path
   like text
   send back, text </>
 
+# stash the route's title / meta in the shim, so the document shell renders them into the SSR <head> (the server has no
+# live document; the shell drains the stash per request)
 task set-title
   take title, like text
+  call doc/set-title
+    read title
+
+task set-meta
+  take name, like text
+  take content, like text
+  call doc/set-meta
+    read name
+    read content
 
 task page-body
   like view

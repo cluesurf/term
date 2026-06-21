@@ -630,7 +630,7 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 chrono = "0.4"
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net", "io-util"] }
 
 [[bin]]
 name = "run"
@@ -1607,6 +1607,94 @@ task compute
     call is-equal
       read result/code
       code 0
+`
+// TCP loopback: listen, connect, accept, then exchange ping / pong over the live connection. Exercises the whole
+// sockets stack — opaque per-backend handle (the platform socket) stored in the connection / listener forms, plus
+// connect / listen / accept / read / write. The accept picks up the connection the OS backlogs from connect, so the
+// flow stays sequential.
+const TCP_PROG = `load @cluesurf/base/code/network/tcp
+  find connect
+  find listen
+  find read
+  find write
+  find accept
+
+task compute
+  note async
+  like boolean
+  save server
+    call listen
+      mark 47924
+      text <127.0.0.1>
+      wave false
+      text <>
+      text <>
+      wait true
+  save client
+    call connect
+      text <127.0.0.1>
+      mark 47924
+      wave false
+      wait true
+  save peer
+    call accept
+      read server
+      wait true
+  call write
+    read client
+    text <ping>
+    wait true
+  save got
+    call read
+      read peer
+      wait true
+  call write
+    read peer
+    text <pong>
+    wait true
+  save reply
+    call read
+      read client
+      wait true
+  send back
+    call is-equal
+      read reply
+      text <pong>
+`
+// UDP loopback: open two datagram sockets, send a message from one to the other, receive it. Exercises the datagram
+// stack — opaque per-backend socket handle, plus open / send / receive returning the datagram form with sender address.
+const UDP_PROG = `load @cluesurf/base/code/network/udp
+  find open
+  find send
+  find receive
+
+task compute
+  note async
+  like boolean
+  save receiver
+    call open
+      mark 48001
+      text <127.0.0.1>
+      wait true
+  save sender
+    call open
+      mark 48002
+      text <127.0.0.1>
+      wait true
+  call send
+    read sender
+    text <hello>
+    text <127.0.0.1>
+    mark 48001
+    wait true
+  save message
+    call receive
+      read receiver
+      wait true
+  send back
+    call is-equal
+      read message/data
+      text <hello>
 `
 // directory make plus metadata: make a directory then confirm is-directory reports it. Exercises the io shim's
 // dir-make and is-directory on each platform (rust std::fs, swift FileManager, kotlin java.io.File).
@@ -2788,6 +2876,44 @@ function main(): void {
   runRustCargo(
     'rust + cargo: process/run echo exits 0 (std::process::Command)',
     frontEnd(RUN_PROG, true, 'rust'),
+    'true',
+    true,
+  )
+  // TCP loopback echo on the real toolchain (tokio / java.net)
+  runRustCargo(
+    'rust + cargo: tcp loopback ping/pong (tokio::net)',
+    frontEnd(TCP_PROG, true, 'rust'),
+    'true',
+    true,
+  )
+  runKotlinText(
+    'kotlin + tcp: loopback ping/pong (java.net)',
+    frontEnd(TCP_PROG, true, 'kotlin'),
+    'true',
+    true,
+  )
+  runSwiftText(
+    'swift + tcp: loopback ping/pong (POSIX sockets)',
+    frontEnd(TCP_PROG, true, 'swift'),
+    'true',
+    true,
+  )
+  // UDP loopback datagram on the real toolchain
+  runRustCargo(
+    'rust + cargo: udp datagram round-trips (tokio::net::UdpSocket)',
+    frontEnd(UDP_PROG, true, 'rust'),
+    'true',
+    true,
+  )
+  runKotlinText(
+    'kotlin + udp: datagram round-trips (java.net.DatagramSocket)',
+    frontEnd(UDP_PROG, true, 'kotlin'),
+    'true',
+    true,
+  )
+  runSwiftText(
+    'swift + udp: datagram round-trips (POSIX sockets)',
+    frontEnd(UDP_PROG, true, 'swift'),
     'true',
     true,
   )

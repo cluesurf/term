@@ -1,11 +1,68 @@
+# UDP sockets. The clean uniform interface; each backend wraps its platform datagram networking (node dgram, rust tokio, swift POSIX, kotlin java.net) behind this API, selected at build time. `socket` is a bound UDP endpoint with send / receive / close methods; `datagram` is one received message plus its sender. The platform socket lives in the opaque `dock` handle, typed per backend. Every operation is async.
 
-form socket
-  link dock, mark private
+load @cluesurf/base/code/native/network/udp
+  find do-open
+
+load @cluesurf/base/code/native/network/udp/socket
+  find do-send
+  find do-receive
+  find do-close
+
+# one received message and the address it came from
+form datagram
+  link data, like text
   link host, like text
-  link port, like size
+  link port, like number
 
+# a bound UDP endpoint
+form socket
+  link dock, like udp-handle
+  link host, like text
+  link port, like number
+
+  # send `data` to `host:port`, returning the number of bytes sent
+  task send
+    note async
+    take self
+    take data, like text
+    take host, like text
+    take port, like number
+    like number
+    send back
+      call do-send
+        read self
+        read data
+        read host
+        read port
+        wait true
+
+  # wait for and return the next incoming datagram
+  task receive
+    note async
+    take self
+    like datagram
+    send back
+      call do-receive
+        read self
+        wait true
+
+  # close the socket and release the port
+  task close
+    note async
+    take self
+    like void
+    call do-close
+      read self
+      wait true
+
+# open a UDP socket bound to `host:port`
 task open
   note async
-  take port, like size, need false
+  take port, like number
   take host, like text, fall text <0.0.0.0>
   like socket
+  send back
+    call do-open
+      read port
+      read host
+      wait true

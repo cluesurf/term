@@ -1,7 +1,7 @@
-# node UDP implementation. Forwards to the linked udp runtime shim (node:dgram). Declares the opaque handle type a socket holds (the raw node dgram Socket). Internal: reached only through the public UDP API.
+# kotlin UDP implementation. Forwards to the linked udp runtime shim (java.net.DatagramSocket). Declares the opaque handle type a socket holds (the raw java DatagramSocket). Internal: reached only through the public UDP API.
 
 dock type
-  load <any>, name udp-handle
+  load <java.net.DatagramSocket>, name udp-handle
 
 dock load
   load <global:udp>, name udp

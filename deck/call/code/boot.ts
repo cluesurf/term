@@ -1,4 +1,5 @@
 import path from 'path'
+import net from 'net'
 import { fileURLToPath } from 'url'
 import {
   readFileSync,
@@ -64,6 +65,34 @@ function nodeValue(group: GroupNode): string {
 // bump to invalidate every boot cache at once (turborepo's `global_cache_key`). Change this on any boot-pipeline change
 // that the per-build hash does not already capture (e.g. a new prelude assembly rule).
 const BOOT_CACHE_EPOCH = '2'
+
+// the default base port: `seed boot` scans upward from here for the first free port (2400, 2401, 2402, ...), so an app
+// always starts on a good port no matter where (or how many) you boot, with no manual `--port`.
+const BASE_PORT = 2400
+
+// true if a TCP port is free to bind on localhost (briefly opens + closes a listener to test)
+function portIsFree(port: number): Promise<boolean> {
+  return new Promise(resolve => {
+    const tester = net
+      .createServer()
+      .once('error', () => resolve(false))
+      .once('listening', () => {
+        tester.close(() => resolve(true))
+      })
+      .listen(port, '127.0.0.1')
+  })
+}
+
+// the first free port at or above `start` (incrementing by 1). Bounded so a fully-saturated range fails loudly.
+async function findFreePort(start: number): Promise<number> {
+  for (let port = start; port < start + 1000; port++) {
+    if (await portIsFree(port)) {
+      return port
+    }
+  }
+
+  return start
+}
 
 // the directory (cwd or an ancestor) that holds the `link/` package links a build resolves through; falls back to cwd
 export function findProjectRoot(start: string): string {
@@ -304,13 +333,14 @@ async function buildClientBundle(opts: {
   }
 }
 
-// the tone alphabet (hex nibble -> letter), the TS twin of base/code/tone.tree. Ports `belt/code/tool/tone.ts`: each
-// hex digit maps to a consonant, grouped 4-4 with dashes. A content hash -> a short pronounceable cache-bust suffix.
+// the tone alphabet (the TS twin of base/code/tone.tree, alphabet from belt/code/tool/tone.ts). Each input char maps to
+// one of 16 consonants by its char code, and the result is grouped 4-by-4 with dashes -- turning a content hash into a
+// short pronounceable cache-bust suffix (`mndb-tksh`).
 const TONE = 'mndbtkhsfvzxcwlr'
 
-function toneEncode(hex: string): string {
-  const letters = [...hex]
-    .map(ch => TONE[parseInt(ch, 16)] ?? '')
+function toneEncode(text: string): string {
+  const letters = [...text]
+    .map(ch => TONE[ch.charCodeAt(0) % 16])
     .join('')
   const groups: string[] = []
 
@@ -565,7 +595,8 @@ export async function callBoot(input: {
       }
     }
 
-    const port = input.port ?? 8787
+    // honor an explicit --port; otherwise scan for the first free port from 2400 up, so concurrent apps never collide
+    const port = input.port ?? (await findFreePort(BASE_PORT))
     writeFileSync(
       path.join(out, 'run.mjs'),
       [

@@ -14,8 +14,8 @@ load @cluesurf/base/code/network/tcp
 task do-connect
   note async
   take host, like text
-  take port, like size
-  take secure, like bool
+  take port, like number
+  take secure, like boolean
   like connection
   save raw
     call tcp/connect
@@ -32,9 +32,9 @@ task do-connect
 
 task do-listen
   note async
-  take port, like size
+  take port, like number
   take host, like text
-  take secure, like bool
+  take secure, like boolean
   take certificate, like text, need false
   take key, like text, need false
   like listener

@@ -13,6 +13,7 @@ import { callMind } from '@cluesurf/call/code/mind'
 import { callTest } from '@cluesurf/call/code/test'
 import { callTime } from '@cluesurf/call/code/time'
 import { callBoot } from '@cluesurf/call/code/boot'
+import { callHalt } from '@cluesurf/call/code/halt'
 import { callServe } from '@cluesurf/call/code/serve'
 import { callDaemon } from '@cluesurf/call/code/daemon'
 import { callWash } from '@cluesurf/call/code/wash'
@@ -41,6 +42,7 @@ const COMMANDS = [
   'time',
   'profile',
   'boot',
+  'halt',
   'serve',
   'daemon',
   'wash',
@@ -429,6 +431,25 @@ const cli = yargs(hideBin(process.argv))
         remote: argv.remote,
         remoteToken: argv['remote-token'],
       })
+    },
+  )
+  .command(
+    'halt',
+    'Stop running seed boot servers (all, or specific --port list)',
+    yargs =>
+      yargs.option('port', {
+        alias: 'p',
+        type: 'string',
+        description: 'Comma-separated ports to stop (default: all)',
+      }),
+    async argv => {
+      const ports = argv.port
+        ? String(argv.port)
+            .split(',')
+            .map(p => Number(p.trim()))
+            .filter(p => Number.isInteger(p) && p > 0)
+        : undefined
+      await callHalt({ ports })
     },
   )
   .command(

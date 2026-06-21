@@ -1,47 +1,26 @@
+# swift UDP implementation. Forwards to the linked udp runtime shim (POSIX datagram sockets). Declares the opaque handle type a socket holds (the socket file descriptor, Int32). Internal: reached only through the public UDP API.
+
+dock type
+  load <Int32>, name udp-handle
 
 dock load
-  load <Network>, name network
+  load <global:udp>, name udp
 
 load @cluesurf/base/code/network/udp
   find socket
 
-task open
+task do-open
   note async
-  take port, like size, need false
-  take host, like text, fall text <0.0.0.0>
-
-  save params
-    call nw-parameters/udp
-
-  save bind-port
-    fork test
-      hook test
-        call is-some, read port
-      hook hold
-        read port
-      hook miss
-        code 0
-
+  take port, like number
+  take host, like text
+  like socket
   save raw
-    call nw-listener
-      text <using>
-      read params
-      text <on>
-      call nw-endpoint/port
-        call uint16, read bind-port
-      halt kink
-
-  call raw/start
-    text <queue>
-    call dispatch-queue/main
-
-  call wait-for-listener-ready
-    note async
-    read raw
-    halt kink
-
+    call udp/open
+      read port
+      read host
+      wait true
   send back
     make socket
       bind dock, read raw
       bind host, read host
-      bind port, read bind-port
+      bind port, read port

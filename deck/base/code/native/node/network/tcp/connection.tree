@@ -19,17 +19,17 @@ task do-write
   note async
   take connection, like connection
   take data, like text
-  like size
+  like number
   send back
     call tcp/write
       read connection/dock
       read data
       wait true
 
-task do-close
+task do-close-stream
   note async
   take connection, like connection
-  send back
-    call tcp/close
-      read connection/dock
-      wait true
+  like void
+  call tcp/close
+    read connection/dock
+    wait true

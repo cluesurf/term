@@ -1,98 +1,35 @@
+# swift TCP connection operations. Forwards to the linked tcp runtime shim, operating on the connection's socket file descriptor. Internal: reached only through the public TCP API.
+
+dock load
+  load <global:tcp>, name tcp
 
 load @cluesurf/base/code/network/tcp
   find connection
 
-task read
+task do-read
   note async
   take connection, like connection
-  take size, like size, need false
+  like text
+  send back
+    call tcp/read
+      read connection/dock
+      wait true
 
-  save raw, read connection/dock
-
-  save min-size, code 1
-  save max-size
-    fork test
-      hook test
-        call is-some, read size
-      hook hold
-        read size
-      hook miss
-        code 4096
-
-  save result
-    call make-continuation
-      note async
-      task resolve
-        take ok
-        take fail
-        call raw/receive
-          text <minimumIncompleteLength>
-          read min-size
-          text <maximumLength>
-          read max-size
-          task on-receive
-            take content
-            take content-context
-            take is-complete
-            take error
-            fork test
-              hook test
-                call is-some, read error
-              hook hold
-                call fail, read error
-              hook miss
-                call ok, read content
-
-  send back, read result
-
-task write
+task do-write
   note async
   take connection, like connection
   take data, like text
+  like number
+  send back
+    call tcp/write
+      read connection/dock
+      read data
+      wait true
 
-  save raw, read connection/dock
-
-  save content
-    call data/data
-      text <using>
-      text <.utf8>
-
-  call make-continuation
-    note async
-    task resolve
-      take ok
-      take fail
-      call raw/send
-        text <content>
-        read content
-        text <contentContext>
-        call nw-connection/content-context/default-message
-        text <isComplete>
-        wave true
-        text <completion>
-        call nw-connection/send-completion/content-processed
-          task on-send
-            take error
-            fork test
-              hook test
-                call is-some, read error
-              hook hold
-                call fail, read error
-              hook miss
-                call ok
-
-  send back, call data/count
-
-task close
+task do-close-stream
   note async
   take connection, like connection
-
-  save raw, read connection/dock
-  call raw/cancel
-
-task stream
-  note async
-  take connection, like connection
-
-  save raw, read connection/dock
-  send back, read raw
+  like void
+  call tcp/close
+    read connection/dock
+    wait true
