@@ -116,12 +116,11 @@ task greet
     bind a, mark <Hello, >
     bind b, read name
 
-task main
-  save message
-    call greet
-      bind name, mark <world>
-  call print
-    bind text, read message
+save message
+  call greet
+    bind name, mark <world>
+call print
+  bind text, read message
 ```
 
 Compiles to:
