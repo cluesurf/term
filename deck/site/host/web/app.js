@@ -1,4 +1,4 @@
-// ../../../../../../../../../private/var/folders/8x/z26qdb3x465gmtqr6z4x8hgm0000gn/T/seed-web-AOMPfA/app.ts
+// ../../../../../../../../../private/var/folders/8x/z26qdb3x465gmtqr6z4x8hgm0000gn/T/seed-web-Qr0UTL/app.ts
 function listIsEmpty(self) {
   return self.length == 0;
 }
@@ -101,5 +101,5 @@ function mountApp(host) {
   mount(host, () => root);
 }
 
-// ../../../../../../../../../private/var/folders/8x/z26qdb3x465gmtqr6z4x8hgm0000gn/T/seed-web-AOMPfA/entry.ts
+// ../../../../../../../../../private/var/folders/8x/z26qdb3x465gmtqr6z4x8hgm0000gn/T/seed-web-Qr0UTL/entry.ts
 mountApp({ handle: document.body });

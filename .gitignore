@@ -3,6 +3,9 @@
 /node_modules
 /.seed
 
+# compiled output of every in-tree deck (build artifacts, regenerated, never committed)
+deck/*/host/
+
 # scratch dev runners / probes, at any depth
 tmp/
 **/tmp/

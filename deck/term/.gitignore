@@ -1,7 +1,0 @@
-/make
-!/make/.eslintrc.json
-/hold
-/host
-test/**/*.js
-test/**/*.js.map
-test/**/*.d.ts

@@ -23,7 +23,7 @@
       "@cluesurf/make/*": ["./deck/make/*"],
       "@cluesurf/call/*": ["./deck/call/*"],
       "@cluesurf/flow/*": ["./deck/flow/*"],
-      "@cluesurf/deck.tree": ["./deck/deck/host/index"]
+      "@cluesurf/deck.tree": ["./deck/deck/code/index"]
     }
   },
   "include": [
