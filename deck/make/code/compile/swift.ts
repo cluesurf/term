@@ -289,6 +289,17 @@ export function emitSwift(program: Program): string {
   // duration of that function's emission, so `(t) -> ?5` prints as `(T) -> U` with `U` declared, not an unused `S`.
   let varNames = new Map<number, string>()
 
+  // opaque per-backend handle types (`dock type / load <Foundation.Process>, name child-handle`): seed name -> concrete
+  // swift type, so a `like child-handle` field emits the real handle type rather than a nonexistent struct.
+  const opaqueTypes = new Map<string, string>(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'native' }> =>
+          n.form === 'native' && n.kind === 'type',
+      )
+      .map(n => [n.alias, n.module]),
+  )
+
   const swiftType = (type: Type | undefined): string => {
     switch (type?.kind) {
       case 'boolean':
@@ -308,12 +319,17 @@ export function emitSwift(program: Program): string {
         return `SeedMap<${swiftType(type.key)}, ${swiftType(
           type.value,
         )}>`
-      case 'named':
+      case 'named': {
+        const opaque = opaqueTypes.get(type.name)
+
+        if (opaque) {return opaque}
+
         return type.args && type.args.length > 0
           ? `${pascal(type.name)}<${type.args
               .map(swiftType)
               .join(', ')}>`
           : pascal(type.name)
+      }
       case 'function':
         return `(${type.params
           .map(swiftType)
@@ -494,7 +510,8 @@ export function emitSwift(program: Program): string {
   const aliases = new Set<string>()
 
   for (const node of program)
-    {if (node.form === 'native') {aliases.add(node.alias)}}
+    {if (node.form === 'native' && node.kind !== 'type')
+      {aliases.add(node.alias)}}
 
   const rootName = (node: Expression): string | undefined =>
     node.form === 'variable'
@@ -1152,11 +1169,14 @@ export function emitSwift(program: Program): string {
     }
   }
 
-  // a `<global:X>` binding (e.g. the linked `io` runtime namespace) needs no import: it is already in scope
+  // a `<global:X>` binding (e.g. the linked `io` runtime namespace) needs no import: it is already in scope. A `type`
+  // dock is an inline type reference, not an importable module.
   const imports = program
     .filter(
       (n): n is Extract<Statement, { form: 'native' }> =>
-        n.form === 'native' && !n.module.startsWith('global:'),
+        n.form === 'native' &&
+        n.kind !== 'type' &&
+        !n.module.startsWith('global:'),
     )
     .map(n => `import ${n.module.replace(/^[a-z]+:/, '')}`)
 

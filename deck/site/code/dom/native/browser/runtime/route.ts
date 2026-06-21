@@ -4,39 +4,45 @@
 // `listenPop` wires SPA navigation: it fires the handler on back/forward (popstate) AND intercepts same-origin link
 // clicks (pushState + handler), so `<a href="/...">` navigates without a full reload.
 
-export function pagePath(): string {
-  return window.location.pathname
-}
+// the namespace the browser dom docks as `<global:route>` (docked `name route`, so this object IS the binding -- the
+// emitter omits the alias const when alias === global token, and the dom calls `route.pagePath` / `route.setTitle` /
+// etc.). An object (not top-level functions) so its method names never collide with the dom's own `set-title` /
+// `page-body` task emissions in the bundled client.
+export const route = {
+  pagePath(): string {
+    return window.location.pathname
+  },
 
-export function setTitle(title: string): void {
-  document.title = title
-}
+  setTitle(title: string): void {
+    document.title = title
+  },
 
-export function pageBody(): HTMLElement {
-  return document.body
-}
+  pageBody(): HTMLElement {
+    return document.body
+  },
 
-export function listenPop(handler: () => void): void {
-  window.addEventListener('popstate', handler)
+  listenPop(handler: () => void): void {
+    window.addEventListener('popstate', handler)
 
-  document.addEventListener('click', event => {
-    const target = event.target as HTMLElement | null
-    const anchor = target?.closest?.('a')
+    document.addEventListener('click', event => {
+      const target = event.target as HTMLElement | null
+      const anchor = target?.closest?.('a')
 
-    if (!anchor) {
-      return
-    }
+      if (!anchor) {
+        return
+      }
 
-    const href = anchor.getAttribute('href')
+      const href = anchor.getAttribute('href')
 
-    if (
-      href &&
-      href.startsWith('/') &&
-      anchor.host === window.location.host
-    ) {
-      event.preventDefault()
-      window.history.pushState({}, '', href)
-      handler()
-    }
-  })
+      if (
+        href &&
+        href.startsWith('/') &&
+        anchor.host === window.location.host
+      ) {
+        event.preventDefault()
+        window.history.pushState({}, '', href)
+        handler()
+      }
+    })
+  },
 }

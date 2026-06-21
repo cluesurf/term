@@ -546,15 +546,17 @@ function runSwiftText(
   name: string,
   program: Program,
   want: string,
+  isAsync = false,
 ): void {
   if (skip_filtered(name)) return
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
+  const callCompute = isAsync ? 'await compute()' : 'compute()'
   writeFileSync(
     file,
     `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(
       program,
-    )}\nprint(compute(), terminator: "")\n`,
+    )}\nprint(${callCompute}, terminator: "")\n`,
   )
   const exe = file.replace(/\.swift$/, '')
   try {
@@ -575,16 +577,18 @@ function runKotlinText(
   name: string,
   program: Program,
   want: string,
+  isAsync = false,
 ): void {
   if (skip_filtered(name)) return
   if (!have('kotlinc') || !have('java'))
     return skipped(name, 'kotlinc/java not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
+  const mainSig = isAsync ? 'suspend fun main()' : 'fun main()'
   writeFileSync(
     file,
     hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
       program,
-    )}\nfun main() { print(compute()) }\n`),
+    )}\n${mainSig} { print(compute()) }\n`),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -1592,6 +1596,7 @@ task make-arguments
   send back, read out
 
 task compute
+  note async
   like boolean
   save result
     call run
@@ -2772,11 +2777,13 @@ function main(): void {
     'swift + process/run: echo exits 0 (Foundation.Process)',
     frontEnd(RUN_PROG, true, 'swift'),
     'true',
+    true,
   )
   runKotlinText(
     'kotlin + process/run: echo exits 0 (ProcessBuilder)',
     frontEnd(RUN_PROG, true, 'kotlin'),
     'true',
+    true,
   )
   runRustCargo(
     'rust + cargo: process/run echo exits 0 (std::process::Command)',

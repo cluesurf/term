@@ -47,6 +47,11 @@ function pascal(name: string): string {
 // the duration of that function's emission, so a generic signature prints `T` / `U` rather than the `i64` default.
 let rustVarNames = new Map<number, string>()
 
+// opaque per-backend handle types (`dock type / load <tokio::net::TcpStream>, name tcp-handle`): seed name -> concrete
+// rust type. Populated per emit from the program's native `type` declarations, so a `like tcp-handle` field emits the
+// real handle type rather than a nonexistent `TcpHandle` struct.
+let rustOpaqueTypes = new Map<string, string>()
+
 function rustType(type: Type | undefined): string {
   switch (type?.kind) {
     case 'boolean':
@@ -68,10 +73,15 @@ function rustType(type: Type | undefined): string {
       return `std::rc::Rc<std::cell::RefCell<std::collections::HashMap<${rustType(
         type.key,
       )}, ${rustType(type.value)}>>>`
-    case 'named':
+    case 'named': {
+      const opaque = rustOpaqueTypes.get(type.name)
+
+      if (opaque) {return opaque}
+
       return type.args && type.args.length > 0
         ? `${pascal(type.name)}<${type.args.map(rustType).join(', ')}>`
         : pascal(type.name)
+    }
     case 'function':
       // a boxed trait object, not `impl Fn`: this is the one function type that works in every position -- a
       // parameter, a return, a struct field, AND a collection element (`Vec<Box<dyn Fn>>`, `HashMap<_, Box<dyn Fn>>`).
@@ -139,6 +149,15 @@ const OP: Record<string, string> = {
 
 export function emitRust(program: Program): string {
   const pad = (d: number) => '    '.repeat(d)
+  // opaque handle types declared by `dock type` shims: seed name -> concrete rust type
+  rustOpaqueTypes = new Map(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'native' }> =>
+          n.form === 'native' && n.kind === 'type',
+      )
+      .map(n => [n.alias, n.module]),
+  )
   const variantOwner = new Map<string, string>()
   // a variant's field names, for binding them in a `match` arm (`Maybe::Some { value } => ...`) so the branch body can
   // read them; a `subject/field` read inside the branch then resolves to that bound local.
@@ -1028,11 +1047,14 @@ export function emitRust(program: Program): string {
     }
   }
 
-  // `use` declarations for native module bindings (a `<global:X>` binding needs no use)
+  // `use` declarations for native module bindings (a `<global:X>` binding needs no use; a `type` dock is an inline
+  // type reference, not an import)
   const uses = program
     .filter(
       (n): n is Extract<Statement, { form: 'native' }> =>
-        n.form === 'native' && !n.module.startsWith('global:'),
+        n.form === 'native' &&
+        n.kind !== 'type' &&
+        !n.module.startsWith('global:'),
     )
     .map(n => `use ${n.module.replace(/[:/]/g, '::')};`)
 

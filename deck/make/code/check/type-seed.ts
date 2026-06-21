@@ -17,6 +17,9 @@ export function makeSeedType(
   sub: Substitution,
   records: Map<string, Map<string, Type>>,
   formGenerics: Map<string, string[]>,
+  // opaque per-backend handle types (`dock type`): kept as named types so a backend resolves them to a concrete
+  // handle, rather than being inferred as a fresh generic variable
+  opaqueTypes: Set<string> = new Set(),
 ): SeedType {
   const seed: SeedType = (type, generics) => {
     if (!type) {return sub.fresh()}
@@ -55,6 +58,10 @@ export function makeSeedType(
           args: params.map((_, i) => seed(type.args?.[i], generics)),
         }
       }
+
+      // an opaque handle type stays named, so each backend resolves it to its concrete per-env type
+      if (opaqueTypes.has(type.name))
+        {return { kind: 'named', name: type.name }}
 
       return sub.fresh() // an unrecognized name: infer it from usage rather than forcing a mismatch
     }

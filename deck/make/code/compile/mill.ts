@@ -2411,7 +2411,10 @@ export function mill(tree: RootNode, file: string): MillResult {
 
   // `dock load / load <node:fs/promises>, name fs` declares native module bindings (the FFI). Each becomes a
   // native-import statement the emitter turns into a host import; `call fs/read-file` then lowers natively.
-  function buildDock(group: GroupNode): Statement[] {
+  // `dock load / load <node:fs>, name fs` -> a native module binding. `dock type / load <tokio::net::TcpStream>, name
+  // tcp-handle` (asType) -> an opaque per-backend handle type: `module` carries the concrete native type, `alias` the
+  // seed-side name a backend resolves it to.
+  function buildDock(group: GroupNode, asType = false): Statement[] {
     const out: Statement[] = []
 
     for (const child of rest(group)) {
@@ -2436,6 +2439,7 @@ export function mill(tree: RootNode, file: string): MillResult {
           form: 'native',
           alias,
           module,
+          kind: asType ? 'type' : 'module',
           span: spanOf(child),
           file,
         })}
@@ -3291,8 +3295,14 @@ export function mill(tree: RootNode, file: string): MillResult {
         span: spanOf(group),
       })
     } else if (keyword === 'dock') {
-      // `dock load` is the native FFI binding. A non-FFI `dock` is the legacy routing form, kept as an alias for `hook`.
-      if (isFfiDock(group)) {program.push(...buildDock(group))}
+      // `dock load` is the native FFI binding. `dock type` declares an opaque per-backend handle type. A non-FFI `dock`
+      // is the legacy routing form, kept as an alias for `hook`.
+      const firstChild = rest(group)[0]
+      const isTypeDock =
+        firstChild?.kind === 'group' && headName(firstChild) === 'type'
+
+      if (isTypeDock) {program.push(...buildDock(group, true))}
+      else if (isFfiDock(group)) {program.push(...buildDock(group))}
       else
         {program.push({
           form: 'dock',

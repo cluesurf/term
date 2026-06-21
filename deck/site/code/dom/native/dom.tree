@@ -122,6 +122,10 @@ task replace
   take old, like view
   take new, like view
 
+# remove every child of a node. The browser host clears the SSR-rendered body before the client takes it over.
+task clear
+  take node, like view
+
 task child-count
   take node, like view
   like number

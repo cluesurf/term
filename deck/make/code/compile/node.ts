@@ -279,6 +279,11 @@ export type Statement =
       form: 'native'
       alias: string
       module: string
+      // `'type'` marks an opaque per-backend handle type (`dock type / load <tokio::net::TcpStream>, name tcp-handle`):
+      // `module` holds the concrete native type, `alias` the seed-side name. A backend resolves the seed name to the
+      // concrete string in its type emitter and never emits an import for it. Absent / `'module'` is the ordinary FFI
+      // module binding (`dock load`).
+      kind?: 'module' | 'type'
       span: Span
       file?: string
     }

@@ -4,57 +4,66 @@
 // are handled (each module is included exactly once). Browser-safe: file reading is delegated to a resolver.
 
 import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import type { Node, RootNode } from '@cluesurf/make/code/parser/tree'
-import { parse } from '@cluesurf/make/code/parser/tree'
 
 export type Source = { file: string; text: string }
+
+// Dependency discovery only needs two facts per module: its `load`/`bear`
+// import paths and whether it has a top-level `zone`. Building the full AST
+// of every transitive module just to read those is the dominant cost of a
+// cold compile (a tiny file can pull in the whole stdlib closure - ~1700
+// modules / 2MB - and parsing them all dominated `collectModules`). A
+// column-0 line scan recovers both facts without the AST. It mirrors the
+// grammar: `load`/`bear`/`zone` are column-0 heads; a `#` line is a comment;
+// and an unbalanced `<...>` text literal carries content lines that must not
+// be mistaken for statements.
+type ImportScan = { paths: string[]; hasZone: boolean }
+
+function scanImports(text: string): ImportScan {
+  const paths: string[] = []
+  let hasZone = false
+  let angleDepth = 0 // open `<` minus `>` across lines: inside a text literal
+
+  for (const line of text.split('\n')) {
+    // only column-0 (top-level) lines are statements; skip body / indented lines
+    const topLevel = line.length > 0 && line[0] !== ' ' && line[0] !== '\t'
+
+    if (topLevel && angleDepth === 0 && line[0] !== '#') {
+      const head = line.match(/^(load|bear|zone)\b/)
+      if (head) {
+        const kw = head[1]
+        if (kw === 'zone') {
+          hasZone = true
+        } else {
+          // the path is the first token after the keyword, up to a comma or space.
+          // a `<...>` text / template path (e.g. `bear <./{{x}}>`) is NOT a plain
+          // import path - the parser reads it as a text node and skips it, so we do too.
+          const m = line.slice(kw!.length).match(/^\s+([^\s,]+)/)
+          if (m && !m[1]!.startsWith('<')) {paths.push(m[1]!)}
+        }
+      }
+    }
+
+    // track text-literal balance so a `<...>` spanning lines does not let its
+    // content be read as statements (only `<`/`>` not preceded by a backslash)
+    for (const ch of line.replace(/\\[<>]/g, '')) {
+      if (ch === '<') angleDepth++
+      else if (ch === '>' && angleDepth > 0) angleDepth--
+    }
+  }
+
+  return { paths, hasZone }
+}
 // resolve an import path (e.g. `@cluesurf/base/code/maybe`) from the importing file to its source, or undefined
 export type Resolver = (
   importPath: string,
   fromFile: string,
 ) => Source | undefined
 
-// the text of a name node (a keyword or an import-path token), or a group's head name
-function nameText(node: Node | undefined): string | undefined {
-  if (!node) {return undefined}
-
-  if (node.kind === 'name')
-    {return node.parts
-      .map(p => (p.kind === 'chunk' ? p.text : ''))
-      .join('')}
-
-  if (node.kind === 'group') {return nameText(node.nodes[0])}
-
-  return undefined
-}
-
-// the import paths a tree depends on: `load @path` (imports for local use) and `bear @path` (re-exports). Both pull
-// the target module into the merged program; because the program is one flat namespace, a `bear`ed definition is then
-// automatically visible to anything that imports this module (the re-export). The native bindings (bind.tree) lead
-// every wrapper with a run of `bear @...` lines that surface the platform's types.
-function loadPaths(tree: RootNode): string[] {
-  const paths: string[] = []
-
-  for (const group of tree.nodes) {
-    const keyword = nameText(group.nodes[0])
-
-    if (keyword !== 'load' && keyword !== 'bear') {continue}
-
-    const path = nameText(group.nodes[1])
-
-    if (path) {paths.push(path)}
-  }
-
-  return paths
-}
-
 // the render runtime backing a `zone`: a module with a zone calls `element` / `text` / `dynamic` / `show` / `each`,
 // which the emitter synthesizes rather than the user importing. So a module containing a zone implicitly depends on it.
+// `load @path` / `bear @path` (re-exports) both pull the target into the merged program; because the program is one
+// flat namespace, a `bear`ed definition is visible to anything importing this module. `scanImports` (above) reads both.
 const ZONE_RUNTIME_MODULE = '@cluesurf/site/code/zone/render'
-
-function hasZone(tree: RootNode): boolean {
-  return tree.nodes.some(group => nameText(group.nodes[0]) === 'zone')
-}
 
 // the entry plus every module it transitively loads, dependencies first (so forms are defined before use)
 export function collectModules(
@@ -71,25 +80,26 @@ export function collectModules(
 
     active.add(source.file)
 
-    const parsed = parse(source)
+    // discover dependencies by a cheap column-0 line scan instead of a full
+    // parse: building the AST of every transitive module just to read its
+    // imports was the dominant cost of a cold compile. The full parse still
+    // happens once, later, for the modules actually compiled.
+    const scan = scanImports(source.text)
+    const paths = scan.paths
 
-    if (parsed.ok) {
-      const paths = loadPaths(parsed.tree)
+    // a module with a zone implicitly depends on the render runtime (the emitter synthesizes its calls). Inject it
+    // unless the module already loads it or IS it (the render module itself must not depend on itself).
+    if (
+      scan.hasZone &&
+      !paths.some(p => p.endsWith('zone/render')) &&
+      !source.file.endsWith('zone/render.tree')
+    )
+      {paths.push(ZONE_RUNTIME_MODULE)}
 
-      // a module with a zone implicitly depends on the render runtime (the emitter synthesizes its calls). Inject it
-      // unless the module already loads it or IS it (the render module itself must not depend on itself).
-      if (
-        hasZone(parsed.tree) &&
-        !paths.some(p => p.endsWith('zone/render')) &&
-        !source.file.endsWith('zone/render.tree')
-      )
-        {paths.push(ZONE_RUNTIME_MODULE)}
+    for (const path of paths) {
+      const dependency = resolve(path, source.file)
 
-      for (const path of paths) {
-        const dependency = resolve(path, source.file)
-
-        if (dependency) {visit(dependency)} // unresolved imports are left to the checker's unknown-name diagnostics
-      }
+      if (dependency) {visit(dependency)} // unresolved imports are left to the checker's unknown-name diagnostics
     }
 
     active.delete(source.file)

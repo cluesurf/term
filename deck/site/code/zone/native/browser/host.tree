@@ -7,6 +7,7 @@ load @cluesurf/site/code/dom/dom
   find page-body
   find page-path
   find listen-pop
+  find clear
 
 task host
   take route
@@ -16,8 +17,13 @@ task host
   take port, like number
   save body
     call page-body
+  # render clears the body first, then dispatches the matched route into it. On first load this replaces the SSR
+  # markup with the client-rendered, reactive tree (the takeover); on navigation it swaps the page in place. The
+  # reactive runtime then keeps it live (signals / effects / events), so there is no second server round-trip.
   save go
     task render
+      call clear
+        read body
       call route
         read body
         call page-path

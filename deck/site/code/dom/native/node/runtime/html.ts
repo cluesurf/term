@@ -7,6 +7,9 @@
 // escaping + void-element handling. A text node has an empty `tag`; an element has children (each a view wrapping its
 // own record).
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 const VOID = new Set([
   'area',
   'base',
@@ -53,6 +56,34 @@ const PRETTY =
     : process.env.SEED_HTML === 'compact'
       ? false
       : process.env.NODE_ENV !== 'production'
+
+// the asset manifest maps a logical build path (`style/look.css`, `boot.js`) to its content-hashed name
+// (`style/look-mndb-tksh.css`) for production cache-busting. The prod build writes `build/asset-manifest.json`; in dev
+// there is none, so every path resolves to itself (stable, easy to refresh). Read once per process, then memoized.
+let manifest: Record<string, string> | null | undefined
+
+function assetMap(): Record<string, string> | null {
+  if (manifest !== undefined) {
+    return manifest
+  }
+
+  try {
+    const file = join(process.cwd(), 'build', 'asset-manifest.json')
+    manifest = JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>
+  } catch {
+    manifest = null
+  }
+
+  return manifest
+}
+
+// resolve a logical asset path to its public `/base/...` URL, applying the content-hashed name in production
+function assetUrl(logical: string): string {
+  const map = assetMap()
+  const resolved = (map && map[logical]) || logical
+
+  return `/base/${resolved}`
+}
 
 function elementOf(node: { handle?: Element } | Element): Element {
   return ('handle' in node && node.handle ? node.handle : node) as Element
@@ -130,16 +161,22 @@ function serializeNode(node: { handle?: Element } | Element): string {
   return PRETTY ? prettyNode(node, 0) : compactNode(node)
 }
 
-// the document shell links the stylesheet as an EXTERNAL file (served by the host's static `/base/` route), the way
-// dev + prod build tools do it (cacheable, not re-sent per page). Prod uses a content-hashed name; dev the stable path.
+// the document shell links the stylesheet as an EXTERNAL file and loads the client bundle as a module script (both
+// served by the host's static `/base/` route, cacheable, not re-sent per page). The script makes the server-rendered
+// page interactive: on load it takes over the body and the reactive runtime keeps it live. Prod uses content-hashed
+// names (via the asset manifest); dev uses the stable paths. Both resolved through `assetUrl`.
 function documentShell(body: string, title = 'ClueSurf'): string {
+  const styleHref = assetUrl('style/look.css')
+  const scriptSrc = assetUrl('boot.js')
+
   if (!PRETTY) {
     return (
       '<!doctype html><html lang="en"><head>' +
       '<meta charset="utf-8">' +
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
       `<title>${escapeText(title)}</title>` +
-      '<link rel="stylesheet" href="/base/style/look.css">' +
+      `<link rel="stylesheet" href="${styleHref}">` +
+      `<script type="module" src="${scriptSrc}"></script>` +
       '</head><body>' +
       body +
       '</body></html>'
@@ -159,7 +196,8 @@ function documentShell(body: string, title = 'ClueSurf'): string {
     '    <meta charset="utf-8">',
     '    <meta name="viewport" content="width=device-width, initial-scale=1">',
     `    <title>${escapeText(title)}</title>`,
-    '    <link rel="stylesheet" href="/base/style/look.css">',
+    `    <link rel="stylesheet" href="${styleHref}">`,
+    `    <script type="module" src="${scriptSrc}"></script>`,
     '  </head>',
     '  <body>',
     indentedBody,

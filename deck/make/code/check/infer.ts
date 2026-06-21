@@ -169,7 +169,14 @@ export function check(
   // a declared type, with generic names mapped to their variables and unknown names left to inference
   // build an inference type from a milled annotation (component: code/check/type-seed.ts). Captures the shared
   // `records` / `formGenerics` tables so the call sites stay `seedType(type, generics)`.
-  const seedType = makeSeedType(sub, records, formGenerics)
+  // opaque per-backend handle types declared by `dock type` shims: kept as named types during inference
+  const opaqueTypes = new Set<string>()
+
+  for (const statement of program)
+    {if (statement.form === 'native' && statement.kind === 'type')
+      {opaqueTypes.add(statement.alias)}}
+
+  const seedType = makeSeedType(sub, records, formGenerics, opaqueTypes)
 
   // trait instances available: `${mask}:${type}` (for call-site instance resolution)
   const instances = new Set<string>()

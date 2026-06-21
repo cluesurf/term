@@ -31,7 +31,44 @@ const ASSET_TYPES: Record<string, string> = {
   otf: 'font/otf',
   txt: 'text/plain; charset=utf-8',
   xml: 'application/xml; charset=utf-8',
+  avif: 'image/avif',
+  bmp: 'image/bmp',
+  eot: 'application/vnd.ms-fontobject',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  pdf: 'application/pdf',
+  wasm: 'application/wasm',
 }
+
+// binary asset extensions: the asset reader carries these as base64 (a text body can't hold raw bytes), so the
+// transport decodes the body back into a real byte buffer before sending. Kept in sync with the reader's BINARY set.
+const BINARY = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'ico',
+  'avif',
+  'bmp',
+  'woff',
+  'woff2',
+  'ttf',
+  'otf',
+  'eot',
+  'mp3',
+  'wav',
+  'ogg',
+  'mp4',
+  'webm',
+  'mov',
+  'pdf',
+  'wasm',
+])
 
 const transport = {
   // build a listener around one handle: hono catches every request, converts it to our `request`, runs the handle
@@ -50,8 +87,14 @@ const transport = {
         ? url.pathname.slice(url.pathname.lastIndexOf('.') + 1).toLowerCase()
         : ''
       const assetType = ASSET_TYPES[ext]
-      if (assetType)
+      if (assetType) {
+        // a binary asset was carried as base64 text; decode it back to bytes so images / fonts / media serve intact
+        if (BINARY.has(ext))
+          return context.body(Buffer.from(out, 'base64') as never, status, {
+            'Content-Type': assetType,
+          })
         return context.body(out, status, { 'Content-Type': assetType })
+      }
       // serve an HTML body with the right content-type so a browser renders it (the response carries no headers, so the
       // shape of the body is the signal); JSON / plain text fall through to hono's default text/plain
       const head = out.trimStart().slice(0, 14).toLowerCase()

@@ -238,6 +238,12 @@ task replace
   call made/replace-with
     read new/handle
 
+# clear every child: setting textContent to empty removes all child nodes. The host calls this on the SSR body before
+# the client re-renders, so the takeover replaces the server markup rather than appending a duplicate beneath it.
+task clear
+  take node, like view
+  save node/handle/text-content, text <>
+
 task remove
   take node, like view
   host made, like child-node

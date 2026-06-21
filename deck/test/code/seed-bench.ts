@@ -11,10 +11,12 @@
  * injected to avoid a call<->test cycle.
  */
 
+import { readFileSync, existsSync } from 'node:fs'
 import { tokenize } from '@cluesurf/make/code/parser/token'
 import { parse } from '@cluesurf/make/code/parser/tree'
 import { compile } from '@cluesurf/make/code/compile/compile'
 import { CompileCache } from '@cluesurf/make/code/compile/cache'
+import { collectModules } from '@cluesurf/make/code/compile/load'
 import type { Resolver } from '@cluesurf/make/code/compile/load'
 import { splitTopLevel } from '@cluesurf/make/code/compile/incremental-parse'
 import { splitStreamingToArray } from '@cluesurf/make/code/compile/stream'
@@ -113,6 +115,27 @@ export function runCompilerBench(input: {
   const warm = bench({ name: 'compile (warm, shared cache)', run: () => void compile({ file: 'c.tree', text: small }, { resolve: input.resolve, cache }), iterations: Math.min(iters, 10), size: 50 })
   results.push(cold, warm)
   insights.push(`compile cache speedup (self-contained file): ${(cold.median / Math.max(warm.median, 0.001)).toFixed(2)}x`)
+
+  // ---- import-heavy: module discovery + compile of a real stdlib file that
+  // pulls in the transitive closure (guards the collectModules scan + resolver
+  // memo/read-cache wins). A fresh resolver per iteration shows cold cost. ----
+  const heavyFile = 'deck/base/code/native/node/environment/directory.tree'
+  if (existsSync(`${input.root}/${heavyFile}`)) {
+    const text = readFileSync(`${input.root}/${heavyFile}`, 'utf8')
+    const discover = bench({
+      name: 'collectModules (stdlib closure)',
+      run: () => void collectModules({ file: heavyFile, text }, input.resolve),
+      iterations: Math.min(iters, 8),
+    })
+    const heavyCompile = bench({
+      name: 'compile import-heavy stdlib file',
+      run: () => void compile({ file: heavyFile, text }, { resolve: input.resolve }),
+      iterations: Math.min(iters, 8),
+    })
+    results.push(discover, heavyCompile)
+    insights.push(`module discovery for an import-heavy file: ${discover.median.toFixed(0)}ms (closure resolved once via the resolver memo)`)
+    insights.push(`import-heavy compile: ${heavyCompile.median.toFixed(0)}ms (was ~775ms before the scan + resolver-cache wins; remainder is closure type-check, the tree-shaking target)`)
+  }
 
   return { results, insights }
 }

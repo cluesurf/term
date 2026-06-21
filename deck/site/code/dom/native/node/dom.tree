@@ -312,6 +312,13 @@ task replace
   take new, like view
   save old/handle, read new/handle
 
+# clear every child by resetting the children list. Present so the abstract API is satisfied on the server too; the
+# SSR host builds a fresh root per request, so it never needs to clear (this is a browser-takeover concern).
+task clear
+  take node, like view
+  save node/handle/children
+    make list
+
 task child-count
   take node, like view
   like number
