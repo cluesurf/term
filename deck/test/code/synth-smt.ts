@@ -12,7 +12,7 @@
  */
 
 import { enumerate, evalExpr, type Expr, type Spec } from './synthesize'
-import { proveExpr, type SymSpec } from './smt'
+import { openSmtSession, type SymSpec } from './smt'
 
 export type SmtSynthResult =
   | { ok: true; expr: Expr; counterexamples: number[][]; unbounded: true }
@@ -38,6 +38,10 @@ export async function synthesizeSmt(input: {
   const candidates = enumerate(maxSize, varCount)
   const counterexamples: number[][] = []
 
+  // ONE solver session reused across every CEGIS round (incremental):
+  // each candidate is proved in a push/pop scope, the solver stays warm.
+  const session = openSmtSession({ z3, arity: varCount })
+
   for (let round = 0; round <= candidates.length; round++) {
     // smallest candidate consistent with every counterexample so far
     const pick = candidates.find(expr =>
@@ -49,7 +53,7 @@ export async function synthesizeSmt(input: {
     }
 
     // VERIFY with Z3: does the spec hold for ALL integers?
-    const verdict = await proveExpr({ arity: varCount, expr: pick, spec: symSpec, z3 })
+    const verdict = await session.prove(pick, symSpec)
 
     if (verdict.proven) {
       return { ok: true, expr: pick, counterexamples, unbounded: true }

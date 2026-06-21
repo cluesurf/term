@@ -167,11 +167,18 @@ form set
         read self
         read other
 
-  # empty the set in place, returning it
+  # empty the set in place, returning it. Removes each member, using only the cross-backend remove primitive.
   task clear
     take self
     like set
-    call self/items/clear
+    walk list
+      call to-list
+        read self
+      hook next
+        take site, name item
+        call remove
+          read self
+          read item
     send back, read self
 
   # the symmetric difference: items in exactly one of the two sets

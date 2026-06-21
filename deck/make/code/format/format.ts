@@ -13,7 +13,11 @@ import type {
   RootNode,
 } from '@cluesurf/make/code/parser/tree'
 
-const WIDTH = 80
+const WIDTH = 84
+
+// definition heads whose group never collapses onto one line: the head stays on its own line with its children
+// indented below, the convention for top-level declarations.
+const ALWAYS_STACK = new Set(['load', 'task', 'form'])
 
 // the inline (comma-joined) rendering of a node: `head a, b, c`
 function flatten(node: Node): string {
@@ -94,8 +98,42 @@ function isLeaf(node: Node): boolean {
   return node.kind !== 'group' || node.nodes.length <= 1
 }
 
+// word-wrap a comment so no line exceeds WIDTH. A comment that already fits is emitted unchanged (so short directive
+// comments like `# lint off L003` are never disturbed). A word longer than the available width (e.g. a bare URL) is
+// left on its own line rather than broken mid-word.
+function wrapComment(text: string, indent: string): string[] {
+  const trimmed = text.trim()
+
+  if (indent.length + trimmed.length <= WIDTH) {
+    return [`${indent}${trimmed}`]
+  }
+
+  const body = trimmed.replace(/^#+\s?/, '')
+  const prefix = '# '
+  const max = WIDTH - indent.length
+  const lines: string[] = []
+  let line = prefix
+
+  for (const word of body.split(/\s+/)) {
+    if (line === prefix) {
+      line = prefix + word
+    } else if (line.length + 1 + word.length <= max) {
+      line += ` ${word}`
+    } else {
+      lines.push(`${indent}${line}`)
+      line = prefix + word
+    }
+  }
+
+  if (line !== prefix) {
+    lines.push(`${indent}${line}`)
+  }
+
+  return lines
+}
+
 function comments(group: GroupNode, indent: string): string[] {
-  return (group.comments ?? []).map(c => `${indent}${c.text.trim()}`)
+  return (group.comments ?? []).flatMap(c => wrapComment(c.text, indent))
 }
 
 // does this group (or any descendant) carry a comment? Inlining would drop those comments, so such groups stack.
@@ -111,9 +149,11 @@ function formatGroup(group: GroupNode, depth: number): string[] {
   const flat = flatten(group)
 
   // inline when it fits, carries no comments to preserve, and re-parses to the same structure (meaning preserved).
-  // a `load` group always stays stacked, so its `find` children sit on their own indented lines, never inline.
+  // a definition head (`load` / `task` / `form`) always stays stacked: its head sits on its own line and its children
+  // (params, body, fields) on indented lines, never collapsed onto one line, matching the convention for top-level
+  // declarations.
   if (
-    headName(group) !== 'load' &&
+    !ALWAYS_STACK.has(headName(group)) &&
     !group.nodes.some(hasComment) &&
     indent.length + flat.length <= WIDTH
   ) {

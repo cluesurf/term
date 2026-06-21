@@ -95,37 +95,71 @@ export type SmtResult =
   | { proven: false; unknown: true }
 
 /**
+ * A reusable solver session: ONE Z3 solver and ONE set of variable
+ * constants, shared across many obligations. Each `prove` runs inside a
+ * push/pop scope, so assertions from one obligation are discarded before
+ * the next while the solver keeps its learned clauses and the context
+ * stays warm. This is the incremental-solving performance key: a CEGIS
+ * loop that proves dozens of candidates reuses the solver instead of
+ * constructing a fresh one (and re-parsing the variables) every round.
+ */
+export type SmtSession = {
+  z3: Z3
+  vars: Z3[]
+  // prove that `expr`'s value satisfies `spec` for all integers
+  prove(expr: Expr, spec: SymSpec): Promise<SmtResult>
+  // forget all learned clauses (rarely needed; push/pop already isolates)
+  reset(): void
+}
+
+/** Open a solver session over `arity` shared integer variables. */
+export function openSmtSession(input: { z3: Z3; arity: number }): SmtSession {
+  const { z3, arity } = input
+  const vars: Z3[] = Array.from({ length: arity }, (_, i) => z3.Int.const(`x${i}`))
+  const solver = new z3.Solver()
+
+  return {
+    z3,
+    vars,
+    async prove(expr, spec) {
+      const out = exprToZ3(expr, vars, z3)
+      solver.push() // scope this obligation's assertion
+      solver.add(z3.Not(spec(vars, out, z3)))
+      const status = await solver.check()
+
+      let result: SmtResult
+      if (status === 'unsat') {
+        result = { proven: true }
+      } else if (status === 'sat') {
+        const model = solver.model()
+        // model completion (the `true`) assigns don't-care vars, so the
+        // counterexample is fully numeric.
+        result = { proven: false, counterexample: vars.map(v => z3Num(model.eval(v, true))) }
+      } else {
+        result = { proven: false, unknown: true }
+      }
+
+      solver.pop() // discard this obligation, keep the solver warm
+      return result
+    },
+    reset() {
+      solver.reset()
+    },
+  }
+}
+
+/**
  * Prove that `expr` satisfies `spec` for ALL integers (unbounded), by
  * asking Z3 whether the negation is satisfiable. unsat = proof; sat =
- * the input where it breaks.
+ * the input where it breaks. A one-shot convenience over `openSmtSession`.
  */
 export async function proveExpr(input: {
   arity: number
   expr: Expr
   spec: SymSpec
   z3: Z3
+  session?: SmtSession
 }): Promise<SmtResult> {
-  const { arity, expr, spec, z3 } = input
-
-  const vars: Z3[] = Array.from({ length: arity }, (_, i) =>
-    z3.Int.const(`x${i}`),
-  )
-  const out = exprToZ3(expr, vars, z3)
-
-  const solver = new z3.Solver()
-  solver.add(z3.Not(spec(vars, out, z3)))
-
-  const status = await solver.check()
-
-  if (status === 'unsat') return { proven: true }
-
-  if (status === 'sat') {
-    const model = solver.model()
-    // model completion (the `true`) assigns concrete values to
-    // don't-care variables, so the counterexample is fully numeric.
-    const counterexample = vars.map(v => z3Num(model.eval(v, true)))
-    return { proven: false, counterexample }
-  }
-
-  return { proven: false, unknown: true }
+  const session = input.session ?? openSmtSession({ z3: input.z3, arity: input.arity })
+  return session.prove(input.expr, input.spec)
 }

@@ -1,0 +1,62 @@
+
+# Node host: the SSR server. Starts an HTTP server (the uniform trie router + the node transport) and renders every
+# request through the SAME `route(host, path)` dispatcher: build a fresh in-memory root, run `route` into it, serialize
+# the tree to HTML, wrap it in the document shell, and respond. The server side of the env-abstracted `host`; the
+# client side (browser/host) mounts instead. One dispatcher, two boots. `seed boot` invokes the generated
+# `boot(url, port)`, which calls this.
+
+load @cluesurf/site/code/dom/dom
+  find view
+  find create-element
+  find serialize
+  find page-shell
+load @cluesurf/site/code/http/http
+  find request
+  find response
+  find route
+  find route-server
+load @cluesurf/site/code/http/serve
+  find serve
+load @cluesurf/base/code/list
+  find list
+  find push
+
+task host
+  take route
+    like task
+      take host, like view
+      take path, like text
+  take port, like u16
+  mark async
+  # the catch-all handler: SSR-render the requested path through `route`
+  save render-request
+    task handle
+      take request, like request
+      take params, like hash
+      like response
+      save root
+        call create-element
+          text <div>
+      call route
+        read root
+        read request/path
+      send back
+        make response
+          bind status, mark 200
+          bind body
+            call page-shell
+              call serialize
+                read root
+  save routes
+    make list
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </**>
+        bind handle, read render-request
+  call serve
+    call route-server
+      read routes
+    read port

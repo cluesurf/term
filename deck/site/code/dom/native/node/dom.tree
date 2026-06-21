@@ -12,6 +12,10 @@ load @cluesurf/base/code/maybe
 load ../../view
   find view
 
+dock load
+  load <global:serialize>, name html
+  mark native
+
 form element
   link tag, like text
   link text, like text
@@ -217,6 +221,41 @@ task anchor
   send back
     task drop
       save skip, mark 0
+
+# routing glue on the server: the path comes from the request (the server boot passes it), so these are stubs. A server
+# boot dispatches per request rather than reading globals; the same `route(host, path)` dispatcher is reused.
+task page-path
+  like text
+  send back, text </>
+
+task set-title
+  take title, like text
+
+task page-body
+  like view
+  send back
+    make view
+      bind handle, make none
+
+task listen-pop
+  take handler
+    like task
+
+# serialize the in-memory tree to HTML (the SSR render output), via the runtime shim
+task serialize
+  take node, like view
+  like text
+  send back
+    call html/serialize
+      read node/handle
+
+# wrap body HTML in the document shell (the SSR response), via the runtime shim
+task page-shell
+  take body, like text
+  like text
+  send back
+    call html/page-shell
+      read body
 
 # no ResizeObserver on the server
 task observe-size

@@ -879,6 +879,12 @@ export function emitSwift(program: Program): string {
       case 'flat':
         // flattening a non-nested list is a shallow copy (JS `[1,2,3].flat()` is `[1,2,3]`)
         return `SeedList(${data})`
+      case 'unshift':
+        return `${target}.unshifting(${arg[0]})`
+      case 'shift':
+        return `${target}.shifting()`
+      case 'splice':
+        return `${target}.splicing(${arg[0]}, ${arg[1]}, [${arg.slice(2).join(', ')}])`
       default:
         return ''
     }
@@ -1198,6 +1204,9 @@ export function emitSwift(program: Program): string {
         '    init(_ data: [T] = []) { self.data = data }',
         '    @discardableResult func appending(_ item: T) -> Int { data.append(item); return data.count }',
         '    @discardableResult func popping() -> T { return data.removeLast() }',
+        '    @discardableResult func unshifting(_ item: T) -> Int { data.insert(item, at: 0); return data.count }',
+        '    @discardableResult func shifting() -> T { return data.removeFirst() }',
+        '    @discardableResult func splicing(_ start: Int, _ count: Int, _ items: [T]) -> Int { data.replaceSubrange(start..<(start + count), with: items); return data.count }',
         '}',
       ].join('\n'),
     )}

@@ -137,6 +137,40 @@ function main(): void {
     )
   }
 
+  // a task / form definition always stacks (head on its own line), never collapsed onto one line
+  {
+    const t = format({
+      file: 'd.tree',
+      text: `task one\n  send back, code 1\n`,
+    })
+    ok(
+      'a single-statement task stays stacked',
+      t.split('\n')[0] === 'task one' &&
+        t.includes('\n  send back, code 1'),
+      JSON.stringify(t),
+    )
+  }
+
+  // a comment longer than 80 chars is word-wrapped; a short comment is left untouched
+  {
+    const long =
+      '# this is a very long leading comment that definitely goes well beyond the eighty character limit and keeps going'
+    const wrapped = format({
+      file: 'c.tree',
+      text: `${long}\ntask f\n  # lint off L003\n  send back, code 1\n`,
+    })
+    ok(
+      'a long comment wraps to <= 84 chars',
+      wrapped.split('\n').every(l => l.length <= 84),
+      JSON.stringify(wrapped.split('\n').filter(l => l.length > 84)),
+    )
+    ok(
+      'a short directive comment is left intact',
+      wrapped.includes('# lint off L003'),
+      wrapped,
+    )
+  }
+
   console.log(`\nformat: ${pass} pass, ${fail} fail`)
 }
 

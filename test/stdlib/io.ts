@@ -1789,13 +1789,13 @@ async function main(): Promise<void> {
     false,
   )
   expect(
-    'math: power compiles to the inline native bind (Math.pow)',
-    mathTs.includes('Math.pow'),
+    'math: power delegates inline to the host Math (math.pow)',
+    mathTs.includes('math.pow'),
     true,
   )
   expect(
-    'math: absolute compiles to the inline native bind (Math.abs)',
-    mathTs.includes('Math.abs'),
+    'math: absolute delegates inline to the host Math (math.abs)',
+    mathTs.includes('math.abs'),
     true,
   )
   expect(
@@ -2107,35 +2107,38 @@ async function main(): Promise<void> {
     true,
   )
   const dRust = digestFor('rust')
-  const rustDigest = dRust.ok ? emitRust(dRust.program) : ''
   expect(
-    'digest compiles for rust (sha2 crate, inlined) with its `use`',
+    'digest compiles for rust, sha2 crate pulled into the prelude',
     dRust.ok &&
-      rustDigest.includes('Sha256::digest') &&
-      rustDigest.includes('use sha2::Sha256;'),
+      nativePrelude(dRust.program, 'rust', readRuntime).includes(
+        'Sha256::digest',
+      ),
     true,
   )
   const dSwift = digestFor('swift')
   expect(
-    'digest compiles for swift (CryptoKit, inlined)',
-    dSwift.ok && emitSwift(dSwift.program).includes('CryptoKit.SHA256'),
+    'digest compiles for swift, CryptoKit pulled into the prelude',
+    dSwift.ok &&
+      nativePrelude(dSwift.program, 'swift', readRuntime).includes(
+        'SHA256.hash',
+      ),
     true,
   )
   const dKotlin = digestFor('kotlin')
   expect(
-    'digest compiles for kotlin (java.security, inlined)',
+    'digest compiles for kotlin, java.security pulled into the prelude',
     dKotlin.ok &&
-      emitKotlin(dKotlin.program).includes(
-        'MessageDigest.getInstance("SHA-256")',
+      nativePrelude(dKotlin.program, 'kotlin', readRuntime).includes(
+        'MessageDigest.getInstance',
       ),
     true,
   )
   const dBrowser = digestFor('browser')
   expect(
-    'digest compiles for browser (Web Crypto subtle, inlined)',
+    'digest compiles for browser, Web Crypto pulled into the prelude',
     dBrowser.ok &&
-      emitTypeScript(dBrowser.program, { env: 'browser' }).includes(
-        "subtle.digest('SHA-256'",
+      nativePrelude(dBrowser.program, 'browser', readRuntime).includes(
+        'subtle.digest',
       ),
     true,
   )

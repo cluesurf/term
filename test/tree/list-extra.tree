@@ -1,4 +1,4 @@
-note <Tests for the new list methods: set (in-place index write), clear (empty in place), copy (shallow copy).>
+note <Tests for the new list methods: set (in-place index write via splice), clear (empty in place), copy (shallow copy). All lower to cross-backend collection ops.>
 
 load @cluesurf/base/code/list
   find list

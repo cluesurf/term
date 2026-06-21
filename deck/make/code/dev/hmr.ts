@@ -18,6 +18,9 @@ export interface HmrUpdate {
 export type HmrResult =
   | { type: 'update'; updates: HmrUpdate[] }
   | { type: 'full-reload' }
+  // a recompile error: the running app keeps its last-good code and state, and the client shows an error overlay. No
+  // reload, so the developer fixes the error without losing where they were. The next good build clears the overlay.
+  | { type: 'error'; errors: string[] }
 
 // decide how to apply a change to `changedId`. Returns the set of boundaries to update, or a full reload if any path
 // dead-ends. Mirrors Vite's `propagateUpdate`: a self-accepting module is its own boundary, a dep-accepting importer is

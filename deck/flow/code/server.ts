@@ -253,7 +253,7 @@ const REF_TOKEN: Record<SymbolKind, number> = {
   local: 4,
 }
 
-function semanticTokens(
+export function semanticTokens(
   text: string,
   index: SymbolIndex,
 ): { data: number[] } {
@@ -332,7 +332,7 @@ type InlayHint = {
   kind: number
   paddingLeft: boolean
 }
-function inlayHints(
+export function inlayHints(
   program: Program,
   text: string,
   range: { start: { line: number }; end: { line: number } },
@@ -543,6 +543,8 @@ export class LanguageServer {
   // inlay hints place themselves on this file's let bindings, not an imported module's
   private readonly documentPrograms = new Map<string, Program>()
   private readonly indexes = new Map<string, SymbolIndex>()
+  // the last diagnostic set serialized per document, for diagnostic backdating (skip an unchanged re-publish)
+  private readonly lastDiagnostics = new Map<string, string>()
   // one incremental analyzer per document: an edit re-checks only the definitions that changed (the firewall), so
   // diagnostics on keystroke are near-instant. See code/incremental.ts.
   private readonly analyzers = new Map<string, IncrementalAnalyzer>()
@@ -604,24 +606,25 @@ export class LanguageServer {
       case 'textDocument/didOpen': {
         const params = message.params as TextDocumentParams
 
-        return [
-          await this.refresh(
-            params.textDocument.uri,
-            params.textDocument.text ?? '',
-          ),
-        ]
+        const note = await this.refresh(
+          params.textDocument.uri,
+          params.textDocument.text ?? '',
+        )
+
+        return note ? [note] : []
       }
 
       case 'textDocument/didChange': {
         const params = message.params as ChangeParams
 
-        return [
-          await this.refresh(
-            params.textDocument.uri,
-            params.contentChanges[params.contentChanges.length - 1]
-              ?.text ?? '',
-          ),
-        ]
+        // backdating: refresh returns null when the diagnostics are unchanged, so nothing is published
+        const note = await this.refresh(
+          params.textDocument.uri,
+          params.contentChanges[params.contentChanges.length - 1]
+            ?.text ?? '',
+        )
+
+        return note ? [note] : []
       }
 
       case 'textDocument/didClose': {
@@ -1057,8 +1060,14 @@ export class LanguageServer {
     }
   }
 
-  // recompile a document, store its typed program and symbol index, and produce the diagnostics notification
-  private async refresh(uri: string, text: string): Promise<Message> {
+  // recompile a document, store its typed program and symbol index, and produce the diagnostics notification.
+  // Diagnostic backdating: when a re-check yields the byte-identical diagnostic set, return null so the caller skips
+  // the publish -- the editor does not repaint unchanged squiggles. The first publish for a uri always sends, and any
+  // real change (errors appearing / clearing / moving) sends, since the serialized set differs.
+  private async refresh(
+    uri: string,
+    text: string,
+  ): Promise<Message | null> {
     this.documents.set(uri, text)
 
     const result = await this.analyzerFor(uri).analyze({
@@ -1090,12 +1099,18 @@ export class LanguageServer {
       this.indexes.delete(uri)
     }
 
-    return notify('textDocument/publishDiagnostics', {
-      uri,
-      diagnostics: result.diagnostics.map(
-        toLspDiagnostic,
-      ) satisfies LspDiagnostic[],
-    })
+    const diagnostics = result.diagnostics.map(
+      toLspDiagnostic,
+    ) satisfies LspDiagnostic[]
+
+    // backdate: skip the publish when the diagnostic set is unchanged from the last one sent for this document
+    const key = JSON.stringify(diagnostics)
+    if (this.lastDiagnostics.get(uri) === key) {
+      return null
+    }
+    this.lastDiagnostics.set(uri, key)
+
+    return notify('textDocument/publishDiagnostics', { uri, diagnostics })
   }
 }
 

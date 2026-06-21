@@ -5,7 +5,7 @@
  * Simulates a proof session: state goals, hammer each, read the proof
  * state. A verify goal is proved or refuted (with a counterexample); a
  * synthesis goal is closed by finding a witness (emitted as Seed). This
- * is what the LSP `proof/hammer` returns and what a `seed prove` CLI
+ * is what the LSP `proof/hammer` returns and what a `seed hold` CLI
  * would print.
  *
  * Needs z3-solver (`pnpm install`).

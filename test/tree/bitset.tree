@@ -1,0 +1,116 @@
+note <Tests for the packed bitset: set/clear/toggle/has single bits across word boundaries, count, and is-empty.>
+
+load @cluesurf/base/code/bitset
+  find bitset
+  find set
+  find clear
+  find toggle
+  find has
+  find count
+  find is-empty
+
+load @cluesurf/base/code/list
+  find list
+
+test <set then has finds the bit>
+  save b
+    make bitset
+      bind words
+        make list
+  call set
+    read b
+    mark 5
+  want hold
+    call has
+      read b
+      mark 5
+
+test <an unset bit is absent>
+  save b
+    make bitset
+      bind words
+        make list
+  call set
+    read b
+    mark 5
+  want miss
+    call has
+      read b
+      mark 6
+
+test <bits across word boundaries are independent>
+  save b
+    make bitset
+      bind words
+        make list
+  call set
+    read b
+    mark 1
+  call set
+    read b
+    mark 40
+  want hold
+    call has
+      read b
+      mark 40
+
+test <count is the number of set bits>
+  save b
+    make bitset
+      bind words
+        make list
+  call set
+    read b
+    mark 1
+  call set
+    read b
+    mark 40
+  call set
+    read b
+    mark 5
+  want hold
+    call is-equal
+      call count
+        read b
+      mark 3
+
+test <clear removes a set bit>
+  save b
+    make bitset
+      bind words
+        make list
+  call set
+    read b
+    mark 5
+  call clear
+    read b
+    mark 5
+  want miss
+    call has
+      read b
+      mark 5
+
+test <toggle twice restores the bit to unset>
+  save b
+    make bitset
+      bind words
+        make list
+  call toggle
+    read b
+    mark 10
+  call toggle
+    read b
+    mark 10
+  want miss
+    call has
+      read b
+      mark 10
+
+test <a fresh bitset is empty>
+  save b
+    make bitset
+      bind words
+        make list
+  want hold
+    call is-empty
+      read b

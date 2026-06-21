@@ -13,7 +13,7 @@ export const noSelfAssignment: Rule = {
   code: 'L010',
   severity: 'warning',
   docs: 'assigning a value to itself has no effect',
-  fixable: false,
+  fixable: true,
   check(target, context) {
     if (target.kind !== 'statement') return
     const node = target.node
@@ -24,6 +24,14 @@ export const noSelfAssignment: Rule = {
       context.report({
         message: `this assigns a value to itself; the statement has no effect`,
         span: node.span,
+        // delete the whole line the no-op occupies
+        fix: {
+          span: {
+            start: { line: node.span.start.line, column: 0 },
+            end: { line: node.span.end.line + 1, column: 0 },
+          },
+          text: '',
+        },
       })
     }
   },

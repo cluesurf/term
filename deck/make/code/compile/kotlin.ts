@@ -75,6 +75,30 @@ const OP: Record<string, string> = {
   '%': '%',
 }
 
+// Kotlin requires every `import` at the top of the file, but a built program concatenates the runtime prelude (one or
+// more shim files, each with its own imports) with the emitted program (which may also emit imports). Hoist every
+// `import` line to the top, deduplicated and order-preserved, so the assembled source is valid. Apply this to the FINAL
+// `prelude + program` string for the kotlin target.
+export function hoistKotlinImports(source: string): string {
+  const imports: string[] = []
+  const seen = new Set<string>()
+  const body: string[] = []
+  for (const line of source.split('\n')) {
+    if (/^\s*import\s+\S/.test(line)) {
+      const trimmed = line.trim()
+      if (!seen.has(trimmed)) {
+        seen.add(trimmed)
+        imports.push(trimmed)
+      }
+    } else {
+      body.push(line)
+    }
+  }
+  return imports.length > 0
+    ? `${imports.join('\n')}\n${body.join('\n')}`
+    : source
+}
+
 export function emitKotlin(program: Program): string {
   const pad = (d: number) => '    '.repeat(d)
   // declarative native bindings render their `case kotlin` template at call sites
@@ -549,6 +573,13 @@ export function emitKotlin(program: Program): string {
       case 'flat':
         // flattening a non-nested list is a shallow copy (JS `[1,2,3].flat()` is `[1,2,3]`)
         return `${target}.toMutableList()`
+      case 'unshift':
+        return `${target}.apply { add(0, ${arg[0]}) }.size.toLong()`
+      case 'shift':
+        return `${target}.removeAt(0)`
+      case 'splice':
+        // JS `splice(start, deleteCount, ...items)`: remove the range, insert the items, in place
+        return `${target}.apply { subList((${arg[0]}).toInt(), (${arg[0]}).toInt() + (${arg[1]}).toInt()).clear(); addAll((${arg[0]}).toInt(), listOf(${arg.slice(2).join(', ')})) }.let { 0L }`
       default:
         return ''
     }

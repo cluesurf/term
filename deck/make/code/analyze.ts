@@ -10,7 +10,7 @@ import { expandTemplates } from '@cluesurf/make/code/compile/template'
 import { mill } from '@cluesurf/make/code/compile/mill'
 import { compileProgram } from '@cluesurf/make/code/compile/compile'
 import { formatTree } from '@cluesurf/make/code/format/format'
-import { lint } from '@cluesurf/make/code/lint/lint'
+import { lint, applyFixes } from '@cluesurf/make/code/lint/lint'
 import type { LintConfig } from '@cluesurf/make/code/lint/lint'
 import type { Finding } from '@cluesurf/make/code/lint/rule'
 import type { Program } from '@cluesurf/make/code/compile/node'
@@ -23,6 +23,8 @@ export type Analysis = {
   format(): string
   // run the lint rules over the milled AST (returns [] if the source did not mill)
   lint(config?: LintConfig): Finding[]
+  // lint, apply every fix, and re-format -- the full auto-fix in one call, returning the fixed + formatted source
+  fix(config?: LintConfig): string
   // run the full type checker over the milled AST (parse and mill are not repeated)
   check(): Diagnostic[]
 }
@@ -87,6 +89,19 @@ export function analyze(source: {
             suppress,
           })
         : [],
+    fix: (config: LintConfig = {}) => {
+      if (!program) {return source.text}
+
+      const findings = lint(program, source.file, source.text, {
+        ...config,
+        suppress,
+      })
+      const fixed = applyFixes(source.text, findings)
+      // re-parse + format the fixed text so the layout is normalized (a fix may leave odd spacing)
+      const reparsed = parseTolerant({ file: source.file, text: fixed })
+
+      return reparsed.diagnostics.length ? fixed : formatTree(reparsed.tree)
+    },
     check: () => {
       if (!program) {return all}
 

@@ -1,0 +1,71 @@
+note <Tests for complex numbers: addition, multiplication, conjugate, magnitude. Parts are read directly as value/real and value/imaginary.>
+
+load @cluesurf/base/code/complex
+  find complex
+  find make-complex
+  find plus
+  find times
+  find conjugate
+  find magnitude
+
+test <plus adds the real parts>
+  save z
+    call plus
+      call make-complex
+        1.0
+        2.0
+      call make-complex
+        3.0
+        4.0
+  want hold
+    call is-equal
+      read z/real
+      4.0
+
+test <plus adds the imaginary parts>
+  save z
+    call plus
+      call make-complex
+        1.0
+        2.0
+      call make-complex
+        3.0
+        4.0
+  want hold
+    call is-equal
+      read z/imaginary
+      6.0
+
+test <times of i by i is negative one (real part)>
+  save z
+    call times
+      call make-complex
+        0.0
+        1.0
+      call make-complex
+        0.0
+        1.0
+  want hold
+    call is-equal
+      read z/real
+      -1.0
+
+test <conjugate negates the imaginary part>
+  save z
+    call conjugate
+      call make-complex
+        2.0
+        3.0
+  want hold
+    call is-equal
+      read z/imaginary
+      -3.0
+
+test <magnitude of three plus four i is five>
+  want hold
+    call is-equal
+      call magnitude
+        call make-complex
+          3.0
+          4.0
+      5.0

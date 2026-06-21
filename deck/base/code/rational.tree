@@ -1,0 +1,151 @@
+# Rational: an exact fraction (numerator over denominator) of integers. Pure and cross-backend: every operation is integer multiply / add / subtract plus a greatest-common-divisor reduction, and the only divisions are exact (the gcd divides both terms), so the result is identical on every backend. The combiners are named `plus` / `minus` / `times` / `divided-by` because `add` / `subtract` / `multiply` / `divide` are the number arithmetic primitives.
+
+load @cluesurf/base/code/math
+  find greatest-common-divisor
+  find absolute
+
+form rational
+  link numerator, like number
+  link denominator, like number
+
+  # reduce to lowest terms by dividing out the greatest common divisor (an exact division)
+  task reduce
+    take self
+    like rational
+    save g
+      call greatest-common-divisor
+        call absolute
+          read self/numerator
+        call absolute
+          read self/denominator
+    send back
+      make rational
+        bind numerator
+          call divide
+            read self/numerator
+            read g
+        bind denominator
+          call divide
+            read self/denominator
+            read g
+
+  task numerator
+    take self
+    like number
+    send back, read self/numerator
+
+  task denominator
+    take self
+    like number
+    send back, read self/denominator
+
+  task negate
+    take self
+    like rational
+    send back
+      make rational
+        bind numerator
+          call subtract
+            code 0
+            read self/numerator
+        bind denominator, read self/denominator
+
+  # a/b + c/d = (a*d + c*b) / (b*d), reduced
+  task plus
+    take self
+    take other, like rational
+    like rational
+    send back
+      call reduce
+        make rational
+          bind numerator
+            call add
+              call multiply
+                read self/numerator
+                read other/denominator
+              call multiply
+                read other/numerator
+                read self/denominator
+          bind denominator
+            call multiply
+              read self/denominator
+              read other/denominator
+
+  # a/b - c/d = (a*d - c*b) / (b*d), reduced
+  task minus
+    take self
+    take other, like rational
+    like rational
+    send back
+      call reduce
+        make rational
+          bind numerator
+            call subtract
+              call multiply
+                read self/numerator
+                read other/denominator
+              call multiply
+                read other/numerator
+                read self/denominator
+          bind denominator
+            call multiply
+              read self/denominator
+              read other/denominator
+
+  # a/b * c/d = (a*c) / (b*d), reduced
+  task times
+    take self
+    take other, like rational
+    like rational
+    send back
+      call reduce
+        make rational
+          bind numerator
+            call multiply
+              read self/numerator
+              read other/numerator
+          bind denominator
+            call multiply
+              read self/denominator
+              read other/denominator
+
+  # a/b ÷ c/d = (a*d) / (b*c), reduced
+  task divided-by
+    take self
+    take other, like rational
+    like rational
+    send back
+      call reduce
+        make rational
+          bind numerator
+            call multiply
+              read self/numerator
+              read other/denominator
+          bind denominator
+            call multiply
+              read self/denominator
+              read other/numerator
+
+  # equal by cross-multiplication: a/b = c/d iff a*d = c*b
+  task is-equal-to
+    take self
+    take other, like rational
+    like boolean
+    send back
+      call is-equal
+        call multiply
+          read self/numerator
+          read other/denominator
+        call multiply
+          read other/numerator
+          read self/denominator
+
+task make-rational
+  take numerator, like number
+  take denominator, like number
+  like rational
+  send back
+    call reduce
+      make rational
+        bind numerator, read numerator
+        bind denominator, read denominator

@@ -55,6 +55,9 @@ const ARRAY_METHODS = new Set([
   'reduce',
   'findIndex',
   'flat',
+  'shift',
+  'unshift',
+  'splice',
 ])
 
 // the extra trait the element type needs for an array op that goes beyond `Clone`: equality (`includes` / `indexOf`)

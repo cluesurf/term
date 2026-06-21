@@ -32,6 +32,7 @@ load ../../view
 dock load
   load <global:resize>, name resize
   load <global:position>, name position
+  load <global:route>, name route
   mark native
 
 task create-element
@@ -166,6 +167,42 @@ task anchor
       read offset
       read flip
       read shift
+
+# serialize + page-shell are server (SSR) concerns; on the client they are unused. Return empty.
+task serialize
+  take node, like view
+  like text
+  send back, text <>
+
+task page-shell
+  take body, like text
+  like text
+  send back, read body
+
+# the current route path (location.pathname)
+task page-path
+  like text
+  send back, call route/page-path
+
+# set the document title
+task set-title
+  take title, like text
+  call route/set-title
+    read title
+
+# the app mount host (document body), wrapped as a view
+task page-body
+  like view
+  send back
+    make view
+      bind handle, call route/page-body
+
+# run `handler` on back/forward + intercepted same-origin link clicks (SPA navigation)
+task listen-pop
+  take handler
+    like task
+  call route/listen-pop
+    read handler
 
 # observe an element's width via ResizeObserver (calls `handler` with the content-box width on each resize + once now)
 task observe-size

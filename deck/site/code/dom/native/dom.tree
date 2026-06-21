@@ -74,6 +74,33 @@ task anchor
   take shift, like boolean
   like task
 
+# serialize a built view (a server in-memory tree) to an HTML string, for SSR. A no-op shape on the client.
+task serialize
+  take node, like view
+  like text
+
+# wrap server-rendered body HTML in the full document shell (stylesheet link + client script), for SSR responses
+task page-shell
+  take body, like text
+  like text
+
+# the current route path (location.pathname). The boot reads it to dispatch the route.
+task page-path
+  like text
+
+# set the document title (per-route, from a route's `seed title` directive)
+task set-title
+  take title, like text
+
+# the app mount host (document body). The boot mounts the matched route's component here.
+task page-body
+  like view
+
+# run `handler` on navigation: back/forward and intercepted same-origin link clicks (SPA navigation)
+task listen-pop
+  take handler
+    like task
+
 task observe-size
   take node, like view
   take handler

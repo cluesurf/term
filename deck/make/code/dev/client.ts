@@ -15,6 +15,8 @@ export type HmrMessage =
         timestamp: number
       }[]
     }
+  // a recompile error: show an overlay and keep the app running on its last-good code (no reload, state preserved)
+  | { type: 'error'; errors: string[] }
 
 // what the client needs from its environment (the browser provides these; a test provides fakes)
 export interface HmrEnvironment {
@@ -26,6 +28,9 @@ export interface HmrEnvironment {
   // the dispose hook a boundary module registered, run BEFORE the fresh module replaces it so it can snapshot its
   // state (signal values) and tear down its current view. Already bound to that boundary's persistent `data` bucket.
   disposeOf?(boundary: string): (() => void) | undefined
+  // show / clear the compile-error overlay (the browser renders a DOM overlay; a test provides a fake)
+  showError?(errors: string[]): void
+  clearError?(): void
   log(message: string): void
 }
 
@@ -40,11 +45,21 @@ export async function applyHmr(
     return
   }
 
+  // a recompile error: keep the app running (no reload) and show the overlay; the next good update clears it
+  if (message.type === 'error') {
+    environment.showError?.(message.errors)
+
+    return
+  }
+
   if (message.type === 'full-reload') {
     environment.reload()
 
     return
   }
+
+  // a successful update clears any error overlay left from a previous failed build
+  environment.clearError?.()
 
   for (const update of message.updates) {
     // snapshot + tear down the OLD module before it is replaced, so its state survives into the fresh one

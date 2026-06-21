@@ -22,6 +22,7 @@ import { callNote } from '@cluesurf/call/code/note'
 import { callProfile } from '@cluesurf/call/code/profile'
 import { callForm } from '@cluesurf/call/code/form'
 import { callLint } from '@cluesurf/call/code/lint'
+import { callHold } from '@cluesurf/call/code/hold'
 import { callLook } from '@cluesurf/call/code/look'
 import { logFail, warn } from '@cluesurf/make/code/tint'
 
@@ -48,6 +49,7 @@ const COMMANDS = [
   'show',
   'form',
   'lint',
+  'hold',
   'look',
 ]
 
@@ -603,6 +605,45 @@ const cli = yargs(hideBin(process.argv))
         root,
         paths: (argv.paths as string[] | undefined) ?? [],
         fix: argv.fix,
+      })
+    },
+  )
+  .command(
+    'hold [paths..]',
+    'Verify .tree files hold: report gaps, run the cross-backend differential, gate CI (incremental)',
+    yargs =>
+      yargs
+        .positional('paths', {
+          type: 'string',
+          description:
+            'Files or directories to verify (default: current directory)',
+        })
+        .option('cross', {
+          type: 'boolean',
+          default: true,
+          description: 'Run the cross-backend differential',
+        })
+        .option('cache', {
+          type: 'boolean',
+          default: true,
+          description: 'Skip files unchanged since they last held',
+        })
+        .option('force', {
+          type: 'boolean',
+          description: 'Re-check everything, ignoring the cache',
+        })
+        .option('json', {
+          type: 'boolean',
+          description: 'Machine-readable output',
+        }),
+    async argv => {
+      await callHold({
+        root,
+        paths: (argv.paths as string[] | undefined) ?? [],
+        cross: argv.cross,
+        cache: argv.cache,
+        force: argv.force,
+        json: argv.json,
       })
     },
   )

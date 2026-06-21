@@ -5,9 +5,6 @@ load @cluesurf/base/code/maybe
   find maybe
   find unwrap-or
 
-load @cluesurf/base/code/pair
-  find pair
-
 form hash
   head k
   head v
@@ -105,13 +102,20 @@ form hash
           read key
         read fallback
 
-  # empty the map in place, returning it
+  # empty the map in place, returning it. Removes each key, using only the cross-backend remove primitive.
   task clear
     take self
     like hash
       like k
       like v
-    call self/clear
+    walk list
+      call keys
+        read self
+      hook next
+        take site, name key
+        call remove
+          read self
+          read key
     send back, read self
 
   # copy every entry of `other` into `self`, overwriting on key collision, returning `self`
@@ -135,23 +139,3 @@ form hash
           call other/get
             read key
     send back, read self
-
-  # materialize the entries as a list of key/value pairs
-  task entries
-    take self
-    like list
-      like pair
-    save out
-      make list
-    walk list
-      call keys
-        read self
-      hook next
-        take site, name key
-        call out/push
-          make pair
-            bind first, read key
-            bind second
-              call self/get
-                read key
-    send back, read out

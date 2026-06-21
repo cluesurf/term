@@ -1,0 +1,155 @@
+note <Tests for the iterator (walk): sources, lazy adapters (map/filter/take), terminal sinks (count/fold/find/is-any), and a bounded infinite source.>
+
+load @cluesurf/base/code/walk
+  find walk
+  find from-list
+  find count-from
+  find map
+  find filter
+  find take
+  find fold
+  find count
+  find find
+  find is-any
+
+load @cluesurf/base/code/list
+  find list
+
+load @cluesurf/base/code/maybe
+  find unwrap-or
+
+task double
+  take item, like number
+  like number
+  send back
+    call multiply
+      read item
+      code 2
+
+task is-even
+  take item, like number
+  like boolean
+  send back
+    call is-equal
+      call modulo
+        read item
+        code 2
+      code 0
+
+task add-up
+  take total, like number
+  take item, like number
+  like number
+  send back
+    call add
+      read total
+      read item
+
+task over-one
+  take item, like number
+  like boolean
+  send back
+    call is-above
+      read item
+      code 1
+
+test <count of a three-element list is three>
+  save xs
+    make list
+  call xs/push
+    mark 1
+  call xs/push
+    mark 2
+  call xs/push
+    mark 3
+  want hold
+    call is-equal
+      call count
+        call from-list
+          read xs
+      mark 3
+
+test <map then fold doubles and sums>
+  save xs
+    make list
+  call xs/push
+    mark 1
+  call xs/push
+    mark 2
+  call xs/push
+    mark 3
+  want hold
+    call is-equal
+      call fold
+        call map
+          call from-list
+            read xs
+          read double
+        mark 0
+        read add-up
+      mark 12
+
+test <filter keeps the even elements>
+  save xs
+    make list
+  call xs/push
+    mark 1
+  call xs/push
+    mark 2
+  call xs/push
+    mark 3
+  call xs/push
+    mark 4
+  want hold
+    call is-equal
+      call count
+        call filter
+          call from-list
+            read xs
+          read is-even
+      mark 2
+
+test <take bounds an infinite count-from>
+  want hold
+    call is-equal
+      call fold
+        call take
+          call count-from
+            mark 10
+            mark 5
+          mark 3
+        mark 0
+        read add-up
+      mark 45
+
+test <find returns the first matching element>
+  save xs
+    make list
+  call xs/push
+    mark 1
+  call xs/push
+    mark 2
+  call xs/push
+    mark 3
+  want hold
+    call is-equal
+      call unwrap-or
+        call find
+          call from-list
+            read xs
+          read over-one
+        mark 0
+      mark 2
+
+test <is-any detects a matching element>
+  save xs
+    make list
+  call xs/push
+    mark 1
+  call xs/push
+    mark 9
+  want hold
+    call is-any
+      call from-list
+        read xs
+      read over-one

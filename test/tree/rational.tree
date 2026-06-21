@@ -1,0 +1,111 @@
+note <Tests for exact rational arithmetic: reduction, addition, multiplication, equality, negation.>
+
+load @cluesurf/base/code/rational
+  find rational
+  find make-rational
+  find plus
+  find minus
+  find times
+  find divided-by
+  find numerator
+  find denominator
+  find is-equal-to
+  find negate
+
+test <make-rational reduces the numerator to lowest terms>
+  want hold
+    call is-equal
+      call numerator
+        call make-rational
+          mark 2
+          mark 4
+      mark 1
+
+test <make-rational reduces the denominator to lowest terms>
+  want hold
+    call is-equal
+      call denominator
+        call make-rational
+          mark 2
+          mark 4
+      mark 2
+
+test <plus adds one half and one third to five sixths (numerator)>
+  save sum
+    call plus
+      call make-rational
+        mark 1
+        mark 2
+      call make-rational
+        mark 1
+        mark 3
+  want hold
+    call is-equal
+      call numerator
+        read sum
+      mark 5
+
+test <plus adds one half and one third to five sixths (denominator)>
+  save sum
+    call plus
+      call make-rational
+        mark 1
+        mark 2
+      call make-rational
+        mark 1
+        mark 3
+  want hold
+    call is-equal
+      call denominator
+        read sum
+      mark 6
+
+test <times multiplies one half by two thirds to one third>
+  save p
+    call times
+      call make-rational
+        mark 1
+        mark 2
+      call make-rational
+        mark 2
+        mark 3
+  want hold
+    call is-equal
+      call numerator
+        read p
+      mark 1
+
+test <divided-by divides one half by one quarter to two>
+  save q
+    call divided-by
+      call make-rational
+        mark 1
+        mark 2
+      call make-rational
+        mark 1
+        mark 4
+  want hold
+    call is-equal
+      call numerator
+        read q
+      mark 2
+
+test <is-equal-to holds for equal fractions by cross-multiplication>
+  want hold
+    call is-equal-to
+      call make-rational
+        mark 1
+        mark 2
+      call make-rational
+        mark 2
+        mark 4
+
+test <negate flips the sign of the numerator>
+  want hold
+    call is-equal
+      call numerator
+        call negate
+          call make-rational
+            mark 1
+            mark 2
+      mark -1

@@ -2974,10 +2974,13 @@ export function mill(tree: RootNode, file: string): MillResult {
     const scope = new Set<string>()
     const span = spanOf(group)
     const pathGroup = rest(group)[0]
+    // a route path is a text literal (`hook </vibe/intro>`, slashes need it) or a bare name (`hook build`, a CLI command)
     const path =
-      pathGroup?.kind === 'group'
-        ? (headName(pathGroup) ?? '')
-        : ''
+      pathGroup?.kind === 'text'
+        ? textOf(pathGroup)
+        : pathGroup?.kind === 'group'
+          ? (headName(pathGroup) ?? '')
+          : ''
 
     const methods: DockMethod[] = []
 
@@ -3064,7 +3067,8 @@ export function mill(tree: RootNode, file: string): MillResult {
     const children = rest(group)
       .filter(
         (n): n is GroupNode =>
-          n.kind === 'group' && headName(n) === 'dock',
+          n.kind === 'group' &&
+          (headName(n) === 'hook' || headName(n) === 'dock'),
       )
       .map(buildDockRoute)
 
@@ -3220,8 +3224,26 @@ export function mill(tree: RootNode, file: string): MillResult {
       if (mask) {program.push(mask)}
     } else if (keyword === 'suit') {
       program.push(...buildSuit(group))
+    } else if (keyword === 'hook') {
+      // `hook` is the routing / CLI DSL, with two SEPARATE shapes distinguished by content:
+      //  - a SITE ROUTE: `hook </path> / zone <component>` (has a `zone`) -> buildDockRoute -> the route-lowering pass
+      //    turns it into a `route(host, path)` dispatcher + boot (client mount / server render).
+      //  - a CLI COMMAND: `hook <command> / task <impl>` (no `zone`) -> buildHookCommand -> the CLI command tree.
+      // Both lower to a route statement (shared structure), but a route carries a component and a command does not, so
+      // downstream passes treat them apart. (`dock` is reserved for native FFI bindings -- `dock load`.)
+      const isRoute = rest(group).some(
+        n => n.kind === 'group' && headName(n) === 'zone',
+      )
+
+      program.push({
+        form: 'dock',
+        route: isRoute
+          ? buildDockRoute(group)
+          : buildHookCommand(group),
+        span: spanOf(group),
+      })
     } else if (keyword === 'dock') {
-      // `dock load` is the native FFI binding; any other dock is a routing / CLI declaration
+      // `dock load` is the native FFI binding. A non-FFI `dock` is the legacy routing form, kept as an alias for `hook`.
       if (isFfiDock(group)) {program.push(...buildDock(group))}
       else
         {program.push({
@@ -3229,13 +3251,6 @@ export function mill(tree: RootNode, file: string): MillResult {
           route: buildDockRoute(group),
           span: spanOf(group),
         })}
-    } else if (keyword === 'hook') {
-      // a top-level CLI command tree (the `hook` DSL): lower to a route statement, command name as the path
-      program.push({
-        form: 'dock',
-        route: buildHookCommand(group),
-        span: spanOf(group),
-      })
     } else if (
       keyword === 'load' ||
       keyword === 'bear' ||

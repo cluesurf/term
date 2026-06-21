@@ -1,19 +1,25 @@
 
-# Binary min-heap of numbers, backed by the native array. The smallest value is always at the root. `push` sifts up, `pop` removes the root and sifts down. Pops return `maybe`, so an empty heap is total. Index math wraps division in `round-down` so the parent / child indices are integers on every backend.
+# Binary min-heap of numbers, backed by the native array. The smallest value is always at the root. `push` sifts up, `pop` removes the root and sifts down. Pops return `maybe`, so an empty heap is total. In-place index writes go through the native `splice`, which lowers on every backend (JS splice, rust Vec::splice, swift replaceSubrange, kotlin subList). The parent index `(i-1)/2` floors uniformly (integer division on the compiled backends; the native `at` / `splice` truncate the fractional index on node).
 
 load @cluesurf/base/code/list
   find list
   find get
-  find set
-
-load @cluesurf/base/code/math
-  find round-down
 
 load @cluesurf/base/code/maybe
   find maybe
 
 form heap
   link items, like list
+
+  # write value at an index in place (native splice: delete one, insert one)
+  task put
+    take self
+    take index, like number
+    take value, like number
+    call self/items/splice
+      read index
+      code 1
+      read value
 
   task push
     take self
@@ -33,12 +39,11 @@ form heap
           code 0
       hook step
         save parent
-          call round-down
-            call divide
-              call subtract
-                read i
-                code 1
-              code 2
+          call divide
+            call subtract
+              read i
+              code 1
+            code 2
         fork test
           hook test
             call is-above
@@ -53,14 +58,14 @@ form heap
               call get
                 read self/items
                 read i
-            call set
-              read self/items
+            call put
+              read self
               read i
               call get
                 read self/items
                 read parent
-            call set
-              read self/items
+            call put
+              read self
               read parent
               read tmp
             save i, read parent
@@ -71,6 +76,7 @@ form heap
   task peek
     take self
     like maybe
+      like number
     fork test
       hook test
         call is-above
@@ -90,6 +96,7 @@ form heap
   task pop
     take self
     like maybe
+      like number
     fork test
       hook test
         call is-equal
@@ -112,8 +119,8 @@ form heap
               read self/items/length
               code 0
           hook hold
-            call set
-              read self/items
+            call put
+              read self
               code 0
               read last
             save i, code 0
@@ -176,14 +183,14 @@ form heap
                       call get
                         read self/items
                         read i
-                    call set
-                      read self/items
+                    call put
+                      read self
                       read i
                       call get
                         read self/items
                         read small
-                    call set
-                      read self/items
+                    call put
+                      read self
                       read small
                       read tmp
                     save i, read small

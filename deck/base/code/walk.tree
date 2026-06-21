@@ -1,95 +1,402 @@
+# The iterator (walk): a lazy pull-based sequence. A `walk` holds one `pull` closure that returns the next element as a `maybe` (`none` ends the sequence). Sources build a walk over a backing collection; lazy adapters (map / filter / take / drop / enumerate) wrap a source walk in a new pull; terminal sinks (collect / fold / count / find / each / any / all) drive the pull to exhaustion. State that must persist across pulls (a cursor, a counter) lives in a one-element list used as a mutable box, so the whole protocol is pure Seed and lowers to every backend.
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+load @cluesurf/base/code/list
+  find list
+  find get
+  find set
 
 form walk
   head t
+  link pull
+    like task
+      like maybe
 
-  task get-next
-    take self, flex true
-
-  task get-size
+  # the next element, or none at the end
+  task next
     take self
-    like u64
+    like maybe
+    send back
+      call self/pull
 
+  # apply a transform to each element, lazily
   task map
     head s
     take self
+    take change
+      like task
+        take item, like t
+        like s
     like walk
+    send back
+      make walk
+        bind pull
+          task pull
+            like maybe
+            save item
+              call self/pull
+            fork case, read item
+              case some
+                send back
+                  make some
+                    bind value
+                      call change
+                        read item/value
+              case none
+                send back
+                  make none
 
+  # keep only the elements that pass the predicate, lazily
   task filter
     take self
+    take keep
+      like task
+        take item, like t
+        like boolean
     like walk
+    send back
+      make walk
+        bind pull
+          task pull
+            like maybe
+            walk test
+              hook test
+                wave true
+              hook step
+                save item
+                  call self/pull
+                fork case, read item
+                  case some
+                    fork test
+                      hook test
+                        call keep
+                          read item/value
+                      hook hold
+                        send back
+                          make some
+                            bind value
+                              read item/value
+                  case none
+                    send back
+                      make none
 
+  # take at most `count` elements, then end
+  task take
+    take self
+    take count, like number
+    like walk
+    save box
+      make list
+    call push
+      read box
+      code 0
+    send back
+      make walk
+        bind pull
+          task pull
+            like maybe
+            save taken
+              call get
+                read box
+                code 0
+            fork test
+              hook test
+                call is-below
+                  read taken
+                  read count
+              hook hold
+                save item
+                  call self/pull
+                fork case, read item
+                  case some
+                    call set
+                      read box
+                      code 0
+                      call add
+                        read taken
+                        code 1
+                    send back
+                      make some
+                        bind value
+                          read item/value
+                  case none
+                    send back
+                      make none
+              hook miss
+                send back
+                  make none
+
+  # skip the first `count` elements, then pass the rest
+  task drop
+    take self
+    take count, like number
+    like walk
+    save box
+      make list
+    call push
+      read box
+      code 0
+    send back
+      make walk
+        bind pull
+          task pull
+            like maybe
+            walk test
+              hook test
+                call is-below
+                  call get
+                    read box
+                    code 0
+                  read count
+              hook step
+                call self/pull
+                call set
+                  read box
+                  code 0
+                  call add
+                    call get
+                      read box
+                      code 0
+                    code 1
+            send back
+              call self/pull
+
+  # collect the remaining elements into a list (drains the walk)
   task collect
     take self
     like list
+      like t
+    save out
+      make list
+    walk test
+      hook test
+        wave true
+      hook step
+        save item
+          call self/pull
+        fork case, read item
+          case some
+            call out/push
+              read item/value
+          case none
+            halt
+    send back, read out
 
-  task reduce
+  # the number of remaining elements (drains the walk)
+  task count
     take self
+    like number
+    save total, code 0
+    walk test
+      hook test
+        wave true
+      hook step
+        save item
+          call self/pull
+        fork case, read item
+          case some
+            save total
+              call add
+                read total
+                code 1
+          case none
+            halt
+    send back, read total
 
-  task zip
+  # fold the elements into one accumulated value
+  task fold
+    head s
     take self
-    take other, like walk
-
-  task flatten
-    take self
-    like walk
-
-  task get-first
-    take self
-
-  task partition
-    take self
-
-  task test-all
-    take self
-    like boolean
-
-  task test-any
-    take self
-    like boolean
-
-  task take
-    take self
-    take count, like u64
-    like walk
-
-  task drop
-    take self
-    take count, like u64
-    like walk
-
-  task take-while
-    take self
-    take test
+    take start, like s
+    take step
       like task
+        take total, like s
         take item, like t
-        like boolean
-    like walk
+        like s
+    like s
+    save total, read start
+    walk test
+      hook test
+        wave true
+      hook step
+        save item
+          call self/pull
+        fork case, read item
+          case some
+            save total
+              call step
+                read total
+                read item/value
+          case none
+            halt
+    send back, read total
 
-  task drop-while
-    take self
-    take test
-      like task
-        take item, like t
-        like boolean
-    like walk
-
-  task enumerate
-    take self
-    like walk
-
-  task chain
-    take self
-    take other, like walk
-    like walk
-
+  # the first element matching the predicate, or none
   task find
     take self
-    take test
+    take keep
       like task
         take item, like t
         like boolean
     like maybe
+    walk test
+      hook test
+        wave true
+      hook step
+        save item
+          call self/pull
+        fork case, read item
+          case some
+            fork test
+              hook test
+                call keep
+                  read item/value
+              hook hold
+                send back
+                  make some
+                    bind value
+                      read item/value
+          case none
+            send back
+              make none
 
-  task count
+  # run a handler for each element (drains the walk)
+  task each
     take self
-    like u64
+    take handle
+      like task
+        take item, like t
+    walk test
+      hook test
+        wave true
+      hook step
+        save item
+          call self/pull
+        fork case, read item
+          case some
+            call handle
+              read item/value
+          case none
+            halt
+
+  # whether any element passes the predicate
+  task is-any
+    take self
+    take keep
+      like task
+        take item, like t
+        like boolean
+    like boolean
+    walk test
+      hook test
+        wave true
+      hook step
+        save item
+          call self/pull
+        fork case, read item
+          case some
+            fork test
+              hook test
+                call keep
+                  read item/value
+              hook hold
+                send back, wave true
+          case none
+            send back, wave false
+
+  # whether every element passes the predicate
+  task is-all
+    take self
+    take keep
+      like task
+        take item, like t
+        like boolean
+    like boolean
+    walk test
+      hook test
+        wave true
+      hook step
+        save item
+          call self/pull
+        fork case, read item
+          case some
+            fork test
+              hook test
+                call keep
+                  read item/value
+              hook miss
+                send back, wave false
+          case none
+            send back, wave true
+
+# a walk over a list, front to back
+task from-list
+  head t
+  take items, like list
+  like walk
+  save box
+    make list
+  call push
+    read box
+    code 0
+  send back
+    make walk
+      bind pull
+        task pull
+          like maybe
+          save index
+            call get
+              read box
+              code 0
+          fork test
+            hook test
+              call is-below
+                read index
+                read items/length
+            hook hold
+              call set
+                read box
+                code 0
+                call add
+                  read index
+                  code 1
+              send back
+                make some
+                  bind value
+                    call get
+                      read items
+                      read index
+            hook miss
+              send back
+                make none
+
+# an infinite walk of start, start + step, start + 2*step, ...
+task count-from
+  take start, like number
+  take step, like number
+  like walk
+  save box
+    make list
+  call push
+    read box
+    read start
+  send back
+    make walk
+      bind pull
+        task pull
+          like maybe
+          save current
+            call get
+              read box
+              code 0
+          call set
+            read box
+            code 0
+            call add
+              read current
+              read step
+          send back
+            make some
+              bind value, read current

@@ -38,6 +38,8 @@ export type LintContext = {
   // every variable name read anywhere in the program, including inside closure bodies; used to detect names that are
   // declared (e.g. a native import alias) but never used
   referenced: Set<string>
+  // native-import modules that are loaded more than once in the program (used by no-duplicate-load)
+  duplicateLoads: Set<string>
   slice(span: Span): string
   report(
     finding: Omit<Finding, 'rule' | 'code' | 'severity'> & {

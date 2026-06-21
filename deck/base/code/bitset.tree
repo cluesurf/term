@@ -1,0 +1,203 @@
+# Bitset: a dense set of non-negative integers, bit-packed into a list of 32-bit words. `set` / `clear` / `toggle` / `has` address a single bit; `count` is the number of set bits; `is-empty` is true when none are set. Pure: built on the bitwise verbs and the list, so it compiles to every backend. Bit i lives in word `i / 32` at offset `i % 32` (computed with shifts, no division).
+
+load @cluesurf/base/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-not
+  find bitwise-exclusive-or
+  find shift-left
+  find shift-right
+
+load @cluesurf/base/code/list
+  find list
+  find get
+  find set
+
+form bitset
+  link words, like list
+
+  # grow the word list so word index `w` exists, filling new slots with zero
+  task reserve
+    take self
+    take w, like number
+    walk test
+      hook test
+        call is-maximum
+          read self/words/length
+          read w
+      hook step
+        call push
+          read self/words
+          code 0
+
+  # set bit `index` to one
+  task set
+    take self
+    take index, like number
+    like bitset
+    save w
+      call shift-right
+        read index
+        code 5
+    save b
+      call subtract
+        read index
+        call shift-left
+          read w
+          code 5
+    call reserve
+      read self
+      read w
+    call set
+      read self/words
+      read w
+      call bitwise-or
+        call get
+          read self/words
+          read w
+        call shift-left
+          code 1
+          read b
+    send back, read self
+
+  # clear bit `index` to zero
+  task clear
+    take self
+    take index, like number
+    like bitset
+    save w
+      call shift-right
+        read index
+        code 5
+    save b
+      call subtract
+        read index
+        call shift-left
+          read w
+          code 5
+    fork test
+      hook test
+        call is-below
+          read w
+          read self/words/length
+      hook hold
+        call set
+          read self/words
+          read w
+          call bitwise-and
+            call get
+              read self/words
+              read w
+            call bitwise-not
+              call shift-left
+                code 1
+                read b
+    send back, read self
+
+  # flip bit `index`
+  task toggle
+    take self
+    take index, like number
+    like bitset
+    save w
+      call shift-right
+        read index
+        code 5
+    save b
+      call subtract
+        read index
+        call shift-left
+          read w
+          code 5
+    call reserve
+      read self
+      read w
+    call set
+      read self/words
+      read w
+      call bitwise-exclusive-or
+        call get
+          read self/words
+          read w
+        call shift-left
+          code 1
+          read b
+    send back, read self
+
+  # whether bit `index` is set
+  task has
+    take self
+    take index, like number
+    like boolean
+    save w
+      call shift-right
+        read index
+        code 5
+    save b
+      call subtract
+        read index
+        call shift-left
+          read w
+          code 5
+    fork test
+      hook test
+        call is-below
+          read w
+          read self/words/length
+      hook hold
+        send back
+          call is-equal
+            call bitwise-and
+              call get
+                read self/words
+                read w
+              call shift-left
+                code 1
+                read b
+            call shift-left
+              code 1
+              read b
+      hook miss
+        send back, wave false
+
+  # the number of set bits
+  task count
+    take self
+    like number
+    save total, code 0
+    save i, code 0
+    save cap
+      call shift-left
+        read self/words/length
+        code 5
+    walk test
+      hook test
+        call is-below
+          read i
+          read cap
+      hook step
+        fork test
+          hook test
+            call has
+              read self
+              read i
+          hook hold
+            save total
+              call add
+                read total
+                code 1
+        save i
+          call add
+            read i
+            code 1
+    send back, read total
+
+  # whether no bits are set
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        call count
+          read self
+        code 0

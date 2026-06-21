@@ -1,0 +1,99 @@
+# Complex number: a real and an imaginary part, both floats. Pure float math, identical on every backend. The combiners are named `plus` / `minus` / `times` because `add` / `subtract` / `multiply` are the number arithmetic primitives. Read the parts directly as `value/real` and `value/imaginary`.
+
+load @cluesurf/base/code/float
+  find square-root
+
+form complex
+  link real, like decimal
+  link imaginary, like decimal
+
+  # (a + bi) + (c + di) = (a + c) + (b + d)i
+  task plus
+    take self
+    take other, like complex
+    like complex
+    send back
+      make complex
+        bind real
+          call add
+            read self/real
+            read other/real
+        bind imaginary
+          call add
+            read self/imaginary
+            read other/imaginary
+
+  # (a + bi) - (c + di) = (a - c) + (b - d)i
+  task minus
+    take self
+    take other, like complex
+    like complex
+    send back
+      make complex
+        bind real
+          call subtract
+            read self/real
+            read other/real
+        bind imaginary
+          call subtract
+            read self/imaginary
+            read other/imaginary
+
+  # (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+  task times
+    take self
+    take other, like complex
+    like complex
+    send back
+      make complex
+        bind real
+          call subtract
+            call multiply
+              read self/real
+              read other/real
+            call multiply
+              read self/imaginary
+              read other/imaginary
+        bind imaginary
+          call add
+            call multiply
+              read self/real
+              read other/imaginary
+            call multiply
+              read self/imaginary
+              read other/real
+
+  # the complex conjugate: negate the imaginary part
+  task conjugate
+    take self
+    like complex
+    send back
+      make complex
+        bind real, read self/real
+        bind imaginary
+          call subtract
+            0.0
+            read self/imaginary
+
+  # the modulus: square-root of (real^2 + imaginary^2)
+  task magnitude
+    take self
+    like decimal
+    send back
+      call square-root
+        call add
+          call multiply
+            read self/real
+            read self/real
+          call multiply
+            read self/imaginary
+            read self/imaginary
+
+task make-complex
+  take real, like decimal
+  take imaginary, like decimal
+  like complex
+  send back
+    make complex
+      bind real, read real
+      bind imaginary, read imaginary

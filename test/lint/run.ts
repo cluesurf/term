@@ -1,6 +1,6 @@
 // Linter + unified-analysis tests. Run: npx tsx test/lint/run.ts
 
-import { lint } from '@cluesurf/make/code/lint/lint'
+import { lint, applyFixes } from '@cluesurf/make/code/lint/lint'
 import { analyze } from '@cluesurf/make/code/analyze'
 import { parse } from '@cluesurf/make/code/parser/tree'
 import { mill } from '@cluesurf/make/code/compile/mill'
@@ -256,6 +256,255 @@ function main(): void {
       'L013 leaves distinct cases alone',
       findings(distinct).filter(f => f.code === 'L013').length === 0,
       distinct,
+    )
+  }
+
+  // L014: a comparison of two literals is always constant
+  {
+    const constCmp = `task f\n  like boolean\n  send back\n    call is-below\n      code 5\n      code 3\n`
+    ok(
+      'L014 flags a two-literal comparison',
+      findings(constCmp).filter(f => f.code === 'L014').length === 1,
+      JSON.stringify(findings(constCmp)),
+    )
+
+    const realCmp = `task f\n  take x, like number\n  like boolean\n  send back\n    call is-below\n      read x\n      code 3\n`
+    ok(
+      'L014 leaves a variable comparison alone',
+      findings(realCmp).filter(f => f.code === 'L014').length === 0,
+      realCmp,
+    )
+  }
+
+  // L015: duplicate record field
+  {
+    const dupField = `form point\n  link x, like number\n  link y, like number\n\ntask f\n  send back\n    make point\n      bind x, code 1\n      bind y, code 2\n      bind x, code 3\n`
+    ok(
+      'L015 flags a duplicate record field',
+      findings(dupField).filter(f => f.code === 'L015').length === 1,
+      JSON.stringify(findings(dupField)),
+    )
+
+    const okRec = `form point\n  link x, like number\n  link y, like number\n\ntask f\n  send back\n    make point\n      bind x, code 1\n      bind y, code 2\n`
+    ok(
+      'L015 leaves distinct fields alone',
+      findings(okRec).filter(f => f.code === 'L015').length === 0,
+      okRec,
+    )
+  }
+
+  // L016: double negation
+  {
+    const dn = `task f\n  take x, like boolean\n  like boolean\n  send back\n    fork lack\n      fork lack\n        read x\n`
+    ok(
+      'L016 flags a double negation',
+      findings(dn).filter(f => f.code === 'L016').length === 1,
+      JSON.stringify(findings(dn)),
+    )
+    const single = `task f\n  take x, like boolean\n  like boolean\n  send back\n    fork lack\n      read x\n`
+    ok(
+      'L016 leaves a single negation alone',
+      findings(single).filter(f => f.code === 'L016').length === 0,
+      single,
+    )
+  }
+
+  // L017: comparison to a boolean literal
+  {
+    const cmp = `task f\n  take x, like boolean\n  like boolean\n  send back\n    call is-equal\n      read x\n      wave true\n`
+    ok(
+      'L017 flags `x == wave true`',
+      findings(cmp).filter(f => f.code === 'L017').length === 1,
+      JSON.stringify(findings(cmp)),
+    )
+  }
+
+  // L018: a binding returned on the very next line
+  {
+    const direct = `task f\n  like number\n  save x\n    call add\n      code 1\n      code 2\n  send back\n    read x\n`
+    ok(
+      'L018 flags a bind-then-return',
+      findings(direct).filter(f => f.code === 'L018').length === 1,
+      JSON.stringify(findings(direct)),
+    )
+    const used = `task f\n  like number\n  save x\n    code 5\n  send back\n    call add\n      read x\n      read x\n`
+    ok(
+      'L018 leaves a used binding alone',
+      findings(used).filter(f => f.code === 'L018').length === 0,
+      used,
+    )
+  }
+
+  // L019: a line longer than 84 characters
+  {
+    const long = `task f\n  send back, text <${'x'.repeat(80)}>\n`
+    ok(
+      'L019 flags a line over 84 chars',
+      findings(long).filter(f => f.code === 'L019').length >= 1,
+      JSON.stringify(findings(long).filter(f => f.code === 'L019')),
+    )
+    ok(
+      'L019 leaves short lines alone',
+      findings(`task f\n  send back, code 1\n`).filter(
+        f => f.code === 'L019',
+      ).length === 0,
+    )
+  }
+
+  // L020: a tab (indent with two spaces); caught wherever the parser tolerates a tab (e.g. a comment)
+  {
+    const tabbed = `# a\tcomment with a tab\ntask f\n  send back, code 1\n`
+    ok(
+      'L020 flags a tab',
+      findings(tabbed).filter(f => f.code === 'L020').length === 1,
+      JSON.stringify(findings(tabbed).filter(f => f.code === 'L020')),
+    )
+    ok(
+      'L020 leaves a two-space-indented file alone',
+      findings(`task f\n  send back, code 1\n`).filter(
+        f => f.code === 'L020',
+      ).length === 0,
+    )
+  }
+
+  // L021: two string literals concatenated
+  {
+    const concat = `task f\n  like text\n  send back\n    call add\n      text <a>\n      text <b>\n`
+    ok(
+      'L021 flags two concatenated string literals',
+      findings(concat).filter(f => f.code === 'L021').length === 1,
+      JSON.stringify(findings(concat)),
+    )
+  }
+
+  // L022: a continue as the last statement of a loop
+  {
+    const redundant = `task f\n  walk test\n    hook test\n      read go\n    hook hold\n      turn next\n`
+    ok(
+      'L022 flags a trailing continue',
+      findings(redundant).filter(f => f.code === 'L022').length === 1,
+      JSON.stringify(findings(redundant)),
+    )
+  }
+
+  // applyFixes: the double-negation fix collapses `!!x` to `x` in the source
+  {
+    const text = `task f\n  take x, like boolean\n  like boolean\n  send back\n    fork lack\n      fork lack\n        read x\n`
+    const fixed = applyFixes(text, findings(text))
+    ok(
+      'applyFixes removes the double negation',
+      (fixed.match(/fork lack/g)?.length ?? 0) === 0 &&
+        fixed.includes('read x'),
+      JSON.stringify(fixed),
+    )
+    // applying fixes to already-clean source is a no-op
+    const clean = `task f\n  send back, code 1\n`
+    ok(
+      'applyFixes is a no-op on clean source',
+      applyFixes(clean, findings(clean)) === clean,
+    )
+  }
+
+  // L023: no-else-return (every branch exits)
+  ok(
+    'L023 flags an unnecessary else after exiting branches',
+    findings(
+      `task f\n  take c, like boolean\n  like number\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 2\n`,
+    ).filter(f => f.code === 'L023').length === 1,
+  )
+
+  // L024: no-duplicate-load
+  ok(
+    'L024 flags a module loaded twice',
+    findings(
+      `dock load\n  load <node:fs>, name fs\n  load <node:fs>, name fs2\n\ntask f\n  send back, code 1\n`,
+    ).filter(f => f.code === 'L024').length === 2,
+  )
+
+  // L025: no-negated-condition
+  ok(
+    'L025 flags a negated fork condition with an else',
+    findings(
+      `task f\n  take x, like boolean\n  like number\n  fork test\n    hook test\n      fork lack\n        read x\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 2\n`,
+    ).filter(f => f.code === 'L025').length === 1,
+  )
+
+  // L026: no-lonely-if
+  ok(
+    'L026 flags an else that holds only a fork',
+    findings(
+      `task f\n  take a, like boolean\n  take b, like boolean\n  like number\n  fork test\n    hook test, read a\n    hook hold\n      send back, code 1\n    hook miss\n      fork test\n        hook test, read b\n        hook hold\n          send back, code 2\n`,
+    ).filter(f => f.code === 'L026').length === 1,
+  )
+
+  // L027: consistent-return
+  ok(
+    'L027 flags a function returning a value on some paths and nothing on others',
+    findings(
+      `task f\n  take c, like boolean\n  like number\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back\n`,
+    ).filter(f => f.code === 'L027').length === 1,
+  )
+
+  // L028: no-useless-return
+  ok(
+    'L028 flags a trailing value-less send back',
+    findings(`task f\n  show <hi>\n  send back\n`).filter(
+      f => f.code === 'L028',
+    ).length === 1,
+  )
+
+  // L017 fix: `x == wave true` -> `x`
+  {
+    const text = `task f\n  take x, like boolean\n  like boolean\n  send back\n    call is-equal\n      read x\n      wave true\n`
+    const fixed = applyFixes(text, findings(text))
+    ok(
+      'L017 fix collapses `x == true` to `x`',
+      !fixed.includes('is-equal') && !fixed.includes('wave true'),
+      JSON.stringify(fixed),
+    )
+  }
+
+  // deletion fixes (L028 useless-return) remove the no-op line and the result still parses
+  {
+    const text = `task f\n  show <hi>\n  send back\n`
+    const fixed = applyFixes(text, findings(text))
+    ok(
+      'L028 fix deletes the trailing return and re-parses cleanly',
+      parse({ file: 'x.tree', text: fixed }).ok &&
+        !fixed
+          .split('\n')
+          .slice(1)
+          .some(l => l.trim() === 'send back'),
+      JSON.stringify(fixed),
+    )
+  }
+
+  // L029: trailing whitespace
+  ok(
+    'L029 flags trailing whitespace',
+    findings(`task f  \n  send back, code 1\n`).filter(
+      f => f.code === 'L029',
+    ).length === 1,
+  )
+
+  // L030: more than two consecutive blank lines
+  ok(
+    'L030 flags 3+ consecutive blank lines',
+    findings(
+      `task f\n  send back, code 1\n\n\n\ntask g\n  send back, code 2\n`,
+    ).filter(f => f.code === 'L030').length === 1,
+  )
+
+  // analyze().fix() does the full lint -> apply-fixes -> re-format in one call
+  {
+    const text = `task f\n  take x, like boolean\n  like boolean\n  send back\n    fork lack\n      fork lack\n        read x\n`
+    const fixed = analyze({ file: 'a.tree', text }).fix()
+    ok(
+      'analyze().fix() collapses !!x and re-formats',
+      !fixed.includes('fork lack') &&
+        fixed.includes('read x') &&
+        parse({ file: 'a.tree', text: fixed }).ok,
+      JSON.stringify(fixed),
     )
   }
 

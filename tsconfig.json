@@ -22,6 +22,7 @@
       "@/*": ["./*"],
       "@cluesurf/make/*": ["./deck/make/*"],
       "@cluesurf/call/*": ["./deck/call/*"],
+      "@cluesurf/test/*": ["./deck/test/*"],
       "@cluesurf/flow/*": ["./deck/flow/*"],
       "@cluesurf/deck.tree": ["./deck/deck/code/index"]
     }

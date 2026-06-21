@@ -69,13 +69,17 @@ export function startDevServer(options: DevOptions): DevServer {
 
   // (re)compile the whole app in per-module mode and sync the graph. The compile is whole-graph (cross-module type
   // checking needs every module), but serving is lazy and the shared cache (mill-level reuse) keeps recompiles fast.
-  const build = (): boolean => {
+  // returns the compile error messages (empty array on success), so a failed recompile can be reported to the client
+  // as an overlay instead of forcing a state-losing reload
+  const build = (): string[] => {
     const result = compile(
       { file: entryFile, text: readFileSync(entryFile, 'utf8') },
       { resolve, cache, modules: urlForFile },
     )
 
-    if (!result.ok || !result.modules) {return false}
+    if (!result.ok) {return result.diagnostics.map(d => d.message)}
+
+    if (!result.modules) {return ['the build produced no modules']}
 
     for (const [file, emit] of result.modules) {
       const node = graph.ensure(file, urlForFile(file), file)
@@ -93,7 +97,7 @@ export function startDevServer(options: DevOptions): DevServer {
       graph.setImports(node, deps)
     }
 
-    return true
+    return []
   }
 
   build()
@@ -116,15 +120,17 @@ export function startDevServer(options: DevOptions): DevServer {
       if (node) {graph.invalidate(node, clock)}
     }
 
-    if (!build()) {
-      broadcast({ type: 'full-reload' })
+    const errors = build()
+    if (errors.length) {
+      // recovery: keep the running app on its last-good code and state, push an error overlay instead of reloading
+      broadcast({ type: 'error', errors })
 
-      return { type: 'full-reload' }
+      return { type: 'error', errors }
     }
 
     const result = propagateUpdate(graph, file)
 
-    if (result.type === 'full-reload') {
+    if (result.type !== 'update') {
       broadcast({ type: 'full-reload' })
     } else {
       // stamp each accepted module's URL with its hmr timestamp so the client re-imports a fresh copy

@@ -601,6 +601,17 @@ export function emitRust(program: Program): string {
       case 'flat':
         // flattening a non-nested list is a shallow copy (JS `[1,2,3].flat()` is `[1,2,3]`)
         return wrapList(`${data}.clone()`)
+      case 'unshift':
+        // insert at the front, returning the new length (JS `unshift`)
+        return `{ let mut __b = ${target}.borrow_mut(); __b.insert(0, ${arg[0]}); __b.len() as i64 }`
+      case 'shift':
+        // remove and return the front element (JS `shift`); callers guard against empty
+        return `${target}.borrow_mut().remove(0)`
+      case 'splice': {
+        // JS `splice(start, deleteCount, ...items)`: remove `deleteCount` at `start`, insert the items, in place
+        const items = arg.slice(2).join(', ')
+        return `{ let mut __b = ${target}.borrow_mut(); let __s = (${arg[0]}) as usize; let __d = (${arg[1]}) as usize; let _: Vec<_> = __b.splice(__s..__s + __d, vec![${items}]).collect(); 0i64 }`
+      }
       default:
         return ''
     }

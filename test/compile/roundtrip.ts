@@ -19,7 +19,7 @@ import {
   nativePrelude,
 } from '@cluesurf/make/code/compile/native'
 import { emitSwift } from '@cluesurf/make/code/compile/swift'
-import { emitKotlin } from '@cluesurf/make/code/compile/kotlin'
+import { emitKotlin, hoistKotlinImports } from '@cluesurf/make/code/compile/kotlin'
 import { emitLlvm } from '@cluesurf/make/code/compile/llvm'
 import { emitRust } from '@cluesurf/make/code/compile/rust'
 import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
@@ -150,7 +150,7 @@ function runKotlin(
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
-    `${emitKotlin(program)}\nfun main() { println(${callExpr}) }\n`,
+    hoistKotlinImports(`${emitKotlin(program)}\nfun main() { println(${callExpr}) }\n`),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -321,9 +321,9 @@ function runKotlinIo(
   )}))\n}\n`
   writeFileSync(
     file,
-    `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
       program,
-    )}${main}`,
+    )}${main}`),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -412,9 +412,9 @@ function runKotlinMath(
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
-    `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
       program,
-    )}\nfun main() { print(compute()) }\n`,
+    )}\nfun main() { print(compute()) }\n`),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -473,9 +473,9 @@ function runKotlinCrypto(
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
-    `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
       program,
-    )}\nsuspend fun main() { print(compute()) }\n`,
+    )}\nsuspend fun main() { print(compute()) }\n`),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -562,9 +562,9 @@ function runKotlinText(
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
-    `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
       program,
-    )}\nfun main() { print(compute()) }\n`,
+    )}\nfun main() { print(compute()) }\n`),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -718,9 +718,9 @@ function runKotlinConsole(
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
-    `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
       program,
-    )}\nfun main() { compute() }\n`,
+    )}\nfun main() { compute() }\n`),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -1837,6 +1837,82 @@ task compute
             read item
       code 0
 `
+// list set: in-place index write through the native splice op (rust Vec::splice, swift replaceSubrange, kotlin subList)
+const LIST_SET_PROG = `load @cluesurf/base/code/list
+  find list
+  find set
+  find get
+
+task compute
+  like number
+  save xs
+    make list
+  call push
+    read xs
+    code 10
+  call push
+    read xs
+    code 20
+  call push
+    read xs
+    code 30
+  call set
+    read xs
+    code 1
+    code 99
+  send back
+    call get
+      read xs
+      code 1
+`
+// iterator: the lazy pull-based walk -- from-list, a map adapter, and a fold sink, exercising closures stored in the
+// walk's pull field and a mutable cursor box. (1 + 2 + 3) doubled and summed == 12.
+const ITERATOR_PROG = `load @cluesurf/base/code/walk
+  find walk
+  find from-list
+  find map
+  find fold
+
+load @cluesurf/base/code/list
+  find list
+
+task compute
+  like number
+  save xs
+    make list
+  call push
+    read xs
+    code 1
+  call push
+    read xs
+    code 2
+  call push
+    read xs
+    code 3
+  save doubled
+    call map
+      call from-list
+        read xs
+      task double
+        take item, like number
+        like number
+        send back
+          call multiply
+            read item
+            code 2
+  send back
+    call fold
+      read doubled
+      code 0
+      task add-up
+        take total, like number
+        take item, like number
+        like number
+        send back
+          call add
+            read total
+            read item
+`
 // json: parse a JSON array (no braces -- seed text literals interpolate single { ), index it, read the number.
 // as-number(get-item(parse("[10,20,30]"), 1)) == 20.0, through each platform's host JSON.
 const JSON_RT_PROG = `load @cluesurf/base/code/json
@@ -2809,6 +2885,28 @@ function main(): void {
     frontEnd(LIST_PROG, true, 'swift'),
     '12',
   )
+  // list set: in-place index write via the native splice op
+  runKotlinText(
+    'kotlin + list: set index 1 to 99 via splice',
+    frontEnd(LIST_SET_PROG, true, 'kotlin'),
+    '99',
+  )
+  runRustCargo(
+    'rust + cargo: list set index 1 to 99 via splice',
+    frontEnd(LIST_SET_PROG, true, 'rust'),
+    '99',
+    false,
+  )
+  runSwiftText(
+    'swift + list: set index 1 to 99 via splice',
+    frontEnd(LIST_SET_PROG, true, 'swift'),
+    '99',
+  )
+  // NOTE: a cross-backend deque round-trip (push-front/back via shift/unshift) is blocked not by those ops -- list.set
+  // above proves splice/shift/unshift lower on every backend -- but by a separate compiler gap: a generic `head t`
+  // container started from an empty list leaves `t` unbound, so a strict backend cannot unify its `maybe<t>` return
+  // with the concrete element type. The same affects queue / stack. Tracked for the monomorphization pass. deque runs
+  // on node today (test/tree/deque.tree).
   // json to "runs" via the host JSON: rust serde_json (cargo), swift JSONSerialization. kotlin needs org.json on the
   // classpath (not in the JDK), so it is compile-checked, not run here.
   runRustCargo(

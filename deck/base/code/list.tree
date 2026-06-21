@@ -45,7 +45,7 @@ form list
       call self/at
         read index
 
-  # write the element at an index in place, returning the list. Uses the native splice (delete one, insert one) so it replaces rather than shifts.
+  # write the element at an index in place, returning the list. The native splice (delete one, insert one) replaces rather than shifts; it lowers cross-backend (JS splice, rust Vec::splice, swift replaceSubrange, kotlin subList).
   task set
     take self
     take index, like number
@@ -58,14 +58,19 @@ form list
       read item
     send back, read self
 
-  # empty the list in place, returning it. Splices out every element.
+  # empty the list in place, returning it. Pops to the back until empty, using only the cross-backend pop primitive.
   task clear
     take self
     like list
       like t
-    call self/splice
-      code 0
-      read self/length
+    walk test
+      hook test
+        call is-above
+          read self/length
+          code 0
+      hook step
+        call pop
+          read self
     send back, read self
 
   # a shallow copy: a new list with the same elements. The native slice from zero.

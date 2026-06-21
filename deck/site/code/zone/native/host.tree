@@ -1,0 +1,15 @@
+
+# The app host: boot the routed app, env-abstracted. The SAME `route(host, path)` dispatcher drives both sides; only
+# this `host` differs per environment (the native-env mechanism picks browser vs node). The browser mounts the matched
+# page on the document body and re-renders on navigation; the server starts an HTTP server that renders each request
+# through `route` and responds with HTML (SSR). This is the one client/server seam -- the app author writes neither.
+
+load ../../dom/view
+  find view
+
+task host
+  take route
+    like task
+      take host, like view
+      take path, like text
+  take port, like number

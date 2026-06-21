@@ -14,6 +14,7 @@ import {
   exhausted,
   mapCollect,
 } from '@cluesurf/make/code/compile/backend'
+import { lowerRoutes } from '@cluesurf/make/code/compile/route-lower'
 import {
   collectBinds,
   renderBind,
@@ -880,6 +881,11 @@ export function emitTypeScript(
   // `make some` may not itself define `maybe`, so without this its variant constructors would lose their `form` tag.
   options?: { hmr?: boolean; variants?: Set<string>; env?: string },
 ): string {
+  // lower `hook` web routes to a `route(host, path)` dispatcher + a `boot(url, port)` that hands it to the env-
+  // abstracted `host` (browser mount / node SSR server). The browser build auto-runs boot; the node build exports it
+  // for `seed boot`. A no-op when there are no routes.
+  program = lowerRoutes(program, options?.env ?? 'node')
+
   const variants = new Set<string>(options?.variants)
 
   for (const node of program)
