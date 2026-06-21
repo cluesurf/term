@@ -9,6 +9,7 @@ import type {
   Statement,
   ZoneNode,
 } from '@cluesurf/make/code/compile/node'
+import { egraphArith } from '@cluesurf/make/code/ir/egraph-arith'
 
 // the render + reactive runtime primitives emitZone (code/compile/typescript.ts) synthesizes as raw calls in a zone's
 // output. They never appear as call nodes in the AST, so reference-counting cannot see them. When a program contains
@@ -788,7 +789,10 @@ function simplifyExpression(node: Expression): Expression {
           break
       }
 
-      return { ...node, left, right }
+      // the greedy rules above are local peepholes; hand the assembled `+` / `-` / `*` tree to the e-graph so
+      // reassociation across levels (`(x + 3) + 4` -> `x + 7`) and `x - x` -> 0 are caught too. Returns the node
+      // unchanged unless the e-graph finds a strictly smaller, provably equivalent form.
+      return egraphArith({ ...node, left, right })
     }
 
     case 'unary': {

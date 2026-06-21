@@ -1179,7 +1179,6 @@ export function mill(tree: RootNode, file: string): MillResult {
             'calm',
             'melt',
             'cite',
-            'find',
             'meet',
             'fork',
             'hint',
@@ -1193,6 +1192,9 @@ export function mill(tree: RootNode, file: string): MillResult {
           }[] = []
           const ruleScope = new Set(scope)
           const hypotheses: { name?: string; expr: Expression }[] = []
+          // existential witnesses: `find x, like T` / <witness> binds x to the supplied witness, so the goal P(x) is
+          // checked at that concrete value. This is the backwards-E (there exists) to `mark`'s upside-down-A (for all).
+          const witnesses: { name: string; value: Expression }[] = []
           let goal: Expression | undefined
           let isAxiom = false
           const ruleProof: Proof[] = []
@@ -1311,6 +1313,31 @@ export function mill(tree: RootNode, file: string): MillResult {
 
               // `miss` proves the claim FALSE: flip an order comparison to its negation, else logical-not it
               goal = showMode === 'miss' ? negateGoal(claim, spanOf(part)) : claim
+            } else if (partHead === 'find') {
+              // an EXISTENTIAL witness: `find x, like T` plus a witness expression. Binds x to the witness, so the goal
+              // P(x) is checked at that concrete value (proving "there exists x such that P").
+              const binder = binderOf(part)
+
+              if (binder) {
+                const likeGroup = rest(part).find(
+                  (n): n is GroupNode =>
+                    n.kind === 'group' && headName(n) === 'like',
+                )
+                const witnessNode = rest(part)
+                  .slice(1)
+                  .find(
+                    (n): n is GroupNode =>
+                      n.kind === 'group' && n !== likeGroup,
+                  )
+
+                if (witnessNode) {
+                  witnesses.push({
+                    name: binder.name,
+                    value: toExpression(witnessNode, ruleScope),
+                  })
+                  ruleScope.add(binder.name)
+                }
+              }
             } else if (partHead === 'base') {
               isAxiom = true
             } else if (PROOF_HEADS.has(partHead ?? '')) {
@@ -1318,7 +1345,16 @@ export function mill(tree: RootNode, file: string): MillResult {
             }
           }
 
-          const ruleStatements: Statement[] = []
+          // bind every existential witness first, so the goal can reference it
+          const witnessStatements: Statement[] = witnesses.map(w => ({
+            form: 'let',
+            mutable: false,
+            name: w.name,
+            init: w.value,
+            span,
+          }))
+
+          const ruleStatements: Statement[] = [...witnessStatements]
 
           if (goal) {
             if (isAxiom) {
@@ -2640,6 +2676,28 @@ export function mill(tree: RootNode, file: string): MillResult {
                   value: valueNode
                     ? toExpression(valueNode, scope)
                     : { form: 'unit', span },
+                })}
+            } else if (
+              child.kind === 'group' &&
+              headName(child) === 'hook'
+            ) {
+              // `hook click, call submit`: an event handler on the element.
+              // (fork / walk also use `hook`, but those are their own child
+              // groups, not direct `hook` children of an element.)
+              const eventGroup = rest(child)[0]
+              const eventName =
+                eventGroup?.kind === 'group'
+                  ? headName(eventGroup)
+                  : undefined
+
+              const handlerNode = rest(child)[1]
+
+              if (eventName && handlerNode)
+                {attributes.push({
+                  name: eventName,
+                  value: toExpression(handlerNode, scope),
+                  event: true,
+                  span: spanOf(child),
                 })}
             } else {
               children.push(child)

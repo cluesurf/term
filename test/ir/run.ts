@@ -286,6 +286,93 @@ task compute
     'return !x',
   )
 
+  // e-graph reassociation: scattered constants the greedy peephole pass leaves alone collapse to one. `(n + 2) + 3`
+  // has a non-constant left operand, so local folding cannot touch it; equality saturation reassociates to `n + 5`.
+  expectContains(
+    'reassociates (n + 2) + 3 -> n + 5',
+    `task f
+  take n, like number
+  send back
+    call add
+      call add
+        loan n
+        code 2
+      code 3
+`,
+    'return n + 5',
+  )
+
+  // multiplicative reassociation: (n * 2) * 4 -> n * 8
+  expectContains(
+    'reassociates (n * 2) * 4 -> n * 8',
+    `task f
+  take n, like number
+  send back
+    call multiply
+      call multiply
+        loan n
+        code 2
+      code 4
+`,
+    'return n * 8',
+  )
+
+  // commutative reassociation: (2 + n) + 3 -> n + 5 (the constant on the inner left still collapses)
+  expectContains(
+    'reassociates (2 + n) + 3 -> n + 5',
+    `task f
+  take n, like number
+  send back
+    call add
+      call add
+        code 2
+        loan n
+      code 3
+`,
+    'return n + 5',
+  )
+
+  // x - x -> 0 across a self-subtraction the peephole pass has no rule for
+  expectContains(
+    'folds n - n -> 0',
+    `task f
+  take n, like number
+  send back
+    call subtract
+      loan n
+      loan n
+`,
+    'return 0',
+  )
+
+  // soundness: an irreducible arithmetic expression is returned unchanged (no spurious reordering)
+  expectContains(
+    'irreducible a + b is preserved',
+    `task f
+  take a, like number
+  take b, like number
+  send back
+    call add
+      loan a
+      loan b
+`,
+    'return a + b',
+  )
+
+  // soundness: subtraction is NOT commutative; `a - b` must not become `b - a`
+  expectContains(
+    'non-commutative a - b is preserved',
+    `task f
+  take a, like number
+  take b, like number
+  send back
+    call subtract
+      loan a
+      loan b
+`,
+    'return a - b',
+  )
+
   console.log(`\nir: ${pass} pass, ${fail} fail`)
 }
 

@@ -22,25 +22,39 @@ import type {
   Statement,
   Expression,
   ZoneNode,
-  Span,
+  Type,
 } from '@cluesurf/make/code/compile/node'
+import type { Span } from '@cluesurf/make/code/parser/diagnostic'
 
-// The render-runtime + component functions are referenced by bare name; they
-// resolve at runtime (the module auto-imports the render runtime). A callee is
-// just a `variable` Expression with no binding — exactly what the emitter turns
-// into `name(args)`.
-const RUNTIME = [
-  'element',
-  'text',
-  'dynamic',
-  'attribute',
-  'event',
-  'append',
-  'show',
-  'each',
-] as const
+// The render-runtime + component functions are referenced by bare name (a
+// `variable` callee with no binding -> the emitter writes `name(args)`); the
+// page imports the render runtime, and component names resolve to their lowered
+// functions.
 
 type Component = { params: string[]; slotted: boolean }
+
+// Standard HTML/SVG tags are ALWAYS elements, never component calls, even if a
+// zone of the same name exists. Kebab zone names have no case to distinguish a
+// component from a tag (unlike React's <Button> vs <button>), so a component
+// must not be named after a tag it renders; this set enforces that and keeps
+// `zone div` / `zone button` rendering native elements unambiguously.
+const HTML_TAGS = new Set<string>([
+  'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base',
+  'bdi', 'bdo', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption',
+  'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del',
+  'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset',
+  'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5',
+  'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img',
+  'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map',
+  'mark', 'menu', 'meta', 'meter', 'nav', 'object', 'ol', 'optgroup',
+  'option', 'output', 'p', 'param', 'picture', 'pre', 'progress', 'q',
+  'rp', 'rt', 'ruby', 's', 'samp', 'script', 'section', 'select', 'slot',
+  'small', 'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup',
+  'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead',
+  'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr',
+  'svg', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'g',
+  'defs', 'use', 'symbol', 'ellipse', 'text-path', 'tspan',
+])
 
 // build the program-wide component registry: name -> its input params (after
 // the leading `host`) and whether its body has a `slot`.
@@ -48,7 +62,10 @@ function collectComponents(program: Program): Map<string, Component> {
   const components = new Map<string, Component>()
 
   for (const node of program) {
-    if (node.form === 'zone') {
+    // a zone named after an HTML tag is not a component (it would be
+    // unreachable as one anyway, since `zone <tag>` renders the element); skip
+    // it so `components.has(name)` cleanly means "this is a component call".
+    if (node.form === 'zone' && !HTML_TAGS.has(node.name)) {
       components.set(node.name, {
         params: node.params.slice(1).map(p => p.name),
         slotted: hasSlot(node.body),
@@ -236,6 +253,19 @@ function lowerZone(
                   string(attribute.name),
                   attribute.value,
                 ]),
+          ),
+        )}
+
+      // `bind <name>, <value>` on an HTML element is an attribute (on a
+      // component it is a prop, handled by componentCall). Emit them here.
+      for (const prop of node.props)
+        {out.push(
+          exprStatement(
+            call('attribute', [
+              variable(ref),
+              string(prop.name),
+              prop.value,
+            ]),
           ),
         )}
 

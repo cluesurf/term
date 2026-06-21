@@ -591,5 +591,32 @@ expect(
   true,
 )
 
+// semantic tokens: 5-int delta-encoded tokens, the first being the `square` declaration (function + declaration)
+const semDoc =
+  'task square\n  take n, like number\n  like number\n  send back\n    read n\n'
+await server.dispatch({
+  jsonrpc: '2.0',
+  method: 'textDocument/didOpen',
+  params: { textDocument: { uri: 'file:///sem.tree', text: semDoc } },
+})
+const sem = (
+  await server.dispatch({
+    jsonrpc: '2.0',
+    id: 80,
+    method: 'textDocument/semanticTokens/full',
+    params: { textDocument: { uri: 'file:///sem.tree' } },
+  })
+)[0]!.result as { data: number[] }
+expect(
+  'semanticTokens: emits 5-int tokens',
+  sem.data.length > 0 && sem.data.length % 5 === 0,
+  true,
+)
+expect(
+  'semanticTokens: first token is a function declaration',
+  sem.data[3] === 0 && sem.data[4] === 1,
+  true,
+)
+
 console.log(`\nserver: ${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

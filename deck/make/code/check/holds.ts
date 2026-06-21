@@ -120,6 +120,17 @@ function goalInequalities(
 ): Inequality[] | null {
   if (expr.form !== 'binary') {return null}
 
+  // a CONJUNCTION goal (`meet and` -> `P && Q`, ∧) holds when both conjuncts hold: gather every inequality from each
+  // side, so the prover must discharge them all. Null if either side falls outside the linear fragment.
+  if (expr.op === '&&') {
+    const leftGoal = goalInequalities(expr.left, side)
+    const rightGoal = goalInequalities(expr.right, side)
+
+    if (leftGoal === null || rightGoal === null) {return null}
+
+    return [...leftGoal, ...rightGoal]
+  }
+
   const left = toLinear(expr.left, side)
   const right = toLinear(expr.right, side)
 
@@ -139,6 +150,57 @@ function goalInequalities(
     default:
       return null // != is a disequality, and other operators are non-linear: not provable here
   }
+}
+
+// decide whether a goal is provable from the assumptions, handling the propositional structure: a DISJUNCTION
+// (`meet or` -> P || Q, ∨) is provable when either disjunct is; a conjunction and the comparisons go through
+// goalInequalities (which gathers the inequalities that must ALL hold). Returns true (provable), false (in the linear
+// fragment but not provable), or null (outside the fragment -> an unchecked hold, not a failure).
+function goalProvable(
+  expr: Expression,
+  available: Inequality[],
+): boolean | null {
+  if (expr.form === 'binary' && expr.op === '||') {
+    const left = goalProvable(expr.left, available)
+
+    if (left === true) {return true}
+
+    const right = goalProvable(expr.right, available)
+
+    if (right === true) {return true}
+
+    // a disjunctive TAUTOLOGY (excluded middle / trichotomy): P || Q holds whenever assuming NOT P proves Q (or
+    // assuming NOT Q proves P), since then one side must hold for every value. This is the sound case-split, done by
+    // the linear prover: negate one disjunct, add it as an assumption, and try the other. So `n < 0 or n >= 0` proves
+    // because not(n < 0) is n >= 0, which is exactly the right disjunct.
+    const notLeft = assumptionInequalities(expr.left, true, [])
+    if (
+      notLeft.length > 0 &&
+      goalProvable(expr.right, [...available, ...notLeft]) === true
+    ) {
+      return true
+    }
+
+    const notRight = assumptionInequalities(expr.right, true, [])
+    if (
+      notRight.length > 0 &&
+      goalProvable(expr.left, [...available, ...notRight]) === true
+    ) {
+      return true
+    }
+
+    // both outside the fragment -> outside; otherwise it is in-fragment but unproven
+    return left === null && right === null ? null : false
+  }
+
+  const side: Inequality[] = []
+  const goals = goalInequalities(expr, side)
+
+  if (!goals) {return null}
+
+  const all = [...available, ...side]
+
+  return goals.every(goal => proves(all, goal))
 }
 
 // a condition used as a path assumption: the inequalities it contributes, optionally negated (for an else branch).
@@ -233,10 +295,10 @@ function walkHolds(
   for (const statement of body) {
     switch (statement.form) {
       case 'hold': {
-        const side: Inequality[] = []
-        const goals = goalInequalities(statement.expr, side)
+        // discharge the goal, handling its propositional structure (conjunction, disjunction) and the comparisons
+        const verdict = goalProvable(statement.expr, current)
 
-        if (!goals) {
+        if (verdict === null) {
           diagnostics.push(
             diagnose('unchecked-hold', {
               file,
@@ -245,12 +307,7 @@ function walkHolds(
                 'this hold is outside the decidable linear fragment and was not proven',
             }),
           )
-          break
-        }
-
-        const available = [...current, ...side] // mod facts about the goal's subexpressions are usable
-
-        if (!goals.every(goal => proves(available, goal))) {
+        } else if (verdict === false) {
           diagnostics.push(
             diagnose('unproven', {
               file,

@@ -227,6 +227,103 @@ function importEdit(
   }
 }
 
+// semantic tokens: precise identifier coloring the TextMate grammar cannot do (a function call vs a type vs a local).
+// The legend order is fixed; `tokenModifiers` has only `declaration`.
+const SEMANTIC_TOKEN_TYPES = [
+  'function',
+  'type',
+  'interface',
+  'parameter',
+  'variable',
+]
+// a scanned top-level declaration's kind -> token type index
+const DECL_TOKEN: Record<string, number> = {
+  task: 0,
+  form: 1,
+  mask: 2,
+  bind: 0,
+}
+// a reference's resolved definition kind -> token type index
+const REF_TOKEN: Record<SymbolKind, number> = {
+  function: 0,
+  type: 1,
+  variant: 1,
+  trait: 2,
+  parameter: 3,
+  local: 4,
+}
+
+function semanticTokens(
+  text: string,
+  index: SymbolIndex,
+): { data: number[] } {
+  type Token = {
+    line: number
+    char: number
+    length: number
+    type: number
+    mod: number
+  }
+  const tokens: Token[] = []
+
+  // declarations: exact name positions from a document scan (the index stores whole-statement spans, not name spans)
+  for (const def of scanDefs(text)) {
+    tokens.push({
+      line: def.line,
+      char: def.column,
+      length: def.name.length,
+      type: DECL_TOKEN[def.kind] ?? 4,
+      mod: 1, // declaration
+    })
+  }
+
+  // references: use-site spans from the index, colored by the kind of the definition they resolve to
+  for (const ref of index.references) {
+    if (ref.span.start.line !== ref.span.end.line) {
+      continue
+    }
+
+    const kind = index.definitions.get(ref.name)?.kind
+    tokens.push({
+      line: ref.span.start.line,
+      char: ref.span.start.column,
+      length: ref.span.end.column - ref.span.start.column,
+      type: kind ? REF_TOKEN[kind] : 4,
+      mod: 0,
+    })
+  }
+
+  tokens.sort((a, b) => a.line - b.line || a.char - b.char)
+
+  // delta-encode (LSP), skipping a token that repeats a position already emitted (a declaration the index also lists)
+  const data: number[] = []
+  let prevLine = 0
+  let prevChar = 0
+  let lastKey = ''
+
+  for (const t of tokens) {
+    const key = `${t.line}:${t.char}`
+
+    if (key === lastKey) {
+      continue
+    }
+
+    lastKey = key
+    const deltaLine = t.line - prevLine
+    const deltaChar = deltaLine === 0 ? t.char - prevChar : t.char
+
+    if (deltaChar < 0) {
+      continue
+    }
+
+    data.push(deltaLine, deltaChar, t.length, t.type, t.mod)
+    prevLine = t.line
+    prevChar = t.char
+  }
+
+  return { data }
+}
+
 // inlay hints for inferred let-binding types: a `save x` / `host x` with no `, like` annotation shows `: <type>` after
 // the name. Recurses into every body so nested bindings are covered; only this document's statements are passed in.
 type InlayHint = {
@@ -485,6 +582,13 @@ export class LanguageServer {
               codeActionProvider: true,
               codeLensProvider: { resolveProvider: false },
               inlayHintProvider: true,
+              semanticTokensProvider: {
+                legend: {
+                  tokenTypes: SEMANTIC_TOKEN_TYPES,
+                  tokenModifiers: ['declaration'],
+                },
+                full: true,
+              },
             },
           }),
         ]
@@ -828,6 +932,19 @@ export class LanguageServer {
             ),
           }),
         ]
+      }
+
+      case 'textDocument/semanticTokens/full': {
+        const uri = (message.params as TextDocumentParams).textDocument
+          .uri
+        const index = this.indexes.get(uri)
+        const text = this.documents.get(uri)
+
+        if (!index || !text) {
+          return [respond(message, { data: [] })]
+        }
+
+        return [respond(message, semanticTokens(text, index))]
       }
 
       case 'textDocument/inlayHint': {
