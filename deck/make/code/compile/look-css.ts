@@ -184,26 +184,49 @@ function emitTone(group: GroupNode): string {
   return out.length ? `${selector} {\n${out.join('\n')}\n}` : ''
 }
 
-// compile a `.tree` source of `face` / `tone` declarations into a CSS stylesheet
-export function compileLookCss(source: {
-  file: string
-  text: string
-}): string {
+// emit a raw-selector rule (`base text <html, body>` -> `html, body { ... }`). For the base layer (element resets,
+// fonts, ::selection) and descendant rules (e.g. `prose` typography) that are not single utility classes. The selector
+// is verbatim CSS (commas, pseudo-elements, descendant combinators), never escaped. Always kept by the JIT.
+function emitBase(group: GroupNode): string {
+  const selector = argText(group, 0)
+  const body = declarations(group)
+
+  return selector && body ? `${selector} {\n${body}\n}` : ''
+}
+
+// compile a `.tree` source of `face` / `tone` declarations into a CSS stylesheet. With `only`, this is the Tailwind
+// JIT: emit only the `face` rules whose class name is in the used set, matched by FULL name (a component writes the
+// exact class it uses, base `flex` or prefixed `md:flex`, so `md:flex` is kept only when literally used, not because
+// `flex` is). Every `tone` block is always kept (the theme tokens the utilities reference).
+export function compileLookCss(
+  source: {
+    file: string
+    text: string
+  },
+  options?: { only?: Set<string> },
+): string {
   const parsed = parse(source)
 
   if (!parsed.ok) {
     return ''
   }
 
+  const only = options?.only
   const blocks: string[] = []
 
   for (const group of parsed.tree.nodes) {
     const name = headName(group)
 
     if (name === 'face') {
+      if (only && !only.has(argName(group, 0))) {
+        continue
+      }
       blocks.push(emitFace(group))
     } else if (name === 'tone') {
       blocks.push(emitTone(group))
+    } else if (name === 'base') {
+      // raw-selector rules (base layer, prose) are always emitted, never filtered by the JIT
+      blocks.push(emitBase(group))
     }
   }
 

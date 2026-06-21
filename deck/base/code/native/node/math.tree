@@ -1,0 +1,52 @@
+# integer math over the host Math global. Internal: reached only through the public math API.
+
+dock load
+  load <global:Math>, name math
+
+task abs
+  take value, like number
+  like number
+  send back
+    call math/abs
+      read value
+
+task min
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call math/min
+      read a
+      read b
+
+task max
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call math/max
+      read a
+      read b
+
+task pow
+  take base, like number
+  take exponent, like number
+  like number
+  send back
+    call math/pow
+      read base
+      read exponent
+
+task signum
+  take value, like number
+  like number
+  send back
+    call math/sign
+      read value
+
+task sqrt
+  take value, like number
+  like number
+  send back
+    call math/sqrt
+      read value

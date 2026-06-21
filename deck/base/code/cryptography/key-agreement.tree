@@ -1,44 +1,8 @@
-# ECDH key agreement over X25519. A declarative `bind`: each backend's built-in X25519 is inlined at the call site (node / browser Web Crypto, rust x25519-dalek, swift CryptoKit, kotlin java.security). Keys and the shared secret are all raw `bytes` (the zero-copy crypto currency): the private key and public key are 32 bytes each, the shared secret is the raw 32-byte X25519 output. make-key-pair generates a matched pair together as the 64-byte private || public buffer, which the public verb splits. shared-secret(my private, their public) equals shared-secret(their private, my public): that agreement is the whole point of ECDH. Web Crypto and java.security import a raw key inside a fixed DER envelope, so the constant X25519 PKCS8 (private) and X.509 (public) prefixes are prepended inline. The interface is async to stay uniform with the browser's async-only Web Crypto; rust wraps its synchronous crate work in an `async move` block.
+# Key agreement (X25519 ECDH). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/key-agreement`). Input and output stay in the currency types.
 
-# generate a fresh X25519 key pair as the 64-byte buffer: 32-byte private key followed by 32-byte public key
-bind make-key-pair-bytes
-  like bytes
-  case node
-    text <globalThis.crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']).then(function (pair) { return Promise.all([globalThis.crypto.subtle.exportKey('pkcs8', pair.privateKey), globalThis.crypto.subtle.exportKey('raw', pair.publicKey)]) }).then(function (parts) { return Uint8Array.from(Array.from(new Uint8Array(parts[0])).slice(-32).concat(Array.from(new Uint8Array(parts[1])))) })>
-  case browser
-    text <globalThis.crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']).then(function (pair) { return Promise.all([globalThis.crypto.subtle.exportKey('pkcs8', pair.privateKey), globalThis.crypto.subtle.exportKey('raw', pair.publicKey)]) }).then(function (parts) { return Uint8Array.from(Array.from(new Uint8Array(parts[0])).slice(-32).concat(Array.from(new Uint8Array(parts[1])))) })>
-  case rust
-    text <async move { let mut seed = [0u8; 32]; OsRng.fill_bytes(&mut seed); let secret = StaticSecret::from(seed); let mut out = secret.to_bytes().to_vec(); out.extend_from_slice(PublicKey::from(&secret).as_bytes()); out }>
-    load <x25519_dalek/StaticSecret>
-    load <x25519_dalek/PublicKey>
-    load <rand/rngs/OsRng>
-    load <rand/RngCore>
-  case swift
-    text <{ let secret = CryptoKit.Curve25519.KeyAgreement.PrivateKey(); return secret.rawRepresentation + secret.publicKey.rawRepresentation }()>
-    load <Foundation>
-    load <CryptoKit>
-  case kotlin
-    text <java.security.KeyPairGenerator.getInstance("X25519").generateKeyPair().let { (it.private as java.security.interfaces.XECPrivateKey).scalar.get() + it.public.encoded.copyOfRange(it.public.encoded.size - 32, it.public.encoded.size) }>
-
-# derive the shared secret from your 32-byte private key and their 32-byte public key
-bind compute-shared-secret
-  take private-key, like bytes
-  take public-key, like bytes
-  like bytes
-  case node
-    text <globalThis.crypto.subtle.importKey('pkcs8', Uint8Array.from([48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 110, 4, 34, 4, 32].concat(Array.from($private-key))), { name: 'X25519' }, false, ['deriveBits']).then(function (priv) { return globalThis.crypto.subtle.importKey('raw', $public-key, { name: 'X25519' }, false, []).then(function (pub) { return globalThis.crypto.subtle.deriveBits({ name: 'X25519', public: pub }, priv, 256) }) }).then(function (b) { return new Uint8Array(b) })>
-  case browser
-    text <globalThis.crypto.subtle.importKey('pkcs8', Uint8Array.from([48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 110, 4, 34, 4, 32].concat(Array.from($private-key))), { name: 'X25519' }, false, ['deriveBits']).then(function (priv) { return globalThis.crypto.subtle.importKey('raw', $public-key, { name: 'X25519' }, false, []).then(function (pub) { return globalThis.crypto.subtle.deriveBits({ name: 'X25519', public: pub }, priv, 256) }) }).then(function (b) { return new Uint8Array(b) })>
-  case rust
-    text <async move { let sk: [u8; 32] = $private-key.as_slice().try_into().unwrap(); let pk: [u8; 32] = $public-key.as_slice().try_into().unwrap(); StaticSecret::from(sk).diffie_hellman(&PublicKey::from(pk)).as_bytes().to_vec() }>
-    load <x25519_dalek/StaticSecret>
-    load <x25519_dalek/PublicKey>
-  case swift
-    text <{ let secret = try! CryptoKit.Curve25519.KeyAgreement.PrivateKey(rawRepresentation: $private-key); let pub = try! CryptoKit.Curve25519.KeyAgreement.PublicKey(rawRepresentation: $public-key); return try! secret.sharedSecretFromKeyAgreement(with: pub).withUnsafeBytes { Data($0) } }()>
-    load <Foundation>
-    load <CryptoKit>
-  case kotlin
-    text <javax.crypto.KeyAgreement.getInstance("X25519").apply { init(java.security.KeyFactory.getInstance("X25519").generatePrivate(java.security.spec.PKCS8EncodedKeySpec(byteArrayOf(48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 110, 4, 34, 4, 32) + $private-key))); doPhase(java.security.KeyFactory.getInstance("X25519").generatePublic(java.security.spec.X509EncodedKeySpec(byteArrayOf(48, 42, 48, 5, 6, 3, 43, 101, 110, 3, 33, 0) + $public-key)), true) }.generateSecret()>
+load @cluesurf/base/code/native/cryptography/key-agreement
+  find make-key-pair-bytes
+  find compute-shared-secret
 
 load @cluesurf/base/code/bytes
   find slice

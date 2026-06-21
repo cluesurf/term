@@ -1,80 +1,12 @@
-# Math: the clean uniform interface. Each operation with a host equivalent is a declarative `bind`: one name, the native expression per backend, emitted inline at the call site (no per-env shim, no runtime library). Operations with no host primitive (clamp, gcd, factorial) compose from the interface. `number` is the platform integer (i64 / Int / Long), so floor / ceil / round are the identity.
+# Integer math: the clean uniform interface. The host-backed operations (absolute, minimum, maximum, power, sign, square-root) delegate to the per-backend native implementation in its own file (`native/<env>/math`). Operations with no host primitive (clamp, greatest-common-divisor, factorial) compose from the interface in pure Seed. `number` is the platform integer (i64 / Int / Long), so round-down / round-up / round are the identity.
 
-bind abs
-  take value, like number
-  like number
-  case node
-    text <Math.abs($value)>
-  case rust
-    text <($value as i64).abs()>
-  case swift
-    text <Swift.abs($value)>
-  case kotlin
-    text <kotlin.math.abs($value)>
-
-bind min
-  take a, like number
-  take b, like number
-  like number
-  case node
-    text <Math.min($a, $b)>
-  case rust
-    text <($a as i64).min($b as i64)>
-  case swift
-    text <Swift.min($a, $b)>
-  case kotlin
-    text <minOf($a, $b)>
-
-bind max
-  take a, like number
-  take b, like number
-  like number
-  case node
-    text <Math.max($a, $b)>
-  case rust
-    text <($a as i64).max($b as i64)>
-  case swift
-    text <Swift.max($a, $b)>
-  case kotlin
-    text <maxOf($a, $b)>
-
-bind pow
-  take base, like number
-  take exponent, like number
-  like number
-  case node
-    text <Math.pow($base, $exponent)>
-  case rust
-    text <($base as i64).pow($exponent as u32)>
-  case swift
-    text <Int(Foundation.pow(Double($base), Double($exponent)))>
-    load <Foundation>
-  case kotlin
-    text <Math.pow($base.toDouble(), $exponent.toDouble()).toLong()>
-
-bind signum
-  take value, like number
-  like number
-  case node
-    text <Math.sign($value)>
-  case rust
-    text <($value as i64).signum()>
-  case swift
-    text <$value.signum()>
-  case kotlin
-    text <$value.compareTo(0L).toLong()>
-
-bind sqrt
-  take value, like number
-  like number
-  case node
-    text <Math.sqrt($value)>
-  case rust
-    text <(($value as f64).sqrt() as i64)>
-  case swift
-    text <Int(Double($value).squareRoot())>
-  case kotlin
-    text <Math.sqrt($value.toDouble()).toLong()>
+load @cluesurf/base/code/native/math
+  find abs
+  find min
+  find max
+  find pow
+  find signum
+  find sqrt
 
 task absolute
   take value, like number

@@ -1,0 +1,310 @@
+# Plain date: a calendar date (year, month, day) with no time zone. Pure proleptic-Gregorian arithmetic, identical on every backend. The day-number conversions are Howard Hinnant's branch-free civil algorithm. Division must be exact integer division: `divide` is floating on some backends and `round-down` is a no-op on whole numbers, so all flooring goes through `quotient` (a - a modulo b, then divide), which is exact for non-negative operands (the algorithm stays non-negative for years from the common era on). Month is 1-12, day is 1-31, day-of-week is 0 (Sunday) through 6 (Saturday).
+
+# exact integer (floor) division for non-negative operands: subtract the remainder, then divide evenly
+task quotient
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call divide
+      call subtract
+        read a
+        call modulo
+          read a
+          read b
+      read b
+
+form plain-date
+  link year, like number
+  link month, like number
+  link day, like number
+
+  # the count of days from the 1970-01-01 epoch (days_from_civil)
+  task to-day-number
+    take self
+    like number
+    save adjust, code 0
+    fork test
+      hook test
+        call is-maximum
+          read self/month
+          code 2
+      hook hold
+        save adjust, code 1
+    save year-prime
+      call subtract
+        read self/year
+        read adjust
+    save month-term
+      call add
+        read self/month
+        code 9
+    fork test
+      hook test
+        call is-above
+          read self/month
+          code 2
+      hook hold
+        save month-term
+          call subtract
+            read self/month
+            code 3
+    save era
+      call quotient
+        read year-prime
+        code 400
+    save year-of-era
+      call subtract
+        read year-prime
+        call multiply
+          read era
+          code 400
+    save day-of-year
+      call subtract
+        call add
+          call quotient
+            call add
+              call multiply
+                read month-term
+                code 153
+              code 2
+            code 5
+          read self/day
+        code 1
+    save day-of-era
+      call add
+        call subtract
+          call add
+            call multiply
+              read year-of-era
+              code 365
+            call quotient
+              read year-of-era
+              code 4
+          call quotient
+            read year-of-era
+            code 100
+        read day-of-year
+    send back
+      call subtract
+        call add
+          call multiply
+            read era
+            code 146097
+          read day-of-era
+        code 719468
+
+  # 0 = Sunday through 6 = Saturday
+  task day-of-week
+    take self
+    like number
+    save raw
+      call modulo
+        call add
+          call to-day-number
+            read self
+          code 4
+        code 7
+    fork test
+      hook test
+        call is-below
+          read raw
+          code 0
+      hook hold
+        send back
+          call add
+            read raw
+            code 7
+      hook miss
+        send back, read raw
+
+  # shift the date by a whole number of days (may be negative)
+  task add-days
+    take self
+    take count, like number
+    like plain-date
+    send back
+      call from-day-number
+        call add
+          call to-day-number
+            read self
+          read count
+
+task from-parts
+  take year, like number
+  take month, like number
+  take day, like number
+  like plain-date
+  send back
+    make plain-date
+      bind year, read year
+      bind month, read month
+      bind day, read day
+
+# the inverse of to-day-number (civil_from_days)
+task from-day-number
+  take number, like number
+  like plain-date
+  save z
+    call add
+      read number
+      code 719468
+  save era
+    call quotient
+      read z
+      code 146097
+  save day-of-era
+    call subtract
+      read z
+      call multiply
+        read era
+        code 146097
+  save year-of-era
+    call quotient
+      call subtract
+        call add
+          call subtract
+            read day-of-era
+            call quotient
+              read day-of-era
+              code 1460
+          call quotient
+            read day-of-era
+            code 36524
+        call quotient
+          read day-of-era
+          code 146096
+      code 365
+  save base-year
+    call add
+      read year-of-era
+      call multiply
+        read era
+        code 400
+  save day-of-year
+    call subtract
+      read day-of-era
+      call subtract
+        call add
+          call multiply
+            read year-of-era
+            code 365
+          call quotient
+            read year-of-era
+            code 4
+        call quotient
+          read year-of-era
+          code 100
+  save month-prime
+    call quotient
+      call add
+        call multiply
+          read day-of-year
+          code 5
+        code 2
+      code 153
+  save day
+    call add
+      call subtract
+        read day-of-year
+        call quotient
+          call add
+            call multiply
+              read month-prime
+              code 153
+            code 2
+          code 5
+      code 1
+  save month
+    call subtract
+      read month-prime
+      code 9
+  fork test
+    hook test
+      call is-below
+        read month-prime
+        code 10
+    hook hold
+      save month
+        call add
+          read month-prime
+          code 3
+  save year-fix, code 0
+  fork test
+    hook test
+      call is-maximum
+        read month
+        code 2
+    hook hold
+      save year-fix, code 1
+  send back
+    make plain-date
+      bind year
+        call add
+          read base-year
+          read year-fix
+      bind month, read month
+      bind day, read day
+
+task is-leap-year
+  take year, like number
+  like boolean
+  send back
+    call or
+      call and
+        call is-equal
+          call modulo
+            read year
+            code 4
+          code 0
+        call is-above
+          call modulo
+            read year
+            code 100
+          code 0
+      call is-equal
+        call modulo
+          read year
+          code 400
+        code 0
+
+task days-in-month
+  take year, like number
+  take month, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read month
+        code 2
+    hook hold
+      fork test
+        hook test
+          call is-leap-year
+            read year
+        hook hold
+          send back, code 29
+        hook miss
+          send back, code 28
+    hook miss
+      fork test
+        hook test
+          call or
+            call or
+              call is-equal
+                read month
+                code 4
+              call is-equal
+                read month
+                code 6
+            call or
+              call is-equal
+                read month
+                code 9
+              call is-equal
+                read month
+                code 11
+        hook hold
+          send back, code 30
+        hook miss
+          send back, code 31

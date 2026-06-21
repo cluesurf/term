@@ -1,0 +1,52 @@
+# integer math over the linked imath runtime shim. Internal: reached only through the public math API.
+
+dock load
+  load <global:imath>, name imath
+
+task abs
+  take value, like number
+  like number
+  send back
+    call imath/abs
+      read value
+
+task min
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call imath/min
+      read a
+      read b
+
+task max
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call imath/max
+      read a
+      read b
+
+task pow
+  take base, like number
+  take exponent, like number
+  like number
+  send back
+    call imath/pow
+      read base
+      read exponent
+
+task signum
+  take value, like number
+  like number
+  send back
+    call imath/signum
+      read value
+
+task sqrt
+  take value, like number
+  like number
+  send back
+    call imath/sqrt
+      read value

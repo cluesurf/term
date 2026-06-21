@@ -946,8 +946,16 @@ export function elaborateReport(
     }
 
     switch (tactic.head) {
-      case 'melt':
       case 'calm':
+        // `calm` proves the goal by definitional computation: both sides reduce to one normal form. The bare `calm` and
+        // the two-word `calm hold` are the SAME tactic. The second word `hold` names the goal being settled, conforming
+        // `calm` to the verb-noun, two-words-per-line proof convention (every other tactic line is a pair: `show hold`,
+        // `cite lemma`, `fold x`, `base true`). Any other second word is reserved for future targeted forms and rejected
+        // now so a typo cannot silently fall through to a bare `calm`.
+        if (tactic.arg !== undefined && tactic.arg !== 'hold') {return 'fail'}
+        return areConvertible(level, left, right) ? 'ok' : 'fail'
+
+      case 'melt':
         return areConvertible(level, left, right) ? 'ok' : 'fail'
 
       case 'cite': {

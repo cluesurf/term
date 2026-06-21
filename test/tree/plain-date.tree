@@ -1,0 +1,145 @@
+note <Tests for plain-date: proleptic-Gregorian day-number conversion, leap years, month lengths, day-of-week, and day arithmetic across boundaries.>
+
+load @cluesurf/base/code/plain-date
+  find plain-date
+  find from-parts
+  find from-day-number
+  find to-day-number
+  find day-of-week
+  find add-days
+  find is-leap-year
+  find days-in-month
+
+test <the epoch 1970-01-01 is day number zero>
+  want hold
+    call is-equal
+      call to-day-number
+        call from-parts
+          mark 1970
+          mark 1
+          mark 1
+      mark 0
+
+test <the epoch day was a Thursday>
+  want hold
+    call is-equal
+      call day-of-week
+        call from-parts
+          mark 1970
+          mark 1
+          mark 1
+      mark 4
+
+test <the millennium day was a Saturday>
+  want hold
+    call is-equal
+      call day-of-week
+        call from-parts
+          mark 2000
+          mark 1
+          mark 1
+      mark 6
+
+test <a day-number round-trips back to the same month>
+  save d
+    call from-day-number
+      call to-day-number
+        call from-parts
+          mark 2024
+          mark 2
+          mark 29
+  want hold
+    call is-equal
+      read d/day
+      mark 29
+
+test <round-trip keeps the year>
+  save d
+    call from-day-number
+      call to-day-number
+        call from-parts
+          mark 2024
+          mark 2
+          mark 29
+  want hold
+    call is-equal
+      read d/year
+      mark 2024
+
+test <add-days crosses a month boundary>
+  save d
+    call add-days
+      call from-parts
+        mark 2026
+        mark 1
+        mark 31
+      mark 1
+  want hold
+    call is-equal
+      read d/month
+      mark 2
+
+test <add-days crosses a year boundary>
+  save d
+    call add-days
+      call from-parts
+        mark 2025
+        mark 12
+        mark 31
+      mark 1
+  want hold
+    call is-equal
+      read d/year
+      mark 2026
+
+test <add-days lands on leap day>
+  save d
+    call add-days
+      call from-parts
+        mark 2024
+        mark 2
+        mark 28
+      mark 1
+  want hold
+    call is-equal
+      read d/day
+      mark 29
+
+test <a year divisible by four is leap>
+  want hold
+    call is-leap-year
+      mark 2024
+
+test <a century not divisible by four hundred is common>
+  want miss
+    call is-leap-year
+      mark 1900
+
+test <a year divisible by four hundred is leap>
+  want hold
+    call is-leap-year
+      mark 2000
+
+test <february has 29 days in a leap year>
+  want hold
+    call is-equal
+      call days-in-month
+        mark 2024
+        mark 2
+      mark 29
+
+test <february has 28 days in a common year>
+  want hold
+    call is-equal
+      call days-in-month
+        mark 2023
+        mark 2
+      mark 28
+
+test <april has thirty days>
+  want hold
+    call is-equal
+      call days-in-month
+        mark 2026
+        mark 4
+      mark 30

@@ -8,6 +8,7 @@ import { parse } from '@cluesurf/make/code/parser/tree'
 import { expandTemplates } from '@cluesurf/make/code/compile/template'
 import type { Template } from '@cluesurf/make/code/compile/template'
 import { mill } from '@cluesurf/make/code/compile/mill'
+import { collectUsedClasses } from '@cluesurf/make/code/compile/used-classes'
 import { Database, LOW } from '@cluesurf/make/code/compile/query'
 import type { Durability, Cx } from '@cluesurf/make/code/compile/query'
 import { hashText } from '@cluesurf/make/code/compile/cache'
@@ -128,6 +129,23 @@ export class QueryCompiler {
     return cx.query(
       'defNames',
       async c => [...(await this.functions(c, files)).keys()].sort(),
+      (a, b) => a.join(',') === b.join(','),
+    )
+  }
+
+  // the set of utility classes the project's components reference (the Tailwind JIT keep-list). Derived from the merged
+  // milled program (which still has the zone AST + literal `class` props), backdated by the class set: editing a
+  // component recomputes the stylesheet ONLY when its class set actually changes, never on an unrelated edit, and never
+  // re-parses anything else. This is the styling "watcher" done as a query -- a CSS plugin is just a derived query, so
+  // it inherits the whole incremental + backdating machinery for free. See note/library/face/tailwind-jit.md.
+  usedClasses(cx: Cx, files: string[]): Promise<string[]> {
+    return cx.query(
+      'usedClasses',
+      async c => {
+        const merged = await this.program(c, files)
+
+        return merged.ok ? collectUsedClasses(merged.program).classes : []
+      },
       (a, b) => a.join(',') === b.join(','),
     )
   }

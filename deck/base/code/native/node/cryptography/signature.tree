@@ -1,19 +1,19 @@
-# node Ed25519 implementation. Forwards to the linked eddsa runtime shim (node / browser Web Crypto Ed25519). make-key-pair returns the 32-byte private key and 32-byte public key concatenated as hex. Internal: reached only through the public signature API.
+# node Ed25519 implementation. Forwards to the linked eddsa runtime shim (Web Crypto Ed25519). make-key-pair-bytes returns the 32-byte private key and 32-byte public key concatenated (64 raw bytes); messages and signatures are raw bytes. Internal: reached only through the public signature API.
 
 dock load
   load <global:eddsa>, name eddsa
 
 task make-key-pair-bytes
   note async
-  like text
+  like bytes
   send back
     call eddsa/make-key-pair
 
 task sign-message
   note async
-  take private-key, like text
-  take message, like text
-  like text
+  take private-key, like bytes
+  take message, like bytes
+  like bytes
   send back
     call eddsa/sign
       read private-key
@@ -21,9 +21,9 @@ task sign-message
 
 task verify-message
   note async
-  take public-key, like text
-  take message, like text
-  take signature, like text
+  take public-key, like bytes
+  take message, like bytes
+  take signature, like bytes
   like boolean
   send back
     call eddsa/verify

@@ -1,0 +1,15 @@
+note <Test that uuid version4 delegates to the per-backend generator and produces a version-4 UUID (the 15th character is always '4').>
+
+load @cluesurf/base/code/uuid
+  find version4
+
+load @cluesurf/base/code/text
+  find char-at
+
+test <version4 has the version digit 4 at index fourteen>
+  want hold
+    call is-equal
+      call char-at
+        call version4
+        mark 14
+      text <4>

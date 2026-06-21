@@ -1,22 +1,8 @@
-# UUID generation. A declarative `bind`: each backend's native v4 generator is inlined at the call site (node / browser crypto.randomUUID, rust the uuid crate, swift Foundation, kotlin java.util). Random by nature, so this is an explicit escape hatch, never used in the deterministic language core.
+# UUID generation. The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/uuid`). Input and output stay in the currency types.
 
-bind generate-v4
-  like text
-  case node
-    text <crypto.randomUUID()>
-    load <node:crypto>, name crypto
-  case browser
-    text <globalThis.crypto.randomUUID()>
-  case rust
-    text <Uuid::new_v4().to_string()>
-    load <uuid/Uuid>
-  case swift
-    text <UUID().uuidString.lowercased()>
-    load <Foundation>
-  case kotlin
-    text <java.util.UUID.randomUUID().toString()>
+load @cluesurf/base/code/native/uuid
+  find generate-v4
 
-# generate a random version-4 UUID
 task version4
   like text
   send back

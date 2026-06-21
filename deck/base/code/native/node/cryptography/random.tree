@@ -1,14 +1,11 @@
-# Node.js secure random implementation (the host node:crypto module). randomBytes returns a Buffer; render it as hex text. Internal: reached only through the public random API.
+# Node.js secure random implementation (the host node:crypto module). randomBytes returns a Buffer, which is the raw bytes currency. Internal: reached only through the public random API.
 
 dock load
   load <node:crypto>, name crypto
 
 task random-bytes
   take size, like number
-  like text
-  save raw
+  like bytes
+  send back
     call crypto/random-bytes
       read size
-  send back
-    call raw/to-string
-      text <hex>

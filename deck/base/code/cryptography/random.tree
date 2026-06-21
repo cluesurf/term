@@ -1,24 +1,8 @@
-# Cryptographically secure random bytes. A declarative `bind`: each backend's OS-backed generator is inlined at the call site (node randomBytes, rust OsRng, swift the system RNG, kotlin SecureRandom, browser getRandomValues). The result is raw `bytes` (the zero-copy crypto currency); render to hex / base64 with the `bytes` codecs at the edge. This is synchronous: every host exposes secure random generation without an async boundary.
+# Cryptographically secure random bytes. The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/random`). Input and output stay in the currency types.
 
-bind random-bytes
-  take size, like number
-  like bytes
-  case node
-    text <crypto.randomBytes($size)>
-    load <node:crypto>, name crypto
-  case rust
-    text <{ let mut buffer = vec![0u8; $size as usize]; OsRng.fill_bytes(&mut buffer); buffer }>
-    load <rand/RngCore>
-    load <rand/rngs/OsRng>
-  case swift
-    text <{ var buffer = Data(count: $size); for index in buffer.indices { buffer[index] = UInt8.random(in: .min ... .max) }; return buffer }()>
-    load <Foundation>
-  case kotlin
-    text <ByteArray($size.toInt()).also { java.security.SecureRandom().nextBytes(it) }>
-  case browser
-    text <globalThis.crypto.getRandomValues(new Uint8Array($size))>
+load @cluesurf/base/code/native/cryptography/random
+  find random-bytes
 
-# fill a buffer of `size` cryptographically secure random bytes
 task bytes
   take size, like number
   like bytes

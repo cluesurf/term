@@ -1,14 +1,14 @@
-# node AES-256-GCM implementation. Forwards to the linked cipher runtime shim (node / browser Web Crypto SubtleCrypto). Internal: reached only through the public cipher API.
+# node AES-256-GCM implementation. Forwards to the linked cipher runtime shim (Web Crypto SubtleCrypto). Key, nonce, plaintext, and ciphertext are raw bytes. Internal: reached only through the public cipher API.
 
 dock load
   load <global:cipher>, name cipher
 
 task encrypt-aes-gcm
   note async
-  take key, like text
-  take nonce, like text
-  take plain, like text
-  like text
+  take key, like bytes
+  take nonce, like bytes
+  take plain, like bytes
+  like bytes
   send back
     call cipher/encrypt
       read key
@@ -17,10 +17,10 @@ task encrypt-aes-gcm
 
 task decrypt-aes-gcm
   note async
-  take key, like text
-  take nonce, like text
-  take sealed, like text
-  like text
+  take key, like bytes
+  take nonce, like bytes
+  take sealed, like bytes
+  like bytes
   send back
     call cipher/decrypt
       read key

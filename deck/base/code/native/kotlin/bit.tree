@@ -1,0 +1,56 @@
+# kotlin bitwise integer ops, via the linked bit runtime shim. Internal: reached only through the public bit API.
+
+dock load
+  load <global:bit>, name bit
+
+task do-bitwise-and
+  take left, like number
+  take right, like number
+  like number
+  send back
+    call bit/and
+      read left
+      read right
+
+task do-bitwise-or
+  take left, like number
+  take right, like number
+  like number
+  send back
+    call bit/or
+      read left
+      read right
+
+task do-bitwise-exclusive-or
+  take left, like number
+  take right, like number
+  like number
+  send back
+    call bit/exclusive-or
+      read left
+      read right
+
+task do-bitwise-not
+  take value, like number
+  like number
+  send back
+    call bit/not
+      read value
+
+task do-shift-left
+  take value, like number
+  take count, like number
+  like number
+  send back
+    call bit/shift-left
+      read value
+      read count
+
+task do-shift-right
+  take value, like number
+  take count, like number
+  like number
+  send back
+    call bit/shift-right
+      read value
+      read count

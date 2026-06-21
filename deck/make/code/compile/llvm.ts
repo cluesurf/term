@@ -564,6 +564,8 @@ function emitFunction(
             cur.lines.push(
               `${t} = call ptr @seed_str_concat(ptr ${l}, ptr ${r})`,
             )
+            // register the fresh heap string with the refcount table (count 1) so a later drop can free it
+            cur.lines.push(`call void @seed_rc_init(ptr ${t})`)
 
             return t
           }
@@ -1066,6 +1068,7 @@ function emitFunction(
 
         const handle = fresh()
         cur.lines.push(`${handle} = call ptr @seed_list_new()`)
+        cur.lines.push(`call void @seed_rc_init(ptr ${handle})`)
 
         for (const item of node.items) {
           const word = toWord(expr(item), element ?? item.type)
@@ -1147,6 +1150,7 @@ function emitFunction(
         const keyKind = keyType?.kind === 'string' ? 1 : 0
         const handle = fresh()
         cur.lines.push(`${handle} = call ptr @seed_map_new()`)
+        cur.lines.push(`call void @seed_rc_init(ptr ${handle})`)
 
         for (const entry of node.entries) {
           const key = toWord(expr(entry.key), keyType)

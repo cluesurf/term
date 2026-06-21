@@ -1,0 +1,61 @@
+# Bitwise operations on integers. The generic interface: each public verb delegates to the native implementation for the build target, which lives in its own per-backend file (`native/<env>/bit`). Note: on node these operate on 32-bit integers (the JavaScript bitwise rule); the compiled backends use full 64-bit integers. `shift-right` is arithmetic (sign-preserving on the compiled backends).
+
+load @cluesurf/base/code/native/bit
+  find do-bitwise-and
+  find do-bitwise-or
+  find do-bitwise-exclusive-or
+  find do-bitwise-not
+  find do-shift-left
+  find do-shift-right
+
+task bitwise-and
+  take left, like number
+  take right, like number
+  like number
+  send back
+    call do-bitwise-and
+      read left
+      read right
+
+task bitwise-or
+  take left, like number
+  take right, like number
+  like number
+  send back
+    call do-bitwise-or
+      read left
+      read right
+
+task bitwise-exclusive-or
+  take left, like number
+  take right, like number
+  like number
+  send back
+    call do-bitwise-exclusive-or
+      read left
+      read right
+
+task bitwise-not
+  take value, like number
+  like number
+  send back
+    call do-bitwise-not
+      read value
+
+task shift-left
+  take value, like number
+  take count, like number
+  like number
+  send back
+    call do-shift-left
+      read value
+      read count
+
+task shift-right
+  take value, like number
+  take count, like number
+  like number
+  send back
+    call do-shift-right
+      read value
+      read count
