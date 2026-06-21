@@ -1,0 +1,44 @@
+
+# Pagination — headless. Page navigation. Parts: pagination (nav), pagination-content (ul), pagination-item (li),
+# pagination-link (a). Theme via data-slot.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone pagination
+  take host, like view
+  take class
+  zone nav
+    bind data-slot, text <pagination>
+    bind role, text <navigation>
+    bind aria-label, text <pagination>
+    bind class, read class
+    slot
+
+zone pagination-content
+  take host, like view
+  take class
+  zone ul
+    bind data-slot, text <pagination-content>
+    bind class, read class
+    slot
+
+zone pagination-item
+  take host, like view
+  take class
+  zone li
+    bind data-slot, text <pagination-item>
+    bind class, read class
+    slot
+
+zone pagination-link
+  take host, like view
+  take class
+  take href
+  zone a
+    bind data-slot, text <pagination-link>
+    bind href, read href
+    bind class, read class
+    slot

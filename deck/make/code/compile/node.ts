@@ -241,6 +241,10 @@ export type Statement =
       result?: Type
       generics: { name: string; need?: string }[]
       async?: boolean
+      // `note private` / `mark private`: the definition is module-internal, not part of the package's public surface.
+      // Lets dead-code detection flag an unreferenced private function as truly dead (a public one might be called
+      // from outside this compilation).
+      private?: boolean
       method?: { form: string; name: string }
       span: Span
     }

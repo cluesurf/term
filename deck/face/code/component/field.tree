@@ -1,0 +1,47 @@
+
+# Field — headless. A form field: label + control + description + error message. Theme via data-slot.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone field
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <field>
+    bind class, read class
+    slot
+
+zone field-label
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <field-label>
+    bind class, read class
+    slot
+
+zone field-description
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <field-description>
+    bind class, read class
+    slot
+
+zone field-error
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <field-error>
+    bind class, read class
+    slot
+
+zone field-group
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <field-group>
+    bind class, read class
+    slot

@@ -1,0 +1,65 @@
+
+# Table — headless. The root is the native <table> (use `zone table` directly with a class); these are the part
+# components (distinct names so they don't self-collide). Parts: table-header (thead), table-body (tbody), table-footer
+# (tfoot), table-row (tr), table-head (th), table-cell (td), table-caption (caption).
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone table-header
+  take host, like view
+  take class
+  zone thead
+    bind data-slot, text <table-header>
+    bind class, read class
+    slot
+
+zone table-body
+  take host, like view
+  take class
+  zone tbody
+    bind data-slot, text <table-body>
+    bind class, read class
+    slot
+
+zone table-footer
+  take host, like view
+  take class
+  zone tfoot
+    bind data-slot, text <table-footer>
+    bind class, read class
+    slot
+
+zone table-row
+  take host, like view
+  take class
+  zone tr
+    bind data-slot, text <table-row>
+    bind class, read class
+    slot
+
+zone table-head
+  take host, like view
+  take class
+  zone th
+    bind data-slot, text <table-head>
+    bind class, read class
+    slot
+
+zone table-cell
+  take host, like view
+  take class
+  zone td
+    bind data-slot, text <table-cell>
+    bind class, read class
+    slot
+
+zone table-caption
+  take host, like view
+  take class
+  zone caption
+    bind data-slot, text <table-caption>
+    bind class, read class
+    slot

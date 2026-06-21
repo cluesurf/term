@@ -1,0 +1,44 @@
+
+# Slider — headless. A range input. `value` is bound reactively to the thumb's aria-valuenow. Parts: slider (root),
+# slider-track, slider-range (the filled portion), slider-thumb (role=slider, focusable). Theme positions the range +
+# thumb from the value in CSS.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone slider
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <slider>
+    bind class, read class
+    slot
+
+zone slider-track
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <slider-track>
+    bind class, read class
+    slot
+
+zone slider-range
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <slider-range>
+    bind class, read class
+
+zone slider-thumb
+  take host, like view
+  take class
+  take value
+  zone span
+    bind data-slot, text <slider-thumb>
+    bind role, text <slider>
+    bind tabindex, text <0>
+    bind aria-valuenow, read value
+    bind class, read class

@@ -137,6 +137,44 @@ task good
     }
   }
 
+  // dead private function: a `mark private` task nothing calls is warned; a used one and a public (unmarked) one are
+  // not (a public definition may be called from outside this compilation).
+  {
+    const deadPrivate = (text: string): boolean => {
+      const result = compile({ file: 'i.tree', text })
+      return (
+        result.ok &&
+        result.warnings.some(
+          w =>
+            w.name === 'unused-binding' &&
+            w.message.includes('private'),
+        )
+      )
+    }
+
+    const unused = `task helper\n  mark private\n  send back, code 1\n\ntask main\n  send back, code 2\n`
+    const used = `task helper\n  mark private\n  send back, code 1\n\ntask main\n  send back\n    call helper\n`
+    const publicUnused = `task helper\n  send back, code 1\n\ntask main\n  send back, code 2\n`
+
+    const cases: [string, boolean][] = [
+      ['an unused private function is warned', deadPrivate(unused) === true],
+      ['a used private function is not warned', deadPrivate(used) === false],
+      [
+        'an unused PUBLIC function is not warned',
+        deadPrivate(publicUnused) === false,
+      ],
+    ]
+    for (const [label, cond] of cases) {
+      if (cond) {
+        pass++
+        console.log(`ok    ${label}`)
+      } else {
+        fail++
+        console.log(`FAIL  ${label}`)
+      }
+    }
+  }
+
   // a fully-used function produces no warnings
   {
     const result = compile({

@@ -2002,6 +2002,9 @@ export function mill(tree: RootNode, file: string): MillResult {
 
     if (markedAsync || body.some(isWaitTrue)) {fn.async = true}
 
+    // visibility: `note private` (or retired `mark private`) makes the definition module-internal
+    if (body.some(n => isAnnotation(n, 'private'))) {fn.private = true}
+
     return fn
   }
 

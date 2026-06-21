@@ -1,0 +1,63 @@
+
+# context-menu — headless, behavior-complete via the shared disclosure controller (mirrors popover). Parts: context-menu,
+# context-menu-trigger (toggles), context-menu-content (mounts when open, reactive data-state). Consumer passes a `control`.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/disclosure
+  find disclosure-open
+  find disclosure-state
+  find toggle-disclosure
+
+zone context-menu
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <context-menu>
+    bind class, read class
+    slot
+
+zone context-menu-trigger
+  take host, like view
+  take class
+  take control
+  zone button
+    bind type, text <button>
+    bind data-slot, text <context-menu-trigger>
+    bind aria-expanded
+      call disclosure-open
+        bind self, read control
+    hook click
+      call toggle-disclosure
+        bind self, read control
+    bind class, read class
+    slot
+
+zone context-menu-content
+  take host, like view
+  take class
+  take control
+  fork test
+    hook test
+      call disclosure-open
+        bind self, read control
+    hook hold
+      zone div
+        bind data-slot, text <context-menu-content>
+        bind role, text <menu>
+        bind data-state
+          call disclosure-state
+            bind self, read control
+        bind class, read class
+        slot
+
+zone context-menu-item
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <context-menu-item>
+    bind role, text <menuitem>
+    bind class, read class
+    slot

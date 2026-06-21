@@ -18,11 +18,11 @@ load @cluesurf/site/code/dom/dom
 
 task place
   take reference, like view
-  take floating, like view
+  take panel, like view
   take placement, like text
   save spot
     call floating/compute-position
       read reference
-      read floating
+      read panel
       bind placement, read placement
   send back, read spot

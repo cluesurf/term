@@ -1,0 +1,139 @@
+
+# History — operation-based undo/redo, written ONCE for the whole app. Each change is a `command` carrying its forward
+# op and its inverse plus an honest label; undo runs the inverse, redo re-runs the forward. Two stacks held as signals
+# (past = done, future = undone) so `can-undo` / `can-redo` are reactive (toolbar buttons disable themselves). This is
+# the Zag-model behavior core for editing: pure logic, no styling, reused everywhere. See note/seed/face-interaction-
+# system.md.
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+load @cluesurf/base/code/list
+  find list
+
+# a reversible operation: forward op + inverse + a human label ("Renamed pala to palata")
+form command
+  link label, like text
+  link run
+    like task
+  link undo
+    like task
+
+# the undo/redo controller: two command stacks as signals
+form history
+  link past, like signal
+  link future, like signal
+
+task make-history
+  like history
+  send back
+    make history
+      bind past
+        call make-signal
+          bind value
+            make list
+      bind future
+        call make-signal
+          bind value
+            make list
+
+# run a command and record it; clears the redo stack (new branch of history)
+task do-command
+  take self, like history
+  take entry, like command
+  call entry/run
+  save done
+    call read-signal
+      bind self, read self/past
+  call done/push
+    read entry
+  call write-signal
+    bind self, read self/past
+    bind value, read done
+  call write-signal
+    bind self, read self/future
+    bind value
+      make list
+
+# undo the last command (runs its inverse), moving it to the redo stack
+task undo
+  take self, like history
+  save done
+    call read-signal
+      bind self, read self/past
+  fork test
+    hook test
+      call done/is-empty
+    hook hold
+      send back
+  save entry
+    call done/pop
+  call entry/undo
+  call write-signal
+    bind self, read self/past
+    bind value, read done
+  save undone
+    call read-signal
+      bind self, read self/future
+  call undone/push
+    read entry
+  call write-signal
+    bind self, read self/future
+    bind value, read undone
+
+# redo the last undone command (re-runs it), moving it back to the undo stack
+task redo
+  take self, like history
+  save undone
+    call read-signal
+      bind self, read self/future
+  fork test
+    hook test
+      call undone/is-empty
+    hook hold
+      send back
+  save entry
+    call undone/pop
+  call entry/run
+  call write-signal
+    bind self, read self/future
+    bind value, read undone
+  save done
+    call read-signal
+      bind self, read self/past
+  call done/push
+    read entry
+  call write-signal
+    bind self, read self/past
+    bind value, read done
+
+# reactive: is there anything to undo / redo (for disabling toolbar buttons)
+task can-undo
+  take self, like history
+  like boolean
+  send back
+    fork test
+      hook test
+        call is-empty
+          call read-signal
+            bind self, read self/past
+      hook hold
+        wave false
+      hook miss
+        wave true
+
+task can-redo
+  take self, like history
+  like boolean
+  send back
+    fork test
+      hook test
+        call is-empty
+          call read-signal
+            bind self, read self/future
+      hook hold
+        wave false
+      hook miss
+        wave true

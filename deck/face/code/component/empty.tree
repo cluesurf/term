@@ -1,0 +1,47 @@
+
+# Empty — headless. An empty-state placeholder with media / title / description / content parts.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone empty
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <empty>
+    bind class, read class
+    slot
+
+zone empty-media
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <empty-media>
+    bind class, read class
+    slot
+
+zone empty-title
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <empty-title>
+    bind class, read class
+    slot
+
+zone empty-description
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <empty-description>
+    bind class, read class
+    slot
+
+zone empty-content
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <empty-content>
+    bind class, read class
+    slot

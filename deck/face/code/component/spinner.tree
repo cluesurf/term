@@ -1,0 +1,17 @@
+
+# Spinner — headless. A loading indicator (theme the animation in CSS). role=status for a11y.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone spinner
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <spinner>
+    bind role, text <status>
+    bind aria-label, text <Loading>
+    bind class, read class
+    slot

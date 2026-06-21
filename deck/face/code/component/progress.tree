@@ -1,0 +1,32 @@
+
+# Progress — headless. A progress bar. `value` (0..100) is bound reactively to aria-valuenow + data-value so a theme
+# can size the indicator from CSS ([data-slot=progress-indicator] width keyed off the value, or a CSS var). Parts:
+# progress (the bar), progress-indicator (the fill).
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone progress
+  take host, like view
+  take class
+  take value
+  zone div
+    bind data-slot, text <progress>
+    bind role, text <progressbar>
+    bind aria-valuemin, text <0>
+    bind aria-valuemax, text <100>
+    bind aria-valuenow, read value
+    bind class, read class
+    slot
+
+zone progress-indicator
+  take host, like view
+  take class
+  take value
+  zone div
+    bind data-slot, text <progress-indicator>
+    bind data-value, read value
+    bind class, read class

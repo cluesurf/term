@@ -1,0 +1,46 @@
+
+# Toggle group — headless, behavior-complete via the shared selection controller. A row of toggles where one is
+# active. Each item gets a `value`; the trigger reflects data-state active/inactive + aria-pressed and selects on
+# click. Consumer passes one `control` (make-selection). Parts: toggle-group, toggle-group-item.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/selection
+  find is-selected
+  find selection-state
+  find select-value
+
+zone toggle-group
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <toggle-group>
+    bind role, text <group>
+    bind class, read class
+    slot
+
+zone toggle-group-item
+  take host, like view
+  take class
+  take control
+  take value
+  zone button
+    bind type, text <button>
+    bind data-slot, text <toggle-group-item>
+    bind data-state
+      call selection-state
+        bind self, read control
+        bind value, read value
+    bind aria-pressed
+      call is-selected
+        bind self, read control
+        bind value, read value
+    hook click
+      call select-value
+        bind self, read control
+        bind value, read value
+    bind class, read class
+    slot

@@ -1,0 +1,55 @@
+
+# Item — headless. A generic list row with media / content / title / description / actions parts.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone item
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <item>
+    bind class, read class
+    slot
+
+zone item-media
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <item-media>
+    bind class, read class
+    slot
+
+zone item-content
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <item-content>
+    bind class, read class
+    slot
+
+zone item-title
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <item-title>
+    bind class, read class
+    slot
+
+zone item-description
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <item-description>
+    bind class, read class
+    slot
+
+zone item-actions
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <item-actions>
+    bind class, read class
+    slot

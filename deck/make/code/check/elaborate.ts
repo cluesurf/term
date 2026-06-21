@@ -273,6 +273,11 @@ export function elaborateReport(
   const recordFields = new Map<string, string[]>() // record name -> field names in declaration order
   const variantNames = new Map<string, string[]>() // enum name -> variant names in declaration order
   const variantToEnum = new Map<string, string>() // variant name -> its enum
+  // variant name -> its fields (surface name + kernel type term), for binding them in a match branch
+  const variantFieldInfo = new Map<
+    string,
+    { name: string; type: Term }[]
+  >()
   const enumEncodings: { name: string; encoding: Term }[] = [] // each enum's derived self-type encoding
   const enumDefs: { name: string; term: Term }[] = [] // computing definitions for constructors + eliminators
 
@@ -302,6 +307,13 @@ export function elaborateReport(
           ),
         })
         variantToEnum.set(variant.name, statement.name)
+        variantFieldInfo.set(
+          variant.name,
+          variant.fields.map((f, fi) => ({
+            name: f.name,
+            type: fieldTypes[fi]!,
+          })),
+        )
       }
 
       variantNames.set(
@@ -309,15 +321,28 @@ export function elaborateReport(
         statement.variants.map(v => v.name),
       )
 
-      // match__e : (0 A : Type0) -> e -> A -> ... -> A  (one branch result per variant; fields are not bound by
-      // the surface match, so each branch is just a value of the result type). Built inside-out: the result A sits
-      // under (subject + n branch) binders, and branch i's domain A sits under (subject + i-1) binders.
+      // match__e : (0 A : Type0) -> e -> (F_0 -> A) -> ... -> (F_{k} -> A) -> A. Each branch carries its variant's
+      // FIELD types, so a match on a constructor passes the fields to the branch (succ's branch is `Pred -> A`, not
+      // `A`). This is what makes a field-carrying recursive function (plus) compute through the eliminator. The result A
+      // sits under (subject + n branch) binders; inside branch i, under its own k field binders, A is at index i + k.
       const n = statement.variants.length
 
       let eliminator: Term = variable(n + 1) // result A, deepest
 
-      for (let i = n; i >= 1; i--)
-        {eliminator = arrow(variable(i), eliminator)} // branch i domain = A at index i
+      for (let i = n; i >= 1; i--) {
+        const fieldTs = statement.variants[i - 1]!.fields.map(
+          f => kernelType(f.type, namedTypes)!,
+        )
+        const k = fieldTs.length
+
+        // branch i's type: F_0 -> F_1 -> .. -> F_{k-1} -> A, with A at index i + k from the deepest point
+        let branch: Term = variable(i + k)
+
+        for (let j = k - 1; j >= 0; j--)
+          {branch = arrow(fieldTs[j]!, branch)}
+
+        eliminator = arrow(branch, eliminator)
+      }
 
       eliminator = erasedPi(TYPE0, arrow(self, eliminator))
       dataSignature.push({
@@ -831,9 +856,38 @@ export function elaborateReport(
 
           if (!branch) {return null} // non-exhaustive against the eliminator: decline
 
-          const term = body(branch.body, scope, context, resultValue)
+          // bind the variant's fields: each branch is a lambda over its fields (the eliminator passes them in), with
+          // the fields in scope in the branch body. `succ p`'s branch becomes `\p. <body using p>`.
+          const fieldInfo = variantFieldInfo.get(variant) ?? []
+          let branchScope = scope
+          let branchContext = context
 
-          if (!term) {return null}
+          for (const field of fieldInfo) {
+            branchScope = new Map(branchScope).set(
+              field.name,
+              branchContext.level,
+            )
+            branchContext = bind(
+              branchContext,
+              'many',
+              evaluate([], field.type),
+            )
+          }
+
+          const inner = body(
+            branch.body,
+            branchScope,
+            branchContext,
+            resultValue,
+          )
+
+          if (!inner) {return null}
+
+          // wrap the body in one lambda per field, innermost field last
+          let term = inner
+
+          for (let w = 0; w < fieldInfo.length; w++)
+            {term = { tag: 'lam', body: term }}
 
           branches.push(term)
         }

@@ -134,6 +134,15 @@ export function findUnused(
 ): Diagnostic[] {
   const warnings: Diagnostic[] = []
 
+  // program-wide references: every name read in any function body (call targets included, since a `call helper`
+  // reads the `helper` variable). Used to spot a private function that nothing in the program calls.
+  const referenced = new Set<string>()
+
+  for (const statement of program) {
+    if (statement.form === 'function')
+      {walk(statement.body, new Map(), referenced)}
+  }
+
   for (const statement of program) {
     if (statement.form !== 'function') {continue}
 
@@ -151,6 +160,18 @@ export function findUnused(
           }),
         )
       }
+    }
+
+    // a private function nothing references is dead code. Only `private`: a public definition may be called from
+    // outside this compilation (the package's surface), so its absence of internal callers is not a defect.
+    if (statement.private && !referenced.has(statement.name)) {
+      warnings.push(
+        diagnose('unused-binding', {
+          file,
+          span: statement.span,
+          message: `private "${statement.name}" is never used`,
+        }),
+      )
     }
   }
 

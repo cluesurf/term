@@ -8,6 +8,7 @@ import { callHost } from '@cluesurf/call/code/host'
 import { callSeek } from '@cluesurf/call/code/seek'
 import { callLink } from '@cluesurf/call/code/link'
 import { callMake } from '@cluesurf/call/code/make'
+import { callCheck } from '@cluesurf/call/code/check'
 import { callTest } from '@cluesurf/call/code/test'
 import { callTime } from '@cluesurf/call/code/time'
 import { callBoot } from '@cluesurf/call/code/boot'
@@ -31,6 +32,7 @@ const COMMANDS = [
   'seek',
   'host',
   'make',
+  'check',
   'test',
   'time',
   'profile',
