@@ -14,6 +14,9 @@ load @cluesurf/bind/code/browser/dom/element
 load @cluesurf/bind/code/browser/dom/element-css-inline-style
   find element-css-inline-style
 
+load @cluesurf/bind/code/browser/dom/html-or-svg-element
+  find html-or-svg-element
+
 load @cluesurf/bind/code/browser/dom/node
   find node
 
@@ -73,6 +76,19 @@ task set-style
     read property
     read value
     make none
+
+task focus
+  take node, like view
+  host made, like html-or-svg-element
+    read node/handle
+  call made/focus
+    make none
+
+task blur
+  take node, like view
+  host made, like html-or-svg-element
+    read node/handle
+  call made/blur
 
 task add-class
   take node, like view

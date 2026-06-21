@@ -23,14 +23,28 @@
 
 import { makeRng, type Rng } from './property'
 
-/** The coverage sink the target calls at each branch it takes. */
+/**
+ * The coverage sink an instrumented target reports to:
+ *   - `edge(id)`: a branch was taken (AFL edge coverage).
+ *   - `cmp(a, b)`: a comparison was evaluated (libFuzzer value profile).
+ *     Recording how CLOSE the operands are lets the fuzzer climb toward
+ *     `x == 0xCAFE` style magic-constant guards that edge coverage
+ *     alone cannot guide toward (the guard is one edge - no new edge
+ *     until it is exactly satisfied).
+ */
+export type Sink = {
+  edge: (id: number) => void
+  cmp: (a: number, b: number) => void
+}
+
+/** A coverage sink the target calls; `edge` only, for simple targets. */
 export type Cover = (edge: number) => void
 
 /**
- * An instrumented target: run on an input, calling `cover` at each
- * branch. Throwing (or the caller's oracle failing) is a crash.
+ * An instrumented target: run on an input, reporting coverage via the
+ * sink. Throwing (or the caller's oracle failing) is a crash.
  */
-export type Target = (input: number[], cover: Cover) => void
+export type Target = (input: number[], sink: Sink) => void
 
 /** Boundary / magic values mutators love (AFL's "interesting" set). */
 const INTERESTING = [0, 1, -1, 2, 7, 8, 13, 16, 32, 42, 64, 100, 127, 128, 255, 256, -128, 1000, -1000]
@@ -68,13 +82,27 @@ export function fuzz(input: {
   const corpus: Entry[] = []
   let execs = 0
 
-  // run once, recording coverage; returns {crashed, newEdges}
+  // run once, recording coverage; returns {crashed, newEdges}. The sink
+  // records both edges and value-profile tokens (how many high bits a
+  // comparison's operands share), so the corpus evolves toward both new
+  // branches and tighter magic-constant matches.
   function run(candidate: number[]): { crashed: boolean; newEdges: number } {
     execs++
     const hit = new Set<number>()
     let crashed = false
+    let cmpSite = 0
+    const sink: Sink = {
+      edge: id => hit.add(id),
+      cmp: (a, b) => {
+        // value profile: a token per (comparison site, matching-high-bits).
+        // as inputs approach equality, more high bits match -> new tokens.
+        const token = 0x4000_0000 + cmpSite * 64 + matchingBits(a, b)
+        cmpSite++
+        hit.add(token)
+      },
+    }
     try {
-      target(candidate, edge => hit.add(edge))
+      target(candidate, sink)
     } catch {
       crashed = true
     }
@@ -175,11 +203,26 @@ function mutate(parent: number[], corpus: Entry[], rng: Rng): number[] {
   return child
 }
 
+/** Count matching high-order bits of two 32-bit values (libFuzzer value
+ * profile): how close the operands are to equal, from the top down. */
+function matchingBits(a: number, b: number): number {
+  let x = (a ^ b) >>> 0
+  if (x === 0) return 32
+  let n = 0
+  while ((x & 0x8000_0000) === 0) {
+    n++
+    x = (x << 1) >>> 0
+  }
+  return n
+}
+
+const NO_SINK: Sink = { edge: () => {}, cmp: () => {} }
+
 /** Shrink a crashing input toward each component being 0, keeping the crash. */
 function minimize(crash: number[], target: Target): number[] {
   const crashes = (candidate: number[]): boolean => {
     try {
-      target(candidate, () => {})
+      target(candidate, NO_SINK)
       return false
     } catch {
       return true

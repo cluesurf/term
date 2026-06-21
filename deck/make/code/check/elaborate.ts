@@ -1126,11 +1126,85 @@ export function elaborateReport(
     }
   }
 
-  // discharge `left == right` modulo a set of induction-hypothesis equalities, by congruence closure over normal forms.
-  // Both sides (and each hypothesis) are quoted to a normal-form term; the hypotheses are merged and app-congruence is
-  // propagated to a fixpoint; the goal holds when the two sides land in the same class. With no hypotheses this is plain
-  // definitional equality (the base case of an induction). Sound: it only ever ADDS true (induction-hypothesis)
-  // equalities to definitional equality, the exact reasoning the type's eliminator licenses.
+  // shift every free variable in a term up by `amount`, with a binder cutoff (vars below `cutoff` are locally bound and
+  // left alone). Used to lift an induction hypothesis (quoted at the outer context) underneath the lambda binders that
+  // the Church-encoded constructors introduce in a normal form.
+  function shiftTerm(term: Term, amount: number, cutoff: number): Term {
+    switch (term.tag) {
+      case 'var':
+        return term.index >= cutoff
+          ? { tag: 'var', index: term.index + amount }
+          : term
+      case 'app':
+        return {
+          tag: 'app',
+          fun: shiftTerm(term.fun, amount, cutoff),
+          arg: shiftTerm(term.arg, amount, cutoff),
+        }
+      case 'lam':
+        return {
+          tag: 'lam',
+          body: shiftTerm(term.body, amount, cutoff + 1),
+        }
+      case 'pi':
+        return {
+          tag: 'pi',
+          mult: term.mult,
+          domain: shiftTerm(term.domain, amount, cutoff),
+          codomain: shiftTerm(term.codomain, amount, cutoff + 1),
+        }
+      case 'sigma':
+        return {
+          tag: 'sigma',
+          mult: term.mult,
+          domain: shiftTerm(term.domain, amount, cutoff),
+          codomain: shiftTerm(term.codomain, amount, cutoff + 1),
+        }
+      case 'ann':
+        return {
+          tag: 'ann',
+          term: shiftTerm(term.term, amount, cutoff),
+          type: shiftTerm(term.type, amount, cutoff),
+        }
+      case 'id':
+        return {
+          tag: 'id',
+          type: shiftTerm(term.type, amount, cutoff),
+          left: shiftTerm(term.left, amount, cutoff),
+          right: shiftTerm(term.right, amount, cutoff),
+        }
+      case 'refl':
+        return {
+          tag: 'refl',
+          type: shiftTerm(term.type, amount, cutoff),
+          value: shiftTerm(term.value, amount, cutoff),
+        }
+      case 'pair':
+        return {
+          tag: 'pair',
+          first: shiftTerm(term.first, amount, cutoff),
+          second: shiftTerm(term.second, amount, cutoff),
+        }
+      case 'fst':
+        return { tag: 'fst', pair: shiftTerm(term.pair, amount, cutoff) }
+      case 'snd':
+        return { tag: 'snd', pair: shiftTerm(term.pair, amount, cutoff) }
+      case 'self':
+        return {
+          tag: 'self',
+          body: shiftTerm(term.body, amount, cutoff + 1),
+        }
+      default:
+        return term
+    }
+  }
+
+  // discharge `left == right` modulo a set of induction-hypothesis equalities. Both sides are normalized (quoted) and
+  // compared in lockstep; at every node, if the two subterms match a hypothesis pair (shifted under the binders crossed
+  // so far) the node is accepted. With no hypotheses this is plain syntactic equality of normal forms (the base case of
+  // an induction). The Church-encoded constructors push the structural difference under lambda binders, so the
+  // comparison must descend through them, lifting each hypothesis by the binder depth. Sound: it only ever accepts a
+  // node by a TRUE (induction-hypothesis) equality, the exact reasoning the type's eliminator licenses.
   function dischargeModulo(
     level: number,
     left: Value,
@@ -1141,69 +1215,67 @@ export function elaborateReport(
 
     if (hypotheses.length === 0) {return false}
 
-    // union-find over canonical normal-form strings, with app nodes carrying their (fun, arg) child keys
-    const parent = new Map<string, string>()
-    const apps = new Map<string, [string, string]>()
+    const hyps = hypotheses.map(
+      ([a, b]) =>
+        [quote(level, a), quote(level, b)] as [Term, Term],
+    )
 
-    const add = (term: Term): string => {
-      const key = showTerm(term)
+    const convEq = (a: Term, b: Term, depth: number): boolean => {
+      const ak = showTerm(a)
+      const bk = showTerm(b)
 
-      if (!parent.has(key)) {
-        parent.set(key, key)
+      if (ak === bk) {return true}
 
-        if (term.tag === 'app')
-          {apps.set(key, [add(term.fun), add(term.arg)])}
+      // a hypothesis L == R licenses replacing L by R (or R by L) under the binders crossed so far
+      for (const [ihLeft, ihRight] of hyps) {
+        const lifted = (t: Term): string =>
+          depth === 0 ? showTerm(t) : showTerm(shiftTerm(t, depth, 0))
+        const il = lifted(ihLeft)
+        const ir = lifted(ihRight)
+
+        if ((ak === il && bk === ir) || (ak === ir && bk === il))
+          {return true}
       }
 
-      return key
+      if (a.tag !== b.tag) {return false}
+
+      switch (a.tag) {
+        case 'app':
+          return (
+            convEq(a.fun, (b as typeof a).fun, depth) &&
+            convEq(a.arg, (b as typeof a).arg, depth)
+          )
+        case 'lam':
+          return convEq(a.body, (b as typeof a).body, depth + 1)
+        case 'pi':
+        case 'sigma': {
+          const bb = b as typeof a
+
+          return (
+            convEq(a.domain, bb.domain, depth) &&
+            convEq(a.codomain, bb.codomain, depth + 1)
+          )
+        }
+        case 'self':
+          return convEq(a.body, (b as typeof a).body, depth + 1)
+        case 'fst':
+          return convEq(a.pair, (b as typeof a).pair, depth)
+        case 'snd':
+          return convEq(a.pair, (b as typeof a).pair, depth)
+        case 'pair': {
+          const bb = b as typeof a
+
+          return (
+            convEq(a.first, bb.first, depth) &&
+            convEq(a.second, bb.second, depth)
+          )
+        }
+        default:
+          return false // atoms (var/const/type/meta) already settled by the string check
+      }
     }
 
-    const find = (x: string): string => {
-      let root = x
-
-      while (parent.get(root) !== root) {root = parent.get(root)!}
-
-      return root
-    }
-
-    const union = (a: string, b: string): void => {
-      const ra = find(a)
-      const rb = find(b)
-
-      if (ra !== rb) {parent.set(ra, rb)}
-    }
-
-    const leftKey = add(quote(level, left))
-    const rightKey = add(quote(level, right))
-
-    for (const [a, b] of hypotheses)
-      {union(add(quote(level, a)), add(quote(level, b)))}
-
-    // propagate congruence: two applications with pairwise-equal children are themselves equal
-    let changed = true
-
-    while (changed) {
-      changed = false
-
-      const entries = [...apps.entries()]
-
-      for (let i = 0; i < entries.length; i++)
-        {for (let j = i + 1; j < entries.length; j++) {
-          const [ki, [fi, ai]] = entries[i]!
-          const [kj, [fj, aj]] = entries[j]!
-
-          if (
-            find(ki) !== find(kj) &&
-            find(fi) === find(fj) &&
-            find(ai) === find(aj)
-          ) {
-            union(ki, kj)
-            changed = true
-          }
-        }}
-    }
-
-    return find(leftKey) === find(rightKey)
+    return convEq(quote(level, left), quote(level, right), 0)
   }
 
   // structural induction over an inductive self-type: the `fold <var>` tactic when <var> ranges over a record-type
@@ -1218,6 +1290,7 @@ export function elaborateReport(
     context: Context,
     inductVar: string,
   ): boolean {
+    const DBG = process.env.SEED_DEBUG_INDUCT
     if (goal.op !== '==') {return false}
 
     const varLevel = scope.get(inductVar)
@@ -1231,6 +1304,7 @@ export function elaborateReport(
       if (!typeValue) {return false}
 
       const typeTerm = quote(context.level, typeValue)
+      if (DBG) {console.error('[induct] type', showTerm(typeTerm))}
 
       if (typeTerm.tag !== 'const') {return false}
 
@@ -1288,14 +1362,34 @@ export function elaborateReport(
           }
         })
 
+        if (DBG) {
+          console.error(
+            `[induct] case ${variant} k=${k} hyps=${hypotheses.length}`,
+          )
+          console.error('  L=', showTerm(quote(inner.level, caseLeft)))
+          console.error('  R=', showTerm(quote(inner.level, caseRight)))
+          for (const [a, b] of hypotheses)
+            {console.error(
+              '  IH',
+              showTerm(quote(inner.level, a)),
+              '==',
+              showTerm(quote(inner.level, b)),
+            )}
+        }
+
         if (
           !dischargeModulo(inner.level, caseLeft, caseRight, hypotheses)
-        )
-          {return false}
+        ) {
+          if (DBG) {console.error(`[induct] case ${variant} FAILED`)}
+
+          return false
+        }
       }
 
       return true
-    } catch {
+    } catch (error) {
+      if (DBG) {console.error('[induct] threw', error)}
+
       return false
     }
   }

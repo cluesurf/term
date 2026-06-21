@@ -17,6 +17,9 @@ export type Inst =
   | { op: 'dup'; name: string }
   | { op: 'drop'; name: string }
   | { op: 'if'; cond: string; then: Inst[]; else: Inst[] }
+  // a loop: the condition is a copyable boolean (no RC). A value owned at the header and used in the body is dup'd
+  // per iteration (it must survive the back-edge to the next iteration) and dropped after the loop if dead there.
+  | { op: 'while'; cond: string; body: Inst[] }
 
 // the variables an instruction reads
 function reads(inst: Inst): string[] {
@@ -139,6 +142,49 @@ function processBlock(
   for (let i = insts.length - 1; i >= 0; i--) {
     const inst = insts[i]!
 
+    if (inst.op === 'while') {
+      // Backward liveness over a loop needs a fixpoint: the body exits to BOTH the post-loop (the current `live`) and
+      // back to the header (so the body's own live-in feeds its live-out). Iterate `liveHeader` until stable. Liveness
+      // is monotone (only grows), so this converges.
+      let liveHeader = new Set(live)
+
+      for (;;) {
+        const [, bodyIn] = processBlock(
+          inst.body,
+          new Set([...liveHeader, ...live]),
+        )
+        const grown = new Set([...liveHeader, ...bodyIn])
+
+        if (
+          grown.size === liveHeader.size &&
+          [...grown].every(v => liveHeader.has(v))
+        )
+          {break}
+
+        liveHeader = grown
+      }
+
+      // final pass with the converged header-live set: a value in `liveHeader` that is read in the body is live across
+      // the back-edge, so it is dup'd at each use (the per-iteration reference). A body-local binding that dies in the
+      // body is dropped there, exactly as in straight-line code.
+      const [bodyOut] = processBlock(
+        inst.body,
+        new Set([...liveHeader, ...live]),
+      )
+
+      // a value owned through the loop but dead after it (live at the header, not live after) keeps its original
+      // owned reference past the last iteration; that reference must be dropped right after the loop.
+      const dropsAfter = [...liveHeader].filter(v => !live.has(v))
+
+      for (const v of dropsAfter) {reversed.push({ op: 'drop', name: v })}
+
+      reversed.push({ op: 'while', cond: inst.cond, body: bodyOut })
+
+      for (const v of liveHeader) {live.add(v)}
+
+      continue
+    }
+
     if (inst.op === 'if') {
       const [thenOut, thenIn] = processBlock(inst.then, live)
       const [elseOut, elseIn] = processBlock(inst.else, live)
@@ -215,5 +261,10 @@ export function showInst(inst: Inst): string {
       return `if ${inst.cond} { ${inst.then
         .map(showInst)
         .join('; ')} } else { ${inst.else.map(showInst).join('; ')} }`
+
+    case 'while':
+      return `while ${inst.cond} { ${inst.body
+        .map(showInst)
+        .join('; ')} }`
   }
 }

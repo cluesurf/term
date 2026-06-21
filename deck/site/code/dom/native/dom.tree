@@ -46,6 +46,12 @@ task set-property
   take name, like text
   take value, like text
 
+task focus
+  take node, like view
+
+task blur
+  take node, like view
+
 task listen
   take node, like view
   take event, like text
