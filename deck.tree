@@ -12,8 +12,13 @@ deck @cluesurf/seed
   term platform
   term white-label
   term compiler
-  deck ./deck/load
-  deck ./deck/line
+  deck ./deck/make
+  deck ./deck/call
+  deck ./deck/flow
+  deck ./deck/base
+  deck ./deck/site
+  deck ./deck/term
+  deck ./deck/deck
   link @cluesurf/term, mark <0.0.x>
   link @cluesurf/bind, mark <0.0.x>
   link @cluesurf/moon, mark <0.0.x>
@@ -28,9 +33,9 @@ deck @cluesurf/seed
   # the task loader
   book ./book
   # also a default
-  role ./base/role
+  role ./role
   # also a default
-  line ./line
+  line ./deck/call/code/line
   test ./test
   mind <Lance Pollard>
     base <lp@elk.fm>

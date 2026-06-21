@@ -7,7 +7,7 @@
 <br/>
 
 <p align='center'>
-  <img src='https://github.com/cluesurf/seed/blob/make/view/seed.png?raw=true' height='256'>
+  <img src='https://github.com/cluesurf/seed/blob/make/view/seed2.png?raw=true' height='256'>
 </p>
 
 <h3 align='center'>
@@ -41,49 +41,49 @@ package managers.
 
 ## Packages
 
-### Core
+This repository is a monorepo. Each part of the ecosystem is a deck (a
+package) under `deck/`, and the decks reference each other by name
+(`@cluesurf/<deck>/code/...`), linked locally through `seed link`.
 
-| Package                                            | Purpose                               |
-| -------------------------------------------------- | ------------------------------------- |
-| [seed](.) (this)                                   | Entrypoint and CLI                    |
-| [make.tree](https://github.com/cluesurf/make.tree) | Compiler                              |
-| [flow.tree](https://github.com/cluesurf/flow.tree) | Language server                       |
-| [deck.tree](https://github.com/cluesurf/deck.tree) | Package manager                       |
-| [base.tree](https://github.com/cluesurf/base.tree) | Standard library                      |
-| [bind.tree](https://github.com/cluesurf/bind.tree) | Environment types and native bindings |
+| Deck                | Purpose                                                   |
+| ------------------- | --------------------------------------------------------- |
+| [make](./deck/make) | The compiler: parse, mill, resolve, check, emit           |
+| [call](./deck/call) | The CLI: `seed make`, `seed test`, `seed serve`, and more |
+| [flow](./deck/flow) | The language server (LSP over stdio)                      |
+| [deck](./deck/deck) | The package manager: install, link, lockfile, store       |
+| [base](./deck/base) | The standard library, written in `.tree`                  |
+| [site](./deck/site) | App framework: reactive zones, DOM, render runtime        |
+| [term](./deck/term) | The 4-letter term vocabulary that backs the DSLs          |
 
-### Libraries
-
-| Package                                            | Purpose                                               |
-| -------------------------------------------------- | ----------------------------------------------------- |
-| [land.tree](https://github.com/cluesurf/land.tree) | Physics, graphics, worlds, games, audio, video, image |
-| [mesh.tree](https://github.com/cluesurf/mesh.tree) | Infrastructure                                        |
-| [form.tree](https://github.com/cluesurf/form.tree) | Math                                                  |
-| [word.tree](https://github.com/cluesurf/word.tree) | Language and linguistics                              |
-| [code.tree](https://github.com/cluesurf/code.tree) | Content grammars (binary and text)                    |
-| [link.tree](https://github.com/cluesurf/link.tree) | Third party API connections                           |
-| [site.tree](https://github.com/cluesurf/site.tree) | App level frameworks                                  |
+The compiler, CLI, and language server are written in TypeScript (under
+each deck's `code/`). The standard library, site framework, and terms
+are written in `.tree` and compiled by the compiler itself.
 
 ## How It Works
 
 ```
 .tree source
     ↓
-make.tree (compiler)
-    ├─→ Rust        (servers, CLI, embedded)
+make (compiler): parse → mill → resolve → check → emit
     ├─→ TypeScript  (browsers, Node.js)
+    ├─→ Rust        (servers, CLI, embedded)
     ├─→ Kotlin      (Android, JVM)
     ├─→ Swift       (iOS, macOS)
-    └─→ HVM         (parallel computation)
+    ├─→ LLVM        (native binaries)
+    └─→ WGSL        (GPU shaders)
 ```
 
-The compiler parses `.tree` files into a surface AST, desugars into core
-terms based on the Calculus of Constructions with self-types,
-type-checks, and hands off to backend code generators. Each backend
-produces idiomatic output for its platform.
+The compiler parses `.tree` files into a surface AST, mills them into a
+typed AST, resolves names, and type-checks through a gradual,
+bidirectional inference pass that elaborates into a dependent kernel for
+soundness. Each backend then emits idiomatic output for its platform.
+Generics, traits, async, and effects lower to the natural construct on
+each target: native traits on Rust, protocols on Swift, interfaces on
+Kotlin, and monomorphization on LLVM and WGSL.
 
-For HVM targets, the runtime manages execution through WebAssembly,
-marshaling values and interpreting the IO protocol for side effects.
+The CLI ([call](./deck/call)) drives the whole pipeline and ships a dev
+server with hot module reload. The language server ([flow](./deck/flow))
+reuses the same analysis for diagnostics, hover, and go-to-definition.
 
 ## Installation
 
