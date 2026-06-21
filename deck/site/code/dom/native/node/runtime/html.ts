@@ -85,6 +85,34 @@ function assetUrl(logical: string): string {
   return `/base/${resolved}`
 }
 
+// the client bundle externalizes its third-party (npm) deps and loads them via a web-standard import map (so the app
+// needs no local install of its browser deps). The build writes `build/import-map.json`; the shell inlines it as an
+// `<script type="importmap">` BEFORE the module script (an import map must precede the first module that uses it). No
+// deps -> no tag. Read once, memoized.
+let importMapTag: string | undefined
+
+function importMapScript(): string {
+  if (importMapTag !== undefined) {
+    return importMapTag
+  }
+
+  try {
+    const file = join(process.cwd(), 'build', 'import-map.json')
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as {
+      imports?: Record<string, string>
+    }
+
+    importMapTag =
+      parsed.imports && Object.keys(parsed.imports).length
+        ? `<script type="importmap">${JSON.stringify(parsed)}</script>`
+        : ''
+  } catch {
+    importMapTag = ''
+  }
+
+  return importMapTag
+}
+
 function elementOf(node: { handle?: Element } | Element): Element {
   return ('handle' in node && node.handle ? node.handle : node) as Element
 }
@@ -168,6 +196,7 @@ function serializeNode(node: { handle?: Element } | Element): string {
 function documentShell(body: string, title = 'ClueSurf'): string {
   const styleHref = assetUrl('style/look.css')
   const scriptSrc = assetUrl('boot.js')
+  const importMap = importMapScript()
 
   if (!PRETTY) {
     return (
@@ -176,6 +205,7 @@ function documentShell(body: string, title = 'ClueSurf'): string {
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
       `<title>${escapeText(title)}</title>` +
       `<link rel="stylesheet" href="${styleHref}">` +
+      importMap +
       `<script type="module" src="${scriptSrc}"></script>` +
       '</head><body>' +
       body +
@@ -197,6 +227,7 @@ function documentShell(body: string, title = 'ClueSurf'): string {
     '    <meta name="viewport" content="width=device-width, initial-scale=1">',
     `    <title>${escapeText(title)}</title>`,
     `    <link rel="stylesheet" href="${styleHref}">`,
+    ...(importMap ? [`    ${importMap}`] : []),
     `    <script type="module" src="${scriptSrc}"></script>`,
     '  </head>',
     '  <body>',

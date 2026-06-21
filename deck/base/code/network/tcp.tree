@@ -9,8 +9,6 @@ form connection
   link dock, like tcp-stream
   link host, like text
   link port, like size
-  link local-host, like text
-  link local-port, like size
   link secure, like bool
 
 # a TCP listener accepting incoming connections

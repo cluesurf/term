@@ -1,18 +1,28 @@
+# TCP listener operations: accept the next incoming connection, close the listener. The clean uniform interface; each backend accepts on its platform server through the listener's opaque `dock` handle. All async.
 
 load @cluesurf/base/code/network/tcp
   find listener
   find connection
 
+load @cluesurf/base/code/native/network/tcp/listener
+  find do-accept
+  find do-close
+
+# wait for and return the next incoming connection
 task accept
   note async
   take listener, like listener
   like connection
+  send back
+    call do-accept
+      read listener
+      wait true
 
+# stop listening and release the port
 task close
   note async
   take listener, like listener
-
-task stream
-  note async
-  take listener, like listener
-  like list
+  send back
+    call do-close
+      read listener
+      wait true

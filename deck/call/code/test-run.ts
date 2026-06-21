@@ -28,12 +28,12 @@ export type TestRun = {
 
 // the entry file's own top-level test tasks: a zero-argument task that returns a boolean. Imported helpers take
 // arguments, so they are excluded. Order is source order.
-function discoverTests(text: string): string[] {
-  const parsed = parse({ file: 'main.tree', text })
+function discoverTests(text: string, file: string): string[] {
+  const parsed = parse({ file, text })
 
   if (!parsed.ok) {return []}
 
-  const built = mill(parsed.tree, 'main.tree')
+  const built = mill(parsed.tree, file)
 
   if (!built.ok) {return []}
 
@@ -56,9 +56,10 @@ export async function runTestFile(input: {
 }): Promise<TestRun> {
   // expand `test <phrase>` blocks into top-level tasks; a file with none passes through unchanged
   const { text, labels } = preprocessTests(input.source)
-  const names = discoverTests(text)
+  const names = discoverTests(text, input.file)
   const result = compile(
-    { file: 'main.tree', text },
+    // use the real file path as the entry so `@/...` local-package aliases resolve against this file's deck.tree
+    { file: input.file, text },
     { resolve: input.resolve },
   )
 

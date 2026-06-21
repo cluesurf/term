@@ -1,137 +1,53 @@
+# node TCP implementation. Forwards to the linked tcp runtime shim (node:net / node:tls). Declares the opaque handle types a connection / listener hold (the raw node Socket / Server). Internal: reached only through the public TCP API.
+
+dock type
+  load <any>, name tcp-stream
+  load <any>, name tcp-server
 
 dock load
-  load <node:net>, name net
-  load <node:tls>, name tls
+  load <global:tcp>, name tcp
 
 load @cluesurf/base/code/network/tcp
   find connection
   find listener
 
-task connect
+task do-connect
   note async
   take host, like text
   take port, like size
-  take secure, like bool, fall wave false
-
-  fork test
-    hook test
+  take secure, like bool
+  like connection
+  save raw
+    call tcp/connect
+      read host
+      read port
       read secure
-    hook hold
-      save raw
-        call make-promise
-          task resolve
-            take ok
-            take fail
-            save socket
-              call tls/connect
-                read port
-                read host
-            call socket/on
-              text <connect>
-              task on-connect
-                call ok, read socket
-            call socket/on
-              text <error>
-              task on-error
-                take error
-                call fail, read error
-          note async
-          halt kink
-      send back
-        make connection
-          bind dock, read raw
-          bind host, read host
-          bind port, read port
-          bind local-host, call raw/local-address
-          bind local-port, call raw/local-port
-          bind secure, wave true
-    hook miss
-      save raw
-        call make-promise
-          task resolve
-            take ok
-            take fail
-            save socket
-              call net/create-connection
-                read port
-                read host
-            call socket/on
-              text <connect>
-              task on-connect
-                call ok, read socket
-            call socket/on
-              text <error>
-              task on-error
-                take error
-                call fail, read error
-          note async
-          halt kink
-      send back
-        make connection
-          bind dock, read raw
-          bind host, read host
-          bind port, read port
-          bind local-host, call raw/local-address
-          bind local-port, call raw/local-port
-          bind secure, wave false
+      wait true
+  send back
+    make connection
+      bind dock, read raw
+      bind host, read host
+      bind port, read port
+      bind secure, read secure
 
-task listen
+task do-listen
   note async
   take port, like size
-  take host, like text, fall text <0.0.0.0>
-  take secure, like bool, fall wave false
+  take host, like text
+  take secure, like bool
   take certificate, like text, need false
   take key, like text, need false
-
-  fork test
-    hook test
+  like listener
+  save raw
+    call tcp/listen
+      read port
+      read host
       read secure
-    hook hold
-      save cert-data
-        call fs-promise/read-file
-          note async
-          read certificate
-          halt kink
-      save key-data
-        call fs-promise/read-file
-          note async
-          read key
-          halt kink
-      save raw
-        call tls/create-server
-          make options
-            bind cert, read cert-data
-            bind key, read key-data
-      call make-promise
-        task resolve
-          take ok
-          call raw/listen
-            read port
-            read host
-            task on-listen
-              call ok
-        note async
-        halt kink
-      send back
-        make listener
-          bind dock, read raw
-          bind host, read host
-          bind port, read port
-    hook miss
-      save raw
-        call net/create-server
-      call make-promise
-        task resolve
-          take ok
-          call raw/listen
-            read port
-            read host
-            task on-listen
-              call ok
-        note async
-        halt kink
-      send back
-        make listener
-          bind dock, read raw
-          bind host, read host
-          bind port, read port
+      read certificate
+      read key
+      wait true
+  send back
+    make listener
+      bind dock, read raw
+      bind host, read host
+      bind port, read port

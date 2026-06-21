@@ -89,11 +89,23 @@ export function nativePrelude(
   program: Program,
   env: NativeEnv,
   readRuntime: (path: string) => string | undefined,
+  // the emitted code the prelude will sit in front of. When given, a shim is included only if its global token actually
+  // appears there, so a dock the program never calls (e.g. floating-ui `position` in an app that mounts no panels) does
+  // not pull its third-party dependency into the bundle. Omit to include every dock (the conservative default).
+  usedIn?: string,
 ): string {
   const parts: string[] = []
   const added = new Set<string>()
 
   for (const { name, file } of globalDocks(program)) {
+    // skip a dock whose global is unreferenced in the emitted code (keeps unused native deps out of the bundle)
+    if (
+      usedIn !== undefined &&
+      !new RegExp(`\\b${name.replace(/[^\w]/g, '\\$&')}\\b`).test(usedIn)
+    ) {
+      continue
+    }
+
     const candidates = file
       ? [runtimePathFor(file, env, name), runtimePath(env, name)]
       : [runtimePath(env, name)]

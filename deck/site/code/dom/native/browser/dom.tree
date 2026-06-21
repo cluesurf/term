@@ -226,8 +226,7 @@ task listen-pop
           fork test
             hook test
               call and
-                call starts-with
-                  read href
+                call href/starts-with
                   text </>
                 call is-equal
                   read anchor/host

@@ -9,7 +9,7 @@ import {
   copyFileSync,
   rmSync,
 } from 'fs'
-import { buildSync, version as esbuildVersion } from 'esbuild'
+import { build, buildSync, version as esbuildVersion } from 'esbuild'
 import { compile } from '@cluesurf/make/code/compile/compile'
 import {
   projectResolver,
@@ -173,13 +173,13 @@ function loadHostEnv(appDir: string): string[] {
 // reactive runtime (signals / effects / events) keeps it live, with no second server round-trip. Cached on a content
 // hash of the emitted source + toolchain, so an unchanged app reuses the prior bundle. Best-effort: a client-build
 // failure logs and returns (SSR still serves without it) rather than failing the whole boot.
-function buildClientBundle(opts: {
+async function buildClientBundle(opts: {
   entry: string
   appDir: string
   projectRoot: string
   installRoot: string
   prod: boolean
-}): void {
+}): Promise<void> {
   const { entry, appDir, projectRoot, installRoot, prod } = opts
 
   try {
@@ -199,8 +199,12 @@ function buildClientBundle(opts: {
       return
     }
 
-    const prelude = nativePrelude(result.program, 'browser', p =>
-      existsSync(p) ? readFileSync(p, 'utf8') : undefined,
+    const prelude = nativePrelude(
+      result.program,
+      'browser',
+      p => (existsSync(p) ? readFileSync(p, 'utf8') : undefined),
+      // only prepend shims actually referenced, so an unused dock (e.g. floating-ui `position`) stays out of the bundle
+      result.typescript,
     )
     const source = `${prelude}\n${result.typescript}`
 
@@ -226,6 +230,7 @@ function buildClientBundle(opts: {
     const buildDir = path.join(appDir, 'build')
     mkdirSync(buildDir, { recursive: true })
     const outFile = path.join(buildDir, 'boot.js')
+    const mapFile = path.join(buildDir, 'import-map.json')
     const stampFile = path.join(buildDir, '.boot.js.key')
 
     // the stamp is the content hash of the last-built bundle: if it matches, build/boot.js is already current
@@ -241,28 +246,57 @@ function buildClientBundle(opts: {
     // bundle once into the shared cache dir (keyed by content), then copy into the app's build output
     const cacheOut = path.join(projectRoot, '.seed', 'client', key)
     const cacheFile = path.join(cacheOut, 'boot.js')
+    const cacheMap = path.join(cacheOut, 'import-map.json')
 
     if (!existsSync(cacheFile)) {
       mkdirSync(cacheOut, { recursive: true })
-      // the browser bundle inlines its deps (floating-ui, etc.), so esbuild must resolve bare specifiers. ESM resolves
-      // from the importing file's dir, so link the install's node_modules next to the bundle source.
-      const bundleModules = path.join(cacheOut, 'node_modules')
-      const installModules = path.join(installRoot, 'node_modules')
-
-      if (!existsSync(bundleModules) && existsSync(installModules)) {
-        try {
-          symlinkSync(installModules, bundleModules, 'dir')
-        } catch {
-          // a pre-existing link or a race is fine
-        }
-      }
-
       const srcFile = path.join(cacheOut, 'boot.ts')
       writeFileSync(srcFile, source)
-      buildSync({ entryPoints: [srcFile], outfile: cacheFile, ...bundleConfig })
+
+      // externalize every bare (npm) specifier and load it from a CDN via an import map, so the app needs no local
+      // install of its browser deps (floating-ui, etc.). The app's own code is all relative / inlined, so the only bare
+      // specifiers are genuine third-party packages -- exactly the minimal native edge. Collected here, mapped below.
+      const externals: string[] = []
+      await build({
+        entryPoints: [srcFile],
+        outfile: cacheFile,
+        ...bundleConfig,
+        plugins: [
+          {
+            name: 'externalize-bare-specifiers',
+            setup(b) {
+              b.onResolve({ filter: /^[^./]/ }, args => {
+                if (args.path.startsWith('node:')) {
+                  return { path: args.path, external: true }
+                }
+
+                if (!externals.includes(args.path)) {
+                  externals.push(args.path)
+                }
+
+                return { path: args.path, external: true }
+              })
+            },
+          },
+        ],
+      })
+
+      // map each external to an esm.sh CDN module (a web-standard import map; no bundler or install needed at runtime)
+      const importMap: { imports: Record<string, string> } = { imports: {} }
+
+      for (const dep of externals) {
+        importMap.imports[dep] = `https://esm.sh/${dep}`
+      }
+
+      writeFileSync(cacheMap, JSON.stringify(importMap, null, 2))
     }
 
     copyFileSync(cacheFile, outFile)
+
+    if (existsSync(cacheMap)) {
+      copyFileSync(cacheMap, mapFile)
+    }
+
     writeFileSync(stampFile, key)
     logGood(`Built client bundle -> build/boot.js (${key.slice(0, 8)})`)
   } catch (err) {
@@ -459,7 +493,7 @@ export async function callBoot(input: {
     // so the server-rendered HTML becomes interactive. The app must have a deck.tree root (appDir) to hold `build/`.
     if (env === 'node' && appDir) {
       const prod = process.env.NODE_ENV === 'production'
-      buildClientBundle({ entry, appDir, projectRoot, installRoot, prod })
+      await buildClientBundle({ entry, appDir, projectRoot, installRoot, prod })
       // content-hash the cache-bust-critical assets (stylesheet + client bundle) and write the manifest the shell reads
       hashAssets(path.join(appDir, 'build'), prod)
     }
