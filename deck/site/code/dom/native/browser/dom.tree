@@ -11,6 +11,9 @@ load ../global
 load @cluesurf/bind/code/browser/dom/element
   find element
 
+load @cluesurf/bind/code/browser/dom/element-css-inline-style
+  find element-css-inline-style
+
 load @cluesurf/bind/code/browser/dom/node
   find node
 
@@ -59,6 +62,33 @@ task set-attribute
   call made/set-attribute
     read name
     read value
+
+task set-style
+  take node, like view
+  take property, like text
+  take value, like text
+  host made, like element-css-inline-style
+    read node/handle
+  call made/style/set-property
+    read property
+    read value
+    make none
+
+task add-class
+  take node, like view
+  take name, like text
+  host made, like element
+    read node/handle
+  call made/class-list/add
+    read name
+
+task remove-class
+  take node, like view
+  take name, like text
+  host made, like element
+    read node/handle
+  call made/class-list/remove
+    read name
 
 task listen
   take node, like view

@@ -3,7 +3,7 @@
 // Only fires on a simple two-way fork with fully, structurally identical bodies.
 
 import type { Rule } from '@cluesurf/make/code/lint/rule'
-import { statementListsEqual } from '@cluesurf/make/code/lint/expr-equal'
+import { statementListsEqual } from '@cluesurf/make/code/compile/expr-equal'
 
 export const noIdenticalBranches: Rule = {
   name: 'no-identical-branches',

@@ -1,0 +1,31 @@
+
+# Grid — headless responsive grid, ported from the React grid family (mesh/deck/face/code/component/grid). The
+# container is a CSS grid; the column count comes from the pure `compute-fit` logic (logic/grid) fed by the measured
+# container width, applied as a reactive `columns` style/class. Parts: grid (container), grid-item. The theme owns
+# display:grid + gap; `columns` drives grid-template-columns. The JS-measured + virtualized variants (block / flow /
+# virtual) add a ResizeObserver + scroll windowing on top (a dom primitive, the remaining piece); the CSS-grid base
+# here is fully headless + ready to theme.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone grid
+  take host, like view
+  take class
+  take columns
+  zone div
+    bind data-slot, text <grid>
+    bind data-columns, read columns
+    bind class, read class
+    slot
+
+zone grid-item
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <grid-item>
+    bind class, read class
+    slot

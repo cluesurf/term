@@ -1,0 +1,133 @@
+
+# Scope — the focus context across the six interaction levels (cell < row < list/selection < section < surface <
+# global). Each level holds the currently-focused item key as a signal (empty = inactive). Shortcut resolution walks
+# inner -> outer and runs the first action whose scope is active, so one keystroke is unambiguous (e.g. "delete" hits
+# the focused cell if any, else the selection, else nothing). Pure logic, the Zag-model behavior core.
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+
+# the focus context: one signal per level (the focused key, or empty text when that level is inactive)
+form scope
+  link cell, like signal
+  link row, like signal
+  link selection, like signal
+  link section, like signal
+  link surface, like signal
+
+task make-scope
+  like scope
+  send back
+    make scope
+      bind cell
+        call make-signal
+          bind value, text <>
+      bind row
+        call make-signal
+          bind value, text <>
+      bind selection
+        call make-signal
+          bind value, text <>
+      bind section
+        call make-signal
+          bind value, text <>
+      bind surface
+        call make-signal
+          bind value, text <>
+
+# set the focused item at a level (text <> clears it)
+task focus-cell
+  take self, like scope
+  take key, like text
+  call write-signal
+    bind self, read self/cell
+    bind value, read key
+
+task focus-row
+  take self, like scope
+  take key, like text
+  call write-signal
+    bind self, read self/row
+    bind value, read key
+
+task focus-selection
+  take self, like scope
+  take key, like text
+  call write-signal
+    bind self, read self/selection
+    bind value, read key
+
+task focus-section
+  take self, like scope
+  take key, like text
+  call write-signal
+    bind self, read self/section
+    bind value, read key
+
+task focus-surface
+  take self, like scope
+  take key, like text
+  call write-signal
+    bind self, read self/surface
+    bind value, read key
+
+# the narrowest active level's name ("cell" | "row" | "list" | "section" | "surface" | "global"), for resolution
+task active-scope
+  take self, like scope
+  like text
+  send back
+    fork test
+      hook test
+        call has-focus
+          bind self, read self/cell
+      hook hold
+        text <cell>
+      hook miss
+        fork test
+          hook test
+            call has-focus
+              bind self, read self/row
+          hook hold
+            text <row>
+          hook miss
+            fork test
+              hook test
+                call has-focus
+                  bind self, read self/selection
+              hook hold
+                text <list>
+              hook miss
+                fork test
+                  hook test
+                    call has-focus
+                      bind self, read self/section
+                  hook hold
+                    text <section>
+                  hook miss
+                    fork test
+                      hook test
+                        call has-focus
+                          bind self, read self/surface
+                      hook hold
+                        text <surface>
+                      hook miss
+                        text <global>
+
+# is a level active (its key is non-empty)
+task has-focus
+  take self, like signal
+  like boolean
+  send back
+    fork test
+      hook test
+        call is-equal
+          call read-signal
+            bind self, read self
+          text <>
+      hook hold
+        wave false
+      hook miss
+        wave true

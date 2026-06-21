@@ -37,7 +37,15 @@ export function checkTotality(
       {checkPositivity(statement, file, errors)}
   }
 
-  checkTermination(program, file, warnings)
+  // Termination analysis is best-effort and warnings-only: it must never crash
+  // the build. A bug or a malformed/partial AST degrades to "no termination
+  // warnings" rather than taking down an otherwise-valid compile. (Positivity
+  // above is a soundness error and is intentionally not wrapped.)
+  try {
+    checkTermination(program, file, warnings)
+  } catch {
+    // swallow: a failed termination pass yields no warnings, never an error.
+  }
 
   return { errors, warnings }
 }
@@ -104,7 +112,10 @@ function strictlyDecreases(
 ): boolean {
   // a field bound by matching the parameter is structurally smaller than it (this is what makes a recursive function
   // over an inductive type, like `plus` recursing on `succ`'s predecessor, provably terminating)
-  if (arg.form === 'variable' && memberOf.get(arg.name) === paramName)
+  if (
+    arg.form === 'variable' &&
+    memberOf?.get(arg.name) === paramName
+  )
     {return true}
 
   if (arg.form === 'member')
@@ -152,10 +163,24 @@ function terminationVerdict(program: Program): Map<string, boolean> {
 
   const names = new Set(functions.keys())
 
+  // variant name -> its field names, so a recursion on a destructured field counts as structural descent
+  const variantFields = new Map<string, string[]>()
+
+  for (const statement of program)
+    {if (statement.form === 'record-type')
+      {for (const variant of statement.variants)
+        {variantFields.set(
+          variant.name,
+          variant.fields.map(f => f.name),
+        )}}}
+
   const edges = new Map<string, Set<string>>()
 
   for (const [name, statement] of functions)
-    {edges.set(name, collectCalledNames(statement.body, names))}
+    {edges.set(
+      name,
+      collectCalledNames(statement.body, names, variantFields),
+    )}
 
   const reaches = (from: string): Set<string> => {
     const seen = new Set<string>()
@@ -183,16 +208,16 @@ function terminationVerdict(program: Program): Map<string, boolean> {
     }
 
     const paramNames = statement.params.map(p => p.name)
-    const calls: Expression[][] = []
-    collectSelfCalls(statement.body, name, calls)
+    const calls: SelfCall[] = []
+    collectSelfCalls(statement.body, name, calls, variantFields)
 
     let positions = new Set<number>(paramNames.map((_, i) => i))
 
-    for (const args of calls) {
+    for (const { args, memberOf } of calls) {
       const decreasing = new Set<number>()
 
       for (let i = 0; i < paramNames.length && i < args.length; i++) {
-        if (strictlyDecreases(args[i]!, paramNames[i]!))
+        if (strictlyDecreases(args[i]!, paramNames[i]!, memberOf))
           {decreasing.add(i)}
       }
 
@@ -233,8 +258,8 @@ function checkTermination(
     if (ok) {continue}
 
     const statement = byName.get(name)!
-    const calls: Expression[][] = []
-    collectSelfCalls(statement.body, name, calls)
+    const calls: SelfCall[] = []
+    collectSelfCalls(statement.body, name, calls, new Map())
 
     const reason =
       calls.length === 0
@@ -255,11 +280,16 @@ function checkTermination(
 function collectCalledNames(
   body: Statement[],
   names: Set<string>,
+  variantFields: Map<string, string[]>,
 ): Set<string> {
   const found = new Set<string>()
-  collectAllCalls(body, callee => {
-    if (names.has(callee)) {found.add(callee)}
-  })
+  collectAllCalls(
+    body,
+    callee => {
+      if (names.has(callee)) {found.add(callee)}
+    },
+    variantFields,
+  )
 
   return found
 }
@@ -302,7 +332,10 @@ function walkCalls(
     args: Expression[],
     memberOf: Map<string, string>,
   ) => void,
-  variantFields: Map<string, string[]>,
+  // both maps default so a malformed / partially-built AST can never deref an
+  // undefined map here (a missing map degrades to "no structural info", at worst
+  // a spurious non-fatal termination warning, never a compiler crash).
+  variantFields: Map<string, string[]> = new Map(),
   memberOf: Map<string, string> = new Map(),
 ): void {
   const visitExpression = (node: Expression): void => {
@@ -408,7 +441,7 @@ function walkCalls(
           if (subjectVar) {
             branchMembers = new Map(memberOf)
 
-            for (const fieldName of variantFields.get(branch.label) ??
+            for (const fieldName of variantFields?.get(branch.label) ??
               [])
               {branchMembers.set(fieldName, subjectVar)}
           }

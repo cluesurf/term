@@ -1,0 +1,90 @@
+
+# Grid fit — the pure responsive-column algorithm, ported faithfully from the React grid's `computeFit`
+# (mesh/deck/face/code/component/grid/shared.ts). Picks the largest column count whose item width still meets
+# `min-width`, capped by `max-columns`, `child-count`, and `max-width`. Pure logic (no DOM), so it is testable and
+# reused by every grid variant. The container-width input comes from a ResizeObserver binding (a dom primitive, the
+# measured/virtual variants' remaining piece); CSS-grid layout needs only this math + a class.
+
+load @cluesurf/base/code/math
+  find minimum
+
+form grid-fit
+  link columns, like number
+  link item-width, like number
+
+task compute-fit
+  take container-width, like number
+  take max-columns, like number
+  take min-width, like number
+  take max-width, like number
+  take gap, like number
+  take child-count, like number
+  like grid-fit
+  # nothing to lay out: an unmeasured container (<= 1px) or no children
+  fork test
+    hook test
+      call is-maximum
+        read container-width
+        code 1
+    hook hold
+      send back
+        make grid-fit
+          bind columns, code 0
+          bind item-width, code 0
+  # start at the most columns allowed, shrink until the item width fits min-width
+  save columns
+    call minimum
+      read max-columns
+      read child-count
+  save width, code 0
+  walk test
+    hook test
+      call is-above
+        read columns
+        code 0
+    hook hold
+      save candidate
+        call divide
+          call subtract
+            read container-width
+            call multiply
+              read gap
+              call subtract
+                read columns
+                code 1
+          read columns
+      fork test
+        hook test
+          call is-minimum
+            read candidate
+            read min-width
+        hook hold
+          save width
+            call minimum
+              read max-width
+              read candidate
+          halt
+        hook miss
+          save columns
+            call subtract
+              read columns
+              code 1
+  # never fewer than one column
+  fork test
+    hook test
+      call is-above
+        read columns
+        code 0
+    hook hold
+      send back
+        make grid-fit
+          bind columns, read columns
+          bind item-width, read width
+    hook miss
+      send back
+        make grid-fit
+          bind columns, code 1
+          bind item-width
+            call minimum
+              read max-width
+              read container-width

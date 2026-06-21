@@ -35,6 +35,7 @@
     "prettier": "^3.6.2",
     "tsc-alias": "^1.8.16",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "z3-solver": "^4.13.0"
   }
 }

@@ -10,6 +10,7 @@ import type {
   ZoneNode,
 } from '@cluesurf/make/code/compile/node'
 import { egraphArith } from '@cluesurf/make/code/ir/egraph-arith'
+import { expressionsEqual } from '@cluesurf/make/code/compile/expr-equal'
 
 // the render + reactive runtime primitives emitZone (code/compile/typescript.ts) synthesizes as raw calls in a zone's
 // output. They never appear as call nodes in the AST, so reference-counting cannot see them. When a program contains
@@ -774,6 +775,28 @@ function simplifyExpression(node: Expression): Expression {
             {return { form: 'boolean', value: false, span: node.span }}
           if (isBool(right, false) && isPureExpr(left))
             {return { form: 'boolean', value: false, span: node.span }}
+          // idempotence and absorption over pure operands: `x && x` -> x, `x && (x || y)` -> x, `(x || y) && x` -> x.
+          // Both sides pure makes the implied duplicate / drop / reorder sound (no effect is added or lost; y is
+          // never observed in either form). Catches forms the greedy literal rules above miss across nesting.
+          if (isPureExpr(left) && isPureExpr(right)) {
+            if (expressionsEqual(left, right)) {return left}
+
+            if (
+              right.form === 'binary' &&
+              right.op === '||' &&
+              (expressionsEqual(left, right.left) ||
+                expressionsEqual(left, right.right))
+            )
+              {return left}
+
+            if (
+              left.form === 'binary' &&
+              left.op === '||' &&
+              (expressionsEqual(right, left.left) ||
+                expressionsEqual(right, left.right))
+            )
+              {return right}
+          }
           break
         case '||':
           // x || false -> x, false || x -> x. true || x -> true (x is not evaluated). x || true -> true only when x
@@ -784,6 +807,26 @@ function simplifyExpression(node: Expression): Expression {
             {return { form: 'boolean', value: true, span: node.span }}
           if (isBool(right, true) && isPureExpr(left))
             {return { form: 'boolean', value: true, span: node.span }}
+          // idempotence and absorption (dual of `&&`): `x || x` -> x, `x || (x && y)` -> x, `(x && y) || x` -> x.
+          if (isPureExpr(left) && isPureExpr(right)) {
+            if (expressionsEqual(left, right)) {return left}
+
+            if (
+              right.form === 'binary' &&
+              right.op === '&&' &&
+              (expressionsEqual(left, right.left) ||
+                expressionsEqual(left, right.right))
+            )
+              {return left}
+
+            if (
+              left.form === 'binary' &&
+              left.op === '&&' &&
+              (expressionsEqual(right, left.left) ||
+                expressionsEqual(right, left.right))
+            )
+              {return right}
+          }
           break
         default:
           break

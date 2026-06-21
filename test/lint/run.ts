@@ -225,6 +225,40 @@ function main(): void {
     )
   }
 
+  // L012: a fork test whose two branches run identical statements
+  {
+    const same = `task f\n  take c, like boolean\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 1\n`
+    ok(
+      'L012 flags identical fork branches',
+      findings(same).filter(f => f.code === 'L012').length === 1,
+      JSON.stringify(findings(same)),
+    )
+
+    const diverge = `task f\n  take c, like boolean\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 2\n`
+    ok(
+      'L012 leaves diverging branches alone',
+      findings(diverge).filter(f => f.code === 'L012').length === 0,
+      diverge,
+    )
+  }
+
+  // L013: two arms of a fork case with the same label
+  {
+    const dup = `form color\n  case red\n  case green\n\ntask f\n  take c, like color\n  like text\n  fork case, read c\n    case red\n      send back, text <a>\n    case green\n      send back, text <b>\n    case red\n      send back, text <c>\n`
+    ok(
+      'L013 flags a duplicated case label',
+      findings(dup).filter(f => f.code === 'L013').length === 1,
+      JSON.stringify(findings(dup)),
+    )
+
+    const distinct = `form color\n  case red\n  case green\n\ntask f\n  take c, like color\n  like text\n  fork case, read c\n    case red\n      send back, text <a>\n    case green\n      send back, text <b>\n`
+    ok(
+      'L013 leaves distinct cases alone',
+      findings(distinct).filter(f => f.code === 'L013').length === 0,
+      distinct,
+    )
+  }
+
   console.log(`\nlint: ${pass} pass, ${fail} fail`)
 }
 

@@ -254,7 +254,15 @@ export function elaborateReport(
   resetMetas()
   resetDefinitions()
 
-  const terminating = terminatingFunctions(program) // gate for transparent definitions
+  // gate for transparent definitions. Best-effort: a failure here just means no
+  // function is treated as transparent (a sound, conservative fallback), never a
+  // compiler crash.
+  let terminating: Set<string>
+  try {
+    terminating = terminatingFunctions(program)
+  } catch {
+    terminating = new Set<string>()
+  }
   const diagnostics: Diagnostic[] = []
   const verified: string[] = []
   const discharged: Span[] = [] // holds the kernel proved by definitional equality (the non-linear fallback)
@@ -1118,6 +1126,180 @@ export function elaborateReport(
     }
   }
 
+  // discharge `left == right` modulo a set of induction-hypothesis equalities, by congruence closure over normal forms.
+  // Both sides (and each hypothesis) are quoted to a normal-form term; the hypotheses are merged and app-congruence is
+  // propagated to a fixpoint; the goal holds when the two sides land in the same class. With no hypotheses this is plain
+  // definitional equality (the base case of an induction). Sound: it only ever ADDS true (induction-hypothesis)
+  // equalities to definitional equality, the exact reasoning the type's eliminator licenses.
+  function dischargeModulo(
+    level: number,
+    left: Value,
+    right: Value,
+    hypotheses: [Value, Value][],
+  ): boolean {
+    if (areConvertible(level, left, right)) {return true}
+
+    if (hypotheses.length === 0) {return false}
+
+    // union-find over canonical normal-form strings, with app nodes carrying their (fun, arg) child keys
+    const parent = new Map<string, string>()
+    const apps = new Map<string, [string, string]>()
+
+    const add = (term: Term): string => {
+      const key = showTerm(term)
+
+      if (!parent.has(key)) {
+        parent.set(key, key)
+
+        if (term.tag === 'app')
+          {apps.set(key, [add(term.fun), add(term.arg)])}
+      }
+
+      return key
+    }
+
+    const find = (x: string): string => {
+      let root = x
+
+      while (parent.get(root) !== root) {root = parent.get(root)!}
+
+      return root
+    }
+
+    const union = (a: string, b: string): void => {
+      const ra = find(a)
+      const rb = find(b)
+
+      if (ra !== rb) {parent.set(ra, rb)}
+    }
+
+    const leftKey = add(quote(level, left))
+    const rightKey = add(quote(level, right))
+
+    for (const [a, b] of hypotheses)
+      {union(add(quote(level, a)), add(quote(level, b)))}
+
+    // propagate congruence: two applications with pairwise-equal children are themselves equal
+    let changed = true
+
+    while (changed) {
+      changed = false
+
+      const entries = [...apps.entries()]
+
+      for (let i = 0; i < entries.length; i++)
+        {for (let j = i + 1; j < entries.length; j++) {
+          const [ki, [fi, ai]] = entries[i]!
+          const [kj, [fj, aj]] = entries[j]!
+
+          if (
+            find(ki) !== find(kj) &&
+            find(fi) === find(fj) &&
+            find(ai) === find(aj)
+          ) {
+            union(ki, kj)
+            changed = true
+          }
+        }}
+    }
+
+    return find(leftKey) === find(rightKey)
+  }
+
+  // structural induction over an inductive self-type: the `fold <var>` tactic when <var> ranges over a record-type
+  // enum. Proves a universal equation L(x) == R(x) for ALL x of the type by checking one case per constructor, using
+  // the induction hypothesis on each recursive field as a rewrite (via dischargeModulo). This is exactly the type's
+  // dependent eliminator, so it is sound. It substitutes the constructor through the evaluation environment (no surface
+  // rewriting, no de Bruijn shifting), re-elaborating the goal in a context extended by the constructor's fields.
+  // Returns false (never throws) for anything outside its fragment, so the ring-level `checkFold` still gets a turn.
+  function structuralInduction(
+    goal: Extract<Expression, { form: 'binary' }>,
+    scope: Scope,
+    context: Context,
+    inductVar: string,
+  ): boolean {
+    if (goal.op !== '==') {return false}
+
+    const varLevel = scope.get(inductVar)
+
+    if (varLevel === undefined) {return false}
+
+    try {
+      const index = context.level - varLevel - 1
+      const typeValue = context.types[index]
+
+      if (!typeValue) {return false}
+
+      const typeTerm = quote(context.level, typeValue)
+
+      if (typeTerm.tag !== 'const') {return false}
+
+      const variants = variantNames.get(typeTerm.name)
+
+      if (!variants || variants.length === 0) {return false}
+
+      for (const variant of variants) {
+        const fields = variantFieldInfo.get(variant) ?? []
+        const k = fields.length
+
+        // extend the context with one fresh free variable per field of this constructor
+        let inner = context
+
+        for (const field of fields)
+          {inner = bind(inner, 'many', evaluate(inner.env, field.type))}
+
+        // the constructor applied to its fresh field variables (field j sits at de Bruijn index k-1-j in `inner`)
+        const consValue = evaluate(
+          inner.env,
+          apply(
+            constant(variant),
+            ...fields.map((_, j) => variable(k - 1 - j)),
+          ),
+        )
+
+        // re-elaborate the goal in the extended context: the induction variable is now at index `index + k`
+        const leftTerm = expr(goal.left, scope, inner)
+        const rightTerm = expr(goal.right, scope, inner)
+
+        if (!leftTerm || !rightTerm) {return false}
+
+        const subject = index + k
+
+        // the case goal: substitute the induction variable with the constructor, through the environment
+        const caseEnv = [...inner.env]
+        caseEnv[subject] = consValue
+        const caseLeft = evaluate(caseEnv, leftTerm)
+        const caseRight = evaluate(caseEnv, rightTerm)
+
+        // induction hypotheses: for each RECURSIVE field (its type is this same enum), assume L == R at that field
+        const hypotheses: [Value, Value][] = []
+
+        fields.forEach((field, j) => {
+          if (
+            field.type.tag === 'const' &&
+            field.type.name === typeTerm.name
+          ) {
+            const ihEnv = [...inner.env]
+            ihEnv[subject] = inner.env[k - 1 - j]!
+            hypotheses.push([
+              evaluate(ihEnv, leftTerm),
+              evaluate(ihEnv, rightTerm),
+            ])
+          }
+        })
+
+        if (
+          !dischargeModulo(inner.level, caseLeft, caseRight, hypotheses)
+        )
+          {return false}
+      }
+
+      return true
+    } catch {
+      return false
+    }
+  }
+
   // check one `hold` proof obligation (an `a == b` claim plus an optional proof tree) by the KERNEL, in a given
   // scope/context. Used both inside a function body and at the top level. Discharges when the sides are definitionally
   // equal or an explicit proof tree (`calm`/`cite`/`turn`/`link`) closes it, recording the span so the linear prover
@@ -1139,7 +1321,13 @@ export function elaborateReport(
     const tactic = statement.proof?.[0]
 
     if (tactic?.head === 'fold' && tactic.arg) {
-      if (checkFold(program, goal, tactic.arg))
+      // try structural induction over an inductive type first (it handles lists, trees, and the like, and proves the
+      // non-definitional arithmetic laws such as n + 0 == n); fall back to ring-level Peano induction for the numeric
+      // accumulator recurrences (closed-form sums) that the symbolic ring certificate decides.
+      if (
+        structuralInduction(goal, scope, context, tactic.arg) ||
+        checkFold(program, goal, tactic.arg)
+      )
         {discharged.push(statement.span)}
       else
         {diagnostics.push(

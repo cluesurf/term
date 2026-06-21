@@ -1,0 +1,97 @@
+
+# Calendar — headless date picker grid. Structural parts + a day cell that takes its date `value`, a `press`
+# handler, and reactive `state` (selected/today/outside) for theming. Date math (which days, month nav) is the
+# consumer's (or a future date controller); these are the themeable, a11y-wired grid. Parts: calendar, calendar-header,
+# calendar-title, calendar-nav, calendar-grid, calendar-row, calendar-cell, calendar-day.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/selection
+  find selection-state
+  find is-selected
+  find select-value
+
+zone calendar
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <calendar>
+    bind class, read class
+    slot
+
+zone calendar-header
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <calendar-header>
+    bind class, read class
+    slot
+
+zone calendar-title
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <calendar-title>
+    bind class, read class
+    slot
+
+zone calendar-nav
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <calendar-nav>
+    bind class, read class
+    slot
+
+zone calendar-grid
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <calendar-grid>
+    bind role, text <grid>
+    bind class, read class
+    slot
+
+zone calendar-row
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <calendar-row>
+    bind role, text <row>
+    bind class, read class
+    slot
+
+zone calendar-cell
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <calendar-cell>
+    bind role, text <gridcell>
+    bind class, read class
+    slot
+
+zone calendar-day
+  take host, like view
+  take class
+  take control
+  take value
+  zone button
+    bind type, text <button>
+    bind data-slot, text <calendar-day>
+    bind role, text <gridcell>
+    bind data-state
+      call selection-state
+        bind self, read control
+        bind value, read value
+    bind aria-selected
+      call is-selected
+        bind self, read control
+        bind value, read value
+    hook click
+      call select-value
+        bind self, read control
+        bind value, read value
+    bind class, read class
+    slot

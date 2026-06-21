@@ -1,0 +1,55 @@
+
+# Type — headless typography family, ported from the React type components (mesh/deck/face/code/component/type). The
+# behaviors that are pure CSS are fully headless here (theme keys off the data-attrs); the one that needs measurement
+# (`fitted`, which JS-fits the font size to the container) is the themeable shell + a noted dom-primitive follow-up.
+# Parts: text (base typography: data-size / data-weight), balanced (text-wrap: balance), truncated (line-clamp to
+# data-lines), fitted (scale text to fill its box).
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+# base typography. `size` / `weight` are data attributes a theme maps to font tokens; no baked styles.
+zone text
+  take host, like view
+  take class
+  take size
+  take weight
+  zone span
+    bind data-slot, text <text>
+    bind data-size, read size
+    bind data-weight, read weight
+    bind class, read class
+    slot
+
+# balanced wrapping — the theme applies `text-wrap: balance` on [data-slot=balanced]. Pure CSS, fully headless.
+zone balanced
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <balanced>
+    bind class, read class
+    slot
+
+# truncate to `lines` lines with an ellipsis — the theme applies line-clamp keyed off data-lines. Pure CSS.
+zone truncated
+  take host, like view
+  take class
+  take lines
+  zone span
+    bind data-slot, text <truncated>
+    bind data-lines, read lines
+    bind class, read class
+    slot
+
+# fit the text to fill its container (the font size scales to the box). The measurement + resize loop is a dom
+# primitive (ResizeObserver + a binary-search on font size), the remaining piece; this is the themeable shell.
+zone fitted
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <fitted>
+    bind class, read class
+    slot

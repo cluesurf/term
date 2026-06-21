@@ -1,0 +1,7 @@
+task triple
+  take n, like number
+  like number
+  send back
+    call multiply
+      read n
+      mark 3

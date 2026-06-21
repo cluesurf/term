@@ -1,0 +1,68 @@
+
+# Registry — the action registry, the heart of the interaction system. One `action` declaration (a named verb with a
+# scope + impl) surfaces everywhere it makes sense: command palette, context menu, toolbar, keyboard shortcut. The
+# registry holds them all; the palette enumerates them, shortcuts resolve through them, undo records them. Pure logic
+# (a signal over a list of actions), the Zag-model behavior core. See note/seed/face-interaction-system.md.
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+load @cluesurf/base/code/list
+  find list
+
+# a named verb. `scope` is one of cell | row | list | section | surface | global. `run` is the impl.
+form action
+  link key, like text
+  link name, like text
+  link scope, like text
+  link run
+    like task
+
+# create a registry (a signal holding the action list)
+task make-registry
+  like signal
+  send back
+    call make-signal
+      bind value
+        make list
+
+# register an action
+task register-action
+  take self, like signal
+  take entry, like action
+  save items
+    call read-signal
+      bind self, read self
+  call items/push
+    read entry
+  call write-signal
+    bind self, read self
+    bind value, read items
+
+# every registered action (for the palette to enumerate)
+task list-actions
+  take self, like signal
+  like list
+  send back
+    call read-signal
+      bind self, read self
+
+# run the action with the given key (the palette / a shortcut calls this)
+task run-action
+  take self, like signal
+  take key, like text
+  save items
+    call read-signal
+      bind self, read self
+  walk list, read items
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal
+            read entry/key
+            read key
+        hook hold
+          call entry/run

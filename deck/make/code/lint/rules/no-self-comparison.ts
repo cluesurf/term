@@ -7,7 +7,7 @@ import type { Rule } from '@cluesurf/make/code/lint/rule'
 import {
   expressionsEqual,
   isStable,
-} from '@cluesurf/make/code/lint/expr-equal'
+} from '@cluesurf/make/code/compile/expr-equal'
 
 const COMPARE = new Set<BinaryOp>(['==', '!=', '<', '<=', '>', '>='])
 

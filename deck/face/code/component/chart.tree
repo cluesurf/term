@@ -1,0 +1,34 @@
+
+# Chart — headless chart container. A themeable wrapper + tooltip / legend slots; the actual plotting delegates to a
+# chart engine (a canvas/svg render or a docked chart lib) the consumer mounts inside. Parts: chart, chart-tooltip,
+# chart-legend. role=img with an aria-label for a11y.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone chart
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <chart>
+    bind role, text <img>
+    bind class, read class
+    slot
+
+zone chart-tooltip
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <chart-tooltip>
+    bind class, read class
+    slot
+
+zone chart-legend
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <chart-legend>
+    bind class, read class
+    slot

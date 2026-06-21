@@ -27,6 +27,7 @@ import { noDuplicateBranchCondition } from '@cluesurf/make/code/lint/rules/no-du
 import { noSelfAssignment } from '@cluesurf/make/code/lint/rules/no-self-assignment'
 import { noUnreachableCode } from '@cluesurf/make/code/lint/rules/no-unreachable-code'
 import { noIdenticalBranches } from '@cluesurf/make/code/lint/rules/no-identical-branches'
+import { noDuplicateCase } from '@cluesurf/make/code/lint/rules/no-duplicate-case'
 
 // the default rule set, keyed by stable code for config and suppression
 export const RULES: Rule[] = [
@@ -41,6 +42,7 @@ export const RULES: Rule[] = [
   noSelfAssignment,
   noUnreachableCode,
   noIdenticalBranches,
+  noDuplicateCase,
 ]
 
 export type LintConfig = {

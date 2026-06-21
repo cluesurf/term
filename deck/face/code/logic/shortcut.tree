@@ -1,0 +1,65 @@
+
+# Shortcut — keyboard bindings that resolve through the action registry. A binding maps a key chord ("mod+k",
+# "mod+z") to an action key; `resolve-key` looks up the chord and runs the bound action via the registry, so every
+# shortcut is also a palette entry (one source of truth). Pure logic; the actual keydown listener is wired by the app
+# shell (it calls `resolve-key` with the pressed chord). See note/seed/face-interaction-system.md.
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+load @cluesurf/base/code/list
+  find list
+load ./registry
+  find run-action
+
+# a key binding: a chord string -> the action key to run
+form binding
+  link chord, like text
+  link action, like text
+
+# create a shortcut map (a signal holding the binding list)
+task make-shortcuts
+  like signal
+  send back
+    call make-signal
+      bind value
+        make list
+
+# register a key chord -> action binding
+task bind-key
+  take self, like signal
+  take chord, like text
+  take action, like text
+  save items
+    call read-signal
+      bind self, read self
+  call items/push
+    make binding
+      bind chord, read chord
+      bind action, read action
+  call write-signal
+    bind self, read self
+    bind value, read items
+
+# resolve a pressed chord: find its binding and run the bound action through the registry
+task resolve-key
+  take self, like signal
+  take registry, like signal
+  take chord, like text
+  save items
+    call read-signal
+      bind self, read self
+  walk list, read items
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal
+            read entry/chord
+            read chord
+        hook hold
+          call run-action
+            bind self, read registry
+            bind key, read entry/action

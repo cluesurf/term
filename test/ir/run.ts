@@ -442,6 +442,79 @@ task f
     'return a - b',
   )
 
+  // boolean idempotence: x && x -> x, x || x -> x (pure operands)
+  expectContains(
+    'idempotence: x && x -> x',
+    `task f
+  take x, like boolean
+  like boolean
+  send back
+    meet and
+      read x
+      read x
+`,
+    'return x',
+  )
+  expectContains(
+    'idempotence: x || x -> x',
+    `task f
+  take x, like boolean
+  like boolean
+  send back
+    meet or
+      read x
+      read x
+`,
+    'return x',
+  )
+
+  // boolean absorption: x && (x || y) -> x, x || (x && y) -> x
+  expectContains(
+    'absorption: x && (x || y) -> x',
+    `task f
+  take x, like boolean
+  take y, like boolean
+  like boolean
+  send back
+    meet and
+      read x
+      meet or
+        read x
+        read y
+`,
+    'return x',
+  )
+  expectContains(
+    'absorption: x || (x && y) -> x',
+    `task f
+  take x, like boolean
+  take y, like boolean
+  like boolean
+  send back
+    meet or
+      read x
+      meet and
+        read x
+        read y
+`,
+    'return x',
+  )
+
+  // soundness: distinct operands are preserved (no spurious collapse)
+  expectContains(
+    'x && y is preserved',
+    `task f
+  take x, like boolean
+  take y, like boolean
+  like boolean
+  send back
+    meet and
+      read x
+      read y
+`,
+    'return x && y',
+  )
+
   console.log(`\nir: ${pass} pass, ${fail} fail`)
 }
 

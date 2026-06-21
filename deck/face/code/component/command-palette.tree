@@ -1,0 +1,47 @@
+
+# Command palette — the registry-wired Cmd+K surface (the primary interaction view). Takes the action `registry` and
+# renders every action as a runnable item; clicking one runs it through the registry. This is the view over the
+# behavior core (logic/registry): one action declaration shows up here AND as a shortcut AND in menus. The search
+# input + open/close + highlighted-index are layered on with a query signal + the disclosure/selection controllers by
+# the app shell; this is the themeable, registry-driven list.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/registry
+  find list-actions
+  find run-action
+
+zone command-palette
+  take host, like view
+  take class
+  take registry, like signal
+  save actions
+    call list-actions
+      bind self, read registry
+  zone div
+    bind data-slot, text <command-palette>
+    bind role, text <dialog>
+    bind class, read class
+    zone input
+      bind data-slot, text <command-input>
+      bind type, text <text>
+      bind placeholder, text <Type a command...>
+    zone div
+      bind data-slot, text <command-list>
+      bind role, text <listbox>
+      walk list, read actions
+        hook next
+          take site, name entry
+          zone button
+            bind type, text <button>
+            bind data-slot, text <command-item>
+            bind role, text <option>
+            hook click
+              call run-action
+                bind self, read registry
+                bind key, read entry/key
+            read
+              read entry/name

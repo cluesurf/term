@@ -1,0 +1,7 @@
+task add-one
+  take n, like number
+  like number
+  send back
+    call add
+      read n
+      text <oops>
