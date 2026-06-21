@@ -268,13 +268,41 @@ task shout
 
 ---
 
-## Working now
+## 16. Code lens — reference counts
 
-Everything in this sheet: highlighting, diagnostics, **rich markdown hover** (signatures + types), completion (**scope, members after `/`, keyword snippets, imported callables, import-path, exports, argument-type ranking**), go-to-definition (**same file and cross-file**), find references, rename, document symbols (**document-scoped — no import leak**), signature help (**incl. imported functions**), and the **auto-import code action**. Stdlib imports resolve. The server is incremental (warm per-document, re-checks only changed definitions) so it stays live on every keystroke.
+**Action:** open any file with a few `task` / `form` / `mask` definitions.
+**Check:** a small `N references` lens sits above each definition.
 
-## Not wired yet
+---
 
-- **Find references / rename across files** — correct and document-scoped today; a *workspace-wide* search (uses in other files) is a later phase.
-- **Inlay hints, semantic tokens, code lens** — plan phase 4.
+## 17. Inlay hints — inferred types
+
+```
+task demo
+  like number
+  save x
+    code 5
+  send back
+    read x
+```
+
+**Check:** an inline `: number` hint appears after `x` (an un-annotated binding). A binding written `save x, like number` shows no hint.
+
+---
+
+## 18. Semantic tokens — precise coloring
+
+**Action:** open any file (semantic highlighting is automatic).
+**Check:** identifiers are colored by meaning — a `task` name as a function, a `form` as a type, a `mask` as an interface, parameters and locals distinctly — beyond what the TextMate grammar alone can tell apart.
+
+---
+
+## Working now (everything)
+
+Highlighting, diagnostics, **rich markdown hover** (signatures + types), completion (**scope, members after `/`, keyword snippets, imported callables, import-path, exports, argument-type ranking**), go-to-definition (**same file and cross-file**), find references, rename, document symbols (**document-scoped — no import leak**), signature help (**incl. imported functions**), the **auto-import code action**, **code lens** reference counts, **inlay hints** for inferred types, and **semantic tokens**. Stdlib imports resolve. The server is incremental (warm per-document, re-checks only changed definitions) so it stays live on every keystroke.
+
+## Beyond this sheet
+
+- **Workspace-wide references / rename** — today they are correct but single-file; searching uses across *other* files is a later phase.
 
 All tracked in `note/seed/language-server-plan.md`.

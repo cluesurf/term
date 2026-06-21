@@ -1,0 +1,64 @@
+
+# Popover — headless, behavior-complete. The logic is the shared `disclosure` controller (logic/disclosure); these
+# parts are thin views that bind its reactive fields (the Zag "connect" model). The consumer creates one controller
+# (`make-disclosure`) and passes it to both the trigger and the content as `control`:
+#
+#   save panel, call make-disclosure / bind start, wave false
+#   zone popover-trigger / bind control, read panel / text <Open>
+#   zone popover-content / bind control, read panel / ...
+#
+# The trigger toggles it and reflects `aria-expanded`; the content mounts only while open and carries a reactive
+# `data-state` (open/closed) so a theme animates it in CSS. No baked styling; positioning is added via logic/position
+# (floating-ui). Parts: popover, popover-trigger, popover-content.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/disclosure
+  find disclosure-open
+  find disclosure-state
+  find toggle-disclosure
+
+zone popover
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <popover>
+    bind class, read class
+    slot
+
+zone popover-trigger
+  take host, like view
+  take class
+  take control
+  zone button
+    bind type, text <button>
+    bind data-slot, text <popover-trigger>
+    bind aria-expanded
+      call disclosure-open
+        bind self, read control
+    bind class, read class
+    hook click
+      call toggle-disclosure
+        bind self, read control
+    slot
+
+zone popover-content
+  take host, like view
+  take class
+  take control
+  fork test
+    hook test
+      call disclosure-open
+        bind self, read control
+    hook hold
+      zone div
+        bind data-slot, text <popover-content>
+        bind role, text <dialog>
+        bind data-state
+          call disclosure-state
+            bind self, read control
+        bind class, read class
+        slot

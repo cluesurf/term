@@ -172,6 +172,59 @@ function main(): void {
     )
   }
 
+  // L009: two branches of a fork test with the same condition (the later one is dead)
+  {
+    const cond = (n: number) =>
+      `  hook test\n    call is-above\n      read x\n      code 5\n  hook hold\n    send back\n      code ${n}\n`
+    const dup = `fork test\n${cond(1)}${cond(2)}`
+    ok(
+      'L009 flags a duplicated branch condition',
+      findings(dup).filter(f => f.code === 'L009').length === 1,
+      JSON.stringify(findings(dup)),
+    )
+
+    const distinct = `fork test\n  hook test\n    call is-above\n      read x\n      code 5\n  hook hold\n    send back\n      code 1\n  hook test\n    call is-above\n      read x\n      code 9\n  hook hold\n    send back\n      code 2\n`
+    ok(
+      'L009 leaves distinct conditions alone',
+      findings(distinct).filter(f => f.code === 'L009').length === 0,
+      distinct,
+    )
+  }
+
+  // L010: assigning a place to itself has no effect
+  {
+    const text = `task f\n  take x, like number\n  save x\n    read x\n`
+    ok(
+      'L010 flags a self assignment',
+      findings(text).filter(f => f.code === 'L010').length === 1,
+      JSON.stringify(findings(text)),
+    )
+
+    const real = `task f\n  take x, like number\n  save x\n    call add\n      read x\n      code 1\n`
+    ok(
+      'L010 leaves a real assignment alone',
+      findings(real).filter(f => f.code === 'L010').length === 0,
+      real,
+    )
+  }
+
+  // L011: a statement after a terminator in the same block is unreachable
+  {
+    const text = `task f\n  send back\n    code 1\n  send back\n    code 2\n`
+    ok(
+      'L011 flags a statement after `send back`',
+      findings(text).filter(f => f.code === 'L011').length === 1,
+      JSON.stringify(findings(text)),
+    )
+
+    const clean = `task f\n  send back\n    code 1\n`
+    ok(
+      'L011 leaves a single trailing return alone',
+      findings(clean).filter(f => f.code === 'L011').length === 0,
+      clean,
+    )
+  }
+
   console.log(`\nlint: ${pass} pass, ${fail} fail`)
 }
 

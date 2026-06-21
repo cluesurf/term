@@ -1,0 +1,37 @@
+
+# Tooltip — headless, ported from shadcn/radix (tooltip.tsx). A hover/focus hint. The content exposes `data-state`
+# (open / closed) for fade theming. Parts: tooltip (root), tooltip-trigger, tooltip-content. role=tooltip for a11y.
+# Positioning + open-delay are behavioral add-ons; the parts are the themeable structure.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone tooltip
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <tooltip>
+    bind class, read class
+    slot
+
+zone tooltip-trigger
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <tooltip-trigger>
+    bind class, read class
+    slot
+
+zone tooltip-content
+  take host, like view
+  take class
+  take state
+  zone div
+    bind data-slot, text <tooltip-content>
+    bind data-state, read state
+    bind role, text <tooltip>
+    bind class, read class
+    slot

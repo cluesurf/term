@@ -23,9 +23,27 @@ const ARITH = new Set<BinaryOp>(['+', '-', '*'])
 
 // convert an Expression into the e-graph Expr, recording each variable's original node so it can be restored with its
 // span / binding / type intact. Returns undefined the moment the subtree leaves the sound integer fragment.
+// a canonical structural key for a pure access path: a variable or a member chain over one (`p.x`, `a.b.c`). Equal
+// keys mean the two expressions read the same place, so they share an e-class -- this is what lets `p.x - p.x` cancel.
+// Returns undefined for anything containing a call or other effectful / non-path node, so such a value is never used
+// as a leaf (never reordered or cancelled).
+function pathKey(node: Expression): string | undefined {
+  if (node.form === 'variable') {return `v:${node.name}`}
+
+  if (node.form === 'member') {
+    const target = pathKey(node.target)
+
+    return target === undefined
+      ? undefined
+      : `${target}.${node.name}#${node.nick ?? ''}`
+  }
+
+  return undefined
+}
+
 function toExpr(
   node: Expression,
-  vars: Map<string, Expression>,
+  leaves: Map<string, Expression>,
 ): Expr | undefined {
   if (node.form === 'integer') {
     // a bigint or an out-of-safe-range literal would fold wrong in JS-number arithmetic
@@ -36,22 +54,32 @@ function toExpr(
     return { t: 'int', value: node.value }
   }
 
-  if (node.form === 'variable') {
-    if (!vars.has(node.name)) {vars.set(node.name, node)}
-
-    return { t: 'var', name: node.name }
-  }
-
   if (node.form === 'binary' && ARITH.has(node.op)) {
-    const left = toExpr(node.left, vars)
+    const left = toExpr(node.left, leaves)
 
     if (!left) {return undefined}
 
-    const right = toExpr(node.right, vars)
+    const right = toExpr(node.right, leaves)
 
     if (!right) {return undefined}
 
     return { t: 'op', op: node.op, left, right }
+  }
+
+  // a pure, integer-typed leaf: a variable or a member chain over one. The integer-type guard keeps it sound -- float
+  // arithmetic is non-associative ((f + 0.1) + 0.2 != f + 0.3) and `f - f` is NaN when f is Inf/NaN, so reassociating
+  // or cancelling a non-integer leaf is wrong. Bail on float, unknown, dynamic, or a missing type. A call or other
+  // effectful node has no path key, so it is never admitted.
+  if (node.form === 'variable' || node.form === 'member') {
+    if (node.type?.kind !== 'number') {return undefined}
+
+    const key = pathKey(node)
+
+    if (key === undefined) {return undefined}
+
+    if (!leaves.has(key)) {leaves.set(key, node)}
+
+    return { t: 'var', name: key }
   }
 
   return undefined
@@ -62,7 +90,7 @@ function toExpr(
 // BinaryOp, so the cast is sound.
 function fromExpr(
   expr: Expr,
-  vars: Map<string, Expression>,
+  leaves: Map<string, Expression>,
   span: Span,
 ): Expression | undefined {
   switch (expr.t) {
@@ -71,16 +99,16 @@ function fromExpr(
 
       return { form: 'integer', value: expr.value, span }
     case 'var':
-      // reuse the original node (keeps its binding / type / span); a variable is pure, so sharing it is safe
-      return (
-        vars.get(expr.name) ?? { form: 'variable', name: expr.name, span }
-      )
+      // reuse the exact original node recorded when the leaf was admitted (keeps its binding / type / nick / span).
+      // The leaf is pure, so sharing the node is safe. If it is somehow absent, returning undefined bails the rewrite
+      // rather than fabricating a wrong node.
+      return leaves.get(expr.name)
     case 'op': {
-      const left = fromExpr(expr.left, vars, span)
+      const left = fromExpr(expr.left, leaves, span)
 
       if (!left) {return undefined}
 
-      const right = fromExpr(expr.right, vars, span)
+      const right = fromExpr(expr.right, leaves, span)
 
       if (!right) {return undefined}
 
@@ -101,12 +129,12 @@ function size(expr: Expression): number {
 export function egraphArith(node: Expression): Expression {
   if (node.form !== 'binary' || !ARITH.has(node.op)) {return node}
 
-  const vars = new Map<string, Expression>()
-  const expr = toExpr(node, vars)
+  const leaves = new Map<string, Expression>()
+  const expr = toExpr(node, leaves)
 
   if (!expr) {return node}
 
-  const rebuilt = fromExpr(optimize(expr), vars, node.span)
+  const rebuilt = fromExpr(optimize(expr), leaves, node.span)
 
   if (!rebuilt) {return node}
 

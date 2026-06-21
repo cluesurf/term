@@ -23,6 +23,9 @@ import { noEmptyBlock } from '@cluesurf/make/code/lint/rules/no-empty-block'
 import { noConstantCondition } from '@cluesurf/make/code/lint/rules/no-constant-condition'
 import { noSelfComparison } from '@cluesurf/make/code/lint/rules/no-self-comparison'
 import { noUnusedLoad } from '@cluesurf/make/code/lint/rules/no-unused-load'
+import { noDuplicateBranchCondition } from '@cluesurf/make/code/lint/rules/no-duplicate-branch-condition'
+import { noSelfAssignment } from '@cluesurf/make/code/lint/rules/no-self-assignment'
+import { noUnreachableCode } from '@cluesurf/make/code/lint/rules/no-unreachable-code'
 
 // the default rule set, keyed by stable code for config and suppression
 export const RULES: Rule[] = [
@@ -33,6 +36,9 @@ export const RULES: Rule[] = [
   noConstantCondition,
   noSelfComparison,
   noUnusedLoad,
+  noDuplicateBranchCondition,
+  noSelfAssignment,
+  noUnreachableCode,
 ]
 
 export type LintConfig = {

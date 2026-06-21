@@ -1,0 +1,41 @@
+
+# A demo wiring the headless library together end to end: a popover (driven by a shared disclosure controller) whose
+# content is a card composed from its parts. Proves composition (component calls + slots), the behavior core (the
+# controller), and reactive state all work together. This is how an app consumes face.
+
+load @cluesurf/site/code/zone/render
+  find element
+  find text
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/disclosure
+  find make-disclosure
+load ../component/popover
+  find popover
+  find popover-trigger
+  find popover-content
+load ../component/card
+  find card
+  find card-header
+  find card-title
+  find card-content
+
+zone demo
+  take host, like view
+  save panel
+    call make-disclosure
+      bind start, wave false
+  zone popover
+    zone popover-trigger
+      bind control, read panel
+      text <Open>
+    zone popover-content
+      bind control, read panel
+      zone card
+        bind class, text <w-80>
+        zone card-header
+          zone card-title
+            text <Hello>
+        zone card-content
+          text <Popover body>

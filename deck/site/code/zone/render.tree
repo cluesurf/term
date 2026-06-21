@@ -58,6 +58,25 @@ task event
     bind event, read name
     bind handler, read handler
 
+# an attribute kept in sync with a reactive getter: re-applies whenever a signal
+# the getter reads changes. This is what makes `data-state` / `aria-*` / a
+# signal-bound `class` reactive (the basis of state-driven CSS animations),
+# exactly as `dynamic` does for a text node.
+task bind-attribute
+  take node, like view
+  take name, like text
+  take source
+    like task
+      like text
+  call make-effect
+    bind run
+      task tick
+        call set-attribute
+          bind node, read node
+          bind name, read name
+          bind value
+            call source
+
 # a text node kept in sync with a reactive getter
 task dynamic
   take source

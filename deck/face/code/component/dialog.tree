@@ -1,0 +1,98 @@
+
+# Dialog — headless, ported from shadcn/radix (dialog.tsx). A modal. The overlay + content expose `data-state`
+# (open / closed) for enter/exit theming. `state` is the consumer's open signal (string); `press` opens/closes.
+# Parts: dialog (root), dialog-trigger, dialog-overlay, dialog-content, dialog-header, dialog-title,
+# dialog-description, dialog-footer, dialog-close. role=dialog + aria-modal wire a11y. Focus-trap / portal are
+# behavioral add-ons (a `present` primitive for exit animation is the noted follow-up); the parts here are the
+# themeable structure.
+
+load @cluesurf/site/code/zone/render
+  find element
+  find text
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone dialog
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <dialog>
+    bind class, read class
+    slot
+
+zone dialog-trigger
+  take host, like view
+  take class
+  take press
+  zone button
+    bind type, text <button>
+    bind data-slot, text <dialog-trigger>
+    bind class, read class
+    hook click, call press
+    slot
+
+zone dialog-overlay
+  take host, like view
+  take class
+  take state
+  zone div
+    bind data-slot, text <dialog-overlay>
+    bind data-state, read state
+    bind class, read class
+
+zone dialog-content
+  take host, like view
+  take class
+  take state
+  zone div
+    bind data-slot, text <dialog-content>
+    bind data-state, read state
+    bind role, text <dialog>
+    bind aria-modal, text <true>
+    bind class, read class
+    slot
+
+zone dialog-header
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <dialog-header>
+    bind class, read class
+    slot
+
+zone dialog-title
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <dialog-title>
+    bind class, read class
+    slot
+
+zone dialog-description
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <dialog-description>
+    bind class, read class
+    slot
+
+zone dialog-footer
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <dialog-footer>
+    bind class, read class
+    slot
+
+zone dialog-close
+  take host, like view
+  take class
+  take press
+  zone button
+    bind type, text <button>
+    bind data-slot, text <dialog-close>
+    bind aria-label, text <Close>
+    bind class, read class
+    hook click, call press
+    slot

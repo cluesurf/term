@@ -1,0 +1,65 @@
+
+# Selection — the single-value selection state machine, written ONCE and reused by tabs, radio-group, toggle-group,
+# and the value side of select / dropdown. The Zag-model behavior core: pure logic over a signal holding the selected
+# value (a text key). A view part binds these reactive getters + actions onto its elements.
+#
+# The controller IS a text signal. `make-selection` creates it; a part marks itself active with `is-selected` /
+# `selection-state` (reactive `data-state` -> "active"/"inactive") and selects on `hook click, call select-value`.
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+
+# create a selection controller with an initial selected value
+task make-selection
+  take start, like text
+  like signal
+  send back
+    call make-signal
+      bind value, read start
+
+# the currently selected value
+task selection-value
+  take self, like signal
+  like text
+  send back
+    call read-signal
+      bind self, read self
+
+# select a value
+task select-value
+  take self, like signal
+  take value, like text
+  call write-signal
+    bind self, read self
+    bind value, read value
+
+# is `value` the selected one (boolean) — for `fork` and `aria-selected`
+task is-selected
+  take self, like signal
+  take value, like text
+  like boolean
+  send back
+    call is-equal
+      call read-signal
+        bind self, read self
+      read value
+
+# the `data-state` string ("active" / "inactive") for `value`, bound reactively
+task selection-state
+  take self, like signal
+  take value, like text
+  like text
+  send back
+    fork test
+      hook test
+        call is-equal
+          call read-signal
+            bind self, read self
+          read value
+      hook hold
+        text <active>
+      hook miss
+        text <inactive>

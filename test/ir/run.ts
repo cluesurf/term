@@ -345,6 +345,75 @@ task compute
     'return 0',
   )
 
+  // e-graph member leaves: the same reassociation / cancellation works over integer field accesses, not just plain
+  // variables. `(p.x + 2) + 3` -> `p.x + 5`.
+  expectContains(
+    'reassociates a field access: (p.x + 2) + 3 -> p.x + 5',
+    `form point
+  link x, like number
+
+task f
+  take p, like point
+  like number
+  send back
+    call add
+      call add
+        read p/x
+        code 2
+      code 3
+`,
+    'return p.x + 5',
+  )
+
+  // member cancellation: p.x - p.x -> 0 (the field read is pure, so this is sound for integers)
+  expectContains(
+    'cancels a self field subtraction: p.x - p.x -> 0',
+    `form point
+  link x, like number
+
+task f
+  take p, like point
+  like number
+  send back
+    call subtract
+      read p/x
+      read p/x
+`,
+    'return 0',
+  )
+
+  // soundness: a FLOAT field must not cancel (q.f - q.f could be NaN), exactly like a float variable
+  expectContains(
+    'float field q.f - q.f is NOT folded to 0',
+    `form vec
+  link f, like decimal
+
+task f
+  take q, like vec
+  like decimal
+  send back
+    call subtract
+      read q/f
+      read q/f
+`,
+    'return q.f - q.f',
+  )
+
+  // soundness: float arithmetic is non-associative and `f - f` is NaN for Inf/NaN, so a float leaf must NOT be
+  // reassociated or cancelled. `f - f` stays `f - f`, never folds to 0.
+  expectContains(
+    'float f - f is NOT folded to 0 (NaN-safe)',
+    `task f
+  take x, like decimal
+  like decimal
+  send back
+    call subtract
+      loan x
+      loan x
+`,
+    'return x - x',
+  )
+
   // soundness: an irreducible arithmetic expression is returned unchanged (no spurious reordering)
   expectContains(
     'irreducible a + b is preserved',

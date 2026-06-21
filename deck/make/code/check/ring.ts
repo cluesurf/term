@@ -23,16 +23,38 @@ function monoKey(powers: Map<string, number>): string {
   return parts.join('*')
 }
 
-// the variable powers of a monomial key
+// parsed monomial keys are cached: a polynomial multiply re-touches the same keys O(n^2) times, and parsing a key
+// (`a^2*b`) into its (variable, power) pairs is pure string work, so memoizing it removes the dominant cost of the big
+// norm identities (the octonion eight-square has thousands of monomial products). The cache holds immutable entry
+// arrays; monoPowers builds a FRESH mutable Map per call from them, so callers that mutate the result (mulPoly) never
+// corrupt the cache.
+const monoEntriesCache = new Map<string, Array<[string, number]>>()
+
+function monoEntries(key: string): Array<[string, number]> {
+  let entries = monoEntriesCache.get(key)
+
+  if (entries) {return entries}
+
+  entries = []
+
+  if (key !== '') {
+    for (const factor of key.split('*')) {
+      const [v, p] = factor.split('^')
+      entries.push([v!, p ? Number(p) : 1])
+    }
+  }
+
+  monoEntriesCache.set(key, entries)
+
+  return entries
+}
+
+// the variable powers of a monomial key (a fresh, mutable map)
 function monoPowers(key: string): Map<string, number> {
   const powers = new Map<string, number>()
 
-  if (key === '') {return powers}
-
-  for (const factor of key.split('*')) {
-    const [v, p] = factor.split('^')
-    powers.set(v!, (powers.get(v!) ?? 0) + (p ? Number(p) : 1))
-  }
+  for (const [v, p] of monoEntries(key))
+    {powers.set(v, (powers.get(v) ?? 0) + p)}
 
   return powers
 }

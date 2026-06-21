@@ -1,0 +1,78 @@
+
+# Tabs — headless, behavior-complete. Logic is the shared `selection` controller (logic/selection); the parts bind its
+# reactive fields. The consumer makes one controller and gives each trigger/content its `value` key:
+#
+#   save tab, call make-selection / bind start, text <account>
+#   zone tabs-trigger / bind control, read tab / bind value, text <account> / text <Account>
+#   zone tabs-content / bind control, read tab / bind value, text <account> / ...
+#
+# A trigger reflects `data-state` active/inactive (reactive) + `aria-selected`, and selects on click; the content
+# mounts only while its value is selected. Parts: tabs, tabs-list, tabs-trigger, tabs-content.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/selection
+  find is-selected
+  find selection-state
+  find select-value
+
+zone tabs
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <tabs>
+    bind class, read class
+    slot
+
+zone tabs-list
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <tabs-list>
+    bind role, text <tablist>
+    bind class, read class
+    slot
+
+zone tabs-trigger
+  take host, like view
+  take class
+  take control
+  take value
+  zone button
+    bind type, text <button>
+    bind data-slot, text <tabs-trigger>
+    bind role, text <tab>
+    bind data-state
+      call selection-state
+        bind self, read control
+        bind value, read value
+    bind aria-selected
+      call is-selected
+        bind self, read control
+        bind value, read value
+    bind class, read class
+    hook click
+      call select-value
+        bind self, read control
+        bind value, read value
+    slot
+
+zone tabs-content
+  take host, like view
+  take class
+  take control
+  take value
+  fork test
+    hook test
+      call is-selected
+        bind self, read control
+        bind value, read value
+    hook hold
+      zone div
+        bind data-slot, text <tabs-content>
+        bind role, text <tabpanel>
+        bind class, read class
+        slot

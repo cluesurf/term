@@ -1,0 +1,37 @@
+
+# Radio group — headless, ported from shadcn/radix (radio-group.tsx). A set of mutually-exclusive options. Each item is
+# role=radio with data-state (checked / unchecked); `press` selects it. Parts: radio-group (root), radio-group-item
+# (the radio button) + radio-group-indicator (the dot).
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone radio-group
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <radio-group>
+    bind role, text <radiogroup>
+    bind class, read class
+    slot
+
+zone radio-group-item
+  take host, like view
+  take class
+  take state
+  take checked
+  take press
+  zone button
+    bind type, text <button>
+    bind role, text <radio>
+    bind data-slot, text <radio-group-item>
+    bind data-state, read state
+    bind aria-checked, read checked
+    bind class, read class
+    hook click, call press
+    zone span
+      bind data-slot, text <radio-group-indicator>
+      bind data-state, read state

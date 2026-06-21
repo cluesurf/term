@@ -1,0 +1,68 @@
+
+# Card — headless, ported from shadcn (tmp/study/src/components/ui/card.tsx). A surface with header / title / description
+# / action / content / footer parts. Each part is a plain element carrying a stable `data-slot` (the styling hook) and a
+# pass-through `class`, plus a `slot` for its children. No baked styling: theme via CSS on [data-slot=card] (and the
+# sub-slots) or pass classes through `class`. Compose them: `zone card / zone card-header / zone card-title ...`.
+
+load @cluesurf/site/code/zone/render
+  find element
+  find text
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone card
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <card>
+    bind class, read class
+    slot
+
+zone card-header
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <card-header>
+    bind class, read class
+    slot
+
+zone card-title
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <card-title>
+    bind class, read class
+    slot
+
+zone card-description
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <card-description>
+    bind class, read class
+    slot
+
+zone card-action
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <card-action>
+    bind class, read class
+    slot
+
+zone card-content
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <card-content>
+    bind class, read class
+    slot
+
+zone card-footer
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <card-footer>
+    bind class, read class
+    slot

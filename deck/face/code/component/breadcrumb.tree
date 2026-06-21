@@ -1,0 +1,65 @@
+
+# Breadcrumb — headless, ported from shadcn (breadcrumb.tsx). A navigation trail. Parts: breadcrumb (nav),
+# breadcrumb-list (ol), breadcrumb-item (li), breadcrumb-link (a), breadcrumb-page (current, span), breadcrumb-separator
+# (li). aria wires it up; theme via data-slot.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone breadcrumb
+  take host, like view
+  take class
+  zone nav
+    bind data-slot, text <breadcrumb>
+    bind aria-label, text <breadcrumb>
+    bind class, read class
+    slot
+
+zone breadcrumb-list
+  take host, like view
+  take class
+  zone ol
+    bind data-slot, text <breadcrumb-list>
+    bind class, read class
+    slot
+
+zone breadcrumb-item
+  take host, like view
+  take class
+  zone li
+    bind data-slot, text <breadcrumb-item>
+    bind class, read class
+    slot
+
+zone breadcrumb-link
+  take host, like view
+  take class
+  take href
+  zone a
+    bind data-slot, text <breadcrumb-link>
+    bind href, read href
+    bind class, read class
+    slot
+
+zone breadcrumb-page
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <breadcrumb-page>
+    bind role, text <link>
+    bind aria-current, text <page>
+    bind class, read class
+    slot
+
+zone breadcrumb-separator
+  take host, like view
+  take class
+  zone li
+    bind data-slot, text <breadcrumb-separator>
+    bind role, text <presentation>
+    bind aria-hidden, text <true>
+    bind class, read class
+    slot

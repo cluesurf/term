@@ -1,0 +1,43 @@
+
+# Switch — headless, behavior-complete. A toggle backed by the shared `disclosure` controller (on = open). The consumer
+# passes one controller:
+#
+#   save wifi, call make-disclosure / bind start, wave false
+#   zone switch / bind control, read wifi
+#
+# role=switch + reactive data-state (checked/unchecked, derived from disclosure-state mapped on) drive a11y + the CSS
+# thumb slide; aria-checked tracks the boolean; click toggles. Parts: switch (root button) + switch-thumb.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/disclosure
+  find disclosure-open
+  find disclosure-state
+  find toggle-disclosure
+
+zone switch
+  take host, like view
+  take class
+  take control
+  zone button
+    bind type, text <button>
+    bind role, text <switch>
+    bind data-slot, text <switch>
+    bind data-state
+      call disclosure-state
+        bind self, read control
+    bind aria-checked
+      call disclosure-open
+        bind self, read control
+    bind class, read class
+    hook click
+      call toggle-disclosure
+        bind self, read control
+    zone span
+      bind data-slot, text <switch-thumb>
+      bind data-state
+        call disclosure-state
+          bind self, read control

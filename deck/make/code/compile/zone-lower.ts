@@ -33,27 +33,31 @@ import type { Span } from '@cluesurf/make/code/parser/diagnostic'
 
 type Component = { params: string[]; slotted: boolean }
 
-// Standard HTML/SVG tags are ALWAYS elements, never component calls, even if a
-// zone of the same name exists. Kebab zone names have no case to distinguish a
-// component from a tag (unlike React's <Button> vs <button>), so a component
-// must not be named after a tag it renders; this set enforces that and keeps
-// `zone div` / `zone button` rendering native elements unambiguously.
+// Standard HTML/SVG tags that are ALWAYS rendered as elements, never treated as
+// component calls even if a same-named zone exists. Kebab zone names have no
+// case to distinguish a component from a tag (unlike React's <Button> vs
+// <button>), and the component registry is program-wide, so without this a
+// module defining `zone span` would hijack every `zone span` everywhere. This
+// is the curated set of structural / text / form primitives rendered raw inside
+// components. It deliberately EXCLUDES tags that make good component names and
+// are rarely written raw (dialog, select, progress, menu, meter, output,
+// details, summary), so those remain available as components.
 const HTML_TAGS = new Set<string>([
   'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base',
   'bdi', 'bdo', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption',
   'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del',
-  'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset',
+  'dfn', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset',
   'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5',
   'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img',
   'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map',
-  'mark', 'menu', 'meta', 'meter', 'nav', 'object', 'ol', 'optgroup',
-  'option', 'output', 'p', 'param', 'picture', 'pre', 'progress', 'q',
-  'rp', 'rt', 'ruby', 's', 'samp', 'script', 'section', 'select', 'slot',
-  'small', 'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup',
+  'mark', 'meta', 'nav', 'object', 'ol', 'optgroup',
+  'option', 'p', 'param', 'picture', 'pre', 'q',
+  'rp', 'rt', 'ruby', 's', 'samp', 'script', 'section',
+  'small', 'source', 'span', 'strong', 'style', 'sub', 'sup',
   'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead',
   'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr',
   'svg', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'g',
-  'defs', 'use', 'symbol', 'ellipse', 'text-path', 'tspan',
+  'defs', 'use', 'symbol', 'ellipse', 'tspan',
 ])
 
 // build the program-wide component registry: name -> its input params (after
@@ -127,6 +131,32 @@ function lowerZone(
     expr,
     span,
   })
+
+  // an attribute set on an element. A literal value is set once (`attribute`);
+  // a dynamic value (a signal/prop read, call, etc.) is kept in sync via an
+  // effect (`bind-attribute` with a getter), so `data-state` / `aria-*` / a
+  // signal-bound `class` update reactively — the Solid model for attributes.
+  const attributeStatement = (
+    ref: string,
+    name: string,
+    value: Expression,
+  ): Statement =>
+    value.form === 'string'
+      ? exprStatement(
+          call('attribute', [variable(ref), string(name), value]),
+        )
+      : exprStatement(
+          call('bind-attribute', [
+            variable(ref),
+            string(name),
+            {
+              form: 'closure',
+              params: [],
+              body: [{ form: 'return', value, span }],
+              span,
+            },
+          ]),
+        )
 
   const slotted = components.get(zone.name)?.slotted ?? hasSlot(zone.body)
 
@@ -241,33 +271,21 @@ function lowerZone(
 
       for (const attribute of node.attributes)
         {out.push(
-          exprStatement(
-            attribute.event
-              ? call('event', [
+          attribute.event
+            ? exprStatement(
+                call('event', [
                   variable(ref),
                   string(attribute.name),
                   { form: 'closure', params: [], body: [{ form: 'return', value: attribute.value, span }], span },
-                ])
-              : call('attribute', [
-                  variable(ref),
-                  string(attribute.name),
-                  attribute.value,
                 ]),
-          ),
+              )
+            : attributeStatement(ref, attribute.name, attribute.value),
         )}
 
       // `bind <name>, <value>` on an HTML element is an attribute (on a
       // component it is a prop, handled by componentCall). Emit them here.
       for (const prop of node.props)
-        {out.push(
-          exprStatement(
-            call('attribute', [
-              variable(ref),
-              string(prop.name),
-              prop.value,
-            ]),
-          ),
-        )}
+        {out.push(attributeStatement(ref, prop.name, prop.value))}
 
       for (const child of node.children) {attach(child, ref, out)}
     } else {

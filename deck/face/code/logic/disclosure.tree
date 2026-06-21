@@ -1,0 +1,76 @@
+
+# Disclosure — the open/closed state machine, written ONCE and reused by every component that opens and closes:
+# accordion, collapsible, popover, dialog, tooltip, dropdown-menu, hover-card, sheet, drawer. This is the Zag-model
+# behavior core: pure logic over a signal, framework-agnostic. A view part binds these reactive getters + actions
+# (the "connect" props) onto its elements; styling stays the consumer's.
+#
+# The controller IS a boolean signal. `make-disclosure` creates it; the free functions read/derive/mutate it. A part
+# shows its content with `fork` on `disclosure-open`, sets `data-state` from `disclosure-state` (reactive, so CSS can
+# animate open/close), and toggles from a `hook click, call toggle-disclosure`.
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+
+# create a disclosure controller, open or closed to start
+task make-disclosure
+  take start, like boolean
+  like signal
+  send back
+    call make-signal
+      bind value, read start
+
+# is it open right now (boolean) — for `fork` and `aria-expanded` / `aria-checked`
+task disclosure-open
+  take self, like signal
+  like boolean
+  send back
+    call read-signal
+      bind self, read self
+
+# the `data-state` string ("open" / "closed") — bound reactively so themes animate
+task disclosure-state
+  take self, like signal
+  like text
+  send back
+    fork test
+      hook test
+        call read-signal
+          bind self, read self
+      hook hold
+        text <open>
+      hook miss
+        text <closed>
+
+# open it
+task open-disclosure
+  take self, like signal
+  call write-signal
+    bind self, read self
+    bind value, wave true
+
+# close it
+task close-disclosure
+  take self, like signal
+  call write-signal
+    bind self, read self
+    bind value, wave false
+
+# toggle it
+task toggle-disclosure
+  take self, like signal
+  save now
+    call read-signal
+      bind self, read self
+  call write-signal
+    bind self, read self
+    bind value
+      fork test
+        hook test
+          read now
+        hook hold
+          wave false
+        hook miss
+          wave true

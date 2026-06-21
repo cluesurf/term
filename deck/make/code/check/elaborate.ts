@@ -83,6 +83,15 @@ function apply(fun: Term, ...args: Term[]): Term {
   )
 }
 
+// wrap a body in `count` lambdas
+function lambdas(count: number, body: Term): Term {
+  let term = body
+
+  for (let i = 0; i < count; i++) {term = { tag: 'lam', body: term }}
+
+  return term
+}
+
 // ---- the base signature: base types and primitive operations as postulated kernel constants ----
 // Built once. Each surface base type is a constant in Type 0; each primitive is a constant of its kernel type.
 const BASE_TYPES = ['Number', 'Boolean', 'String', 'Unit'] as const
@@ -265,6 +274,7 @@ export function elaborateReport(
   const variantNames = new Map<string, string[]>() // enum name -> variant names in declaration order
   const variantToEnum = new Map<string, string>() // variant name -> its enum
   const enumEncodings: { name: string; encoding: Term }[] = [] // each enum's derived self-type encoding
+  const enumDefs: { name: string; term: Term }[] = [] // computing definitions for constructors + eliminators
 
   for (const statement of program) {
     if (statement.form !== 'record-type') {continue}
@@ -329,6 +339,37 @@ export function elaborateReport(
       enumEncodings.push({
         name: statement.name,
         encoding: { tag: 'self', body },
+      })
+
+      // COMPUTING definitions for the constructors and eliminator (the Church / self-encoding lambdas), so the kernel
+      // actually REDUCES `match (v_i) ... -> branch_i` rather than treating them as opaque postulates. With these,
+      // `calm` (definitional equality) discharges `flip off = on`, `plus one one = two`, and the like.
+      //   constructor v_i (k fields) = \f_0..f_{k-1}. \P. \b_0..b_{n-1}. b_i f_0 .. f_{k-1}
+      //   eliminator match__e        = \A. \x. \b_0..b_{n-1}. x (\_. A) b_0 .. b_{n-1}
+      // de Bruijn (innermost = 0): for a constructor, branches b_{n-1}..b_0 are 0..n-1, P is n, fields f_{k-1}..f_0
+      // are n+1..n+k; for the eliminator, branches are 0..n-1, x is n, A is n+1.
+      statement.variants.forEach((variant, i) => {
+        const k = variant.fields.length
+        let cbody: Term = variable(n - 1 - i) // b_i
+
+        for (let j = 0; j < k; j++)
+          {cbody = apply(cbody, variable(n + k - j))} // f_0 .. f_{k-1}
+
+        enumDefs.push({
+          name: variant.name,
+          term: lambdas(k + 1 + n, cbody),
+        })
+      })
+
+      const motive: Term = { tag: 'lam', body: variable(n + 2) } // \_. A
+      let ebody: Term = apply(variable(n), motive) // x (\_. A)
+
+      for (let j = 0; j < n; j++)
+        {ebody = apply(ebody, variable(n - 1 - j))} // b_0 .. b_{n-1}
+
+      enumDefs.push({
+        name: `match__${statement.name}`,
+        term: lambdas(n + 2, ebody),
       })
     } else {
       // a struct: a constructor and one projection per field
@@ -430,6 +471,16 @@ export function elaborateReport(
         {defineConstant(name, evaluate([], encoding))}
     } catch {
       // the encoding did not form: keep the postulated type, no derivation
+    }
+  }
+
+  // register the computing constructor / eliminator definitions so the kernel REDUCES a match on a constructor. These
+  // are closed terms (no free variables), so they evaluate in the empty environment.
+  for (const { name, term } of enumDefs) {
+    try {
+      defineConstant(name, evaluate([], term))
+    } catch {
+      // a malformed encoding: leave the constructor / eliminator as an opaque postulate
     }
   }
 

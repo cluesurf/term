@@ -1,0 +1,16 @@
+
+# Skeleton — headless, ported from shadcn (skeleton.tsx). A placeholder block shown while content loads. Pure styling
+# hook (data-slot) + pass-through class. Theme the pulse/shimmer in CSS.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone skeleton
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <skeleton>
+    bind class, read class

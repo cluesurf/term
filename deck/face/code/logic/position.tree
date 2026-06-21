@@ -1,0 +1,28 @@
+
+# Positioning — anchors a floating element (popover / tooltip / dropdown / select / hover-card content) to a reference
+# (its trigger). Delegates to @floating-ui/dom, the universal framework-agnostic positioning engine, via `dock`
+# (native). The uniform `place` task is the thin Seed layer; the geometry is floating-ui's. This is the dock-delegation
+# pattern: own the clean API, delegate the hard math to the proven native library.
+#
+# `place` computes the (x, y) for `floating` against `reference` at the given placement (e.g. "bottom", "top-start")
+# and returns floating-ui's result. The caller applies it to the floating element's style (position: fixed; left: x;
+# top: y) and re-runs on scroll / resize for live tracking (floating-ui's autoUpdate). Applying the style needs a dom
+# `set-style` primitive (the noted dom follow-up); until then the result is read and applied by the caller.
+
+dock load
+  load <@floating-ui/dom>, name floating
+  mark native
+
+load @cluesurf/site/code/dom/dom
+  find view
+
+task place
+  take reference, like view
+  take floating, like view
+  take placement, like text
+  save spot
+    call floating/compute-position
+      read reference
+      read floating
+      bind placement, read placement
+  send back, read spot

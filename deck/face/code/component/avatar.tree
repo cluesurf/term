@@ -1,0 +1,37 @@
+
+# Avatar — headless, ported from shadcn (avatar.tsx). A circular image with a text fallback. Parts: avatar (root span),
+# avatar-image (the img; pass `src`/`alt` through bind), avatar-fallback (shown when no image). Theme via data-slot.
+
+load @cluesurf/site/code/zone/render
+  find element
+  find text
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone avatar
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <avatar>
+    bind class, read class
+    slot
+
+zone avatar-image
+  take host, like view
+  take class
+  take src
+  take alt
+  zone img
+    bind data-slot, text <avatar-image>
+    bind src, read src
+    bind alt, read alt
+    bind class, read class
+
+zone avatar-fallback
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <avatar-fallback>
+    bind class, read class
+    slot
