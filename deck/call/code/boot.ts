@@ -16,7 +16,10 @@ import {
 import { nativePrelude } from '@cluesurf/make/code/compile/native'
 import type { NativeEnv } from '@cluesurf/make/code/compile/native'
 import { hashText } from '@cluesurf/make/code/compile/cache'
-import { projectCache } from '@cluesurf/call/code/cache-store'
+import {
+  projectCache,
+  compilerVersion,
+} from '@cluesurf/call/code/cache-store'
 import {
   pullRemoteCache,
   pushRemoteCache,
@@ -226,7 +229,9 @@ export async function callBoot(input: {
 
     // compile the entry (and everything it loads) through the package manager, targeting the chosen env. A persistent
     // cache (`.seed/cache`) makes a cold re-boot reuse the prior parse + mill + compile (Tier 1).
-    const resolve = projectResolver(projectRoot, env, installRoot)
+    // resolve modules against the APP dir (the entry's package root, holding `deck.tree`), not the link/cache
+    // `projectRoot`, so the app's own `@scope/...` and relative imports resolve correctly.
+    const resolve = projectResolver(appDir ?? projectRoot, env, installRoot)
     const result = compile(
       { file: entry, text: readFileSync(entry, 'utf8') },
       { resolve, cache: projectCache(projectRoot) },
@@ -285,6 +290,9 @@ export async function callBoot(input: {
     const key = hashText(
       [
         BOOT_CACHE_EPOCH,
+        // the running compiler's content fingerprint: any change to the compiler invalidates the bundle, with no manual
+        // epoch bump. The single most important guard against a stale hit.
+        compilerVersion(),
         env,
         `esbuild@${esbuildVersion}`,
         JSON.stringify(bundleConfig),
@@ -342,10 +350,12 @@ export async function callBoot(input: {
 
     logGood(`Serving on http://localhost:${port}`)
     console.log(fade(`  press ctrl-c to stop`))
+    // run the server from the APP dir (where the `deck.tree` + `build/` live), so the app resolves its own assets
+    // (`build/...` static files) relative to its own root rather than the link/cache `projectRoot`.
     await runCommand({
       cmd: 'node',
       args: [path.join(out, 'run.mjs')],
-      cwd: projectRoot,
+      cwd: appDir ?? projectRoot,
       shell: false,
     })
   } catch (err) {

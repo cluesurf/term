@@ -105,30 +105,36 @@ const MODE_MATCHERS: Record<LexMode, TokenKind[]> = {
 }
 
 // The matchers. Lenient on purpose so later passes can raise good errors rather than failing to match.
+// Patterns are STICKY (`y`): they match only at `regex.lastIndex`, which the
+// tokenizer sets to the current cursor. This lets the lexer advance a cursor
+// over each line instead of repeatedly slicing it (which was O(line^2) on long
+// lines - a real cost for big text literals / large files). `^` is dropped
+// because `y` already anchors at the cursor; with `y`, `^` would wrongly only
+// match offset 0.
 const PATTERN: Record<TokenKind, RegExp> = {
-  [TokenKind.CloseBrace]: /^\}+/,
-  [TokenKind.CloseParen]: /^\)/,
-  [TokenKind.CloseAngle]: /^>/,
-  [TokenKind.Comma]: /^, */,
-  [TokenKind.Comment]: /^#(?: +[^\n]+)?/,
-  [TokenKind.Decimal]: /^-?\d+\.\d+/,
-  [TokenKind.Radix]: /^0[xXbBoO]\w+/,
-  [TokenKind.Newline]: /^\n/,
+  [TokenKind.CloseBrace]: /\}+/y,
+  [TokenKind.CloseParen]: /\)/y,
+  [TokenKind.CloseAngle]: />/y,
+  [TokenKind.Comma]: /, */y,
+  [TokenKind.Comment]: /#(?: +[^\n]+)?/y,
+  [TokenKind.Decimal]: /-?\d+\.\d+/y,
+  [TokenKind.Radix]: /0[xXbBoO]\w+/y,
+  [TokenKind.Newline]: /\n/y,
   // a `{` opens an interpolation ONLY when an identifier follows (`{name}`); otherwise it is a literal brace. This lets
   // a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3}>`) without escaping, while `{name}`
   // template / string interpolation still works.
-  [TokenKind.OpenBrace]: /^\{+(?=[a-zA-Z_])/,
-  [TokenKind.OpenParen]: /^\(/,
-  [TokenKind.OpenAngle]: /^</,
-  [TokenKind.Space]: /^ +/,
-  [TokenKind.Name]: /^[@~$%^&*'":.a-z0-9A-Z_\-?/]+/,
+  [TokenKind.OpenBrace]: /\{+(?=[a-zA-Z_])/y,
+  [TokenKind.OpenParen]: /\(/y,
+  [TokenKind.OpenAngle]: /</y,
+  [TokenKind.Space]: / +/y,
+  [TokenKind.Name]: /[@~$%^&*'":.a-z0-9A-Z_\-?/]+/y,
   // a bare run of digits is an Integer, BUT digits followed by a hyphen and a letter (`24-cell`) is a kebab IDENTIFIER,
   // not a number, so the Integer matcher declines there and the Name matcher claims the whole `24-cell`. A pure number
   // (`24`, `24-3`) is unaffected.
-  [TokenKind.Integer]: /^-?\d+(?=\b)(?!-[a-zA-Z])/,
+  [TokenKind.Integer]: /-?\d+(?=\b)(?!-[a-zA-Z])/y,
   // a chunk runs over literal text, including a `{` that does not open an interpolation (not followed by an
   // identifier) and any `}`; it stops at `>` (close), `\` (escape), or an interpolation-opening `{`.
-  [TokenKind.Chunk]: /^(?:\\[<>{}]|\{+(?![a-zA-Z_])|[^>{\\])+/,
+  [TokenKind.Chunk]: /(?:\\[<>{}]|\{+(?![a-zA-Z_])|[^>{\\])+/y,
 }
 
 export function tokenize(source: {
@@ -160,17 +166,19 @@ export function tokenize(source: {
     }
   }
 
-  for (let lineText of tokens.lines) {
-    lineText = `${lineText}\n`
+  for (const rawLine of tokens.lines) {
+    const lineText = `${rawLine}\n`
+    // a cursor over the line, advanced in place (no slicing): O(line) total
+    let pos = 0
 
-    while (lineText) {
+    while (pos < lineText.length) {
       const mode = modeStack[modeStack.length - 1] ?? LexMode.Default
 
       // inside a text literal with an unclosed `<`, the next `>` closes that nested bracket, not the literal: emit it as
       // a literal chunk and rebalance, so `text <Hmac<Sha256>>` keeps the generic and ends only at the final `>`.
       if (
         mode === LexMode.Text &&
-        lineText.startsWith('>') &&
+        lineText.startsWith('>', pos) &&
         (textDepthStack[textDepthStack.length - 1] ?? 0) > 0
       ) {
         const token: Token = {
@@ -184,7 +192,7 @@ export function tokenize(source: {
 
         append(token)
         previous = token
-        lineText = lineText.slice(1)
+        pos += 1
         column += 1
         textDepthStack[textDepthStack.length - 1]! -= 1
         continue
@@ -193,14 +201,17 @@ export function tokenize(source: {
       let matched = false
 
       for (const kind of MODE_MATCHERS[mode]) {
-        const found = lineText.match(PATTERN[kind])
+        const pattern = PATTERN[kind]
+        // sticky match anchored at the cursor
+        pattern.lastIndex = pos
+        const found = pattern.exec(lineText)
 
         if (!found) {continue}
 
         matched = true
 
         let size = found[0].length
-        let text = lineText.slice(0, size)
+        let text = lineText.slice(pos, pos + size)
 
         // a closing }} only consumes as many braces as the matching opener pushed
         if (kind === TokenKind.CloseBrace) {
@@ -224,7 +235,7 @@ export function tokenize(source: {
         append(token)
         previous = token
 
-        lineText = lineText.slice(size)
+        pos += size
         column += size
 
         if (kind === TokenKind.OpenBrace) {braceStack.push(text)}
@@ -285,7 +296,8 @@ export function tokenize(source: {
       }
     }
 
-    if (lineText.length) {
+    // leftover unconsumed input on the line (the cursor did not reach the end)
+    if (pos < lineText.length) {
       return {
         ok: false,
         diagnostics: [

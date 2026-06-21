@@ -30,6 +30,11 @@ import { readFileSync, existsSync } from 'node:fs'
 let pass = 0
 let fail = 0
 let skip = 0
+// optional substring filter so a single domain can be re-verified fast: RT_ONLY=process/run npx tsx ...
+const RT_ONLY = process.env.RT_ONLY ?? ''
+function skip_filtered(name: string): boolean {
+  return RT_ONLY !== '' && !name.includes(RT_ONLY)
+}
 function ok(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -121,6 +126,7 @@ function runSwift(
   callExpr: string,
   want: number,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(file, `${emitSwift(program)}\nprint(${callExpr})\n`)
@@ -145,6 +151,7 @@ function runKotlin(
   callExpr: string,
   want: number,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('kotlinc') || !have('java'))
     return skipped(name, 'kotlinc/java not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
@@ -180,6 +187,7 @@ function runLlvm(
   mangledCall: string,
   want: number,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('clang')) return skipped(name, 'clang not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.ll`)
   const main = `\ndefine i32 @main() {\n  %r = call i64 ${mangledCall}\n  %t = trunc i64 %r to i32\n  ret i32 %t\n}\n`
@@ -210,6 +218,7 @@ function runRust(
   callExpr: string,
   want: number,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('rustc')) return skipped(name, 'rustc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -240,6 +249,7 @@ function runRust(
 // back, run with rustc, and assert stdout. Proves native file IO actually RUNS on a real compiled toolchain, not just
 // that it emits the right shape. main owns the path and clones it across the two calls (each emitted call moves its arg).
 function runRustIo(name: string, program: Program, want: string): void {
+  if (skip_filtered(name)) return
   if (!have('rustc')) return skipped(name, 'rustc not installed')
   const path = join(dir, 'seed_rust_io_roundtrip.txt')
   const main = `\nfn main() {\n  let p = ${JSON.stringify(
@@ -277,6 +287,7 @@ function runSwiftIo(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const path = join(dir, 'seed_swift_io.txt')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
@@ -310,6 +321,7 @@ function runKotlinIo(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('kotlinc') || !have('java'))
     return skipped(name, 'kotlinc/java not installed')
   const path = join(dir, 'seed_kotlin_io.txt')
@@ -349,6 +361,7 @@ function runRustMath(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('rustc')) return skipped(name, 'rustc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -379,6 +392,7 @@ function runSwiftMath(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(
@@ -407,6 +421,7 @@ function runKotlinMath(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('kotlinc') || !have('java'))
     return skipped(name, 'kotlinc/java not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
@@ -441,6 +456,7 @@ function runSwiftCrypto(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(
@@ -468,6 +484,7 @@ function runKotlinCrypto(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('kotlinc') || !have('java'))
     return skipped(name, 'kotlinc/java not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
@@ -499,6 +516,7 @@ function runRustText(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('rustc')) return skipped(name, 'rustc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -529,6 +547,7 @@ function runSwiftText(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(
@@ -557,6 +576,7 @@ function runKotlinText(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('kotlinc') || !have('java'))
     return skipped(name, 'kotlinc/java not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
@@ -618,6 +638,7 @@ function runRustCargo(
   want: string,
   isAsync: boolean,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('cargo')) return skipped(name, 'cargo not installed')
   const proj = join(tmpdir(), 'seed-rust-runtime')
   mkdirSync(join(proj, 'src'), { recursive: true })
@@ -654,6 +675,7 @@ function runRustConsole(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('rustc')) return skipped(name, 'rustc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -685,6 +707,7 @@ function runSwiftConsole(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('swiftc')) return skipped(name, 'swiftc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(
@@ -713,6 +736,7 @@ function runKotlinConsole(
   program: Program,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('kotlinc') || !have('java'))
     return skipped(name, 'kotlinc/java not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
@@ -763,6 +787,7 @@ function runLlvmRust(
   mangledCall: string,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('clang') || !have('rustc'))
     return skipped(name, 'clang/rustc not installed')
   const arch = rustcArch()
@@ -837,6 +862,7 @@ function runLlvmRustExit(
   mangledCall: string,
   want: number,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('clang') || !have('rustc'))
     return skipped(name, 'clang/rustc not installed')
   const arch = rustcArch()
@@ -1545,6 +1571,38 @@ task compute
         text <PATH>
       text <>
 `
+// subprocess: run `echo ok` to completion and confirm exit code 0 (std::process::Command / Foundation.Process /
+// ProcessBuilder). Boolean result keeps the output uniform across backends.
+const RUN_PROG = `load @cluesurf/base/code/process/run
+  find run
+  find run-result
+
+load @cluesurf/base/code/list
+  find list
+  find push
+
+task make-arguments
+  like list
+    like text
+  save out
+    make list
+  call push
+    read out
+    text <ok>
+  send back, read out
+
+task compute
+  like boolean
+  save result
+    call run
+      text <echo>
+      call make-arguments
+      wait true
+  send back
+    call is-equal
+      read result/code
+      code 0
+`
 // directory make plus metadata: make a directory then confirm is-directory reports it. Exercises the io shim's
 // dir-make and is-directory on each platform (rust std::fs, swift FileManager, kotlin java.io.File).
 const DIR_MAKE_PROG = `load @cluesurf/base/code/file/directory
@@ -2188,6 +2246,7 @@ function runNodeExpr(
   call: string,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   const file = join(dir, `${name.replace(/\W/g, '')}.ts`)
   writeFileSync(
     file,
@@ -2209,6 +2268,7 @@ function runRustExpr(
   call: string,
   want: string,
 ): void {
+  if (skip_filtered(name)) return
   if (!have('rustc')) return skipped(name, 'rustc not installed')
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -2706,6 +2766,23 @@ function main(): void {
     frontEnd(ENV_VAR_PROG, true, 'rust'),
     'true',
     false,
+  )
+  // subprocess: run `echo ok` and confirm exit code 0 on each compiled toolchain
+  runSwiftText(
+    'swift + process/run: echo exits 0 (Foundation.Process)',
+    frontEnd(RUN_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + process/run: echo exits 0 (ProcessBuilder)',
+    frontEnd(RUN_PROG, true, 'kotlin'),
+    'true',
+  )
+  runRustCargo(
+    'rust + cargo: process/run echo exits 0 (std::process::Command)',
+    frontEnd(RUN_PROG, true, 'rust'),
+    'true',
+    true,
   )
   // directory make + metadata is-directory
   runSwiftText(

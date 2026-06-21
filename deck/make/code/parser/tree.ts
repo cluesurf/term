@@ -119,7 +119,9 @@ function buildTree(
 
   const lift = (frame: Frame, node: Node) => {
     if (frame.line.length === 2) {
-      frame.levels = frame.levels.slice(0, frame.level + 1)
+      // truncate in place instead of reallocating the levels array each
+      // group-open: the slice made buildTree O(depth^2) in nesting depth.
+      frame.levels.length = frame.level + 1
       frame.levels.push(node)
     }
   }

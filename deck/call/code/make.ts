@@ -71,6 +71,23 @@ export function resolveTreeFile(base: string): string | undefined {
 
 // the resolver a project build uses: the bundled stdlib (`@cluesurf/base/...`) plus the project's own `.tree` files,
 // wrapped so abstract native imports resolve to the target platform's implementation (default node)
+// realpath if it exists, else a normalized absolute path (so confinement
+// checks work for not-yet-existing candidates too).
+function safeReal(p: string): string {
+  try {
+    return realpathSync(p)
+  } catch {
+    return path.resolve(p)
+  }
+}
+
+// is `child` inside `parent` (or equal to it)? compared on normalized paths.
+function isWithin(child: string, parent: string): boolean {
+  if (child === parent) return true
+  const rel = path.relative(parent, child)
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+}
+
 export function projectResolver(
   root: string,
   env: NativeEnv = 'node',
@@ -103,10 +120,35 @@ export function projectResolver(
     }
   }
 
+  // the package boundary of a file: the nearest ancestor holding a
+  // `deck.tree` manifest, else the project root. A relative import may not
+  // escape this boundary - that confinement is what stops a malicious
+  // `load ../../../../etc/passwd` from reading arbitrary files during a
+  // compile of untrusted source (path-traversal / info-disclosure).
+  const rootReal = safeReal(root)
+  const packageRootOf = (file: string): string => {
+    let dir = path.dirname(file)
+    for (;;) {
+      if (existsSync(path.join(dir, 'deck.tree'))) return safeReal(dir)
+      const up = path.dirname(dir)
+      if (up === dir) return rootReal
+      dir = up
+    }
+  }
+
   const base: Resolver = (importPath, fromFile) => {
     // a relative import resolves against the importing file (the framework's modules import each other this way)
     if (importPath.startsWith('./') || importPath.startsWith('../')) {
-      return tryFile(path.resolve(path.dirname(fromFile), importPath))
+      const resolved = path.resolve(path.dirname(fromFile), importPath)
+      // confine: the resolved file must stay within the importer's package
+      // (or the project root). Anything escaping both is treated as
+      // not-found rather than read off the host filesystem.
+      const bound = packageRootOf(fromFile)
+      const resolvedReal = safeReal(resolved)
+      if (!isWithin(resolvedReal, bound) && !isWithin(resolvedReal, rootReal)) {
+        return undefined
+      }
+      return tryFile(resolved)
     }
 
     // linked packages first (@cluesurf/base, /bind, /term, /site via `seed link`): the project's own links, then the
@@ -305,24 +347,56 @@ function runCommand(input: {
   shell?: boolean
 }): Promise<void> {
   return new Promise((resolve, reject) => {
+    // `detached` puts the child in its OWN process group, so an interrupt can be delivered to the WHOLE group (the child
+    // plus anything it spawned) with `process.kill(-pid)`. The terminal's ctrl-c (which targets the foreground group)
+    // no longer reaches the child directly, so the parent owns the single, deterministic teardown path below.
     const child = spawn(input.cmd, input.args, {
       cwd: input.cwd,
       stdio: 'inherit',
       shell: input.shell ?? true,
+      detached: true,
     })
 
-    // forward an interrupt to the child and take over the signal, so the parent waits for the child to exit (and then
-    // resolves cleanly) instead of node's default abrupt termination. ctrl-c thus quits the child and returns here.
-    const forward = (signal: NodeJS.Signals) => {
-      if (!child.killed) {child.kill(signal)}
+    let killTimer: ReturnType<typeof setTimeout> | undefined
+
+    // take down the child's entire process group; fall back to killing the lone child if the group send fails (e.g. it
+    // already exited). Group-kill guarantees no orphaned grandchildren are left holding the port.
+    const killGroup = (signal: NodeJS.Signals) => {
+      if (child.pid === undefined) {return}
+
+      try {
+        process.kill(-child.pid, signal)
+      } catch {
+        try {
+          child.kill(signal)
+        } catch {
+          // already gone
+        }
+      }
     }
+
+    // on ctrl-c / SIGTERM: signal the group, then SIGKILL the group if it does not exit within a short grace window, so
+    // a child ignoring the signal cannot hang the terminal. The parent waits for `close` before resolving.
+    const forward = (signal: NodeJS.Signals) => {
+      killGroup(signal)
+
+      if (!killTimer) {
+        killTimer = setTimeout(() => killGroup('SIGKILL'), 4000)
+      }
+    }
+
+    // never leave an orphan: if the parent process exits for ANY reason, force the group down synchronously
+    const onParentExit = () => killGroup('SIGKILL')
 
     process.on('SIGINT', forward)
     process.on('SIGTERM', forward)
+    process.on('exit', onParentExit)
 
     child.on('close', (code, signal) => {
+      if (killTimer) {clearTimeout(killTimer)}
       process.off('SIGINT', forward)
       process.off('SIGTERM', forward)
+      process.off('exit', onParentExit)
 
       // a clean exit, or termination by a signal (ctrl-c), is not an error
       if (code === 0 || code === null || signal) {resolve()}
@@ -330,8 +404,10 @@ function runCommand(input: {
     })
 
     child.on('error', err => {
+      if (killTimer) {clearTimeout(killTimer)}
       process.off('SIGINT', forward)
       process.off('SIGTERM', forward)
+      process.off('exit', onParentExit)
       reject(err)
     })
   })

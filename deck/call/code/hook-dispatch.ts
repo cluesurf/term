@@ -21,12 +21,14 @@ export function commandRoutes(program: Program): DockRoute[] {
     .map(s => s.route)
 }
 
+export type ArgValue = string | boolean | number | string[]
+
 export type Dispatch =
   | {
       ok: true
       command: string[] // the resolved command path, e.g. ['make', 'face']
       task?: string // the bound implementation task name (calls[0])
-      args: Record<string, string | boolean>
+      args: Record<string, ArgValue>
     }
   | { ok: false; error: string; command: string[] }
 
@@ -74,8 +76,8 @@ export function dispatch(
   for (const take of current.takes)
     {if (take.short) {shortToName.set(take.short, take.name)}}
 
-  // parse the rest: --flag / -f value, --flag=value, boolean flags, and positionals
-  const args: Record<string, string | boolean> = {}
+  // parse the rest: --flag / -f value, --flag=value, --no-flag, boolean flags, positionals
+  const args: Record<string, ArgValue> = {}
   const positionals: string[] = []
 
   while (i < argv.length) {
@@ -85,6 +87,14 @@ export function dispatch(
 
     if (isLong || isShort) {
       const body = token.slice(isLong ? 2 : 1)
+
+      // boolean negation: `--no-cache` sets cache=false
+      if (isLong && body.startsWith('no-')) {
+        args[body.slice(3)] = false
+        i++
+        continue
+      }
+
       const eq = body.indexOf('=')
 
       if (eq >= 0) {
@@ -110,13 +120,48 @@ export function dispatch(
     }
   }
 
-  // bind positionals to the command's declared takes, in order, unless already given as a flag
-  current.takes.forEach((take, index) => {
-    const value = positionals[index]
+  // bind positionals to the command's declared takes, in order. A variadic
+  // take collects all remaining positionals from its index onward.
+  let posCursor = 0
+  for (const take of current.takes) {
+    if (take.variadic) {
+      if (args[take.name] === undefined) {args[take.name] = positionals.slice(posCursor)}
+      posCursor = positionals.length
+      continue
+    }
+    const value = positionals[posCursor]
+    if (value !== undefined && args[take.name] === undefined) {args[take.name] = value}
+    posCursor++
+  }
 
-    if (value !== undefined && args[take.name] === undefined)
-      {args[take.name] = value}
-  })
+  // coerce by declared type, validate choices, then apply defaults
+  for (const take of current.takes) {
+    let value = args[take.name]
+
+    if (value !== undefined && typeof value === 'string') {
+      // choices / enum validation
+      if (take.choices && !take.choices.includes(value)) {
+        return {
+          ok: false,
+          command,
+          error: `--${take.name} must be one of: ${take.choices.join(', ')} (got "${value}")`,
+        }
+      }
+      // type coercion
+      if (take.type?.kind === 'number' || take.type?.kind === 'float') {
+        const n = Number(value)
+        if (!Number.isNaN(n)) {args[take.name] = n}
+      } else if (take.type?.kind === 'boolean') {
+        args[take.name] = value === 'true'
+      }
+      value = args[take.name]
+    }
+
+    // default value when nothing was provided
+    if (args[take.name] === undefined && take.fallback !== undefined) {
+      args[take.name] = take.fallback
+    }
+  }
 
   return {
     ok: true,
@@ -124,4 +169,33 @@ export function dispatch(
     task: current.calls[0]?.name,
     args,
   }
+}
+
+/** Render `--help` text for a command from its route (path, note, takes). */
+export function renderHelp(route: DockRoute): string {
+  const lines: string[] = []
+  lines.push(`seed ${route.path}${route.note ? ` - ${route.note}` : ''}`)
+  if (route.takes.length > 0) {
+    lines.push('')
+    lines.push('options:')
+    for (const take of route.takes) {
+      const flag = `--${take.name}${take.short ? `, -${take.short}` : ''}`
+      const meta: string[] = []
+      if (take.type) {meta.push(take.type.kind)}
+      if (take.required) {meta.push('required')}
+      if (take.fallback !== undefined) {meta.push(`default ${JSON.stringify(take.fallback)}`)}
+      if (take.choices) {meta.push(`one of ${take.choices.join('|')}`)}
+      if (take.variadic) {meta.push('variadic')}
+      const suffix = meta.length ? `  (${meta.join(', ')})` : ''
+      lines.push(`  ${flag.padEnd(22)} ${take.note ?? ''}${suffix}`)
+    }
+  }
+  if (route.children.length > 0) {
+    lines.push('')
+    lines.push('subcommands:')
+    for (const child of route.children) {
+      lines.push(`  ${child.path.padEnd(22)} ${child.note ?? ''}`)
+    }
+  }
+  return lines.join('\n')
 }

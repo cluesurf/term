@@ -376,6 +376,14 @@ export type DockTake = {
   short?: string
   // masked input (a password / secret): `take code / wait rise` reads without echoing
   masked?: boolean
+  // help text for --help: `take glob / note <Directory to hunt>`
+  note?: string
+  // a default value: `take runs, like number / bind 3000`. The literal as written.
+  fallback?: string | number | boolean
+  // a variadic / rest positional: `take paths / many` collects the remaining positionals
+  variadic?: boolean
+  // an allowed-value set (enum / choices): `take tool / pick <trivy> / pick <grype>`
+  choices?: string[]
   span: Span
 }
 export type DockMethod = {
@@ -388,6 +396,8 @@ export type DockMethod = {
 export type DockRoute = {
   // a route path (`/users/:id`) or a CLI command name (`make`)
   path: string
+  // help text for --help: `hook hunt / note <Automated bug-hunt>`
+  note?: string
   takes: DockTake[]
   methods: DockMethod[]
   calls: DockCall[]

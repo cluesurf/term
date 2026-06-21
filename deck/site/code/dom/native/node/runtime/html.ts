@@ -43,13 +43,22 @@ type Element = {
   children: { handle: Element }[]
 }
 
-function serializeNode(node: { handle?: Element } | Element): string {
-  const el = ('handle' in node && node.handle ? node.handle : node) as Element
+// HTML output mode. Default: PRETTY in dev (indented, nice View-Source), COMPACT in prod (smallest payload). Override
+// either way explicitly: `SEED_HTML=pretty` forces pretty (even in prod), `SEED_HTML=compact` forces compact (even in
+// dev). Pretty is whitespace-SAFE: an element whose children include a text node (inline content like `<p>... <a>x</a>
+// ...`) stays compact, so no rendered whitespace is introduced; only all-element ("block") parents break onto lines.
+const PRETTY =
+  process.env.SEED_HTML === 'pretty'
+    ? true
+    : process.env.SEED_HTML === 'compact'
+      ? false
+      : process.env.NODE_ENV !== 'production'
 
-  if (!el.tag) {
-    return escapeText(el.text ?? '')
-  }
+function elementOf(node: { handle?: Element } | Element): Element {
+  return ('handle' in node && node.handle ? node.handle : node) as Element
+}
 
+function openTag(el: Element): string {
   const classAttr = el.classes?.length
     ? ` class="${escapeAttr(el.classes.join(' '))}"`
     : ''
@@ -58,32 +67,107 @@ function serializeNode(node: { handle?: Element } | Element): string {
     .map(attr => ` ${attr.name}="${escapeAttr(attr.value)}"`)
     .join('')
 
-  const open = `<${el.tag}${classAttr}${attrs}>`
+  return `<${el.tag}${classAttr}${attrs}>`
+}
+
+// compact serialization: no added whitespace (correct for inline content + prod)
+function compactNode(node: { handle?: Element } | Element): string {
+  const el = elementOf(node)
+
+  if (!el.tag) {
+    return escapeText(el.text ?? '')
+  }
+
+  const open = openTag(el)
 
   if (VOID.has(el.tag)) {
     return open
   }
 
-  const children = (el.children ?? [])
-    .map(child => serializeNode(child))
-    .join('')
+  const children = (el.children ?? []).map(compactNode).join('')
 
   return `${open}${children}</${el.tag}>`
 }
 
+// pretty serialization: indent block elements; keep inline (has-text) content compact
+function prettyNode(
+  node: { handle?: Element } | Element,
+  depth: number,
+): string {
+  const el = elementOf(node)
+
+  if (!el.tag) {
+    return escapeText(el.text ?? '')
+  }
+
+  const pad = '  '.repeat(depth)
+  const open = openTag(el)
+
+  if (VOID.has(el.tag)) {
+    return pad + open
+  }
+
+  const children = el.children ?? []
+
+  if (children.length === 0) {
+    return `${pad}${open}</${el.tag}>`
+  }
+
+  // inline content (any text child): render the subtree compact on one line, so no whitespace is introduced
+  if (children.some(child => !elementOf(child).tag)) {
+    return `${pad}${open}${children.map(compactNode).join('')}</${el.tag}>`
+  }
+
+  // block content (all elements): each child on its own indented line
+  const inner = children
+    .map(child => prettyNode(child, depth + 1))
+    .join('\n')
+
+  return `${pad}${open}\n${inner}\n${pad}</${el.tag}>`
+}
+
+function serializeNode(node: { handle?: Element } | Element): string {
+  return PRETTY ? prettyNode(node, 0) : compactNode(node)
+}
+
+// the document shell links the stylesheet as an EXTERNAL file (served by the host's static `/base/` route), the way
+// dev + prod build tools do it (cacheable, not re-sent per page). Prod uses a content-hashed name; dev the stable path.
 function documentShell(body: string, title = 'ClueSurf'): string {
-  return (
-    '<!doctype html><html lang="en"><head>' +
-    '<meta charset="utf-8">' +
-    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-    `<title>${escapeText(title)}</title>` +
-    '<link rel="stylesheet" href="/base/look.css">' +
-    '</head><body>' +
-    body +
-    '<script type="module" src="/base/boot.js"></script>' +
-    '</body></html>'
-  )
+  if (!PRETTY) {
+    return (
+      '<!doctype html><html lang="en"><head>' +
+      '<meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      `<title>${escapeText(title)}</title>` +
+      '<link rel="stylesheet" href="/base/style/look.css">' +
+      '</head><body>' +
+      body +
+      '</body></html>'
+    )
+  }
+
+  // indent the body two more levels so it nests cleanly under <body>
+  const indentedBody = body
+    .split('\n')
+    .map(line => `    ${line}`)
+    .join('\n')
+
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '  <head>',
+    '    <meta charset="utf-8">',
+    '    <meta name="viewport" content="width=device-width, initial-scale=1">',
+    `    <title>${escapeText(title)}</title>`,
+    '    <link rel="stylesheet" href="/base/style/look.css">',
+    '  </head>',
+    '  <body>',
+    indentedBody,
+    '  </body>',
+    '</html>',
+  ].join('\n')
 }
 
 // the namespace the dom docks as `<global:html>`
 export const html = { serializeNode, documentShell }
+

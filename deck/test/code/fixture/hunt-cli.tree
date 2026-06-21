@@ -1,0 +1,22 @@
+
+# The `seed hunt` command, expressed in the native `.tree` hook DSL (the
+# port of the yargs definition in call/code/line.ts). It exercises the
+# extended DSL: `note` (help text), `bind` (default value), and a typed
+# optional positional + flags. The bound task is `call-hunt`.
+
+hook hunt
+  note <Automated bug-hunt over .tree files>
+  task call-hunt
+  take glob
+    note <Directory to hunt>
+  take runs, like number
+    note <Fuzz inputs per seed>
+    bind 3000
+  take seeds, like number
+    note <Distinct fuzz seeds>
+    bind 4
+  take fuzz-timeout, like number
+    note <Watchdog seconds per fuzz seed>
+    bind 90
+  take json, like wave
+    note <Machine-readable output>

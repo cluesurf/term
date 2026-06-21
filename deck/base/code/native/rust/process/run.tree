@@ -1,0 +1,20 @@
+# rust subprocess runner. Internal: reached only through the public run API.
+
+load @cluesurf/base/code/process/run
+  find run-result
+
+dock load
+  load <global:runner>, name runner
+
+task do-run
+  note async
+  take command, like text
+  take argument-list
+    like list
+      like text
+  like run-result
+  send back
+    call runner/run
+      read command
+      read argument-list
+      wait true

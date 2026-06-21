@@ -12,6 +12,7 @@
  */
 
 import { compile } from '@cluesurf/make/code/compile/compile'
+import type { Resolver } from '@cluesurf/make/code/compile/load'
 import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
 import { emitRust } from '@cluesurf/make/code/compile/rust'
 import { emitKotlin } from '@cluesurf/make/code/compile/kotlin'
@@ -40,7 +41,7 @@ export type CrossResult = {
  */
 export function crossEmit(
   source: string,
-  resolve: (importPath: string, fromFile: string) => unknown = () => undefined,
+  resolve: Resolver = () => undefined,
 ): CrossResult {
   const compiled = compile({ file: 'cross.tree', text: source }, { resolve })
 

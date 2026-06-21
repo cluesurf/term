@@ -17,6 +17,7 @@ import type { CacheStore } from '@cluesurf/make/code/compile/cache'
 import {
   CACHE_EPOCH,
   CompileCache,
+  hashText,
 } from '@cluesurf/make/code/compile/cache'
 
 // a disk-backed cache store rooted at `dir` (e.g. `<project>/.seed/cache`). One subdir per kind, one file per key.
@@ -61,14 +62,37 @@ export function diskCacheStore(dir: string): CacheStore {
 
 let tempCounter = 0
 
-// the running compiler's version, read from the seed package's own package.json (works whether the CLI runs from
-// source via tsx or from the bundled `host/`). Memoized. Folded into every cache key so a toolchain upgrade
-// invalidates the cache automatically (the turborepo "compiler version in the key" lesson), alongside the epoch.
+// the running compiler's fingerprint, folded into every cache key. It combines the cache-format epoch, the seed
+// package version, AND a content hash of the actual running compiler code -- so ANY change to the compiler invalidates
+// the cache automatically, with no manual version/epoch bump. This is what makes a stale hit impossible: the key
+// tracks the code that produced the value, not just a hand-maintained version string. Memoized (hashed once per run),
+// so it stays maximally performant. (The turborepo "compiler version in the key" lesson, taken to its content-hash
+// conclusion.)
 let cachedVersion: string | undefined
+
+// hash the actual running compiler code. When the CLI runs from the bundled `host/line.js`, that single file IS the
+// whole compiler, so hashing it captures every compiler change. From source (tsx), fall back to the entry script.
+// Best-effort: any failure degrades to the version string, never throws.
+function compilerCodeHash(): string {
+  const candidates = [process.argv[1], fileURLToPath(import.meta.url)]
+
+  for (const file of candidates) {
+    try {
+      if (file && file.endsWith('.js') && existsSync(file)) {
+        return hashText(readFileSync(file, 'utf8'))
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+
+  return ''
+}
 
 export function compilerVersion(): string {
   if (cachedVersion !== undefined) {return cachedVersion}
 
+  let version = '0'
   let dir = path.dirname(fileURLToPath(import.meta.url))
 
   for (;;) {
@@ -82,9 +106,8 @@ export function compilerVersion(): string {
         }
 
         if (pkg.name === '@cluesurf/seed.tree') {
-          cachedVersion = `${CACHE_EPOCH}:${pkg.version ?? '0'}`
-
-          return cachedVersion
+          version = pkg.version ?? '0'
+          break
         }
       } catch {
         // keep walking up
@@ -98,7 +121,7 @@ export function compilerVersion(): string {
     dir = up
   }
 
-  cachedVersion = CACHE_EPOCH
+  cachedVersion = `${CACHE_EPOCH}:${version}:${compilerCodeHash()}`
 
   return cachedVersion
 }

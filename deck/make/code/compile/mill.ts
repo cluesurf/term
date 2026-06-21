@@ -2565,6 +2565,43 @@ export function mill(tree: RootNode, file: string): MillResult {
         )
           {take.masked = true}
 
+        // help text: `note <Directory to hunt>`
+        const noteGroup = rest(child).find(
+          (n): n is GroupNode => n.kind === 'group' && headName(n) === 'note',
+        )
+        if (noteGroup) {
+          const textNode = rest(noteGroup)[0]
+          if (textNode?.kind === 'text') {take.note = textOf(textNode)}
+        }
+
+        // default value: `bind 3000` / `bind <hello>` / `bind wave true`
+        const bindGroup = rest(child).find(
+          (n): n is GroupNode => n.kind === 'group' && headName(n) === 'bind',
+        )
+        if (bindGroup) {
+          const valNode = rest(bindGroup)[0]
+          if (valNode?.kind === 'integer') {take.fallback = valNode.value}
+          else if (valNode?.kind === 'text') {take.fallback = textOf(valNode)}
+          else if (valNode?.kind === 'group' && headName(valNode) === 'wave') {
+            take.fallback = headName(rest(valNode)[0] as GroupNode) === 'true'
+          }
+        }
+
+        // variadic / rest positional: `many`
+        if (rest(child).some(n => n.kind === 'group' && headName(n) === 'many')) {
+          take.variadic = true
+        }
+
+        // choices / enum: one or more `pick <value>`
+        const picks = rest(child)
+          .filter((n): n is GroupNode => n.kind === 'group' && headName(n) === 'pick')
+          .map(p => {
+            const v = rest(p)[0]
+            return v?.kind === 'text' ? textOf(v) : v?.kind === 'group' ? headName(v) : undefined
+          })
+          .filter((x): x is string => x !== undefined)
+        if (picks.length > 0) {take.choices = picks}
+
         takes.push(take)
       } else if (headKw === 'link') {
         const varGroup = rest(child)[0]
@@ -3122,8 +3159,19 @@ export function mill(tree: RootNode, file: string): MillResult {
       )
       .map(buildHookCommand)
 
+    // command help text: a direct `note <text>` child of the hook
+    let note: string | undefined
+    const cmdNote = rest(group).find(
+      (n): n is GroupNode => n.kind === 'group' && headName(n) === 'note',
+    )
+    if (cmdNote) {
+      const textNode = rest(cmdNote)[0]
+      if (textNode?.kind === 'text') {note = textOf(textNode)}
+    }
+
     return {
       path,
+      note,
       takes: buildDockTakes(group),
       methods: [],
       calls,

@@ -87,7 +87,9 @@ export function genTuple<T extends unknown[]>(
       // shrink one component at a time, holding the others
       const out: T[] = []
       for (let i = 0; i < value.length; i++) {
-        for (const smaller of gens[i].shrink(value[i])) {
+        const gen = gens[i]
+        if (!gen) continue
+        for (const smaller of gen.shrink(value[i])) {
           const copy = value.slice() as T
           copy[i] = smaller
           out.push(copy)

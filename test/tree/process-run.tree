@@ -1,0 +1,41 @@
+note <Tests for running a subprocess to completion: exit code and captured output.>
+
+load @cluesurf/base/code/process/run
+  find run
+  find run-result
+
+load @cluesurf/base/code/list
+  find list
+
+load @cluesurf/base/code/text
+  find contains
+
+test <run echo exits with code zero>
+  save argument-list
+    make list
+  call argument-list/push
+    text <hello>
+  save result
+    call run
+      text <echo>
+      read argument-list
+      wait true
+  want hold
+    call is-equal
+      read result/code
+      mark 0
+
+test <run echo captures the output>
+  save argument-list
+    make list
+  call argument-list/push
+    text <hello>
+  save result
+    call run
+      text <echo>
+      read argument-list
+      wait true
+  want hold
+    call contains
+      read result/output
+      text <hello>

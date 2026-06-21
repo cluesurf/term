@@ -5,6 +5,10 @@
 # client side (browser/host) mounts instead. One dispatcher, two boots. `seed boot` invokes the generated
 # `boot(url, port)`, which calls this.
 
+dock load
+  load <global:assets>, name files
+  mark native
+
 load @cluesurf/site/code/dom/dom
   find view
   find create-element
@@ -47,8 +51,39 @@ task host
             call page-shell
               call serialize
                 read root
+  # the static-asset handler: serve files from the build output for /base/<path> (css, js, images). The transport sets
+  # the content-type by extension. A 404 for a missing asset.
+  save serve-asset
+    task handle-asset
+      take request, like request
+      take params, like hash
+      like response
+      save found
+        call files/read
+          read request/path
+      fork test
+        hook test
+          read found/found
+        hook hold
+          send back
+            make response
+              bind status, mark 200
+              bind body, read found/body
+        hook miss
+          send back
+            make response
+              bind status, mark 404
+              bind body, text <>
   save routes
     make list
+  # `/base/**` (static assets) is more specific than `/**`, so the trie router matches it first
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </base/**>
+        bind handle, read serve-asset
   call push
     bind list, read routes
     bind item

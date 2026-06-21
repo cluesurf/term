@@ -11,6 +11,28 @@ type Response = { status: number; body: string }
 type Handle = (request: Request) => Response | Promise<Response>
 type Listener = { handle: Handle; close(): void }
 
+// content-type by file extension, for static assets served from /base/... A `.js` module script needs the correct
+// MIME (browsers enforce it strictly); a `.css` needs text/css to apply.
+const ASSET_TYPES: Record<string, string> = {
+  css: 'text/css; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+  mjs: 'text/javascript; charset=utf-8',
+  json: 'application/json; charset=utf-8',
+  svg: 'image/svg+xml',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  ico: 'image/x-icon',
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  txt: 'text/plain; charset=utf-8',
+  xml: 'application/xml; charset=utf-8',
+}
+
 const transport = {
   // build a listener around one handle: hono catches every request, converts it to our `request`, runs the handle
   // (which runs the trie router), and writes the returned `response` back. Sync or async handles both work.
@@ -22,6 +44,14 @@ const transport = {
       const response = await handle({ method: context.req.method, path: url.pathname, body })
       const out = response.body ?? ''
       const status = (response.status ?? 200) as never
+      // static assets (served from /base/...) get a content-type by file extension, so a browser accepts a `.js` module
+      // script (strict MIME) and applies `.css`. Required for external stylesheets / scripts to load.
+      const ext = url.pathname.includes('.')
+        ? url.pathname.slice(url.pathname.lastIndexOf('.') + 1).toLowerCase()
+        : ''
+      const assetType = ASSET_TYPES[ext]
+      if (assetType)
+        return context.body(out, status, { 'Content-Type': assetType })
       // serve an HTML body with the right content-type so a browser renders it (the response carries no headers, so the
       // shape of the body is the signal); JSON / plain text fall through to hono's default text/plain
       const head = out.trimStart().slice(0, 14).toLowerCase()

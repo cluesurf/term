@@ -25,8 +25,9 @@
 import { parse, printTree } from '@cluesurf/make/code/parser/tree'
 import { compile } from '@cluesurf/make/code/compile/compile'
 import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
+import type { Resolver } from '@cluesurf/make/code/compile/load'
 
-type Resolve = (importPath: string, fromFile: string) => unknown
+type Resolve = Resolver
 
 export type OracleViolation = {
   oracle: 'round-trip' | 'deterministic' | 'cross-backend' | 'perf' | 'crash'
