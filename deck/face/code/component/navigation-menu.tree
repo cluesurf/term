@@ -1,0 +1,80 @@
+
+# Navigation menu — headless. A site nav with expandable sections. Parts: navigation-menu, navigation-menu-list,
+# navigation-menu-item, navigation-menu-trigger, navigation-menu-content, navigation-menu-link. Section open/close is
+# a shared disclosure controller.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/disclosure
+  find disclosure-open
+  find disclosure-state
+  find toggle-disclosure
+
+zone navigation-menu
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <navigation-menu>
+    bind class, read class
+    slot
+
+zone navigation-menu-list
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <navigation-menu-list>
+    bind class, read class
+    slot
+
+zone navigation-menu-item
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <navigation-menu-item>
+    bind class, read class
+    slot
+
+zone navigation-menu-trigger
+  take host, like view
+  take class
+  take control
+  zone button
+    bind type, text <button>
+    bind data-slot, text <navigation-menu-trigger>
+    bind aria-expanded
+      call disclosure-open
+        bind self, read control
+    hook click
+      call toggle-disclosure
+        bind self, read control
+    bind class, read class
+    slot
+
+zone navigation-menu-content
+  take host, like view
+  take class
+  take control
+  fork test
+    hook test
+      call disclosure-open
+        bind self, read control
+    hook hold
+      zone div
+        bind data-slot, text <navigation-menu-content>
+        bind data-state
+          call disclosure-state
+            bind self, read control
+        bind class, read class
+        slot
+
+zone navigation-menu-link
+  take host, like view
+  take class
+  take href
+  zone a
+    bind data-slot, text <navigation-menu-link>
+    bind href, read href
+    bind class, read class
+    slot

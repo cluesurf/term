@@ -93,12 +93,20 @@ function checkPositivity(
 
 // ---- termination ----
 
-// is `arg` a strictly smaller value than the parameter `paramName`? Structural (a member of the parameter) or
-// numeric descent (param minus a positive literal, or param divided by an integer above one).
+// is `arg` a strictly smaller value than the parameter `paramName`? Structural (a member of the parameter, including a
+// variable bound by matching the parameter, e.g. `prior` in `case succ` on `a`) or numeric descent (param minus a
+// positive literal, or param divided by an integer above one). `memberOf` maps a match-bound field variable to the
+// subject variable it was destructured from.
 function strictlyDecreases(
   arg: Expression,
   paramName: string,
+  memberOf: Map<string, string>,
 ): boolean {
+  // a field bound by matching the parameter is structurally smaller than it (this is what makes a recursive function
+  // over an inductive type, like `plus` recursing on `succ`'s predecessor, provably terminating)
+  if (arg.form === 'variable' && memberOf.get(arg.name) === paramName)
+    {return true}
+
   if (arg.form === 'member')
     {return (
       arg.target.form === 'variable' && arg.target.name === paramName
@@ -257,34 +265,51 @@ function collectCalledNames(
 }
 
 // the argument lists of every call to `name` within the body (direct self-recursion)
+// a self-call with the field-origin context (which variables are destructured fields of which subject) at the call site
+type SelfCall = { args: Expression[]; memberOf: Map<string, string> }
+
 function collectSelfCalls(
   body: Statement[],
   name: string,
-  out: Expression[][],
+  out: SelfCall[],
+  variantFields: Map<string, string[]>,
 ): void {
-  walkCalls(body, (callee, args) => {
-    if (callee === name) {out.push(args)}
-  })
+  walkCalls(
+    body,
+    (callee, args, memberOf) => {
+      if (callee === name) {out.push({ args, memberOf })}
+    },
+    variantFields,
+  )
 }
 
 // every called function name within the body, passed to `onCall`, for building the call graph
 function collectAllCalls(
   body: Statement[],
   onCall: (callee: string) => void,
+  variantFields: Map<string, string[]>,
 ): void {
-  walkCalls(body, callee => onCall(callee))
+  walkCalls(body, callee => onCall(callee), variantFields)
 }
 
-// walk a statement body, invoking `visit` for every call expression with a variable callee
+// walk a statement body, invoking `visit` for every call expression with a variable callee. `memberOf` tracks, within
+// a `case <variant>` branch, each bound field's origin subject variable, so a recursion on a destructured field is seen
+// as structural descent.
 function walkCalls(
   body: Statement[],
-  visit: (callee: string, args: Expression[]) => void,
+  visit: (
+    callee: string,
+    args: Expression[],
+    memberOf: Map<string, string>,
+  ) => void,
+  variantFields: Map<string, string[]>,
+  memberOf: Map<string, string> = new Map(),
 ): void {
   const visitExpression = (node: Expression): void => {
     switch (node.form) {
       case 'call':
         if (node.callee.form === 'variable')
-          {visit(node.callee.name, node.args)}
+          {visit(node.callee.name, node.args, memberOf)}
 
         visitExpression(node.callee)
         node.args.forEach(visitExpression)
@@ -352,29 +377,50 @@ function walkCalls(
         break
       case 'while':
         visitExpression(node.cond)
-        walkCalls(node.body, visit)
+        walkCalls(node.body, visit, variantFields, memberOf)
         break
       case 'for-each':
         visitExpression(node.iterable)
-        walkCalls(node.body, visit)
+        walkCalls(node.body, visit, variantFields, memberOf)
         break
       case 'if':
         for (const branch of node.branches) {
           visitExpression(branch.cond)
-          walkCalls(branch.body, visit)
+          walkCalls(branch.body, visit, variantFields, memberOf)
         }
 
-        if (node.otherwise) {walkCalls(node.otherwise, visit)}
+        if (node.otherwise)
+          {walkCalls(node.otherwise, visit, variantFields, memberOf)}
 
         break
-      case 'match':
+      case 'match': {
         visitExpression(node.subject)
 
-        for (const branch of node.cases) {walkCalls(branch.body, visit)}
+        // if the match is on a plain variable, the matched fields of each branch are members of that variable
+        const subjectVar =
+          node.subject.form === 'variable'
+            ? node.subject.name
+            : undefined
 
-        if (node.otherwise) {walkCalls(node.otherwise, visit)}
+        for (const branch of node.cases) {
+          let branchMembers = memberOf
+
+          if (subjectVar) {
+            branchMembers = new Map(memberOf)
+
+            for (const fieldName of variantFields.get(branch.label) ??
+              [])
+              {branchMembers.set(fieldName, subjectVar)}
+          }
+
+          walkCalls(branch.body, visit, variantFields, branchMembers)
+        }
+
+        if (node.otherwise)
+          {walkCalls(node.otherwise, visit, variantFields, memberOf)}
 
         break
+      }
       default:
         break
     }

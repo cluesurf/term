@@ -26,6 +26,7 @@ import { noUnusedLoad } from '@cluesurf/make/code/lint/rules/no-unused-load'
 import { noDuplicateBranchCondition } from '@cluesurf/make/code/lint/rules/no-duplicate-branch-condition'
 import { noSelfAssignment } from '@cluesurf/make/code/lint/rules/no-self-assignment'
 import { noUnreachableCode } from '@cluesurf/make/code/lint/rules/no-unreachable-code'
+import { noIdenticalBranches } from '@cluesurf/make/code/lint/rules/no-identical-branches'
 
 // the default rule set, keyed by stable code for config and suppression
 export const RULES: Rule[] = [
@@ -39,6 +40,7 @@ export const RULES: Rule[] = [
   noDuplicateBranchCondition,
   noSelfAssignment,
   noUnreachableCode,
+  noIdenticalBranches,
 ]
 
 export type LintConfig = {

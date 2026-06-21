@@ -1,0 +1,68 @@
+
+# Command — headless command palette. Parts: command (root), command-input (the query box), command-list, command-
+# group, command-item, command-empty, command-separator. The query + filtering + highlighted index are wired via the
+# action registry + a selection controller (the interaction layer); these are the themeable structure.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone command
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <command>
+    bind class, read class
+    slot
+
+zone command-list
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <command-list>
+    bind class, read class
+    slot
+
+zone command-group
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <command-group>
+    bind class, read class
+    slot
+
+zone command-empty
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <command-empty>
+    bind class, read class
+    slot
+
+zone command-separator
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <command-separator>
+    bind class, read class
+    slot
+
+zone command-input
+  take host, like view
+  take class
+  zone input
+    bind data-slot, text <command-input>
+    bind type, text <text>
+    bind class, read class
+
+zone command-item
+  take host, like view
+  take class
+  take press
+  zone div
+    bind data-slot, text <command-item>
+    bind role, text <option>
+    hook click, call press
+    bind class, read class
+    slot

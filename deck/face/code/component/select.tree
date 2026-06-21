@@ -1,0 +1,99 @@
+
+# Select — headless combobox. Open/close is the shared `disclosure` controller; the trigger toggles and the content
+# mounts when open with reactive data-state. The items are structural (role=option) and fire a per-item `press` so the
+# consumer wires value selection with a `selection` controller alongside (composing both controllers in ONE component
+# currently trips a generic-signal inference limit; passing the value controller through the consumer sidesteps it).
+# Parts: select, select-trigger, select-value, select-content, select-item, select-group, select-label.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+load ../logic/disclosure
+  find disclosure-open
+  find disclosure-state
+  find toggle-disclosure
+
+zone select
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <select>
+    bind class, read class
+    slot
+
+zone select-trigger
+  take host, like view
+  take class
+  take control
+  zone button
+    bind type, text <button>
+    bind data-slot, text <select-trigger>
+    bind role, text <combobox>
+    bind aria-expanded
+      call disclosure-open
+        bind self, read control
+    bind data-state
+      call disclosure-state
+        bind self, read control
+    hook click
+      call toggle-disclosure
+        bind self, read control
+    bind class, read class
+    slot
+
+zone select-value
+  take host, like view
+  take class
+  zone span
+    bind data-slot, text <select-value>
+    bind class, read class
+    slot
+
+zone select-content
+  take host, like view
+  take class
+  take control
+  fork test
+    hook test
+      call disclosure-open
+        bind self, read control
+    hook hold
+      zone div
+        bind data-slot, text <select-content>
+        bind role, text <listbox>
+        bind data-state
+          call disclosure-state
+            bind self, read control
+        bind class, read class
+        slot
+
+zone select-item
+  take host, like view
+  take class
+  take press
+  zone button
+    bind type, text <button>
+    bind data-slot, text <select-item>
+    bind role, text <option>
+    hook click, call press
+    bind class, read class
+    slot
+
+zone select-group
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <select-group>
+    bind role, text <group>
+    bind class, read class
+    slot
+
+zone select-label
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <select-label>
+    bind class, read class
+    slot

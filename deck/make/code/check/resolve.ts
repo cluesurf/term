@@ -91,6 +91,18 @@ export function resolve(
 
   const stack: Scope[] = [global]
 
+  // variant name -> its field names, so a `case <variant>` branch can bind them as locals (a match on `succ p`
+  // exposes `p` in that branch)
+  const variantFields = new Map<string, string[]>()
+
+  for (const statement of program)
+    {if (statement.form === 'record-type')
+      {for (const variant of statement.variants)
+        {variantFields.set(
+          variant.name,
+          variant.fields.map(f => f.name),
+        )}}}
+
   const look = (name: string): Binding | undefined => {
     for (let i = stack.length - 1; i >= 0; i--) {
       const found = stack[i]!.get(name)
@@ -251,7 +263,18 @@ export function resolve(
       case 'match':
         resolveExpression(node.subject)
 
-        for (const branch of node.cases) {resolveBody(branch.body)}
+        for (const branch of node.cases) {
+          stack.push(new Map())
+
+          // bind the matched variant's fields as locals for this branch
+          for (const fieldName of variantFields.get(branch.label) ?? [])
+            {declare(fieldName, { kind: 'local' })}
+
+          for (const statement of branch.body)
+            {resolveStatement(statement)}
+
+          stack.pop()
+        }
 
         if (node.otherwise) {resolveBody(node.otherwise)}
 

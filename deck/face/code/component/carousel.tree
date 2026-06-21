@@ -1,0 +1,57 @@
+
+# Carousel — headless. A horizontally-scrolling set of slides with prev/next controls. Parts: carousel, carousel-
+# content, carousel-item, carousel-previous, carousel-next. The active index is the consumer's signal (selection);
+# the controls fire `press`. Theme the track transform in CSS.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone carousel
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <carousel>
+    bind class, read class
+    slot
+
+zone carousel-content
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <carousel-content>
+    bind class, read class
+    slot
+
+zone carousel-item
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <carousel-item>
+    bind class, read class
+    slot
+
+zone carousel-previous
+  take host, like view
+  take class
+  take press
+  zone button
+    bind type, text <button>
+    bind data-slot, text <carousel-previous>
+    bind aria-label, text <Previous slide>
+    hook click, call press
+    bind class, read class
+    slot
+
+zone carousel-next
+  take host, like view
+  take class
+  take press
+  zone button
+    bind type, text <button>
+    bind data-slot, text <carousel-next>
+    bind aria-label, text <Next slide>
+    hook click, call press
+    bind class, read class
+    slot

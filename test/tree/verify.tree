@@ -1,0 +1,103 @@
+note <Verification tests in Seed, for the functions the verify engine (deck/test) synthesizes and proves: max, min, abs, clamp. Each test asserts a point of the function's specification at a boundary input. The engine proves these over the whole bounded domain; here they are the same specs as idiomatic .tree tests, in the style of math.tree. `want hold` means the predicate body must be true.>
+
+load @cluesurf/base/code/math
+  find maximum
+  find minimum
+  find absolute
+  find clamp
+
+# --- max: result is the larger of the two inputs ---
+
+test <max returns the first when it is larger>
+  want hold
+    call is-equal
+      call maximum
+        mark 7
+        mark 3
+      mark 7
+
+test <max returns the second when it is larger>
+  want hold
+    call is-equal
+      call maximum
+        mark 3
+        mark 7
+      mark 7
+
+test <max at equal inputs returns that value>
+  want hold
+    call is-equal
+      call maximum
+        mark 5
+        mark 5
+      mark 5
+
+# --- min: result is the smaller of the two inputs ---
+
+test <min returns the smaller>
+  want hold
+    call is-equal
+      call minimum
+        mark 7
+        mark 3
+      mark 3
+
+test <min handles negatives>
+  want hold
+    call is-equal
+      call minimum
+        mark -2
+        mark 4
+      mark -2
+
+# --- abs: result is the non-negative magnitude (abs = max(a, -a)) ---
+
+test <abs of a negative is its magnitude>
+  want hold
+    call is-equal
+      call absolute
+        mark -5
+      mark 5
+
+test <abs of a positive is itself>
+  want hold
+    call is-equal
+      call absolute
+        mark 5
+      mark 5
+
+test <abs of zero is zero>
+  want hold
+    call is-equal
+      call absolute
+        mark 0
+      mark 0
+
+# --- clamp: result is held within [low, high] ---
+
+test <clamp below the low bound returns the low bound>
+  want hold
+    call is-equal
+      call clamp
+        mark -3
+        mark 0
+        mark 10
+      mark 0
+
+test <clamp above the high bound returns the high bound>
+  want hold
+    call is-equal
+      call clamp
+        mark 42
+        mark 0
+        mark 10
+      mark 10
+
+test <clamp inside the range returns the value>
+  want hold
+    call is-equal
+      call clamp
+        mark 6
+        mark 0
+        mark 10
+      mark 6

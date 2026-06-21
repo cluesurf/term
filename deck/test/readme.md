@@ -10,6 +10,11 @@ From the seed install root:
 
 - `npx tsx deck/test/code/demo.ts` (8/8) - the closed loop end to end.
 - `npx tsx deck/test/code/demo-loop.ts` (7/7) - type-derived generators, bounded proof, and the layered repair loop.
+- `npx tsx deck/test/code/demo-contract.ts` (9/9) - refinement-typed contracts, contract verification, and the full spec-to-verified-code loop (including exposing an under-specified contract).
+
+And the verification tests themselves are authored in idiomatic Seed `.tree`, like the other `.tree` suites:
+
+- `npx tsx test/tree/run.ts test/tree/verify.tree` (11/11) - the specs of the synthesized functions (max, min, abs, clamp) at boundary points, in `.tree`.
 
 ## The modules
 

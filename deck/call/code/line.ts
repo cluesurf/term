@@ -8,7 +8,8 @@ import { callHost } from '@cluesurf/call/code/host'
 import { callSeek } from '@cluesurf/call/code/seek'
 import { callLink } from '@cluesurf/call/code/link'
 import { callMake } from '@cluesurf/call/code/make'
-import { callCheck } from '@cluesurf/call/code/check'
+import { callScan } from '@cluesurf/call/code/scan'
+import { callMind } from '@cluesurf/call/code/mind'
 import { callTest } from '@cluesurf/call/code/test'
 import { callTime } from '@cluesurf/call/code/time'
 import { callBoot } from '@cluesurf/call/code/boot'
@@ -32,7 +33,8 @@ const COMMANDS = [
   'seek',
   'host',
   'make',
-  'check',
+  'scan',
+  'mind',
   'test',
   'time',
   'profile',
@@ -215,6 +217,62 @@ const cli = yargs(hideBin(process.argv))
       await callMake({
         root,
         ride: argv.ride,
+      })
+    },
+  )
+  .command(
+    'scan <file>',
+    'Type-check a file and report diagnostics (the verifier)',
+    yargs =>
+      yargs.positional('file', {
+        type: 'string',
+        description: 'The .tree file to check',
+        demandOption: true,
+      }),
+    async argv => {
+      await callScan({
+        root,
+        file: argv.file as string,
+        back: argv.back as string,
+      })
+    },
+  )
+  .command(
+    'mind [fact]',
+    'Project memory: remember a fact, or recall facts',
+    yargs =>
+      yargs
+        .positional('fact', {
+          type: 'string',
+          description: 'A fact to remember (omit to recall)',
+        })
+        .option('name', {
+          type: 'string',
+          description: 'A short name for the fact',
+        })
+        .option('kind', {
+          type: 'string',
+          choices: [
+            'decision',
+            'convention',
+            'constraint',
+            'reference',
+            'note',
+          ] as const,
+          description: 'The kind of fact',
+        })
+        .option('find', {
+          type: 'string',
+          description: 'Recall only facts matching this query',
+        }),
+    async argv => {
+      await callMind({
+        root,
+        fact: argv.fact,
+        name: argv.name,
+        kind: argv.kind,
+        find: argv.find,
+        back: argv.back as string,
       })
     },
   )

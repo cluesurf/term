@@ -1,0 +1,64 @@
+
+# Toast — headless (the sonner equivalent). Parts: toaster (the fixed region holding toasts), toast (one notification),
+# toast-title, toast-description, toast-action, toast-close. The toast queue is a list signal (a toast controller, the
+# interaction layer); these are the themeable structure. role=status + aria-live for a11y.
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone toaster
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <toaster>
+    bind role, text <region>
+    bind aria-live, text <polite>
+    bind class, read class
+    slot
+
+zone toast
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <toast>
+    bind role, text <status>
+    bind class, read class
+    slot
+
+zone toast-title
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <toast-title>
+    bind class, read class
+    slot
+
+zone toast-description
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <toast-description>
+    bind class, read class
+    slot
+
+zone toast-action
+  take host, like view
+  take class
+  zone div
+    bind data-slot, text <toast-action>
+    bind class, read class
+    slot
+
+zone toast-close
+  take host, like view
+  take class
+  take press
+  zone button
+    bind type, text <button>
+    bind data-slot, text <toast-close>
+    bind aria-label, text <Close>
+    hook click, call press
+    bind class, read class
+    slot
