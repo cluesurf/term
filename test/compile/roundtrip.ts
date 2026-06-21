@@ -2060,6 +2060,20 @@ task compute
       text <seed>
 `
 
+// string concat through the public interface, forwarding to each target's text shim (boolean result -> uniform output)
+const CONCAT_PROG = `load @cluesurf/base/code/text/string
+  find concat
+
+task compute
+  like boolean
+  send back
+    call is-equal
+      call concat
+        text <foo>
+        text <bar>
+      text <foobar>
+`
+
 // a regex match through the public interface, forwarding to the per-target regex shim (the prelude is auto-collected)
 const REGEX_PROG = `load @cluesurf/base/code/regex
   find matches
@@ -3117,6 +3131,23 @@ function main(): void {
     'kotlin + text runtime: to-upper("seed") through the string interface',
     frontEnd(TEXT_PROG, true, 'kotlin'),
     'SEED',
+  )
+
+  // string concat through the public text interface, running on each compiled toolchain
+  runRustText(
+    'rust + text runtime: concat("foo","bar") == "foobar"',
+    frontEnd(CONCAT_PROG, true, 'rust'),
+    'true',
+  )
+  runSwiftText(
+    'swift + text runtime: concat("foo","bar") == "foobar"',
+    frontEnd(CONCAT_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + text runtime: concat("foo","bar") == "foobar"',
+    frontEnd(CONCAT_PROG, true, 'kotlin'),
+    'true',
   )
 
   // regex through the public interface, running on each toolchain via the regex shim (the runner auto-prepends it)

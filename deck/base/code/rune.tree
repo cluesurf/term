@@ -1,8 +1,80 @@
+# Rune: a single Unicode scalar value (code point), 0 through 0x10FFFF, held as a number. The ASCII predicates below are exact for their range. Full Unicode general-category predicates (letter / digit / whitespace over the whole code space) are a table-driven extension built on the Unicode data in hold/text/code/.
 
 form rune
-  # A character of a number of bytes.
-  link code
-    like or
-      like size-8
-      like size-16
-      like size-32
+  link code, like number
+
+  # 0-9
+  task is-ascii-digit
+    take self
+    like boolean
+    send back
+      call and
+        call is-minimum
+          read self/code
+          code 48
+        call is-maximum
+          read self/code
+          code 57
+
+  # A-Z
+  task is-ascii-upper
+    take self
+    like boolean
+    send back
+      call and
+        call is-minimum
+          read self/code
+          code 65
+        call is-maximum
+          read self/code
+          code 90
+
+  # a-z
+  task is-ascii-lower
+    take self
+    like boolean
+    send back
+      call and
+        call is-minimum
+          read self/code
+          code 97
+        call is-maximum
+          read self/code
+          code 122
+
+  # A-Z or a-z
+  task is-ascii-letter
+    take self
+    like boolean
+    send back
+      call or
+        call is-ascii-upper
+          read self
+        call is-ascii-lower
+          read self
+
+  # tab, line feed, vertical tab, form feed, carriage return, or space
+  task is-ascii-whitespace
+    take self
+    like boolean
+    send back
+      call or
+        call or
+          call and
+            call is-minimum
+              read self/code
+              code 9
+            call is-maximum
+              read self/code
+              code 13
+          call is-equal
+            read self/code
+            code 32
+        wave false
+
+task make-rune
+  take code, like number
+  like rune
+  send back
+    make rune
+      bind code, read code

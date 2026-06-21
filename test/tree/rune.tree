@@ -1,0 +1,52 @@
+note <Tests for rune ASCII predicates: digit, letter, upper, lower, whitespace, addressed by code point.>
+
+load @cluesurf/base/code/rune
+  find rune
+  find make-rune
+  find is-ascii-digit
+  find is-ascii-letter
+  find is-ascii-upper
+  find is-ascii-lower
+  find is-ascii-whitespace
+
+test <the digit five is an ascii digit>
+  want hold
+    call is-ascii-digit
+      call make-rune
+        mark 53
+
+test <the letter A is not a digit>
+  want miss
+    call is-ascii-digit
+      call make-rune
+        mark 65
+
+test <lowercase a is an ascii letter>
+  want hold
+    call is-ascii-letter
+      call make-rune
+        mark 97
+
+test <A is uppercase>
+  want hold
+    call is-ascii-upper
+      call make-rune
+        mark 65
+
+test <a is lowercase>
+  want hold
+    call is-ascii-lower
+      call make-rune
+        mark 97
+
+test <space is ascii whitespace>
+  want hold
+    call is-ascii-whitespace
+      call make-rune
+        mark 32
+
+test <a letter is not whitespace>
+  want miss
+    call is-ascii-whitespace
+      call make-rune
+        mark 65

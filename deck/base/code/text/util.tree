@@ -5,6 +5,9 @@ load @cluesurf/base/code/text/string
 
 load @cluesurf/base/code/text
   find index-of
+  find char-at
+  find substring
+  find contains
 
 load @cluesurf/base/code/list
   find list
@@ -68,3 +71,50 @@ task count-occurrences
               read found
               read part/length
   send back, read total
+
+# strip any leading and trailing characters that appear in `chars`
+task trim-characters
+  take input, like text
+  take chars, like text
+  like text
+  save start, code 0
+  save end, read input/length
+  walk test
+    hook test
+      call and
+        call is-below
+          read start
+          read end
+        call contains
+          read chars
+          call char-at
+            read input
+            read start
+    hook step
+      save start
+        call add
+          read start
+          code 1
+  walk test
+    hook test
+      call and
+        call is-below
+          read start
+          read end
+        call contains
+          read chars
+          call char-at
+            read input
+            call subtract
+              read end
+              code 1
+    hook step
+      save end
+        call subtract
+          read end
+          code 1
+  send back
+    call substring
+      read input
+      read start
+      read end

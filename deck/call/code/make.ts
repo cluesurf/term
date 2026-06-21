@@ -90,10 +90,16 @@ export function projectResolver(
 
     if (!candidate) {return undefined}
 
-    // canonicalize so a file reached via a symlink (e.g. a self-referencing linked package) dedups to one module
-    return {
-      file: realpathSync(candidate),
-      text: readFileSync(candidate, 'utf8'),
+    // canonicalize so a file reached via a symlink (e.g. a self-referencing linked package) dedups to one module.
+    // guard the read: a candidate that turns out to be a directory or is otherwise unreadable is "not found", never a
+    // thrown EISDIR/EACCES that would crash the compiler on a malformed import.
+    try {
+      return {
+        file: realpathSync(candidate),
+        text: readFileSync(candidate, 'utf8'),
+      }
+    } catch {
+      return undefined
     }
   }
 

@@ -69,11 +69,11 @@ export function checkRoundTrip(text: string): OracleViolation | null {
 }
 
 /** Compiling twice must give byte-identical output. */
-export function checkDeterministic(text: string, resolve: Resolve): OracleViolation | null {
+export function checkDeterministic(text: string, resolve: Resolve, file = 'o.tree'): OracleViolation | null {
   let a, b
   try {
-    a = compile({ file: 'o.tree', text }, { resolve })
-    b = compile({ file: 'o.tree', text }, { resolve })
+    a = compile({ file, text }, { resolve })
+    b = compile({ file, text }, { resolve })
   } catch (e) {
     return { oracle: 'crash', detail: `compile threw: ${msg(e)}`, input: text }
   }
@@ -87,10 +87,10 @@ export function checkDeterministic(text: string, resolve: Resolve): OracleViolat
 }
 
 /** A compiling program must emit on every backend without throwing. */
-export function checkCrossBackend(text: string, resolve: Resolve): OracleViolation | null {
+export function checkCrossBackend(text: string, resolve: Resolve, file = 'o.tree'): OracleViolation | null {
   let compiled
   try {
-    compiled = compile({ file: 'o.tree', text }, { resolve })
+    compiled = compile({ file, text }, { resolve })
   } catch (e) {
     return { oracle: 'crash', detail: `compile threw: ${msg(e)}`, input: text }
   }
@@ -187,10 +187,12 @@ export function auditCorpus(input: {
     }
 
     const t0 = performance.now()
+    // compile with the REAL file path so relative imports (load ../x)
+    // resolve correctly - a fake name would misresolve and false-positive.
     for (const check of [
       checkRoundTrip(text),
-      checkDeterministic(text, input.resolve),
-      checkCrossBackend(text, input.resolve),
+      checkDeterministic(text, input.resolve, file),
+      checkCrossBackend(text, input.resolve, file),
       checkTolerant(text, input.parseTolerant),
     ]) {
       if (check) violations.push({ file, violation: check })

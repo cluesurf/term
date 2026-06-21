@@ -23,6 +23,7 @@ import { callProfile } from '@cluesurf/call/code/profile'
 import { callForm } from '@cluesurf/call/code/form'
 import { callLint } from '@cluesurf/call/code/lint'
 import { callHold } from '@cluesurf/call/code/hold'
+import { callHunt } from '@cluesurf/call/code/hunt'
 import { callLook } from '@cluesurf/call/code/look'
 import { logFail, warn } from '@cluesurf/make/code/tint'
 
@@ -50,6 +51,7 @@ const COMMANDS = [
   'form',
   'lint',
   'hold',
+  'hunt',
   'look',
 ]
 
@@ -643,6 +645,30 @@ const cli = yargs(hideBin(process.argv))
         cross: argv.cross,
         cache: argv.cache,
         force: argv.force,
+        json: argv.json,
+      })
+    },
+  )
+  .command(
+    'hunt [glob]',
+    'Automated bug-hunt: oracles + fuzzing over .tree files (crashes, hangs, round-trip, determinism, cross-backend, perf)',
+    yargs =>
+      yargs
+        .positional('glob', {
+          type: 'string',
+          description: 'Directory of .tree files to hunt (default: deck/base/code)',
+        })
+        .option('runs', { type: 'number', description: 'Fuzz inputs per seed' })
+        .option('seeds', { type: 'number', description: 'Distinct fuzz seeds' })
+        .option('fuzz-timeout', { type: 'number', description: 'Watchdog seconds per fuzz seed' })
+        .option('json', { type: 'boolean', description: 'Machine-readable output' }),
+    async argv => {
+      await callHunt({
+        root,
+        glob: argv.glob as string | undefined,
+        runs: argv.runs,
+        seeds: argv.seeds,
+        fuzzTimeout: argv.fuzzTimeout,
         json: argv.json,
       })
     },

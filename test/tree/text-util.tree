@@ -6,6 +6,7 @@ load @cluesurf/base/code/text/string
 load @cluesurf/base/code/text/util
   find join
   find count-occurrences
+  find trim-characters
 
 load @cluesurf/base/code/list
   find list
@@ -61,3 +62,19 @@ test <count-occurrences is zero when absent>
         text <hello world>
         text <xyz>
       mark 0
+
+test <trim-characters strips the given characters from both ends>
+  want hold
+    call is-equal
+      call trim-characters
+        text <xxhelloxx>
+        text <x>
+      text <hello>
+
+test <trim-characters leaves the middle intact>
+  want hold
+    call is-equal
+      call trim-characters
+        text <--a-b-->
+        text <->
+      text <a-b>

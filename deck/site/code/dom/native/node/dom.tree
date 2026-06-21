@@ -13,7 +13,7 @@ load ../../view
   find view
 
 dock load
-  load <global:serialize>, name html
+  load <global:html>, name doc
   mark native
 
 form element
@@ -248,7 +248,7 @@ task serialize
   take node, like view
   like text
   send back
-    call html/serialize-node
+    call doc/serialize-node
       read node/handle
 
 # wrap body HTML in the document shell (the SSR response), via the runtime shim
@@ -256,7 +256,7 @@ task page-shell
   take body, like text
   like text
   send back
-    call html/document-shell
+    call doc/document-shell
       read body
 
 # no ResizeObserver on the server
