@@ -110,17 +110,13 @@ seed test
 ## Example
 
 ```
-task greet
-  take name, like text
-  back call join
-    bind a, mark <Hello, >
-    bind b, read name
-
-save message
-  call greet
-    bind name, mark <world>
-call print
-  bind text, read message
+task double
+  take value, like number
+  like number
+  send back
+    call add
+      read value
+      read value
 ```
 
 Compiles to:
@@ -128,16 +124,16 @@ Compiles to:
 **Rust**
 
 ```rust
-fn greet(name: String) -> String {
-    format!("Hello, {}", name)
+fn double(value: i64) -> i64 {
+    return value + value;
 }
 ```
 
 **TypeScript**
 
 ```typescript
-export function greet(name) {
-  return `Hello, ${name}`
+export function double(value: number): number {
+  return value + value
 }
 ```
 

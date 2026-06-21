@@ -2,7 +2,7 @@
 // the same diagnostics as the whole-program `analyze`, but re-checks only the function that changed, and the
 // per-definition chains run concurrently. Run: npx tsx test/server/incremental.ts
 
-import { IncrementalAnalyzer } from '@cluesurf/flow/code/incremental'
+import { IncrementalAnalyzer } from '@cluesurf/make/code/compile/analyzer'
 import { analyze } from '@cluesurf/flow/code/analyze'
 
 let pass = 0

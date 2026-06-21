@@ -5,7 +5,7 @@
 
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
-import { IncrementalAnalyzer } from '@cluesurf/flow/code/incremental'
+import { IncrementalAnalyzer } from '@cluesurf/make/code/compile/analyzer'
 import { projectResolver } from '@cluesurf/call/code/make'
 import { findProjectRoot } from '@cluesurf/call/code/boot'
 import type { NativeEnv } from '@cluesurf/make/code/compile/native'

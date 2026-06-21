@@ -1,16 +1,16 @@
 // The incremental analyzer: the editor/dev front-end on the query-engine compiler (`QueryCompiler`). Where `analyze`
 // recompiles the whole program on every edit, this re-checks only the definitions that actually changed (the signature
-// firewall), so a keystroke re-types one function, not the project. It produces the same LSP diagnostics plus a typed
-// program (assembled from the per-definition typed clones) for navigation / hover.
-// See note/seed/plan/functional-checker.md and compilation-performance.md (Tier 2).
+// firewall), so a keystroke re-types one function, not the project. It produces the compiler's diagnostics plus a typed
+// program (assembled from the per-definition typed clones) for navigation / hover. It lives in the compiler (make) and
+// stays free of any editor-protocol types, so the dev daemon uses it directly and the language server (flow) maps its
+// diagnostics into LSP form. See note/seed/plan/functional-checker.md and compilation-performance.md (Tier 2).
 
 import { QueryCompiler } from '@cluesurf/make/code/compile/incremental'
 import { LOW, HIGH } from '@cluesurf/make/code/compile/query'
 import { collectModules } from '@cluesurf/make/code/compile/load'
 import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
 import type { Program } from '@cluesurf/make/code/compile/node'
-import { toLspDiagnostic } from '@cluesurf/flow/code/analyze'
-import type { LspDiagnostic } from '@cluesurf/flow/code/analyze'
+import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
 
 export class IncrementalAnalyzer {
   // public for stats / tests (the query database tracks per-key recompute counts)
@@ -22,7 +22,7 @@ export class IncrementalAnalyzer {
   // analyze a document: collect its module graph, set sources, return incremental diagnostics + the typed program.
   // Async: the per-definition chains (resolve -> type-check) run concurrently under one query transaction.
   async analyze(document: Source): Promise<{
-    diagnostics: LspDiagnostic[]
+    diagnostics: Diagnostic[]
     program?: Program
   }> {
     const sources = this.resolve
@@ -46,7 +46,7 @@ export class IncrementalAnalyzer {
       const merged = await this.compiler.program(cx, this.files)
 
       if (!merged.ok) {
-        return { diagnostics: merged.diagnostics.map(toLspDiagnostic) }
+        return { diagnostics: merged.diagnostics }
       }
 
       // per definition, concurrently: resolve, then (only if it resolved) type-check. Diagnostics are gathered into a
@@ -57,7 +57,7 @@ export class IncrementalAnalyzer {
             return {
               index,
               statement,
-              diagnostics: [] as LspDiagnostic[],
+              diagnostics: [] as Diagnostic[],
             }
           }
 
@@ -71,7 +71,7 @@ export class IncrementalAnalyzer {
             return {
               index,
               statement: resolved.def ?? statement,
-              diagnostics: resolved.diagnostics.map(toLspDiagnostic),
+              diagnostics: resolved.diagnostics,
             }
           }
 
@@ -84,12 +84,12 @@ export class IncrementalAnalyzer {
           return {
             index,
             statement: checked.def ?? statement,
-            diagnostics: checked.diagnostics.map(toLspDiagnostic),
+            diagnostics: checked.diagnostics,
           }
         }),
       )
 
-      const diagnostics: LspDiagnostic[] = []
+      const diagnostics: Diagnostic[] = []
       const typed: Program = []
 
       for (const entry of perDef) {

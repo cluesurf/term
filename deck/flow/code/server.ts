@@ -6,12 +6,12 @@
 // (main.ts) pumps stdin/stdout into it.
 
 import type { Message } from '@cluesurf/flow/code/protocol'
-import { hoverAt, toRange } from '@cluesurf/flow/code/analyze'
+import { hoverAt, toRange, toLspDiagnostic } from '@cluesurf/flow/code/analyze'
 import type {
   LspDiagnostic,
   LspPosition,
 } from '@cluesurf/flow/code/analyze'
-import { IncrementalAnalyzer } from '@cluesurf/flow/code/incremental'
+import { IncrementalAnalyzer } from '@cluesurf/make/code/compile/analyzer'
 import {
   buildIndex,
   referenceAt,
@@ -353,7 +353,9 @@ export class LanguageServer {
 
     return notify('textDocument/publishDiagnostics', {
       uri,
-      diagnostics: result.diagnostics satisfies LspDiagnostic[],
+      diagnostics: result.diagnostics.map(
+        toLspDiagnostic,
+      ) satisfies LspDiagnostic[],
     })
   }
 }
