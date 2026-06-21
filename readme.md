@@ -64,7 +64,7 @@ are written in `.tree` and compiled by the compiler itself.
 ```
 .tree source
     ↓
-make (compiler): parse → mill → resolve → check → emit
+make (compiler): parse → resolve → check → emit
     ├─→ TypeScript  (browsers, Node.js)
     ├─→ Rust        (servers, CLI, embedded)
     ├─→ Kotlin      (Android, JVM)
