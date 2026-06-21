@@ -1,0 +1,98 @@
+
+# The face base theme: a `look` stylesheet (compiled to static CSS by the build via look-css). It defines the design
+# tokens (`tone`) and a small set of base utility classes, including the `data-state` bridges the headless components
+# emit. Consumers override the tokens or add their own `face` rules to restyle everything with no component changes.
+# This is the "ready to theme" starting point. The full Tailwind utility set is generated separately over these scales.
+
+tone
+  # neutral scale
+  have color-zinc-50, text <#fafafa>
+  have color-zinc-100, text <#f4f4f5>
+  have color-zinc-200, text <#e4e4e7>
+  have color-zinc-300, text <#d4d4d8>
+  have color-zinc-500, text <#71717a>
+  have color-zinc-700, text <#3f3f46>
+  have color-zinc-800, text <#27272a>
+  have color-zinc-900, text <#18181b>
+  have color-zinc-950, text <#09090b>
+  # accent
+  have color-violet-400, text <#a78bfa>
+  have color-violet-500, text <#8b5cf6>
+  have color-violet-600, text <#7c3aed>
+  # semantic (light)
+  have surface, text <var(--color-zinc-50)>
+  have on-surface, text <var(--color-zinc-900)>
+  have muted, text <var(--color-zinc-500)>
+  have border, text <var(--color-zinc-200)>
+  have accent, text <var(--color-violet-500)>
+  have ring, text <var(--color-violet-400)>
+  # spacing + shape
+  have space-2, text <0.5rem>
+  have space-3, text <0.75rem>
+  have space-4, text <1rem>
+  have radius, text <0.5rem>
+
+# semantic tokens flip in dark mode; every utility that references them re-themes for free
+tone dark
+  have surface, text <var(--color-zinc-950)>
+  have on-surface, text <var(--color-zinc-100)>
+  have muted, text <var(--color-zinc-500)>
+  have border, text <var(--color-zinc-800)>
+
+# a panel surface (popover / dialog / dropdown content)
+face panel
+  have background, text <var(--surface)>
+  have color, text <var(--on-surface)>
+  have border, text <1px solid var(--border)>
+  have border-radius, text <var(--radius)>
+  have padding, text <var(--space-4)>
+
+# the data-state bridge: a part sets data-state, the theme animates it. Works for any overlay (popover/dialog/etc).
+face overlay
+  have opacity, text <0>
+  have transition, text <opacity 150ms ease>
+  case open
+    have opacity, text <1>
+  case closed
+    have opacity, text <0>
+
+# a focus-visible ring shared by interactive parts
+face focusable
+  have outline, text <none>
+  case focus-visible
+    have box-shadow, text <0 0 0 2px var(--ring)>
+
+# a muted helper-text utility
+face hint
+  have color, text <var(--muted)>
+  have font-size, text <0.875rem>
+
+# native form controls (input / textarea / select) are used as plain elements with this class, per the headless naming
+# rule (a self-rendering tag is a native element + class, not a zone component). See note/library/face/native-elements.md.
+face control
+  have background, text <var(--surface)>
+  have color, text <var(--on-surface)>
+  have border, text <1px solid var(--border)>
+  have border-radius, text <var(--radius)>
+  have padding, text <var(--space-2) var(--space-3)>
+  have font-size, text <0.875rem>
+  case focus-visible
+    have outline, text <none>
+    have box-shadow, text <0 0 0 2px var(--ring)>
+  case disabled
+    have opacity, text <0.5>
+
+# a label for a native control
+face label
+  have color, text <var(--on-surface)>
+  have font-size, text <0.875rem>
+  have font-weight, text <500>
+
+# a keyboard key hint (the <kbd> element)
+face kbd
+  have background, text <var(--color-zinc-100)>
+  have color, text <var(--muted)>
+  have border, text <1px solid var(--border)>
+  have border-radius, text <0.25rem>
+  have padding, text <0.0625rem 0.375rem>
+  have font-size, text <0.75rem>

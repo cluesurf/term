@@ -63,6 +63,16 @@ task listen-document
   take handler
     like task
       take event
+  like task
+
+task anchor
+  take reference, like view
+  take panel, like view
+  take placement, like text
+  take offset, like number
+  take flip, like boolean
+  take shift, like boolean
+  like task
 
 task observe-size
   take node, like view

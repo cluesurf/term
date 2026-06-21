@@ -7,6 +7,7 @@
 
 load @cluesurf/site/code/zone/reactive
   find signal
+  find on-cleanup
 load @cluesurf/site/code/dom/dom
   find listen-document
 load @cluesurf/bind/code/browser/dom/keyboard-event
@@ -14,26 +15,34 @@ load @cluesurf/bind/code/browser/dom/keyboard-event
 load ./disclosure
   find close-disclosure
 
-# arm Escape + outside-click dismissal for a disclosure controller
+# arm Escape + outside-click dismissal for a disclosure controller. Each document listener returns a remover, which is
+# registered for cleanup on the surrounding scope, so when the overlay's owner is disposed (the panel unmounts) the
+# global handlers detach. No leak.
 task arm-dismiss
   take control, like signal
-  call listen-document
-    text <keydown>
-    task on-key
-      take event
-      host key-event, like keyboard-event
-        read event
-      fork test
-        hook test
-          call is-equal
-            read key-event/key
-            text <Escape>
-        hook hold
-          call close-disclosure
-            bind self, read control
-  call listen-document
-    text <click>
-    task on-click
-      take event
-      call close-disclosure
-        bind self, read control
+  save drop-key
+    call listen-document
+      text <keydown>
+      task on-key
+        take event
+        host key-event, like keyboard-event
+          read event
+        fork test
+          hook test
+            call is-equal
+              read key-event/key
+              text <Escape>
+          hook hold
+            call close-disclosure
+              bind self, read control
+  call on-cleanup
+    read drop-key
+  save drop-click
+    call listen-document
+      text <click>
+      task on-click
+        take event
+        call close-disclosure
+          bind self, read control
+  call on-cleanup
+    read drop-click

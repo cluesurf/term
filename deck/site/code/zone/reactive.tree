@@ -16,6 +16,14 @@ form effect
     like task
   link live, like boolean
 
+# an ownership scope (Solid's owner): the effects created while it is open, plus cleanup tasks to run when it is
+# disposed (so the listeners, timers, observers, and outside-click handlers those effects registered are released).
+# Disposing an owner stops its effects re-running and runs its cleanups, so a view region tears down with no leaks.
+# Named `owner` (not `scope`) to avoid colliding with the focus-scope controller in face.
+form owner
+  link effects, like list
+  link cleanups, like list
+
 # the effect currently running, so a signal read can subscribe it (a stack, to support nested effects)
 host running
   make list
@@ -24,6 +32,20 @@ host running
 # later be disposed as a unit (its effects stop re-running). This is what lets a hot-swap tear down the old view.
 host owners
   make list
+
+# batching defers effect runs until a batch completes (one update pass for many writes); pausing suppresses tracking
+# so an untracked read does not subscribe the running effect. One mutable cell holds both flags plus the deferred queue.
+form react-flags
+  link batching, like boolean
+  link paused, like boolean
+  link queue, like list
+
+host flags
+  make react-flags
+    bind batching, wave false
+    bind paused, wave false
+    bind queue
+      make list
 
 task make-signal
   head t
@@ -55,8 +77,17 @@ task write-signal
   walk list, read subscribers
     hook next
       take site, name observer
-      call run-effect
-        bind effect, read observer
+      # in a batch, queue the effect for one flush after the batch; otherwise run it now
+      fork test
+        hook test
+          read flags/batching
+        hook hold
+          call push
+            bind list, read flags/queue
+            bind item, read observer
+        hook miss
+          call run-effect
+            bind effect, read observer
 
 task make-effect
   take run
@@ -81,11 +112,33 @@ task make-effect
               read owners/length
               mark 1
       call push
-        bind list, read top
+        bind list, read top/effects
         bind item, read own
   call run-effect
     bind effect, read own
   send back, read own
+
+# register a cleanup task to the innermost open scope, run when that scope is disposed. This is how a listener,
+# timer, ResizeObserver, autoUpdate handle, or outside-click handler gets released on unmount.
+task on-cleanup
+  take run
+    like task
+  fork test
+    hook test
+      call is-empty, read owners
+    hook hold
+      save skip, mark 0
+    hook miss
+      save top
+        call get
+          bind self, read owners
+          bind index
+            call subtract
+              read owners/length
+              mark 1
+      call push
+        bind list, read top/cleanups
+        bind item, read run
 
 # push the effect, run it (so its reads subscribe), then pop. A disposed effect (live false) is skipped, so a
 # torn-down scope's effects never run again even though a written signal still holds them as observers briefly.
@@ -104,46 +157,129 @@ task run-effect
     hook miss
       save skip, mark 0
 
-# open a new ownership scope and return its handle; effects created until it closes register to it
+# open a new ownership scope and return its handle; effects and cleanups created until it closes register to it
 task open-scope
-  like list
-  save scope
-    make list
+  like owner
+  save own
+    make owner
+      bind effects
+        make list
+      bind cleanups
+        make list
   call push
     bind list, read owners
-    bind item, read scope
-  send back, read scope
+    bind item, read own
+  send back, read own
 
 # close the innermost open scope (stop registering new effects to it)
 task close-scope
   call pop
     bind list, read owners
 
-# dispose a scope: every effect in it stops running (so its DOM updates cease before the view is replaced)
+# dispose a scope: stop every effect in it (so its DOM updates cease before the view is replaced), then run every
+# cleanup it registered (releasing listeners, observers, timers). Run after the region is no longer needed.
 task dispose-scope
-  take scope, like list
-  walk list, read scope
+  take scope, like owner
+  walk list, read scope/effects
     hook next
       take site, name member
       save member/live, wave false
+  walk list, read scope/cleanups
+    hook next
+      take site, name run
+      call run
 
-# subscribe the currently-running effect to a signal, if any effect is running (the top of the stack)
+# a derived, cached reactive value (Solid createMemo): an effect recomputes `compute` whenever a signal it reads
+# changes and stores the result in a signal. Read it with read-signal. Recomputes only on dependency change, so
+# downstream effects do not re-run when an unrelated signal updates.
+task make-memo
+  head t
+  take compute
+    like task
+      like t
+  like signal
+  save cell
+    call make-signal
+      bind value
+        call compute
+  call make-effect
+    bind run
+      task recompute
+        call write-signal
+          bind self, read cell
+          bind value
+            call compute
+  send back, read cell
+
+# run `body` inside a fresh ownership scope and return the scope handle, so the caller can later dispose it (Solid
+# createRoot). Everything reactive built inside `body` registers to the scope and tears down together on dispose.
+task make-root
+  take body
+    like task
+  like owner
+  save own, call open-scope
+  call body
+  call close-scope
+  send back, read own
+
+# subscribe the currently-running effect to a signal, if any effect is running (the top of the stack) and tracking is
+# not paused (untrack / on-mount suppress it)
 task track
   take signal, flex true
   fork test
     hook test
-      call is-empty, read running
+      read flags/paused
     hook hold
       save skip, mark 0
     hook miss
-      save index
-        call subtract
-          read running/length
-          mark 1
-      save current
-        call get
-          bind self, read running
-          bind index, read index
-      call push
-        bind list, read signal/observers
-        bind item, read current
+      fork test
+        hook test
+          call is-empty, read running
+        hook hold
+          save skip, mark 0
+        hook miss
+          save index
+            call subtract
+              read running/length
+              mark 1
+          save current
+            call get
+              bind self, read running
+              bind index, read index
+          call push
+            bind list, read signal/observers
+            bind item, read current
+
+# run all signal writes in `body` as one update pass: queued effects fire once after body completes, not per write
+task batch
+  take body, like task
+  save flags/batching, wave true
+  call body
+  save flags/batching, wave false
+  save queued, read flags/queue
+  save flags/queue
+    make list
+  walk list, read queued
+    hook next
+      take site, name effect
+      call run-effect
+        bind effect, read effect
+
+# read signals in `body` without subscribing the running effect to them (Solid untrack)
+task untrack
+  head t
+  take body
+    like task
+      like t
+  like t
+  save flags/paused, wave true
+  save result, call body
+  save flags/paused, wave false
+  send back, read result
+
+# run `body` once, untracked, for post-setup side effects (Solid onMount). Does not re-run on signal change.
+task on-mount
+  take body, like task
+  save flags/paused, wave true
+  call body
+  save flags/paused, wave false

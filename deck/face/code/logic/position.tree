@@ -1,28 +1,46 @@
 
-# Positioning — anchors a floating element (popover / tooltip / dropdown / select / hover-card content) to a reference
-# (its trigger). Delegates to @floating-ui/dom, the universal framework-agnostic positioning engine, via `dock`
-# (native). The uniform `place` task is the thin Seed layer; the geometry is floating-ui's. This is the dock-delegation
-# pattern: own the clean API, delegate the hard math to the proven native library.
+# Positioning — anchors a floating panel (popover / tooltip / dropdown / select / hover-card / combobox content) to its
+# reference (the trigger). Delegates the geometry to floating-ui through the dom `anchor` primitive, which applies
+# position:fixed left/top, runs the offset + flip + shift middleware, and keeps the panel synced on scroll / resize via
+# autoUpdate. This is the dock-delegation pattern: a clean Seed API, floating-ui does the math.
 #
-# `place` computes the (x, y) for `floating` against `reference` at the given placement (e.g. "bottom", "top-start")
-# and returns floating-ui's result. The caller applies it to the floating element's style (position: fixed; left: x;
-# top: y) and re-runs on scroll / resize for live tracking (floating-ui's autoUpdate). Applying the style needs a dom
-# `set-style` primitive (the noted dom follow-up); until then the result is read and applied by the caller.
-
-dock load
-  load <@floating-ui/dom>, name floating
-  mark native
+# `place` wires it with sensible overlay defaults (8px offset, flip + shift on) and returns the cleanup task. The
+# caller registers it with on-cleanup so tracking stops and listeners detach when the overlay closes. `place-with`
+# exposes the full knobs (offset distance, flip, shift) for callers that need them.
 
 load @cluesurf/site/code/dom/dom
   find view
+  find anchor
 
+# anchor `panel` to `reference` at `placement`, with overlay defaults. Returns the cleanup task.
 task place
   take reference, like view
   take panel, like view
   take placement, like text
-  save spot
-    call floating/compute-position
+  like task
+  send back
+    call anchor
       read reference
       read panel
-      bind placement, read placement
-  send back, read spot
+      read placement
+      mark 8
+      wave true
+      wave true
+
+# anchor with explicit middleware config (offset distance in px, flip, shift). Returns the cleanup task.
+task place-with
+  take reference, like view
+  take panel, like view
+  take placement, like text
+  take offset, like number
+  take flip, like boolean
+  take shift, like boolean
+  like task
+  send back
+    call anchor
+      read reference
+      read panel
+      read placement
+      read offset
+      read flip
+      read shift

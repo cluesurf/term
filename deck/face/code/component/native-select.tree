@@ -1,0 +1,42 @@
+
+# Native select — the browser's own `<select>` dropdown (vs the custom `select` listbox component). It renders a real
+# `<select>` element via the `node` escape hatch (`node select` forces the html element even though `select` is also a
+# component name). Use this when you want the platform-native control (mobile pickers, zero JS); use `select` for a
+# fully themeable custom listbox. Headless: data-slot + class + the change handler; the consumer fills `option`s.
+# Parts: native-select, native-option, native-optgroup.
+
+load @cluesurf/site/code/zone/render
+  find element
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone native-select
+  take host, like view
+  take class
+  take change
+  node select
+    bind data-slot, text <native-select>
+    hook change, call change
+    bind class, read class
+    slot
+
+zone native-option
+  take host, like view
+  take class
+  take value
+  node option
+    bind data-slot, text <native-option>
+    bind value, read value
+    bind class, read class
+    slot
+
+zone native-optgroup
+  take host, like view
+  take class
+  take label
+  node optgroup
+    bind data-slot, text <native-optgroup>
+    bind label, read label
+    bind class, read class
+    slot

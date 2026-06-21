@@ -1,0 +1,39 @@
+
+# Look: the CSS-utility AST. A look sheet is a flat list of rules. Each rule is either a `face` (a utility class with
+# declarations and variant cases) or a `tone` (a block of theme tokens). The grammar lives in
+# @cluesurf/term/code/code/look/mine, the builder in .../mint. A separate static-output compiler lowers this AST to a
+# plain CSS stylesheet at build time (Tailwind-style, zero runtime). The headless components carry `class` +
+# `data-slot`/`data-state`, so `face ... / case <state>` themes them with no runtime work.
+
+load ./term
+  find term
+
+load ./seed
+  find seed
+
+# one entry in a look sheet: a utility class or a theme-token block
+form look-rule
+  case face, like face-rule
+  case tone, like tone-rule
+
+# `face <name>` with `have` declarations and `case` variants
+form face-rule
+  link name, like term
+  link have, list look-have
+  link case, list look-case
+
+# `have <property>, <value>` -> one CSS declaration. The value is a plain text expression (`text <...>`), so any
+# gradient, calc(), var(), or shorthand passes through verbatim.
+form look-have
+  link name, like term
+  link bond, like seed
+
+# `case <variant>` -> a variant block (hover / focus / dark / md / open / ...) with its own declarations
+form look-case
+  link name, like term
+  link have, list look-have
+
+# `tone` (or `tone dark`) -> theme tokens emitted as :root (or .dark) custom properties. `name` is the optional scope.
+form tone-rule
+  link name, like term
+  link have, list look-have

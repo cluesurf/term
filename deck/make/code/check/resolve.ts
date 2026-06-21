@@ -266,8 +266,10 @@ export function resolve(
         for (const branch of node.cases) {
           stack.push(new Map())
 
-          // bind the matched variant's fields as locals for this branch
-          for (const fieldName of variantFields.get(branch.label) ?? [])
+          // bind the matched variant's fields as locals for this branch, honoring `binds` field-renames if present
+          for (const fieldName of branch.binds ??
+            variantFields.get(branch.label) ??
+            [])
             {declare(fieldName, { kind: 'local' })}
 
           for (const statement of branch.body)

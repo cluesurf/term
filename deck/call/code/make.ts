@@ -167,14 +167,18 @@ export function compileProject(
       continue
     }
 
+    // a look stylesheet emits CSS, not TypeScript: write it to a sibling `.css` under host/
+    const isCss = typeof result.css === 'string'
     const outPath = path.join(
       root,
       'host',
-      path.relative(root, file).replace(/\.tree$/, '.ts'),
+      path
+        .relative(root, file)
+        .replace(/\.tree$/, isCss ? '.css' : '.ts'),
     )
 
     mkdirSync(path.dirname(outPath), { recursive: true })
-    writeFileSync(outPath, result.typescript)
+    writeFileSync(outPath, isCss ? (result.css as string) : result.typescript)
     compiled++
   }
 

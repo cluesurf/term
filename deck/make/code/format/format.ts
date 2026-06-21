@@ -71,6 +71,18 @@ function shape(node: Node): string {
   }
 }
 
+// the declaration heads that make up a task's signature (before its body). Runs of the same head group together;
+// a head change inside the signature, and the signature->body boundary, each get a blank line.
+const SIGNATURE_HEADS = new Set([
+  'take',
+  'free',
+  'like',
+  'mark',
+  'rank',
+  'flex',
+  'hold',
+])
+
 // the head atom of a group (its first node), as text. Used to keep certain heads always stacked.
 function headName(group: GroupNode): string {
   const head = group.nodes[0]
@@ -134,9 +146,42 @@ function formatGroup(group: GroupNode, depth: number): string[] {
     `${indent}${headParts.join(' ')}${group.optional ? '?' : ''}`,
   )
 
+  // blank-line grouping inside a task body: signature lines (take / like / mark ...) are grouped by head, the first
+  // real statement is set off from the signature, and a multi-line block is set off from a preceding simple statement.
+  // A block followed by a statement (or two adjacent blocks) stays tight, so the indentation provides the separation.
+  // Other constructs (fork / walk / make / form ...) keep their children tight; only function bodies breathe.
+  const spaceBody = headName(group) === 'task'
+  let prevHead: string | undefined
+  let prevSignature = false
+  let prevCompound = false
+
   for (const kid of kids.slice(split)) {
-    if (kid.kind === 'group') {lines.push(...formatGroup(kid, depth + 1))}
-    else {lines.push(`${'  '.repeat(depth + 1)}${flatten(kid)}`)}
+    const kidLines =
+      kid.kind === 'group'
+        ? formatGroup(kid, depth + 1)
+        : [`${'  '.repeat(depth + 1)}${flatten(kid)}`]
+
+    const head =
+      kid.kind === 'group'
+        ? headName(kid)
+        : (flatten(kid).split(/[\s,]/)[0] ?? '')
+    const signature = SIGNATURE_HEADS.has(head)
+    const compound = kidLines.length > 1
+
+    if (spaceBody && prevHead !== undefined) {
+      const blank =
+        prevSignature && signature
+          ? head !== prevHead // group signature entries by head
+          : prevSignature && !signature
+            ? true // signature -> body boundary
+            : compound && !prevCompound // set a block off from a preceding simple statement
+      if (blank) {lines.push('')}
+    }
+
+    lines.push(...kidLines)
+    prevHead = head
+    prevSignature = signature
+    prevCompound = compound
   }
 
   return lines

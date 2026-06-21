@@ -24,6 +24,7 @@ load @cluesurf/base/code/list
 
 load ./reactive
   find make-effect
+  find on-cleanup
 
 task element
   take tag, like text
@@ -171,6 +172,202 @@ task each
               bind item, read node
         save mounted, read fresh
 
+# keyed list (Solid For): like `each`, but reuses the existing node for an item whose key persists across renders, so
+# the node keeps its identity (focus, scroll, animation, component state) when the list reorders or items insert/remove.
+# `key` extracts a stable text key per item. Reconciliation: for each current item reuse its old node by key or build a
+# fresh one, drop nodes whose key vanished, then re-append all current nodes in order (append moves a node to the end).
+task each-keyed
+  head t
+  take host, like view
+  take items
+    like task
+      like list
+        like t
+  take key
+    like task
+      take item, like t
+      like text
+  take build
+    like task
+      take item, like t
+      like view
+  save keys
+    make list
+  save nodes
+    make list
+  call make-effect
+    bind run
+      task render
+        save current, call items
+        save next-keys
+          make list
+        save next-nodes
+          make list
+        # build or reuse a node per current item, matched by key against the previous render
+        walk list, read current
+          hook next
+            take site, name item
+            save k
+              call key
+                bind item, read item
+            save found, mark 0
+            save i, mark 0
+            walk list, read keys
+              hook next
+                take site, name old-key
+                fork test
+                  hook test
+                    call is-equal
+                      read old-key
+                      read k
+                  hook hold
+                    save found
+                      call add
+                        read i
+                        mark 1
+                save i
+                  call add
+                    read i
+                    mark 1
+            save node
+              fork test
+                hook test
+                  call is-above
+                    read found
+                    mark 0
+                hook hold
+                  call get
+                    bind self, read nodes
+                    bind index
+                      call subtract
+                        read found
+                        mark 1
+                hook miss
+                  call build
+                    bind item, read item
+            call push
+              bind list, read next-keys
+              bind item, read k
+            call push
+              bind list, read next-nodes
+              bind item, read node
+        # remove old nodes whose key is no longer present
+        save j, mark 0
+        walk list, read keys
+          hook next
+            take site, name old-key
+            save still, mark 0
+            walk list, read next-keys
+              hook next
+                take site, name nk
+                fork test
+                  hook test
+                    call is-equal
+                      read nk
+                      read old-key
+                  hook hold
+                    save still
+                      call add
+                        read still
+                        mark 1
+            fork test
+              hook test
+                call is-equal
+                  read still
+                  mark 0
+              hook hold
+                call remove
+                  bind node
+                    call get
+                      bind self, read nodes
+                      bind index, read j
+            save j
+              call add
+                read j
+                mark 1
+        # re-append the current nodes in order (append moves an existing node to the end, fixing order)
+        walk list, read next-nodes
+          hook next
+            take site, name node
+            call append
+              bind parent, read host
+              bind child, read node
+        save keys, read next-keys
+        save nodes, read next-nodes
+
+# a reactive view slot (component-valued Solid Dynamic): an effect rebuilds whenever `source` (a getter returning a
+# built view) changes, swapping the mounted node. Use for a runtime-chosen component, polymorphic `as`, or a view that
+# depends on a signal. `source` returns any view, including a component's output.
+task dynamic-view
+  take host, like view
+  take source
+    like task
+      like view
+  save current
+    call create-text
+      bind value, text <>
+  call append
+    bind parent, read host
+    bind child, read current
+  call make-effect
+    bind run
+      task swap
+        save next, call source
+        call replace
+          bind old, read current
+          bind new, read next
+        save current, read next
+
+# value-based Suspense + ErrorBoundary. Seed's error model is values (a `kink` / result arm), not thrown exceptions,
+# so the boundary is not a try/catch around render. it is a reactive switch on a status getter: `pending` mounts the
+# loading view, `error` mounts the failure view, anything else mounts the ready content. Driven by a query/result
+# status signal (see logic/query). An effect re-mounts the matching view whenever the status changes.
+task gate
+  take host, like view
+  take status
+    like task
+      like text
+  take pending
+    like task
+      like view
+  take failed
+    like task
+      like view
+  take ready
+    like task
+      like view
+  save current
+    call create-text
+      bind value, text <>
+  call append
+    bind parent, read host
+    bind child, read current
+  call make-effect
+    bind run
+      task swap
+        save next
+          fork test
+            hook test
+              call is-equal
+                call status
+                text <pending>
+            hook hold
+              call pending
+            hook miss
+              fork test
+                hook test
+                  call is-equal
+                    call status
+                    text <error>
+                hook hold
+                  call failed
+                hook miss
+                  call ready
+        call replace
+          bind old, read current
+          bind new, read next
+        save current, read next
+
 # attach a built child under a host
 task mount
   take host, like view
@@ -181,3 +378,27 @@ task mount
     bind parent, read host
     bind child
       call build
+
+# render content into a different part of the tree (Solid Portal): the built node mounts under `target` (usually the
+# page body) instead of the host, so dialogs, popovers, and tooltips escape `overflow:hidden` and z-index stacking. An
+# empty marker stays at the original position. The content is removed when the surrounding scope is disposed, so the
+# overlay tears down with its owner (no leak).
+task portal
+  take target, like view
+  take build
+    like task
+      like view
+  like view
+  save marker
+    call create-text
+      bind value, text <>
+  save content
+    call build
+  call append
+    bind parent, read target
+    bind child, read content
+  call on-cleanup
+    task drop
+      call remove
+        bind node, read content
+  send back, read marker

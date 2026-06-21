@@ -193,11 +193,12 @@ export type Statement =
       body: Statement[]
       span: Span
     }
-  // a pattern match on an enum value (fork case): each case is a variant label
+  // a pattern match on an enum value (fork case): each case is a variant label, with optional `binds` renaming the
+  // variant's fields (in declaration order) so a nested match on the same enum can name both without collision
   | {
       form: 'match'
       subject: Expression
-      cases: { label: string; body: Statement[] }[]
+      cases: { label: string; body: Statement[]; binds?: string[] }[]
       otherwise?: Statement[]
       span: Span
     }
@@ -332,6 +333,9 @@ export type ZoneNode =
       // an optional ref: `zone input / name title-field` binds the built element to `title-field`, a `view`-typed local
       // the rest of the zone (e.g. an event handler) can read
       ref?: string
+      // `node <tag>` (vs `zone <tag>`) forces an html element even when `<tag>` is also a component name. The escape
+      // hatch for rendering a real `<select>` / `<dialog>` / etc. inside a component of the same name (e.g. native-select).
+      forced?: boolean
       span: Span
     }
   | { form: 'text'; value: string; span: Span }

@@ -31,6 +31,7 @@ load ../../view
 
 dock load
   load <global:resize>, name resize
+  load <global:position>, name position
   mark native
 
 task create-element
@@ -132,12 +133,39 @@ task listen-document
   take handler
     like task
       take event
+  like task
   host listener, like any
     read handler
   call page/add-event-listener
     read event
     read listener
     make none
+  # return a remover so the caller (or its scope's on-cleanup) can detach the listener and avoid a leak
+  send back
+    task drop
+      call page/remove-event-listener
+        read event
+        read listener
+        make none
+
+# anchor a floating panel to a reference via floating-ui (offset + optional flip/shift), applying position:fixed left/top
+# and re-syncing on scroll/resize. Returns the cleanup task that stops tracking (register with on-cleanup).
+task anchor
+  take reference, like view
+  take panel, like view
+  take placement, like text
+  take offset, like number
+  take flip, like boolean
+  take shift, like boolean
+  like task
+  send back
+    call position/anchor
+      read reference/handle
+      read panel/handle
+      read placement
+      read offset
+      read flip
+      read shift
 
 # observe an element's width via ResizeObserver (calls `handler` with the content-box width on each resize + once now)
 task observe-size

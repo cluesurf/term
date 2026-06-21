@@ -177,7 +177,8 @@ function lowerZone(
       only &&
       (only.form === 'text' ||
         only.form === 'read' ||
-        (only.form === 'element' && !components.has(only.name)))
+        (only.form === 'element' &&
+        (!components.has(only.name) || only.forced)))
     ) {
       const ref = build(only, inner)
       inner.push({ form: 'return', value: variable(ref), span })
@@ -249,7 +250,11 @@ function lowerZone(
         mutable: false,
         span,
       })
-    } else if (node.form === 'element' && components.has(node.name)) {
+    } else if (
+      node.form === 'element' &&
+      components.has(node.name) &&
+      !node.forced
+    ) {
       // a component where a single returnable node is required: mount it into a
       // container we can return.
       out.push({
@@ -348,7 +353,11 @@ function lowerZone(
         ],
         span,
       })
-    } else if (node.form === 'element' && components.has(node.name)) {
+    } else if (
+      node.form === 'element' &&
+      components.has(node.name) &&
+      !node.forced
+    ) {
       out.push(exprStatement(componentCall(node, parent)))
     } else if (node.form === 'save') {
       out.push({

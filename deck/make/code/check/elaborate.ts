@@ -34,6 +34,7 @@ import type {
 } from '@cluesurf/make/code/check/judge'
 import {
   TypeError,
+  applyValue,
   areConvertible,
   bind,
   check,
@@ -879,9 +880,11 @@ export function elaborateReport(
           let branchScope = scope
           let branchContext = context
 
-          for (const field of fieldInfo) {
+          fieldInfo.forEach((field, fieldIndex) => {
+            // honor a `binds` field-rename on the branch, else the variant's declared field name
+            const localName = branch.binds?.[fieldIndex] ?? field.name
             branchScope = new Map(branchScope).set(
-              field.name,
+              localName,
               branchContext.level,
             )
             branchContext = bind(
@@ -889,7 +892,7 @@ export function elaborateReport(
               'many',
               evaluate([], field.type),
             )
-          }
+          })
 
           const inner = body(
             branch.body,
@@ -1011,6 +1014,11 @@ export function elaborateReport(
     scope: Scope,
     context: Context,
     resultValue: Value,
+    // equation hypotheses true on this control-flow path: each `have`/`if` guard that is an equation `L == R` is added
+    // (as its two side EXPRESSIONS, so an induction can re-elaborate and specialize them per case) for the branch it
+    // governs, so a `hold` inside can be discharged USING its antecedents (the hypothesis-discharge path:
+    // `a == b -> f a == f b`, cancellation, and inductive implications).
+    assumptions: [Expression, Expression][] = [],
   ): void {
     let sc = scope
     let ctx = context
@@ -1057,16 +1065,36 @@ export function elaborateReport(
         case 'if':
           for (const branch of statement.branches) {
             check(ctx, need(expr(branch.cond, sc, ctx)), BOOLEAN_VALUE)
-            checkCommands(branch.body, sc, ctx, resultValue)
+
+            // an equation guard (`have a == b`) is assumed true inside its branch
+            const branchAssumptions = [...assumptions]
+            const cond = branch.cond
+
+            if (cond.form === 'binary' && cond.op === '==')
+              {branchAssumptions.push([cond.left, cond.right])}
+
+            checkCommands(
+              branch.body,
+              sc,
+              ctx,
+              resultValue,
+              branchAssumptions,
+            )
           }
 
           if (statement.otherwise)
-            {checkCommands(statement.otherwise, sc, ctx, resultValue)}
+            {checkCommands(
+              statement.otherwise,
+              sc,
+              ctx,
+              resultValue,
+              assumptions,
+            )}
 
           break
         case 'while':
           check(ctx, need(expr(statement.cond, sc, ctx)), BOOLEAN_VALUE)
-          checkCommands(statement.body, sc, ctx, resultValue)
+          checkCommands(statement.body, sc, ctx, resultValue, assumptions)
           break
 
         case 'for-each': {
@@ -1090,6 +1118,7 @@ export function elaborateReport(
             innerScope,
             bind(ctx, 'many', elementType),
             resultValue,
+            assumptions,
           )
           break
         }
@@ -1105,10 +1134,16 @@ export function elaborateReport(
             {throw new Decline()}
 
           for (const branch of statement.cases)
-            {checkCommands(branch.body, sc, ctx, resultValue)}
+            {checkCommands(branch.body, sc, ctx, resultValue, assumptions)}
 
           if (statement.otherwise)
-            {checkCommands(statement.otherwise, sc, ctx, resultValue)}
+            {checkCommands(
+              statement.otherwise,
+              sc,
+              ctx,
+              resultValue,
+              assumptions,
+            )}
 
           break
         }
@@ -1121,8 +1156,9 @@ export function elaborateReport(
           // the kernel fallback / proof layer. A non-linear `a == b` hold is discharged when the two sides are
           // definitionally equal (delta makes a transparent `double(n)` equal to `add(n, n)`), or by an explicit
           // proof tree. A named hold that is discharged is registered as a lemma for later `cite`. An undischarged
-          // hold here is left to the linear prover (topLevel = false, so no unchecked flag).
-          checkHold(statement, sc, ctx)
+          // hold here is left to the linear prover (topLevel = false, so no unchecked flag). Path assumptions (the
+          // enclosing `have`/`if` equation guards) are passed so the goal can be discharged using its antecedents.
+          checkHold(statement, sc, ctx, assumptions)
           break // never decline on a hold; the linear prover handles the rest
         }
 
@@ -1296,6 +1332,406 @@ export function elaborateReport(
     return current
   }
 
+  // is this rule a commutativity statement `f a b == f b a`? returns the operator constant name, or null.
+  function commutativityOperator(rule: {
+    binderCount: number
+    lhs: Term
+    rhs: Term
+  }): string | null {
+    const { lhs, rhs } = rule
+
+    if (
+      lhs.tag === 'app' &&
+      lhs.fun.tag === 'app' &&
+      lhs.fun.fun.tag === 'const' &&
+      lhs.fun.arg.tag === 'var' &&
+      lhs.arg.tag === 'var' &&
+      lhs.fun.arg.index !== lhs.arg.index &&
+      rhs.tag === 'app' &&
+      rhs.fun.tag === 'app' &&
+      rhs.fun.fun.tag === 'const' &&
+      rhs.fun.fun.name === lhs.fun.fun.name &&
+      rhs.fun.arg.tag === 'var' &&
+      rhs.arg.tag === 'var' &&
+      rhs.fun.arg.index === lhs.arg.index &&
+      rhs.arg.index === lhs.fun.arg.index
+    )
+      {return lhs.fun.fun.name}
+
+    return null
+  }
+
+  // is this rule an associativity statement `f (f a b) c == f a (f b c)`? returns the operator name, or null.
+  function associativityOperator(rule: {
+    binderCount: number
+    lhs: Term
+    rhs: Term
+  }): string | null {
+    const { lhs, rhs } = rule
+    const op = (t: Term): string | null =>
+      t.tag === 'app' && t.fun.tag === 'app' && t.fun.fun.tag === 'const'
+        ? t.fun.fun.name
+        : null
+    const left = (t: Term): Term | null =>
+      t.tag === 'app' && t.fun.tag === 'app' ? t.fun.arg : null
+    const right = (t: Term): Term | null =>
+      t.tag === 'app' ? t.arg : null
+    const f = op(lhs)
+
+    if (!f || op(rhs) !== f) {return null}
+
+    const ll = left(lhs)
+    const lr = right(lhs)
+    const rl = left(rhs)
+    const rr = right(rhs)
+
+    // lhs inner is on the LEFT: f (f a b) c ; rhs inner is on the RIGHT: f a (f b c)
+    if (ll && op(ll) === f && rr && op(rr) === f) {return f}
+
+    return null
+  }
+
+  // flatten a nested chain of one AC operator into its operand list (so `f (f a b) c` and `f a (f b c)` both flatten to
+  // [a, b, c]). Returns null if the term is not headed by an AC operator.
+  function flattenAc(
+    term: Term,
+    operators: Set<string>,
+  ): { op: string; operands: Term[] } | null {
+    if (
+      term.tag !== 'app' ||
+      term.fun.tag !== 'app' ||
+      term.fun.fun.tag !== 'const' ||
+      !operators.has(term.fun.fun.name)
+    )
+      {return null}
+
+    const op = term.fun.fun.name
+    const operands: Term[] = []
+
+    for (const side of [term.fun.arg, term.arg]) {
+      const inner = flattenAc(side, operators)
+
+      if (inner && inner.op === op) {operands.push(...inner.operands)}
+      else {operands.push(side)}
+    }
+
+    return { op, operands }
+  }
+
+  // normalize a term modulo associativity and commutativity of the given operators: flatten each AC chain, normalize and
+  // canonically sort its operands, and rebuild a right-nested tree. Two AC-equal terms get identical normal forms, so a
+  // law that only needs to commute and reassociate a sum (which a directed rewrite cannot do, as commutativity loops)
+  // closes by syntactic equality. Sound: only operators PROVEN both commutative and associative are passed in.
+  function acNormalize(term: Term, operators: Set<string>): Term {
+    const flat = flattenAc(term, operators)
+
+    if (flat) {
+      const parts = flat.operands
+        .map(part => acNormalize(part, operators))
+        .sort((a, b) => {
+          const sa = showTerm(a)
+          const sb = showTerm(b)
+
+          return sa < sb ? -1 : sa > sb ? 1 : 0
+        })
+
+      return parts.reduceRight((acc, part) => ({
+        tag: 'app',
+        fun: { tag: 'app', fun: constant(flat.op), arg: part },
+        arg: acc,
+      }))
+    }
+
+    switch (term.tag) {
+      case 'app':
+        return {
+          tag: 'app',
+          fun: acNormalize(term.fun, operators),
+          arg: acNormalize(term.arg, operators),
+        }
+      case 'lam':
+        return { tag: 'lam', body: acNormalize(term.body, operators) }
+      default:
+        return term
+    }
+  }
+
+  // rewrite a term modulo associativity-commutativity: a rule whose lhs is itself an AC chain `f(l1, .. lk)` fires when
+  // its operands are a SUB-MULTISET of some `f`-chain in the term, replacing those operands by the rule's rhs. This is
+  // AC MATCHING: it lets the induction hypothesis `a + b = c` apply inside a larger sum `a + x + b` (which AC
+  // normalization alone could not, since `a + b` is not a syntactic subterm). Used for the closed Fibonacci / sum
+  // identities. Sound: f is a congruence and the rule equates its two sides, so swapping the matched operands preserves
+  // the value. Bounded by fuel.
+  function acRewriteAt(
+    term: Term,
+    operators: Set<string>,
+    rules: { lhs: Term; rhs: Term }[],
+  ): Term | null {
+    const flat = flattenAc(term, operators)
+
+    if (flat) {
+      const operandKeys = flat.operands.map(showTerm)
+
+      for (const rule of rules) {
+        const lhsFlat = flattenAc(rule.lhs, operators)
+
+        if (!lhsFlat || lhsFlat.op !== flat.op) {continue}
+
+        // does the rule's lhs chain occur as a sub-multiset of this chain?
+        const used = new Array(flat.operands.length).fill(false)
+        let matched = true
+
+        for (const need of lhsFlat.operands.map(showTerm)) {
+          const at = operandKeys.findIndex(
+            (k, i) => !used[i] && k === need,
+          )
+
+          if (at < 0) {
+            matched = false
+            break
+          }
+
+          used[at] = true
+        }
+
+        if (!matched) {continue}
+
+        const keep = flat.operands.filter((_, i) => !used[i])
+        const rhsFlat = flattenAc(rule.rhs, operators)
+        const rhsOperands =
+          rhsFlat && rhsFlat.op === flat.op
+            ? rhsFlat.operands
+            : [rule.rhs]
+        const next = [...keep, ...rhsOperands]
+
+        if (next.length === 0) {return rule.rhs}
+
+        return next.reduceRight((acc, part) => ({
+          tag: 'app',
+          fun: { tag: 'app', fun: constant(flat.op), arg: part },
+          arg: acc,
+        }))
+      }
+    }
+
+    switch (term.tag) {
+      case 'app': {
+        const fun = acRewriteAt(term.fun, operators, rules)
+
+        if (fun) {return { tag: 'app', fun, arg: term.arg }}
+
+        const arg = acRewriteAt(term.arg, operators, rules)
+
+        if (arg) {return { tag: 'app', fun: term.fun, arg }}
+
+        return null
+      }
+      case 'lam': {
+        const body = acRewriteAt(term.body, operators, rules)
+
+        return body ? { tag: 'lam', body } : null
+      }
+      default:
+        return null
+    }
+  }
+
+  // AC-rewrite to a fixed point, INTERLEAVING the directed syntactic rewrites (so a sub-term the AC step introduces,
+  // like the hypothesis's right side, is itself reduced by the cited lemmas) and renormalizing between steps so the
+  // canonical form is compared.
+  function acRewriteFix(
+    term: Term,
+    operators: Set<string>,
+    acRules: { lhs: Term; rhs: Term }[],
+    syntacticRules: { binderCount: number; lhs: Term; rhs: Term }[],
+    fuel: number,
+  ): Term {
+    const reduce = (t: Term): Term =>
+      acNormalize(rewriteWithLemmas(t, syntacticRules, 200), operators)
+
+    let current = reduce(term)
+
+    for (let i = 0; i < fuel; i++) {
+      const next = acRewriteAt(current, operators, acRules)
+
+      if (!next) {break}
+
+      current = reduce(next)
+    }
+
+    return current
+  }
+
+  // which constructor (by declaration index) a value of an enum reduces to, or null if it is not a manifest constructor
+  // of that enum. Built by running the enum's eliminator with each branch returning a distinct projection function
+  // (variant i -> the function that selects its i-th argument), then matching the result against those projections.
+  // Sound and precise: it returns an index only when the value really IS that constructor (a neutral stays unmatched).
+  function constructorIndex(
+    level: number,
+    value: Value,
+    enumName: string,
+  ): number | null {
+    const order = variantNames.get(enumName)
+
+    if (!order) {return null}
+
+    const n = order.length
+    // the n distinct separators: separator_i = \a0..a_{n-1}. a_i (pairwise non-convertible)
+    const separators = order.map((_, i) =>
+      evaluate([], lambdas(n, variable(n - 1 - i))),
+    )
+    // branch_i : (its fields) -> separator_i ; ignores the fields, returns the i-th separator
+    const branches = order.map((variant, i) => {
+      const fieldCount = (variantFieldInfo.get(variant) ?? []).length
+
+      return lambdas(fieldCount + n, variable(n - 1 - i))
+    })
+
+    const idEnv: Value[] = []
+
+    for (let l = level - 1; l >= 0; l--) {idEnv.push(neutralVar(l))}
+
+    const discriminated = evaluate(
+      idEnv,
+      apply(
+        constant(`match__${enumName}`),
+        TYPE0,
+        quote(level, value),
+        ...branches,
+      ),
+    )
+
+    for (let i = 0; i < n; i++)
+      {if (areConvertible(level, discriminated, separators[i]!))
+        {return i}}
+
+    return null
+  }
+
+  // is an equation hypothesis ABSURD, i.e. does it equate two DISTINCT constructors of the same enum? Constructors are
+  // disjoint (no confusion), so such an equation cannot hold, which makes its case vacuously true. This is what lets a
+  // conditional theorem (like the transitivity of an order) discharge the cases whose antecedent is impossible.
+  function equationAbsurd(
+    context: Context,
+    leftTerm: Term,
+    leftValue: Value,
+    rightValue: Value,
+  ): boolean {
+    try {
+      const type = quote(context.level, infer(context, leftTerm).type)
+
+      if (type.tag !== 'const' || !variantNames.has(type.name))
+        {return false}
+
+      const iLeft = constructorIndex(context.level, leftValue, type.name)
+      const iRight = constructorIndex(context.level, rightValue, type.name)
+
+      return iLeft !== null && iRight !== null && iLeft !== iRight
+    } catch {
+      return false
+    }
+  }
+
+  // close one induction case: given the two sides of the case goal and the hypotheses in force (the induction
+  // hypotheses, the specialized path assumptions), discharge it. Cited lemmas are applied as directed rewrites; an
+  // operator proven both commutative and associative is normalized modulo AC; the rest is convertibility modulo the
+  // hypotheses. Shared by single-variable `structuralInduction` and multi-variable `multiInduction`.
+  function closeCase(
+    level: number,
+    env: Value[],
+    caseLeft: Value,
+    caseRight: Value,
+    hypotheses: [Value, Value][],
+    citedLemmas: string[],
+  ): boolean {
+    const acOperators = new Set<string>()
+    const commutative = new Set<string>()
+    const associative = new Set<string>()
+
+    for (const name of citedLemmas) {
+      const rule = lemmaRules.get(name)
+
+      if (!rule) {continue}
+
+      const c = commutativityOperator(rule)
+
+      if (c) {commutative.add(c)}
+
+      const a = associativityOperator(rule)
+
+      if (a) {associative.add(a)}
+    }
+
+    for (const op of commutative)
+      {if (associative.has(op)) {acOperators.add(op)}}
+
+    const rewriteRules: { binderCount: number; lhs: Term; rhs: Term }[] =
+      hypotheses.map(([ihLeft, ihRight]) => ({
+        binderCount: 0,
+        lhs: quote(level, ihLeft),
+        rhs: quote(level, ihRight),
+      }))
+
+    for (const name of citedLemmas) {
+      const rule = lemmaRules.get(name)
+
+      if (!rule) {continue}
+
+      const c = commutativityOperator(rule)
+      const a = associativityOperator(rule)
+
+      if ((c && acOperators.has(c)) || (a && acOperators.has(a)))
+        {continue}
+
+      rewriteRules.push(rule)
+    }
+
+    const leftTermRewritten = rewriteWithLemmas(
+      quote(level, caseLeft),
+      rewriteRules,
+      200,
+    )
+    const rightTermRewritten = rewriteWithLemmas(
+      quote(level, caseRight),
+      rewriteRules,
+      200,
+    )
+
+    if (acOperators.size > 0) {
+      // the hypotheses (and ground lemma instances) whose lhs is itself an AC chain can fire modulo AC, applying inside
+      // a larger sum than a syntactic match would reach (this closes the inductive sum identities).
+      const acRules = rewriteRules.filter(
+        rule =>
+          rule.binderCount === 0 &&
+          flattenAc(rule.lhs, acOperators) !== null,
+      )
+
+      const lacf = acRewriteFix(
+        leftTermRewritten,
+        acOperators,
+        acRules,
+        rewriteRules,
+        64,
+      )
+      const racf = acRewriteFix(
+        rightTermRewritten,
+        acOperators,
+        acRules,
+        rewriteRules,
+        64,
+      )
+
+      if (showTerm(lacf) === showTerm(racf)) {return true}
+    }
+
+    return dischargeModulo(
+      level,
+      evaluate(env, leftTermRewritten),
+      evaluate(env, rightTermRewritten),
+      hypotheses,
+    )
+  }
+
   // structural induction over an inductive self-type: the `fold <var>` tactic when <var> ranges over a record-type
   // enum. Proves a universal equation L(x) == R(x) for ALL x of the type by checking one case per constructor, using
   // the induction hypothesis on each recursive field as a rewrite (via dischargeModulo). This is exactly the type's
@@ -1310,6 +1746,9 @@ export function elaborateReport(
     context: Context,
     inductVar: string,
     citedLemmas: string[],
+    // path assumptions (the rule's `have` equations, as side expressions) re-elaborated and specialized per case, then
+    // added as ground rewrites + convertibility hypotheses, so an inductive implication can use its antecedent.
+    assumptions: [Expression, Expression][] = [],
   ): boolean {
     if (goal.op !== '==') {return false}
 
@@ -1330,6 +1769,125 @@ export function elaborateReport(
       const variants = variantNames.get(typeTerm.name)
 
       if (!variants || variants.length === 0) {return false}
+
+      // close a case, splitting on a constructor's FIELDS when it does not reduce. `subst` maps a variable's level to a
+      // constructor RECIPE (a variant + the levels of its field variables); the environment is rebuilt by applying each
+      // recipe to its field values, deepest level first, so a value built FROM a split field (e.g. `negsucc p` once `p`
+      // becomes `succ q`) reflects the split. Try to close the case; if it does not reduce and budget remains, pick an
+      // inductive-typed field still standing for a neutral, split it into its own constructors, and recurse on each.
+      // Bounded case analysis on sub-terms (what a function matching a field needs); sound because every leaf is a case.
+      type Recipe = { variant: string; fieldLevels: number[] }
+
+      const buildSplitEnv = (
+        ctx: Context,
+        subst: Map<number, Recipe>,
+      ): Value[] => {
+        const env = [...ctx.env]
+        const levels = [...subst.keys()].sort((a, b) => b - a) // deepest (highest level) first
+
+        for (const lvl of levels) {
+          const recipe = subst.get(lvl)!
+          env[ctx.level - lvl - 1] = evaluate(
+            env,
+            apply(
+              constant(recipe.variant),
+              ...recipe.fieldLevels.map(fl =>
+                variable(ctx.level - fl - 1),
+              ),
+            ),
+          )
+        }
+
+        return env
+      }
+
+      const closeWithFieldSplits = (
+        ctx: Context,
+        subst: Map<number, Recipe>,
+        splittable: { level: number; enumName: string }[],
+        hyps: [Value, Value][],
+        depth: number,
+      ): boolean => {
+        const lt = expr(goal.left, scope, ctx)
+        const rt = expr(goal.right, scope, ctx)
+
+        if (!lt || !rt) {return false}
+
+        const env = buildSplitEnv(ctx, subst)
+
+        if (
+          closeCase(
+            ctx.level,
+            ctx.env,
+            evaluate(env, lt),
+            evaluate(env, rt),
+            hyps,
+            citedLemmas,
+          )
+        )
+          {return true}
+
+        if (depth <= 0) {return false}
+
+        for (let si = 0; si < splittable.length; si++) {
+          const target = splittable[si]!
+          const rest = splittable.filter((_, i) => i !== si)
+          const targetVariants = variantNames.get(target.enumName)
+
+          if (!targetVariants) {continue}
+
+          let allClosed = true
+
+          for (const targetVariant of targetVariants) {
+            const subFields = variantFieldInfo.get(targetVariant) ?? []
+            let inner2 = ctx
+            const subLevels: number[] = []
+
+            for (const f of subFields) {
+              subLevels.push(inner2.level)
+              inner2 = bind(inner2, 'many', evaluate(inner2.env, f.type))
+            }
+
+            const subst2 = new Map(subst)
+            subst2.set(target.level, {
+              variant: targetVariant,
+              fieldLevels: subLevels,
+            })
+
+            const newSplit = [
+              ...rest,
+              ...subFields
+                .map((f, j) => ({ field: f, level: subLevels[j]! }))
+                .filter(
+                  x =>
+                    x.field.type.tag === 'const' &&
+                    variantNames.has(x.field.type.name),
+                )
+                .map(x => ({
+                  level: x.level,
+                  enumName: (x.field.type as { name: string }).name,
+                })),
+            ]
+
+            if (
+              !closeWithFieldSplits(
+                inner2,
+                subst2,
+                newSplit,
+                hyps,
+                depth - 1,
+              )
+            ) {
+              allClosed = false
+              break
+            }
+          }
+
+          if (allClosed) {return true}
+        }
+
+        return false
+      }
 
       for (const variant of variants) {
         const fields = variantFieldInfo.get(variant) ?? []
@@ -1381,36 +1939,231 @@ export function elaborateReport(
           }
         })
 
-        // cited lemmas: rewrite each side of the case goal by the lemmas (directed left-to-right), so a stuck recursive
-        // call is turned into the form the induction hypothesis can close. Each rewrite replaces a subterm by a provably
-        // equal one (the lemma is a proven universal), so the rewritten goal is equivalent to the original.
-        let leftGoal = caseLeft
-        let rightGoal = caseRight
+        // path assumptions, specialized to this case: re-elaborate each `have` equation in the extended context and
+        // substitute the induction variable with the constructor (the same caseEnv as the goal), so the antecedent holds
+        // at this case. Added as a hypothesis the discharge can use (and, below, as a directed rewrite).
+        const assumptionPairs: [Value, Value][] = []
+        let caseVacuous = false
 
-        if (citedLemmas.length > 0) {
-          const rules = citedLemmas
-            .map(name => lemmaRules.get(name))
-            .filter((r): r is NonNullable<typeof r> => r !== undefined)
+        for (const [aLeft, aRight] of assumptions) {
+          const lt = expr(aLeft, scope, inner)
+          const rt = expr(aRight, scope, inner)
 
-          if (rules.length > 0) {
-            leftGoal = evaluate(
-              inner.env,
-              rewriteWithLemmas(quote(inner.level, caseLeft), rules, 200),
-            )
-            rightGoal = evaluate(
-              inner.env,
-              rewriteWithLemmas(quote(inner.level, caseRight), rules, 200),
-            )
+          if (lt && rt) {
+            const lv = evaluate(caseEnv, lt)
+            const rv = evaluate(caseEnv, rt)
+
+            // an antecedent that equates distinct constructors is impossible: this case is vacuously true
+            if (equationAbsurd(inner, lt, lv, rv)) {caseVacuous = true}
+
+            assumptionPairs.push([lv, rv])
           }
         }
 
+        if (caseVacuous) {continue}
+
+        hypotheses.push(...assumptionPairs)
+
+        // the inductive-typed fields of this constructor, which can be split further if the case does not reduce
+        // fields to split when the case will not reduce: inductive-typed fields of a DIFFERENT enum than the induction
+        // variable. A field of the SAME enum is the recursive position carrying the induction hypothesis, so splitting
+        // it would clobber that hypothesis; it is handled by the IH, not by case analysis.
+        const splittable = fields
+          .map((field, j) => ({ field, level: context.level + j }))
+          .filter(
+            x =>
+              x.field.type.tag === 'const' &&
+              variantNames.has(x.field.type.name) &&
+              x.field.type.name !== typeTerm.name,
+          )
+          .map(x => ({
+            level: x.level,
+            enumName: (x.field.type as { name: string }).name,
+          }))
+
         if (
-          !dischargeModulo(inner.level, leftGoal, rightGoal, hypotheses)
+          !closeWithFieldSplits(
+            inner,
+            new Map([
+              [
+                varLevel,
+                {
+                  variant,
+                  fieldLevels: fields.map((_, j) => context.level + j),
+                },
+              ],
+            ]),
+            splittable,
+            hypotheses,
+            2,
+          )
         )
           {return false}
       }
 
       return true
+    } catch {
+      return false
+    }
+  }
+
+  // simultaneous structural induction on SEVERAL variables (`fold a b ...`): it walks the cartesian product of the
+  // variables' constructors and discharges each combination. In a case where every inducted variable is at a recursive
+  // constructor, the induction hypothesis is the goal with all of them stepped to their fields at once (the diagonal),
+  // which is exactly the recursion of a function that matches several arguments together (min, max, the order `at-most`).
+  // Sound: this is well-founded induction on the product order. Returns false (never throws) for anything outside it.
+  function multiInduction(
+    goal: Extract<Expression, { form: 'binary' }>,
+    scope: Scope,
+    context: Context,
+    inductVars: string[],
+    citedLemmas: string[],
+    assumptions: [Expression, Expression][] = [],
+  ): boolean {
+    if (goal.op !== '==') {return false}
+
+    try {
+      const infos = inductVars.map(name => {
+        const level = scope.get(name)
+
+        if (level === undefined) {return null}
+
+        const typeValue = context.types[context.level - level - 1]
+
+        if (!typeValue) {return null}
+
+        const typeTerm = quote(context.level, typeValue)
+
+        if (typeTerm.tag !== 'const') {return null}
+
+        const variants = variantNames.get(typeTerm.name)
+
+        if (!variants || variants.length === 0) {return null}
+
+        return { name, level, enumName: typeTerm.name, variants }
+      })
+
+      if (infos.some(i => i === null)) {return false}
+
+      const chosen: {
+        level: number
+        enumName: string
+        variant: string
+        fields: { name: string; type: Term }[]
+        fieldLevels: number[]
+      }[] = []
+
+      // discharge the current cartesian combination (all variables already assigned a constructor in `chosen`)
+      const dischargeLeaf = (ctx: Context): boolean => {
+        const caseEnv = [...ctx.env]
+
+        for (const choice of chosen) {
+          const consTerm = apply(
+            constant(choice.variant),
+            ...choice.fields.map((_, j) =>
+              variable(ctx.level - choice.fieldLevels[j]! - 1),
+            ),
+          )
+          caseEnv[ctx.level - choice.level - 1] = evaluate(
+            ctx.env,
+            consTerm,
+          )
+        }
+
+        const leftTerm = expr(goal.left, scope, ctx)
+        const rightTerm = expr(goal.right, scope, ctx)
+
+        if (!leftTerm || !rightTerm) {return false}
+
+        const caseLeft = evaluate(caseEnv, leftTerm)
+        const caseRight = evaluate(caseEnv, rightTerm)
+
+        const hypotheses: [Value, Value][] = []
+
+        // the diagonal induction hypothesis: step every variable at a recursive constructor to its field, together
+        const recursive = chosen.filter(choice =>
+          choice.fields.some(
+            f => f.type.tag === 'const' && f.type.name === choice.enumName,
+          ),
+        )
+
+        if (recursive.length > 0) {
+          const ihEnv = [...caseEnv]
+
+          for (const choice of recursive) {
+            const fieldIndex = choice.fields.findIndex(
+              f =>
+                f.type.tag === 'const' && f.type.name === choice.enumName,
+            )
+            ihEnv[ctx.level - choice.level - 1] =
+              ctx.env[ctx.level - choice.fieldLevels[fieldIndex]! - 1]!
+          }
+
+          hypotheses.push([
+            evaluate(ihEnv, leftTerm),
+            evaluate(ihEnv, rightTerm),
+          ])
+        }
+
+        for (const [aLeft, aRight] of assumptions) {
+          const lt = expr(aLeft, scope, ctx)
+          const rt = expr(aRight, scope, ctx)
+
+          if (lt && rt) {
+            const lv = evaluate(caseEnv, lt)
+            const rv = evaluate(caseEnv, rt)
+
+            // an antecedent that equates distinct constructors is impossible: this case is vacuously true
+            if (equationAbsurd(ctx, lt, lv, rv)) {return true}
+
+            hypotheses.push([lv, rv])
+          }
+        }
+
+        return closeCase(
+          ctx.level,
+          ctx.env,
+          caseLeft,
+          caseRight,
+          hypotheses,
+          citedLemmas,
+        )
+      }
+
+      // pick a constructor for variable `i`, extend the context with its fields, and recurse to the next variable
+      const pick = (i: number, ctx: Context): boolean => {
+        if (i === infos.length) {return dischargeLeaf(ctx)}
+
+        const info = infos[i]!
+
+        for (const variant of info.variants) {
+          const fields = variantFieldInfo.get(variant) ?? []
+          let inner = ctx
+          const fieldLevels: number[] = []
+
+          for (const field of fields) {
+            fieldLevels.push(inner.level)
+            inner = bind(inner, 'many', evaluate(inner.env, field.type))
+          }
+
+          chosen.push({
+            level: info.level,
+            enumName: info.enumName,
+            variant,
+            fields,
+            fieldLevels,
+          })
+
+          const ok = pick(i + 1, inner)
+          chosen.pop()
+
+          if (!ok) {return false}
+        }
+
+        return true
+      }
+
+      return pick(0, context)
     } catch {
       return false
     }
@@ -1443,6 +2196,54 @@ export function elaborateReport(
     }
   }
 
+  // function extensionality: discharge a goal `is-equal f g` between two FUNCTIONS by a cited pointwise lemma that
+  // states `f x == g x` for all x. Sound by the kernel's observational equality (Id at a function type computes to the
+  // pointwise identity): a proof of the pointwise equality IS a proof of the function equality. Checks that the cited
+  // (already proven, so it is in `lemmaRules`) lemma's two sides, at a fresh point, are the two functions applied to it.
+  function tryFunext(
+    goal: Extract<Statement, { form: 'hold' }>['expr'],
+    scope: Scope,
+    context: Context,
+    citedName: string,
+  ): boolean {
+    if (goal.form !== 'binary' || goal.op !== '==') {return false}
+
+    const lemma = lemmaRules.get(citedName)
+
+    if (!lemma || lemma.binderCount !== 1) {return false}
+
+    try {
+      const left = expr(goal.left, scope, context)
+      const right = expr(goal.right, scope, context)
+
+      if (!left || !right) {return false}
+
+      // both sides must be functions (their type is a pi)
+      if (quote(context.level, infer(context, left).type).tag !== 'pi')
+        {return false}
+
+      const point = neutralVar(context.level)
+      const leftAtPoint = applyValue(
+        evaluate(context.env, left),
+        point,
+      )
+      const rightAtPoint = applyValue(
+        evaluate(context.env, right),
+        point,
+      )
+      // the lemma instantiated at the same fresh point (its single binder -> the point)
+      const lemmaLeft = evaluate([point], lemma.lhs)
+      const lemmaRight = evaluate([point], lemma.rhs)
+
+      return (
+        areConvertible(context.level + 1, leftAtPoint, lemmaLeft) &&
+        areConvertible(context.level + 1, rightAtPoint, lemmaRight)
+      )
+    } catch {
+      return false
+    }
+  }
+
   // check one `hold` proof obligation (an `a == b` claim plus an optional proof tree) by the KERNEL, in a given
   // scope/context. Used both inside a function body and at the top level. Discharges when the sides are definitionally
   // equal or an explicit proof tree (`calm`/`cite`/`turn`/`link`) closes it, recording the span so the linear prover
@@ -1453,6 +2254,7 @@ export function elaborateReport(
     statement: Extract<Statement, { form: 'hold' }>,
     scope: Scope,
     context: Context,
+    assumptions: [Expression, Expression][] = [],
   ): void {
     const goal = statement.expr
 
@@ -1463,6 +2265,20 @@ export function elaborateReport(
     // in the goal, discharged symbolically by the ring normalizer (no kernel computation). See induct.ts.
     const tactic = statement.proof?.[0]
 
+    // FUNEXT: prove two FUNCTIONS equal (`is-equal f g`) by citing a pointwise lemma `mark x / is-equal (f x) (g x)`.
+    // Sound by the kernel's observational equality (Id at a function type IS the pointwise identity), so the pointwise
+    // proof IS the function-equality proof. Discharges a NON-definitional function equality (e.g. two recursive
+    // definitions of the same function) that `calm` cannot.
+    if (
+      tactic?.head === 'melt' &&
+      tactic.arg &&
+      tryFunext(goal, scope, context, tactic.arg)
+    ) {
+      discharged.push(statement.span)
+
+      return
+    }
+
     if (tactic?.head === 'fold' && tactic.arg) {
       // try structural induction over an inductive type first (it handles lists, trees, and the like, and proves the
       // non-definitional arithmetic laws such as n + 0 == n); fall back to ring-level Peano induction for the numeric
@@ -1472,10 +2288,33 @@ export function elaborateReport(
         .filter(child => child.head === 'cite' && child.arg)
         .map(child => child.arg!)
 
-      if (
-        structuralInduction(goal, scope, context, tactic.arg, cited) ||
-        checkFold(program, goal, tactic.arg)
-      ) {
+      // `fold a b ...`: the extra bare children (not `cite`) are additional induction variables for a SIMULTANEOUS
+      // induction over the product of their constructors (min / max / order comparisons recurse on several arguments).
+      const extraVars = tactic.children
+        .filter(child => child.head !== 'cite' && !child.arg)
+        .map(child => child.head)
+      const inductVars = [tactic.arg, ...extraVars]
+
+      const byInduction =
+        inductVars.length > 1
+          ? multiInduction(
+              goal,
+              scope,
+              context,
+              inductVars,
+              cited,
+              assumptions,
+            )
+          : structuralInduction(
+              goal,
+              scope,
+              context,
+              tactic.arg,
+              cited,
+              assumptions,
+            )
+
+      if (byInduction || checkFold(program, goal, tactic.arg)) {
         discharged.push(statement.span)
         recordLemmaRule(statement.name, goal, scope, context)
       } else
@@ -1544,6 +2383,67 @@ export function elaborateReport(
 
       const leftValue = evaluate(context.env, left)
       const rightValue = evaluate(context.env, right)
+
+      // hypothesis-discharge (no induction): rewrite both sides by the path's `have` equations and check convertibility
+      // modulo them. This proves the congruence / substitution laws (`a == b -> f a == f b`, transitivity of equality)
+      // directly from their antecedents. Sound: an assumption is true on this path, so rewriting by it preserves truth.
+      if (assumptions.length > 0) {
+        const assumeHyps: [Value, Value][] = []
+        const assumeRules: {
+          binderCount: number
+          lhs: Term
+          rhs: Term
+        }[] = []
+
+        for (const [aLeft, aRight] of assumptions) {
+          const lt = expr(aLeft, scope, context)
+          const rt = expr(aRight, scope, context)
+
+          if (lt && rt) {
+            const lv = evaluate(context.env, lt)
+            const rv = evaluate(context.env, rt)
+            assumeHyps.push([lv, rv])
+            assumeRules.push({
+              binderCount: 0,
+              lhs: quote(context.level, lv),
+              rhs: quote(context.level, rv),
+            })
+          }
+        }
+
+        if (assumeRules.length > 0) {
+          const lRewritten = evaluate(
+            context.env,
+            rewriteWithLemmas(
+              quote(context.level, leftValue),
+              assumeRules,
+              200,
+            ),
+          )
+          const rRewritten = evaluate(
+            context.env,
+            rewriteWithLemmas(
+              quote(context.level, rightValue),
+              assumeRules,
+              200,
+            ),
+          )
+
+          if (
+            dischargeModulo(
+              context.level,
+              lRewritten,
+              rRewritten,
+              assumeHyps,
+            )
+          ) {
+            discharged.push(statement.span)
+
+            return
+          }
+        }
+      }
+
       const verdict = checkProof(
         statement.proof,
         context.level,

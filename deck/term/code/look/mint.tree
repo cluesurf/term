@@ -1,0 +1,66 @@
+
+# Builder for the look (CSS-utility) DSL: map the parsed slots onto the look AST forms in @cluesurf/base/code/look.
+# The shared builder (seed) comes from the code building-block mill by name. Mirrors the zone DSL builder
+# (../zone/mint).
+
+load @cluesurf/base/code/look
+  find face-rule
+  find look-have
+  find look-case
+  find tone-rule
+
+load @cluesurf/term/code/code/seed/mint
+  find seed
+
+mint look
+  case rule, mint look-rule
+    slot rule
+
+mint look-rule
+  case face, mint face-rule
+    slot face
+  case tone, mint tone-rule
+    slot tone
+
+mint face-rule, like face-rule
+  case name
+    slot name
+  case have, mint look-have
+    slot have
+  case case, mint look-case
+    slot case
+  hook make
+    make face-rule
+      bind name, read name
+      bind have, read have
+      bind case, read case
+
+mint look-have, like look-have
+  case name
+    slot name
+  case bond, mint seed
+    slot bond
+  hook make
+    make look-have
+      bind name, read name
+      bind bond, read bond
+
+mint look-case, like look-case
+  case name
+    slot name
+  case have, mint look-have
+    slot have
+  hook make
+    make look-case
+      bind name, read name
+      bind have, read have
+
+mint tone-rule, like tone-rule
+  case name
+    slot name
+  case have, mint look-have
+    slot have
+  hook make
+    make tone-rule
+      bind name, read name
+      bind have, read have

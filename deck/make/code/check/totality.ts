@@ -111,12 +111,20 @@ function strictlyDecreases(
   memberOf: Map<string, string>,
 ): boolean {
   // a field bound by matching the parameter is structurally smaller than it (this is what makes a recursive function
-  // over an inductive type, like `plus` recursing on `succ`'s predecessor, provably terminating)
-  if (
-    arg.form === 'variable' &&
-    memberOf?.get(arg.name) === paramName
-  )
-    {return true}
+  // over an inductive type, like `plus` recursing on `succ`'s predecessor, provably terminating). The relation is
+  // TRANSITIVE: a field of a field of the parameter is still smaller, so a two-step recursion (Fibonacci, matching
+  // `succ (succ k)` and recursing on the inner `k`) is recognized as descending. A visited set guards against cycles.
+  if (arg.form === 'variable') {
+    const seen = new Set<string>()
+    let current: string | undefined = arg.name
+
+    while (current !== undefined && !seen.has(current)) {
+      seen.add(current)
+      current = memberOf?.get(current)
+
+      if (current === paramName) {return true}
+    }
+  }
 
   if (arg.form === 'member')
     {return (
@@ -441,7 +449,9 @@ function walkCalls(
           if (subjectVar) {
             branchMembers = new Map(memberOf)
 
-            for (const fieldName of variantFields?.get(branch.label) ??
+            // honor a `binds` field-rename so a recursion on the renamed field is still seen as structural descent
+            for (const fieldName of branch.binds ??
+              variantFields?.get(branch.label) ??
               [])
               {branchMembers.set(fieldName, subjectVar)}
           }

@@ -99,6 +99,44 @@ function main(): void {
     JSON.stringify(out),
   )
 
+  // blank-line grouping in a task body: signature heads grouped (take | like), signature set off from the body, and a
+  // block (walk) set off from the preceding simple statement -- but a statement after a block (send) stays tight.
+  {
+    const spaced = format({
+      file: 'b.tree',
+      text: `task work\n  take xs\n  like number\n  save n, code 0\n  walk list\n    read xs\n    hook next\n      take site, name item\n      save n, code 1\n  send back, read n\n`,
+    })
+    const lines = spaced.split('\n')
+    const blankBefore = (needle: string): boolean => {
+      const i = lines.findIndex(l => l.trim().startsWith(needle))
+      return i > 0 && lines[i - 1] === ''
+    }
+    ok(
+      'blank before the result type (signature head change)',
+      blankBefore('like number'),
+      JSON.stringify(lines),
+    )
+    ok(
+      'blank before the first statement (signature -> body)',
+      blankBefore('save n, code 0'),
+      JSON.stringify(lines),
+    )
+    ok(
+      'blank before a block after a simple statement (walk)',
+      blankBefore('walk list'),
+      JSON.stringify(lines),
+    )
+    ok(
+      'no blank before a statement that follows a block (send)',
+      !blankBefore('send back'),
+      JSON.stringify(lines),
+    )
+    ok(
+      'task-body spacing is idempotent',
+      format({ file: 'b.tree', text: spaced }) === spaced,
+    )
+  }
+
   console.log(`\nformat: ${pass} pass, ${fail} fail`)
 }
 

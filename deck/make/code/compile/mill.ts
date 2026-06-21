@@ -1713,14 +1713,51 @@ export function mill(tree: RootNode, file: string): MillResult {
                   rest(arm).slice(1),
                   new Set(scope),
                 )}
-              else if (label)
-                {cases.push({
+              else if (label) {
+                // leading `link <name>` groups rename the variant's fields (in order), so a nested match on the same
+                // enum can bind both without the field names colliding. The rest after them is the branch body.
+                const armParts = rest(arm).slice(1)
+                const binds: string[] = []
+                let bodyStart = 0
+
+                for (const part of armParts) {
+                  if (part.kind === 'group' && headName(part) === 'link') {
+                    const nameGroup = rest(part)[0]
+                    const bindName =
+                      nameGroup?.kind === 'group'
+                        ? headName(nameGroup)
+                        : undefined
+
+                    if (bindName) {
+                      binds.push(bindName)
+                      bodyStart++
+                      continue
+                    }
+                  }
+
+                  break
+                }
+
+                const branchScope = new Set(scope)
+
+                for (const bindName of binds) {branchScope.add(bindName)}
+
+                const branch: {
+                  label: string
+                  body: Statement[]
+                  binds?: string[]
+                } = {
                   label,
                   body: toStatements(
-                    rest(arm).slice(1),
-                    new Set(scope),
+                    armParts.slice(bodyStart),
+                    branchScope,
                   ),
-                })}
+                }
+
+                if (binds.length > 0) {branch.binds = binds}
+
+                cases.push(branch)
+              }
             }
 
             out.push({ form: 'match', subject, cases, otherwise, span })
@@ -2611,7 +2648,11 @@ export function mill(tree: RootNode, file: string): MillResult {
       const span = spanOf(node)
 
       switch (headName(node)) {
+        // `node <tag>` is `zone <tag>` that forces an html element even when `<tag>` is also a component name (the
+        // escape hatch for rendering a real `<select>` inside a same-named component, e.g. native-select).
+        case 'node':
         case 'zone': {
+          const forced = headName(node) === 'node'
           const nameGroup = rest(node)[0]
           const elName =
             nameGroup?.kind === 'group'
@@ -2714,6 +2755,7 @@ export function mill(tree: RootNode, file: string): MillResult {
             props,
             children: buildZoneNodes(children, scope),
             ref,
+            forced,
             span,
           })
           break

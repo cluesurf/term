@@ -735,7 +735,7 @@ export function closeOver(closure: Closure, value: Value): Value {
     : evaluate([value, ...closure.env], closure.body)
 }
 
-function applyValue(fun: Value, arg: Value): Value {
+export function applyValue(fun: Value, arg: Value): Value {
   fun = force(fun)
 
   if (fun.v === 'lam') {return closeOver(fun.body, arg)}
