@@ -175,6 +175,93 @@ function main(): void {
     ['if c { return x } else { return x }'],
   )
 
+  // loop: a value used in the body and dead after is dup'd per iteration (it must survive the back-edge) and dropped
+  // once after the loop (its original owned reference outlives the last iteration)
+  expect(
+    'while: body-used, dead-after -> dup per use + drop after',
+    perceusControl(
+      ['x'],
+      [
+        {
+          op: 'while',
+          cond: 'c',
+          body: [
+            {
+              op: 'let',
+              name: 't',
+              value: { kind: 'call', fn: 'use', args: ['x'] },
+            },
+          ],
+        },
+      ],
+    ),
+    ['while c { dup x; let t = use(x); drop t }', 'drop x'],
+  )
+
+  // loop: a value used in the body AND live after (returned) is dup'd per iteration but NOT dropped after -- its
+  // ownership passes on to the return
+  expect(
+    'while: body-used, live-after -> dup, no drop after',
+    perceusControl(
+      ['x'],
+      [
+        {
+          op: 'while',
+          cond: 'c',
+          body: [
+            {
+              op: 'let',
+              name: 't',
+              value: { kind: 'call', fn: 'use', args: ['x'] },
+            },
+          ],
+        },
+        { op: 'return', name: 'x' },
+      ],
+    ),
+    ['while c { dup x; let t = use(x); drop t }', 'return x'],
+  )
+
+  // loop: a loop-local dead binding is dropped in the body; a value the loop never touches passes straight through
+  expect(
+    'while: loop-local dead drop + untouched passthrough',
+    perceusControl(
+      ['x'],
+      [
+        {
+          op: 'while',
+          cond: 'c',
+          body: [{ op: 'let', name: 'z', value: { kind: 'lit' } }],
+        },
+        { op: 'return', name: 'x' },
+      ],
+    ),
+    ['while c { let z = lit; drop z }', 'return x'],
+  )
+
+  // match: a value consumed in one arm but not another is dropped in the arm that does not consume it (balanced
+  // ownership across arms, the N-way generalization of `if`)
+  expect(
+    'match: drop in the arm that does not consume',
+    perceusControl(
+      ['x'],
+      [
+        {
+          op: 'match',
+          subject: 's',
+          arms: [
+            [{ op: 'return', name: 'x' }],
+            [
+              { op: 'let', name: 'z', value: { kind: 'lit' } },
+              { op: 'return', name: 'z' },
+            ],
+          ],
+        },
+      ],
+    ),
+    ['match s { return x | drop x; let z = lit; return z }'],
+  )
+
   console.log(`\nperceus: ${pass} pass, ${fail} fail`)
 }
 

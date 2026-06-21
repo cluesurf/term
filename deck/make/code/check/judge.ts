@@ -901,6 +901,125 @@ export function quote(level: number, value: Value): Term {
   }
 }
 
+// quote to a DELTA-normal form: like `quote`, but transparent constants (those with a registered definition) are
+// unfolded during readback, charging fuel so a recursive definition stuck on a neutral terminates and a pathological
+// one cannot loop. This exposes the computational normal form (the Church-encoded constructors fully applied) that
+// plain `quote` leaves folded, which the structural-induction tactic needs to see the recurrence of a recursive
+// function. Sound for the same reason delta-unfolding is sound in conversion: a transparent constant equals its body.
+export function quoteDeep(
+  level: number,
+  value: Value,
+  fuel: { n: number } = { n: 10000 },
+): Term {
+  value = force(value)
+
+  // unfold only VALUE-level transparent constants (constructors, eliminators, recursive functions are all lambdas);
+  // never the enum TYPE self-encodings (a `self`/`pi` body that mentions the type itself and would unfold forever).
+  if (value.v === 'rigid' && fuel.n > 0) {
+    const def = definition.get(value.name)
+
+    if (def && def.v === 'lam') {
+      fuel.n--
+
+      return quoteDeep(level, unfoldRigid(value), fuel)
+    }
+  }
+
+  const spineDeep = (head: Term, spine: Elim[]): Term => {
+    let term = head
+
+    for (const elim of spine) {
+      if (elim.e === 'app')
+        {term = { tag: 'app', fun: term, arg: quoteDeep(level, elim.arg, fuel) }}
+      else if (elim.e === 'fst') {term = { tag: 'fst', pair: term }}
+      else if (elim.e === 'snd') {term = { tag: 'snd', pair: term }}
+      else
+        {term = {
+          tag: 'j',
+          proof: term,
+          motive: quoteDeep(level, elim.motive, fuel),
+          base: quoteDeep(level, elim.base, fuel),
+          level: litLevel(0),
+        }}
+    }
+
+    return term
+  }
+
+  switch (value.v) {
+    case 'type':
+      return { tag: 'type', level: value.level }
+    case 'flex':
+      return spineDeep({ tag: 'meta', id: value.id }, value.spine)
+    case 'pi':
+      return {
+        tag: 'pi',
+        mult: value.mult,
+        domain: quoteDeep(level, value.domain, fuel),
+        codomain: quoteDeep(
+          level + 1,
+          closeOver(value.codomain, neutralVar(level)),
+          fuel,
+        ),
+      }
+    case 'lam':
+      return {
+        tag: 'lam',
+        body: quoteDeep(
+          level + 1,
+          closeOver(value.body, neutralVar(level)),
+          fuel,
+        ),
+      }
+    case 'id':
+      return {
+        tag: 'id',
+        type: quoteDeep(level, value.type, fuel),
+        left: quoteDeep(level, value.left, fuel),
+        right: quoteDeep(level, value.right, fuel),
+      }
+    case 'refl':
+      return {
+        tag: 'refl',
+        type: quoteDeep(level, value.type, fuel),
+        value: quoteDeep(level, value.value, fuel),
+      }
+    case 'sigma':
+      return {
+        tag: 'sigma',
+        mult: value.mult,
+        domain: quoteDeep(level, value.domain, fuel),
+        codomain: quoteDeep(
+          level + 1,
+          closeOver(value.codomain, neutralVar(level)),
+          fuel,
+        ),
+      }
+    case 'pair':
+      return {
+        tag: 'pair',
+        first: quoteDeep(level, value.first, fuel),
+        second: quoteDeep(level, value.second, fuel),
+      }
+    case 'self':
+      return {
+        tag: 'self',
+        body: quoteDeep(
+          level + 1,
+          closeOver(value.body, neutralVar(level)),
+          fuel,
+        ),
+      }
+    case 'neutral':
+      return spineDeep(
+        { tag: 'var', index: level - value.head - 1 },
+        value.spine,
+      )
+    case 'rigid':
+      return spineDeep({ tag: 'const', name: value.name }, value.spine)
+  }
+}
+
 // compare two eliminator spines structurally (shared by neutral and rigid heads)
 function convertSpine(
   level: number,

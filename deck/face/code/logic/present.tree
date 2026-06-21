@@ -1,0 +1,66 @@
+
+# Presence — keep a node mounted through its exit animation (the Radix Presence / Solid Transition role). Closing sets
+# `state` to "closed" but keeps `mounted` true so the theme can animate out; the view calls `present-finish` on
+# animationend/transitionend (a plain `hook animationend`) to actually unmount. Opening mounts immediately and sets
+# "open". Reused by every overlay (dialog, popover, dropdown, sheet, drawer, tooltip) for exit animations. Pure logic.
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+
+form presence
+  link mounted, like signal
+  link state, like signal
+
+task make-presence
+  like presence
+  send back
+    make presence
+      bind mounted
+        call make-signal
+          bind value, wave false
+      bind state
+        call make-signal
+          bind value, text <closed>
+
+# open: mount now + animate in
+task present-open
+  take self, like presence
+  call write-signal
+    bind self, read self/mounted
+    bind value, wave true
+  call write-signal
+    bind self, read self/state
+    bind value, text <open>
+
+# close: stay mounted, flip to "closed" so the exit animation runs (view calls present-finish when it ends)
+task present-close
+  take self, like presence
+  call write-signal
+    bind self, read self/state
+    bind value, text <closed>
+
+# the exit animation finished: unmount
+task present-finish
+  take self, like presence
+  call write-signal
+    bind self, read self/mounted
+    bind value, wave false
+
+# is the node currently in the DOM (for `fork`)
+task presence-mounted
+  take self, like presence
+  like boolean
+  send back
+    call read-signal
+      bind self, read self/mounted
+
+# the data-state ("open"/"closed") for the exit/enter CSS animation
+task presence-state
+  take self, like presence
+  like text
+  send back
+    call read-signal
+      bind self, read self/state

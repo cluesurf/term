@@ -46,6 +46,7 @@ import {
   litLevel,
   neutralVar,
   quote,
+  quoteDeep,
   resetDefinitions,
   resetMetas,
   showTerm,
@@ -1217,7 +1218,7 @@ export function elaborateReport(
 
     const hyps = hypotheses.map(
       ([a, b]) =>
-        [quote(level, a), quote(level, b)] as [Term, Term],
+        [quoteDeep(level, a), quoteDeep(level, b)] as [Term, Term],
     )
 
     const convEq = (a: Term, b: Term, depth: number): boolean => {
@@ -1275,7 +1276,7 @@ export function elaborateReport(
       }
     }
 
-    return convEq(quote(level, left), quote(level, right), 0)
+    return convEq(quoteDeep(level, left), quoteDeep(level, right), 0)
   }
 
   // structural induction over an inductive self-type: the `fold <var>` tactic when <var> ranges over a record-type

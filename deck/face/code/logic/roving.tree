@@ -1,0 +1,91 @@
+
+# Roving focus — arrow-key navigation within a group (menu, tabs, toolbar, radio-group, grid). Tracks the active
+# index; move-next/move-prev clamp within the item count. The view binds `tabindex` to is-active (roving tabindex)
+# and focuses the active item via an effect calling the dom `focus` (now available). Keydown is wired in the view
+# (`hook keydown` -> move-next/move-prev). Pure index logic, the Zag-model behavior core.
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+load @cluesurf/base/code/math
+  find minimum
+  find maximum
+
+form roving
+  link index, like signal
+  link count, like signal
+
+task make-roving
+  like roving
+  send back
+    make roving
+      bind index
+        call make-signal
+          bind value, code 0
+      bind count
+        call make-signal
+          bind value, code 0
+
+# tell the group how many items it has (clamps the index)
+task set-count
+  take self, like roving
+  take total, like number
+  call write-signal
+    bind self, read self/count
+    bind value, read total
+
+# the active index (for the view to focus / set tabindex)
+task roving-index
+  take self, like roving
+  like number
+  send back
+    call read-signal
+      bind self, read self/index
+
+# is item `i` the active one (roving tabindex: active = 0, rest = -1)
+task is-active
+  take self, like roving
+  take i, like number
+  like boolean
+  send back
+    call is-equal
+      call read-signal
+        bind self, read self/index
+      read i
+
+# move focus to the next item (clamped to the last)
+task move-next
+  take self, like roving
+  save total
+    call read-signal
+      bind self, read self/count
+  save now
+    call read-signal
+      bind self, read self/index
+  call write-signal
+    bind self, read self/index
+    bind value
+      call minimum
+        call add
+          read now
+          code 1
+        call subtract
+          read total
+          code 1
+
+# move focus to the previous item (clamped to the first)
+task move-prev
+  take self, like roving
+  save now
+    call read-signal
+      bind self, read self/index
+  call write-signal
+    bind self, read self/index
+    bind value
+      call maximum
+        call subtract
+          read now
+          code 1
+        code 0

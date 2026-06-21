@@ -20,6 +20,10 @@ export type Inst =
   // a loop: the condition is a copyable boolean (no RC). A value owned at the header and used in the body is dup'd
   // per iteration (it must survive the back-edge to the next iteration) and dropped after the loop if dead there.
   | { op: 'while'; cond: string; body: Inst[] }
+  // an N-way match (the subject is a copyable selector here; ADT field ownership is handled by the IR->MIR lowering).
+  // Generalizes `if`: a value consumed in some arms but not others is dropped in the arms that do not consume it, so
+  // every arm leaves the same ownership state (balanced).
+  | { op: 'match'; subject: string; arms: Inst[][] }
 
 // the variables an instruction reads
 function reads(inst: Inst): string[] {
@@ -185,6 +189,31 @@ function processBlock(
       continue
     }
 
+    if (inst.op === 'match') {
+      const armResults = inst.arms.map(arm => processBlock(arm, live))
+      const armIns = armResults.map(([, inSet]) => inSet)
+
+      // the union of values consumed across all arms: every arm must leave the same set owned, so an arm that does
+      // not consume one of these (and where it is not live after the match) drops it.
+      const consumed = new Set<string>()
+
+      for (const s of armIns) {for (const v of s) {consumed.add(v)}}
+
+      const arms = armResults.map(([out], i) => {
+        const drops = [...consumed]
+          .filter(v => !armIns[i]!.has(v) && !live.has(v))
+          .map((v): Inst => ({ op: 'drop', name: v }))
+
+        return [...drops, ...out]
+      })
+
+      reversed.push({ op: 'match', subject: inst.subject, arms })
+
+      for (const s of armIns) {for (const v of s) {live.add(v)}}
+
+      continue
+    }
+
     if (inst.op === 'if') {
       const [thenOut, thenIn] = processBlock(inst.then, live)
       const [elseOut, elseIn] = processBlock(inst.else, live)
@@ -266,5 +295,10 @@ export function showInst(inst: Inst): string {
       return `while ${inst.cond} { ${inst.body
         .map(showInst)
         .join('; ')} }`
+
+    case 'match':
+      return `match ${inst.subject} { ${inst.arms
+        .map(arm => arm.map(showInst).join('; '))
+        .join(' | ')} }`
   }
 }

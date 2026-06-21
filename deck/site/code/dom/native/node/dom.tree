@@ -141,6 +141,13 @@ task set-style
         bind name, read property
         bind value, read value
 
+# focus / blur are no-ops off the browser (no focus concept on the server)
+task focus
+  take node, like view
+
+task blur
+  take node, like view
+
 task add-class
   take node, like view
   take name, like text

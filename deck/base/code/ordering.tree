@@ -1,0 +1,74 @@
+# Ordering: the result of a three-way comparison. `less` means the left value sorts before the right, `greater` after, `equal` the same. It is the currency type every comparator and ordered structure returns. The named predicates and `reverse` read off the case; `from-numbers` is the base comparator the rest build on.
+
+form ordering
+  case less
+  case equal
+  case greater
+
+  task is-less
+    take self
+    like boolean
+    fork case, read self
+      case less
+        send back, wave true
+      case equal
+        send back, wave false
+      case greater
+        send back, wave false
+
+  task is-equal
+    take self
+    like boolean
+    fork case, read self
+      case equal
+        send back, wave true
+      case less
+        send back, wave false
+      case greater
+        send back, wave false
+
+  task is-greater
+    take self
+    like boolean
+    fork case, read self
+      case greater
+        send back, wave true
+      case less
+        send back, wave false
+      case equal
+        send back, wave false
+
+  # flip the direction: less becomes greater, greater becomes less, equal stays. Turns an ascending comparator into a descending one.
+  task reverse
+    take self
+    like ordering
+    fork case, read self
+      case less
+        send back, make greater
+      case equal
+        send back, make equal
+      case greater
+        send back, make less
+
+# the base numeric comparator: -1 / 0 / +1 as the three cases. Every other comparator and sort builds on this.
+task from-numbers
+  take left, like number
+  take right, like number
+  like ordering
+  fork test
+    hook test
+      call is-below
+        read left
+        read right
+    hook hold
+      send back, make less
+    hook miss
+      fork test
+        hook test
+          call is-above
+            read left
+            read right
+        hook hold
+          send back, make greater
+        hook miss
+          send back, make equal
