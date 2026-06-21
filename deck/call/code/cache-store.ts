@@ -22,17 +22,22 @@ import {
 // a disk-backed cache store rooted at `dir` (e.g. `<project>/.seed/cache`). One subdir per kind, one file per key.
 export function diskCacheStore(dir: string): CacheStore {
   const ensured = new Set<string>()
+
   const dirFor = (kind: string): string => {
     const sub = path.join(dir, kind)
+
     if (!ensured.has(sub)) {
       mkdirSync(sub, { recursive: true })
       ensured.add(sub)
     }
+
     return sub
   }
+
   return {
     load(kind, key) {
       const file = path.join(dir, kind, `${key}.json`)
+
       try {
         return readFileSync(file, 'utf8')
       } catch {
@@ -43,6 +48,7 @@ export function diskCacheStore(dir: string): CacheStore {
       const file = path.join(dirFor(kind), `${key}.json`)
       // atomic: write a unique temp then rename over the target (rename is atomic on the same filesystem)
       const temp = `${file}.${process.pid}.${tempCounter++}.tmp`
+
       try {
         writeFileSync(temp, value)
         renameSync(temp, file)
@@ -52,36 +58,48 @@ export function diskCacheStore(dir: string): CacheStore {
     },
   }
 }
+
 let tempCounter = 0
 
 // the running compiler's version, read from the seed package's own package.json (works whether the CLI runs from
 // source via tsx or from the bundled `host/`). Memoized. Folded into every cache key so a toolchain upgrade
 // invalidates the cache automatically (the turborepo "compiler version in the key" lesson), alongside the epoch.
 let cachedVersion: string | undefined
+
 export function compilerVersion(): string {
-  if (cachedVersion !== undefined) return cachedVersion
+  if (cachedVersion !== undefined) {return cachedVersion}
+
   let dir = path.dirname(fileURLToPath(import.meta.url))
+
   for (;;) {
     const manifest = path.join(dir, 'package.json')
+
     if (existsSync(manifest)) {
       try {
         const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as {
           name?: string
           version?: string
         }
+
         if (pkg.name === '@cluesurf/seed.tree') {
           cachedVersion = `${CACHE_EPOCH}:${pkg.version ?? '0'}`
+
           return cachedVersion
         }
       } catch {
         // keep walking up
       }
     }
+
     const up = path.dirname(dir)
-    if (up === dir) break
+
+    if (up === dir) {break}
+
     dir = up
   }
+
   cachedVersion = CACHE_EPOCH
+
   return cachedVersion
 }
 
@@ -105,6 +123,7 @@ export function sharedCacheStore(
   const shared = diskCacheStore(sharedDir)
   const storeFor = (kind: string): CacheStore =>
     kind === 'mill' ? shared : local
+
   return {
     load: (kind, key) => storeFor(kind).load(kind, key),
     save: (kind, key, value) => storeFor(kind).save(kind, key, value),

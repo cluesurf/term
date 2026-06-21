@@ -20,30 +20,33 @@ export const CACHE_EPOCH = '1'
 export function hashText(text: string): string {
   let h1 = 0xdeadbeef
   let h2 = 0x41c6ce57
+
   for (let i = 0; i < text.length; i++) {
     const ch = text.charCodeAt(i)
     h1 = Math.imul(h1 ^ ch, 2654435761)
     h2 = Math.imul(h2 ^ ch, 1597334677)
   }
+
   h1 =
     Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^
     Math.imul(h2 ^ (h2 >>> 13), 3266489909)
   h2 =
     Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^
     Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)
 }
 
 // join fields into one hash input with length prefixes, so no concatenation is ambiguous (`a` + `bc` cannot collide
 // with `ab` + `c`). Use for any composite key.
-export function hashFields(fields: Array<string>): string {
+export function hashFields(fields: string[]): string {
   return hashText(fields.map(f => `${f.length}:${f}`).join(''))
 }
 
 // the milled output of one module: a program, or the diagnostics that stopped it
 export type MilledUnit =
   | { ok: true; program: Program }
-  | { ok: false; diagnostics: Array<Diagnostic> }
+  | { ok: false; diagnostics: Diagnostic[] }
 
 // a persistent backend for the cache. `kind` separates namespaces (`mill` / `output`). Synchronous and string-valued,
 // so the in-memory cache stays simple. A node implementation reads / writes `.seed/cache`; the browser passes none.
@@ -77,21 +80,29 @@ export class CompileCache {
   ): MilledUnit {
     const key = hashFields([this.version, file, hashText(text)])
     const cached = this.mills.get(key)
+
     if (cached) {
       this.hits++
+
       return cloneUnit(cached)
     }
+
     const stored = this.store?.load('mill', key)
+
     if (stored !== undefined) {
       const unit = JSON.parse(stored) as MilledUnit
       this.mills.set(key, unit)
       this.diskHits++
+
       return cloneUnit(unit)
     }
+
     this.misses++
+
     const fresh = build()
     this.mills.set(key, fresh)
     this.store?.save('mill', key, JSON.stringify(fresh))
+
     return cloneUnit(fresh)
   }
 
@@ -100,21 +111,29 @@ export class CompileCache {
   output<T>(key: string, build: () => T): T {
     const versioned = hashFields([this.version, key])
     const cached = this.outputs.get(versioned) as T | undefined
+
     if (cached !== undefined) {
       this.hits++
+
       return cached
     }
+
     const stored = this.store?.load('output', versioned)
+
     if (stored !== undefined) {
       const value = JSON.parse(stored) as T
       this.outputs.set(versioned, value)
       this.diskHits++
+
       return value
     }
+
     this.misses++
+
     const fresh = build()
     this.outputs.set(versioned, fresh)
     this.store?.save('output', versioned, JSON.stringify(fresh))
+
     return fresh
   }
 }

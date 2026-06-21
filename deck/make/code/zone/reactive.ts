@@ -12,6 +12,7 @@ type Scope = { disposers: Set<() => void> }
 let currentObserver: Observer | undefined
 let currentScope: Scope | undefined
 let batchDepth = 0
+
 const pending = new Set<Observer>()
 
 function track(source: Source): void {
@@ -23,18 +24,19 @@ function track(source: Source): void {
 
 function trigger(source: Source): void {
   // snapshot, because running observers may re-link sources
-  for (const observer of [...source.observers]) schedule(observer)
+  for (const observer of [...source.observers]) {schedule(observer)}
 }
 
 function schedule(observer: Observer): void {
   pending.add(observer)
-  if (batchDepth === 0) flush()
+
+  if (batchDepth === 0) {flush()}
 }
 
 function flush(): void {
   // loop until settled; insertion order runs computeds (scheduled first) before the effects that read them
   while (pending.size > 0) {
-    const next = pending.values().next().value as Observer
+    const next = pending.values().next().value!
     pending.delete(next)
     next.run()
   }
@@ -42,7 +44,8 @@ function flush(): void {
 
 function detach(observer: Observer): void {
   for (const source of observer.sources)
-    source.observers.delete(observer)
+    {source.observers.delete(observer)}
+
   observer.sources.clear()
 }
 
@@ -51,22 +54,30 @@ export function signal<T>(
   initial: T,
 ): [read: () => T, write: (value: T) => void] {
   let value = initial
+
   const source: Source = { observers: new Set() }
+
   const read = (): T => {
     track(source)
+
     return value
   }
+
   const write = (next: T): void => {
-    if (Object.is(next, value)) return
+    if (Object.is(next, value)) {return}
+
     value = next
     batchDepth++
+
     try {
       trigger(source)
     } finally {
       batchDepth--
-      if (batchDepth === 0) flush()
+
+      if (batchDepth === 0) {flush()}
     }
   }
+
   return [read, write]
 }
 
@@ -74,6 +85,7 @@ export function signal<T>(
 export function computed<T>(compute: () => T): () => T {
   let value: T
   let dirty = true
+
   const source: Source = { observers: new Set() }
   const observer: Observer = {
     sources: new Set(),
@@ -84,19 +96,25 @@ export function computed<T>(compute: () => T): () => T {
       }
     },
   }
+
   return (): T => {
     if (dirty) {
       detach(observer)
+
       const previous = currentObserver
       currentObserver = observer
+
       try {
         value = compute()
       } finally {
         currentObserver = previous
       }
+
       dirty = false
     }
+
     track(source)
+
     return value
   }
 }
@@ -107,8 +125,10 @@ export function effect(run: () => void): () => void {
     sources: new Set(),
     run() {
       detach(observer)
+
       const previous = currentObserver
       currentObserver = observer
+
       try {
         run()
       } finally {
@@ -116,10 +136,13 @@ export function effect(run: () => void): () => void {
       }
     },
   }
+
   observer.run()
+
   const dispose = (): void => detach(observer)
   // an effect created inside a scope is owned by it, so disposing the scope tears the effect down
   currentScope?.disposers.add(dispose)
+
   return dispose
 }
 
@@ -128,12 +151,16 @@ export function effect(run: () => void): () => void {
 // exactly one zone's reactive graph before re-running it. Returns whatever `fn` returns.
 export function createRoot<T>(fn: (dispose: () => void) => T): T {
   const scope: Scope = { disposers: new Set() }
+
   const dispose = (): void => {
-    for (const disposer of scope.disposers) disposer()
+    for (const disposer of scope.disposers) {disposer()}
+
     scope.disposers.clear()
   }
+
   const previous = currentScope
   currentScope = scope
+
   try {
     return fn(dispose)
   } finally {
@@ -144,10 +171,12 @@ export function createRoot<T>(fn: (dispose: () => void) => T): T {
 // group several writes so dependents update once, after the batch
 export function batch(run: () => void): void {
   batchDepth++
+
   try {
     run()
   } finally {
     batchDepth--
-    if (batchDepth === 0) flush()
+
+    if (batchDepth === 0) {flush()}
   }
 }

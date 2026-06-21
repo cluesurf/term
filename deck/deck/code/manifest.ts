@@ -88,7 +88,10 @@ export function parseManifest(input: { text: string }): DeckManifest {
         const nextRaw = lines[i]!
         const nextIndent = nextRaw.length - nextRaw.trimStart().length
         const nextLine = nextRaw.trim()
-        if (!nextLine || nextLine.startsWith('#')) { i++; continue }
+        if (!nextLine || nextLine.startsWith('#')) {
+          i++
+          continue
+        }
         if (nextIndent <= indent) break
         if (nextLine.startsWith('site ')) {
           mindEntry.site = extractAngle(nextLine.slice(5).trim())
@@ -167,14 +170,21 @@ export function parseManifest(input: { text: string }): DeckManifest {
         const nextRaw = lines[i]!
         const nextIndent = nextRaw.length - nextRaw.trimStart().length
         const nextLine = nextRaw.trim()
-        if (!nextLine || nextLine.startsWith('#')) { i++; continue }
+        if (!nextLine || nextLine.startsWith('#')) {
+          i++
+          continue
+        }
         if (nextIndent <= indent) break
         if (nextLine.startsWith('link ')) {
-          const parsed = parseLinkLine({ text: nextLine.slice(5).trim() })
+          const parsed = parseLinkLine({
+            text: nextLine.slice(5).trim(),
+          })
           if (parsed) devLink.push(parsed)
         } else if (nextLine.startsWith('host ')) {
           const group = parseHostBlock({
-            lines, index: i - 1, parentIndent: nextIndent,
+            lines,
+            index: i - 1,
+            parentIndent: nextIndent,
           })
           hostLink.push(group.group)
           // The host block parser consumed lines up to group.nextIndex
@@ -189,7 +199,9 @@ export function parseManifest(input: { text: string }): DeckManifest {
 
     if (line.startsWith('host ')) {
       const group = parseHostBlock({
-        lines, index: i - 1, parentIndent: indent,
+        lines,
+        index: i - 1,
+        parentIndent: indent,
       })
       hostLink.push(group.group)
       i = group.nextIndex
@@ -205,7 +217,10 @@ export function parseManifest(input: { text: string }): DeckManifest {
           const nextRaw = lines[i]!
           const nextIndent = nextRaw.length - nextRaw.trimStart().length
           const nextLine = nextRaw.trim()
-          if (!nextLine || nextLine.startsWith('#')) { i++; continue }
+          if (!nextLine || nextLine.startsWith('#')) {
+            i++
+            continue
+          }
           if (nextIndent <= indent) break
           // Skip child directives (base, site) for now
           i++
@@ -288,7 +303,10 @@ function parseHostBlock(input: {
     const nextRaw = lines[i]!
     const nextIndent = nextRaw.length - nextRaw.trimStart().length
     const nextLine = nextRaw.trim()
-    if (!nextLine || nextLine.startsWith('#')) { i++; continue }
+    if (!nextLine || nextLine.startsWith('#')) {
+      i++
+      continue
+    }
     if (nextIndent <= parentIndent) break
     if (nextLine.startsWith('link ')) {
       const parsed = parseLinkLine({ text: nextLine.slice(5).trim() })

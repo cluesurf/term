@@ -15,11 +15,12 @@ import {
 // with parse errors are reported and left untouched, so a broken file is never overwritten.
 export async function callForm(input: {
   root: string
-  paths: Array<string>
+  paths: string[]
   check?: boolean
   list?: boolean
 }): Promise<void> {
   const files = await collectTreeFiles(input.paths, input.root)
+
   if (files.length === 0) {
     logFail('No .tree files found')
     process.exit(1)
@@ -38,16 +39,21 @@ export async function callForm(input: {
     const errors = analysis.diagnostics.filter(
       d => d.severity === 'error',
     )
+
     if (errors.length > 0) {
       broken++
       logFail(`${relative} could not be parsed`)
+
       for (const error of errors)
-        console.error(render(error, text.split('\n')))
+        {console.error(render(error, text.split('\n')))}
+
       continue
     }
 
     const formatted = analysis.format()
-    if (formatted === text) continue
+
+    if (formatted === text) {continue}
+
     changed++
 
     if (input.list) {
@@ -60,13 +66,15 @@ export async function callForm(input: {
     }
   }
 
-  if (broken > 0) process.exit(1)
+  if (broken > 0) {process.exit(1)}
+
   if (input.check && changed > 0) {
     logFail(
       `${changed} file${changed === 1 ? '' : 's'} need formatting`,
     )
     process.exit(1)
   }
-  if (changed === 0) logGood('All files already formatted')
-  else logGood(`Formatted ${changed} file${changed === 1 ? '' : 's'}`)
+
+  if (changed === 0) {logGood('All files already formatted')}
+  else {logGood(`Formatted ${changed} file${changed === 1 ? '' : 's'}`)}
 }

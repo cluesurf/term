@@ -71,6 +71,7 @@ function deref(book: Book, term: Term): Term {
   if (term.tag === 'reference' && book[term.name]) {
     return reduce(book, book[term.name]!.value)
   }
+
   return term
 }
 
@@ -97,34 +98,41 @@ export function reduce(book: Book, term: Term): Term {
 // reduce an annotation: push the type through a function or a self type
 function reduceAnnotate(book: Book, value: Term, type: Term): Term {
   const head = deref(book, type)
+
   // { t : for all (x: A) B }  reduces to  lambda x. { (t {x:A}) : B }
   if (head.tag === 'pi') {
     return lambda(x =>
       annotate(apply(value, annotate(x, head.input)), head.body(x)),
     )
   }
+
   // { t : self x. T }  reduces to  T[x <- t]
   if (head.tag === 'self') {
     return reduce(book, head.body(value))
   }
+
   return annotate(value, type)
 }
 
 // reduce an application
 function reduceApply(book: Book, fun: Term, arg: Term): Term {
   const head = deref(book, fun)
+
   if (head.tag === 'lambda') {
     return reduce(book, head.body(arg))
   }
+
   if (head.tag === 'annotate') {
     throw new Error('applying a non-function (annotated value)')
   }
+
   return apply(head, arg)
 }
 
 // evaluate a term to full normal form, checking annotations as it goes
 export function normal(book: Book, term: Term, depth = 0): Term {
   const head = reduce(book, term)
+
   switch (head.tag) {
     case 'variable':
       return head
@@ -170,8 +178,10 @@ function normalAnnotate(
           showTerm(value.type, depth),
         )
       }
+
       return annotate(value.value, value.type)
     }
+
     case 'lambda':
       throw new Error('a bare function cannot be annotated here')
     default:
@@ -187,19 +197,22 @@ export function equal(
   depth: number,
 ): boolean {
   if (a.tag === 'variable' && b.tag === 'variable')
-    return a.level === b.level
+    {return a.level === b.level}
+
   if (a.tag === 'lambda' && b.tag === 'lambda')
-    return equal(
+    {return equal(
       book,
       a.body(variable(depth)),
       b.body(variable(depth)),
       depth + 1,
-    )
+    )}
+
   if (a.tag === 'apply' && b.tag === 'apply')
-    return (
+    {return (
       equal(book, a.fun, b.fun, depth) &&
       equal(book, a.arg, b.arg, depth)
-    )
+    )}
+
   if (a.tag === 'pi' && b.tag === 'pi') {
     return (
       equal(book, a.input, b.input, depth) &&
@@ -211,51 +224,60 @@ export function equal(
       )
     )
   }
+
   if (a.tag === 'self' && b.tag === 'self')
-    return equal(
+    {return equal(
       book,
       a.body(variable(depth)),
       b.body(variable(depth)),
       depth + 1,
-    )
+    )}
+
   if (a.tag === 'reference' && book[a.name])
-    return equal(
+    {return equal(
       book,
       normal(book, book[a.name]!.value, depth),
       b,
       depth,
-    )
+    )}
+
   if (b.tag === 'reference' && book[b.name])
-    return equal(
+    {return equal(
       book,
       a,
       normal(book, book[b.name]!.value, depth),
       depth,
-    )
-  if (a.tag === 'annotate') return equal(book, a.value, b, depth)
-  if (b.tag === 'annotate') return equal(book, a, b.value, depth)
+    )}
+
+  if (a.tag === 'annotate') {return equal(book, a.value, b, depth)}
+
+  if (b.tag === 'annotate') {return equal(book, a, b.value, depth)}
+
   if (a.tag === 'lambda')
-    return equal(
+    {return equal(
       book,
       a,
       lambda(x => apply(b, x)),
       depth,
-    )
+    )}
+
   if (b.tag === 'lambda')
-    return equal(
+    {return equal(
       book,
       lambda(x => apply(a, x)),
       b,
       depth,
-    )
+    )}
+
   return false
 }
 
 export type CheckResult = { name: string; ok: boolean; error?: string }
 
 // check every definition in a book: normalize each value against its declared type
-export function checkBook(book: Book): Array<CheckResult> {
-  const results: Array<CheckResult> = []
+export function checkBook(book: Book): CheckResult[] {
+  const results: CheckResult[] = []
+
   for (const name in book) {
     try {
       normal(book, annotate(book[name]!.value, book[name]!.type))
@@ -268,6 +290,7 @@ export function checkBook(book: Book): Array<CheckResult> {
       })
     }
   }
+
   return results
 }
 
@@ -308,9 +331,11 @@ export function showTerm(term: Term, depth = 0): string {
 function numberToName(value: number): string {
   let text = ''
   let n = value + 1
+
   while (n > 0) {
     text += String.fromCharCode(((n - 1) % 26) + 'a'.charCodeAt(0))
     n = Math.floor((n - 1) / 26)
   }
+
   return text.split('').reverse().join('')
 }

@@ -20,7 +20,7 @@ export type Diagnostic = {
   message: string
   file: string
   span: Span
-  markers: Array<Marker>
+  markers: Marker[]
   hint?: string
   severity: Severity
 }
@@ -161,7 +161,7 @@ export type DiagnosticInput = {
   span: Span
   hint?: string
   message?: string
-  markers?: Array<Marker>
+  markers?: Marker[]
 }
 
 // Build a diagnostic from a catalog name. Cheap: just a record, rendered lazily.
@@ -170,6 +170,7 @@ export function diagnose(
   input: DiagnosticInput,
 ): Diagnostic {
   const entry = CATALOG[name]
+
   return {
     code: entry.code,
     name,
@@ -198,7 +199,7 @@ function toHex(n: number): string {
 // few context lines, and an optional hint.
 export function render(
   diagnostic: Diagnostic,
-  lines: Array<string>,
+  lines: string[],
   color = chalk.level > 0,
 ): string {
   const paint = color
@@ -219,13 +220,15 @@ export function render(
 
   const accent =
     diagnostic.severity === 'warning' ? paint.yellow : paint.red
+
   const { span } = diagnostic
-  const out: Array<string> = []
+  const out: string[] = []
 
   // header shows the readable name and the stable code, e.g. `error[type-mismatch 0007]`
   const heading = `${diagnostic.severity}[${diagnostic.name} ${toHex(
     diagnostic.code,
   )}]`
+
   out.push(
     `${paint.bold(accent(heading))}: ${paint.bold(diagnostic.message)}`,
   )
@@ -241,14 +244,17 @@ export function render(
   const rail = `${' '.repeat(width)} ${paint.dim('|')}`
 
   out.push(rail)
+
   for (let i = first; i <= last; i++) {
     const text = lines[i] ?? ''
     const number = String(i + 1).padStart(width, ' ')
+
     if (i === span.start.line) {
       const stop =
         span.end.line === span.start.line
           ? span.end.column
           : text.length
+
       const before = text.slice(0, span.start.column)
       const middle = text.slice(span.start.column, stop)
       const after = text.slice(stop)
@@ -257,12 +263,15 @@ export function render(
           before,
         )}${accent(middle)}${paint.bright(after)}`,
       )
+
       const carets = `${' '.repeat(span.start.column)}${'^'.repeat(
         Math.max(1, stop - span.start.column),
       )}`
+
       const label = diagnostic.markers[0]?.label
         ? ` ${diagnostic.markers[0].label}`
         : ''
+
       out.push(
         `${' '.repeat(width)} ${paint.dim('|')} ${accent(
           carets + label,
@@ -274,6 +283,7 @@ export function render(
       )
     }
   }
+
   out.push(rail)
 
   // related (secondary) markers: point at other relevant places, e.g. where a type was first fixed
@@ -282,6 +292,7 @@ export function render(
     const where = `${diagnostic.file}:${marker.span.start.line + 1}:${
       marker.span.start.column + 1
     }`
+
     out.push(
       `  ${paint.dim('-->')} ${where}${
         marker.label ? `: ${paint.dim(marker.label)}` : ''
@@ -298,25 +309,28 @@ export function render(
 
 // the inline source snippet for a span: a gutter, the offending line, and a caret underline, optionally indented
 function sourceSnippet(
-  lines: Array<string>,
+  lines: string[],
   span: Span,
   accent: (s: string) => string,
   dim: (s: string) => string,
   bright: (s: string) => string,
   indent: string,
-): Array<string> {
-  const out: Array<string> = []
+): string[] {
+  const out: string[] = []
   const first = Math.max(0, span.start.line - 1)
   const last = Math.min(lines.length - 1, span.end.line + 1)
   const width = String(last + 1).length
+
   for (let i = first; i <= last; i++) {
     const text = lines[i] ?? ''
     const number = String(i + 1).padStart(width, ' ')
+
     if (i === span.start.line) {
       const stop =
         span.end.line === span.start.line
           ? span.end.column
           : text.length
+
       out.push(
         `${indent}${dim(`${number} |`)} ${bright(
           text.slice(0, span.start.column),
@@ -324,9 +338,11 @@ function sourceSnippet(
           text.slice(stop),
         )}`,
       )
+
       const carets = `${' '.repeat(span.start.column)}${'^'.repeat(
         Math.max(1, stop - span.start.column),
       )}`
+
       out.push(
         `${indent}${dim(`${' '.repeat(width)} |`)} ${accent(carets)}`,
       )
@@ -334,6 +350,7 @@ function sourceSnippet(
       out.push(`${indent}${dim(`${number} |`)} ${dim(text)}`)
     }
   }
+
   return out
 }
 
@@ -342,7 +359,7 @@ function sourceSnippet(
 // colons appear only inside file:line:col). The richest, most debuggable form.
 export function renderKink(
   diagnostic: Diagnostic,
-  lines: Array<string>,
+  lines: string[],
   color = chalk.level > 0,
 ): string {
   const paint = color
@@ -364,11 +381,14 @@ export function renderKink(
         bright: identity,
         yellow: identity,
       }
+
   const accent =
     diagnostic.severity === 'warning' ? paint.yellow : paint.red
+
   const wrap = (open: string, value: string, close = '>') =>
     `${paint.dim(open)}${value}${paint.dim(close)}`
-  const out: Array<string> = []
+
+  const out: string[] = []
 
   const word = diagnostic.severity === 'warning' ? 'warn' : 'kink'
   // title: the keyword, then the message in <...>
@@ -394,20 +414,23 @@ export function renderKink(
     const location = `${diagnostic.file}:${here.start.line + 1}:${
       here.start.column + 1
     }`
+
     out.push(
       `  ${paint.dim('site')} ${wrap('<', paint.bright(location))}`,
     )
+
     if (marker.label)
-      out.push(
+      {out.push(
         `    ${paint.dim('call')} ${wrap(
           '<',
           paint.white(marker.label),
         )}`,
-      )
+      )}
     else if (i > 0)
-      out.push(
+      {out.push(
         `    ${paint.dim('call')} ${wrap('<', paint.white('related'))}`,
-      )
+      )}
+
     out.push(
       ...sourceSnippet(
         lines,
@@ -421,30 +444,37 @@ export function renderKink(
   })
 
   if (diagnostic.hint)
-    out.push(
+    {out.push(
       `  ${paint.dim('note')} ${wrap('<', paint.dim(diagnostic.hint))}`,
-    )
+    )}
+
   return out.join('\n')
 }
 
 // Render a whole batch of diagnostics with a summary count. The single thing to call to show problems to a user.
 export function report(
-  diagnostics: Array<Diagnostic>,
-  lines: Array<string>,
+  diagnostics: Diagnostic[],
+  lines: string[],
   color = chalk.level > 0,
 ): string {
-  if (diagnostics.length === 0) return 'no problems found'
+  if (diagnostics.length === 0) {return 'no problems found'}
+
   const errors = diagnostics.filter(d => d.severity === 'error').length
   const warnings = diagnostics.filter(
     d => d.severity === 'warning',
   ).length
-  const parts: Array<string> = []
-  if (errors) parts.push(`${errors} error${errors === 1 ? '' : 's'}`)
+
+  const parts: string[] = []
+
+  if (errors) {parts.push(`${errors} error${errors === 1 ? '' : 's'}`)}
+
   if (warnings)
-    parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`)
+    {parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`)}
+
   const body = diagnostics
     .map(d => renderKink(d, lines, color))
     .join('\n\n')
+
   return `${body}\n\n${parts.join(', ')}`
 }
 
@@ -468,18 +498,22 @@ function identity(s: string): string {
 // did-you-mean: nearest known name by edit distance, within a small threshold.
 export function nearest(
   name: string,
-  known: Array<string>,
+  known: string[],
 ): string | undefined {
   let best: string | undefined
   let bestDistance = Infinity
+
   for (const candidate of known) {
     const d = editDistance(name, candidate)
+
     if (d < bestDistance) {
       bestDistance = d
       best = candidate
     }
   }
+
   const threshold = Math.max(2, Math.floor(name.length / 3))
+
   return best !== undefined && bestDistance <= threshold
     ? best
     : undefined
@@ -489,8 +523,11 @@ function editDistance(a: string, b: string): number {
   const rows = a.length + 1
   const cols = b.length + 1
   const grid = new Array<number>(rows * cols)
-  for (let i = 0; i < rows; i++) grid[i * cols] = i
-  for (let j = 0; j < cols; j++) grid[j] = j
+
+  for (let i = 0; i < rows; i++) {grid[i * cols] = i}
+
+  for (let j = 0; j < cols; j++) {grid[j] = j}
+
   for (let i = 1; i < rows; i++) {
     for (let j = 1; j < cols; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1
@@ -501,5 +538,6 @@ function editDistance(a: string, b: string): number {
       )
     }
   }
+
   return grid[rows * cols - 1]!
 }

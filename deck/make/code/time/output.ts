@@ -7,12 +7,12 @@ import {
 } from '@cluesurf/make/code/time/stats'
 
 export type Suite = {
-  results: Array<BenchmarkResult>
+  results: BenchmarkResult[]
   timestamp: string
   platform: string
 }
 
-export function buildSuite(results: Array<BenchmarkResult>): Suite {
+export function buildSuite(results: BenchmarkResult[]): Suite {
   return {
     results,
     timestamp: new Date().toISOString(),
@@ -36,7 +36,7 @@ function padLeft(text: string, width: number): string {
     : ' '.repeat(width - text.length) + text
 }
 
-export function formatTable(results: Array<BenchmarkResult>): string {
+export function formatTable(results: BenchmarkResult[]): string {
   const rows = results.map(r => ({
     name: r.name,
     mean: formatDuration(r.mean_ns),
@@ -44,6 +44,7 @@ export function formatTable(results: Array<BenchmarkResult>): string {
     ops: Math.round(r.ops_per_sec).toLocaleString(),
     cv: `${(r.cv * 100).toFixed(1)}%`,
   }))
+
   const nameWidth = Math.max(9, ...rows.map(r => r.name.length))
   const header = `  ${pad('benchmark', nameWidth)}  ${padLeft(
     'mean',
@@ -52,9 +53,11 @@ export function formatTable(results: Array<BenchmarkResult>): string {
     'cv',
     7,
   )}`
+
   const line = `  ${'-'.repeat(nameWidth)}  ${'-'.repeat(
     10,
   )}  ${'-'.repeat(10)}  ${'-'.repeat(14)}  ${'-'.repeat(7)}`
+
   const body = rows.map(
     r =>
       `  ${pad(r.name, nameWidth)}  ${padLeft(r.mean, 10)}  ${padLeft(
@@ -62,5 +65,6 @@ export function formatTable(results: Array<BenchmarkResult>): string {
         10,
       )}  ${padLeft(r.ops, 14)}  ${padLeft(r.cv, 7)}`,
   )
+
   return [header, line, ...body].join('\n')
 }

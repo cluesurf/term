@@ -2,9 +2,9 @@ deck @cluesurf/seed
   head <A TreeCode Programming Framework>
   mark <0.0.1>
   sort tool
-  lock apache-2
+  lock mit
   site <https://github.com/cluesurf/term.tree>
-  view ./view/tree.gif
+  view ./view/seed.png
   term tree-code
   term computation
   term information

@@ -25,40 +25,51 @@ export function effectRows(program: Program): Map<string, Set<string>> {
     string,
     Extract<Statement, { form: 'function' }>
   >()
+
   for (const statement of program)
-    if (statement.form === 'function')
-      functions.set(statement.name, statement)
+    {if (statement.form === 'function')
+      {functions.set(statement.name, statement)}}
+
   const names = new Set(functions.keys())
 
   const rows = new Map<string, Set<string>>()
   const calls = new Map<string, Set<string>>()
+
   for (const [name, statement] of functions) {
     const row = new Set<string>()
-    if (statement.async) row.add('async')
-    if (bodyThrows(statement.body)) row.add('throw')
+
+    if (statement.async) {row.add('async')}
+
+    if (bodyThrows(statement.body)) {row.add('throw')}
+
     // effect-row polymorphism through callbacks: a function that calls an effectful callback parameter inherits
     // that callback's declared effects (its row depends on the callback it is given)
     const paramNames = new Set(statement.params.map(p => p.name))
     const calledParams = calledNames(statement.body, paramNames)
+
     for (const param of statement.params) {
       if (
         calledParams.has(param.name) &&
         param.type?.kind === 'function' &&
         param.type.effects
       ) {
-        for (const effect of param.type.effects) row.add(effect)
+        for (const effect of param.type.effects) {row.add(effect)}
       }
     }
+
     rows.set(name, row)
     calls.set(name, calledNames(statement.body, names))
   }
 
   // least fixed point: a function throws if it calls (transitively) a throwing function
   let changed = true
+
   while (changed) {
     changed = false
+
     for (const [name, callees] of calls) {
       const row = rows.get(name)!
+
       for (const callee of callees) {
         if (rows.get(callee)?.has('throw') && !row.has('throw')) {
           row.add('throw')
@@ -67,46 +78,52 @@ export function effectRows(program: Program): Map<string, Set<string>> {
       }
     }
   }
+
   return rows
 }
 
 // does the body contain a throw (bust) statement anywhere?
-function bodyThrows(body: Array<Statement>): boolean {
+function bodyThrows(body: Statement[]): boolean {
   for (const node of body) {
     switch (node.form) {
       case 'throw':
         return true
       case 'while':
       case 'for-each':
-        if (bodyThrows(node.body)) return true
+        if (bodyThrows(node.body)) {return true}
+
         break
       case 'if':
         if (
           node.branches.some(b => bodyThrows(b.body)) ||
           (node.otherwise && bodyThrows(node.otherwise))
         )
-          return true
+          {return true}
+
         break
       case 'match':
         if (
           node.cases.some(c => bodyThrows(c.body)) ||
           (node.otherwise && bodyThrows(node.otherwise))
         )
-          return true
+          {return true}
+
         break
       default:
         break
     }
   }
+
   return false
 }
 
 // the names of functions (within `known`) called anywhere in the body
 function calledNames(
-  body: Array<Statement>,
+  body: Statement[],
   known: Set<string>,
 ): Set<string> {
   const found = new Set<string>()
+
   const expr = (node: Expression): void => {
     switch (node.form) {
       case 'call':
@@ -114,7 +131,8 @@ function calledNames(
           node.callee.form === 'variable' &&
           known.has(node.callee.name)
         )
-          found.add(node.callee.name)
+          {found.add(node.callee.name)}
+
         expr(node.callee)
         node.args.forEach(expr)
         break
@@ -148,12 +166,15 @@ function calledNames(
           expr(b.cond)
           expr(b.value)
         })
-        if (node.otherwise) expr(node.otherwise)
+
+        if (node.otherwise) {expr(node.otherwise)}
+
         break
       default:
         break
     }
   }
+
   const stmt = (node: Statement): void => {
     switch (node.form) {
       case 'let':
@@ -167,7 +188,8 @@ function calledNames(
         expr(node.expr)
         break
       case 'return':
-        if (node.value) expr(node.value)
+        if (node.value) {expr(node.value)}
+
         break
       case 'throw':
         expr(node.value)
@@ -199,26 +221,32 @@ function calledNames(
         break
     }
   }
+
   body.forEach(stmt)
+
   return found
 }
 
 export function checkEffects(
   program: Program,
   file: string,
-): Array<Diagnostic> {
-  const diagnostics: Array<Diagnostic> = []
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = []
 
   const asyncFunctions = new Set<string>()
   const allFunctions = new Set<string>()
+
   for (const statement of program) {
-    if (statement.form !== 'function') continue
+    if (statement.form !== 'function') {continue}
+
     allFunctions.add(statement.name)
-    if (statement.async) asyncFunctions.add(statement.name)
+
+    if (statement.async) {asyncFunctions.add(statement.name)}
   }
 
   for (const statement of program) {
-    if (statement.form !== 'function') continue
+    if (statement.form !== 'function') {continue}
+
     const inAsync = statement.async === true
 
     // callback parameters annotated async (`like task` with `wait true`): calling one is an async call too. This is
@@ -232,8 +260,10 @@ export function checkEffects(
         )
         .map(p => p.name),
     )
+
     const isAsyncName = (name: string): boolean =>
       asyncFunctions.has(name) || asyncParams.has(name)
+
     const isKnownSyncName = (name: string): boolean =>
       (allFunctions.has(name) && !asyncFunctions.has(name)) ||
       (statement.params.some(
@@ -257,6 +287,7 @@ export function checkEffects(
               }),
             )
           }
+
           if (
             node.expr.form === 'call' &&
             node.expr.callee.form === 'variable' &&
@@ -270,9 +301,11 @@ export function checkEffects(
               }),
             )
           }
+
           visitExpression(node.expr, true)
           break
         }
+
         case 'call':
           // `wait false` is fire-and-forget: an async call deliberately left un-awaited, so it is exempt. Otherwise
           // async resolution awaits async calls by default; a leftover un-awaited async call in a sync context is an
@@ -292,6 +325,7 @@ export function checkEffects(
               }),
             )
           }
+
           visitExpression(node.callee, false)
           node.args.forEach(argument =>
             visitExpression(argument, false),
@@ -326,14 +360,16 @@ export function checkEffects(
             visitExpression(branch.cond, false)
             visitExpression(branch.value, false)
           })
-          if (node.otherwise) visitExpression(node.otherwise, false)
+
+          if (node.otherwise) {visitExpression(node.otherwise, false)}
+
           break
         default:
           break
       }
     }
 
-    const visitBody = (body: Array<Statement>): void => {
+    const visitBody = (body: Statement[]): void => {
       for (const node of body) {
         switch (node.form) {
           case 'let':
@@ -347,7 +383,8 @@ export function checkEffects(
             visitExpression(node.expr, false)
             break
           case 'return':
-            if (node.value) visitExpression(node.value, false)
+            if (node.value) {visitExpression(node.value, false)}
+
             break
           case 'throw':
             visitExpression(node.value, false)
@@ -368,12 +405,17 @@ export function checkEffects(
               visitExpression(branch.cond, false)
               visitBody(branch.body)
             }
-            if (node.otherwise) visitBody(node.otherwise)
+
+            if (node.otherwise) {visitBody(node.otherwise)}
+
             break
           case 'match':
             visitExpression(node.subject, false)
-            for (const branch of node.cases) visitBody(branch.body)
-            if (node.otherwise) visitBody(node.otherwise)
+
+            for (const branch of node.cases) {visitBody(branch.body)}
+
+            if (node.otherwise) {visitBody(node.otherwise)}
+
             break
           default:
             break

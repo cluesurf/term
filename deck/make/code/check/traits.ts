@@ -14,22 +14,27 @@ import type { Program } from '@cluesurf/make/code/compile/node'
 export function checkTraits(
   program: Program,
   file: string,
-): Array<Diagnostic> {
-  const diagnostics: Array<Diagnostic> = []
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = []
 
   // register every mask and the methods it declares
-  const masks = new Map<string, Array<string>>()
+  const masks = new Map<string, string[]>()
+
   for (const statement of program) {
     if (statement.form === 'mask')
-      masks.set(statement.name, statement.methods)
+      {masks.set(statement.name, statement.methods)}
   }
+
   const maskNames = [...masks.keys()]
 
   // coherence: a given trait may be implemented at most once for a given type (no overlapping instances)
   const seenInstances = new Set<string>()
+
   for (const statement of program) {
-    if (statement.form !== 'instance') continue
+    if (statement.form !== 'instance') {continue}
+
     const key = `${statement.mask}:${statement.target}`
+
     if (seenInstances.has(key)) {
       diagnostics.push(
         diagnose('duplicate-instance', {
@@ -39,13 +44,16 @@ export function checkTraits(
         }),
       )
     }
+
     seenInstances.add(key)
   }
 
   // each instance must implement every method of its mask, and its mask must exist
   for (const statement of program) {
-    if (statement.form !== 'instance') continue
+    if (statement.form !== 'instance') {continue}
+
     const required = masks.get(statement.mask)
+
     if (!required) {
       const hint = nearest(statement.mask, maskNames)
       diagnostics.push(
@@ -58,8 +66,10 @@ export function checkTraits(
       )
       continue
     }
+
     const provided = new Set(statement.methods)
     const missing = required.filter(m => !provided.has(m))
+
     if (missing.length > 0) {
       diagnostics.push(
         diagnose('incomplete-instance', {
@@ -75,7 +85,8 @@ export function checkTraits(
 
   // every `need` bound on a generic must refer to a mask that exists
   for (const statement of program) {
-    if (statement.form !== 'function') continue
+    if (statement.form !== 'function') {continue}
+
     for (const generic of statement.generics) {
       if (generic.need && !masks.has(generic.need)) {
         const hint = nearest(generic.need, maskNames)

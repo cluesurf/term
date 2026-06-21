@@ -46,14 +46,16 @@ function typeName(type: Type | undefined): string {
 
 // a member chain back to a slash path: member(member(var a, b), c) -> a/b/c
 function memberPath(expr: Expression): string {
-  if (expr.form === 'variable') return expr.name
+  if (expr.form === 'variable') {return expr.name}
+
   if (expr.form === 'member')
-    return `${memberPath(expr.target)}/${expr.name}`
+    {return `${memberPath(expr.target)}/${expr.name}`}
+
   return 'self'
 }
 
 // an expression to `.tree` value lines at the given depth
-function expr(node: Expression, depth: number): Array<string> {
+function expr(node: Expression, depth: number): string[] {
   switch (node.form) {
     case 'integer':
     case 'float':
@@ -74,6 +76,7 @@ function expr(node: Expression, depth: number): Array<string> {
         ...expr(node.left, depth + 1),
         ...expr(node.right, depth + 1),
       ]
+
     case 'call': {
       const callee =
         node.callee.form === 'variable'
@@ -81,11 +84,13 @@ function expr(node: Expression, depth: number): Array<string> {
           : node.callee.form === 'member'
             ? memberPath(node.callee)
             : 'call'
+
       return [
         `${pad(depth)}call ${callee}`,
         ...node.args.flatMap(a => expr(a, depth + 1)),
       ]
     }
+
     case 'await':
       return expr(node.expr, depth)
     default:
@@ -103,9 +108,10 @@ function zoneNode(
   host: string,
   depth: number,
   ctx: Context,
-): Array<string> {
-  const out: Array<string> = []
+): string[] {
+  const out: string[] = []
   const p = pad(depth)
+
   switch (node.form) {
     case 'element': {
       const self = fresh(ctx, node.name)
@@ -114,6 +120,7 @@ function zoneNode(
         `${pad(depth + 1)}call element`,
         `${pad(depth + 2)}bind tag, text <${node.name}>`,
       )
+
       for (const attribute of node.attributes) {
         if (attribute.event) {
           const handler = fresh(ctx, 'on')
@@ -135,15 +142,19 @@ function zoneNode(
           )
         }
       }
+
       for (const child of node.children)
-        out.push(...zoneNode(child, self, depth, ctx))
+        {out.push(...zoneNode(child, self, depth, ctx))}
+
       out.push(
         `${p}call append`,
         `${pad(depth + 1)}bind parent, read ${host}`,
         `${pad(depth + 1)}bind child, read ${self}`,
       )
+
       return out
     }
+
     case 'text':
       out.push(
         `${p}call append`,
@@ -152,7 +163,9 @@ function zoneNode(
         `${pad(depth + 2)}call text`,
         `${pad(depth + 3)}bind value, text <${node.value}>`,
       )
+
       return out
+
     case 'read': {
       const getter = fresh(ctx, 'get')
       out.push(
@@ -165,10 +178,13 @@ function zoneNode(
         `${pad(depth + 5)}send back`,
         ...expr(node.value, depth + 6),
       )
+
       return out
     }
+
     case 'save':
       out.push(`${p}save ${node.name}`, ...expr(node.value, depth + 1))
+
       return out
     case 'slot':
       // the children outlet: append the passed-in children node
@@ -177,7 +193,9 @@ function zoneNode(
         `${pad(depth + 1)}bind parent, read ${host}`,
         `${pad(depth + 1)}bind child, read children`,
       )
+
       return out
+
     case 'fork': {
       const when = fresh(ctx, 'when')
       const then = fresh(ctx, 'then')
@@ -209,8 +227,10 @@ function zoneNode(
         `${pad(depth + 2)}task ${other}`,
         ...fragment(node.otherwise ?? [], depth + 3, ctx),
       )
+
       return out
     }
+
     case 'walk': {
       const build = fresh(ctx, 'build')
       out.push(
@@ -223,8 +243,10 @@ function zoneNode(
         `${pad(depth + 3)}take ${node.item}, like node`,
         ...fragment(node.body, depth + 3, ctx),
       )
+
       return out
     }
+
     default:
       return out
   }
@@ -232,18 +254,21 @@ function zoneNode(
 
 // build a list of nodes into a fresh container and return it (used where a single node must be returned)
 function fragment(
-  nodes: Array<ZoneNode>,
+  nodes: ZoneNode[],
   depth: number,
   ctx: Context,
-): Array<string> {
+): string[] {
   const box = fresh(ctx, 'box')
-  const out: Array<string> = [
+  const out: string[] = [
     `${pad(depth)}save ${box}`,
     `${pad(depth + 1)}call element`,
     `${pad(depth + 2)}bind tag, text <span>`,
   ]
-  for (const node of nodes) out.push(...zoneNode(node, box, depth, ctx))
+
+  for (const node of nodes) {out.push(...zoneNode(node, box, depth, ctx))}
+
   out.push(`${pad(depth)}send back, read ${box}`)
+
   return out
 }
 
@@ -252,14 +277,17 @@ export function emitZoneTree(
   zone: Extract<Statement, { form: 'zone' }>,
 ): string {
   const ctx: Context = { count: 0 }
-  const out: Array<string> = [
+  const out: string[] = [
     `task ${zone.name}`,
     `  take host, like node`,
   ]
+
   for (const param of zone.params)
-    out.push(`  take ${param.name}, like ${typeName(param.type)}`)
+    {out.push(`  take ${param.name}, like ${typeName(param.type)}`)}
+
   for (const node of zone.body)
-    out.push(...zoneNode(node, 'host', 1, ctx))
+    {out.push(...zoneNode(node, 'host', 1, ctx))}
+
   return out.join('\n') + '\n'
 }
 
@@ -270,30 +298,36 @@ export function emitDockTree(
   return route(dock.route, 0).join('\n') + '\n'
 }
 
-function route(node: DockRoute, depth: number): Array<string> {
+function route(node: DockRoute, depth: number): string[] {
   const p = pad(depth)
-  const out: Array<string> = [
+  const out: string[] = [
     `${p}make route`,
     `${pad(depth + 1)}bind path, text <${node.path}>`,
   ]
+
   for (const method of node.methods) {
     out.push(
       `${pad(depth + 1)}bind method`,
       `${pad(depth + 2)}make handler`,
       `${pad(depth + 3)}bind verb, text <${method.name}>`,
     )
+
     for (const call of method.calls)
-      out.push(`${pad(depth + 3)}bind call, text <${call.name}>`)
+      {out.push(`${pad(depth + 3)}bind call, text <${call.name}>`)}
   }
+
   for (const call of node.calls)
-    out.push(`${pad(depth + 1)}bind call, text <${call.name}>`)
+    {out.push(`${pad(depth + 1)}bind call, text <${call.name}>`)}
+
   if (node.component)
-    out.push(
+    {out.push(
       `${pad(depth + 1)}bind zone, text <${node.component.name}>`,
-    )
+    )}
+
   for (const child of node.children) {
     out.push(`${pad(depth + 1)}bind child`)
     out.push(...route(child, depth + 2))
   }
+
   return out
 }

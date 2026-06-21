@@ -21,11 +21,14 @@ function holdToNpmRange(hold: MarkHold): string {
   switch (hold.form) {
     case 'exact':
       return showMark(hold.mark)
+
     case 'wild': {
       const minor = hold.minor !== undefined ? `${hold.minor}` : 'x'
       const patch = hold.patch !== undefined ? `${hold.patch}` : 'x'
+
       return `${hold.major}.${minor}.${patch}`
     }
+
     case 'band':
       return `>=${showMark(hold.base)} <${showMark(hold.head)}`
     case 'test':
@@ -39,6 +42,7 @@ function manifestToPackageJson(
   const fullName = manifest.host
     ? `@${manifest.host}/${manifest.name}`
     : manifest.name
+
   const npmName = toRegistryName({ name: fullName })
   const version = showMark(manifest.mark)
 
@@ -53,11 +57,14 @@ function manifestToPackageJson(
 
   if (manifest.mind && manifest.mind.length > 0) {
     const first = manifest.mind[0]
+
     if (first) {
       const author: Record<string, string> = { name: first.name }
+
       if (first.site) {
         author.url = first.site
       }
+
       pkg.author = author
     }
   }
@@ -72,10 +79,12 @@ function manifestToPackageJson(
 
   if (manifest.link.length > 0) {
     const deps: Record<string, string> = {}
+
     for (const link of manifest.link) {
       const depNpmName = toRegistryName({ name: link.name })
       deps[depNpmName] = holdToNpmRange(link.mark)
     }
+
     pkg.dependencies = deps
   }
 
@@ -93,10 +102,12 @@ export async function callHost(input: {
 
     // validate
     const errors = await validateManifest({ manifest })
+
     if (errors.length > 0) {
       for (const err of errors) {
         logFail(err)
       }
+
       process.exit(1)
     }
 
@@ -105,7 +116,9 @@ export async function callHost(input: {
 
     // read existing package.json if it exists, merge
     const pkgPath = path.join(input.root, 'package.json')
+
     let existing: Record<string, unknown> = {}
+
     try {
       const text = await fsp.readFile(pkgPath, 'utf-8')
       existing = JSON.parse(text)
@@ -150,6 +163,7 @@ export async function callHost(input: {
             JSON.stringify(merged, null, 2).split('\n').join('\n  '),
         ),
       )
+
       return
     }
 
@@ -161,9 +175,10 @@ export async function callHost(input: {
         stdio: 'inherit',
         shell: true,
       })
+
       child.on('close', code => {
-        if (code === 0) resolve()
-        else reject(new Error(`npm publish exited with code ${code}`))
+        if (code === 0) {resolve()}
+        else {reject(new Error(`npm publish exited with code ${code}`))}
       })
       child.on('error', reject)
     })

@@ -22,8 +22,10 @@ export async function callServe(input: {
   env?: NativeEnv
 }): Promise<void> {
   logStep('Starting dev server...')
+
   try {
     const entry = findEntry(input.root, input.entry)
+
     if (!entry || !existsSync(entry)) {
       logFail(
         entry
@@ -43,18 +45,26 @@ export async function callServe(input: {
 
     // watch the project for `.tree` edits and hot-apply each change
     let timer: ReturnType<typeof setTimeout> | undefined
+
     const pending = new Set<string>()
     const watcher = fsWatch(
       input.root,
       { recursive: true },
       (_event, name) => {
         const file = typeof name === 'string' ? name : ''
-        if (!file.endsWith('.tree')) return
-        if (file.includes('/.seed/') || file.includes('/host/')) return
+
+        if (!file.endsWith('.tree')) {return}
+
+        if (file.includes('/.seed/') || file.includes('/host/')) {return}
+
         const full = path.join(input.root, file)
-        if (!existsSync(full)) return
+
+        if (!existsSync(full)) {return}
+
         pending.add(realpathSync(full))
-        if (timer) clearTimeout(timer)
+
+        if (timer) {clearTimeout(timer)}
+
         timer = setTimeout(() => {
           for (const changed of pending) {
             const result = server.update(changed)
@@ -62,6 +72,7 @@ export async function callServe(input: {
               fade(`  ${path.basename(changed)} -> ${result.type}`),
             )
           }
+
           pending.clear()
         }, 30)
       },

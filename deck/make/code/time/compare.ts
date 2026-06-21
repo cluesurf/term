@@ -13,41 +13,47 @@ const SIGNIFICANT_PCT = 5
 export type Verdict = 'faster' | 'slower' | 'same' | 'new'
 
 export type Comparison = {
-  entries: Array<{
+  entries: {
     name: string
     baseline_ns: number
     current_ns: number
     pct: number
     status: Verdict
-  }>
+  }[]
   regressions: number
   improvements: number
 }
 
 export function compareResults(input: {
-  current: Array<BenchmarkResult>
-  baseline: { results: Array<{ name: string; mean_ns: number }> }
+  current: BenchmarkResult[]
+  baseline: { results: { name: string; mean_ns: number }[] }
 }): Comparison {
   const baselineByName = new Map(
     input.baseline.results.map(r => [r.name, r.mean_ns]),
   )
+
   let regressions = 0
   let improvements = 0
+
   const entries = input.current.map(r => {
     const baseline_ns = baselineByName.get(r.name)
+
     if (baseline_ns === undefined)
-      return {
+      {return {
         name: r.name,
         baseline_ns: 0,
         current_ns: r.mean_ns,
         pct: 0,
-        status: 'new' as Verdict,
-      }
+        status: 'new' as const,
+      }}
+
     const pct =
       baseline_ns > 0
         ? ((r.mean_ns - baseline_ns) / baseline_ns) * 100
         : 0
+
     let status: Verdict = 'same'
+
     if (pct > SIGNIFICANT_PCT) {
       status = 'slower'
       regressions++
@@ -55,6 +61,7 @@ export function compareResults(input: {
       status = 'faster'
       improvements++
     }
+
     return {
       name: r.name,
       baseline_ns,
@@ -63,6 +70,7 @@ export function compareResults(input: {
       status,
     }
   })
+
   return { entries, regressions, improvements }
 }
 
@@ -82,10 +90,12 @@ export function formatComparison(comparison: Comparison): string {
       e.status === 'new'
         ? 'new'
         : `${e.pct >= 0 ? '+' : ''}${e.pct.toFixed(1)}%`
+
     return `  ${mark[e.status]} ${e.name}: ${formatDuration(
       e.current_ns,
     )} (${delta})`
   })
+
   return [
     ...lines,
     '',
@@ -95,7 +105,7 @@ export function formatComparison(comparison: Comparison): string {
 
 export function buildHistoryEntry(input: { suite: Suite }): {
   timestamp: string
-  benchmarks: Array<{ name: string; mean_ns: number }>
+  benchmarks: { name: string; mean_ns: number }[]
 } {
   return {
     timestamp: input.suite.timestamp,
@@ -115,10 +125,12 @@ export function formatMarkdown(input: {
       e.status === 'new'
         ? 'new'
         : `${e.pct >= 0 ? '+' : ''}${e.pct.toFixed(1)}%`
+
     return `| ${e.name} | ${formatDuration(
       e.current_ns,
     )} | ${delta} | ${e.status} |`
   })
+
   return [
     `### Benchmark results (${input.suite.platform})`,
     '',

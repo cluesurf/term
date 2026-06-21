@@ -22,10 +22,12 @@ function flatten(node: Node): string {
       const [head, ...kids] = node.nodes
       const h = head ? flatten(head) : ''
       const optional = node.optional ? '?' : ''
+
       return kids.length
         ? `${h}${optional} ${kids.map(flatten).join(', ')}`
         : `${h}${optional}`
     }
+
     case 'name':
       return node.parts
         .map(p =>
@@ -72,6 +74,7 @@ function shape(node: Node): string {
 // the head atom of a group (its first node), as text. Used to keep certain heads always stacked.
 function headName(group: GroupNode): string {
   const head = group.nodes[0]
+
   return head ? flatten(head) : ''
 }
 
@@ -79,17 +82,18 @@ function isLeaf(node: Node): boolean {
   return node.kind !== 'group' || node.nodes.length <= 1
 }
 
-function comments(group: GroupNode, indent: string): Array<string> {
+function comments(group: GroupNode, indent: string): string[] {
   return (group.comments ?? []).map(c => `${indent}${c.text.trim()}`)
 }
 
 // does this group (or any descendant) carry a comment? Inlining would drop those comments, so such groups stack.
 function hasComment(node: Node): boolean {
-  if (node.kind !== 'group') return false
+  if (node.kind !== 'group') {return false}
+
   return (node.comments?.length ?? 0) > 0 || node.nodes.some(hasComment)
 }
 
-function formatGroup(group: GroupNode, depth: number): Array<string> {
+function formatGroup(group: GroupNode, depth: number): string[] {
   const indent = '  '.repeat(depth)
   const lines = comments(group, indent)
   const flat = flatten(group)
@@ -102,31 +106,39 @@ function formatGroup(group: GroupNode, depth: number): Array<string> {
     indent.length + flat.length <= WIDTH
   ) {
     const reparsed = parse({ file: 'format', text: flat })
+
     if (
       reparsed.ok &&
       reparsed.tree.nodes.length === 1 &&
       shape(reparsed.tree.nodes[0]!) === shape(group)
     ) {
       lines.push(`${indent}${flat}`)
+
       return lines
     }
   }
 
   // stacked: the head line keeps the head and any leading atoms (the name); the rest are indented children
   const [head, ...kids] = group.nodes
+
   let split = 0
-  while (split < kids.length && isLeaf(kids[split]!)) split++
+
+  while (split < kids.length && isLeaf(kids[split]!)) {split++}
+
   const headParts = [
     head ? flatten(head) : '',
     ...kids.slice(0, split).map(flatten),
   ].filter(Boolean)
+
   lines.push(
     `${indent}${headParts.join(' ')}${group.optional ? '?' : ''}`,
   )
+
   for (const kid of kids.slice(split)) {
-    if (kid.kind === 'group') lines.push(...formatGroup(kid, depth + 1))
-    else lines.push(`${'  '.repeat(depth + 1)}${flatten(kid)}`)
+    if (kid.kind === 'group') {lines.push(...formatGroup(kid, depth + 1))}
+    else {lines.push(`${'  '.repeat(depth + 1)}${flatten(kid)}`)}
   }
+
   return lines
 }
 
@@ -142,6 +154,8 @@ export function formatTree(tree: RootNode): string {
 // format source text. Tolerant: if it does not parse, the original text is returned unchanged.
 export function format(source: { file: string; text: string }): string {
   const result = parse(source)
-  if (!result.ok) return source.text
+
+  if (!result.ok) {return source.text}
+
   return formatTree(result.tree)
 }

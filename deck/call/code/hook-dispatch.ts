@@ -12,7 +12,7 @@ import type {
 import type { DockRoute } from '@cluesurf/make/code/compile/node'
 
 // the CLI command routes of a program: every top-level `hook` (lowered to a dock statement)
-export function commandRoutes(program: Program): Array<DockRoute> {
+export function commandRoutes(program: Program): DockRoute[] {
   return program
     .filter(
       (s): s is Extract<Statement, { form: 'dock' }> =>
@@ -24,28 +24,34 @@ export function commandRoutes(program: Program): Array<DockRoute> {
 export type Dispatch =
   | {
       ok: true
-      command: Array<string> // the resolved command path, e.g. ['make', 'face']
+      command: string[] // the resolved command path, e.g. ['make', 'face']
       task?: string // the bound implementation task name (calls[0])
       args: Record<string, string | boolean>
     }
-  | { ok: false; error: string; command: Array<string> }
+  | { ok: false; error: string; command: string[] }
 
 // resolve an argv (without the node + script prefix) against the command routes
 export function dispatch(
-  routes: Array<DockRoute>,
-  argv: Array<string>,
+  routes: DockRoute[],
+  argv: string[],
 ): Dispatch {
   let level = routes
   let current: DockRoute | undefined
-  const command: Array<string> = []
+
+  const command: string[] = []
+
   let i = 0
 
   // descend subcommands while the next bare token names one
   while (i < argv.length) {
     const token = argv[i]!
-    if (token.startsWith('-')) break
+
+    if (token.startsWith('-')) {break}
+
     const next = level.find(r => r.path === token)
-    if (!next) break
+
+    if (!next) {break}
+
     current = next
     command.push(next.path)
     level = next.children
@@ -53,30 +59,34 @@ export function dispatch(
   }
 
   if (!current)
-    return {
+    {return {
       ok: false,
       error:
         argv.length === 0
           ? 'no command given'
           : `unknown command "${argv[0]}"`,
       command,
-    }
+    }}
 
   // short-flag letter -> the take's full name, so `-t` resolves to `--title`
   const shortToName = new Map<string, string>()
+
   for (const take of current.takes)
-    if (take.short) shortToName.set(take.short, take.name)
+    {if (take.short) {shortToName.set(take.short, take.name)}}
 
   // parse the rest: --flag / -f value, --flag=value, boolean flags, and positionals
   const args: Record<string, string | boolean> = {}
-  const positionals: Array<string> = []
+  const positionals: string[] = []
+
   while (i < argv.length) {
     const token = argv[i]!
     const isLong = token.startsWith('--')
     const isShort = !isLong && token.startsWith('-') && token.length > 1
+
     if (isLong || isShort) {
       const body = token.slice(isLong ? 2 : 1)
       const eq = body.indexOf('=')
+
       if (eq >= 0) {
         const raw = body.slice(0, eq)
         const key = isShort ? (shortToName.get(raw) ?? raw) : raw
@@ -85,6 +95,7 @@ export function dispatch(
       } else {
         const key = isShort ? (shortToName.get(body) ?? body) : body
         const value = argv[i + 1]
+
         if (value !== undefined && !value.startsWith('-')) {
           args[key] = value
           i += 2
@@ -102,8 +113,9 @@ export function dispatch(
   // bind positionals to the command's declared takes, in order, unless already given as a flag
   current.takes.forEach((take, index) => {
     const value = positionals[index]
+
     if (value !== undefined && args[take.name] === undefined)
-      args[take.name] = value
+      {args[take.name] = value}
   })
 
   return {

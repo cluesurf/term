@@ -26,6 +26,7 @@ export class Net {
   node(label: Label): number {
     const id = this.next++
     this.nodes.set(id, label)
+
     return id
   }
 
@@ -41,33 +42,39 @@ export class Net {
 
   private remove(id: number): void {
     const n = arity[this.nodes.get(id)!]
+
     for (let slot = 0; slot <= n; slot++)
-      this.link.delete(`${id}:${slot}`)
+      {this.link.delete(`${id}:${slot}`)}
+
     this.nodes.delete(id)
   }
 
   // the active pairs: nodes whose principal ports are wired to each other's principal port
   private activePair(): [number, number] | undefined {
     for (const id of this.nodes.keys()) {
-      if (this.interface.has(id)) continue // the boundary is inert
+      if (this.interface.has(id)) {continue} // the boundary is inert
+
       const peer = this.peer({ node: id, slot: 0 })
+
       if (
-        peer &&
-        peer.slot === 0 &&
+        peer?.slot === 0 &&
         peer.node !== id &&
         this.nodes.has(peer.node) &&
         !this.interface.has(peer.node) &&
         peer.node > id
       )
-        return [id, peer.node]
+        {return [id, peer.node]}
     }
+
     return undefined
   }
 
   // apply one interaction rule; returns whether one fired
   step(): boolean {
     const pair = this.activePair()
-    if (!pair) return false
+
+    if (!pair) {return false}
+
     const [a, b] = pair
     const la = this.nodes.get(a)!
     const lb = this.nodes.get(b)!
@@ -76,8 +83,10 @@ export class Net {
     if (la === 'era' && lb === 'era') {
       this.remove(a)
       this.remove(b)
+
       return true
     }
+
     if (la === 'era' || lb === 'era') {
       // erase a binary agent: its two auxiliaries each get a fresh eraser
       const [eraser, binary] = la === 'era' ? [a, b] : [b, a]
@@ -87,23 +96,29 @@ export class Net {
       this.remove(binary)
       this.wire({ node: this.node('era'), slot: 0 }, x1)
       this.wire({ node: this.node('era'), slot: 0 }, x2)
+
       return true
     }
+
     const a1 = this.peer({ node: a, slot: 1 })!
     const a2 = this.peer({ node: a, slot: 2 })!
     const b1 = this.peer({ node: b, slot: 1 })!
     const b2 = this.peer({ node: b, slot: 2 })!
+
     if (la === lb) {
       // annihilation: same agents cancel, wiring their auxiliaries straight across
       this.remove(a)
       this.remove(b)
       this.wire(a1, b1)
       this.wire(a2, b2)
+
       return true
     }
+
     // commutation: each agent passes through the other, duplicating it
     this.remove(a)
     this.remove(b)
+
     const b1n = this.node(lb)
     const b2n = this.node(lb)
     const a1n = this.node(la)
@@ -116,13 +131,15 @@ export class Net {
     this.wire({ node: b1n, slot: 2 }, { node: a2n, slot: 1 })
     this.wire({ node: b2n, slot: 1 }, { node: a1n, slot: 2 })
     this.wire({ node: b2n, slot: 2 }, { node: a2n, slot: 2 })
+
     return true
   }
 
   // reduce to normal form (no active pairs); `limit` is a safety bound
   normalize(limit = 100000): void {
     let n = 0
-    while (this.step()) if (++n >= limit) break
+
+    while (this.step()) {if (++n >= limit) {break}}
   }
 
   size(): number {

@@ -27,7 +27,9 @@ export async function initStore(): Promise<void> {
   await fsp.mkdir(getDeckDir(), { recursive: true })
 }
 
-export async function hasFile(input: { hash: string }): Promise<boolean> {
+export async function hasFile(input: {
+  hash: string
+}): Promise<boolean> {
   const filePath = getFilePath({ hash: input.hash })
   try {
     await fsp.access(filePath)
@@ -67,11 +69,7 @@ export async function storeDeckMeta(input: {
     input.mark,
   )
   await fsp.mkdir(dir, { recursive: true })
-  await fsp.writeFile(
-    path.join(dir, 'deck.tree'),
-    input.data,
-    'utf-8',
-  )
+  await fsp.writeFile(path.join(dir, 'deck.tree'), input.data, 'utf-8')
 }
 
 export async function loadDeckMeta(input: {

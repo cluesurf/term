@@ -18,6 +18,7 @@ export async function callDaemon(input: {
   env?: NativeEnv
 }): Promise<void> {
   logStep('Starting compiler daemon...')
+
   try {
     const port = input.port ?? 5179
     const daemon = startDaemon({
@@ -25,6 +26,7 @@ export async function callDaemon(input: {
       port,
       env: input.env ?? 'node',
     })
+
     logGood(`compiler daemon on http://localhost:${port}`)
     console.log(
       fade(

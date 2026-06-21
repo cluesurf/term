@@ -20,32 +20,44 @@ export class Substitution {
 
   // follow variable bindings to the current best type, compressing the path so later lookups are O(1)
   resolve(type: Type): Type {
-    const chain: Array<number> = []
+    const chain: number[] = []
+
     let current = type
+
     while (current.kind === 'variable') {
       const bound = this.bindings.get(current.id)
-      if (!bound) break
+
+      if (!bound) {break}
+
       chain.push(current.id)
       current = bound
     }
-    for (const id of chain) this.bindings.set(id, current)
+
+    for (const id of chain) {this.bindings.set(id, current)}
+
     return current
   }
 
   // does variable `id` appear within `type`? (prevents building an infinite type)
   occurs(id: number, type: Type): boolean {
     const t = this.resolve(type)
-    if (t.kind === 'variable') return t.id === id
+
+    if (t.kind === 'variable') {return t.id === id}
+
     if (t.kind === 'function')
-      return (
+      {return (
         t.params.some(p => this.occurs(id, p)) ||
         this.occurs(id, t.result)
-      )
-    if (t.kind === 'array') return this.occurs(id, t.element)
+      )}
+
+    if (t.kind === 'array') {return this.occurs(id, t.element)}
+
     if (t.kind === 'map')
-      return this.occurs(id, t.key) || this.occurs(id, t.value)
+      {return this.occurs(id, t.key) || this.occurs(id, t.value)}
+
     if (t.kind === 'named' && t.args)
-      return t.args.some(a => this.occurs(id, a))
+      {return t.args.some(a => this.occurs(id, a))}
+
     return false
   }
 
@@ -54,38 +66,58 @@ export class Substitution {
   unify(a: Type, b: Type, span?: Span): boolean {
     const x = this.resolve(a)
     const y = this.resolve(b)
-    if (x.kind === 'unknown' || y.kind === 'unknown') return true
+
+    if (x.kind === 'unknown' || y.kind === 'unknown') {return true}
+
     if (x.kind === 'variable') {
-      if (y.kind === 'variable' && y.id === x.id) return true
-      if (this.occurs(x.id, y)) return false
+      if (y.kind === 'variable' && y.id === x.id) {return true}
+
+      if (this.occurs(x.id, y)) {return false}
+
       this.bindings.set(x.id, y)
+
       if (span && y.kind !== 'variable')
-        this.origin.set(x.id, { span, type: y })
+        {this.origin.set(x.id, { span, type: y })}
+
       return true
     }
+
     if (y.kind === 'variable') {
-      if (this.occurs(y.id, x)) return false
+      if (this.occurs(y.id, x)) {return false}
+
       this.bindings.set(y.id, x)
-      if (span) this.origin.set(y.id, { span, type: x })
+
+      if (span) {this.origin.set(y.id, { span, type: x })}
+
       return true
     }
+
     if (x.kind === 'function' && y.kind === 'function') {
-      if (x.params.length !== y.params.length) return false
+      if (x.params.length !== y.params.length) {return false}
+
       for (let i = 0; i < x.params.length; i++)
-        if (!this.unify(x.params[i]!, y.params[i]!)) return false
+        {if (!this.unify(x.params[i]!, y.params[i]!)) {return false}}
+
       return this.unify(x.result, y.result)
     }
+
     if (x.kind === 'array' && y.kind === 'array')
-      return this.unify(x.element, y.element)
+      {return this.unify(x.element, y.element)}
+
     if (x.kind === 'map' && y.kind === 'map')
-      return this.unify(x.key, y.key) && this.unify(x.value, y.value)
+      {return this.unify(x.key, y.key) && this.unify(x.value, y.value)}
+
     if (x.kind === 'named' && y.kind === 'named') {
-      if (x.name !== y.name) return false
+      if (x.name !== y.name) {return false}
+
       const xa = x.args ?? []
       const ya = y.args ?? []
-      if (xa.length !== ya.length) return true // one side unparameterized: gradual
+
+      if (xa.length !== ya.length) {return true} // one side unparameterized: gradual
+
       return xa.every((arg, i) => this.unify(arg, ya[i]!))
     }
+
     return x.kind === y.kind
   }
 }

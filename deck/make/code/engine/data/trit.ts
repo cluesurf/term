@@ -13,12 +13,16 @@ const GLYPH: Record<string, string> = { '-1': '-', '0': '0', '1': '+' }
 
 // the balanced-ternary digits of an integer, least significant first. The empty value 0 is a single 0 trit.
 export function toTrits(value: bigint): Trit[] {
-  if (value === 0n) return [0]
+  if (value === 0n) {return [0]}
+
   const trits: Trit[] = []
+
   let v = value
+
   while (v !== 0n) {
     // remainder in {0,1,2}, then shift 2 down to -1 so digits stay balanced
-    let r = ((v % 3n) + 3n) % 3n
+    const r = ((v % 3n) + 3n) % 3n
+
     if (r === 2n) {
       trits.push(-1)
       v = (v + 1n) / 3n
@@ -27,6 +31,7 @@ export function toTrits(value: bigint): Trit[] {
       v = (v - r) / 3n
     }
   }
+
   return trits
 }
 
@@ -34,10 +39,12 @@ export function toTrits(value: bigint): Trit[] {
 export function fromTrits(trits: readonly Trit[]): bigint {
   let value = 0n
   let power = 1n
+
   for (const t of trits) {
     value += BigInt(t) * power
     power *= 3n
   }
+
   return value
 }
 
@@ -49,6 +56,7 @@ export function negateTrits(trits: readonly Trit[]): Trit[] {
 // the printable balanced-ternary string, most significant first (e.g. 5 -> "+--", since 5 = 9 - 3 - 1)
 export function tritString(value: bigint): string {
   const trits = toTrits(value)
+
   return trits
     .map(t => GLYPH[String(t)]!)
     .reverse()
@@ -58,13 +66,16 @@ export function tritString(value: bigint): string {
 // parse a balanced-ternary string (most significant first, glyphs '+', '0', '-') back to an integer
 export function fromTritString(text: string): bigint {
   const trits: Trit[] = []
+
   for (const ch of text) {
-    if (ch === '+') trits.push(1)
-    else if (ch === '-') trits.push(-1)
-    else if (ch === '0') trits.push(0)
-    else throw new Error(`bad balanced-ternary glyph "${ch}"`)
+    if (ch === '+') {trits.push(1)}
+    else if (ch === '-') {trits.push(-1)}
+    else if (ch === '0') {trits.push(0)}
+    else {throw new Error(`bad balanced-ternary glyph "${ch}"`)}
   }
+
   trits.reverse() // string is MSB-first, the array is LSB-first
+
   return fromTrits(trits)
 }
 
@@ -76,16 +87,20 @@ export function tritLength(value: bigint): number {
 // the inclusive range of a fixed-width balanced-ternary word of `n` trits: [-(3^n - 1)/2, +(3^n - 1)/2]
 export function tritWordRange(n: number): { min: bigint; max: bigint } {
   const half = (3n ** BigInt(n) - 1n) / 2n
+
   return { min: -half, max: half }
 }
 
 // pad or check a digit array to a fixed width (used when storing a fixed-resolution word)
 export function toFixedTrits(value: bigint, width: number): Trit[] {
   const trits = toTrits(value)
+
   if (trits.length > width)
-    throw new Error(
+    {throw new Error(
       `value ${value} needs ${trits.length} trits, exceeds width ${width}`,
-    )
-  while (trits.length < width) trits.push(0)
+    )}
+
+  while (trits.length < width) {trits.push(0)}
+
   return trits
 }

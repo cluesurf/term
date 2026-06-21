@@ -22,7 +22,7 @@ import { preferHostForConstant } from '@cluesurf/make/code/lint/rules/prefer-hos
 import { noEmptyBlock } from '@cluesurf/make/code/lint/rules/no-empty-block'
 
 // the default rule set, keyed by stable code for config and suppression
-export const RULES: Array<Rule> = [
+export const RULES: Rule[] = [
   kebabNames,
   noRedundantArithmetic,
   preferHostForConstant,
@@ -41,6 +41,7 @@ function eachExpression(
   visit: (e: Expression) => void,
 ): void {
   visit(expr)
+
   switch (expr.form) {
     case 'binary':
       eachExpression(expr.left, visit)
@@ -76,7 +77,9 @@ function eachExpression(
         eachExpression(b.cond, visit)
         eachExpression(b.value, visit)
       })
-      if (expr.otherwise) eachExpression(expr.otherwise, visit)
+
+      if (expr.otherwise) {eachExpression(expr.otherwise, visit)}
+
       break
     default:
       break
@@ -89,8 +92,10 @@ function eachStatement(
   onExpression: (e: Expression) => void,
 ): void {
   onStatement(stmt)
-  const block = (body: Array<Statement>) =>
+
+  const block = (body: Statement[]) =>
     body.forEach(s => eachStatement(s, onStatement, onExpression))
+
   switch (stmt.form) {
     case 'let':
       eachExpression(stmt.init, onExpression)
@@ -107,7 +112,9 @@ function eachStatement(
         eachExpression(b.cond, onExpression)
         block(b.body)
       })
-      if (stmt.otherwise) block(stmt.otherwise)
+
+      if (stmt.otherwise) {block(stmt.otherwise)}
+
       break
     case 'while':
       eachExpression(stmt.cond, onExpression)
@@ -116,14 +123,17 @@ function eachStatement(
     case 'match':
       eachExpression(stmt.subject, onExpression)
       stmt.cases.forEach(c => block(c.body))
-      if (stmt.otherwise) block(stmt.otherwise)
+
+      if (stmt.otherwise) {block(stmt.otherwise)}
+
       break
     case 'for-each':
       eachExpression(stmt.iterable, onExpression)
       block(stmt.body)
       break
     case 'return':
-      if (stmt.value) eachExpression(stmt.value, onExpression)
+      if (stmt.value) {eachExpression(stmt.value, onExpression)}
+
       break
     case 'throw':
       eachExpression(stmt.value, onExpression)
@@ -142,12 +152,16 @@ function eachStatement(
 // every name that is the target of an assignment somewhere in the program (used by prefer-host-for-constant)
 function reassignedNames(program: Program): Set<string> {
   const names = new Set<string>()
+
   const onExpression = () => {}
+
   const onStatement = (s: Statement) => {
     if (s.form === 'assign' && s.target.form === 'variable')
-      names.add(s.target.name)
+      {names.add(s.target.name)}
   }
-  for (const s of program) eachStatement(s, onStatement, onExpression)
+
+  for (const s of program) {eachStatement(s, onStatement, onExpression)}
+
   return names
 }
 
@@ -158,22 +172,26 @@ export function lint(
   config: LintConfig = {},
   // the rule set to run. Defaults to the built-ins, but the caller passes its own (built-ins plus Seed-authored plugin
   // rules loaded via code/lint/seed-rule.ts) so new rules drop in without editing this driver. This is the plugin seam.
-  rules: Array<Rule> = RULES,
-): Array<Finding> {
-  const findings: Array<Finding> = []
+  rules: Rule[] = RULES,
+): Finding[] {
+  const findings: Finding[] = []
   const reassigned = reassignedNames(program)
   const lines = source.split('\n')
+
   const slice = (span: Span): string => {
     if (span.start.line === span.end.line)
-      return (lines[span.start.line] ?? '').slice(
+      {return (lines[span.start.line] ?? '').slice(
         span.start.column,
         span.end.column,
-      )
+      )}
+
     const first = (lines[span.start.line] ?? '').slice(
       span.start.column,
     )
+
     const middle = lines.slice(span.start.line + 1, span.end.line)
     const last = (lines[span.end.line] ?? '').slice(0, span.end.column)
+
     return [first, ...middle, last].join('\n')
   }
 
@@ -183,6 +201,7 @@ export function lint(
     const severity =
       (config.severity?.[rule.code] as Severity | undefined) ??
       rule.severity
+
     const context: LintContext = {
       file,
       source,
@@ -193,7 +212,8 @@ export function lint(
         if (
           config.suppress?.get(finding.span.start.line)?.has(rule.code)
         )
-          return
+          {return}
+
         findings.push({
           rule: rule.name,
           code: rule.code,
@@ -202,12 +222,15 @@ export function lint(
         })
       },
     }
+
     const onStatement = (node: Statement) =>
       rule.check({ kind: 'statement', node }, context)
+
     const onExpression = (node: Expression) =>
       rule.check({ kind: 'expression', node }, context)
+
     for (const stmt of program)
-      eachStatement(stmt, onStatement, onExpression)
+      {eachStatement(stmt, onStatement, onExpression)}
   }
 
   return findings

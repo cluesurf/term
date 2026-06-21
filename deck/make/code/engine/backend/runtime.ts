@@ -33,9 +33,12 @@ export const array = (items: Value[]): Value => ({
   form: 'array',
   value: Arr.fromArray(items),
 })
+
 export const mapLit = (pairs: [string, Value][]): Value => {
   const m = Mp.makeMap<Value>()
-  for (const [k, v] of pairs) Mp.set(m, `s:${k}`, v)
+
+  for (const [k, v] of pairs) {Mp.set(m, `s:${k}`, v)}
+
   return { form: 'map', value: m }
 }
 
@@ -67,44 +70,58 @@ export const truthy = (a: Value): boolean => isTruthy(a)
 export const index = (c: Value, i: Value): Value => indexGet(c, i)
 export const member = (c: Value, name: string): Value =>
   memberGet(c, name)
+
 export function setIndex(c: Value, i: Value, v: Value): Value {
   if (c.form === 'array')
-    return {
+    {return {
       form: 'array',
       value: Arr.set(
         c.value,
         Number((i as { value: { value: bigint } }).value.value),
         v,
       ),
-    }
+    }}
+
   if (c.form === 'map') {
     Mp.set(c.value, keyOf(i), v)
+
     return c
   }
+
   throw new Error(`cannot index-assign a ${c.form}`)
 }
+
 export function setMember(c: Value, name: string, v: Value): Value {
   if (c.form === 'map') {
     Mp.set(c.value, `s:${name}`, v)
+
     return c
   }
+
   throw new Error(`cannot set member on a ${c.form}`)
 }
 
 // built-ins (bound to plain names in the emitted preamble)
 export const print = (...args: Value[]): Value => {
   console.log(args.map(show).join(' '))
+
   return UNIT
 }
+
 export const len = (v: Value): Value => member(v, 'length')
+
 export const push = (a: Value, v: Value): Value => {
-  if (a.form !== 'array') throw new Error('push needs an array')
+  if (a.form !== 'array') {throw new Error('push needs an array')}
+
   return { form: 'array', value: Arr.push(a.value, v) }
 }
+
 export const keys = (m: Value): Value => {
-  if (m.form !== 'map') throw new Error('keys needs a map')
+  if (m.form !== 'map') {throw new Error('keys needs a map')}
+
   return array(Mp.keys(m.value).map(k => str(k.replace(/^s:/, ''))))
 }
+
 export const strOf = (v: Value): Value => str(show(v))
 
 // error bridging for `throw` / `try`: a thrown Value travels as a JS Error carrying the original Value, so the
@@ -114,6 +131,7 @@ class SeedError extends Error {
     super(show(value))
   }
 }
+
 export const toError = (v: Value): SeedError => new SeedError(v)
 export const fromError = (e: unknown): Value =>
   e instanceof SeedError
@@ -122,24 +140,31 @@ export const fromError = (e: unknown): Value =>
 
 // `for` iteration: yield the elements of an array, or the values of a map, as a JS iterable of Values
 export const iterate = (v: Value): Iterable<Value> => {
-  if (v.form === 'array') return Arr.toArray(v.value)
-  if (v.form === 'map') return Mp.values(v.value)
+  if (v.form === 'array') {return Arr.toArray(v.value)}
+
+  if (v.form === 'map') {return Mp.values(v.value)}
+
   throw new Error(`cannot iterate ${v.form}`)
 }
+
 export const toInt = (v: Value): Value => {
-  if (v.form === 'integer') return v
+  if (v.form === 'integer') {return v}
+
   if (v.form === 'float')
-    return int(
+    {return int(
       BigInt(
         Math.trunc(
           Number((v.value as { mantissa: bigint }).mantissa) *
             3 ** (v.value as { exponent: number }).exponent,
         ),
       ),
-    )
+    )}
+
   if (v.form === 'string') {
     const s = show(v)
+
     return int(BigInt(s))
   }
+
   throw new Error(`int of ${v.form}`)
 }

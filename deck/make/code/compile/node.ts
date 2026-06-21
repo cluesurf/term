@@ -23,12 +23,12 @@ export type Type =
   | { kind: 'bytes' }
   | { kind: 'array'; element: Type }
   | { kind: 'map'; key: Type; value: Type }
-  | { kind: 'named'; name: string; args?: Array<Type> }
+  | { kind: 'named'; name: string; args?: Type[] }
   | {
       kind: 'function'
-      params: Array<Type>
+      params: Type[]
       result: Type
-      effects?: Array<string>
+      effects?: string[]
     }
   | { kind: 'variable'; id: number }
 
@@ -99,24 +99,24 @@ export type Expression =
   | {
       form: 'call'
       callee: Expression
-      args: Array<Expression>
+      args: Expression[]
       span: Span
       type?: Type
       // `wait false`: a fire-and-forget call. It is made but never awaited, even when the callee is async, and it does
       // not make the caller async. Async resolution skips it; without this flag an async call is awaited by default.
       background?: boolean
     }
-  | { form: 'array'; items: Array<Expression>; span: Span; type?: Type }
+  | { form: 'array'; items: Expression[]; span: Span; type?: Type }
   | {
       form: 'map'
-      entries: Array<{ key: Expression; value: Expression }>
+      entries: { key: Expression; value: Expression }[]
       span: Span
       type?: Type
     }
   | {
       form: 'record'
       name: string
-      fields: Array<{ name: string; value: Expression }>
+      fields: { name: string; value: Expression }[]
       span: Span
       type?: Type
     }
@@ -135,8 +135,8 @@ export type Expression =
   // a function literal / callback value (`task name / take ... / <body>` used as a value), e.g. a hook handler
   | {
       form: 'closure'
-      params: Array<{ name: string; type?: Type }>
-      body: Array<Statement>
+      params: { name: string; type?: Type }[]
+      body: Statement[]
       result?: Type
       async?: boolean
       span: Span
@@ -146,7 +146,7 @@ export type Expression =
   // each branch is a (cond, value) pair, with an optional final `otherwise`. Emits as a ternary chain.
   | {
       form: 'conditional'
-      branches: Array<{ cond: Expression; value: Expression }>
+      branches: { cond: Expression; value: Expression }[]
       otherwise?: Expression
       span: Span
       type?: Type
@@ -183,29 +183,29 @@ export type Statement =
   | { form: 'expression'; expr: Expression; span: Span }
   | {
       form: 'if'
-      branches: Array<{ cond: Expression; body: Array<Statement> }>
-      otherwise?: Array<Statement>
+      branches: { cond: Expression; body: Statement[] }[]
+      otherwise?: Statement[]
       span: Span
     }
   | {
       form: 'while'
       cond: Expression
-      body: Array<Statement>
+      body: Statement[]
       span: Span
     }
   // a pattern match on an enum value (fork case): each case is a variant label
   | {
       form: 'match'
       subject: Expression
-      cases: Array<{ label: string; body: Array<Statement> }>
-      otherwise?: Array<Statement>
+      cases: { label: string; body: Statement[] }[]
+      otherwise?: Statement[]
       span: Span
     }
   | {
       form: 'for-each'
       item: string
       iterable: Expression
-      body: Array<Statement>
+      body: Statement[]
       span: Span
     }
   | { form: 'break'; span: Span }
@@ -223,7 +223,7 @@ export type Statement =
       form: 'hold'
       expr: Expression
       name?: string
-      proof?: Array<Proof>
+      proof?: Proof[]
       span: Span
     }
   // a `method` tag marks a function desugared from a form's nested `task`: its `name` is mangled (`<form>_<method>`)
@@ -231,15 +231,15 @@ export type Statement =
   | {
       form: 'function'
       name: string
-      params: Array<{
+      params: {
         name: string
         type?: Type
         refine?: 'natural'
         optional?: boolean
-      }>
-      body: Array<Statement>
+      }[]
+      body: Statement[]
       result?: Type
-      generics: Array<{ name: string; need?: string }>
+      generics: { name: string; need?: string }[]
       async?: boolean
       method?: { form: string; name: string }
       span: Span
@@ -247,25 +247,25 @@ export type Statement =
   | {
       form: 'record-type'
       name: string
-      params: Array<string>
-      fields: Array<{ name: string; type: Type; nick?: string }>
-      variants: Array<{
+      params: string[]
+      fields: { name: string; type: Type; nick?: string }[]
+      variants: {
         name: string
-        fields: Array<{ name: string; type: Type; nick?: string }>
-      }>
+        fields: { name: string; type: Type; nick?: string }[]
+      }[]
       // the `like <type>` base of a transparent alias form (`form g-luint, like native-number`): a form with this base
       // and no fields/variants is an alias that unifies with its base. Undefined for ordinary forms.
       alias?: Type
       span: Span
     }
   // a trait: a named set of method signatures (mask)
-  | { form: 'mask'; name: string; methods: Array<string>; span: Span }
+  | { form: 'mask'; name: string; methods: string[]; span: Span }
   // a trait implementation for a type: provides methods (wear on a form, or suit standalone)
   | {
       form: 'instance'
       mask: string
       target: string
-      methods: Array<string>
+      methods: string[]
       span: Span
     }
   // a native module binding (`dock load / load <node:fs/promises>, name fs`): the env-specific FFI for the stdlib.
@@ -284,26 +284,26 @@ export type Statement =
   | {
       form: 'bind'
       name: string
-      params: Array<{
+      params: {
         name: string
         type?: Type
         refine?: 'natural'
         optional?: boolean
-      }>
+      }[]
       result?: Type
-      targets: Array<{
+      targets: {
         env: string
         expression: string
-        imports: Array<{ module: string; alias?: string }>
-      }>
+        imports: { module: string; alias?: string }[]
+      }[]
       span: Span
     }
   // a component (view) definition, lowered from the `zone` DSL (book/site navigation, state, forms)
   | {
       form: 'zone'
       name: string
-      params: Array<{ name: string; type?: Type }>
-      body: Array<ZoneNode>
+      params: { name: string; type?: Type }[]
+      body: ZoneNode[]
       span: Span
     }
   // a routing / CLI dock, lowered from the `dock` DSL (book/site/routes, navigation; book/line/calls)
@@ -322,9 +322,9 @@ export type ZoneNode =
   | {
       form: 'element'
       name: string
-      attributes: Array<ZoneAttribute>
-      props: Array<{ name: string; value: Expression }>
-      children: Array<ZoneNode>
+      attributes: ZoneAttribute[]
+      props: { name: string; value: Expression }[]
+      children: ZoneNode[]
       // an optional ref: `zone input / name title-field` binds the built element to `title-field`, a `view`-typed local
       // the rest of the zone (e.g. an event handler) can read
       ref?: string
@@ -338,8 +338,8 @@ export type ZoneNode =
   // a conditional render: `fork test` with `hook test` / `hook hold` / `hook miss`
   | {
       form: 'fork'
-      branches: Array<{ cond: Expression; body: Array<ZoneNode> }>
-      otherwise?: Array<ZoneNode>
+      branches: { cond: Expression; body: ZoneNode[] }[]
+      otherwise?: ZoneNode[]
       span: Span
     }
   // a list render: `walk list, read items` / `hook next` / `take site, name item`
@@ -347,7 +347,7 @@ export type ZoneNode =
       form: 'walk'
       iterable: Expression
       item: string
-      body: Array<ZoneNode>
+      body: ZoneNode[]
       span: Span
     }
   // a computed local: `save total / call count, ...`
@@ -357,7 +357,7 @@ export type ZoneNode =
 export type DockArgument = { name: string; value: Expression }
 export type DockCall = {
   name: string
-  args: Array<DockArgument>
+  args: DockArgument[]
   span: Span
 }
 export type DockTake = {
@@ -372,23 +372,23 @@ export type DockTake = {
 }
 export type DockMethod = {
   name: string
-  takes: Array<DockTake>
-  calls: Array<DockCall>
-  sends: Array<{ name: string; value?: Expression }>
+  takes: DockTake[]
+  calls: DockCall[]
+  sends: { name: string; value?: Expression }[]
   span: Span
 }
 export type DockRoute = {
   // a route path (`/users/:id`) or a CLI command name (`make`)
   path: string
-  takes: Array<DockTake>
-  methods: Array<DockMethod>
-  calls: Array<DockCall>
+  takes: DockTake[]
+  methods: DockMethod[]
+  calls: DockCall[]
   // a client route renders a component: `zone user-detail / bind id, read id`
-  component?: { name: string; props: Array<DockArgument> }
-  directives: Array<{ name: string; value?: Expression }>
-  sends: Array<{ name: string; value?: Expression }>
-  hooks: Array<{ name: string; calls: Array<DockCall> }>
-  children: Array<DockRoute>
+  component?: { name: string; props: DockArgument[] }
+  directives: { name: string; value?: Expression }[]
+  sends: { name: string; value?: Expression }[]
+  hooks: { name: string; calls: DockCall[] }[]
+  children: DockRoute[]
   span: Span
 }
 
@@ -397,11 +397,11 @@ export type DockRoute = {
 export type Proof = {
   head: string
   arg?: string
-  children: Array<Proof>
+  children: Proof[]
   span: Span
 }
 
-export type Program = Array<Statement>
+export type Program = Statement[]
 
 export function showType(type: Type): string {
   switch (type.kind) {
@@ -429,15 +429,18 @@ export function showType(type: Type): string {
       return type.args && type.args.length > 0
         ? `${type.name}<${type.args.map(showType).join(', ')}>`
         : type.name
+
     case 'function': {
       const effects =
         type.effects && type.effects.length > 0
           ? ` !${type.effects.join(',')}`
           : ''
+
       return `(${type.params.map(showType).join(', ')}) -> ${showType(
         type.result,
       )}${effects}`
     }
+
     case 'variable':
       return `?${type.id}`
   }

@@ -13,6 +13,7 @@ const ASSERTION = 'want'
 
 const indentOf = (line: string): number =>
   line.length - line.trimStart().length
+
 const blank = (line: string): boolean => line.trim().length === 0
 
 function slugify(phrase: string): string {
@@ -27,23 +28,28 @@ function slugify(phrase: string): string {
 // the name a `test` header declares: a `<free text>` phrase, or a bare slug. Returns the slug (the task name) and the
 // display label (the phrase verbatim, or the slug with dashes shown as spaces).
 function parseName(rest: string): { slug: string; label: string } {
-  const phrase = rest.match(/^<(.+)>$/)
-  if (phrase) return { slug: slugify(phrase[1]!), label: phrase[1]! }
+  const phrase = /^<(.+)>$/.exec(rest)
+
+  if (phrase) {return { slug: slugify(phrase[1]!), label: phrase[1]! }}
+
   const bare = rest.trim()
+
   return { slug: bare, label: bare.replace(/-/g, ' ') }
 }
 
 // split a block body into its top-level statement groups: each starts at the body's base indent and includes the
 // deeper lines under it (and trailing blank lines stay with the preceding group)
 function statements(
-  body: Array<string>,
+  body: string[],
   base: number,
-): Array<Array<string>> {
-  const groups: Array<Array<string>> = []
+): string[][] {
+  const groups: string[][] = []
+
   for (const line of body) {
-    if (!blank(line) && indentOf(line) === base) groups.push([line])
-    else if (groups.length > 0) groups[groups.length - 1]!.push(line)
+    if (!blank(line) && indentOf(line) === base) {groups.push([line])}
+    else if (groups.length > 0) {groups[groups.length - 1]!.push(line)}
   }
+
   return groups
 }
 
@@ -51,13 +57,15 @@ function statements(
 // `fork test` whose condition is that expression (re-indented under `hook test`). The result is tracked into the test
 // by failing the task on the wrong branch: `want hold` fails when the expression misses (`hook miss`), `want miss`
 // fails when it holds (`hook hold`).
-function guard(group: Array<string>): Array<string> {
+function guard(group: string[]): string[] {
   const mode = group[0]!.trim().split(/\s+/)[1] ?? 'hold'
   // the body (everything under the `want` line) is the boolean condition; shift it +2 to sit under `hook test`
   const condition = group
     .slice(1)
     .map(line => (blank(line) ? line : `  ${line}`))
+
   const failOn = mode === 'miss' ? 'hook hold' : 'hook miss'
+
   return [
     '  fork test',
     '    hook test',
@@ -72,23 +80,28 @@ export type Preprocessed = { text: string; labels: Map<string, string> }
 
 export function preprocessTests(source: string): Preprocessed {
   const lines = source.split('\n')
-  const out: Array<string> = []
+  const out: string[] = []
   const labels = new Map<string, string>()
 
   let i = 0
+
   while (i < lines.length) {
     const line = lines[i]!
-    const header = line.match(/^test (.+)$/)
+    const header = /^test (.+)$/.exec(line)
+
     if (!header || indentOf(line) !== 0) {
       out.push(line)
       i++
       continue
     }
+
     const { slug, label } = parseName(header[1]!)
     labels.set(slug, label)
     // gather the block body: the following lines that are blank or indented
     i++
-    const body: Array<string> = []
+
+    const body: string[] = []
+
     while (
       i < lines.length &&
       (blank(lines[i]!) || indentOf(lines[i]!) >= 2)
@@ -96,13 +109,17 @@ export function preprocessTests(source: string): Preprocessed {
       body.push(lines[i]!)
       i++
     }
+
     // emit the task: setup statements pass through, assertions become guards, then `send back, wave true`
     out.push(`task ${slug}`, '  mark async', '  like boolean')
+
     for (const group of statements(body, 2)) {
       const head = group[0]!.trim().split(/[\s,]/)[0]!
-      if (head === ASSERTION) out.push(...guard(group))
-      else out.push(...group)
+
+      if (head === ASSERTION) {out.push(...guard(group))}
+      else {out.push(...group)}
     }
+
     out.push('  send back', '    wave true')
   }
 

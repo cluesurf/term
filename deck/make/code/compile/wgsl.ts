@@ -89,21 +89,24 @@ export function emitWgsl(input: Program): string {
       case 'await':
       case 'closure':
         return `0 /* ${unsupported('WGSL', node.form, '').trim()} */`
+
       case 'conditional': {
         // a value-position conditional lowers to a chain of `select(falseValue, trueValue, condition)`
         const tail = node.otherwise ? expr(node.otherwise) : '0'
+
         return node.branches.reduceRight(
           (rest, branch) =>
             `select(${rest}, ${expr(branch.value)}, ${expr(branch.cond)})`,
           tail,
         )
       }
+
       default:
         return exhausted(node)
     }
   }
 
-  const block = (body: Array<Statement>, d: number): string =>
+  const block = (body: Statement[], d: number): string =>
     body
       .map(s => `${pad(d)}${stmt(s, d)}`)
       .filter(Boolean)
@@ -128,6 +131,7 @@ export function emitWgsl(input: Program): string {
           node.body,
           d + 1,
         )}\n${pad(d)}}`
+
       case 'if': {
         let out = ''
         node.branches.forEach((b, i) => {
@@ -136,10 +140,13 @@ export function emitWgsl(input: Program): string {
             d + 1,
           )}\n${pad(d)}}`
         })
+
         if (node.otherwise)
-          out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`
+          {out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`}
+
         return out
       }
+
       case 'break':
         return 'break;'
       case 'continue':
@@ -171,17 +178,22 @@ export function emitWgsl(input: Program): string {
     }
   }
 
-  const out: Array<string> = []
+  const out: string[] = []
+
   for (const s of program) {
-    if (s.form !== 'function') continue
-    if (s.generics.length > 0) continue // WGSL is monomorphic: run monomorphization first
+    if (s.form !== 'function') {continue}
+
+    if (s.generics.length > 0) {continue} // WGSL is monomorphic: run monomorphization first
+
     const params = s.params
       .map(p => `${snake(p.name)}: ${wgslType(p.type)}`)
       .join(', ')
+
     const result =
       s.result && s.result.kind !== 'unit'
         ? ` -> ${wgslType(s.result)}`
         : ''
+
     out.push(
       `fn ${snake(s.name)}(${params})${result} {\n${block(
         s.body,
@@ -189,5 +201,6 @@ export function emitWgsl(input: Program): string {
       )}\n}`,
     )
   }
+
   return out.join('\n\n') + '\n'
 }

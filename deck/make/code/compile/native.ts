@@ -41,26 +41,29 @@ export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
 // can be found next to that module). The candidates for a runtime-shim prelude.
 export function globalDocks(
   program: Program,
-): Array<{ name: string; file?: string }> {
-  const docks: Array<{ name: string; file?: string }> = []
+): { name: string; file?: string }[] {
+  const docks: { name: string; file?: string }[] = []
+
   for (const node of program) {
     if (node.form === 'native' && node.module.startsWith('global:'))
-      docks.push({
+      {docks.push({
         name: node.module.slice('global:'.length),
         file: node.file,
-      })
+      })}
   }
+
   return docks
 }
 
 // the distinct namespace names a program docks (kept for callers that only need names)
-export function globalDockNames(program: Program): Array<string> {
+export function globalDockNames(program: Program): string[] {
   return [...new Set(globalDocks(program).map(d => d.name))]
 }
 
 // the posix directory of a path (the resolver yields posix paths; native.ts stays browser-safe, no node `path`)
 function directoryOf(file: string): string {
   const i = file.lastIndexOf('/')
+
   return i >= 0 ? file.slice(0, i) : '.'
 }
 
@@ -87,15 +90,19 @@ export function nativePrelude(
   env: NativeEnv,
   readRuntime: (path: string) => string | undefined,
 ): string {
-  const parts: Array<string> = []
+  const parts: string[] = []
   const added = new Set<string>()
+
   for (const { name, file } of globalDocks(program)) {
     const candidates = file
       ? [runtimePathFor(file, env, name), runtimePath(env, name)]
       : [runtimePath(env, name)]
+
     for (const candidate of candidates) {
-      if (added.has(candidate)) break
+      if (added.has(candidate)) {break}
+
       const source = readRuntime(candidate)
+
       if (source !== undefined) {
         added.add(candidate)
         parts.push(source)
@@ -103,6 +110,7 @@ export function nativePrelude(
       }
     }
   }
+
   return parts.join('\n')
 }
 
@@ -111,11 +119,15 @@ export function nativeImportFor(
   importPath: string,
   env: NativeEnv,
 ): string | undefined {
-  const match = importPath.match(/^(.*\/native)\/([^/]+)(\/.*)?$/)
-  if (!match) return undefined
+  const match = /^(.*\/native)\/([^/]+)(\/.*)?$/.exec(importPath)
+
+  if (!match) {return undefined}
+
   const segment = match[2]!
-  if ((NATIVE_ENVS as ReadonlyArray<string>).includes(segment))
-    return undefined // already concrete (e.g. native/node/...)
+
+  if ((NATIVE_ENVS as readonly string[]).includes(segment))
+    {return undefined} // already concrete (e.g. native/node/...)
+
   return `${match[1]}/${env}/${segment}${match[3] ?? ''}`
 }
 
@@ -127,10 +139,13 @@ export function withNativeEnv(
 ): Resolver {
   return (importPath: string, fromFile: string): Source | undefined => {
     const rewritten = nativeImportFor(importPath, env)
+
     if (rewritten) {
       const resolved = base(rewritten, fromFile)
-      if (resolved) return resolved
+
+      if (resolved) {return resolved}
     }
+
     return base(importPath, fromFile)
   }
 }

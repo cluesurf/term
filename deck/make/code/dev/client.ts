@@ -9,11 +9,11 @@ export type HmrMessage =
   | { type: 'full-reload' }
   | {
       type: 'update'
-      updates: Array<{
+      updates: {
         boundary: string
         accepted: string
         timestamp: number
-      }>
+      }[]
     }
 
 // what the client needs from its environment (the browser provides these; a test provides fakes)
@@ -36,23 +36,31 @@ export async function applyHmr(
 ): Promise<void> {
   if (message.type === 'connected') {
     environment.log('seed hmr connected')
+
     return
   }
+
   if (message.type === 'full-reload') {
     environment.reload()
+
     return
   }
+
   for (const update of message.updates) {
     // snapshot + tear down the OLD module before it is replaced, so its state survives into the fresh one
     const dispose = environment.disposeOf?.(update.boundary)
-    if (dispose) dispose()
+
+    if (dispose) {dispose()}
+
     const fresh = await environment.reimport(
       update.accepted,
       update.timestamp,
     )
+
     const accept = environment.acceptOf(update.boundary)
-    if (accept) accept(fresh)
-    else environment.reload() // no boundary callback: fall back to a reload
+
+    if (accept) {accept(fresh)}
+    else {environment.reload()} // no boundary callback: fall back to a reload
   }
 }
 

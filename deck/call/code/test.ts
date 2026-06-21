@@ -23,10 +23,12 @@ export async function callTest(input: {
 
     if (isSeedProject) {
       await runSeedTests({ root: input.root, filter: input.filter })
+
       return
     }
 
     const pkgJsonPath = path.join(input.root, 'package.json')
+
     let hasTestScript = false
 
     try {
@@ -39,9 +41,11 @@ export async function callTest(input: {
 
     if (hasTestScript) {
       const args = ['run', 'test']
+
       if (input.filter) {
         args.push('--', input.filter)
       }
+
       await runCommand({ cmd: 'pnpm', args, cwd: input.root })
       logGood('Tests complete')
     } else {
@@ -57,8 +61,10 @@ export async function callTest(input: {
 async function hasDeckTree(input: { root: string }): Promise<boolean> {
   const fs = await import('fs/promises')
   const path = await import('path')
+
   try {
     await fs.access(path.join(input.root, 'deck.tree'))
+
     return true
   } catch {
     return false
@@ -68,22 +74,26 @@ async function hasDeckTree(input: { root: string }): Promise<boolean> {
 async function findTestFiles(input: {
   root: string
   filter?: string
-}): Promise<Array<string>> {
+}): Promise<string[]> {
   const fs = await import('fs/promises')
   const path = await import('path')
-  const results: Array<string> = []
+  const results: string[] = []
 
   async function walk(dir: string): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true })
+
     for (const entry of entries) {
       const full = path.join(dir, entry.name)
+
       if (entry.isDirectory()) {
         if (entry.name === 'node_modules' || entry.name === '.seed') {
           continue
         }
+
         await walk(full)
       } else if (entry.name.endsWith('.tree')) {
         const text = await fs.readFile(full, 'utf-8')
+
         // a file is collected if it carries runnable tests (`test`) OR proof obligations (`hold` / `rule`), at any
         // indentation -- a `hold` inside a `task` states a UNIVERSAL law over the task's parameters (proved by the
         // linear prover for all values), not just a top-level closed witness. Both are verified by `seed test`:
@@ -105,6 +115,7 @@ async function findTestFiles(input: {
   }
 
   const codeDir = path.join(input.root, 'code')
+
   try {
     await fs.access(codeDir)
     await walk(codeDir)
@@ -129,6 +140,7 @@ async function runSeedTests(input: {
   if (files.length === 0) {
     console.log(fade('  No test files found.'))
     logGood('No tests to run')
+
     return
   }
 
@@ -147,12 +159,14 @@ async function runSeedTests(input: {
   const resolve = projectResolver(input.root)
   const readRuntime = (p: string): string | undefined =>
     existsSync(p) ? readFileSync(p, 'utf8') : undefined
+
   let pass = 0
   let fail = 0
 
   for (const file of files) {
     const rel = path.relative(input.root, file)
     console.log(fade(`  ${rel}`))
+
     try {
       const source = await fs.readFile(file, 'utf-8')
       const run = await runTestFile({
@@ -162,16 +176,19 @@ async function runSeedTests(input: {
         env: 'node',
         readRuntime,
       })
+
       if (run.failure) {
         fail++
         logFail(`    ${run.failure.split('\n').pop()}`)
         continue
       }
+
       if (run.results.length === 0) {
         // a proof-only file: it compiled clean, so its `hold` / `rule` proofs were kernel-checked
         pass++
         console.log(`    ${fade('ok')}  proofs checked`)
       }
+
       for (const r of run.results) {
         if (r.held) {
           pass++
@@ -188,6 +205,7 @@ async function runSeedTests(input: {
   }
 
   console.log()
+
   if (fail > 0) {
     logFail(`${fail} failed, ${pass} passed`)
     process.exit(1)

@@ -14,32 +14,30 @@ import {
   buildEvents,
 } from '@cluesurf/make/code/parser/event'
 
-export type RootNode = { kind: 'root'; nodes: Array<GroupNode> }
+export type RootNode = { kind: 'root'; nodes: GroupNode[] }
 export type Comment = { text: string; span: Span }
 export type GroupNode = {
   kind: 'group'
-  nodes: Array<
-    | GroupNode
+  nodes: (| GroupNode
     | NameNode
     | TextNode
     | IntegerNode
     | DecimalNode
-    | RadixNode
-  >
+    | RadixNode)[]
   parent?: GroupNode | InterpolationNode
   optional?: boolean
   // CST trivia: comments written on the lines above this group. The formatter re-emits them; lint reads
   // suppressions. This is what makes the tree a concrete syntax tree rather than a bare AST.
-  comments?: Array<Comment>
+  comments?: Comment[]
 }
 export type NameNode = {
   kind: 'name'
-  parts: Array<ChunkNode | InterpolationNode>
+  parts: (ChunkNode | InterpolationNode)[]
   parent?: GroupNode
 }
 export type TextNode = {
   kind: 'text'
-  parts: Array<ChunkNode | InterpolationNode>
+  parts: (ChunkNode | InterpolationNode)[]
   parent?: GroupNode
 }
 export type InterpolationNode = {
@@ -87,9 +85,9 @@ export type Node =
 
 export type ParseResult =
   | { ok: true; tree: RootNode }
-  | { ok: false; diagnostics: Array<Diagnostic> }
+  | { ok: false; diagnostics: Diagnostic[] }
 
-type Frame = { line: Array<Node>; levels: Array<Node>; level: number }
+type Frame = { line: Node[]; levels: Node[]; level: number }
 
 function setParent(child: { parent?: unknown }, parent: unknown) {
   // non-enumerable so the tree can be serialized without circular references
@@ -101,25 +99,27 @@ function setParent(child: { parent?: unknown }, parent: unknown) {
 }
 
 function buildTree(
-  events: Array<Event>,
+  events: Event[],
   file: string,
-  diagnostics: Array<Diagnostic>,
+  diagnostics: Diagnostic[],
 ): RootNode {
   const root: RootNode = { kind: 'root', nodes: [] }
-  const stack: Array<Frame> = [
+  const stack: Frame[] = [
     { line: [root], levels: [root], level: 0 },
   ]
 
   const top = () => stack[stack.length - 1]!
   const base = () => top().line[top().line.length - 1]!
+
   const lift = (frame: Frame, node: Node) => {
     if (frame.line.length === 2) {
       frame.levels = frame.levels.slice(0, frame.level + 1)
       frame.levels.push(node)
     }
   }
+
   const unexpected = (event: Event) => {
-    const token = 'token' in event ? (event.token as Token) : undefined
+    const token = 'token' in event ? (event.token) : undefined
     diagnostics.push(
       diagnose('unexpected-node', {
         file,
@@ -130,7 +130,7 @@ function buildTree(
   }
 
   // comments seen since the last group; attached as leading trivia to the next group opened (CST)
-  let pendingComments: Array<Comment> = []
+  let pendingComments: Comment[] = []
 
   for (const event of events) {
     switch (event.kind) {
@@ -140,14 +140,18 @@ function buildTree(
           span: event.token.span,
         })
         break
+
       case EventKind.OpenGroup: {
         const here = base()
+
         if (here.kind === 'root' || here.kind === 'group') {
           const group: GroupNode = { kind: 'group', nodes: [] }
+
           if (pendingComments.length > 0) {
             group.comments = pendingComments
             pendingComments = []
           }
+
           here.nodes.push(group)
           setParent(group, here)
           top().line.push(group)
@@ -161,15 +165,19 @@ function buildTree(
         } else {
           unexpected(event)
         }
+
         break
       }
+
       case EventKind.CloseGroup:
       case EventKind.CloseName:
       case EventKind.CloseText:
         top().line.pop()
         break
+
       case EventKind.OpenName: {
         const here = base()
+
         if (here.kind === 'group') {
           const name: NameNode = { kind: 'name', parts: [] }
           here.nodes.push(name)
@@ -178,10 +186,13 @@ function buildTree(
         } else {
           unexpected(event)
         }
+
         break
       }
+
       case EventKind.OpenText: {
         const here = base()
+
         if (here.kind === 'group') {
           const text: TextNode = { kind: 'text', parts: [] }
           here.nodes.push(text)
@@ -190,15 +201,19 @@ function buildTree(
         } else {
           unexpected(event)
         }
+
         break
       }
+
       case EventKind.OpenInterpolation: {
         const here = base()
+
         if (here.kind === 'name' || here.kind === 'text') {
           const interpolation: InterpolationNode = {
             kind: 'interpolation',
             depth: event.depth,
           }
+
           here.parts.push(interpolation)
           setParent(interpolation, here)
           stack.push({
@@ -209,13 +224,17 @@ function buildTree(
         } else {
           unexpected(event)
         }
+
         break
       }
+
       case EventKind.CloseInterpolation:
         stack.pop()
         break
+
       case EventKind.Chunk: {
         const here = base()
+
         if (here.kind === 'name') {
           const text = event.token.text
           const optional = text.includes('?')
@@ -224,30 +243,37 @@ function buildTree(
             text: optional ? text.replace(/\?/g, '') : text,
             token: event.token,
           }
+
           here.parts.push(chunk)
           setParent(chunk, here)
-          if (optional && here.parent) here.parent.optional = true
+
+          if (optional && here.parent) {here.parent.optional = true}
         } else if (here.kind === 'text') {
           const chunk: ChunkNode = {
             kind: 'chunk',
             text: event.token.text,
             token: event.token,
           }
+
           here.parts.push(chunk)
           setParent(chunk, here)
         } else {
           unexpected(event)
         }
+
         break
       }
+
       case EventKind.Integer: {
         const here = base()
+
         if (here.kind === 'group') {
           const node: IntegerNode = {
             kind: 'integer',
             value: event.value,
             token: event.token,
           }
+
           here.nodes.push(node)
           setParent(node, here)
         } else if (here.kind === 'root') {
@@ -261,25 +287,32 @@ function buildTree(
         } else {
           unexpected(event)
         }
+
         break
       }
+
       case EventKind.Decimal: {
         const here = base()
+
         if (here.kind === 'group') {
           const node: DecimalNode = {
             kind: 'decimal',
             value: event.value,
             token: event.token,
           }
+
           here.nodes.push(node)
           setParent(node, here)
         } else {
           unexpected(event)
         }
+
         break
       }
+
       case EventKind.Radix: {
         const here = base()
+
         if (here.kind === 'group') {
           const node: RadixNode = {
             kind: 'radix',
@@ -287,25 +320,30 @@ function buildTree(
             radix: event.radix,
             token: event.token,
           }
+
           here.nodes.push(node)
           setParent(node, here)
         } else {
           unexpected(event)
         }
+
         break
       }
+
       case EventKind.OpenIndent: {
         const frame = top()
         frame.level++
         frame.line = [frame.levels[frame.level]!]
         break
       }
+
       case EventKind.CloseIndent: {
         const frame = top()
         frame.level--
         frame.line = [frame.levels[frame.level]!]
         break
       }
+
       default:
         break
     }
@@ -324,56 +362,67 @@ export function parse(source: {
   text: string
 }): ParseResult {
   const tokenResult = tokenize(source)
+
   if (!tokenResult.ok)
-    return { ok: false, diagnostics: tokenResult.diagnostics }
+    {return { ok: false, diagnostics: tokenResult.diagnostics }}
 
   const eventResult = buildEvents(tokenResult.tokens)
-  if (!eventResult.ok)
-    return { ok: false, diagnostics: eventResult.diagnostics }
 
-  const diagnostics: Array<Diagnostic> = []
+  if (!eventResult.ok)
+    {return { ok: false, diagnostics: eventResult.diagnostics }}
+
+  const diagnostics: Diagnostic[] = []
   const tree = buildTree(
     eventResult.stream.events,
     source.file,
     diagnostics,
   )
-  if (diagnostics.length) return { ok: false, diagnostics }
+
+  if (diagnostics.length) {return { ok: false, diagnostics }}
+
   return { ok: true, tree }
 }
 
 // The tolerant entry. Never fails. Returns whatever tree it built plus any diagnostics. For the language server.
 export function parseTolerant(source: { file: string; text: string }): {
   tree: RootNode
-  diagnostics: Array<Diagnostic>
+  diagnostics: Diagnostic[]
 } {
   const empty: RootNode = { kind: 'root', nodes: [] }
   const tokenResult = tokenize(source)
+
   if (!tokenResult.ok)
-    return { tree: empty, diagnostics: tokenResult.diagnostics }
+    {return { tree: empty, diagnostics: tokenResult.diagnostics }}
+
   const eventResult = buildEvents(tokenResult.tokens)
+
   if (!eventResult.ok)
-    return { tree: empty, diagnostics: eventResult.diagnostics }
-  const diagnostics: Array<Diagnostic> = []
+    {return { tree: empty, diagnostics: eventResult.diagnostics }}
+
+  const diagnostics: Diagnostic[] = []
   const tree = buildTree(
     eventResult.stream.events,
     source.file,
     diagnostics,
   )
+
   return { tree, diagnostics }
 }
 
 // Render a name or text node inline (e.g. inside interpolation or as a head value).
 function renderParts(
-  parts: Array<ChunkNode | InterpolationNode>,
+  parts: (ChunkNode | InterpolationNode)[],
 ): string {
   let out = ''
+
   for (const part of parts) {
-    if (part.kind === 'chunk') out += part.text
+    if (part.kind === 'chunk') {out += part.text}
     else
-      out += `${'{'.repeat(part.depth)}${
+      {out += `${'{'.repeat(part.depth)}${
         part.group ? renderInline(part.group) : ''
-      }${'}'.repeat(part.depth)}`
+      }${'}'.repeat(part.depth)}`}
   }
+
   return out
 }
 
@@ -381,7 +430,9 @@ function renderParts(
 function renderInline(group: GroupNode): string {
   const [head, ...rest] = group.nodes
   const headText = head ? renderHead(head) : ''
-  if (rest.length === 0) return headText
+
+  if (rest.length === 0) {return headText}
+
   return `${headText}(${rest
     .map(n => (n.kind === 'group' ? renderInline(n) : renderHead(n)))
     .join(', ')})`
@@ -408,7 +459,8 @@ function renderHead(node: Node): string {
 
 // Print the canonical expanded form: one node per line, children indented two spaces.
 export function printTree(tree: RootNode): string {
-  const lines: Array<string> = []
+  const lines: string[] = []
+
   const walk = (group: GroupNode, depth: number) => {
     const [head, ...rest] = group.nodes
     const indent = '  '.repeat(depth)
@@ -417,11 +469,14 @@ export function printTree(tree: RootNode): string {
         group.optional ? '?' : ''
       }`,
     )
+
     for (const child of rest) {
-      if (child.kind === 'group') walk(child, depth + 1)
-      else lines.push(`${'  '.repeat(depth + 1)}${renderHead(child)}`)
+      if (child.kind === 'group') {walk(child, depth + 1)}
+      else {lines.push(`${'  '.repeat(depth + 1)}${renderHead(child)}`)}
     }
   }
-  for (const group of tree.nodes) walk(group, 0)
+
+  for (const group of tree.nodes) {walk(group, 0)}
+
   return lines.join('\n')
 }

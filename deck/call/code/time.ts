@@ -52,12 +52,14 @@ export async function callTime(input: {
       process.exit(1)
     }
 
-    const allResults: Array<BenchmarkResult> = []
+    const allResults: BenchmarkResult[] = []
 
     for (const file of files) {
       const text = await fs.readFile(file, 'utf-8')
       const relative = path.relative(input.root, file)
+
       let module
+
       try {
         module = compileBenchmarks({
           text,
@@ -69,13 +71,18 @@ export async function callTime(input: {
           logWarn(
             `${relative}: ${err.diagnostics.length} compilation error(s)`,
           )
+
           for (const diagnostic of err.diagnostics)
-            console.error(render(diagnostic, text.split('\n')))
+            {console.error(render(diagnostic, text.split('\n')))}
+
           continue
         }
+
         throw err
       }
-      if (module.benchmarks.length === 0) continue
+
+      if (module.benchmarks.length === 0) {continue}
+
       allResults.push(
         ...(await runBenchmarks({ module, root: input.root })),
       )
@@ -122,14 +129,17 @@ export async function callTime(input: {
         'time',
         `${input.compare}.json`,
       )
+
       try {
         const baselineSuite = JSON.parse(
           await fs.readFile(comparePath, 'utf-8'),
         )
+
         const baseline = {
           results:
             baselineSuite.results ?? baselineSuite.benchmarks ?? [],
         }
+
         const comparison = compareResults({
           current: allResults,
           baseline,
@@ -143,7 +153,7 @@ export async function callTime(input: {
         }
 
         if (comparison.regressions > 0)
-          logWarn(`${comparison.regressions} regression(s) detected`)
+          {logWarn(`${comparison.regressions} regression(s) detected`)}
 
         if (
           input.failOnRegression != null &&
@@ -178,34 +188,40 @@ async function showHistory(input: {
   name: string
 }): Promise<void> {
   const historyDir = path.join(input.root, '.seed', 'time', 'history')
+
   try {
     const files = (await fs.readdir(historyDir))
       .filter(f => f.endsWith('.json'))
       .sort()
       .slice(-20)
-    const entries: Array<{ timestamp: string; mean_ns: number }> = []
+
+    const entries: { timestamp: string; mean_ns: number }[] = []
 
     for (const file of files) {
       const data = JSON.parse(
         await fs.readFile(path.join(historyDir, file), 'utf-8'),
       )
+
       const bench = data.benchmarks?.find(
         (b: { name: string }) => b.name === input.name,
       )
+
       if (bench)
-        entries.push({
+        {entries.push({
           timestamp: data.timestamp ?? file,
           mean_ns: bench.mean_ns,
-        })
+        })}
     }
 
     if (entries.length === 0) {
       logWarn(`No history found for "${input.name}"`)
+
       return
     }
 
     console.log('')
     console.log(`History for "${input.name}" (last ${entries.length}):`)
+
     for (const entry of entries) {
       const ns = entry.mean_ns
       const time =
@@ -216,6 +232,7 @@ async function showHistory(input: {
             : ns < 1_000_000_000
               ? `${(ns / 1_000_000).toFixed(1)}ms`
               : `${(ns / 1_000_000_000).toFixed(2)}s`
+
       console.log(fade(`  ${entry.timestamp.slice(0, 19)}  ${time}`))
     }
   } catch {

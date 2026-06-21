@@ -57,7 +57,9 @@ async function profileCpu(input: {
   filePath: string
 }): Promise<void> {
   logStep('CPU profiling...')
+
   const text = await fs.readFile(input.filePath, 'utf-8')
+
   try {
     compileToModule({
       text,
@@ -66,12 +68,16 @@ async function profileCpu(input: {
   } catch (err) {
     if (err instanceof CompileFailure) {
       logFail(`${err.diagnostics.length} compilation error(s)`)
+
       for (const diagnostic of err.diagnostics)
-        console.error(render(diagnostic, text.split('\n')))
+        {console.error(render(diagnostic, text.split('\n')))}
+
       process.exit(1)
     }
+
     throw err
   }
+
   logWarn(
     'CPU profiling is not available yet. The file compiles. Use `seed profile memory <file>` for now.',
   )
@@ -83,12 +89,14 @@ async function profileMemory(input: {
   track?: boolean
 }): Promise<void> {
   logStep('Memory profiling...')
+
   if (input.track)
-    logWarn(
+    {logWarn(
       'Timeline tracking is not available yet; reporting a single before/after measurement.',
-    )
+    )}
 
   const text = await fs.readFile(input.filePath, 'utf-8')
+
   try {
     const result = await runMemoryProfile({
       text,
@@ -96,6 +104,7 @@ async function profileMemory(input: {
       root: input.root,
       name: path.basename(input.filePath, '.tree'),
     })
+
     console.log('')
     console.log(formatMemoryResult(result))
     console.log('')
@@ -103,10 +112,13 @@ async function profileMemory(input: {
   } catch (err) {
     if (err instanceof CompileFailure) {
       logFail(`${err.diagnostics.length} compilation error(s)`)
+
       for (const diagnostic of err.diagnostics)
-        console.error(render(diagnostic, text.split('\n')))
+        {console.error(render(diagnostic, text.split('\n')))}
+
       process.exit(1)
     }
+
     logFail(formatError(err))
     process.exit(1)
   }

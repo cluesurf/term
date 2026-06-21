@@ -53,15 +53,18 @@ export function startDevServer(options: DevOptions): DevServer {
 
   // a stable served URL per source file, and the reverse map for incoming requests
   const fileByHash = new Map<string, string>()
+
   const urlForFile = (file: string): string => {
     const id = hashText(file)
     fileByHash.set(id, file)
+
     return `${MOD_PREFIX}${id}.mjs`
   }
 
   const graph = new ModuleGraph()
   const clients = new Set<SSEStreamingApi>()
   const cache = projectCache(projectRoot)
+
   let clock = 1
 
   // (re)compile the whole app in per-module mode and sync the graph. The compile is whole-graph (cross-module type
@@ -71,7 +74,9 @@ export function startDevServer(options: DevOptions): DevServer {
       { file: entryFile, text: readFileSync(entryFile, 'utf8') },
       { resolve, cache, modules: urlForFile },
     )
-    if (!result.ok || !result.modules) return false
+
+    if (!result.ok || !result.modules) {return false}
+
     for (const [file, emit] of result.modules) {
       const node = graph.ensure(file, urlForFile(file), file)
       node.isSelfAccepting = emit.isZone
@@ -80,34 +85,45 @@ export function startDevServer(options: DevOptions): DevServer {
         loader: 'ts',
         format: 'esm',
       }).code
+
       const deps = emit.imports.map(dep =>
         graph.ensure(dep, urlForFile(dep), dep),
       )
+
       graph.setImports(node, deps)
     }
+
     return true
   }
+
   build()
 
   // push one HMR message to every connected client
   const broadcast = (message: unknown): void => {
     const data = JSON.stringify(message)
-    for (const client of clients) void client.writeSSE({ data })
+
+    for (const client of clients) {void client.writeSSE({ data })}
   }
 
   // recompile and decide the HMR action for a changed source file
   const update = (file: string): HmrResult => {
     clock += 1
+
     // invalidate the changed module and everything that imports it, then recompile
     for (const id of affectedModules(graph, file)) {
       const node = graph.getById(id)
-      if (node) graph.invalidate(node, clock)
+
+      if (node) {graph.invalidate(node, clock)}
     }
+
     if (!build()) {
       broadcast({ type: 'full-reload' })
+
       return { type: 'full-reload' }
     }
+
     const result = propagateUpdate(graph, file)
+
     if (result.type === 'full-reload') {
       broadcast({ type: 'full-reload' })
     } else {
@@ -115,10 +131,13 @@ export function startDevServer(options: DevOptions): DevServer {
       const updates = result.updates.map(u => {
         const node = graph.getByUrl(u.accepted)
         const t = node?.lastHmrTimestamp || clock
+
         return { ...u, timestamp: t }
       })
+
       broadcast({ type: 'update', updates })
     }
+
     return result
   }
 
@@ -132,8 +151,10 @@ export function startDevServer(options: DevOptions): DevServer {
     const name = context.req.param('name').replace(/\.mjs$/, '')
     const file = fileByHash.get(name)
     const node = file ? graph.getById(file) : undefined
-    if (!node || node.compiled === undefined)
-      return context.text('module not found', 404)
+
+    if (node?.compiled === undefined)
+      {return context.text('module not found', 404)}
+
     return context.body(node.compiled, 200, {
       'content-type': 'text/javascript',
     })
@@ -156,8 +177,9 @@ export function startDevServer(options: DevOptions): DevServer {
       stream.onAbort(() => {
         clients.delete(stream)
       })
+
       // keep the stream open until the client disconnects
-      while (!stream.aborted) await stream.sleep(10_000)
+      while (!stream.aborted) {await stream.sleep(10_000)}
     }),
   )
 
@@ -169,11 +191,13 @@ export function startDevServer(options: DevOptions): DevServer {
   )
 
   const server = serve({ fetch: app.fetch, port })
+
   return {
     port,
     update,
     close: () => {
-      for (const client of clients) void client.close()
+      for (const client of clients) {void client.close()}
+
       clients.clear()
       server.close()
     },

@@ -43,16 +43,16 @@ export type Token = {
 export type TokenList = {
   file: string
   text: string
-  lines: Array<string>
+  lines: string[]
   head?: Token
 }
 
 export type TokenResult =
   | { ok: true; tokens: TokenList }
-  | { ok: false; diagnostics: Array<Diagnostic> }
+  | { ok: false; diagnostics: Diagnostic[] }
 
 // Which token kinds may match in each mode, in priority order.
-const INTERPOLATION_MATCHERS: Array<TokenKind> = [
+const INTERPOLATION_MATCHERS: TokenKind[] = [
   TokenKind.CloseBrace,
   TokenKind.CloseParen,
   TokenKind.CloseAngle,
@@ -69,18 +69,18 @@ const INTERPOLATION_MATCHERS: Array<TokenKind> = [
   TokenKind.Space,
 ]
 
-const TEXT_MATCHERS: Array<TokenKind> = [
+const TEXT_MATCHERS: TokenKind[] = [
   TokenKind.OpenBrace,
   TokenKind.CloseAngle,
   TokenKind.Chunk,
 ]
 
-const NAME_MATCHERS: Array<TokenKind> = [
+const NAME_MATCHERS: TokenKind[] = [
   TokenKind.OpenBrace,
   TokenKind.Name,
 ]
 
-const DEFAULT_MATCHERS: Array<TokenKind> = [
+const DEFAULT_MATCHERS: TokenKind[] = [
   TokenKind.CloseBrace,
   TokenKind.CloseParen,
   TokenKind.CloseAngle,
@@ -97,7 +97,7 @@ const DEFAULT_MATCHERS: Array<TokenKind> = [
   TokenKind.Name,
 ]
 
-const MODE_MATCHERS: Record<LexMode, Array<TokenKind>> = {
+const MODE_MATCHERS: Record<LexMode, TokenKind[]> = {
   [LexMode.Default]: DEFAULT_MATCHERS,
   [LexMode.Text]: TEXT_MATCHERS,
   [LexMode.Interpolation]: INTERPOLATION_MATCHERS,
@@ -138,11 +138,11 @@ export function tokenize(source: {
     lines: source.text.split('\n'),
   }
 
-  const braceStack: Array<string> = []
-  const modeStack: Array<LexMode> = [LexMode.Default]
+  const braceStack: string[] = []
+  const modeStack: LexMode[] = [LexMode.Default]
   // running `<` minus `>` balance for each open text literal, so a nested `>` (closing a generic like `Hmac<Sha256>`,
   // not the literal) stays content. One entry per Text frame on the mode stack, so nested texts do not interfere.
-  const textDepthStack: Array<number> = []
+  const textDepthStack: number[] = []
 
   let line = 0
   let column = 0
@@ -167,7 +167,7 @@ export function tokenize(source: {
       // a literal chunk and rebalance, so `text <Hmac<Sha256>>` keeps the generic and ends only at the final `>`.
       if (
         mode === LexMode.Text &&
-        lineText[0] === '>' &&
+        lineText.startsWith('>') &&
         (textDepthStack[textDepthStack.length - 1] ?? 0) > 0
       ) {
         const token: Token = {
@@ -178,6 +178,7 @@ export function tokenize(source: {
           },
           text: '>',
         }
+
         append(token)
         previous = token
         lineText = lineText.slice(1)
@@ -190,7 +191,9 @@ export function tokenize(source: {
 
       for (const kind of MODE_MATCHERS[mode]) {
         const found = lineText.match(PATTERN[kind])
-        if (!found) continue
+
+        if (!found) {continue}
+
         matched = true
 
         let size = found[0].length
@@ -199,6 +202,7 @@ export function tokenize(source: {
         // a closing }} only consumes as many braces as the matching opener pushed
         if (kind === TokenKind.CloseBrace) {
           const open = braceStack[braceStack.length - 1]
+
           if (open) {
             size = open.length
             text = text.slice(0, open.length)
@@ -213,14 +217,15 @@ export function tokenize(source: {
           },
           text,
         }
+
         append(token)
         previous = token
 
         lineText = lineText.slice(size)
         column += size
 
-        if (kind === TokenKind.OpenBrace) braceStack.push(text)
-        else if (kind === TokenKind.CloseBrace) braceStack.pop()
+        if (kind === TokenKind.OpenBrace) {braceStack.push(text)}
+        else if (kind === TokenKind.CloseBrace) {braceStack.pop()}
 
         switch (kind) {
           case TokenKind.Newline:
@@ -245,13 +250,15 @@ export function tokenize(source: {
             // a chunk in a text literal may carry unescaped `<` (a generic / less-than); each deepens the bracket
             // balance so its matching `>` is treated as content rather than the literal's terminator.
             if (mode === LexMode.Text && textDepthStack.length > 0)
-              textDepthStack[textDepthStack.length - 1]! += (
+              {textDepthStack[textDepthStack.length - 1]! += (
                 text.match(/(?<!\\)</g) ?? []
-              ).length
+              ).length}
+
             break
           default:
             break
         }
+
         break
       }
 

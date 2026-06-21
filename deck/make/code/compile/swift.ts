@@ -86,25 +86,31 @@ const SWIFT_KEYWORDS = new Set([
   'any',
   'some',
 ])
+
 function escape(identifier: string): string {
   return SWIFT_KEYWORDS.has(identifier)
     ? `\`${identifier}\``
     : identifier
 }
+
 function camelize(name: string): string {
   // strip every hyphen, including one before a digit (`sha-256` -> `sha256`), so the result is a valid identifier
   return name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
 }
+
 // `self` is reserved in Swift; every other name is camelCased, then keyword-escaped
 function vname(name: string): string {
   return name === 'self' ? 'slf' : escape(camelize(name))
 }
+
 function camel(name: string): string {
   return escape(camelize(name))
 }
+
 // type / variant names are capitalized, so they can never collide with a (lowercase) keyword
 function pascal(name: string): string {
   const c = camelize(name)
+
   return c.charAt(0).toUpperCase() + c.slice(1)
 }
 
@@ -151,27 +157,33 @@ function collectVars(type: Type | undefined, into: Set<number>): void {
 
 // the generic variable ids and names that sit at the element position of an array used with `includes` / `indexOf`,
 // which need an `Equatable` bound (Array.contains / firstIndex(of:) require it). Walks the function body's calls.
-function collectArrayEq(body: Array<Statement>): {
+function collectArrayEq(body: Statement[]): {
   ids: Set<number>
   names: Set<string>
 } {
   const ids = new Set<number>()
   const names = new Set<string>()
+
   const record = (callee: Expression): void => {
     const op = collectionCall(callee)
-    if (!op || op.kind !== 'array') return
-    if (ARRAY_OP_BOUND[op.op] !== 'eq') return
+
+    if (op?.kind !== 'array') {return}
+
+    if (ARRAY_OP_BOUND[op.op] !== 'eq') {return}
 
     const element =
       op.target.type?.kind === 'array'
         ? op.target.type.element
         : undefined
-    if (element?.kind === 'variable') ids.add(element.id)
+
+    if (element?.kind === 'variable') {ids.add(element.id)}
     else if (element?.kind === 'named')
-      names.add(element.name.toUpperCase())
+      {names.add(element.name.toUpperCase())}
   }
+
   const visitExpr = (e: Expression | undefined): void => {
-    if (!e) return
+    if (!e) {return}
+
     switch (e.form) {
       case 'call':
         record(e.callee)
@@ -210,7 +222,8 @@ function collectArrayEq(body: Array<Statement>): {
         break
     }
   }
-  const visitStmts = (stmts: Array<Statement>): void => {
+
+  const visitStmts = (stmts: Statement[]): void => {
     for (const s of stmts) {
       switch (s.form) {
         case 'let':
@@ -245,19 +258,25 @@ function collectArrayEq(body: Array<Statement>): {
             visitExpr(b.cond)
             visitStmts(b.body)
           })
-          if (s.otherwise) visitStmts(s.otherwise)
+
+          if (s.otherwise) {visitStmts(s.otherwise)}
+
           break
         case 'match':
           visitExpr(s.subject)
           s.cases.forEach(c => visitStmts(c.body))
-          if (s.otherwise) visitStmts(s.otherwise)
+
+          if (s.otherwise) {visitStmts(s.otherwise)}
+
           break
         default:
           break
       }
     }
   }
+
   visitStmts(body)
+
   return { ids, names }
 }
 
@@ -265,6 +284,7 @@ export function emitSwift(program: Program): string {
   const pad = (d: number) => '  '.repeat(d)
   // declarative native bindings render their `case swift` template at call sites
   const binds = collectBinds(program)
+
   // a function's free inference variables become named generic parameters; this maps each to its letter for the
   // duration of that function's emission, so `(t) -> ?5` prints as `(T) -> U` with `U` declared, not an unused `S`.
   let varNames = new Map<number, string>()
@@ -323,33 +343,40 @@ export function emitSwift(program: Program): string {
     const ids = new Set<number>()
     node.params.forEach(p => collectVars(p.type, ids))
     collectVars(node.result, ids)
+
     const declared = node.generics.map(g => g.name.toUpperCase())
     const pool = ['T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'A', 'B', 'C']
     const used = new Set(declared)
     varNames = new Map()
+
     // which generics sit in a map-KEY position (a Dictionary key must be Hashable), following form args transitively so
     // a `Set<U>` marks U even though its map is hidden inside the struct
     const keyIds = new Set<number>()
     const keyNames = new Set<string>()
+
     const markKeys = (t: Type | undefined, isKey: boolean): void => {
-      if (!t) return
+      if (!t) {return}
+
       if (t.kind === 'variable') {
-        if (isKey) keyIds.add(t.id)
+        if (isKey) {keyIds.add(t.id)}
       } else if (t.kind === 'map') {
         markKeys(t.key, true)
         markKeys(t.value, false)
-      } else if (t.kind === 'array') markKeys(t.element, false)
+      } else if (t.kind === 'array') {markKeys(t.element, false)}
       else if (t.kind === 'function') {
         t.params.forEach(p => markKeys(p, false))
         markKeys(t.result, false)
       } else if (t.kind === 'named') {
-        if (isKey) keyNames.add(t.name.toUpperCase())
+        if (isKey) {keyNames.add(t.name.toUpperCase())}
+
         const keyArgs = formKeyIndices.get(t.name)
         t.args?.forEach((a, i) => markKeys(a, keyArgs?.has(i) ?? false))
       }
     }
+
     node.params.forEach(p => markKeys(p.type, false))
     markKeys(node.result, false)
+
     // generics used as an array element with `includes` / `indexOf` need `Equatable` (a map key's `Hashable` implies it)
     const arrayEq = collectArrayEq(node.body)
     const bound = (
@@ -358,21 +385,26 @@ export function emitSwift(program: Program): string {
       isEq: boolean,
     ): string =>
       isKey ? `${name}: Hashable` : isEq ? `${name}: Equatable` : name
-    const fresh: Array<string> = []
+
+    const fresh: string[] = []
+
     for (const id of ids) {
       const letter = pool.find(l => !used.has(l)) ?? `T${id}`
       used.add(letter)
       varNames.set(id, letter)
       fresh.push(bound(letter, keyIds.has(id), arrayEq.ids.has(id)))
     }
+
     // declared generics that actually appear in the signature (as named types) are kept; the rest are dropped
     const namedInSig = new Set<string>()
+
     const scan = (t: Type | undefined): void => {
-      if (!t) return
+      if (!t) {return}
+
       if (t.kind === 'named') {
         namedInSig.add(t.name.toUpperCase())
         t.args?.forEach(scan)
-      } else if (t.kind === 'array') scan(t.element)
+      } else if (t.kind === 'array') {scan(t.element)}
       else if (t.kind === 'map') {
         scan(t.key)
         scan(t.value)
@@ -381,33 +413,44 @@ export function emitSwift(program: Program): string {
         scan(t.result)
       }
     }
+
     node.params.forEach(p => scan(p.type))
     scan(node.result)
+
     // a trait-bounded generic (`head t, need sizer`) adds its protocol to the bound (Swift joins bounds with `&`),
     // so the body's `x.measure()` resolves through it
     const needTrait = new Map<string, string>()
+
     for (const g of node.generics)
-      if (g.need) needTrait.set(g.name.toUpperCase(), pascal(g.need))
+      {if (g.need) {needTrait.set(g.name.toUpperCase(), pascal(g.need))}}
+
     const keptDeclared = declared
       .filter(d => namedInSig.has(d))
       .map(d => {
         const base = bound(d, keyNames.has(d), arrayEq.names.has(d))
-        if (!needTrait.has(d)) return base
+
+        if (!needTrait.has(d)) {return base}
+
         return base.includes(':')
           ? `${base} & ${needTrait.get(d)}`
           : `${base}: ${needTrait.get(d)}`
       })
+
     const all = [...keptDeclared, ...fresh]
+
     return all.length ? `<${all.join(', ')}>` : ''
   }
+
   // variant label -> the owning enum, and each variant's field names (for construction and match binding)
-  const variantFields = new Map<string, Array<string>>()
+  const variantFields = new Map<string, string[]>()
   const variantSet = new Set<string>()
   // for each form, which generic parameters (by index) flow into a map KEY position inside its fields. A `set<t>` stores
   // `items: hash<t, bool>`, so index 0 is a key; a method generic filling that slot must be `Hashable` (a Dictionary key).
   const formKeyIndices = new Map<string, Set<number>>()
+
   for (const node of program) {
-    if (node.form !== 'record-type') continue
+    if (node.form !== 'record-type') {continue}
+
     for (const v of node.variants) {
       variantSet.add(v.name)
       variantFields.set(
@@ -415,46 +458,61 @@ export function emitSwift(program: Program): string {
         v.fields.map(f => f.name),
       )
     }
+
     if (node.params.length > 0) {
       const keyParams = new Set<string>()
+
       const findKeys = (t: Type | undefined): void => {
-        if (!t) return
+        if (!t) {return}
+
         if (t.kind === 'map') {
-          if (t.key.kind === 'named') keyParams.add(t.key.name)
+          if (t.key.kind === 'named') {keyParams.add(t.key.name)}
+
           findKeys(t.key)
           findKeys(t.value)
-        } else if (t.kind === 'array') findKeys(t.element)
-        else if (t.kind === 'named') t.args?.forEach(findKeys)
+        } else if (t.kind === 'array') {findKeys(t.element)}
+        else if (t.kind === 'named') {t.args?.forEach(findKeys)}
       }
+
       const fields =
         node.variants.length > 0
           ? node.variants.flatMap(v => v.fields)
           : node.fields
+
       fields.forEach(f => findKeys(f.type))
+
       const indices = new Set<number>()
       node.params.forEach((p, i) => {
-        if (keyParams.has(p)) indices.add(i)
+        if (keyParams.has(p)) {indices.add(i)}
       })
-      if (indices.size > 0) formKeyIndices.set(node.name, indices)
+
+      if (indices.size > 0) {formKeyIndices.set(node.name, indices)}
     }
   }
+
   // native dock module aliases (`dns`, `fs`): a call to one returning a list yields a plain Array that must be wrapped
   const aliases = new Set<string>()
+
   for (const node of program)
-    if (node.form === 'native') aliases.add(node.alias)
+    {if (node.form === 'native') {aliases.add(node.alias)}}
+
   const rootName = (node: Expression): string | undefined =>
     node.form === 'variable'
       ? node.name
       : node.form === 'member'
         ? rootName(node.target)
         : undefined
+
   // true while emitting a list-returning function: a native dock call returned directly (a plain Array from the shim,
   // which has no access to the SeedList class) is wrapped in the seed list's SeedList handle to match the return type
   let fnReturnsArray = false
+
   const isNativeCall = (node: Expression): boolean => {
     if (node.form !== 'call' || node.callee.form !== 'member')
-      return false
+      {return false}
+
     const root = rootName(node.callee)
+
     return root !== undefined && aliases.has(root)
   }
 
@@ -463,72 +521,88 @@ export function emitSwift(program: Program): string {
   // from the instance implementations (each desugared to a `<target>_<method>` free function tagged with `method`),
   // with the receiver type replaced by `Self`. See note/seed/compiler/trait-dictionary-passing.md.
   const maskMethods = new Set<string>()
+
   for (const node of program)
-    if (node.form === 'mask')
-      for (const m of node.methods) maskMethods.add(m)
-  const instanceTargets = new Map<string, Array<string>>()
+    {if (node.form === 'mask')
+      {for (const m of node.methods) {maskMethods.add(m)}}}
+
+  const instanceTargets = new Map<string, string[]>()
+
   for (const node of program)
-    if (node.form === 'instance') {
+    {if (node.form === 'instance') {
       const list = instanceTargets.get(node.mask) ?? []
       list.push(node.target)
       instanceTargets.set(node.mask, list)
-    }
+    }}
+
   type Fn = Extract<Statement, { form: 'function' }>
   const implFn = new Map<string, Fn>()
+
   for (const node of program)
-    if (node.form === 'function' && node.method)
-      implFn.set(`${node.method.form}:${node.method.name}`, node)
+    {if (node.form === 'function' && node.method)
+      {implFn.set(`${node.method.form}:${node.method.name}`, node)}}
+
   const subSelf = (
     t: Type | undefined,
     target: string,
   ): Type | undefined => {
-    if (!t) return t
+    if (!t) {return t}
+
     if (t.kind === 'named')
-      return t.name === target
+      {return t.name === target
         ? { kind: 'named', name: 'Self' }
         : t.args
           ? { ...t, args: t.args.map(a => subSelf(a, target)!) }
-          : t
+          : t}
+
     if (t.kind === 'array')
-      return { kind: 'array', element: subSelf(t.element, target)! }
+      {return { kind: 'array', element: subSelf(t.element, target)! }}
+
     if (t.kind === 'map')
-      return {
+      {return {
         kind: 'map',
         key: subSelf(t.key, target)!,
         value: subSelf(t.value, target)!,
-      }
+      }}
+
     if (t.kind === 'function')
-      return {
+      {return {
         kind: 'function',
         params: t.params.map(p => subSelf(p, target)!),
         result: subSelf(t.result, target)!,
         effects: t.effects,
-      }
+      }}
+
     return t
   }
+
   // a protocol method requirement: `func measure() -> Int` (the receiver is implicit `self`, so the first parameter is
   // dropped; remaining parameters keep their types with the receiver type as `Self`)
   const protocolMethod = (
     fn: Fn | undefined,
     target: string,
   ): string => {
-    if (!fn) return ''
+    if (!fn) {return ''}
+
     const rest = fn.params
       .slice(1)
       .map(
         p =>
           `_ ${camel(p.name)}: ${swiftType(subSelf(p.type, target))}`,
       )
+
     return `func ${camel(fn.method!.name)}(${rest.join(', ')}) -> ${swiftType(
       subSelf(fn.result, target),
     )}`
   }
+
   // a conformance method that delegates to the free implementation function: `func measure() -> Int { return boxMeasure(self) }`
   const extensionMethod = (
     fn: Fn | undefined,
     target: string,
   ): string => {
-    if (!fn) return ''
+    if (!fn) {return ''}
+
     const restNames = fn.params.slice(1).map(p => camel(p.name))
     const rest = fn.params
       .slice(1)
@@ -536,16 +610,19 @@ export function emitSwift(program: Program): string {
         p =>
           `_ ${camel(p.name)}: ${swiftType(subSelf(p.type, target))}`,
       )
+
     const callArgs = ['self', ...restNames].join(', ')
+
     return `${protocolMethod0(fn, target, rest)} { return ${camel(
       fn.name,
     )}(${callArgs}) }`
   }
+
   // shared header builder so the extension method matches the protocol method exactly
   const protocolMethod0 = (
     fn: Fn,
     target: string,
-    rest: Array<string>,
+    rest: string[],
   ): string =>
     `func ${camel(fn.method!.name)}(${rest.join(', ')}) -> ${swiftType(
       subSelf(fn.result, target),
@@ -582,6 +659,7 @@ export function emitSwift(program: Program): string {
           node.right,
           bind,
         )})`
+
       case 'call': {
         // a declarative native binding renders its `case swift` template
         if (
@@ -589,6 +667,7 @@ export function emitSwift(program: Program): string {
           binds.has(node.callee.name)
         ) {
           const found = binds.get(node.callee.name)!
+
           return (
             renderBind(
               found,
@@ -597,8 +676,10 @@ export function emitSwift(program: Program): string {
             ) ?? bindGap(found.name)
           )
         }
+
         // a native map / list operation lowers to swift's collection API (a map goes through the SeedMap wrapper)
         const operation = collectionCall(node.callee)
+
         if (operation) {
           return collectionExpr(operation, node.args, bind)
         }
@@ -611,6 +692,7 @@ export function emitSwift(program: Program): string {
           node.args.length >= 1
         ) {
           const rest = node.args.slice(1).map(a => expr(a, bind))
+
           return `${expr(node.args[0]!, bind)}.${camel(
             node.callee.name,
           )}(${rest.join(', ')})`
@@ -620,16 +702,19 @@ export function emitSwift(program: Program): string {
           .map(a => expr(a, bind))
           .join(', ')})`
       }
+
       case 'array': {
         // an empty literal gives Swift nothing to infer the element from, so name it explicitly
         const arg =
           node.type?.kind === 'array'
             ? `<${swiftType(node.type.element)}>`
             : ''
+
         return `SeedList${arg}([${node.items
           .map(i => expr(i, bind))
           .join(', ')}])`
       }
+
       case 'map': {
         const arg =
           node.type?.kind === 'map'
@@ -637,30 +722,36 @@ export function emitSwift(program: Program): string {
                 node.type.value,
               )}>`
             : ''
+
         return node.entries.length === 0
           ? `SeedMap${arg}()`
           : `SeedMap${arg}([${node.entries
               .map(e => `${expr(e.key, bind)}: ${expr(e.value, bind)}`)
               .join(', ')}])`
       }
+
       case 'record': {
         // leading-dot construction: Swift infers the enum/struct type from context
         if (variantSet.has(node.name)) {
           const labelled = node.fields.map(
             f => `${camel(f.name)}: ${expr(f.value, bind)}`,
           )
+
           return labelled.length > 0
             ? `.${camel(node.name)}(${labelled.join(', ')})`
             : `.${camel(node.name)}`
         }
+
         // a struct: name the type and pass the fields
         return `${pascal(node.name)}(${node.fields
           .map(f => `${camel(f.name)}: ${expr(f.value, bind)}`)
           .join(', ')})`
       }
+
       case 'member': {
         // `map.size` / `array.length` read the count (a map goes through its wrapper's `data`; an array is plain)
         const read = collectionRead(node)
+
         if (read) {
           // both a map and an array (SeedMap / SeedList) read their length through the wrapper's `.data`
           return `${expr(read.target, bind)}.data.count`
@@ -671,11 +762,14 @@ export function emitSwift(program: Program): string {
           node.target.form === 'variable' &&
           bind.get(node.target.name)?.has(node.name)
         )
-          return camel(node.name)
+          {return camel(node.name)}
+
         return `${expr(node.target, bind)}.${camel(node.name)}`
       }
+
       case 'await':
         return `await ${expr(node.expr, bind)}`
+
       case 'closure': {
         // a function literal as a Swift closure. The trailing `send back X` becomes the closure's value expression.
         const params = node.params.map(p => camel(p.name)).join(', ')
@@ -684,19 +778,23 @@ export function emitSwift(program: Program): string {
           .slice(0, -1)
           .map(s => stmt(s, 0, bind))
           .filter(Boolean)
+
         const tail =
-          last && last.form === 'return' && last.value
+          last?.form === 'return' && last.value
             ? expr(last.value, bind)
             : last
               ? stmt(last, 0, bind)
               : ''
+
         return `{ (${params}) in ${[...lead, tail]
           .filter(Boolean)
           .join('; ')} }`
       }
+
       case 'conditional': {
         // a value-position conditional lowers to a ternary chain
         const tail = node.otherwise ? expr(node.otherwise, bind) : '()'
+
         return node.branches.reduceRight(
           (rest, branch) =>
             `(${expr(branch.cond, bind)} ? ${expr(
@@ -706,6 +804,7 @@ export function emitSwift(program: Program): string {
           tail,
         )
       }
+
       default:
         return exhausted(node)
     }
@@ -715,11 +814,12 @@ export function emitSwift(program: Program): string {
   // `.setting` / `.removing` mutate and return). The return shapes match the JS collection API the stdlib forms expect.
   const collectionExpr = (
     op: CollectionOp,
-    args: Array<Expression>,
+    args: Expression[],
     bind: Bindings,
   ): string => {
     const target = expr(op.target, bind)
     const arg = args.map(a => expr(a, bind))
+
     if (op.kind === 'map') {
       switch (op.op) {
         case 'has':
@@ -742,6 +842,7 @@ export function emitSwift(program: Program): string {
     // arrays go through the SeedList wrapper (`.data` is its Array, `.appending` / `.popping` mutate). An op returning a
     // list wraps a new SeedList; `String(describing:)` renders any element for `join` with no bound.
     const data = `${target}.data`
+
     switch (op.op) {
       case 'push':
         return `${target}.appending(${arg[0]})`
@@ -784,7 +885,7 @@ export function emitSwift(program: Program): string {
   }
 
   const block = (
-    body: Array<Statement>,
+    body: Statement[],
     d: number,
     bind: Bindings,
   ): string =>
@@ -798,13 +899,15 @@ export function emitSwift(program: Program): string {
       case 'let': {
         // annotate an ADT binding so leading-dot construction has a type to infer from
         const annotation =
-          node.type && node.type.kind === 'named'
+          node.type?.kind === 'named'
             ? `: ${swiftType(node.type)}`
             : ''
+
         return `${node.mutable ? 'var' : 'let'} ${vname(
           node.name,
         )}${annotation} = ${expr(node.init, bind)}`
       }
+
       case 'assign':
         return node.op === '='
           ? `${expr(node.target, bind)} = ${expr(node.value, bind)}`
@@ -815,7 +918,8 @@ export function emitSwift(program: Program): string {
       case 'expression':
         return expr(node.expr, bind)
       case 'return':
-        if (!node.value) return 'return'
+        if (!node.value) {return 'return'}
+
         // a list-returning function that returns a native dock call directly wraps the shim's plain Array
         return fnReturnsArray && isNativeCall(node.value)
           ? `return SeedList(${expr(node.value, bind)})`
@@ -832,18 +936,21 @@ export function emitSwift(program: Program): string {
           d + 1,
           bind,
         )}\n${pad(d)}}`
+
       case 'for-each': {
         // a list is a SeedList; iterate its backing `.data` Array
         const iterable =
           node.iterable.type?.kind === 'array'
             ? `${expr(node.iterable, bind)}.data`
             : expr(node.iterable, bind)
+
         return `for ${vname(node.item)} in ${iterable} {\n${block(
           node.body,
           d + 1,
           bind,
         )}\n${pad(d)}}`
       }
+
       case 'match': {
         // a native `switch`: the compiler checks exhaustiveness, so no fallthrough-return is needed. Each variant's
         // fields bind to locals; field access on the subject inside the branch rewrites to those locals.
@@ -852,33 +959,40 @@ export function emitSwift(program: Program): string {
           node.subject.form === 'variable'
             ? node.subject.name
             : undefined
+
         const arms = node.cases.map(b => {
           const fields = variantFields.get(b.label) ?? []
           const branchBind: Bindings = new Map(bind)
+
           if (subjectVar && fields.length > 0)
-            branchBind.set(subjectVar, new Set(fields))
+            {branchBind.set(subjectVar, new Set(fields))}
+
           const pattern =
             fields.length > 0
               ? `case let .${camel(b.label)}(${fields
                   .map(camel)
                   .join(', ')}):`
               : `case .${camel(b.label)}:`
+
           return `${pad(d + 1)}${pattern}\n${block(
             b.body,
             d + 2,
             branchBind,
           )}`
         })
+
         if (node.otherwise)
-          arms.push(
+          {arms.push(
             `${pad(d + 1)}default:\n${block(
               node.otherwise,
               d + 2,
               bind,
             )}`,
-          )
+          )}
+
         return `switch ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
       }
+
       case 'if': {
         let out = ''
         node.branches.forEach((b, i) => {
@@ -887,12 +1001,15 @@ export function emitSwift(program: Program): string {
             bind,
           )} {\n${block(b.body, d + 1, bind)}\n${pad(d)}}`
         })
+
         if (node.otherwise)
-          out += ` else {\n${block(node.otherwise, d + 1, bind)}\n${pad(
+          {out += ` else {\n${block(node.otherwise, d + 1, bind)}\n${pad(
             d,
-          )}}`
+          )}}`}
+
         return out
       }
+
       case 'break':
         return 'break'
       case 'continue':
@@ -901,36 +1018,44 @@ export function emitSwift(program: Program): string {
         return 'exit(0)'
       case 'debug':
         return '// breakpoint'
+
       case 'function': {
         const generics = genericClause(node) // sets varNames for the param/result/body emission that follows
         const params = node.params
           .map(p => `_ ${vname(p.name)}: ${swiftType(p.type)}`)
           .join(', ')
+
         const asyncMark = node.async ? ' async' : ''
         const throwsMark = bodyThrows(node.body) ? ' throws' : ''
         // a reassigned parameter is shadowed by a mutable local (Swift parameters are immutable)
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
+
         const shadows = node.params
           .filter(p => mutated.has(p.name))
           .map(
             p => `${pad(d + 1)}var ${vname(p.name)} = ${vname(p.name)}`,
           )
+
         const previousReturnsArray = fnReturnsArray
         fnReturnsArray = node.result?.kind === 'array'
+
         const bodyText = [
           ...shadows,
           block(node.body, d + 1, new Map()),
         ]
           .filter(Boolean)
           .join('\n')
+
         fnReturnsArray = previousReturnsArray
+
         return `func ${camel(
           node.name,
         )}${generics}(${params})${asyncMark}${throwsMark} -> ${swiftType(
           node.result,
         )} {\n${bodyText}\n${pad(d)}}`
       }
+
       case 'record-type': {
         // a generic that flows into a map key inside the fields must be `Hashable` (the SeedMap wrapper requires it)
         const keys = formKeyIndices.get(node.name)
@@ -943,28 +1068,34 @@ export function emitSwift(program: Program): string {
               )
               .join(', ')}>`
           : ''
+
         if (node.variants.length > 0) {
           // a native enum: each variant a case, its fields the associated values
           const cases = node.variants.map(v => {
             const fields = v.fields.map(
               f => `${camel(f.name)}: ${swiftType(f.type)}`,
             )
+
             return `${pad(d + 1)}case ${camel(v.name)}${
               fields.length > 0 ? `(${fields.join(', ')})` : ''
             }`
           })
+
           return `enum ${pascal(node.name)}${generics} {\n${cases.join(
             '\n',
           )}\n${pad(d)}}`
         }
+
         const fields = node.fields.map(
           f =>
             `${pad(d + 1)}var ${camel(f.name)}: ${swiftType(f.type)}`,
         )
+
         return `struct ${pascal(node.name)}${generics} {\n${fields.join(
           '\n',
         )}\n${pad(d)}}`
       }
+
       case 'mask': {
         // a protocol whose method requirements are derived from any implementing instance's signature
         const target = instanceTargets.get(node.name)?.[0]
@@ -979,10 +1110,12 @@ export function emitSwift(program: Program): string {
               )
               .filter(line => line.trim())
           : []
+
         return `protocol ${pascal(node.name)} {${
           methods.length ? `\n${methods.join('\n')}\n${pad(d)}` : ''
         }}`
       }
+
       case 'instance': {
         // a conformance extension whose methods delegate to the free implementation functions
         const methods = node.methods
@@ -994,10 +1127,12 @@ export function emitSwift(program: Program): string {
           )
           .filter(Boolean)
           .map(line => `${pad(d + 1)}${line}`)
+
         return `extension ${pascal(node.target)}: ${pascal(node.mask)} {${
           methods.length ? `\n${methods.join('\n')}\n${pad(d)}` : ''
         }}`
       }
+
       case 'hold':
         return '// hold: verified at compile time'
       case 'native':
@@ -1018,26 +1153,32 @@ export function emitSwift(program: Program): string {
         n.form === 'native' && !n.module.startsWith('global:'),
     )
     .map(n => `import ${n.module.replace(/^[a-z]+:/, '')}`)
+
   // a declarative binding's swift expression may need a module imported (e.g. `Foundation.pow`)
   for (const need of bindImports(
     referencedBinds(program, binds),
     'swift',
   )) {
     const line = `import ${need.module.replace(/^[a-z]+:/, '')}`
-    if (!imports.includes(line)) imports.push(line)
+
+    if (!imports.includes(line)) {imports.push(line)}
   }
+
   const body = program
     .filter(n => n.form !== 'native')
     .map(n => stmt(n, 0, new Map()))
     .filter(Boolean)
-  const prelude: Array<string> = []
+
+  const prelude: string[] = []
+
   if (body.some(b => b.includes('SeedError(')))
-    prelude.push(
+    {prelude.push(
       'struct SeedError: Error { let message: String; init(_ m: String) { message = m } }',
-    )
+    )}
+
   // the reference wrapper for maps (a class so mutation persists across a struct copy); emitted only when used
   if (body.some(b => b.includes('SeedMap')))
-    prelude.push(
+    {prelude.push(
       [
         'final class SeedMap<K: Hashable, V> {',
         '    var data: [K: V]',
@@ -1046,10 +1187,11 @@ export function emitSwift(program: Program): string {
         '    @discardableResult func removing(_ key: K) -> Bool { let had = data[key] != nil; data.removeValue(forKey: key); return had }',
         '}',
       ].join('\n'),
-    )
+    )}
+
   // the reference wrapper for lists (a class so an in-place `push` persists across a copy); emitted only when used
   if (body.some(b => b.includes('SeedList')))
-    prelude.push(
+    {prelude.push(
       [
         'final class SeedList<T> {',
         '    var data: [T]',
@@ -1058,25 +1200,31 @@ export function emitSwift(program: Program): string {
         '    @discardableResult func popping() -> T { return data.removeLast() }',
         '}',
       ].join('\n'),
-    )
+    )}
+
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'
 }
 
 // the names reassigned anywhere in a body (so a reassigned parameter can be shadowed by a mutable local, since Swift
 // and Kotlin function parameters are immutable)
-function reassigned(body: Array<Statement>, into: Set<string>): void {
+function reassigned(body: Statement[], into: Set<string>): void {
   for (const s of body) {
     switch (s.form) {
       case 'assign':
-        if (s.target.form === 'variable') into.add(s.target.name)
+        if (s.target.form === 'variable') {into.add(s.target.name)}
+
         break
       case 'if':
         s.branches.forEach(b => reassigned(b.body, into))
-        if (s.otherwise) reassigned(s.otherwise, into)
+
+        if (s.otherwise) {reassigned(s.otherwise, into)}
+
         break
       case 'match':
         s.cases.forEach(c => reassigned(c.body, into))
-        if (s.otherwise) reassigned(s.otherwise, into)
+
+        if (s.otherwise) {reassigned(s.otherwise, into)}
+
         break
       case 'while':
       case 'for-each':
@@ -1089,7 +1237,7 @@ function reassigned(body: Array<Statement>, into: Set<string>): void {
 }
 
 // does a function body contain a throw? (then its Swift signature needs `throws`)
-function bodyThrows(body: Array<Statement>): boolean {
+function bodyThrows(body: Statement[]): boolean {
   return body.some(s => {
     switch (s.form) {
       case 'throw':

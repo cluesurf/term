@@ -93,13 +93,17 @@ async function installResolved(input: {
     const actual = await hashBuffer({ data: tarball })
     // npm uses base64-encoded sha512, we use hex
     // try hex comparison first, then base64
-    const actualBase64 = tarball.length > 0
-      ? (await import('crypto')).createHash('sha512').update(tarball).digest('base64')
-      : ''
+    const actualBase64 =
+      tarball.length > 0
+        ? (await import('crypto'))
+            .createHash('sha512')
+            .update(tarball)
+            .digest('base64')
+        : ''
     if (actual !== expected && actualBase64 !== expected) {
       throw new Error(
         `Integrity check failed for ${resolved.name}@${showMark(resolved.mark)}. ` +
-        `Expected ${expected}, got ${actual}`,
+          `Expected ${expected}, got ${actual}`,
       )
     }
   }
@@ -144,9 +148,7 @@ async function extractAndLink(input: {
   await hardLinkToStore({ dir: deckDir })
 }
 
-async function hardLinkToStore(input: {
-  dir: string
-}): Promise<void> {
+async function hardLinkToStore(input: { dir: string }): Promise<void> {
   const entries = await fsp.readdir(input.dir, {
     withFileTypes: true,
   })
@@ -234,10 +236,7 @@ async function createDepLinks(input: {
     if (!depResolved) continue
 
     const depMarkStr = showMark(depResolved.mark)
-    const depDeckDir = path.join(
-      seedDir,
-      `${depName}@${depMarkStr}`,
-    )
+    const depDeckDir = path.join(seedDir, `${depName}@${depMarkStr}`)
 
     // parse scope
     const parts = depName.split('/')
@@ -253,10 +252,7 @@ async function createDepLinks(input: {
 
     await fsp.rm(targetLink, { force: true })
 
-    const relative = path.relative(
-      path.dirname(targetLink),
-      depDeckDir,
-    )
+    const relative = path.relative(path.dirname(targetLink), depDeckDir)
     await fsp.symlink(relative, targetLink)
   }
 }

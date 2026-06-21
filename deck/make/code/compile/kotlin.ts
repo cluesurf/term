@@ -27,8 +27,10 @@ function camel(name: string): string {
   // strip every hyphen, including one before a digit (`sha-256` -> `sha256`), so the result is a valid identifier
   return name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
 }
+
 function pascal(name: string): string {
   const c = camel(name)
+
   return c.charAt(0).toUpperCase() + c.slice(1)
 }
 
@@ -79,9 +81,11 @@ export function emitKotlin(program: Program): string {
   const binds = collectBinds(program)
   // the Kotlin subclass for a variant label, and each variant's field names (for construction / smart-cast access)
   const variantClass = new Map<string, string>()
-  const variantFieldNames = new Map<string, Array<string>>()
+  const variantFieldNames = new Map<string, string[]>()
+
   for (const node of program) {
-    if (node.form !== 'record-type') continue
+    if (node.form !== 'record-type') {continue}
+
     for (const v of node.variants) {
       variantClass.set(v.name, `${pascal(node.name)}${pascal(v.name)}`)
       variantFieldNames.set(
@@ -97,26 +101,32 @@ export function emitKotlin(program: Program): string {
   // that is the receiver type is widened to the interface (with a downcast in the override, valid because trait
   // dispatch only reaches a method through the right instance). See note/seed/compiler/trait-dictionary-passing.md.
   const maskMethods = new Set<string>()
+
   for (const node of program)
-    if (node.form === 'mask')
-      for (const m of node.methods) maskMethods.add(m)
+    {if (node.form === 'mask')
+      {for (const m of node.methods) {maskMethods.add(m)}}}
+
   type Instance = Extract<Statement, { form: 'instance' }>
-  const conformances = new Map<string, Array<Instance>>()
-  const instanceTargets = new Map<string, Array<string>>()
+  const conformances = new Map<string, Instance[]>()
+  const instanceTargets = new Map<string, string[]>()
+
   for (const node of program)
-    if (node.form === 'instance') {
+    {if (node.form === 'instance') {
       const list = conformances.get(node.target) ?? []
       list.push(node)
       conformances.set(node.target, list)
+
       const targets = instanceTargets.get(node.mask) ?? []
       targets.push(node.target)
       instanceTargets.set(node.mask, targets)
-    }
+    }}
+
   type Fn = Extract<Statement, { form: 'function' }>
   const implFn = new Map<string, Fn>()
+
   for (const node of program)
-    if (node.form === 'function' && node.method)
-      implFn.set(`${node.method.form}:${node.method.name}`, node)
+    {if (node.form === 'function' && node.method)
+      {implFn.set(`${node.method.form}:${node.method.name}`, node)}}
 
   let varNames = new Map<number, string>()
 
@@ -169,33 +179,39 @@ export function emitKotlin(program: Program): string {
     target: string,
     mask: string,
   ): Type | undefined => {
-    if (!t) return t
+    if (!t) {return t}
+
     if (t.kind === 'named')
-      return t.name === target
+      {return t.name === target
         ? { kind: 'named', name: mask }
         : t.args
           ? { ...t, args: t.args.map(a => subSelfK(a, target, mask)!) }
-          : t
+          : t}
+
     if (t.kind === 'array')
-      return {
+      {return {
         kind: 'array',
         element: subSelfK(t.element, target, mask)!,
-      }
+      }}
+
     if (t.kind === 'map')
-      return {
+      {return {
         kind: 'map',
         key: subSelfK(t.key, target, mask)!,
         value: subSelfK(t.value, target, mask)!,
-      }
+      }}
+
     if (t.kind === 'function')
-      return {
+      {return {
         kind: 'function',
         params: t.params.map(p => subSelfK(p, target, mask)!),
         result: subSelfK(t.result, target, mask)!,
         effects: t.effects,
-      }
+      }}
+
     return t
   }
+
   // an interface method requirement: `fun measure(): Long` (the receiver is the implicit `this`, so the first parameter
   // is dropped; remaining parameters keep their types, the receiver type widened to the interface)
   const interfaceMethod = (
@@ -203,17 +219,20 @@ export function emitKotlin(program: Program): string {
     target: string,
     mask: string,
   ): string => {
-    if (!fn) return ''
+    if (!fn) {return ''}
+
     const rest = fn.params
       .slice(1)
       .map(
         p =>
           `${camel(p.name)}: ${kotlinType(subSelfK(p.type, target, mask))}`,
       )
+
     return `fun ${camel(fn.method!.name)}(${rest.join(', ')}): ${kotlinType(
       subSelfK(fn.result, target, mask),
     )}`
   }
+
   // an override that delegates to the free implementation function, downcasting any receiver-typed parameter back to
   // the concrete type the free function expects
   const overrideMethod = (
@@ -221,13 +240,15 @@ export function emitKotlin(program: Program): string {
     target: string,
     mask: string,
   ): string => {
-    if (!fn) return ''
+    if (!fn) {return ''}
+
     const rest = fn.params
       .slice(1)
       .map(
         p =>
           `${camel(p.name)}: ${kotlinType(subSelfK(p.type, target, mask))}`,
       )
+
     const callArgs = [
       'this',
       ...fn.params
@@ -238,6 +259,7 @@ export function emitKotlin(program: Program): string {
             : camel(p.name),
         ),
     ]
+
     return `override fun ${camel(fn.method!.name)}(${rest.join(
       ', ',
     )}): ${kotlinType(subSelfK(fn.result, target, mask))} { return ${camel(
@@ -251,24 +273,30 @@ export function emitKotlin(program: Program): string {
     const ids = new Set<number>()
     node.params.forEach(p => collectVars(p.type, ids))
     collectVars(node.result, ids)
+
     const declared = node.generics.map(g => g.name.toUpperCase())
     const pool = ['T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'A', 'B', 'C']
     const used = new Set(declared)
     varNames = new Map()
-    const fresh: Array<string> = []
+
+    const fresh: string[] = []
+
     for (const id of ids) {
       const letter = pool.find(l => !used.has(l)) ?? `T${id}`
       used.add(letter)
       varNames.set(id, letter)
       fresh.push(letter)
     }
+
     const namedInSig = new Set<string>()
+
     const scan = (t: Type | undefined): void => {
-      if (!t) return
+      if (!t) {return}
+
       if (t.kind === 'named') {
         namedInSig.add(t.name.toUpperCase())
         t.args?.forEach(scan)
-      } else if (t.kind === 'array') scan(t.element)
+      } else if (t.kind === 'array') {scan(t.element)}
       else if (t.kind === 'map') {
         scan(t.key)
         scan(t.value)
@@ -277,17 +305,23 @@ export function emitKotlin(program: Program): string {
         scan(t.result)
       }
     }
+
     node.params.forEach(p => scan(p.type))
     scan(node.result)
+
     // a trait-bounded generic (`head t, need sizer`) adds its interface as a Kotlin upper bound (`T : Sizer`), so the
     // body's `x.measure()` resolves through it
     const needTrait = new Map<string, string>()
+
     for (const g of node.generics)
-      if (g.need) needTrait.set(g.name.toUpperCase(), pascal(g.need))
+      {if (g.need) {needTrait.set(g.name.toUpperCase(), pascal(g.need))}}
+
     const kept = declared
       .filter(d => namedInSig.has(d))
       .map(d => (needTrait.has(d) ? `${d} : ${needTrait.get(d)}` : d))
+
     const all = [...kept, ...fresh]
+
     return all.length ? `<${all.join(', ')}> ` : ''
   }
 
@@ -315,6 +349,7 @@ export function emitKotlin(program: Program): string {
         return `${node.op}${expr(node.operand)}`
       case 'binary':
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
+
       case 'call': {
         // a declarative native binding renders its `case kotlin` template
         if (
@@ -322,13 +357,16 @@ export function emitKotlin(program: Program): string {
           binds.has(node.callee.name)
         ) {
           const bind = binds.get(node.callee.name)!
+
           return (
             renderBind(bind, 'kotlin', node.args.map(expr)) ??
             bindGap(bind.name)
           )
         }
+
         // a native map / list operation lowers to kotlin's collection API
         const operation = collectionCall(node.callee)
+
         if (operation) {
           return collectionExpr(operation, node.args)
         }
@@ -341,6 +379,7 @@ export function emitKotlin(program: Program): string {
           node.args.length >= 1
         ) {
           const rest = node.args.slice(1).map(expr)
+
           return `${expr(node.args[0]!)}.${camel(node.callee.name)}(${rest.join(
             ', ',
           )})`
@@ -348,14 +387,17 @@ export function emitKotlin(program: Program): string {
 
         return `${expr(node.callee)}(${node.args.map(expr).join(', ')})`
       }
+
       case 'array': {
         // an empty collection literal gives kotlin nothing to infer from, so emit the element type explicitly
         const args =
           node.type?.kind === 'array'
             ? `<${kotlinType(node.type.element)}>`
             : ''
+
         return `mutableListOf${args}(${node.items.map(expr).join(', ')})`
       }
+
       case 'map': {
         const args =
           node.type?.kind === 'map'
@@ -363,12 +405,15 @@ export function emitKotlin(program: Program): string {
                 node.type.value,
               )}>`
             : ''
+
         return `mutableMapOf${args}(${node.entries
           .map(e => `${expr(e.key)} to ${expr(e.value)}`)
           .join(', ')})`
       }
+
       case 'record': {
         const cls = variantClass.get(node.name)
+
         if (cls) {
           return node.fields.length > 0
             ? `${cls}(${node.fields
@@ -376,26 +421,32 @@ export function emitKotlin(program: Program): string {
                 .join(', ')})`
             : cls
         }
+
         // a generic struct built from empty collections cannot infer its parameters; pin them from the checked type
         const args =
           node.type?.kind === 'named' && node.type.args?.length
             ? `<${node.type.args.map(kotlinType).join(', ')}>`
             : ''
+
         return `${pascal(node.name)}${args}(${node.fields
           .map(f => `${camel(f.name)} = ${expr(f.value)}`)
           .join(', ')})`
       }
+
       case 'member': {
         // `map.size` / `array.length` lower to the platform's count property (as a Long, the seed number type)
         const read = collectionRead(node)
+
         if (read) {
           return `${expr(read.target)}.size.toLong()`
         }
 
         return `${expr(node.target)}.${camel(node.name)}`
       }
+
       case 'await':
         return expr(node.expr)
+
       case 'closure': {
         // a function literal as a Kotlin lambda. A lambda's value is its last expression, so the trailing `send back X`
         // becomes a bare `X` (an explicit `return` inside a lambda would non-locally return from the enclosing function).
@@ -405,25 +456,30 @@ export function emitKotlin(program: Program): string {
           .slice(0, -1)
           .map(s => stmt(s, 0))
           .filter(Boolean)
+
         const tail =
-          last && last.form === 'return' && last.value
+          last?.form === 'return' && last.value
             ? expr(last.value)
             : last
               ? stmt(last, 0)
               : ''
+
         return `{ ${params} -> ${[...lead, tail]
           .filter(Boolean)
           .join('; ')} }`
       }
+
       case 'conditional': {
         // a value-position conditional lowers to a Kotlin if / else-if / else expression chain
         const tail = node.otherwise ? expr(node.otherwise) : 'Unit'
+
         return node.branches.reduceRight(
           (rest, branch) =>
             `if (${expr(branch.cond)}) ${expr(branch.value)} else ${rest}`,
           tail,
         )
       }
+
       default:
         return exhausted(node)
     }
@@ -433,10 +489,11 @@ export function emitKotlin(program: Program): string {
   // expect: `set` yields the map, `delete` / `push` yield a boolean / the new length, sizes are Long (the number type).
   const collectionExpr = (
     op: CollectionOp,
-    args: Array<Expression>,
+    args: Expression[],
   ): string => {
     const target = expr(op.target)
     const arg = args.map(expr)
+
     if (op.kind === 'map') {
       switch (op.op) {
         case 'has':
@@ -497,7 +554,7 @@ export function emitKotlin(program: Program): string {
     }
   }
 
-  const block = (body: Array<Statement>, d: number): string =>
+  const block = (body: Statement[], d: number): string =>
     body
       .map(s => `${pad(d)}${stmt(s, d)}`)
       .filter(Boolean)
@@ -532,26 +589,31 @@ export function emitKotlin(program: Program): string {
         return `for (${camel(node.item)} in ${expr(
           node.iterable,
         )}) {\n${block(node.body, d + 1)}\n${pad(d)}}`
+
       case 'match': {
         // an exhaustive `when` on the sealed type: each `is` arm smart-casts the subject, so its fields are directly
         // accessible in the body with no rewrite. A return-position match becomes `return when (...)`.
         const subject = expr(node.subject)
         const arms = node.cases.map(b => {
           const cls = variantClass.get(b.label) ?? pascal(b.label)
+
           return `${pad(d + 1)}is ${cls} -> {\n${block(
             b.body,
             d + 2,
           )}\n${pad(d + 1)}}`
         })
+
         if (node.otherwise)
-          arms.push(
+          {arms.push(
             `${pad(d + 1)}else -> {\n${block(
               node.otherwise,
               d + 2,
             )}\n${pad(d + 1)}}`,
-          )
+          )}
+
         return `when (${subject}) {\n${arms.join('\n')}\n${pad(d)}}`
       }
+
       case 'if': {
         let out = ''
         node.branches.forEach((b, i) => {
@@ -560,10 +622,13 @@ export function emitKotlin(program: Program): string {
             d + 1,
           )}\n${pad(d)}}`
         })
+
         if (node.otherwise)
-          out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`
+          {out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`}
+
         return out
       }
+
       case 'break':
         return 'break'
       case 'continue':
@@ -572,29 +637,35 @@ export function emitKotlin(program: Program): string {
         return 'kotlin.system.exitProcess(0)'
       case 'debug':
         return '// breakpoint'
+
       case 'function': {
         const generics = genericClause(node)
         const params = node.params
           .map(p => `${camel(p.name)}: ${kotlinType(p.type)}`)
           .join(', ')
+
         const suspend = node.async ? 'suspend ' : ''
         // a reassigned parameter is shadowed by a mutable local (Kotlin parameters are immutable)
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
+
         const shadows = node.params
           .filter(p => mutated.has(p.name))
           .map(
             p => `${pad(d + 1)}var ${camel(p.name)} = ${camel(p.name)}`,
           )
+
         const bodyText = [...shadows, block(node.body, d + 1)]
           .filter(Boolean)
           .join('\n')
+
         return `${suspend}fun ${generics}${camel(
           node.name,
         )}(${params}): ${kotlinType(node.result)} {\n${bodyText}\n${pad(
           d,
         )}}`
       }
+
       case 'record-type': {
         if (node.variants.length > 0) {
           const generics = node.params.length
@@ -602,18 +673,21 @@ export function emitKotlin(program: Program): string {
                 .map(p => `out ${p.toUpperCase()}`)
                 .join(', ')}>`
             : ''
+
           const head = `sealed class ${pascal(node.name)}${generics}`
           const subclasses = node.variants.map(v => {
             const cls = `${pascal(node.name)}${pascal(v.name)}`
             // the variant carries only the generics its own fields mention; the rest of the type's params are Nothing
             const usesGeneric = (name: string) =>
               v.fields.some(f => mentions(f.type, name))
+
             const ownGenerics = node.params.filter(usesGeneric)
             const genericDecl = ownGenerics.length
               ? `<${ownGenerics
                   .map(p => `out ${p.toUpperCase()}`)
                   .join(', ')}>`
               : ''
+
             const superArgs = node.params.length
               ? `<${node.params
                   .map(p =>
@@ -621,33 +695,43 @@ export function emitKotlin(program: Program): string {
                   )
                   .join(', ')}>`
               : ''
+
             if (v.fields.length > 0) {
               const fields = v.fields
                 .map(f => `val ${camel(f.name)}: ${kotlinType(f.type)}`)
                 .join(', ')
+
               return `data class ${cls}${genericDecl}(${fields}) : ${pascal(
                 node.name,
               )}${superArgs}()`
             }
+
             const objectSuper = node.params.length
               ? `<${node.params.map(() => 'Nothing').join(', ')}>`
               : ''
+
             return `object ${cls} : ${pascal(
               node.name,
             )}${objectSuper}()`
           })
+
           return [`${head}`, ...subclasses].join('\n')
         }
+
         const fields = node.fields
           .map(f => `val ${camel(f.name)}: ${kotlinType(f.type)}`)
           .join(', ')
+
         const generics = node.params.length
           ? `<${node.params.map(p => p.toUpperCase()).join(', ')}>`
           : ''
+
         const decl = `data class ${pascal(node.name)}${generics}(${fields})`
         // a form that implements traits declares them on the data class with overrides delegating to the free functions
         const impls = conformances.get(node.name) ?? []
-        if (impls.length === 0) return decl
+
+        if (impls.length === 0) {return decl}
+
         const supers = impls.map(i => pascal(i.mask)).join(', ')
         const overrides = impls.flatMap(i =>
           i.methods
@@ -661,8 +745,10 @@ export function emitKotlin(program: Program): string {
             .filter(Boolean)
             .map(line => `${pad(d + 1)}${line}`),
         )
+
         return `${decl} : ${supers} {\n${overrides.join('\n')}\n${pad(d)}}`
       }
+
       case 'mask': {
         // an interface whose method requirements are derived from any implementing instance's signature
         const target = instanceTargets.get(node.name)?.[0]
@@ -678,10 +764,12 @@ export function emitKotlin(program: Program): string {
               )
               .filter(line => line.trim())
           : []
+
         return `interface ${pascal(node.name)} {${
           methods.length ? `\n${methods.join('\n')}\n${pad(d)}` : ''
         }}`
       }
+
       case 'instance':
         // conformance is declared on the data class (see record-type), so nothing is emitted here
         return ''
@@ -710,30 +798,38 @@ export function emitKotlin(program: Program): string {
           .replace(/^[a-z]+:/, '')
           .replace(/\//g, '.')}`,
     )
+
   const body = program
     .filter(n => n.form !== 'native')
     .map(n => stmt(n, 0))
     .filter(Boolean)
+
   const prelude = body.some(b => b.includes('SeedError('))
     ? ['class SeedError(message: String) : RuntimeException(message)']
     : []
+
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'
 }
 
 // the names reassigned anywhere in a body (Kotlin parameters are immutable, so a reassigned one needs a var shadow)
-function reassigned(body: Array<Statement>, into: Set<string>): void {
+function reassigned(body: Statement[], into: Set<string>): void {
   for (const s of body) {
     switch (s.form) {
       case 'assign':
-        if (s.target.form === 'variable') into.add(s.target.name)
+        if (s.target.form === 'variable') {into.add(s.target.name)}
+
         break
       case 'if':
         s.branches.forEach(b => reassigned(b.body, into))
-        if (s.otherwise) reassigned(s.otherwise, into)
+
+        if (s.otherwise) {reassigned(s.otherwise, into)}
+
         break
       case 'match':
         s.cases.forEach(c => reassigned(c.body, into))
-        if (s.otherwise) reassigned(s.otherwise, into)
+
+        if (s.otherwise) {reassigned(s.otherwise, into)}
+
         break
       case 'while':
       case 'for-each':

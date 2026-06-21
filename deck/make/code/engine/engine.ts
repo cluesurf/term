@@ -41,6 +41,7 @@ const NORMAL: Signal = { kind: 'normal' }
 function makeScope(parent: Scope | null): Scope {
   return { vars: new Map(), consts: new Set(), parent }
 }
+
 function define(
   scope: Scope,
   name: string,
@@ -48,22 +49,29 @@ function define(
   mutable: boolean,
 ): void {
   scope.vars.set(name, value)
-  if (!mutable) scope.consts.add(name)
+
+  if (!mutable) {scope.consts.add(name)}
 }
+
 function lookup(scope: Scope, name: string): Value {
   for (let s: Scope | null = scope; s; s = s.parent)
-    if (s.vars.has(name)) return s.vars.get(name)!
+    {if (s.vars.has(name)) {return s.vars.get(name)!}}
+
   throw new Error(`undefined variable "${name}"`)
 }
+
 function assignVar(scope: Scope, name: string, value: Value): void {
   for (let s: Scope | null = scope; s; s = s.parent) {
     if (s.vars.has(name)) {
       if (s.consts.has(name))
-        throw new Error(`cannot assign to const "${name}"`)
+        {throw new Error(`cannot assign to const "${name}"`)}
+
       s.vars.set(name, value)
+
       return
     }
   }
+
   throw new Error(`assignment to undefined variable "${name}"`)
 }
 
@@ -85,17 +93,24 @@ async function evaluate(
       return UNIT
     case 'variable':
       return lookup(scope, expr.name)
+
     case 'array': {
       const items: Value[] = []
-      for (const e of expr.items) items.push(await evaluate(e, scope))
+
+      for (const e of expr.items) {items.push(await evaluate(e, scope))}
+
       return { form: 'array', value: Arr.fromArray(items) }
     }
+
     case 'map': {
       const m = Mp.makeMap<Value>()
+
       for (const { key, value } of expr.entries)
-        Mp.set(m, `s:${key}`, await evaluate(value, scope))
+        {Mp.set(m, `s:${key}`, await evaluate(value, scope))}
+
       return { form: 'map', value: m }
     }
+
     case 'closure':
       return {
         form: 'function',
@@ -106,67 +121,93 @@ async function evaluate(
           isAsync: expr.isAsync ?? false,
         },
       }
+
     case 'unary': {
       const v = await evaluate(expr.operand, scope)
-      if (expr.op === '!') return boolean(!truthy(v))
+
+      if (expr.op === '!') {return boolean(!truthy(v))}
+
       if (v.form === 'integer')
-        return { form: 'integer', value: Int.negate(v.value) }
+        {return { form: 'integer', value: Int.negate(v.value) }}
+
       if (v.form === 'float')
-        return { form: 'float', value: Flt.negate(v.value) }
+        {return { form: 'float', value: Flt.negate(v.value) }}
+
       throw new Error(`unary - on ${v.form}`)
     }
+
     case 'binary': {
       if (expr.op === '&&') {
         const l = await evaluate(expr.left, scope)
+
         return truthy(l) ? evaluate(expr.right, scope) : l
       }
+
       if (expr.op === '||') {
         const l = await evaluate(expr.left, scope)
+
         return truthy(l) ? l : evaluate(expr.right, scope)
       }
+
       return binary(
         expr.op,
         await evaluate(expr.left, scope),
         await evaluate(expr.right, scope),
       )
     }
+
     case 'index': {
       const target = await evaluate(expr.target, scope)
       const index = await evaluate(expr.index, scope)
+
       return indexGet(target, index)
     }
+
     case 'member': {
       const target = await evaluate(expr.target, scope)
+
       return memberGet(target, expr.name)
     }
+
     case 'await': {
       const v = await evaluate(expr.expr, scope)
+
       return v.form === 'task' ? await v.promise : v
     }
+
     case 'call': {
       const callee = await evaluate(expr.callee, scope)
       const args: Value[] = []
-      for (const a of expr.args) args.push(await evaluate(a, scope))
-      if (callee.form === 'native') return await callee.fn(args)
+
+      for (const a of expr.args) {args.push(await evaluate(a, scope))}
+
+      if (callee.form === 'native') {return await callee.fn(args)}
+
       if (callee.form === 'function') {
         const run = applyClosure(callee.value, args)
+
         return callee.value.isAsync
           ? { form: 'task', promise: run }
           : await run
       }
+
       throw new Error(`cannot call a ${callee.form}`)
     }
   }
 }
 
 export function binary(op: BinaryOp, a: Value, b: Value): Value {
-  if (op === '==') return boolean(valuesEqual(a, b))
-  if (op === '!=') return boolean(!valuesEqual(a, b))
+  if (op === '==') {return boolean(valuesEqual(a, b))}
+
+  if (op === '!=') {return boolean(!valuesEqual(a, b))}
+
   // string concatenation and array concatenation with +
   if (op === '+' && a.form === 'string' && b.form === 'string')
-    return { form: 'string', value: Str.concat(a.value, b.value) }
+    {return { form: 'string', value: Str.concat(a.value, b.value) }}
+
   if (op === '+' && a.form === 'array' && b.form === 'array')
-    return { form: 'array', value: Arr.concat(a.value, b.value) }
+    {return { form: 'array', value: Arr.concat(a.value, b.value) }}
+
   // ordering of strings
   if (a.form === 'string' && b.form === 'string') {
     const c =
@@ -175,8 +216,10 @@ export function binary(op: BinaryOp, a: Value, b: Value): Value {
         : Str.toString(a.value) > Str.toString(b.value)
           ? 1
           : 0
+
     return compareResult(op, c)
   }
+
   // numeric: integer if both integer, else float
   if (a.form === 'integer' && b.form === 'integer') {
     switch (op) {
@@ -203,8 +246,10 @@ export function binary(op: BinaryOp, a: Value, b: Value): Value {
         return compareResult(op, Int.compare(a.value, b.value))
     }
   }
+
   const af = toFloat(a),
     bf = toFloat(b)
+
   switch (op) {
     case '+':
       return { form: 'float', value: Flt.add(af, bf) }
@@ -228,10 +273,13 @@ export function binary(op: BinaryOp, a: Value, b: Value): Value {
 }
 
 function toFloat(v: Value): Flt.TernaryFloat {
-  if (v.form === 'float') return v.value
-  if (v.form === 'integer') return Flt.fromNumber(Number(v.value.value))
+  if (v.form === 'float') {return v.value}
+
+  if (v.form === 'integer') {return Flt.fromNumber(Number(v.value.value))}
+
   throw new Error(`expected a number, got ${v.form}`)
 }
+
 function compareResult(op: BinaryOp, c: number): Value {
   switch (op) {
     case '<':
@@ -249,30 +297,38 @@ function compareResult(op: BinaryOp, c: number): Value {
 
 export function indexGet(target: Value, index: Value): Value {
   if (target.form === 'array')
-    return Arr.get(
+    {return Arr.get(
       target.value,
       Number((index as { value: { value: bigint } }).value.value),
-    )
+    )}
+
   if (target.form === 'string')
-    return string(
+    {return string(
       Str.charAt(
         target.value,
         Number((index as { value: { value: bigint } }).value.value),
       ),
-    )
+    )}
+
   if (target.form === 'map')
-    return Mp.get(target.value, keyOf(index)) ?? UNIT
+    {return Mp.get(target.value, keyOf(index)) ?? UNIT}
+
   throw new Error(`cannot index a ${target.form}`)
 }
+
 export function memberGet(target: Value, name: string): Value {
   if (name === 'length') {
     if (target.form === 'string')
-      return integer(Str.length(target.value))
-    if (target.form === 'array') return integer(Arr.size(target.value))
-    if (target.form === 'map') return integer(target.value.size)
+      {return integer(Str.length(target.value))}
+
+    if (target.form === 'array') {return integer(Arr.size(target.value))}
+
+    if (target.form === 'map') {return integer(target.value.size)}
   }
+
   if (target.form === 'map')
-    return Mp.get(target.value, `s:${name}`) ?? UNIT
+    {return Mp.get(target.value, `s:${name}`) ?? UNIT}
+
   throw new Error(`no member "${name}" on ${target.form}`)
 }
 
@@ -283,7 +339,8 @@ async function execute(stmt: Statement, scope: Scope): Promise<Signal> {
   try {
     return await executeStatement(stmt, scope)
   } catch (e) {
-    if (e instanceof VibeThrow) return { kind: 'throw', value: e.value }
+    if (e instanceof VibeThrow) {return { kind: 'throw', value: e.value }}
+
     throw e
   }
 }
@@ -300,9 +357,11 @@ async function executeStatement(
         await evaluate(stmt.init, scope),
         stmt.mutable,
       )
+
       return NORMAL
     case 'expression':
       await evaluate(stmt.expr, scope)
+
       return NORMAL
     case 'return':
       return {
@@ -317,31 +376,45 @@ async function executeStatement(
       return executeBlock(stmt.body, makeScope(scope))
     case 'throw':
       return { kind: 'throw', value: await evaluate(stmt.value, scope) }
+
     case 'try': {
       let result = await executeBlock(stmt.body, makeScope(scope))
+
       if (result.kind === 'throw' && stmt.catchBody) {
         const cs = makeScope(scope)
+
         if (stmt.catchName)
-          define(cs, stmt.catchName, result.value, true)
+          {define(cs, stmt.catchName, result.value, true)}
+
         result = await executeBlock(stmt.catchBody, cs)
       }
+
       if (stmt.finallyBody) {
         const f = await executeBlock(stmt.finallyBody, makeScope(scope))
-        if (f.kind !== 'normal') return f // finally overrides the pending signal
+
+        if (f.kind !== 'normal') {return f} // finally overrides the pending signal
       }
+
       return result
     }
+
     case 'for': {
       const iter = await evaluate(stmt.iterable, scope)
+
       for (const item of forItems(iter)) {
         const inner = makeScope(scope)
         define(inner, stmt.name, item, true)
+
         const sig = await executeBlock(stmt.body, inner)
-        if (sig.kind === 'break') break
-        if (sig.kind === 'return' || sig.kind === 'throw') return sig
+
+        if (sig.kind === 'break') {break}
+
+        if (sig.kind === 'return' || sig.kind === 'throw') {return sig}
       }
+
       return NORMAL
     }
+
     case 'function':
       define(
         scope,
@@ -358,31 +431,41 @@ async function executeStatement(
         },
         false,
       )
+
       return NORMAL
     case 'assign':
       return assign(stmt, scope)
+
     case 'if': {
       for (const b of stmt.branches)
-        if (truthy(await evaluate(b.cond, scope)))
-          return executeBlock(b.body, makeScope(scope))
+        {if (truthy(await evaluate(b.cond, scope)))
+          {return executeBlock(b.body, makeScope(scope))}}
+
       return stmt.otherwise
         ? executeBlock(stmt.otherwise, makeScope(scope))
         : NORMAL
     }
+
     case 'while': {
       while (truthy(await evaluate(stmt.cond, scope))) {
         const sig = await executeBlock(stmt.body, makeScope(scope))
-        if (sig.kind === 'break') break
-        if (sig.kind === 'return') return sig
+
+        if (sig.kind === 'break') {break}
+
+        if (sig.kind === 'return') {return sig}
         // continue / normal both loop again
       }
+
       return NORMAL
     }
+
     case 'switch': {
       const subject = await evaluate(stmt.subject, scope)
+
       let matched = -1
+
       for (let i = 0; i < stmt.cases.length; i++)
-        if (
+        {if (
           valuesEqual(
             subject,
             await evaluate(stmt.cases[i]!.match, scope),
@@ -390,18 +473,24 @@ async function executeStatement(
         ) {
           matched = i
           break
-        }
+        }}
+
       const inner = makeScope(scope)
+
       if (matched < 0)
-        return stmt.otherwise
+        {return stmt.otherwise
           ? executeBlock(stmt.otherwise, inner)
-          : NORMAL
+          : NORMAL}
+
       for (let i = matched; i < stmt.cases.length; i++) {
         // fall-through until break
         const sig = await executeBlock(stmt.cases[i]!.body, inner)
-        if (sig.kind === 'break') return NORMAL
-        if (sig.kind === 'return' || sig.kind === 'continue') return sig
+
+        if (sig.kind === 'break') {return NORMAL}
+
+        if (sig.kind === 'return' || sig.kind === 'continue') {return sig}
       }
+
       return NORMAL
     }
   }
@@ -413,8 +502,10 @@ async function executeBlock(
 ): Promise<Signal> {
   for (const stmt of body) {
     const sig = await execute(stmt, scope)
-    if (sig.kind !== 'normal') return sig
+
+    if (sig.kind !== 'normal') {return sig}
   }
+
   return NORMAL
 }
 
@@ -425,46 +516,63 @@ async function assign(
   const rhs = await evaluate(stmt.value, scope)
   const apply = (current: Value): Value =>
     stmt.op === '=' ? rhs : binary(stmt.op[0] as BinaryOp, current, rhs)
+
   const t = stmt.target
+
   if (t.form === 'variable') {
     const next = stmt.op === '=' ? rhs : apply(lookup(scope, t.name))
     assignVar(scope, t.name, next)
+
     return NORMAL
   }
+
   if (t.form === 'index') {
     if (t.target.form !== 'variable')
-      throw new Error('index assignment target must be a variable')
+      {throw new Error('index assignment target must be a variable')}
+
     const container = lookup(scope, t.target.name)
     const index = await evaluate(t.index, scope)
+
     if (container.form === 'array') {
       const i = Number(
         (index as { value: { value: bigint } }).value.value,
       )
+
       const next = apply(
         stmt.op === '=' ? UNIT : Arr.get(container.value, i),
       )
+
       assignVar(scope, t.target.name, {
         form: 'array',
         value: Arr.set(container.value, i, next),
       })
+
       return NORMAL
     }
+
     if (container.form === 'map') {
       const k = keyOf(index)
       const next = apply(
         stmt.op === '=' ? UNIT : (Mp.get(container.value, k) ?? UNIT),
       )
+
       Mp.set(container.value, k, next)
+
       return NORMAL
     }
+
     throw new Error(`cannot index-assign a ${container.form}`)
   }
+
   if (t.form === 'member') {
     if (t.target.form !== 'variable')
-      throw new Error('member assignment target must be a variable')
+      {throw new Error('member assignment target must be a variable')}
+
     const container = lookup(scope, t.target.name)
+
     if (container.form !== 'map')
-      throw new Error(`cannot set member on a ${container.form}`)
+      {throw new Error(`cannot set member on a ${container.form}`)}
+
     const k = `s:${t.name}`
     Mp.set(
       container.value,
@@ -473,8 +581,10 @@ async function assign(
         stmt.op === '=' ? UNIT : (Mp.get(container.value, k) ?? UNIT),
       ),
     )
+
     return NORMAL
   }
+
   throw new Error('invalid assignment target')
 }
 
@@ -486,8 +596,11 @@ async function applyClosure(
   closure.params.forEach((p, i) =>
     define(scope, p, args[i] ?? UNIT, true),
   )
+
   const sig = await executeBlock(closure.body, scope)
-  if (sig.kind === 'throw') throw new VibeThrow(sig.value)
+
+  if (sig.kind === 'throw') {throw new VibeThrow(sig.value)}
+
   return sig.kind === 'return' ? sig.value : UNIT
 }
 
@@ -503,19 +616,25 @@ export async function callValue(
   fn: Value,
   args: Value[],
 ): Promise<Value> {
-  if (fn.form === 'function') return applyClosure(fn.value, args)
-  if (fn.form === 'native') return fn.fn(args)
-  if (fn.form === 'task') return fn.promise
+  if (fn.form === 'function') {return applyClosure(fn.value, args)}
+
+  if (fn.form === 'native') {return fn.fn(args)}
+
+  if (fn.form === 'task') {return fn.promise}
+
   throw new Error(`cannot call a ${fn.form}`)
 }
 
 // the elements a `for` loop iterates: array elements, string codepoints, or map keys
 function forItems(v: Value): Value[] {
-  if (v.form === 'array') return Arr.toArray(v.value)
+  if (v.form === 'array') {return Arr.toArray(v.value)}
+
   if (v.form === 'string')
-    return Array.from(Str.toString(v.value)).map(c => string(c))
+    {return Array.from(Str.toString(v.value)).map(c => string(c))}
+
   if (v.form === 'map')
-    return Mp.keys(v.value).map(k => string(k.replace(/^s:/, '')))
+    {return Mp.keys(v.value).map(k => string(k.replace(/^s:/, '')))}
+
   throw new Error(`cannot iterate a ${v.form}`)
 }
 
@@ -529,19 +648,24 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
 
   native('print', a => {
     console.log(a.map(display).join(' '))
+
     return UNIT
   })
   native('len', a => indexLength(a[0]!))
   native('push', a => {
     const arr = a[0]!
-    if (arr.form !== 'array') throw new Error('push needs an array')
+
+    if (arr.form !== 'array') {throw new Error('push needs an array')}
+
     return { form: 'array', value: Arr.push(arr.value, a[1]!) }
   })
   native('str', a => string(display(a[0]!)))
   native('int', a => integer(numberOf(a[0]!)))
   native('keys', a => {
     const m = a[0]!
-    if (m.form !== 'map') throw new Error('keys needs a map')
+
+    if (m.form !== 'map') {throw new Error('keys needs a map')}
+
     return {
       form: 'array',
       value: Arr.fromArray(
@@ -554,6 +678,7 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
   // math
   native('abs', a => {
     const v = a[0]!
+
     return v.form === 'integer'
       ? { form: 'integer', value: Int.absolute(v.value) }
       : float(Math.abs(numberOf(v)))
@@ -563,12 +688,14 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
   native('pow', a => {
     const x = a[0]!,
       y = a[1]!
+
     if (
       x.form === 'integer' &&
       y.form === 'integer' &&
       y.value.value >= 0n
     )
-      return integer(x.value.value ** y.value.value)
+      {return integer(x.value.value ** y.value.value)}
+
     return float(Math.pow(numberOf(x), numberOf(y)))
   })
   native('sqrt', a => float(Math.sqrt(numberOf(a[0]!))))
@@ -580,22 +707,29 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
     const s = a.length === 1 ? 0 : numberOf(a[0]!)
     const e = numberOf(a[a.length - 1]!)
     const items: Value[] = []
-    for (let i = s; i < e; i++) items.push(integer(i))
+
+    for (let i = s; i < e; i++) {items.push(integer(i))}
+
     return { form: 'array', value: Arr.fromArray(items) }
   })
   native('pop', a => {
     const v = a[0]!
-    if (v.form !== 'array') throw new Error('pop needs an array')
+
+    if (v.form !== 'array') {throw new Error('pop needs an array')}
+
     return { form: 'array', value: Arr.pop(v.value) }
   })
   native('slice', a => {
     const v = a[0]!
     const s = numberOf(a[1]!)
     const e = a[2] ? numberOf(a[2]) : undefined
+
     if (v.form === 'array')
-      return { form: 'array', value: Arr.slice(v.value, s, e) }
+      {return { form: 'array', value: Arr.slice(v.value, s, e) }}
+
     if (v.form === 'string')
-      return { form: 'string', value: Str.slice(v.value, s, e) }
+      {return { form: 'string', value: Str.slice(v.value, s, e) }}
+
     throw new Error(`slice of ${v.form}`)
   })
   native('reverse', a => ({
@@ -605,20 +739,26 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
   native('first', a => asArrayItems(a[0]!, 'first')[0] ?? UNIT)
   native('last', a => {
     const xs = asArrayItems(a[0]!, 'last')
+
     return xs[xs.length - 1] ?? UNIT
   })
   native('contains', a => {
     const c = a[0]!,
       x = a[1]!
+
     if (c.form === 'array')
-      return boolean(Arr.toArray(c.value).some(e => valuesEqual(e, x)))
+      {return boolean(Arr.toArray(c.value).some(e => valuesEqual(e, x)))}
+
     if (c.form === 'string')
-      return boolean(Str.toString(c.value).includes(display(x)))
-    if (c.form === 'map') return boolean(Mp.has(c.value, keyOf(x)))
+      {return boolean(Str.toString(c.value).includes(display(x)))}
+
+    if (c.form === 'map') {return boolean(Mp.has(c.value, keyOf(x)))}
+
     throw new Error(`contains on ${c.form}`)
   })
   native('indexOf', a => {
     const xs = asArrayItems(a[0]!, 'indexOf')
+
     return integer(xs.findIndex(e => valuesEqual(e, a[1]!)))
   })
   native('sort', a => ({
@@ -632,23 +772,31 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
   native('map', async a => {
     const fn = a[1]!
     const out: Value[] = []
+
     let i = 0
+
     for (const e of asArrayItems(a[0]!, 'map'))
-      out.push(await callValue(fn, [e, integer(i++)]))
+      {out.push(await callValue(fn, [e, integer(i++)]))}
+
     return { form: 'array', value: Arr.fromArray(out) }
   })
   native('filter', async a => {
     const fn = a[1]!
     const out: Value[] = []
+
     for (const e of asArrayItems(a[0]!, 'filter'))
-      if (truthy(await callValue(fn, [e]))) out.push(e)
+      {if (truthy(await callValue(fn, [e]))) {out.push(e)}}
+
     return { form: 'array', value: Arr.fromArray(out) }
   })
   native('reduce', async a => {
     const fn = a[1]!
+
     let acc = a[2] ?? UNIT
+
     for (const e of asArrayItems(a[0]!, 'reduce'))
-      acc = await callValue(fn, [acc, e])
+      {acc = await callValue(fn, [acc, e])}
+
     return acc
   })
   native('sortBy', async a => {
@@ -657,7 +805,9 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
     const keyed = await Promise.all(
       xs.map(async e => ({ e, k: await callValue(fn, [e]) })),
     )
+
     keyed.sort((p, q) => compareValues(p.k, q.k))
+
     return { form: 'array', value: Arr.fromArray(keyed.map(x => x.e)) }
   })
 
@@ -685,7 +835,9 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
   // maps
   native('has', a => {
     const m = a[0]!
-    if (m.form === 'map') return boolean(Mp.has(m.value, keyOf(a[1]!)))
+
+    if (m.form === 'map') {return boolean(Mp.has(m.value, keyOf(a[1]!)))}
+
     return boolean(
       asArrayItems(m, 'has').some(e => valuesEqual(e, a[1]!)),
     )
@@ -693,19 +845,27 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
   native('get', a => indexGet(a[0]!, a[1]!))
   native('setKey', a => {
     const m = a[0]!
-    if (m.form !== 'map') throw new Error('setKey needs a map')
+
+    if (m.form !== 'map') {throw new Error('setKey needs a map')}
+
     Mp.set(m.value, keyOf(a[1]!), a[2]!)
+
     return m
   })
   native('del', a => {
     const m = a[0]!
-    if (m.form !== 'map') throw new Error('del needs a map')
+
+    if (m.form !== 'map') {throw new Error('del needs a map')}
+
     Mp.remove(m.value, keyOf(a[1]!))
+
     return m
   })
   native('entries', a => {
     const m = a[0]!
-    if (m.form !== 'map') throw new Error('entries needs a map')
+
+    if (m.form !== 'map') {throw new Error('entries needs a map')}
+
     return {
       form: 'array',
       value: Arr.fromArray(
@@ -717,37 +877,50 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
                 string(e.key.replace(/^[sif]:/, '')),
                 e.value,
               ]),
-            }) as Value,
+            }),
         ),
       ),
     }
   })
 
   for (const [k, v] of Object.entries(extra ?? {}))
-    define(g, k, v, false)
+    {define(g, k, v, false)}
+
   return g
 }
 
 function indexLength(v: Value): Value {
-  if (v.form === 'string') return integer(Str.length(v.value))
-  if (v.form === 'array') return integer(Arr.size(v.value))
-  if (v.form === 'map') return integer(v.value.size)
+  if (v.form === 'string') {return integer(Str.length(v.value))}
+
+  if (v.form === 'array') {return integer(Arr.size(v.value))}
+
+  if (v.form === 'map') {return integer(v.value.size)}
+
   throw new Error(`len of ${v.form}`)
 }
+
 function numberOf(v: Value): number {
-  if (v.form === 'integer') return Number(v.value.value)
-  if (v.form === 'float') return Flt.toNumber(v.value)
-  if (v.form === 'string') return Number(Str.toString(v.value))
+  if (v.form === 'integer') {return Number(v.value.value)}
+
+  if (v.form === 'float') {return Flt.toNumber(v.value)}
+
+  if (v.form === 'string') {return Number(Str.toString(v.value))}
+
   throw new Error(`int of ${v.form}`)
 }
+
 function compareValues(a: Value, b: Value): number {
-  if (truthy(binary('<', a, b))) return -1
-  if (truthy(binary('>', a, b))) return 1
+  if (truthy(binary('<', a, b))) {return -1}
+
+  if (truthy(binary('>', a, b))) {return 1}
+
   return 0
 }
+
 function asArrayItems(v: Value, op: string): Value[] {
   if (v.form !== 'array')
-    throw new Error(`${op} needs an array, got ${v.form}`)
+    {throw new Error(`${op} needs an array, got ${v.form}`)}
+
   return Arr.toArray(v.value)
 }
 
@@ -757,19 +930,26 @@ export async function run(
   extra?: Record<string, Value>,
 ): Promise<Value> {
   const g = makeGlobalScope(extra)
+
   // hoist function declarations so they can be called before their textual position
   for (const stmt of program)
-    if (stmt.form === 'function') await execute(stmt, g)
+    {if (stmt.form === 'function') {await execute(stmt, g)}}
+
   let last: Value = UNIT
+
   for (const stmt of program) {
-    if (stmt.form === 'function') continue
+    if (stmt.form === 'function') {continue}
+
     if (stmt.form === 'expression') {
       last = await evaluate(stmt.expr, g)
       continue
     }
+
     const sig = await execute(stmt, g)
-    if (sig.kind === 'return') return sig.value
+
+    if (sig.kind === 'return') {return sig.value}
   }
+
   return last
 }
 
@@ -781,10 +961,15 @@ export async function callFunction(
   extra?: Record<string, Value>,
 ): Promise<Value> {
   const g = makeGlobalScope(extra)
+
   for (const stmt of program)
-    if (stmt.form === 'function') await execute(stmt, g)
+    {if (stmt.form === 'function') {await execute(stmt, g)}}
+
   const fn = lookup(g, name)
-  if (fn.form === 'function') return applyClosure(fn.value, args)
-  if (fn.form === 'native') return fn.fn(args)
+
+  if (fn.form === 'function') {return applyClosure(fn.value, args)}
+
+  if (fn.form === 'native') {return fn.fn(args)}
+
   throw new Error(`"${name}" is not a function`)
 }

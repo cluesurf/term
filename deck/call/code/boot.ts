@@ -37,17 +37,22 @@ import {
 // read a `.tree` file (mirrors the helpers in code/deck/install.ts).
 function nodeHead(group: GroupNode): string | undefined {
   const first = group.nodes[0]
-  return first && first.kind === 'name'
+
+  return first?.kind === 'name'
     ? first.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join('')
     : undefined
 }
+
 function nodeValue(group: GroupNode): string {
   const arg = group.nodes[1]
-  if (!arg) return ''
+
+  if (!arg) {return ''}
+
   if (arg.kind === 'text' || arg.kind === 'name')
-    return arg.parts
+    {return arg.parts
       .map(p => (p.kind === 'chunk' ? p.text : ''))
-      .join('')
+      .join('')}
+
   return ''
 }
 
@@ -58,10 +63,14 @@ const BOOT_CACHE_EPOCH = '1'
 // the directory (cwd or an ancestor) that holds the `link/` package links a build resolves through; falls back to cwd
 export function findProjectRoot(start: string): string {
   let dir = start
+
   for (;;) {
-    if (existsSync(path.join(dir, 'link'))) return dir
+    if (existsSync(path.join(dir, 'link'))) {return dir}
+
     const up = path.dirname(dir)
-    if (up === dir) return start
+
+    if (up === dir) {return start}
+
     dir = up
   }
 }
@@ -77,18 +86,26 @@ export function findEntry(
   cwd: string,
   entry: string | undefined,
 ): string | undefined {
-  if (entry) return resolveEntry(path.resolve(cwd, entry))
+  if (entry) {return resolveEntry(path.resolve(cwd, entry))}
+
   let dir = cwd
+
   for (;;) {
     const manifest = path.join(dir, 'deck.tree')
+
     if (existsSync(manifest)) {
       const text = readFileSync(manifest, 'utf8')
-      const match = text.match(/(?:^|\n)\s*boot\s+(\S+)/)
-      if (match) return resolveEntry(path.resolve(dir, match[1]!))
+      const match = /(?:^|\n)\s*boot\s+(\S+)/.exec(text)
+
+      if (match) {return resolveEntry(path.resolve(dir, match[1]!))}
+
       return undefined
     }
+
     const up = path.dirname(dir)
-    if (up === dir) return undefined
+
+    if (up === dir) {return undefined}
+
     dir = up
   }
 }
@@ -96,10 +113,14 @@ export function findEntry(
 // the app package directory: the nearest ancestor (of the entry, else cwd) holding a `deck.tree` manifest
 function findAppDir(start: string): string | undefined {
   let dir = start
+
   for (;;) {
-    if (existsSync(path.join(dir, 'deck.tree'))) return dir
+    if (existsSync(path.join(dir, 'deck.tree'))) {return dir}
+
     const up = path.dirname(dir)
-    if (up === dir) return undefined
+
+    if (up === dir) {return undefined}
+
     dir = up
   }
 }
@@ -107,23 +128,36 @@ function findAppDir(start: string): string | undefined {
 // load environment variables from `bind/host/base.tree` (the app's host config). It is a structured `.tree` file: a
 // `host` group whose kebab children name values (`database-url <...>`). Each kebab key becomes a SCREAMING_SNAKE env
 // var (`toConstant`). File values are defaults: anything already in the environment wins, so a shell override applies.
-function loadHostEnv(appDir: string): Array<string> {
+function loadHostEnv(appDir: string): string[] {
   const file = path.join(appDir, 'bind', 'host', 'base.tree')
-  if (!existsSync(file)) return []
+
+  if (!existsSync(file)) {return []}
+
   const result = parse({ file, text: readFileSync(file, 'utf8') })
-  if (!result.ok) return []
+
+  if (!result.ok) {return []}
+
   const host = result.tree.nodes.find(g => nodeHead(g) === 'host')
-  if (!host) return []
-  const loaded: Array<string> = []
+
+  if (!host) {return []}
+
+  const loaded: string[] = []
+
   for (const node of host.nodes.slice(1)) {
-    if (node.kind !== 'group') continue
+    if (node.kind !== 'group') {continue}
+
     const key = nodeHead(node)
-    if (!key) continue
+
+    if (!key) {continue}
+
     const name = toConstant(key)
-    if (process.env[name] !== undefined) continue
+
+    if (process.env[name] !== undefined) {continue}
+
     process.env[name] = nodeValue(node)
     loaded.push(name)
   }
+
   return loaded
 }
 
@@ -136,10 +170,12 @@ export async function callBoot(input: {
   remoteToken?: string
 }): Promise<void> {
   logStep('Booting app...')
+
   try {
     const cwd = input.root
     const projectRoot = findProjectRoot(cwd)
     const entry = findEntry(cwd, input.entry)
+
     if (!entry || !existsSync(entry)) {
       logFail(
         entry
@@ -148,18 +184,21 @@ export async function callBoot(input: {
       )
       process.exit(1)
     }
+
     const env: NativeEnv = input.env ?? 'node'
 
     // load the app's host env config (`bind/host/base.tree`), so a bare `seed boot` needs no inline env vars
     const appDir = findAppDir(entry) ?? findAppDir(cwd)
     const loadedEnv = appDir ? loadHostEnv(appDir) : []
+
     if (loadedEnv.length)
-      console.log(
+      {console.log(
         fade(`  env: ${loadedEnv.join(', ')} (bind/host/base.tree)`),
-      )
+      )}
 
     // warm the local cache from a remote (Tier 5) before compiling, so a cold machine / CI reuses shared artifacts
     const cacheDir = path.join(projectRoot, '.seed', 'cache')
+
     if (input.remote) {
       try {
         const pulled = await pullRemoteCache(
@@ -167,12 +206,13 @@ export async function callBoot(input: {
           input.remote,
           input.remoteToken,
         )
+
         if (pulled)
-          console.log(
+          {console.log(
             fade(
               `  pulled ${pulled} cache artifacts from ${input.remote}`,
             ),
-          )
+          )}
       } catch {
         // a remote-cache failure must never fail the build
       }
@@ -191,6 +231,7 @@ export async function callBoot(input: {
       { file: entry, text: readFileSync(entry, 'utf8') },
       { resolve, cache: projectCache(projectRoot) },
     )
+
     if (!result.ok) {
       const first = result.diagnostics[0]
       logFail(
@@ -209,12 +250,13 @@ export async function callBoot(input: {
           input.remote,
           input.remoteToken,
         )
+
         if (pushed)
-          console.log(
+          {console.log(
             fade(
               `  pushed ${pushed} cache artifacts to ${input.remote}`,
             ),
-          )
+          )}
       } catch {
         // a remote-cache failure must never fail the build
       }
@@ -225,15 +267,14 @@ export async function callBoot(input: {
     const prelude = nativePrelude(result.program, env, p =>
       existsSync(p) ? readFileSync(p, 'utf8') : undefined,
     )
+
     const source = `${prelude}\n${result.typescript}`
 
     // the bundle config (kept in one place so the cache key sees exactly what the build uses)
     const bundleConfig = {
       bundle: true,
       format: 'esm' as const,
-      platform: (env === 'browser' ? 'browser' : 'node') as
-        | 'browser'
-        | 'node',
+      platform: env === 'browser' ? ('browser' as const) : ('node' as const),
       packages: 'external' as const,
     }
 
@@ -250,8 +291,10 @@ export async function callBoot(input: {
         source,
       ].join('\n'),
     )
+
     const out = path.join(projectRoot, '.seed', 'boot', key)
     const bundle = path.join(out, 'app.mjs')
+
     if (existsSync(bundle)) {
       logGood(
         `Cached ${path.relative(cwd, entry)} (.seed/boot/${key.slice(0, 8)})`,
@@ -268,11 +311,13 @@ export async function callBoot(input: {
         `Built ${path.relative(cwd, entry)} -> .seed/boot/${key.slice(0, 8)}`,
       )
     }
+
     // the bundle keeps node packages (pg, hono, ...) external, so they are imported at runtime. ESM resolves bare
     // specifiers from the importing file's location, not cwd or NODE_PATH, so link the CLI install's node_modules next
     // to the bundle. An app with its own node_modules (a published install) keeps using its own.
     const bundleModules = path.join(out, 'node_modules')
     const installModules = path.join(installRoot, 'node_modules')
+
     if (!existsSync(bundleModules) && existsSync(installModules)) {
       try {
         symlinkSync(installModules, bundleModules, 'dir')

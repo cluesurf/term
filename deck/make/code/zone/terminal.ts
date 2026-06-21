@@ -18,7 +18,7 @@ export const ansi = {
 // a node in the terminal view tree: a reactive text cell or a container
 export type Cell =
   | { kind: 'text'; value: string; dispose: () => void }
-  | { kind: 'group'; children: Array<Cell> }
+  | { kind: 'group'; children: Cell[] }
 
 // a reactive text cell: an effect recomputes its cached value only when its dependencies change (minimal update)
 export function text(
@@ -29,6 +29,7 @@ export function text(
   cell.dispose = effect(() => {
     cell.value = style(get())
   })
+
   return cell
 }
 
@@ -38,18 +39,19 @@ export function still(value: string, style: Style = ansi.plain): Cell {
 }
 
 // a container of cells
-export function group(children: Array<Cell>): Cell {
+export function group(children: Cell[]): Cell {
   return { kind: 'group', children }
 }
 
 // render the current state of the view to a string (reads cached cell values, no recompute)
 export function render(cell: Cell): string {
-  if (cell.kind === 'text') return cell.value
+  if (cell.kind === 'text') {return cell.value}
+
   return cell.children.map(render).join('')
 }
 
 // dispose every reactive cell in a view
 export function dispose(cell: Cell): void {
-  if (cell.kind === 'text') cell.dispose()
-  else for (const child of cell.children) dispose(child)
+  if (cell.kind === 'text') {cell.dispose()}
+  else {for (const child of cell.children) {dispose(child)}}
 }

@@ -16,7 +16,7 @@ export interface HmrUpdate {
 }
 
 export type HmrResult =
-  | { type: 'update'; updates: Array<HmrUpdate> }
+  | { type: 'update'; updates: HmrUpdate[] }
   | { type: 'full-reload' }
 
 // decide how to apply a change to `changedId`. Returns the set of boundaries to update, or a full reload if any path
@@ -27,40 +27,53 @@ export function propagateUpdate(
   changedId: string,
 ): HmrResult {
   const changed = graph.getById(changedId)
-  // an unknown or never-loaded module cannot be hot-updated in place
-  if (!changed || !changed.loaded) return { type: 'full-reload' }
 
-  const boundaries: Array<HmrUpdate> = []
+  // an unknown or never-loaded module cannot be hot-updated in place
+  if (!changed?.loaded) {return { type: 'full-reload' }}
+
+  const boundaries: HmrUpdate[] = []
+
   // returns true if this path is a DEAD END (no accepting boundary found -> full reload)
-  const deadEnd = (node: ModuleNode, chain: Array<string>): boolean => {
+  const deadEnd = (node: ModuleNode, chain: string[]): boolean => {
     if (node.isSelfAccepting) {
       boundaries.push({ boundary: node.url, accepted: node.url })
+
       return false
     }
+
     // a non-accepting module with no importers is the top of a path: nothing accepts the change
-    if (node.importers.size === 0) return true
+    if (node.importers.size === 0) {return true}
+
     for (const importer of node.importers) {
       // the importer explicitly accepts this dep: it is the boundary for this path
       if (importer.acceptedHmrDeps.has(node.url)) {
         boundaries.push({ boundary: importer.url, accepted: node.url })
         continue
       }
+
       // a cycle back to a module already on this path cannot be resolved by accept: full reload
-      if (chain.includes(importer.id)) return true
-      if (deadEnd(importer, [...chain, importer.id])) return true
+      if (chain.includes(importer.id)) {return true}
+
+      if (deadEnd(importer, [...chain, importer.id])) {return true}
     }
+
     return false
   }
 
-  if (deadEnd(changed, [changed.id])) return { type: 'full-reload' }
+  if (deadEnd(changed, [changed.id])) {return { type: 'full-reload' }}
+
   // dedupe boundaries (the same boundary can be reached by multiple paths)
   const seen = new Set<string>()
   const updates = boundaries.filter(u => {
     const key = `${u.boundary}\n${u.accepted}`
-    if (seen.has(key)) return false
+
+    if (seen.has(key)) {return false}
+
     seen.add(key)
+
     return true
   })
+
   return { type: 'update', updates }
 }
 
@@ -69,13 +82,17 @@ export function propagateUpdate(
 export function affectedModules(
   graph: ModuleGraph,
   changedId: string,
-): Array<string> {
+): string[] {
   const changed = graph.getById(changedId)
-  if (!changed) return []
+
+  if (!changed) {return []}
+
   const affected = new Set<string>([changed.id])
-  const stack: Array<ModuleNode> = [changed]
+  const stack: ModuleNode[] = [changed]
+
   while (stack.length) {
     const node = stack.pop()!
+
     for (const importer of node.importers) {
       if (!affected.has(importer.id)) {
         affected.add(importer.id)
@@ -83,5 +100,6 @@ export function affectedModules(
       }
     }
   }
+
   return [...affected]
 }

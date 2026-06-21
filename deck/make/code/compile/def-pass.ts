@@ -24,7 +24,7 @@ export interface DefContext {
 
 export interface DefOutput {
   typed: FunctionDef
-  diagnostics: Array<Diagnostic>
+  diagnostics: Diagnostic[]
   ts: string
 }
 
@@ -35,7 +35,7 @@ export function processDef(
   context: DefContext,
 ): DefOutput {
   const clone = structuredClone(source)
-  const diagnostics: Array<Diagnostic> = []
+  const diagnostics: Diagnostic[] = []
 
   // resolve this function's body against the global scope (only this definition, on its clone)
   diagnostics.push(
@@ -52,6 +52,7 @@ export function processDef(
       ? clone
       : statement,
   )
+
   diagnostics.push(
     ...inferTypes(program, '<entry>', undefined, source.name),
   )

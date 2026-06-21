@@ -4,7 +4,9 @@ import fsp from 'fs/promises'
 
 const CHUNK_SIZE = 65536
 
-export async function hashFile(input: { path: string }): Promise<string> {
+export async function hashFile(input: {
+  path: string
+}): Promise<string> {
   const hash = createHash('sha512')
   const stream = createReadStream(input.path, {
     highWaterMark: CHUNK_SIZE,

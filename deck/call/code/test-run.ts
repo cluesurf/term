@@ -22,17 +22,21 @@ import { preprocessTests } from '@cluesurf/call/code/test-preprocess'
 export type TestResult = { name: string; label: string; held: boolean }
 export type TestRun = {
   ok: boolean
-  results: Array<TestResult>
+  results: TestResult[]
   failure?: string
 }
 
 // the entry file's own top-level test tasks: a zero-argument task that returns a boolean. Imported helpers take
 // arguments, so they are excluded. Order is source order.
-function discoverTests(text: string): Array<string> {
+function discoverTests(text: string): string[] {
   const parsed = parse({ file: 'main.tree', text })
-  if (!parsed.ok) return []
+
+  if (!parsed.ok) {return []}
+
   const built = mill(parsed.tree, 'main.tree')
-  if (!built.ok) return []
+
+  if (!built.ok) {return []}
+
   return built.program
     .filter(
       node =>
@@ -57,26 +61,31 @@ export async function runTestFile(input: {
     { file: 'main.tree', text },
     { resolve: input.resolve },
   )
+
   if (!result.ok) {
     const lines = text.split('\n')
     const diag = result.diagnostics
       .map(d => render(d, lines, false))
       .join('\n')
+
     return {
       ok: false,
       results: [],
       failure: `${diag}\ndid not compile`,
     }
   }
+
   // a proof obligation that the compiler could not discharge is only a warning, but for `seed test` an unproven
   // `hold` is a failure: a stated proposition with no accepted proof must not pass. (A false proof is already a hard
   // `invalid-proof` error above.) So an unchecked hold fails the file, the same as a failing test.
   const unproven = (result.warnings ?? []).filter(
     d => d.name === 'unchecked-hold',
   )
+
   if (unproven.length > 0) {
     const lines = text.split('\n')
     const diag = unproven.map(d => render(d, lines, false)).join('\n')
+
     return {
       ok: false,
       results: [],
@@ -85,32 +94,40 @@ export async function runTestFile(input: {
       }`,
     }
   }
+
   // a file with no runnable `test` tasks but a clean compile is a pass: any `hold` / `rule` proofs it carries were
   // checked during that compile (and an unproven or false one already failed above). So a proof-only file passes here.
   if (names.length === 0) {
     return { ok: true, results: [] }
   }
+
   const prelude = nativePrelude(
     result.program,
     input.env,
     input.readRuntime,
   )
+
   const js = transformSync(`${prelude}\n${result.typescript}`, {
     loader: 'ts',
     format: 'esm',
   }).code
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-test-'))
   const out = join(dir, 'module.mjs')
   writeFileSync(out, js)
+
   const mod = (await import(pathToFileURL(out).href)) as Record<
     string,
     (() => Promise<boolean> | boolean) | undefined
   >
-  const results: Array<TestResult> = []
+
+  const results: TestResult[] = []
+
   for (const name of names) {
     const label = labels.get(name) ?? name.replace(/-/g, ' ')
     const held = Boolean(await mod[toCamel(name)]!())
     results.push({ name, label, held })
   }
+
   return { ok: results.every(r => r.held), results }
 }

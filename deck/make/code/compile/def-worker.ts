@@ -30,14 +30,18 @@ parentPort?.on('message', (message: InMessage) => {
   if (message.type === 'context') {
     context = message.context
     contextRevision = message.revision
+
     return
   }
+
   // a job for a revision whose context we have not received: ask for it (self-healing; the pool normally sends the
   // context proactively before the first job of a revision, so this is a safety net)
   if (!context || contextRevision !== message.revision) {
     parentPort!.postMessage({ type: 'needContext', id: message.id })
+
     return
   }
+
   const output = processDef(message.source, context)
   parentPort!.postMessage({
     type: 'result',

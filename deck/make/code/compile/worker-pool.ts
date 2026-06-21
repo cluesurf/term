@@ -44,8 +44,10 @@ const SEED_ROOT = path.resolve(HERE, '..', '..', '..', '..')
 // ESM file. This keeps every source import as `@/...` (no relative / `.js` rewriting) and works the same whether the
 // host is tsx (dev / test) or the published CLI. Node builtins + node_modules stay external.
 let workerBundle: string | undefined
+
 function ensureWorkerBundle(): string {
-  if (workerBundle) return workerBundle
+  if (workerBundle) {return workerBundle}
+
   const out = path.join(tmpdir(), `seed-def-worker-${process.pid}.mjs`)
   // bundle node_modules in (the worker's graph is the pure compiler passes plus chalk), so the output is fully
   // self-contained and resolves from /tmp. Node builtins stay external (platform: node).
@@ -58,6 +60,7 @@ function ensureWorkerBundle(): string {
     tsconfig: path.join(SEED_ROOT, 'tsconfig.json'),
   })
   workerBundle = out
+
   return out
 }
 
@@ -76,8 +79,8 @@ type Pending = {
 }
 
 export class WorkerPool {
-  private readonly workers: Array<WorkerEntry> = []
-  private readonly queue: Array<{ id: number; pending: Pending }> = []
+  private readonly workers: WorkerEntry[] = []
+  private readonly queue: { id: number; pending: Pending }[] = []
   private readonly pending = new Map<number, Pending>()
   private nextId = 1
   // the current shared context, broadcast lazily to each worker before its first job of this revision
@@ -86,6 +89,7 @@ export class WorkerPool {
 
   constructor(size: number = Math.max(1, cpus().length - 1)) {
     const bundle = ensureWorkerBundle()
+
     for (let i = 0; i < size; i++) {
       const worker = new Worker(bundle)
       const entry: WorkerEntry = { worker, busy: false, revision: -1 }
@@ -112,6 +116,7 @@ export class WorkerPool {
         source,
         revision: this.revision,
       }
+
       this.pending.set(id, pending)
       this.queue.push({ id, pending })
       this.drain()
@@ -120,10 +125,14 @@ export class WorkerPool {
 
   private drain(): void {
     for (const entry of this.workers) {
-      if (entry.busy) continue
+      if (entry.busy) {continue}
+
       const next = this.queue.shift()
-      if (!next) return
+
+      if (!next) {return}
+
       entry.busy = true
+
       // send the context first if this worker does not already hold the current revision
       if (entry.revision !== next.pending.revision && this.context) {
         entry.worker.postMessage({
@@ -133,6 +142,7 @@ export class WorkerPool {
         })
         entry.revision = next.pending.revision
       }
+
       entry.worker.postMessage({
         type: 'job',
         id: next.id,
@@ -151,14 +161,16 @@ export class WorkerPool {
           id: number
           name: string
           typed: FunctionDef
-          diagnostics: Array<Diagnostic>
+          diagnostics: Diagnostic[]
           ts: string
           threadId: number
         }
       | { type: 'needContext'; id: number }
+
     if (msg.type === 'needContext') {
       // the worker lacks this revision's context: send it, then re-dispatch the same job
       const pending = this.pending.get(msg.id)
+
       if (pending && this.context) {
         entry.worker.postMessage({
           type: 'context',
@@ -173,10 +185,13 @@ export class WorkerPool {
           source: pending.source,
         })
       }
+
       return
     }
+
     const pending = this.pending.get(msg.id)
     entry.busy = false
+
     if (pending) {
       this.pending.delete(msg.id)
       pending.resolve({
@@ -187,6 +202,7 @@ export class WorkerPool {
         threadId: msg.threadId,
       })
     }
+
     this.drain()
   }
 
@@ -202,6 +218,7 @@ export class WorkerPool {
     await Promise.all(
       this.workers.map(entry => entry.worker.terminate()),
     )
+
     // drop the bundled worker file so it does not linger in the temp dir; a later pool re-bundles on demand. Workers
     // already loaded it into memory, so removing the file never affects a still-running pool.
     if (workerBundle) {
@@ -210,6 +227,7 @@ export class WorkerPool {
       } catch {
         // a missing / already-removed bundle is fine
       }
+
       workerBundle = undefined
     }
   }
@@ -218,9 +236,9 @@ export class WorkerPool {
 // the result of a parallel program build: the assembled TypeScript and the diagnostics, in program order
 export interface ParallelEmit {
   ts: string
-  diagnostics: Array<Diagnostic>
+  diagnostics: Diagnostic[]
   // the distinct worker thread ids that contributed (empty for an inline build), for observability / tests
-  threads: Array<number>
+  threads: number[]
 }
 
 // emit a whole program's TypeScript by compiling each function definition in parallel. With a `pool`, the per-Def work
@@ -232,11 +250,13 @@ export async function emitProgramParallel(
   pool?: WorkerPool,
 ): Promise<ParallelEmit> {
   const context = buildDefContext(program, buildScope)
-  if (pool) pool.setContext(context)
+
+  if (pool) {pool.setContext(context)}
 
   const functions = program.filter(
     (s): s is FunctionDef => s.form === 'function',
   )
+
   const others = program.filter(s => s.form !== 'function')
 
   const results = await Promise.all(
@@ -251,14 +271,19 @@ export async function emitProgramParallel(
     ),
   )
 
-  const parts: Array<string> = []
-  if (others.length) parts.push(emitTypeScript(others))
-  const diagnostics: Array<Diagnostic> = []
+  const parts: string[] = []
+
+  if (others.length) {parts.push(emitTypeScript(others))}
+
+  const diagnostics: Diagnostic[] = []
   const threads = new Set<number>()
+
   for (const result of results) {
-    if (result.ts) parts.push(result.ts)
+    if (result.ts) {parts.push(result.ts)}
+
     diagnostics.push(...result.diagnostics)
-    if (result.threadId) threads.add(result.threadId)
+
+    if (result.threadId) {threads.add(result.threadId)}
   }
 
   return {

@@ -14,11 +14,13 @@ export async function callSeek(input: { root: string }): Promise<void> {
 
     if (result.ok) {
       logGood('All packages are installed correctly')
+
       return
     }
 
     if (result.missing.length > 0) {
       logWarn('Missing packages:')
+
       for (const pkg of result.missing) {
         console.log(`    ${name(pkg)}`)
       }
@@ -26,6 +28,7 @@ export async function callSeek(input: { root: string }): Promise<void> {
 
     if (result.outdated.length > 0) {
       logWarn('Outdated packages:')
+
       for (const pkg of result.outdated) {
         console.log(`    ${name(pkg)}`)
       }

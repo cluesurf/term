@@ -35,12 +35,15 @@ type Frame = { kind: 'loop' | 'switch'; label: string }
 
 function makeEmitter() {
   let counter = 0
+
   const stack: Frame[] = []
   const label = (kind: 'loop' | 'switch'): string =>
     `${kind === 'loop' ? 'L' : 'S'}${counter++}`
+
   const nearest = (kinds: ('loop' | 'switch')[]): string => {
     for (let i = stack.length - 1; i >= 0; i--)
-      if (kinds.includes(stack[i]!.kind)) return stack[i]!.label
+      {if (kinds.includes(stack[i]!.kind)) {return stack[i]!.label}}
+
     throw new Error(
       `no enclosing ${kinds.join('/')} for break/continue`,
     )
@@ -76,9 +79,11 @@ function makeEmitter() {
           : `RT.neg(${expr(e.operand)})`
       case 'binary':
         if (e.op === '&&')
-          return `RT.and(${expr(e.left)}, () => ${expr(e.right)})`
+          {return `RT.and(${expr(e.left)}, () => ${expr(e.right)})`}
+
         if (e.op === '||')
-          return `RT.or(${expr(e.left)}, () => ${expr(e.right)})`
+          {return `RT.or(${expr(e.left)}, () => ${expr(e.right)})`}
+
         return `RT.${BINOP[e.op]}(${expr(e.left)}, ${expr(e.right)})`
       case 'call':
         return `${expr(e.callee)}(${e.args.map(expr).join(', ')})`
@@ -101,25 +106,33 @@ function makeEmitter() {
     const rhs = expr(value)
     const compound = (current: string): string =>
       op === '=' ? rhs : `RT.${BINOP[op[0]!]}(${current}, ${rhs})`
-    if (t.form === 'variable') return `${t.name} = ${compound(t.name)};`
+
+    if (t.form === 'variable') {return `${t.name} = ${compound(t.name)};`}
+
     if (t.form === 'index') {
       if (t.target.form !== 'variable')
-        throw new Error('index assignment target must be a variable')
+        {throw new Error('index assignment target must be a variable')}
+
       const c = t.target.name,
         i = expr(t.index)
+
       return `${c} = RT.setIndex(${c}, ${i}, ${compound(
         `RT.index(${c}, ${i})`,
       )});`
     }
+
     if (t.form === 'member') {
       if (t.target.form !== 'variable')
-        throw new Error('member assignment target must be a variable')
+        {throw new Error('member assignment target must be a variable')}
+
       const c = t.target.name,
         n = JSON.stringify(t.name)
+
       return `${c} = RT.setMember(${c}, ${n}, ${compound(
         `RT.member(${c}, ${n})`,
       )});`
     }
+
     throw new Error('invalid assignment target')
   }
 
@@ -148,6 +161,7 @@ function makeEmitter() {
         return `break ${nearest(['loop', 'switch'])};`
       case 'continue':
         return `continue ${nearest(['loop'])};`
+
       case 'if': {
         const head = s.branches
           .map(
@@ -157,64 +171,88 @@ function makeEmitter() {
               )})) ${block(b.body)}`,
           )
           .join('')
+
         return s.otherwise ? `${head} else ${block(s.otherwise)}` : head
       }
+
       case 'while': {
         const lbl = label('loop')
         stack.push({ kind: 'loop', label: lbl })
+
         const out = `${lbl}: while (RT.truthy(${expr(s.cond)})) ${block(
           s.body,
         )}`
+
         stack.pop()
+
         return out
       }
+
       case 'switch': {
         const lbl = label('switch')
         stack.push({ kind: 'switch', label: lbl })
+
         const subj = `_s${counter}`,
           matched = `_m${counter}`
+
         counter++
+
         let out = `${lbl}: { const ${subj} = ${expr(
           s.subject,
         )}; let ${matched} = false; `
+
         for (const c of s.cases)
-          out += `if (${matched} || RT.truthy(RT.eq(${subj}, ${expr(
+          {out += `if (${matched} || RT.truthy(RT.eq(${subj}, ${expr(
             c.match,
-          )}))) { ${matched} = true; ${c.body.map(stmt).join(' ')} } `
+          )}))) { ${matched} = true; ${c.body.map(stmt).join(' ')} } `}
+
         if (s.otherwise)
-          out += `if (!${matched}) { ${s.otherwise
+          {out += `if (!${matched}) { ${s.otherwise
             .map(stmt)
-            .join(' ')} } `
+            .join(' ')} } `}
+
         out += '}'
         stack.pop()
+
         return out
       }
+
       case 'throw':
         return `throw RT.toError(${expr(s.value)});`
+
       case 'try': {
         let out = `try ${block(s.body)}`
+
         if (s.catchBody) {
           // the JS catch param is internal; the optional user-named binding recovers the original thrown Value
           const raw = `_err${counter++}`
           const bind = s.catchName
             ? `const ${s.catchName} = RT.fromError(${raw}); `
             : ''
+
           out += ` catch (${raw}) { ${bind}${s.catchBody
             .map(stmt)
             .join(' ')} }`
         }
-        if (s.finallyBody) out += ` finally ${block(s.finallyBody)}`
+
+        if (s.finallyBody) {out += ` finally ${block(s.finallyBody)}`}
+
         return out
       }
+
       case 'for': {
         const lbl = label('loop')
         stack.push({ kind: 'loop', label: lbl })
+
         const out = `${lbl}: for (const ${s.name} of RT.iterate(${expr(
           s.iterable,
         )})) ${block(s.body)}`
+
         stack.pop()
+
         return out
       }
+
       default:
         return exhausted(s)
     }
@@ -231,6 +269,7 @@ export function compileToTypeScript(program: Program): string {
     PREAMBLE,
     ...program.map(e.stmt),
   ]
+
   return lines.join('\n')
 }
 
@@ -241,6 +280,7 @@ export async function runCompiled(program: Program): Promise<Value> {
     .filter(s => s.form === 'function')
     .map(e.stmt)
     .join('\n')
+
   const top = program.filter(s => s.form !== 'function')
   const body = top
     .map((s, i) =>
@@ -249,10 +289,12 @@ export async function runCompiled(program: Program): Promise<Value> {
         : e.stmt(s),
     )
     .join('\n')
+
   const fn = new Function(
     'RT',
     `return (async () => { ${PREAMBLE} ${decls} ${body} return RT.UNIT_V; })()`,
   )
+
   return fn(RT) as Promise<Value>
 }
 
@@ -267,10 +309,12 @@ export async function runCompiledFunction(
     .filter(s => s.form === 'function')
     .map(e.stmt)
     .join('\n')
+
   const fn = new Function(
     'RT',
     '__ARGS__',
     `return (async () => { ${PREAMBLE} ${decls} return ${name}(...__ARGS__); })()`,
   )
+
   return fn(RT, args) as Promise<Value>
 }

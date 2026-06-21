@@ -3,10 +3,7 @@
 // (framing); this file only owns the real streams.
 
 import { LanguageServer } from '@cluesurf/flow/code/server'
-import {
-  MessageReader,
-  encode,
-} from '@cluesurf/flow/code/protocol'
+import { MessageReader, encode } from '@cluesurf/flow/code/protocol'
 
 function main(): void {
   const server = new LanguageServer()
@@ -15,9 +12,13 @@ function main(): void {
   process.stdin.on('data', (chunk: string) => {
     void (async () => {
       for (const message of reader.append(chunk)) {
-        for (const outgoing of await server.dispatch(message))
+        for (const outgoing of await server.dispatch(message)) {
           process.stdout.write(encode(outgoing))
-        if (message.method === 'exit') process.exit(0)
+        }
+
+        if (message.method === 'exit') {
+          process.exit(0)
+        }
       }
     })()
   })

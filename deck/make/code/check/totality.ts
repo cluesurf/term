@@ -21,21 +21,22 @@ import type {
 } from '@cluesurf/make/code/compile/node'
 
 export type TotalityReport = {
-  errors: Array<Diagnostic>
-  warnings: Array<Diagnostic>
+  errors: Diagnostic[]
+  warnings: Diagnostic[]
 }
 
 export function checkTotality(
   program: Program,
   file: string,
 ): TotalityReport {
-  const errors: Array<Diagnostic> = []
-  const warnings: Array<Diagnostic> = []
+  const errors: Diagnostic[] = []
+  const warnings: Diagnostic[] = []
 
   for (const statement of program) {
     if (statement.form === 'record-type')
-      checkPositivity(statement, file, errors)
+      {checkPositivity(statement, file, errors)}
   }
+
   checkTermination(program, file, warnings)
 
   return { errors, warnings }
@@ -69,13 +70,14 @@ function negativeOccurrence(
 function checkPositivity(
   statement: Extract<Statement, { form: 'record-type' }>,
   file: string,
-  errors: Array<Diagnostic>,
+  errors: Diagnostic[],
 ): void {
   const name = statement.name
   const fields = [
     ...statement.fields,
     ...statement.variants.flatMap(variant => variant.fields),
   ]
+
   for (const field of fields) {
     if (negativeOccurrence(name, field.type, true)) {
       errors.push(
@@ -98,9 +100,10 @@ function strictlyDecreases(
   paramName: string,
 ): boolean {
   if (arg.form === 'member')
-    return (
+    {return (
       arg.target.form === 'variable' && arg.target.name === paramName
-    )
+    )}
+
   if (
     arg.form === 'binary' &&
     arg.left.form === 'variable' &&
@@ -111,15 +114,18 @@ function strictlyDecreases(
       arg.right.form === 'integer' &&
       Number(arg.right.value) > 0
     )
-      return true
+      {return true}
+
     if (
       arg.op === '/' &&
       arg.right.form === 'integer' &&
       Number(arg.right.value) > 1
     )
-      return true
-    if (arg.op === '%') return true
+      {return true}
+
+    if (arg.op === '%') {return true}
   }
+
   return false
 }
 
@@ -131,53 +137,70 @@ function terminationVerdict(program: Program): Map<string, boolean> {
     string,
     Extract<Statement, { form: 'function' }>
   >()
+
   for (const statement of program)
-    if (statement.form === 'function')
-      functions.set(statement.name, statement)
+    {if (statement.form === 'function')
+      {functions.set(statement.name, statement)}}
+
   const names = new Set(functions.keys())
 
   const edges = new Map<string, Set<string>>()
+
   for (const [name, statement] of functions)
-    edges.set(name, collectCalledNames(statement.body, names))
+    {edges.set(name, collectCalledNames(statement.body, names))}
 
   const reaches = (from: string): Set<string> => {
     const seen = new Set<string>()
     const stack = [...(edges.get(from) ?? [])]
+
     while (stack.length > 0) {
       const next = stack.pop()!
-      if (seen.has(next)) continue
+
+      if (seen.has(next)) {continue}
+
       seen.add(next)
-      for (const further of edges.get(next) ?? []) stack.push(further)
+
+      for (const further of edges.get(next) ?? []) {stack.push(further)}
     }
+
     return seen
   }
 
   const verdict = new Map<string, boolean>()
+
   for (const [name, statement] of functions) {
     if (!reaches(name).has(name)) {
       verdict.set(name, true) // not recursive: trivially terminating
       continue
     }
+
     const paramNames = statement.params.map(p => p.name)
-    const calls: Array<Array<Expression>> = []
+    const calls: Expression[][] = []
     collectSelfCalls(statement.body, name, calls)
+
     let positions = new Set<number>(paramNames.map((_, i) => i))
+
     for (const args of calls) {
       const decreasing = new Set<number>()
+
       for (let i = 0; i < paramNames.length && i < args.length; i++) {
         if (strictlyDecreases(args[i]!, paramNames[i]!))
-          decreasing.add(i)
+          {decreasing.add(i)}
       }
+
       positions = new Set([...positions].filter(i => decreasing.has(i)))
     }
+
     verdict.set(name, calls.length > 0 && positions.size > 0) // direct, decreasing recursion is verified
   }
+
   return verdict
 }
 
 // the set of functions whose termination is verified (used to gate transparent definitions in the elaborator)
 export function terminatingFunctions(program: Program): Set<string> {
   const verdict = terminationVerdict(program)
+
   return new Set(
     [...verdict].filter(([, ok]) => ok).map(([name]) => name),
   )
@@ -186,25 +209,30 @@ export function terminatingFunctions(program: Program): Set<string> {
 function checkTermination(
   program: Program,
   file: string,
-  warnings: Array<Diagnostic>,
+  warnings: Diagnostic[],
 ): void {
   const verdict = terminationVerdict(program)
   const byName = new Map<
     string,
     Extract<Statement, { form: 'function' }>
   >()
+
   for (const statement of program)
-    if (statement.form === 'function')
-      byName.set(statement.name, statement)
+    {if (statement.form === 'function')
+      {byName.set(statement.name, statement)}}
+
   for (const [name, ok] of verdict) {
-    if (ok) continue
+    if (ok) {continue}
+
     const statement = byName.get(name)!
-    const calls: Array<Array<Expression>> = []
+    const calls: Expression[][] = []
     collectSelfCalls(statement.body, name, calls)
+
     const reason =
       calls.length === 0
         ? `"${name}" is part of a mutual-recursion cycle whose termination is not verified`
         : `"${name}" calls itself without an argument that provably decreases`
+
     warnings.push(
       diagnose('non-terminating', {
         file,
@@ -217,30 +245,31 @@ function checkTermination(
 
 // collect the names of all functions called within the body (restricted to the given set), for the call graph
 function collectCalledNames(
-  body: Array<Statement>,
+  body: Statement[],
   names: Set<string>,
 ): Set<string> {
   const found = new Set<string>()
   collectAllCalls(body, callee => {
-    if (names.has(callee)) found.add(callee)
+    if (names.has(callee)) {found.add(callee)}
   })
+
   return found
 }
 
 // the argument lists of every call to `name` within the body (direct self-recursion)
 function collectSelfCalls(
-  body: Array<Statement>,
+  body: Statement[],
   name: string,
-  out: Array<Array<Expression>>,
+  out: Expression[][],
 ): void {
   walkCalls(body, (callee, args) => {
-    if (callee === name) out.push(args)
+    if (callee === name) {out.push(args)}
   })
 }
 
 // every called function name within the body, passed to `onCall`, for building the call graph
 function collectAllCalls(
-  body: Array<Statement>,
+  body: Statement[],
   onCall: (callee: string) => void,
 ): void {
   walkCalls(body, callee => onCall(callee))
@@ -248,14 +277,15 @@ function collectAllCalls(
 
 // walk a statement body, invoking `visit` for every call expression with a variable callee
 function walkCalls(
-  body: Array<Statement>,
-  visit: (callee: string, args: Array<Expression>) => void,
+  body: Statement[],
+  visit: (callee: string, args: Expression[]) => void,
 ): void {
   const visitExpression = (node: Expression): void => {
     switch (node.form) {
       case 'call':
         if (node.callee.form === 'variable')
-          visit(node.callee.name, node.args)
+          {visit(node.callee.name, node.args)}
+
         visitExpression(node.callee)
         node.args.forEach(visitExpression)
         break
@@ -289,12 +319,15 @@ function walkCalls(
           visitExpression(branch.cond)
           visitExpression(branch.value)
         })
-        if (node.otherwise) visitExpression(node.otherwise)
+
+        if (node.otherwise) {visitExpression(node.otherwise)}
+
         break
       default:
         break
     }
   }
+
   const visitStatement = (node: Statement): void => {
     switch (node.form) {
       case 'let':
@@ -308,7 +341,8 @@ function walkCalls(
         visitExpression(node.expr)
         break
       case 'return':
-        if (node.value) visitExpression(node.value)
+        if (node.value) {visitExpression(node.value)}
+
         break
       case 'throw':
         visitExpression(node.value)
@@ -329,16 +363,22 @@ function walkCalls(
           visitExpression(branch.cond)
           walkCalls(branch.body, visit)
         }
-        if (node.otherwise) walkCalls(node.otherwise, visit)
+
+        if (node.otherwise) {walkCalls(node.otherwise, visit)}
+
         break
       case 'match':
         visitExpression(node.subject)
-        for (const branch of node.cases) walkCalls(branch.body, visit)
-        if (node.otherwise) walkCalls(node.otherwise, visit)
+
+        for (const branch of node.cases) {walkCalls(branch.body, visit)}
+
+        if (node.otherwise) {walkCalls(node.otherwise, visit)}
+
         break
       default:
         break
     }
   }
+
   body.forEach(visitStatement)
 }

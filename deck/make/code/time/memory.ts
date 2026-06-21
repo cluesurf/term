@@ -40,22 +40,27 @@ export async function runMemoryProfile(input: {
     text: input.text,
     file: input.file,
   })
+
   const dir = await prepareModuleDir({
     root: input.root,
     code,
     tag: 'memory',
   })
+
   try {
     await fs.writeFile(path.join(dir, 'harness.mjs'), HARNESS)
+
     const stdout = await runNode({
       file: path.join(dir, 'harness.mjs'),
       cwd: dir,
       gc: true,
     })
+
     const usage: {
       before: { heapUsed: number }
       after: { heapUsed: number; rss: number }
     } = JSON.parse(stdout)
+
     return {
       name: input.name,
       heap_used_before_bytes: usage.before.heapUsed,
@@ -71,10 +76,14 @@ export async function runMemoryProfile(input: {
 export function formatBytes(n: number): string {
   const sign = n < 0 ? '-' : ''
   const abs = Math.abs(n)
-  if (abs < 1024) return `${sign}${abs}B`
-  if (abs < 1024 * 1024) return `${sign}${(abs / 1024).toFixed(1)}KB`
+
+  if (abs < 1024) {return `${sign}${abs}B`}
+
+  if (abs < 1024 * 1024) {return `${sign}${(abs / 1024).toFixed(1)}KB`}
+
   if (abs < 1024 * 1024 * 1024)
-    return `${sign}${(abs / 1024 / 1024).toFixed(2)}MB`
+    {return `${sign}${(abs / 1024 / 1024).toFixed(2)}MB`}
+
   return `${sign}${(abs / 1024 / 1024 / 1024).toFixed(2)}GB`
 }
 

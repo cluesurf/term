@@ -32,7 +32,8 @@ export const noEmptyBlock: Rule = {
   docs: 'a branch, loop, or task with no body is probably unfinished',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     if (emptyBlocks(target.node)) {
       context.report({
         message: 'this block has no body',

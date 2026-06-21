@@ -17,6 +17,7 @@ const byteLength = (text: string): number =>
 // frame a message for the wire
 export function encode(message: Message): string {
   const body = JSON.stringify(message)
+
   return `Content-Length: ${byteLength(body)}\r\n\r\n${body}`
 }
 
@@ -25,30 +26,44 @@ export function encode(message: Message): string {
 export class MessageReader {
   private buffer = ''
 
-  append(chunk: string): Array<Message> {
+  append(chunk: string): Message[] {
     this.buffer += chunk
-    const out: Array<Message> = []
+
+    const out: Message[] = []
+
     for (;;) {
       const headerEnd = this.buffer.indexOf('\r\n\r\n')
-      if (headerEnd < 0) break
+
+      if (headerEnd < 0) {
+        break
+      }
+
       const header = this.buffer.slice(0, headerEnd)
       const match = /Content-Length:\s*(\d+)/i.exec(header)
+
       if (!match) {
         // malformed header: drop it and resync past the separator
         this.buffer = this.buffer.slice(headerEnd + 4)
         continue
       }
+
       const length = Number(match[1])
       const bodyStart = headerEnd + 4
-      if (this.buffer.length - bodyStart < length) break // body not fully arrived yet
+
+      if (this.buffer.length - bodyStart < length) {
+        break
+      } // body not fully arrived yet
+
       const body = this.buffer.slice(bodyStart, bodyStart + length)
       this.buffer = this.buffer.slice(bodyStart + length)
+
       try {
         out.push(JSON.parse(body) as Message)
       } catch {
         // ignore an unparseable body and keep reading
       }
     }
+
     return out
   }
 }

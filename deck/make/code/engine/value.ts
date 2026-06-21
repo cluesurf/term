@@ -49,12 +49,15 @@ export const UNIT: Value = { form: 'unit' }
 export function integer(value: number | bigint): Value {
   return { form: 'integer', value: Int.integer(value) }
 }
+
 export function float(value: number): Value {
   return { form: 'float', value: Flt.fromNumber(value) }
 }
+
 export function boolean(value: boolean): Value {
   return { form: 'boolean', value: value ? 1 : -1 }
 }
+
 export function string(text: string): Value {
   return { form: 'string', value: Str.fromString(text) }
 }
@@ -83,7 +86,8 @@ export function truthy(v: Value): boolean {
 
 // structural equality across the value forms
 export function valuesEqual(a: Value, b: Value): boolean {
-  if (a.form !== b.form) return false
+  if (a.form !== b.form) {return false}
+
   switch (a.form) {
     case 'unit':
       return true
@@ -95,14 +99,19 @@ export function valuesEqual(a: Value, b: Value): boolean {
       return Flt.compare(a.value, (b as typeof a).value) === 0
     case 'string':
       return Str.equals(a.value, (b as typeof a).value)
+
     case 'array': {
       const bv = (b as typeof a).value
-      if (Arr.size(a.value) !== Arr.size(bv)) return false
+
+      if (Arr.size(a.value) !== Arr.size(bv)) {return false}
+
       for (let i = 0; i < Arr.size(a.value); i++)
-        if (!valuesEqual(Arr.get(a.value, i), Arr.get(bv, i)))
-          return false
+        {if (!valuesEqual(Arr.get(a.value, i), Arr.get(bv, i)))
+          {return false}}
+
       return true
     }
+
     default:
       return a === b // map / function / native / task by identity
   }

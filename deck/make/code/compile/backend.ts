@@ -37,6 +37,7 @@ const MAP_METHODS = new Set([
   'keys',
   'values',
 ])
+
 const ARRAY_METHODS = new Set([
   'push',
   'pop',
@@ -68,9 +69,10 @@ export const ARRAY_OP_BOUND: Record<string, 'eq' | 'display'> = {
 export function collectionCall(
   callee: Expression,
 ): CollectionOp | undefined {
-  if (callee.form !== 'member') return undefined
+  if (callee.form !== 'member') {return undefined}
 
   const kind = callee.target.type?.kind
+
   if (kind === 'map' && MAP_METHODS.has(callee.name)) {
     return { target: callee.target, op: callee.name, kind: 'map' }
   }
@@ -86,9 +88,10 @@ export function collectionCall(
 export function collectionRead(
   node: Expression,
 ): CollectionOp | undefined {
-  if (node.form !== 'member') return undefined
+  if (node.form !== 'member') {return undefined}
 
   const kind = node.target.type?.kind
+
   if (kind === 'map' && node.name === 'size') {
     return { target: node.target, op: 'size', kind: 'map' }
   }

@@ -38,12 +38,14 @@ const INTRINSICS = [
 // See note/seed/plan/functional-checker.md (Tier 2, stage 1).
 export function buildGlobalScope(program: Program): Scope {
   const global: Scope = new Map()
+
   for (const statement of program) {
     if (statement.form === 'function') {
       global.set(statement.name, {
         kind: 'function',
         arity: statement.params.length,
       })
+
       // a form method is callable by its bare name (`call unwrap-or`); receiver dispatch picks the form later.
       // a real top-level function of the same name wins, so only register the bare name if it is still free.
       if (statement.method && !global.has(statement.method.name)) {
@@ -63,8 +65,10 @@ export function buildGlobalScope(program: Program): Scope {
       global.set(statement.alias, { kind: 'deferred' })
     }
   }
+
   for (const intrinsic of INTRINSICS)
-    global.set(intrinsic, { kind: 'builtin' })
+    {global.set(intrinsic, { kind: 'builtin' })}
+
   return global
 }
 
@@ -75,8 +79,8 @@ export function resolve(
   // incremental hooks (default = whole-program, unchanged): `scope` reuses a prebuilt global scope instead of building
   // one; `only` resolves just that one function. The per-definition path passes both. See functional-checker.md.
   options?: { scope?: Scope; only?: string },
-): Array<Diagnostic> {
-  const diagnostics: Array<Diagnostic> = []
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = []
 
   // the file currently being resolved. With a merged multi-module program, `file` is only the entry; `origin` maps
   // each top-level statement back to the module it came from, so an unknown-name error points at the real source.
@@ -85,20 +89,24 @@ export function resolve(
   // the global scope, prebuilt (incremental path) or built now from the whole program (whole-program path)
   const global = options?.scope ?? buildGlobalScope(program)
 
-  const stack: Array<Scope> = [global]
+  const stack: Scope[] = [global]
 
   const look = (name: string): Binding | undefined => {
     for (let i = stack.length - 1; i >= 0; i--) {
       const found = stack[i]!.get(name)
-      if (found) return found
+
+      if (found) {return found}
     }
+
     return undefined
   }
 
-  const known = (): Array<string> => {
+  const known = (): string[] => {
     const names = new Set<string>()
+
     for (const scope of stack)
-      for (const name of scope.keys()) names.add(name)
+      {for (const name of scope.keys()) {names.add(name)}}
+
     return [...names]
   }
 
@@ -110,6 +118,7 @@ export function resolve(
     switch (node.form) {
       case 'variable': {
         const binding = look(node.name)
+
         if (binding) {
           node.binding = binding
         } else {
@@ -125,8 +134,10 @@ export function resolve(
             }),
           )
         }
+
         break
       }
+
       case 'binary':
         resolveExpression(node.left)
         resolveExpression(node.right)
@@ -136,19 +147,24 @@ export function resolve(
         break
       case 'call':
         resolveExpression(node.callee)
-        for (const arg of node.args) resolveExpression(arg)
+
+        for (const arg of node.args) {resolveExpression(arg)}
+
         break
       case 'array':
-        for (const item of node.items) resolveExpression(item)
+        for (const item of node.items) {resolveExpression(item)}
+
         break
       case 'map':
         for (const entry of node.entries) {
           resolveExpression(entry.key)
           resolveExpression(entry.value)
         }
+
         break
       case 'record':
-        for (const field of node.fields) resolveExpression(field.value)
+        for (const field of node.fields) {resolveExpression(field.value)}
+
         break
       case 'member':
         resolveExpression(node.target)
@@ -156,31 +172,40 @@ export function resolve(
       case 'await':
         resolveExpression(node.expr)
         break
+
       case 'closure': {
         // a function literal (a callback, e.g. an effect's `run`): resolve its body with its params in scope, so names
         // used only inside the closure still get their binding (needed for unknown-name checks and import collection)
         stack.push(new Map())
+
         for (const param of node.params)
-          declare(param.name, { kind: 'parameter' })
-        for (const statement of node.body) resolveStatement(statement)
+          {declare(param.name, { kind: 'parameter' })}
+
+        for (const statement of node.body) {resolveStatement(statement)}
+
         stack.pop()
         break
       }
+
       case 'conditional':
         for (const branch of node.branches) {
           resolveExpression(branch.cond)
           resolveExpression(branch.value)
         }
-        if (node.otherwise) resolveExpression(node.otherwise)
+
+        if (node.otherwise) {resolveExpression(node.otherwise)}
+
         break
       default:
         break
     }
   }
 
-  function resolveBody(body: Array<Statement>): void {
+  function resolveBody(body: Statement[]): void {
     stack.push(new Map())
-    for (const statement of body) resolveStatement(statement)
+
+    for (const statement of body) {resolveStatement(statement)}
+
     stack.pop()
   }
 
@@ -198,7 +223,8 @@ export function resolve(
         resolveExpression(node.expr)
         break
       case 'return':
-        if (node.value) resolveExpression(node.value)
+        if (node.value) {resolveExpression(node.value)}
+
         break
       case 'while':
         resolveExpression(node.cond)
@@ -209,19 +235,26 @@ export function resolve(
           resolveExpression(branch.cond)
           resolveBody(branch.body)
         }
-        if (node.otherwise) resolveBody(node.otherwise)
+
+        if (node.otherwise) {resolveBody(node.otherwise)}
+
         break
       case 'for-each':
         resolveExpression(node.iterable)
         stack.push(new Map())
         declare(node.item, { kind: 'local' })
-        for (const statement of node.body) resolveStatement(statement)
+
+        for (const statement of node.body) {resolveStatement(statement)}
+
         stack.pop()
         break
       case 'match':
         resolveExpression(node.subject)
-        for (const branch of node.cases) resolveBody(branch.body)
-        if (node.otherwise) resolveBody(node.otherwise)
+
+        for (const branch of node.cases) {resolveBody(branch.body)}
+
+        if (node.otherwise) {resolveBody(node.otherwise)}
+
         break
       case 'hold':
         resolveExpression(node.expr)
@@ -235,22 +268,30 @@ export function resolve(
       case 'mask':
       case 'instance':
         break
+
       case 'function': {
         stack.push(new Map())
+
         for (const param of node.params)
-          declare(param.name, { kind: 'parameter' })
-        for (const statement of node.body) resolveStatement(statement)
+          {declare(param.name, { kind: 'parameter' })}
+
+        for (const statement of node.body) {resolveStatement(statement)}
+
         stack.pop()
         break
       }
+
       // a zone (view component): resolve names in its body the same as a function (params in scope, `save` declares).
       // Element refs (`zone input / name x`) are pre-declared so an event handler can read a ref defined anywhere.
       case 'zone': {
         stack.push(new Map())
+
         for (const param of node.params)
-          declare(param.name, { kind: 'parameter' })
+          {declare(param.name, { kind: 'parameter' })}
+
         for (const ref of collectZoneRefs(node.body))
-          declare(ref, { kind: 'local' })
+          {declare(ref, { kind: 'local' })}
+
         resolveZoneNodes(node.body)
         stack.pop()
         break
@@ -259,32 +300,39 @@ export function resolve(
   }
 
   // every element ref (`name x`) anywhere in a zone's view tree, so they can be declared up front
-  function collectZoneRefs(nodes: Array<ZoneNode>): Array<string> {
-    const refs: Array<string> = []
-    const walk = (list: Array<ZoneNode>): void => {
+  function collectZoneRefs(nodes: ZoneNode[]): string[] {
+    const refs: string[] = []
+
+    const walk = (list: ZoneNode[]): void => {
       for (const node of list) {
         if (node.form === 'element') {
-          if (node.ref) refs.push(node.ref)
+          if (node.ref) {refs.push(node.ref)}
+
           walk(node.children)
         } else if (node.form === 'fork') {
-          for (const branch of node.branches) walk(branch.body)
-          if (node.otherwise) walk(node.otherwise)
-        } else if (node.form === 'walk') walk(node.body)
+          for (const branch of node.branches) {walk(branch.body)}
+
+          if (node.otherwise) {walk(node.otherwise)}
+        } else if (node.form === 'walk') {walk(node.body)}
       }
     }
+
     walk(nodes)
+
     return refs
   }
 
   // resolve names inside a zone's view tree: attribute / event / read expressions, `save` (which declares a local),
   // and the recursive children / branches / list bodies
-  function resolveZoneNodes(nodes: Array<ZoneNode>): void {
+  function resolveZoneNodes(nodes: ZoneNode[]): void {
     for (const node of nodes) {
       switch (node.form) {
         case 'element':
           for (const attribute of node.attributes)
-            resolveExpression(attribute.value)
-          for (const prop of node.props) resolveExpression(prop.value)
+            {resolveExpression(attribute.value)}
+
+          for (const prop of node.props) {resolveExpression(prop.value)}
+
           resolveZoneNodes(node.children)
           break
         case 'read':
@@ -301,11 +349,13 @@ export function resolve(
             resolveZoneNodes(branch.body)
             stack.pop()
           }
+
           if (node.otherwise) {
             stack.push(new Map())
             resolveZoneNodes(node.otherwise)
             stack.pop()
           }
+
           break
         case 'walk':
           resolveExpression(node.iterable)
@@ -323,6 +373,7 @@ export function resolve(
 
   for (const statement of program) {
     currentFile = origin?.get(statement) ?? file
+
     // incremental: resolve only the requested function's body (the global scope already has every name)
     if (
       options?.only !== undefined &&
@@ -330,7 +381,8 @@ export function resolve(
         statement.form === 'function' && statement.name === options.only
       )
     )
-      continue
+      {continue}
+
     resolveStatement(statement)
   }
 

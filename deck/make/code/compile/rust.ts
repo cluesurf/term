@@ -31,9 +31,11 @@ import type { CollectionOp } from '@cluesurf/make/code/compile/backend'
 function vname(name: string): string {
   return name === 'self' ? 'slf' : name.replace(/-/g, '_')
 }
+
 function snake(name: string): string {
   return name.replace(/-/g, '_')
 }
+
 function pascal(name: string): string {
   // strip every hyphen, including one before a digit (`sha-256` -> `Sha256`), so the result is a valid identifier
   return name.replace(/(^|-)([a-z0-9])/g, (_, _d, c: string) =>
@@ -140,23 +142,27 @@ export function emitRust(program: Program): string {
   const variantOwner = new Map<string, string>()
   // a variant's field names, for binding them in a `match` arm (`Maybe::Some { value } => ...`) so the branch body can
   // read them; a `subject/field` read inside the branch then resolves to that bound local.
-  const variantFields = new Map<string, Array<string>>()
+  const variantFields = new Map<string, string[]>()
   // struct / variant fields that hold a closure (a `Box<dyn Fn>`): calling one needs parentheses (`(r.handle)(x)`),
   // since rust would otherwise read `r.handle(x)` as a method call on a field named `handle`.
   const closureFields = new Set<string>()
+
   for (const node of program) {
-    if (node.form !== 'record-type') continue
+    if (node.form !== 'record-type') {continue}
+
     for (const v of node.variants) {
       variantOwner.set(v.name, node.name)
       variantFields.set(
         v.name,
         v.fields.map(f => f.name),
       )
+
       for (const f of v.fields)
-        if (f.type.kind === 'function') closureFields.add(f.name)
+        {if (f.type.kind === 'function') {closureFields.add(f.name)}}
     }
+
     for (const f of node.fields)
-      if (f.type.kind === 'function') closureFields.add(f.name)
+      {if (f.type.kind === 'function') {closureFields.add(f.name)}}
   }
 
   // traits (masks) emit as native Rust traits, instances as `impl` blocks, and a trait-bounded generic gains a trait
@@ -164,84 +170,104 @@ export function emitRust(program: Program): string {
   // from the instance implementations (each desugared to a `<target>_<method>` free function tagged with `method`),
   // with the receiver type replaced by `Self`. See note/seed/compiler/trait-dictionary-passing.md.
   const maskMethods = new Set<string>()
+
   for (const node of program)
-    if (node.form === 'mask')
-      for (const m of node.methods) maskMethods.add(m)
+    {if (node.form === 'mask')
+      {for (const m of node.methods) {maskMethods.add(m)}}}
+
   // a trait's implementing targets, in program order, so a trait body can borrow one target's signatures
-  const instanceTargets = new Map<string, Array<string>>()
+  const instanceTargets = new Map<string, string[]>()
+
   for (const node of program)
-    if (node.form === 'instance') {
+    {if (node.form === 'instance') {
       const list = instanceTargets.get(node.mask) ?? []
       list.push(node.target)
       instanceTargets.set(node.mask, list)
-    }
+    }}
+
   // the free function implementing a given form's method (`box` + `measure` -> the `box_measure` function node)
   type Fn = Extract<Statement, { form: 'function' }>
   const implFn = new Map<string, Fn>()
+
   for (const node of program)
-    if (node.form === 'function' && node.method)
-      implFn.set(`${node.method.form}:${node.method.name}`, node)
+    {if (node.form === 'function' && node.method)
+      {implFn.set(`${node.method.form}:${node.method.name}`, node)}}
+
   // a named type rendered inside a trait declaration: the receiver type becomes `Self`
   const subSelf = (
     t: Type | undefined,
     target: string,
   ): Type | undefined => {
-    if (!t) return t
+    if (!t) {return t}
+
     if (t.kind === 'named')
-      return t.name === target
+      {return t.name === target
         ? { kind: 'named', name: 'Self' }
         : t.args
           ? { ...t, args: t.args.map(a => subSelf(a, target)!) }
-          : t
+          : t}
+
     if (t.kind === 'array')
-      return { kind: 'array', element: subSelf(t.element, target)! }
+      {return { kind: 'array', element: subSelf(t.element, target)! }}
+
     if (t.kind === 'map')
-      return {
+      {return {
         kind: 'map',
         key: subSelf(t.key, target)!,
         value: subSelf(t.value, target)!,
-      }
+      }}
+
     if (t.kind === 'function')
-      return {
+      {return {
         kind: 'function',
         params: t.params.map(p => subSelf(p, target)!),
         result: subSelf(t.result, target)!,
         effects: t.effects,
-      }
+      }}
+
     return t
   }
+
   // a trait method declaration (no body): `fn measure(self) -> i64;`, derived from an implementation's signature with
   // the receiver as `self` and the receiver type as `Self`
   const traitMethodDecl = (
     fn: Fn | undefined,
     target: string,
   ): string => {
-    if (!fn) return ''
+    if (!fn) {return ''}
+
     const rest = fn.params
       .slice(1)
       .map(
         p => `${snake(p.name)}: ${rustType(subSelf(p.type, target))}`,
       )
+
     const ret = fn.result
       ? ` -> ${rustType(subSelf(fn.result, target))}`
       : ''
+
     return `fn ${snake(fn.method!.name)}(${['self', ...rest].join(
       ', ',
     )})${ret};`
   }
+
   // an `impl` method that delegates to the free implementation function: `fn measure(self) -> i64 { box_measure(self) }`
   const implMethod = (fn: Fn | undefined, target: string): string => {
-    if (!fn) return ''
+    if (!fn) {return ''}
+
     const restNames = fn.params.slice(1).map(p => snake(p.name))
     const rest = fn.params
       .slice(1)
       .map(
         p => `${snake(p.name)}: ${rustType(subSelf(p.type, target))}`,
       )
+
     const ret = fn.result
       ? ` -> ${rustType(subSelf(fn.result, target))}`
       : ''
+
     const callArgs = ['self', ...restNames].join(', ')
+
     return `fn ${snake(fn.method!.name)}(${['self', ...rest].join(
       ', ',
     )})${ret} { return ${snake(fn.name)}(${callArgs}); }`
@@ -249,47 +275,64 @@ export function emitRust(program: Program): string {
 
   // within a match arm, which subject variable is narrowed to which variant (so `subject/field` reads the bound local)
   const narrowing = new Map<string, string>()
+
   // true while emitting the body of a function whose return type is a list: a native dock call returned directly (the
   // shim hands back a plain `Vec`) is wrapped in the seed list's Rc<RefCell> handle to match the declared return type
   let fnReturnsArray = false
+
   const isNativeCall = (node: Expression): boolean => {
     if (node.form !== 'call' || node.callee.form !== 'member')
-      return false
+      {return false}
+
     const root = rootVariable(node.callee)
+
     return root !== undefined && aliases.has(root)
   }
+
   // for each form, which of its generic parameters (by index) flow into a map KEY position inside its fields. A `set<t>`
   // stores `items: hash<t, bool>`, so its index 0 is a key; a method generic that fills that slot needs `Eq + Hash`.
   const formKeyIndices = new Map<string, Set<number>>()
+
   for (const node of program) {
     if (node.form !== 'record-type' || node.params.length === 0)
-      continue
+      {continue}
+
     const keyParams = new Set<string>()
+
     const findKeys = (t: Type | undefined): void => {
-      if (!t) return
+      if (!t) {return}
+
       if (t.kind === 'map') {
-        if (t.key.kind === 'named') keyParams.add(t.key.name)
+        if (t.key.kind === 'named') {keyParams.add(t.key.name)}
+
         findKeys(t.key)
         findKeys(t.value)
-      } else if (t.kind === 'array') findKeys(t.element)
-      else if (t.kind === 'named') t.args?.forEach(findKeys)
+      } else if (t.kind === 'array') {findKeys(t.element)}
+      else if (t.kind === 'named') {t.args?.forEach(findKeys)}
     }
+
     const fields =
       node.variants.length > 0
         ? node.variants.flatMap(v => v.fields)
         : node.fields
+
     fields.forEach(f => findKeys(f.type))
+
     const indices = new Set<number>()
     node.params.forEach((p, i) => {
-      if (keyParams.has(p)) indices.add(i)
+      if (keyParams.has(p)) {indices.add(i)}
     })
-    if (indices.size > 0) formKeyIndices.set(node.name, indices)
+
+    if (indices.size > 0) {formKeyIndices.set(node.name, indices)}
   }
+
   // native dock aliases: `fs/read-to-string` is a module path (`fs::read_to_string`), but `r/body` (r a value) is a
   // field access (`r.body`). Only a member chain rooted at a dock alias uses `::`; everything else uses `.`.
   const aliases = new Set<string>()
+
   for (const node of program)
-    if (node.form === 'native') aliases.add(node.alias)
+    {if (node.form === 'native') {aliases.add(node.alias)}}
+
   // declarative native bindings render their `case rust` template at call sites
   const binds = collectBinds(program)
   const rootVariable = (node: Expression): string | undefined =>
@@ -324,6 +367,7 @@ export function emitRust(program: Program): string {
         return `${node.op}${expr(node.operand)}`
       case 'binary':
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
+
       case 'call': {
         // a declarative native binding renders its `case rust` template, with `$param` placeholders filled by the
         // emitted (un-cloned) arguments: the template author writes the exact native call shape
@@ -332,13 +376,16 @@ export function emitRust(program: Program): string {
           binds.has(node.callee.name)
         ) {
           const bind = binds.get(node.callee.name)!
+
           return (
             renderBind(bind, 'rust', node.args.map(expr)) ??
             bindGap(bind.name)
           )
         }
+
         // a native map / list operation lowers to rust's collection API through the Rc<RefCell> handle
         const operation = collectionCall(node.callee)
+
         if (operation) {
           return collectionExpr(operation, node.args)
         }
@@ -354,7 +401,9 @@ export function emitRust(program: Program): string {
             ? `${expr(a)}.clone()`
             : expr(a),
         )
+
         const args = argList.join(', ')
+
         // a generic trait-method call (`call measure / read x`, x a trait-bounded generic) lowers to a Rust method call
         // through the trait bound: `(x).measure(..)`. The receiver is the first argument; concrete trait calls were
         // already resolved to the free implementation function by the checker, so a bare trait-method name here is the
@@ -368,40 +417,50 @@ export function emitRust(program: Program): string {
             .slice(1)
             .join(', ')})`
         }
+
         // a slashed callee (`fs/read-to-string`) is a module path: emit Rust `::` segments. A field holding a closure
         // is invoked with parens (`(r.handle)(x)`), distinguishing it from a method call.
         if (node.callee.form === 'member') {
           const callee = memberPath(node.callee)
+
           return closureFields.has(node.callee.name)
             ? `(${callee})(${args})`
             : `${callee}(${args})`
         }
+
         return `${expr(node.callee)}(${args})`
       }
+
       case 'array':
         return `std::rc::Rc::new(std::cell::RefCell::new(vec![${node.items
           .map(expr)
           .join(', ')}]))`
+
       case 'record': {
         const owner = variantOwner.get(node.name)
+
         if (owner) {
           const fields = node.fields.map(
             f => `${snake(f.name)}: ${expr(f.value)}`,
           )
+
           return fields.length > 0
             ? `${pascal(owner)}::${pascal(node.name)} { ${fields.join(
                 ', ',
               )} }`
             : `${pascal(owner)}::${pascal(node.name)}`
         }
+
         return `${pascal(node.name)} { ${node.fields
           .map(f => `${snake(f.name)}: ${expr(f.value)}`)
           .join(', ')} }`
       }
+
       case 'member': {
         // `map.size` / `array.length` read the length (a map goes through its Rc<RefCell> handle; an array is a plain
         // Vec). Rendered as i64, the seed number type.
         const read = collectionRead(node)
+
         if (read) {
           // both a map and an array read their length through the Rc<RefCell> handle
           return `(${expr(read.target)}.borrow().len() as i64)`
@@ -409,6 +468,7 @@ export function emitRust(program: Program): string {
 
         return memberPath(node)
       }
+
       case 'await':
         return `${expr(node.expr)}.await`
       case 'map':
@@ -419,29 +479,36 @@ export function emitRust(program: Program): string {
                 .map(e => `(${expr(e.key)}, ${expr(e.value)})`)
                 .join(', ')}])`
         }))`
+
       case 'closure': {
         // a `move` closure boxed as `Box<dyn Fn>` (owns its captures, so it is `'static` and storable). Reassigned
         // parameters get the same `let mut` shadow functions use, since closure parameters are immutable too.
         const params = node.params.map(p => vname(p.name)).join(', ')
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
+
         const shadows = node.params
           .filter(p => mutated.has(p.name))
           .map(p => `let mut ${vname(p.name)} = ${vname(p.name)};`)
+
         const body = [...shadows, ...node.body.map(s => stmt(s, 0))]
           .filter(Boolean)
           .join(' ')
+
         return `Box::new(move |${params}| { ${body} })`
       }
+
       case 'conditional': {
         // a value-position conditional lowers to an if / else-if / else expression chain
         const tail = node.otherwise ? expr(node.otherwise) : '()'
+
         return node.branches.reduceRight(
           (rest, branch) =>
             `if ${expr(branch.cond)} { ${expr(branch.value)} } else { ${rest} }`,
           tail,
         )
       }
+
       default:
         return exhausted(node)
     }
@@ -452,12 +519,14 @@ export function emitRust(program: Program): string {
   // / `push` yield a boolean / the new length, `keys` / `values` / list-returning ops materialize a new handle, i64 sizes.
   const wrapList = (vec: string): string =>
     `std::rc::Rc::new(std::cell::RefCell::new(${vec}))`
+
   const collectionExpr = (
     op: CollectionOp,
-    args: Array<Expression>,
+    args: Expression[],
   ): string => {
     const target = expr(op.target)
     const arg = args.map(expr)
+
     if (op.kind === 'map') {
       switch (op.op) {
         case 'has':
@@ -484,6 +553,7 @@ export function emitRust(program: Program): string {
     // arrays go through the Rc<RefCell<Vec>> handle. The closure ops take a `Box<dyn Fn>` and clone each element into
     // it; an op returning a list materializes a new handle (`wrapList`); the in-place ops use `borrow_mut`.
     const data = `${target}.borrow()`
+
     switch (op.op) {
       case 'push':
         return `{ ${target}.borrow_mut().push(${arg[0]}); ${data}.len() as i64 }`
@@ -542,6 +612,7 @@ export function emitRust(program: Program): string {
       // a `subject/field` read inside a match arm that narrowed `subject` to a variant resolves to the bound local
       if (node.target.form === 'variable') {
         const variant = narrowing.get(node.target.name)
+
         if (
           variant &&
           variantFields.get(variant)?.includes(node.name)
@@ -552,12 +623,14 @@ export function emitRust(program: Program): string {
 
       const root = rootVariable(node)
       const separator = root && aliases.has(root) ? '::' : '.'
+
       return `${memberPath(node.target)}${separator}${snake(node.name)}`
     }
+
     return expr(node)
   }
 
-  const block = (body: Array<Statement>, d: number): string =>
+  const block = (body: Statement[], d: number): string =>
     body
       .map(s => `${pad(d)}${stmt(s, d)}`)
       .filter(Boolean)
@@ -574,7 +647,8 @@ export function emitRust(program: Program): string {
       case 'expression':
         return `${expr(node.expr)};`
       case 'return':
-        if (!node.value) return 'return;'
+        if (!node.value) {return 'return;'}
+
         // a list-returning function that returns a native dock call directly wraps the shim's plain `Vec`
         return fnReturnsArray && isNativeCall(node.value)
           ? `return ${wrapList(expr(node.value))};`
@@ -590,6 +664,7 @@ export function emitRust(program: Program): string {
           node.body,
           d + 1,
         )}\n${pad(d)}}`
+
       case 'for-each': {
         // a list is an Rc<RefCell<Vec>>; iterate an owned clone of its elements so the loop binds `T`, not `&T`, and
         // does not hold a borrow across the body
@@ -597,11 +672,13 @@ export function emitRust(program: Program): string {
           node.iterable.type?.kind === 'array'
             ? `${expr(node.iterable)}.borrow().clone()`
             : expr(node.iterable)
+
         return `for ${vname(node.item)} in ${iterable} {\n${block(
           node.body,
           d + 1,
         )}\n${pad(d)}}`
       }
+
       case 'match': {
         // match a clone of the subject: a variant pattern binds (moves out) the variant's fields, so matching the
         // original would partially move it and break a branch that also uses the whole subject (`return self`). Our
@@ -611,6 +688,7 @@ export function emitRust(program: Program): string {
           node.subject.form === 'variable'
             ? node.subject.name
             : undefined
+
         const arms = node.cases.map(b => {
           const owner = variantOwner.get(b.label) ?? ''
           const fields = variantFields.get(b.label) ?? []
@@ -620,28 +698,36 @@ export function emitRust(program: Program): string {
             fields.length > 0
               ? ` { ${fields.map(snake).join(', ')} }`
               : ''
+
           const previous = subjectVar
             ? narrowing.get(subjectVar)
             : undefined
-          if (subjectVar) narrowing.set(subjectVar, b.label)
+
+          if (subjectVar) {narrowing.set(subjectVar, b.label)}
+
           const body = block(b.body, d + 2)
+
           if (subjectVar) {
-            if (previous === undefined) narrowing.delete(subjectVar)
-            else narrowing.set(subjectVar, previous)
+            if (previous === undefined) {narrowing.delete(subjectVar)}
+            else {narrowing.set(subjectVar, previous)}
           }
+
           return `${pad(d + 1)}${pascal(owner)}::${pascal(
             b.label,
           )}${pattern} => {\n${body}\n${pad(d + 1)}}`
         })
+
         if (node.otherwise)
-          arms.push(
+          {arms.push(
             `${pad(d + 1)}_ => {\n${block(
               node.otherwise,
               d + 2,
             )}\n${pad(d + 1)}}`,
-          )
+          )}
+
         return `match ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
       }
+
       case 'if': {
         let out = ''
         node.branches.forEach((b, i) => {
@@ -650,10 +736,13 @@ export function emitRust(program: Program): string {
             d + 1,
           )}\n${pad(d)}}`
         })
+
         if (node.otherwise)
-          out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`
+          {out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`}
+
         return out
       }
+
       case 'break':
         return 'break;'
       case 'continue':
@@ -662,6 +751,7 @@ export function emitRust(program: Program): string {
         return 'std::process::exit(0);'
       case 'debug':
         return '// breakpoint'
+
       case 'function': {
         // a generic parameter appears in a signature two ways: as a declared name (`head t` that survived as a named
         // type) or as a free inference variable. Collect both. Each free variable gets a fresh letter, mapped by id so
@@ -671,42 +761,50 @@ export function emitRust(program: Program): string {
         const ids = new Set<number>()
         node.params.forEach(p => collectVars(p.type, ids))
         collectVars(node.result, ids)
+
         // a single pass that records which generics (by variable id or by name) sit in a map-KEY position, following
         // form arguments through `formKeyIndices` so a `Set<U>` marks U even though its map is hidden inside the struct
         const keyIds = new Set<number>()
         const keyNames = new Set<string>()
+
         const markKeys = (
           t: Type | undefined,
           isKey: boolean,
         ): void => {
-          if (!t) return
+          if (!t) {return}
+
           if (t.kind === 'variable') {
-            if (isKey) keyIds.add(t.id)
+            if (isKey) {keyIds.add(t.id)}
           } else if (t.kind === 'map') {
             markKeys(t.key, true)
             markKeys(t.value, false)
-          } else if (t.kind === 'array') markKeys(t.element, false)
+          } else if (t.kind === 'array') {markKeys(t.element, false)}
           else if (t.kind === 'function') {
             t.params.forEach(p => markKeys(p, false))
             markKeys(t.result, false)
           } else if (t.kind === 'named') {
-            if (isKey) keyNames.add(t.name.toUpperCase())
+            if (isKey) {keyNames.add(t.name.toUpperCase())}
+
             const keyArgs = formKeyIndices.get(t.name)
             t.args?.forEach((a, i) =>
               markKeys(a, keyArgs?.has(i) ?? false),
             )
           }
         }
+
         node.params.forEach(p => markKeys(p.type, false))
         markKeys(node.result, false)
+
         // which declared generics actually appear in the signature (as named types); drop the rest
         const namedInSig = new Set<string>()
+
         const scanNamed = (t: Type | undefined): void => {
-          if (!t) return
+          if (!t) {return}
+
           if (t.kind === 'named') {
             namedInSig.add(t.name.toUpperCase())
             t.args?.forEach(scanNamed)
-          } else if (t.kind === 'array') scanNamed(t.element)
+          } else if (t.kind === 'array') {scanNamed(t.element)}
           else if (t.kind === 'map') {
             scanNamed(t.key)
             scanNamed(t.value)
@@ -715,10 +813,13 @@ export function emitRust(program: Program): string {
             scanNamed(t.result)
           }
         }
+
         node.params.forEach(p => scanNamed(p.type))
         scanNamed(node.result)
+
         // extra element bounds the body's array ops require: equality (`includes` / `indexOf`), display (`join`)
         const arrayBounds = collectArrayBounds(node.body)
+
         // a generic's bound: `Clone` always; `Eq + Hash` for a map key (which implies PartialEq); `PartialEq` for an
         // array used with `includes` / `indexOf`; `Display` for one stringified by `join`.
         const bound = (
@@ -728,17 +829,24 @@ export function emitRust(program: Program): string {
           isDisplay: boolean,
         ): string => {
           const traits = ['Clone']
-          if (isKey) traits.push('Eq', 'std::hash::Hash')
-          else if (isEq) traits.push('PartialEq')
-          if (isDisplay) traits.push('std::fmt::Display')
+
+          if (isKey) {traits.push('Eq', 'std::hash::Hash')}
+          else if (isEq) {traits.push('PartialEq')}
+
+          if (isDisplay) {traits.push('std::fmt::Display')}
+
           return `${name}: ${traits.join(' + ')}`
         }
+
         const pool = ['T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'A', 'B', 'C']
         const used = new Set(
           node.generics.map(g => g.name.toUpperCase()),
         )
+
         rustVarNames = new Map()
-        const fresh: Array<string> = []
+
+        const fresh: string[] = []
+
         for (const id of ids) {
           const letter = pool.find(l => !used.has(l)) ?? `T${id}`
           used.add(letter)
@@ -752,12 +860,15 @@ export function emitRust(program: Program): string {
             ),
           )
         }
+
         // a trait-bounded generic (`head t, need sizer`) adds its trait to the bound, so the body's `x.measure()`
         // resolves through it. Keyed by uppercase generic name to match `kept`.
         const needTrait = new Map<string, string>()
+
         for (const g of node.generics)
-          if (g.need)
-            needTrait.set(g.name.toUpperCase(), pascal(g.need))
+          {if (g.need)
+            {needTrait.set(g.name.toUpperCase(), pascal(g.need))}}
+
         const kept = node.generics
           .map(g => g.name.toUpperCase())
           .filter(name => namedInSig.has(name))
@@ -768,24 +879,29 @@ export function emitRust(program: Program): string {
               arrayBounds.eqNames.has(name),
               arrayBounds.displayNames.has(name),
             )
+
             return needTrait.has(name)
               ? `${base} + ${needTrait.get(name)}`
               : base
           })
+
         const decls = [...kept, ...fresh]
         const generics = decls.length ? `<${decls.join(', ')}>` : ''
         const params = node.params
           .map(p => `${vname(p.name)}: ${rustType(p.type)}`)
           .join(', ')
+
         const ret =
           node.result && node.result.kind !== 'unit'
             ? ` -> ${rustType(node.result)}`
             : ''
+
         // reassigned parameters are shadowed by `let mut` (Rust parameters are immutable)
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
         // a parameter mutated in place by a `push` / `pop` is also rebound `let mut` (Rust parameters are immutable)
         arrayBounds.mutated.forEach(name => mutated.add(name))
+
         const shadows = node.params
           .filter(p => mutated.has(p.name))
           .map(
@@ -794,21 +910,28 @@ export function emitRust(program: Program): string {
                 p.name,
               )};`,
           )
+
         const previousReturnsArray = fnReturnsArray
         fnReturnsArray = node.result?.kind === 'array'
+
         const bodyText = [...shadows, block(node.body, d + 1)]
           .filter(Boolean)
           .join('\n')
+
         fnReturnsArray = previousReturnsArray
+
         const asyncMark = node.async ? 'async ' : ''
+
         return `${asyncMark}fn ${snake(
           node.name,
         )}${generics}(${params})${ret} {\n${bodyText}\n${pad(d)}}`
       }
+
       case 'record-type': {
         const generics = node.params.length
           ? `<${node.params.map(p => p.toUpperCase()).join(', ')}>`
           : ''
+
         // a struct/enum is `Clone` unless it holds a closure (`Box<dyn Fn>` is not Clone). Deriving Clone lets a value
         // be shared at a call site rather than moved -- the same property the Rc-wrapped collections rely on.
         const hasClosureField =
@@ -817,33 +940,41 @@ export function emitRust(program: Program): string {
                 v.fields.some(f => f.type.kind === 'function'),
               )
             : node.fields.some(f => f.type.kind === 'function')
+
         const derive = hasClosureField
           ? ''
           : `#[derive(Clone)]\n${pad(d)}`
+
         if (node.variants.length > 0) {
           const cases = node.variants.map(v => {
             const fields = v.fields.map(
               f => `${snake(f.name)}: ${rustType(f.type)}`,
             )
+
             return `${pad(d + 1)}${pascal(v.name)}${
               fields.length > 0 ? ` { ${fields.join(', ')} }` : ''
             }`
           })
+
           return `${derive}enum ${pascal(
             node.name,
           )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}`
         }
+
         const fields = node.fields.map(
           f => `${pad(d + 1)}${snake(f.name)}: ${rustType(f.type)}`,
         )
+
         return `${derive}struct ${pascal(
           node.name,
         )}${generics} {\n${fields.join(',\n')}\n${pad(d)}}`
       }
+
       case 'hold':
         return '// hold: verified at compile time'
       case 'native':
         return ''
+
       case 'mask': {
         // a trait, with each method derived from any implementing instance's signature (receiver type -> Self)
         const target = instanceTargets.get(node.name)?.[0]
@@ -854,12 +985,14 @@ export function emitRust(program: Program): string {
               )
               .filter(Boolean)
           : []
+
         return `trait ${pascal(node.name)} {${
           decls.length
             ? `\n${decls.map(line => pad(d + 1) + line).join('\n')}\n${pad(d)}`
             : ''
         }}`
       }
+
       case 'instance': {
         // an `impl` block whose methods delegate to the free implementation functions
         const impls = node.methods
@@ -867,12 +1000,14 @@ export function emitRust(program: Program): string {
             implMethod(implFn.get(`${node.target}:${m}`), node.target),
           )
           .filter(Boolean)
+
         return `impl ${pascal(node.mask)} for ${pascal(node.target)} {${
           impls.length
             ? `\n${impls.map(line => pad(d + 1) + line).join('\n')}\n${pad(d)}`
             : ''
         }}`
       }
+
       case 'bind':
       case 'zone':
       case 'dock':
@@ -889,16 +1024,20 @@ export function emitRust(program: Program): string {
         n.form === 'native' && !n.module.startsWith('global:'),
     )
     .map(n => `use ${n.module.replace(/[:/]/g, '::')};`)
+
   // plus the `use` each rendered `bind` needs (e.g. `use sha2::Sha256;` for a `case rust` that calls `Sha256::digest`).
   // Two paths that bind the SAME final name collide in Rust (`use sha2::Digest;` + `use md5::Digest;` -> E0252), yet a
   // trait like `Digest` only needs to be in scope for method resolution, not named. So the first occurrence binds the
   // name and any later same-name path comes in anonymously with `as _` (in scope, no name), which is the Rust idiom.
   const bound = new Set<string>()
+
   for (const u of uses) {
-    const m = u.match(/use .*?(\w+)(?: as (\w+))?;$/)
+    const m = /use .*?(\w+)(?: as (\w+))?;$/.exec(u)
     const name = m?.[2] ?? m?.[1]
-    if (name) bound.add(name)
+
+    if (name) {bound.add(name)}
   }
+
   for (const need of bindImports(
     referencedBinds(program, binds),
     'rust',
@@ -910,30 +1049,39 @@ export function emitRust(program: Program): string {
       : bound.has(name)
         ? `use ${path} as _;`
         : `use ${path};`
+
     bound.add(name)
-    if (!uses.includes(line)) uses.push(line)
+
+    if (!uses.includes(line)) {uses.push(line)}
   }
+
   const body = program
     .filter(n => n.form !== 'native')
     .map(n => stmt(n, 0))
     .filter(Boolean)
+
   return [...uses, ...body].join('\n\n') + '\n'
 }
 
 // names reassigned anywhere in a body (a reassigned parameter needs a `let mut` shadow)
-function reassigned(body: Array<Statement>, into: Set<string>): void {
+function reassigned(body: Statement[], into: Set<string>): void {
   for (const s of body) {
     switch (s.form) {
       case 'assign':
-        if (s.target.form === 'variable') into.add(s.target.name)
+        if (s.target.form === 'variable') {into.add(s.target.name)}
+
         break
       case 'if':
         s.branches.forEach(b => reassigned(b.body, into))
-        if (s.otherwise) reassigned(s.otherwise, into)
+
+        if (s.otherwise) {reassigned(s.otherwise, into)}
+
         break
       case 'match':
         s.cases.forEach(c => reassigned(c.body, into))
-        if (s.otherwise) reassigned(s.otherwise, into)
+
+        if (s.otherwise) {reassigned(s.otherwise, into)}
+
         break
       case 'while':
       case 'for-each':
@@ -947,7 +1095,7 @@ function reassigned(body: Array<Statement>, into: Set<string>): void {
 
 // the extra element-type bounds a function body needs from its array ops: equality (`includes` / `indexOf`) or display
 // (`join`). Returns the generic variable ids and names sitting at the element position of an array receiving such an op.
-function collectArrayBounds(body: Array<Statement>): {
+function collectArrayBounds(body: Statement[]): {
   eqIds: Set<number>
   displayIds: Set<number>
   eqNames: Set<string>
@@ -960,32 +1108,38 @@ function collectArrayBounds(body: Array<Statement>): {
   const displayNames = new Set<string>()
   // arrays mutated in place (`push` / `pop`); a parameter so mutated must be rebound `let mut`
   const mutated = new Set<string>()
+
   const record = (callee: Expression): void => {
     const op = collectionCall(callee)
-    if (!op || op.kind !== 'array') return
+
+    if (op?.kind !== 'array') {return}
 
     if (
       (op.op === 'push' || op.op === 'pop') &&
       op.target.form === 'variable'
     )
-      mutated.add(op.target.name)
+      {mutated.add(op.target.name)}
 
     const need = ARRAY_OP_BOUND[op.op]
-    if (!need) return
+
+    if (!need) {return}
 
     const element =
       op.target.type?.kind === 'array'
         ? op.target.type.element
         : undefined
+
     if (element?.kind === 'variable')
-      (need === 'eq' ? eqIds : displayIds).add(element.id)
+      {(need === 'eq' ? eqIds : displayIds).add(element.id)}
     else if (element?.kind === 'named')
-      (need === 'eq' ? eqNames : displayNames).add(
+      {(need === 'eq' ? eqNames : displayNames).add(
         element.name.toUpperCase(),
-      )
+      )}
   }
+
   const visitExpr = (e: Expression | undefined): void => {
-    if (!e) return
+    if (!e) {return}
+
     switch (e.form) {
       case 'call':
         record(e.callee)
@@ -1024,7 +1178,8 @@ function collectArrayBounds(body: Array<Statement>): {
         break
     }
   }
-  const visitStmts = (stmts: Array<Statement>): void => {
+
+  const visitStmts = (stmts: Statement[]): void => {
     for (const s of stmts) {
       switch (s.form) {
         case 'let':
@@ -1059,18 +1214,24 @@ function collectArrayBounds(body: Array<Statement>): {
             visitExpr(b.cond)
             visitStmts(b.body)
           })
-          if (s.otherwise) visitStmts(s.otherwise)
+
+          if (s.otherwise) {visitStmts(s.otherwise)}
+
           break
         case 'match':
           visitExpr(s.subject)
           s.cases.forEach(c => visitStmts(c.body))
-          if (s.otherwise) visitStmts(s.otherwise)
+
+          if (s.otherwise) {visitStmts(s.otherwise)}
+
           break
         default:
           break
       }
     }
   }
+
   visitStmts(body)
+
   return { eqIds, displayIds, eqNames, displayNames, mutated }
 }

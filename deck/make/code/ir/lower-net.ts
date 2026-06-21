@@ -24,12 +24,14 @@ export function lower(term: Term): Lowered {
 
   function pin(name: string): Port {
     let p = free.get(name)
+
     if (!p) {
       const id = net.node('era')
       net.interface.add(id)
       p = { node: id, slot: 0 }
       free.set(name, p)
     }
+
     return p
   }
 
@@ -37,17 +39,21 @@ export function lower(term: Term): Lowered {
     switch (node.t) {
       case 'var':
         return scope.get(node.name) ?? pin(node.name) // a bound variable wires straight to its binder; else free
+
       case 'lam': {
         const con = net.node('con') // slot 0 = the function value, slot 1 = the binder, slot 2 = the body
         const inner = new Map(scope)
         inner.set(node.param, { node: con, slot: 1 })
         net.wire({ node: con, slot: 2 }, build(node.body, inner))
+
         return { node: con, slot: 0 }
       }
+
       case 'app': {
         const con = net.node('con') // slot 0 = the function, slot 1 = the argument, slot 2 = the result
         net.wire({ node: con, slot: 0 }, build(node.fn, scope))
         net.wire({ node: con, slot: 1 }, build(node.arg, scope))
+
         return { node: con, slot: 2 }
       }
     }
@@ -56,15 +62,19 @@ export function lower(term: Term): Lowered {
   const result = build(term, new Map())
   const rootId = net.node('era')
   net.interface.add(rootId)
+
   const root: Port = { node: rootId, slot: 0 }
   net.wire(root, result)
+
   return { net, root, free }
 }
 
 // count the non-interface (computational) agents in a lowered net
 export function agentCount(lowered: Lowered): number {
   let n = 0
+
   for (const id of lowered.net.nodes.keys())
-    if (!lowered.net.interface.has(id)) n++
+    {if (!lowered.net.interface.has(id)) {n++}}
+
   return n
 }

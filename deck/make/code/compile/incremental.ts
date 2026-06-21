@@ -367,10 +367,12 @@ export class QueryCompiler {
       // per-definition emit runs concurrently: each `emitDef` is independent (its own resolve -> infer -> emit chain)
       const functionNames = program
         .filter(s => s.form === 'function')
-        .map(s => (s as FunctionDef).name)
+        .map(s => (s).name)
+
       const emitted = await Promise.all(
         functionNames.map(name => this.emitDef(c, files, name)),
       )
+
       parts.push(...emitted)
 
       return parts.filter(p => p.length > 0).join('\n\n')

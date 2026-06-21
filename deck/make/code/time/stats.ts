@@ -11,12 +11,12 @@ export type BenchmarkResult = {
   max_ns: number
   ops_per_sec: number
   cv: number // coefficient of variation: std_dev / mean, a unitless noise measure
-  timings_ns: Array<number>
+  timings_ns: number[]
 }
 
 export function computeStats(
   name: string,
-  timings: Array<number>,
+  timings: number[],
 ): BenchmarkResult {
   const sorted = [...timings].sort((a, b) => a - b)
   const count = sorted.length || 1
@@ -27,9 +27,12 @@ export function computeStats(
       ? sorted[(sorted.length - 1) / 2]!
       : (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) /
         2
+
   const variance =
     sorted.reduce((a, b) => a + (b - mean) ** 2, 0) / count
+
   const stdDev = Math.sqrt(variance)
+
   return {
     name,
     iterations: timings.length,
@@ -46,8 +49,11 @@ export function computeStats(
 
 // human-readable duration from nanoseconds
 export function formatDuration(ns: number): string {
-  if (ns < 1_000) return `${ns.toFixed(1)}ns`
-  if (ns < 1_000_000) return `${(ns / 1_000).toFixed(2)}us`
-  if (ns < 1_000_000_000) return `${(ns / 1_000_000).toFixed(2)}ms`
+  if (ns < 1_000) {return `${ns.toFixed(1)}ns`}
+
+  if (ns < 1_000_000) {return `${(ns / 1_000).toFixed(2)}us`}
+
+  if (ns < 1_000_000_000) {return `${(ns / 1_000_000).toFixed(2)}ms`}
+
   return `${(ns / 1_000_000_000).toFixed(2)}s`
 }

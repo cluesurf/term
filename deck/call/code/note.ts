@@ -43,6 +43,7 @@ export async function callNote(input: {
     if (manifest.link.length > 0) {
       console.log('')
       console.log(chalk.bold('  Dependencies:'))
+
       for (const dep of manifest.link) {
         console.log('    ' + name(dep.name))
       }

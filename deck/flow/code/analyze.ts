@@ -54,13 +54,15 @@ export function toLspDiagnostic(d: Diagnostic): LspDiagnostic {
 export function analyze(
   document: { file: string; text: string },
   options?: { resolve?: Resolver; cache?: CompileCache },
-): { diagnostics: Array<LspDiagnostic>; program?: Program } {
+): { diagnostics: LspDiagnostic[]; program?: Program } {
   // the editor needs the un-optimized program (every call site intact for navigation / find-references), not the
   // inlined / specialized shape the build emits
   const result = compile(document, { ...options, optimize: false })
+
   if (!result.ok) {
     return { diagnostics: result.diagnostics.map(toLspDiagnostic) }
   }
+
   return {
     program: result.program,
     diagnostics: result.warnings.map(toLspDiagnostic),
@@ -71,8 +73,10 @@ export function analyze(
 export function within(span: Span, p: LspPosition): boolean {
   const after = (a: SeedPosition) =>
     p.line > a.line || (p.line === a.line && p.character >= a.column)
+
   const before = (b: SeedPosition) =>
     p.line < b.line || (p.line === b.line && p.character <= b.column)
+
   return after(span.start) && before(span.end)
 }
 
@@ -91,10 +95,15 @@ export function hoverAt(
 ): string | undefined {
   let best: { span: Span; type: string } | undefined
   forEachExpression(program, node => {
-    if (!node.type || !within(node.span, position)) return
-    if (!best || spanSize(node.span) < spanSize(best.span))
+    if (!node.type || !within(node.span, position)) {
+      return
+    }
+
+    if (!best || spanSize(node.span) < spanSize(best.span)) {
       best = { span: node.span, type: showType(node.type) }
+    }
   })
+
   return best?.type
 }
 
@@ -103,7 +112,9 @@ export function forEachExpression(
   program: Program,
   visit: (node: Expression) => void,
 ): void {
-  for (const statement of program) walkStatement(statement, visit)
+  for (const statement of program) {
+    walkStatement(statement, visit)
+  }
 }
 
 function walkStatement(
@@ -122,7 +133,10 @@ function walkStatement(
       walkExpression(node.expr, visit)
       break
     case 'return':
-      if (node.value) walkExpression(node.value, visit)
+      if (node.value) {
+        walkExpression(node.value, visit)
+      }
+
       break
     case 'throw':
       walkExpression(node.value, visit)
@@ -139,6 +153,7 @@ function walkStatement(
         walkExpression(branch.cond, visit)
         branch.body.forEach(s => walkStatement(s, visit))
       }
+
       node.otherwise?.forEach(s => walkStatement(s, visit))
       break
     case 'for-each':
@@ -147,8 +162,11 @@ function walkStatement(
       break
     case 'match':
       walkExpression(node.subject, visit)
-      for (const branch of node.cases)
+
+      for (const branch of node.cases) {
         branch.body.forEach(s => walkStatement(s, visit))
+      }
+
       node.otherwise?.forEach(s => walkStatement(s, visit))
       break
     case 'function':
@@ -164,6 +182,7 @@ function walkExpression(
   visit: (node: Expression) => void,
 ): void {
   visit(node)
+
   switch (node.form) {
     case 'binary':
       walkExpression(node.left, visit)
@@ -184,6 +203,7 @@ function walkExpression(
         walkExpression(entry.key, visit)
         walkExpression(entry.value, visit)
       }
+
       break
     case 'record':
       node.fields.forEach(f => walkExpression(f.value, visit))

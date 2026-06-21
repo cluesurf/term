@@ -110,8 +110,10 @@ export function markMatch(mark: Mark, hold: MarkHold): boolean {
 
     case 'wild':
       if (mark.major !== hold.major) return false
-      if (hold.minor !== undefined && mark.minor !== hold.minor) return false
-      if (hold.patch !== undefined && mark.patch !== hold.patch) return false
+      if (hold.minor !== undefined && mark.minor !== hold.minor)
+        return false
+      if (hold.patch !== undefined && mark.patch !== hold.patch)
+        return false
       return true
 
     case 'band':

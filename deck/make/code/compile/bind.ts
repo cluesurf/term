@@ -13,30 +13,35 @@ export type Bind = Extract<Statement, { form: 'bind' }>
 
 // index every declarative binding by name, for call-site rendering across a program
 export function collectBinds(
-  program: Array<Statement>,
+  program: Statement[],
 ): Map<string, Bind> {
   const binds = new Map<string, Bind>()
+
   for (const statement of program)
-    if (statement.form === 'bind') binds.set(statement.name, statement)
+    {if (statement.form === 'bind') {binds.set(statement.name, statement)}}
+
   return binds
 }
 
 // the subset of `binds` actually called somewhere in the program. A backend imports only these: a program that calls
 // only `digest-sha256` must not pull in `digest-md5`'s `use md5::Digest;` (which would collide with `sha2::Digest`).
 export function referencedBinds(
-  program: Array<Statement>,
+  program: Statement[],
   binds: Map<string, Bind>,
 ): Map<string, Bind> {
   const used = new Set<string>()
+
   const expr = (node: Expression | undefined): void => {
-    if (!node) return
+    if (!node) {return}
+
     switch (node.form) {
       case 'call':
         if (
           node.callee.form === 'variable' &&
           binds.has(node.callee.name)
         )
-          used.add(node.callee.name)
+          {used.add(node.callee.name)}
+
         expr(node.callee)
         node.args.forEach(expr)
         break
@@ -79,6 +84,7 @@ export function referencedBinds(
         break
     }
   }
+
   const one = (statement: Statement): void => {
     switch (statement.form) {
       case 'let':
@@ -96,7 +102,9 @@ export function referencedBinds(
           expr(b.cond)
           body(b.body)
         })
-        if (statement.otherwise) body(statement.otherwise)
+
+        if (statement.otherwise) {body(statement.otherwise)}
+
         break
       case 'while':
         expr(statement.cond)
@@ -105,7 +113,9 @@ export function referencedBinds(
       case 'match':
         expr(statement.subject)
         statement.cases.forEach(c => body(c.body))
-        if (statement.otherwise) body(statement.otherwise)
+
+        if (statement.otherwise) {body(statement.otherwise)}
+
         break
       case 'for-each':
         expr(statement.iterable)
@@ -127,14 +137,20 @@ export function referencedBinds(
         break
     }
   }
-  const body = (statements: Array<Statement>): void =>
+
+  const body = (statements: Statement[]): void =>
     statements.forEach(one)
+
   body(program)
+
   const out = new Map<string, Bind>()
+
   for (const name of used) {
     const bind = binds.get(name)
-    if (bind) out.set(name, bind)
+
+    if (bind) {out.set(name, bind)}
   }
+
   return out
 }
 
@@ -143,14 +159,17 @@ export function referencedBinds(
 export function renderBind(
   bind: Bind,
   env: string,
-  args: Array<string>,
+  args: string[],
 ): string | undefined {
   const target = bind.targets.find(candidate => candidate.env === env)
-  if (!target) return undefined
+
+  if (!target) {return undefined}
+
   let out = target.expression
   bind.params.forEach((param, index) => {
     out = out.split(`$${param.name}`).join(args[index] ?? '')
   })
+
   return out
 }
 
@@ -159,18 +178,23 @@ export function renderBind(
 export function bindImports(
   binds: Map<string, Bind>,
   env: string,
-): Array<{ module: string; alias?: string }> {
+): { module: string; alias?: string }[] {
   const seen = new Set<string>()
-  const out: Array<{ module: string; alias?: string }> = []
+  const out: { module: string; alias?: string }[] = []
+
   for (const bind of binds.values()) {
     const target = bind.targets.find(candidate => candidate.env === env)
+
     for (const need of target?.imports ?? []) {
       const key = `${need.module}|${need.alias ?? ''}`
-      if (seen.has(key)) continue
+
+      if (seen.has(key)) {continue}
+
       seen.add(key)
       out.push(need)
     }
   }
+
   return out
 }
 

@@ -13,7 +13,7 @@ export type Cell = {
   id: number
   shell: number
   parent: number
-  children: Array<number>
+  children: number[]
 }
 
 // grow a tessellation tree: the centre cell has `centre` children, every later cell has `branch` children
@@ -21,16 +21,21 @@ function grow(
   centre: number,
   branch: number,
   shells: number,
-): { cells: Array<Cell>; perShell: Array<number> } {
-  const cells: Array<Cell> = [
+): { cells: Cell[]; perShell: number[] } {
+  const cells: Cell[] = [
     { id: 0, shell: 0, parent: -1, children: [] },
   ]
+
   const perShell = [1]
+
   let frontier = [0]
+
   for (let shell = 1; shell <= shells; shell++) {
-    const nextFrontier: Array<number> = []
+    const nextFrontier: number[] = []
+
     for (const parentId of frontier) {
       const childCount = parentId === 0 ? centre : branch
+
       for (let k = 0; k < childCount; k++) {
         const id = cells.length
         cells.push({ id, shell, parent: parentId, children: [] })
@@ -38,9 +43,11 @@ function grow(
         nextFrontier.push(id)
       }
     }
+
     perShell.push(nextFrontier.length)
     frontier = nextFrontier
   }
+
   return { cells, perShell }
 }
 
@@ -50,10 +57,12 @@ export function lattice(
   p: number,
   q: number,
   shells: number,
-): { cells: Array<Cell>; perShell: Array<number> } {
-  if (q !== 3) throw new Error('lattice: only q = 3 is modeled')
+): { cells: Cell[]; perShell: number[] } {
+  if (q !== 3) {throw new Error('lattice: only q = 3 is modeled')}
+
   if (p < 5)
-    throw new Error('lattice: {p,3} is hyperbolic only for p >= 5')
+    {throw new Error('lattice: {p,3} is hyperbolic only for p >= 5')}
+
   return grow(p, p - 3, shells)
 }
 
@@ -70,19 +79,21 @@ const HONEYCOMB: Record<string, { centre: number; branch: number }> = {
 export function honeycomb(
   schlafli: string,
   shells: number,
-): { cells: Array<Cell>; perShell: Array<number> } {
+): { cells: Cell[]; perShell: number[] } {
   const spec = HONEYCOMB[schlafli]
+
   if (!spec)
-    throw new Error(
+    {throw new Error(
       `honeycomb: ${schlafli} is not one of ${Object.keys(
         HONEYCOMB,
       ).join(', ')}`,
-    )
+    )}
+
   return grow(spec.centre, spec.branch, shells)
 }
 
 // two cells are adjacent if one is the other's parent (the spanning-tree edges)
-function adjacent(cells: Array<Cell>, a: number, b: number): boolean {
+function adjacent(cells: Cell[], a: number, b: number): boolean {
   return cells[a]!.parent === b || cells[b]!.parent === a
 }
 
@@ -90,35 +101,47 @@ function adjacent(cells: Array<Cell>, a: number, b: number): boolean {
 // two endpoints land on adjacent cells (so the local interaction rules touch neighbouring cells). Higher is better.
 export function place(
   net: Net,
-  cells: Array<Cell>,
+  cells: Cell[],
 ): { placement: Map<number, number>; locality: number } {
   const placement = new Map<number, number>()
+
   let cell = 0
+
   for (const node of net.nodes.keys()) {
     if (cell >= cells.length)
-      throw new Error('lattice too small for the net')
+      {throw new Error('lattice too small for the net')}
+
     placement.set(node, cell++)
   }
+
   // count wires (each undirected wire once) and how many connect adjacent cells
   let wires = 0
   let local = 0
+
   const seen = new Set<string>()
+
   for (const node of net.nodes.keys()) {
     for (let slot = 0; slot <= 2; slot++) {
       const peer = net.peer({ node, slot })
-      if (!peer || !placement.has(peer.node)) continue
+
+      if (!peer || !placement.has(peer.node)) {continue}
+
       const key =
         node < peer.node
           ? `${node}-${peer.node}`
           : `${peer.node}-${node}`
-      if (seen.has(key)) continue
+
+      if (seen.has(key)) {continue}
+
       seen.add(key)
       wires++
+
       if (
         adjacent(cells, placement.get(node)!, placement.get(peer.node)!)
       )
-        local++
+        {local++}
     }
   }
+
   return { placement, locality: wires === 0 ? 1 : local / wires }
 }

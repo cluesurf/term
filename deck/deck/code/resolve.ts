@@ -10,8 +10,19 @@ import {
   ResolutionMap,
   ResolvedDeck,
 } from './form'
-import { compareMark, markMatch, parseMark, showMark, parseMarkHold, pickBestMark } from './mark'
-import { fetchPackageMeta, getVersionList, getVersionMeta } from './fetch'
+import {
+  compareMark,
+  markMatch,
+  parseMark,
+  showMark,
+  parseMarkHold,
+  pickBestMark,
+} from './mark'
+import {
+  fetchPackageMeta,
+  getVersionList,
+  getVersionMeta,
+} from './fetch'
 
 type ResolveContext = {
   config: FetchConfig
@@ -73,9 +84,7 @@ async function resolveLink(input: {
         mark: wsVersion,
         hash: '',
         site: '',
-        link: new Map(
-          workspace.link.map(l => [l.name, '*']),
-        ),
+        link: new Map(workspace.link.map(l => [l.name, '*'])),
       })
       await resolveLinks({ links: workspace.link, ctx })
       return
@@ -97,9 +106,7 @@ async function resolveLink(input: {
         mark: locked.mark,
         hash: locked.hash,
         site: locked.site,
-        link: new Map(
-          locked.link.map(l => [l.name, l.mark]),
-        ),
+        link: new Map(locked.link.map(l => [l.name, l.mark])),
       })
 
       // resolve transitive deps from lockfile
@@ -122,9 +129,7 @@ async function resolveLink(input: {
   const best = pickBestMark({ versions, hold: link.mark })
 
   if (!best) {
-    throw new Error(
-      `No version of ${link.name} matches constraint`,
-    )
+    throw new Error(`No version of ${link.name} matches constraint`)
   }
 
   const markStr = showMark(best)
@@ -171,7 +176,10 @@ function findLockedVersion(input: {
   if (!input.lockfile) return undefined
 
   for (const entry of input.lockfile.decks) {
-    if (entry.name === input.name && markMatch(entry.mark, input.hold)) {
+    if (
+      entry.name === input.name &&
+      markMatch(entry.mark, input.hold)
+    ) {
       return entry
     }
   }
@@ -190,12 +198,10 @@ export function buildLockfile(input: {
       mark: resolved.mark,
       hash: resolved.hash,
       site: resolved.site,
-      link: Array.from(resolved.link.entries()).map(
-        ([name, mark]) => ({
-          name,
-          mark,
-        }),
-      ),
+      link: Array.from(resolved.link.entries()).map(([name, mark]) => ({
+        name,
+        mark,
+      })),
     })
   }
 

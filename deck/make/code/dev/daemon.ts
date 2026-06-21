@@ -32,10 +32,12 @@ export function startDaemon(options: {
 
   const analyzerFor = (file: string): IncrementalAnalyzer => {
     let analyzer = analyzers.get(file)
+
     if (!analyzer) {
       analyzer = new IncrementalAnalyzer(resolve)
       analyzers.set(file, analyzer)
     }
+
     return analyzer
   }
 
@@ -46,27 +48,30 @@ export function startDaemon(options: {
   )
 
   app.post('/analyze', async context => {
-    const body = (await context.req.json()) as {
-      file?: string
-      text?: string
-    }
+    const body = (await context.req.json())
+
     if (typeof body.file !== 'string' || typeof body.text !== 'string')
-      return context.json({ error: 'file and text required' }, 400)
+      {return context.json({ error: 'file and text required' }, 400)}
+
     const result = await analyzerFor(body.file).analyze({
       file: body.file,
       text: body.text,
     })
+
     return context.json({ diagnostics: result.diagnostics })
   })
 
   // drop a document's warm state (the editor closed it)
   app.post('/close', async context => {
-    const body = (await context.req.json()) as { file?: string }
-    if (typeof body.file === 'string') analyzers.delete(body.file)
+    const body = (await context.req.json())
+
+    if (typeof body.file === 'string') {analyzers.delete(body.file)}
+
     return context.json({ ok: true })
   })
 
   const server = serve({ fetch: app.fetch, port })
+
   return {
     port,
     warm: () => analyzers.size,

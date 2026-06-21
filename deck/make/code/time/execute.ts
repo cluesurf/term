@@ -10,7 +10,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
 export class CompileFailure extends Error {
-  constructor(public diagnostics: Array<Diagnostic>) {
+  constructor(public diagnostics: Diagnostic[]) {
     super('compilation failed')
   }
 }
@@ -21,7 +21,9 @@ export function compileToModule(input: {
   file: string
 }): { code: string; program: Program } {
   const result = compile({ file: input.file, text: input.text })
-  if (!result.ok) throw new CompileFailure(result.diagnostics)
+
+  if (!result.ok) {throw new CompileFailure(result.diagnostics)}
+
   return { code: result.typescript, program: result.program }
 }
 
@@ -40,14 +42,17 @@ export async function prepareModuleDir(input: {
       target: 'node18',
     })
   ).code
+
   const dir = path.join(
     input.root,
     '.seed',
     'tmp',
     `${input.tag}-${process.pid}-${Date.now()}`,
   )
+
   await fs.mkdir(dir, { recursive: true })
   await fs.writeFile(path.join(dir, 'module.mjs'), js)
+
   return dir
 }
 
@@ -60,6 +65,7 @@ export function runNode(input: {
   return new Promise((resolve, reject) => {
     const args = input.gc ? ['--expose-gc', input.file] : [input.file]
     const child = spawn(process.execPath, args, { cwd: input.cwd })
+
     let out = ''
     let err = ''
     child.stdout.on('data', d => (out += String(d)))

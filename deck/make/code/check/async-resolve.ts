@@ -14,21 +14,26 @@ type Fn = Extract<Statement, { form: 'function' }>
 
 export function resolveAsync(program: Program): void {
   const functions = new Map<string, Fn>()
+
   for (const statement of program)
-    if (statement.form === 'function')
-      functions.set(statement.name, statement)
+    {if (statement.form === 'function')
+      {functions.set(statement.name, statement)}}
 
   // seed: a function is async if it is marked async (task-level) or already awaits something (a call-level `wait true`)
   const asyncSet = new Set<string>()
+
   for (const [name, fn] of functions)
-    if (fn.async || bodyAwaits(fn.body)) asyncSet.add(name)
+    {if (fn.async || bodyAwaits(fn.body)) {asyncSet.add(name)}}
 
   // fixed point: a function that calls an async function in non-background position is itself async
   let changed = true
+
   while (changed) {
     changed = false
+
     for (const [name, fn] of functions) {
-      if (asyncSet.has(name)) continue
+      if (asyncSet.has(name)) {continue}
+
       if (bodyCallsAsync(fn.body, asyncSet)) {
         asyncSet.add(name)
         changed = true
@@ -39,36 +44,47 @@ export function resolveAsync(program: Program): void {
   // apply: mark each async function, and wrap every default (non-background, not-yet-awaited) call to an async function
   // in an `await`
   for (const [name, fn] of functions) {
-    if (asyncSet.has(name)) fn.async = true
+    if (asyncSet.has(name)) {fn.async = true}
+
     fn.body = fn.body.map(s => stmt(s, asyncSet))
   }
 }
 
 // does this body await directly (not counting a nested closure, whose await makes the CLOSURE async, not this scope)?
-function bodyAwaits(body: Array<Statement>): boolean {
+function bodyAwaits(body: Statement[]): boolean {
   let found = false
+
   const e = (node: Expression | undefined): void => {
-    if (!node || found) return
+    if (!node || found) {return}
+
     if (node.form === 'await') {
       found = true
+
       return
     }
-    if (node.form === 'closure') return // a closure's await belongs to the closure
+
+    if (node.form === 'closure') {return} // a closure's await belongs to the closure
+
     walkExpr(node, e)
   }
-  for (const s of body) walkStmt(s, e)
+
+  for (const s of body) {walkStmt(s, e)}
+
   return found
 }
 
 // does this body make a non-background call to a function in `asyncSet` (again, not descending into closures)?
 function bodyCallsAsync(
-  body: Array<Statement>,
+  body: Statement[],
   asyncSet: Set<string>,
 ): boolean {
   let found = false
+
   const e = (node: Expression | undefined): void => {
-    if (!node || found) return
-    if (node.form === 'closure') return
+    if (!node || found) {return}
+
+    if (node.form === 'closure') {return}
+
     if (
       node.form === 'call' &&
       !node.background &&
@@ -76,17 +92,22 @@ function bodyCallsAsync(
       asyncSet.has(node.callee.name)
     ) {
       found = true
+
       return
     }
+
     walkExpr(node, e)
   }
-  for (const s of body) walkStmt(s, e)
+
+  for (const s of body) {walkStmt(s, e)}
+
   return found
 }
 
 // rewrite a statement, wrapping async calls in `await`
 function stmt(node: Statement, asyncSet: Set<string>): Statement {
   const e = (x: Expression): Expression => expr(x, asyncSet)
+
   switch (node.form) {
     case 'let':
       return { ...node, init: e(node.init) }
@@ -144,14 +165,17 @@ function expr(node: Expression, asyncSet: Set<string>): Expression {
       const callee = expr(node.callee, asyncSet)
       const args = node.args.map(a => expr(a, asyncSet))
       const call = { ...node, callee, args }
+
       if (
         !node.background &&
         node.callee.form === 'variable' &&
         asyncSet.has(node.callee.name)
       )
-        return { form: 'await', expr: call, span: node.span }
+        {return { form: 'await', expr: call, span: node.span }}
+
       return call
     }
+
     case 'await':
       return { ...node, expr: expr(node.expr, asyncSet) }
     case 'binary':
@@ -193,10 +217,13 @@ function expr(node: Expression, asyncSet: Set<string>): Expression {
           ? expr(node.otherwise, asyncSet)
           : undefined,
       }
+
     case 'closure': {
       const body = node.body.map(s => stmt(s, asyncSet))
+
       return { ...node, body, async: node.async || bodyAwaits(body) }
     }
+
     default:
       return node
   }
@@ -242,7 +269,9 @@ function walkExpr(
         visit(b.cond)
         visit(b.value)
       })
-      if (node.otherwise) visit(node.otherwise)
+
+      if (node.otherwise) {visit(node.otherwise)}
+
       break
     default:
       break
@@ -265,7 +294,8 @@ function walkStmt(
       visit(node.expr)
       break
     case 'return':
-      if (node.value) visit(node.value)
+      if (node.value) {visit(node.value)}
+
       break
     case 'throw':
       visit(node.value)

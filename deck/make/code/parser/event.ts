@@ -48,11 +48,11 @@ export type Event =
     }
   | { kind: EventKind.Comment; token: Token }
 
-export type EventStream = TokenList & { events: Array<Event> }
+export type EventStream = TokenList & { events: Event[] }
 
 export type EventResult =
   | { ok: true; stream: EventStream }
-  | { ok: false; diagnostics: Array<Diagnostic> }
+  | { ok: false; diagnostics: Diagnostic[] }
 
 enum Context {
   Root = 'root',
@@ -67,12 +67,13 @@ type ContextFrame = { kind: Context; token?: Token }
 type IndentFrame = { depth: number; ownLine?: boolean; used: boolean }
 
 export function buildEvents(tokens: TokenList): EventResult {
-  const events: Array<Event> = []
-  const contexts: Array<ContextFrame> = [{ kind: Context.Root }]
-  const indents: Array<IndentFrame> = [
+  const events: Event[] = []
+  const contexts: ContextFrame[] = [{ kind: Context.Root }]
+  const indents: IndentFrame[] = [
     { depth: 0, used: true, ownLine: true },
   ]
-  const diagnostics: Array<Diagnostic> = []
+
+  const diagnostics: Diagnostic[] = []
 
   let atLineStart = true
   let lastDepth = 0
@@ -83,9 +84,10 @@ export function buildEvents(tokens: TokenList): EventResult {
   const indent = () => indents[indents.length - 1]!
   const pushIndent = (move = 0) =>
     indents.push({ depth: lastDepth + move, used: true, ownLine: true })
+
   // never pop the root frame (depth 0): an over-dedent on malformed input must degrade to a diagnostic, not crash
   const popIndent = () => {
-    if (indents.length > 1) indents.pop()
+    if (indents.length > 1) {indents.pop()}
   }
 
   function fail(
@@ -99,6 +101,7 @@ export function buildEvents(tokens: TokenList): EventResult {
   }
 
   let token = tokens.head
+
   if (token) {
     do {
       switch (token.kind) {
@@ -120,6 +123,7 @@ export function buildEvents(tokens: TokenList): EventResult {
             pop()
             events.push({ kind: EventKind.CloseName })
           }
+
           break
         case TokenKind.CloseParen:
           closeParen()
@@ -168,18 +172,22 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   closeLine()
 
-  if (diagnostics.length) return { ok: false, diagnostics }
+  if (diagnostics.length) {return { ok: false, diagnostics }}
+
   return { ok: true, stream: { ...tokens, events } }
 
   // Validate the first content node on a line.
   function startContent() {
     const frame = indent()
+
     if (atLineStart) {
       atLineStart = false
-      if (frame.ownLine !== false) frame.ownLine = true
+
+      if (frame.ownLine !== false) {frame.ownLine = true}
     } else if (!frame.used) {
       frame.ownLine = false
     }
+
     frame.used = true
   }
 
@@ -191,7 +199,9 @@ export function buildEvents(tokens: TokenList): EventResult {
 
     if (atLineStart) {
       atLineStart = false
+
       const frame = indent()
+
       let depth = Math.floor(token.text.length / 2)
 
       if (token.text.length % 2 !== 0) {
@@ -203,21 +213,24 @@ export function buildEvents(tokens: TokenList): EventResult {
         depth = frame.depth + 1
       } else if (depth > lastDepth + 1) {
         if (indents.length === 1)
-          fail(
+          {fail(
             'invalid-indentation',
             token,
             'indent one level deeper than the parent, not more',
-          )
+          )}
+
         depth = lastDepth + 1
       } else if (depth < frame.depth) {
         depth = frame.depth + 1
       }
 
       let diff = depth - frame.depth
+
       while (diff-- > 0) {
         contexts.push({ kind: Context.Indent })
         events.push({ kind: EventKind.OpenIndent })
       }
+
       lastDepth = depth
     } else if (token.previous?.kind === TokenKind.Integer) {
       // a number is a leaf and cannot have a following node on the same line
@@ -238,8 +251,9 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   function endsLineWithNewline(token: Token): boolean {
     if (token.next?.kind === TokenKind.Chunk) {
-      return Boolean(token.next.text.match(/^\s*\n$/))
+      return Boolean(/^\s*\n$/.exec(token.next.text))
     }
+
     return false
   }
 
@@ -260,7 +274,9 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   function radix(token: Token) {
     startContent()
-    const found = token.text.match(/^0([xXbBoO])([0-9a-fA-F]+)/)
+
+    const found = /^0([xXbBoO])([0-9a-fA-F]+)/.exec(token.text)
+
     if (found) {
       const base = found[1]!.toLowerCase()
       const radixValue = base === 'b' ? 2 : base === 'o' ? 8 : 16
@@ -281,11 +297,13 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   function chunk(token: Token) {
     const frame = indent()
+
     if (frame.ownLine) {
       token.text = token.text.slice(frame.depth * 2).trimEnd()
     }
 
     const last = events[events.length - 1]
+
     // merge consecutive chunks inside a multiline text to keep things clean
     if (last?.kind === EventKind.Chunk && frame.ownLine) {
       if (token.text) {
@@ -326,8 +344,10 @@ export function buildEvents(tokens: TokenList): EventResult {
     if (token.text.includes('/')) {
       const followsClose = token.previous?.kind === TokenKind.CloseBrace
       const segments = token.text.split('/')
+
       for (let i = 0; i < segments.length; i++) {
         const segment = segments[i]!
+
         if (segment.startsWith('-') && !(i === 0 && followsClose)) {
           fail(
             'syntax-error',
@@ -336,7 +356,9 @@ export function buildEvents(tokens: TokenList): EventResult {
           )
           break
         }
+
         const q = segment.indexOf('?')
+
         if (q !== -1 && q !== segment.length - 1) {
           fail(
             'syntax-error',
@@ -353,6 +375,7 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   function openName(token: Token) {
     const previousKind = token.previous?.kind
+
     if (
       previousKind === undefined ||
       previousKind === TokenKind.Newline ||
@@ -370,6 +393,7 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   function openInterpolation(token: Token) {
     const previousKind = token.previous?.kind
+
     if (
       previousKind === undefined ||
       previousKind === TokenKind.Newline ||
@@ -380,6 +404,7 @@ export function buildEvents(tokens: TokenList): EventResult {
       push({ kind: Context.Name })
       events.push({ kind: EventKind.OpenName })
     }
+
     push({ kind: Context.Interpolation, token })
     events.push({
       kind: EventKind.OpenInterpolation,
@@ -414,6 +439,7 @@ export function buildEvents(tokens: TokenList): EventResult {
   function closeInterpolation() {
     walk: while (true) {
       const frame = top()
+
       switch (frame?.kind) {
         case Context.Name:
           events.push({ kind: EventKind.CloseName })
@@ -438,6 +464,7 @@ export function buildEvents(tokens: TokenList): EventResult {
           break walk
       }
     }
+
     popIndent()
   }
 

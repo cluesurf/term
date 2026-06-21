@@ -1,4 +1,9 @@
-import { DeckLink, DeckManifest, FetchConfig, InstallConfig } from './form'
+import {
+  DeckLink,
+  DeckManifest,
+  FetchConfig,
+  InstallConfig,
+} from './form'
 import { loadManifest, writeManifest, parseManifest } from './manifest'
 import { loadLockfile, saveLockfile } from './lock'
 import { resolve, buildLockfile } from './resolve'
@@ -55,9 +60,7 @@ export async function install(input: {
   const newLockfile = buildLockfile({ resolution })
   await saveLockfile({ dir: input.root, lockfile: newLockfile })
 
-  console.log(
-    `Installed ${resolution.decks.size} packages`,
-  )
+  console.log(`Installed ${resolution.decks.size} packages`)
 }
 
 export async function addDependency(input: {
@@ -71,9 +74,7 @@ export async function addDependency(input: {
     : { form: 'wild' as const, major: 0 }
 
   // check if already exists
-  const existing = manifest.link.findIndex(
-    l => l.name === input.name,
-  )
+  const existing = manifest.link.findIndex(l => l.name === input.name)
   if (existing >= 0) {
     manifest.link[existing] = { name: input.name, mark: hold }
   } else {
@@ -82,11 +83,7 @@ export async function addDependency(input: {
 
   // write updated manifest
   const text = writeManifest({ manifest })
-  await fsp.writeFile(
-    path.join(input.root, 'deck.tree'),
-    text,
-    'utf-8',
-  )
+  await fsp.writeFile(path.join(input.root, 'deck.tree'), text, 'utf-8')
 
   // re-install
   await install({ root: input.root })
@@ -102,19 +99,13 @@ export async function removeDependency(input: {
 
   // write updated manifest
   const text = writeManifest({ manifest })
-  await fsp.writeFile(
-    path.join(input.root, 'deck.tree'),
-    text,
-    'utf-8',
-  )
+  await fsp.writeFile(path.join(input.root, 'deck.tree'), text, 'utf-8')
 
   // re-install
   await install({ root: input.root })
 }
 
-export async function verifyInstall(input: {
-  root: string
-}): Promise<{
+export async function verifyInstall(input: { root: string }): Promise<{
   ok: boolean
   missing: Array<string>
   outdated: Array<string>

@@ -18,43 +18,50 @@ import type { Program } from '@cluesurf/make/code/compile/node'
 export type Analysis = {
   tree: RootNode
   program: Program | null
-  diagnostics: Array<Diagnostic>
+  diagnostics: Diagnostic[]
   // render the canonical formatting (from the tree, so it works even with type errors)
   format(): string
   // run the lint rules over the milled AST (returns [] if the source did not mill)
-  lint(config?: LintConfig): Array<Finding>
+  lint(config?: LintConfig): Finding[]
   // run the full type checker over the milled AST (parse and mill are not repeated)
-  check(): Array<Diagnostic>
+  check(): Diagnostic[]
 }
 
 // gather inline lint suppressions from the tree's comment trivia: a `# lint off Lxxx` comment disables that rule on
 // the following line. Walks the CST so the formatter and linter share the same comment source.
 function suppressions(tree: RootNode): Map<number, Set<string>> {
   const map = new Map<number, Set<string>>()
+
   const visit = (group: {
-    comments?: Array<{
+    comments?: {
       text: string
       span: { start: { line: number } }
-    }>
-    nodes: Array<unknown>
+    }[]
+    nodes: unknown[]
   }) => {
     for (const comment of group.comments ?? []) {
-      const found = comment.text.match(/lint\s+off\s+([A-Za-z0-9]+)/)
+      const found = /lint\s+off\s+([A-Za-z0-9]+)/.exec(comment.text)
+
       if (found) {
         const line = comment.span.start.line + 1
-        if (!map.has(line)) map.set(line, new Set())
+
+        if (!map.has(line)) {map.set(line, new Set())}
+
         map.get(line)!.add(found[1]!)
       }
     }
+
     for (const child of group.nodes)
-      if (
+      {if (
         child &&
         typeof child === 'object' &&
         (child as { kind?: string }).kind === 'group'
       )
-        visit(child as never)
+        {visit(child as never)}}
   }
-  for (const group of tree.nodes) visit(group as never)
+
+  for (const group of tree.nodes) {visit(group)}
+
   return map
 }
 
@@ -81,8 +88,10 @@ export function analyze(source: {
           })
         : [],
     check: () => {
-      if (!program) return all
+      if (!program) {return all}
+
       const result = compileProgram(program, source.file)
+
       return result.ok ? result.warnings : result.diagnostics
     },
   }

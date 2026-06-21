@@ -15,6 +15,7 @@ export async function callLink(input: {
   if (!input.deck) {
     // link current package to global store
     logStep('Linking current package...')
+
     try {
       // linking to itself means making this project available globally
       // for now, just symlink the current dir
@@ -23,6 +24,7 @@ export async function callLink(input: {
       logFail(formatError(err))
       process.exit(1)
     }
+
     return
   }
 

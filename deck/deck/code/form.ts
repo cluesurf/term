@@ -23,7 +23,11 @@ export type MarkTest = {
   list: Array<MarkWild>
 }
 
-export type MarkHold = MarkBand | MarkWild | MarkTest | { form: 'exact'; mark: Mark }
+export type MarkHold =
+  | MarkBand
+  | MarkWild
+  | MarkTest
+  | { form: 'exact'; mark: Mark }
 
 export type DeckMind = {
   name: string

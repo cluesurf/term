@@ -28,11 +28,14 @@ export function makeMap<V>(): TernaryMap<V> {
 // the balanced-ternary digits of a key, each codepoint padded to a fixed width so keys cannot alias
 function keyTrits(key: string): Trit[] {
   const out: Trit[] = []
+
   for (const ch of key) {
     const trits = toTrits(BigInt(ch.codePointAt(0)!))
+
     for (let i = 0; i < TRITS_PER_CODEPOINT; i++)
-      out.push(trits[i] ?? 0)
+      {out.push(trits[i] ?? 0)}
   }
+
   return out
 }
 
@@ -42,16 +45,22 @@ function descend<V>(
   create: boolean,
 ): TrieNode<V> | undefined {
   let node = root
+
   for (const t of trits) {
     const slot = t + 1
+
     let next = node.kids[slot]
+
     if (!next) {
-      if (!create) return undefined
+      if (!create) {return undefined}
+
       next = { kids: [] }
       node.kids[slot] = next
     }
+
     node = next
   }
+
   return node
 }
 
@@ -61,7 +70,9 @@ export function set<V>(
   value: V,
 ): void {
   const node = descend(map.root, keyTrits(key), true)!
-  if (!node.entry) map.size += 1
+
+  if (!node.entry) {map.size += 1}
+
   node.entry = { key, value }
 }
 
@@ -75,9 +86,12 @@ export function has<V>(map: TernaryMap<V>, key: string): boolean {
 
 export function remove<V>(map: TernaryMap<V>, key: string): boolean {
   const node = descend(map.root, keyTrits(key), false)
-  if (!node?.entry) return false
+
+  if (!node?.entry) {return false}
+
   node.entry = undefined
   map.size -= 1
+
   return true
 }
 
@@ -90,17 +104,22 @@ export function entries<V>(
   map: TernaryMap<V>,
 ): { key: string; value: V }[] {
   const out: { key: string; value: V }[] = []
+
   const walk = (node: TrieNode<V>): void => {
-    if (node.entry) out.push(node.entry)
-    for (const kid of node.kids) if (kid) walk(kid)
+    if (node.entry) {out.push(node.entry)}
+
+    for (const kid of node.kids) {if (kid) {walk(kid)}}
   }
+
   walk(map.root)
+
   return out
 }
 
 export function keys<V>(map: TernaryMap<V>): string[] {
   return entries(map).map(e => e.key)
 }
+
 export function values<V>(map: TernaryMap<V>): V[] {
   return entries(map).map(e => e.value)
 }

@@ -50,11 +50,14 @@ const COMMANDS = [
 function editDistance(a: string, b: string): number {
   const m = a.length
   const n = b.length
-  const dp: Array<Array<number>> = Array.from({ length: m + 1 }, () =>
+  const dp: number[][] = Array.from({ length: m + 1 }, () =>
     Array.from({ length: n + 1 }, () => 0),
   )
-  for (let i = 0; i <= m; i++) dp[i]![0] = i
-  for (let j = 0; j <= n; j++) dp[0]![j] = j
+
+  for (let i = 0; i <= m; i++) {dp[i]![0] = i}
+
+  for (let j = 0; j <= n; j++) {dp[0]![j] = j}
+
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1
@@ -65,20 +68,25 @@ function editDistance(a: string, b: string): number {
       )
     }
   }
+
   return dp[m]![n]!
 }
 
 function suggestCommand(input: string): string | undefined {
   let best: string | undefined
   let bestDist = Infinity
+
   for (const cmd of COMMANDS) {
     const dist = editDistance(input.toLowerCase(), cmd)
+
     if (dist < bestDist) {
       bestDist = dist
       best = cmd
     }
   }
-  if (bestDist <= 2 && best) return best
+
+  if (bestDist <= 2 && best) {return best}
+
   return undefined
 }
 
@@ -269,9 +277,7 @@ const cli = yargs(hideBin(process.argv))
         json: argv.json,
         save: argv.save,
         compare: argv.compare,
-        failOnRegression: argv['fail-on-regression'] as
-          | number
-          | undefined,
+        failOnRegression: argv['fail-on-regression'],
         markdown: argv.markdown,
         history: argv.history,
       })
@@ -485,7 +491,7 @@ const cli = yargs(hideBin(process.argv))
     async argv => {
       await callForm({
         root,
-        paths: (argv.paths as Array<string> | undefined) ?? [],
+        paths: (argv.paths as string[] | undefined) ?? [],
         check: argv.check,
         list: argv.list,
       })
@@ -535,7 +541,7 @@ const cli = yargs(hideBin(process.argv))
     async argv => {
       await callLint({
         root,
-        paths: (argv.paths as Array<string> | undefined) ?? [],
+        paths: (argv.paths as string[] | undefined) ?? [],
         fix: argv.fix,
       })
     },
@@ -552,6 +558,7 @@ const cli = yargs(hideBin(process.argv))
       if (argv.what === 'mark') {
         const { loadManifest, showMark } =
           await import('@cluesurf/deck.tree')
+
         try {
           const manifest = await loadManifest({ dir: root })
           console.log(showMark(manifest.mark))
@@ -571,6 +578,7 @@ const cli = yargs(hideBin(process.argv))
     } else if (msg) {
       logFail(msg)
     }
+
     process.exit(1)
   })
   .version(false)
@@ -580,12 +588,15 @@ async function main(): Promise<void> {
 
   if (argv._.length === 0) {
     showBanner()
+
     return
   }
 
   const cmd = String(argv._[0])
+
   if (!COMMANDS.includes(cmd)) {
     const suggestion = suggestCommand(cmd)
+
     if (suggestion) {
       logFail(
         `Unknown command "${cmd}". Did you mean ${warn(
@@ -597,6 +608,7 @@ async function main(): Promise<void> {
         `Unknown command "${cmd}". Run "seed" for a list of commands.`,
       )
     }
+
     process.exit(1)
   }
 }

@@ -31,38 +31,38 @@ watching them drift apart. The logic is the same. The plumbing is not.
 Seed is a programming framework built on top of the
 [tree](https://github.com/cluesurf/tree) syntax. It compiles `.tree`
 source code into native, idiomatic output for multiple platforms. You
-write your logic once in a clean, indentation-based syntax. The
-compiler produces Rust, TypeScript, Kotlin, Swift, or HVM, each looking
-like it was written by hand for that target.
+write your logic once in a clean, indentation-based syntax. The compiler
+produces Rust, TypeScript, Kotlin, Swift, or HVM, each looking like it
+was written by hand for that target.
 
 Seed is not a runtime or a virtual machine. It generates real native
-code that integrates with each platform's existing tools, libraries,
-and package managers.
+code that integrates with each platform's existing tools, libraries, and
+package managers.
 
 ## Packages
 
 ### Core
 
-| Package                      | Purpose                            |
-| ---------------------------- | ---------------------------------- |
-| [seed](.) (this)             | Entrypoint and CLI                    |
-| [make.tree](https://github.com/cluesurf/make.tree)    | Compiler                              |
-| [flow.tree](https://github.com/cluesurf/flow.tree)    | Language server                       |
-| [deck.tree](https://github.com/cluesurf/deck.tree)    | Package manager                       |
-| [base.tree](https://github.com/cluesurf/base.tree)    | Standard library                      |
-| [bind.tree](https://github.com/cluesurf/bind.tree)    | Environment types and native bindings |
+| Package                                            | Purpose                               |
+| -------------------------------------------------- | ------------------------------------- |
+| [seed](.) (this)                                   | Entrypoint and CLI                    |
+| [make.tree](https://github.com/cluesurf/make.tree) | Compiler                              |
+| [flow.tree](https://github.com/cluesurf/flow.tree) | Language server                       |
+| [deck.tree](https://github.com/cluesurf/deck.tree) | Package manager                       |
+| [base.tree](https://github.com/cluesurf/base.tree) | Standard library                      |
+| [bind.tree](https://github.com/cluesurf/bind.tree) | Environment types and native bindings |
 
 ### Libraries
 
-| Package                      | Purpose                            |
-| ---------------------------- | ---------------------------------- |
-| [land.tree](https://github.com/cluesurf/land.tree)    | Physics, graphics, worlds, games, audio, video, image |
-| [mesh.tree](https://github.com/cluesurf/mesh.tree)    | Infrastructure                     |
-| [form.tree](https://github.com/cluesurf/form.tree)    | Math                               |
-| [word.tree](https://github.com/cluesurf/word.tree)    | Language and linguistics           |
-| [code.tree](https://github.com/cluesurf/code.tree)    | Content grammars (binary and text) |
-| [link.tree](https://github.com/cluesurf/link.tree)    | Third party API connections        |
-| [site.tree](https://github.com/cluesurf/site.tree)    | App level frameworks               |
+| Package                                            | Purpose                                               |
+| -------------------------------------------------- | ----------------------------------------------------- |
+| [land.tree](https://github.com/cluesurf/land.tree) | Physics, graphics, worlds, games, audio, video, image |
+| [mesh.tree](https://github.com/cluesurf/mesh.tree) | Infrastructure                                        |
+| [form.tree](https://github.com/cluesurf/form.tree) | Math                                                  |
+| [word.tree](https://github.com/cluesurf/word.tree) | Language and linguistics                              |
+| [code.tree](https://github.com/cluesurf/code.tree) | Content grammars (binary and text)                    |
+| [link.tree](https://github.com/cluesurf/link.tree) | Third party API connections                           |
+| [site.tree](https://github.com/cluesurf/site.tree) | App level frameworks                                  |
 
 ## How It Works
 
@@ -77,8 +77,8 @@ make.tree (compiler)
     └─→ HVM         (parallel computation)
 ```
 
-The compiler parses `.tree` files into a surface AST, desugars into
-core terms based on the Calculus of Constructions with self-types,
+The compiler parses `.tree` files into a surface AST, desugars into core
+terms based on the Calculus of Constructions with self-types,
 type-checks, and hands off to backend code generators. Each backend
 produces idiomatic output for its platform.
 
@@ -127,6 +127,7 @@ task main
 Compiles to:
 
 **Rust**
+
 ```rust
 fn greet(name: String) -> String {
     format!("Hello, {}", name)
@@ -134,27 +135,16 @@ fn greet(name: String) -> String {
 ```
 
 **TypeScript**
+
 ```typescript
 export function greet(name) {
-    return `Hello, ${name}`;
+  return `Hello, ${name}`
 }
 ```
 
 ## License
 
-Copyright 2021-2026+ <a href='https://clue.surf'>ClueSurf</a>
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may
-not use this file except in compliance with the License. You may obtain
-a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+MIT
 
 ## ClueSurf
 

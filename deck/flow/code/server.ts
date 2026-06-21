@@ -31,7 +31,7 @@ type TextDocumentParams = {
 }
 type ChangeParams = {
   textDocument: { uri: string }
-  contentChanges: Array<{ text: string }>
+  contentChanges: { text: string }[]
 }
 type PositionParams = {
   textDocument: { uri: string }
@@ -48,6 +48,7 @@ const SYMBOL_KIND: Record<SymbolKind, number> = {
   parameter: 13,
   local: 13,
 }
+
 const COMPLETION_KIND: Record<SymbolKind, number> = {
   function: 3,
   type: 7,
@@ -56,6 +57,7 @@ const COMPLETION_KIND: Record<SymbolKind, number> = {
   parameter: 6,
   local: 6,
 }
+
 // the keywords offered in completion (the four-letter Seed vocabulary), each a plain keyword item
 const KEYWORDS = [
   'task',
@@ -102,14 +104,16 @@ export class LanguageServer {
 
   private analyzerFor(uri: string): IncrementalAnalyzer {
     let analyzer = this.analyzers.get(uri)
+
     if (!analyzer) {
       analyzer = new IncrementalAnalyzer(this.resolve)
       this.analyzers.set(uri, analyzer)
     }
+
     return analyzer
   }
 
-  async dispatch(message: Message): Promise<Array<Message>> {
+  async dispatch(message: Message): Promise<Message[]> {
     switch (message.method) {
       case 'initialize':
         return [
@@ -130,11 +134,14 @@ export class LanguageServer {
         return []
       case 'shutdown':
         this.shuttingDown = true
+
         return [respond(message, null)]
       case 'exit':
         return []
+
       case 'textDocument/didOpen': {
         const params = message.params as TextDocumentParams
+
         return [
           await this.refresh(
             params.textDocument.uri,
@@ -142,8 +149,10 @@ export class LanguageServer {
           ),
         ]
       }
+
       case 'textDocument/didChange': {
         const params = message.params as ChangeParams
+
         return [
           await this.refresh(
             params.textDocument.uri,
@@ -152,11 +161,13 @@ export class LanguageServer {
           ),
         ]
       }
+
       case 'textDocument/didClose': {
         const params = message.params as TextDocumentParams
         this.documents.delete(params.textDocument.uri)
         this.programs.delete(params.textDocument.uri)
         this.indexes.delete(params.textDocument.uri)
+
         return [
           notify('textDocument/publishDiagnostics', {
             uri: params.textDocument.uri,
@@ -164,12 +175,14 @@ export class LanguageServer {
           }),
         ]
       }
+
       case 'textDocument/hover': {
         const params = message.params as PositionParams
         const program = this.programs.get(params.textDocument.uri)
         const type = program
           ? hoverAt(program, params.position)
           : undefined
+
         return [
           respond(
             message,
@@ -179,11 +192,13 @@ export class LanguageServer {
           ),
         ]
       }
+
       case 'textDocument/definition': {
         const params = message.params as PositionParams
         const index = this.indexes.get(params.textDocument.uri)
         const ref = index && referenceAt(index, params.position)
-        const def = ref && index!.definitions.get(ref.name)
+        const def = ref && index.definitions.get(ref.name)
+
         return [
           respond(
             message,
@@ -196,11 +211,13 @@ export class LanguageServer {
           ),
         ]
       }
+
       case 'textDocument/references': {
         const params = message.params as PositionParams
         const index = this.indexes.get(params.textDocument.uri)
         const ref = index && referenceAt(index, params.position)
-        const spans = ref ? occurrencesOf(index!, ref.name) : []
+        const spans = ref ? occurrencesOf(index, ref.name) : []
+
         return [
           respond(
             message,
@@ -211,21 +228,28 @@ export class LanguageServer {
           ),
         ]
       }
+
       case 'textDocument/rename': {
         const params = message.params as RenameParams
         const index = this.indexes.get(params.textDocument.uri)
         const ref = index && referenceAt(index, params.position)
-        if (!ref) return [respond(message, null)]
-        const edits = occurrencesOf(index!, ref.name).map(span => ({
+
+        if (!ref) {
+          return [respond(message, null)]
+        }
+
+        const edits = occurrencesOf(index, ref.name).map(span => ({
           range: toRange(span),
           newText: params.newName,
         }))
+
         return [
           respond(message, {
             changes: { [params.textDocument.uri]: edits },
           }),
         ]
       }
+
       case 'textDocument/documentSymbol': {
         const params = message.params as TextDocumentParams
         const index = this.indexes.get(params.textDocument.uri)
@@ -245,8 +269,10 @@ export class LanguageServer {
                 selectionRange: toRange(d.span),
               }))
           : []
+
         return [respond(message, symbols)]
       }
+
       case 'textDocument/completion': {
         const params = message.params as PositionParams
         const index = this.indexes.get(params.textDocument.uri)
@@ -257,7 +283,9 @@ export class LanguageServer {
               detail: d.detail,
             }))
           : []
+
         const keywords = KEYWORDS.map(label => ({ label, kind: 14 }))
+
         return [
           respond(message, {
             isIncomplete: false,
@@ -265,16 +293,22 @@ export class LanguageServer {
           }),
         ]
       }
+
       case 'textDocument/signatureHelp': {
         const params = message.params as PositionParams
         const program = this.programs.get(params.textDocument.uri)
         const index = this.indexes.get(params.textDocument.uri)
         const call = program && callAt(program, params.position)
         const sig = call && index?.signatures.get(call.name)
-        if (!call || !sig) return [respond(message, null)]
+
+        if (!call || !sig) {
+          return [respond(message, null)]
+        }
+
         const label = `${call.name}(${sig.params
           .map(p => `${p.name}: ${p.type}`)
           .join(', ')}) -> ${sig.result}`
+
         return [
           respond(message, {
             signatures: [
@@ -293,6 +327,7 @@ export class LanguageServer {
           }),
         ]
       }
+
       default:
         // an unknown request still needs a response; an unknown notification is ignored
         return message.id !== undefined ? [respond(message, null)] : []
@@ -302,10 +337,12 @@ export class LanguageServer {
   // recompile a document, store its typed program and symbol index, and produce the diagnostics notification
   private async refresh(uri: string, text: string): Promise<Message> {
     this.documents.set(uri, text)
+
     const result = await this.analyzerFor(uri).analyze({
       file: uri,
       text,
     })
+
     if (result.program) {
       this.programs.set(uri, result.program)
       this.indexes.set(uri, buildIndex(result.program))
@@ -313,9 +350,10 @@ export class LanguageServer {
       this.programs.delete(uri)
       this.indexes.delete(uri)
     }
+
     return notify('textDocument/publishDiagnostics', {
       uri,
-      diagnostics: result.diagnostics satisfies Array<LspDiagnostic>,
+      diagnostics: result.diagnostics satisfies LspDiagnostic[],
     })
   }
 }

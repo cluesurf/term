@@ -25,15 +25,19 @@ function authHeaders(token?: string): Record<string, string> {
 // the (kind, key) artifacts present in a local cache dir
 function localEntries(
   cacheDir: string,
-): Array<{ kind: Kind; key: string }> {
-  const entries: Array<{ kind: Kind; key: string }> = []
+): { kind: Kind; key: string }[] {
+  const entries: { kind: Kind; key: string }[] = []
+
   for (const kind of KINDS) {
     const dir = path.join(cacheDir, kind)
-    if (!existsSync(dir)) continue
+
+    if (!existsSync(dir)) {continue}
+
     for (const file of readdirSync(dir))
-      if (file.endsWith('.json'))
-        entries.push({ kind, key: file.slice(0, -'.json'.length) })
+      {if (file.endsWith('.json'))
+        {entries.push({ kind, key: file.slice(0, -'.json'.length) })}}
   }
+
   return entries
 }
 
@@ -46,21 +50,29 @@ export async function pullRemoteCache(
   const indexResponse = await fetch(`${endpoint}/index`, {
     headers: authHeaders(token),
   })
-  if (!indexResponse.ok) return 0
-  const remote = (await indexResponse.json()) as Array<{
+
+  if (!indexResponse.ok) {return 0}
+
+  const remote = (await indexResponse.json()) as {
     kind: Kind
     key: string
-  }>
+  }[]
+
   const have = new Set(
     localEntries(cacheDir).map(e => `${e.kind}/${e.key}`),
   )
+
   let pulled = 0
+
   for (const { kind, key } of remote) {
-    if (have.has(`${kind}/${key}`)) continue
+    if (have.has(`${kind}/${key}`)) {continue}
+
     const response = await fetch(`${endpoint}/${kind}/${key}`, {
       headers: authHeaders(token),
     })
-    if (!response.ok) continue
+
+    if (!response.ok) {continue}
+
     mkdirSync(path.join(cacheDir, kind), { recursive: true })
     writeFileSync(
       path.join(cacheDir, kind, `${key}.json`),
@@ -68,6 +80,7 @@ export async function pullRemoteCache(
     )
     pulled += 1
   }
+
   return pulled
 }
 
@@ -80,20 +93,26 @@ export async function pushRemoteCache(
   const indexResponse = await fetch(`${endpoint}/index`, {
     headers: authHeaders(token),
   })
+
   const remote = indexResponse.ok
-    ? ((await indexResponse.json()) as Array<{
+    ? ((await indexResponse.json()) as {
         kind: Kind
         key: string
-      }>)
+      }[])
     : []
+
   const have = new Set(remote.map(e => `${e.kind}/${e.key}`))
+
   let pushed = 0
+
   for (const { kind, key } of localEntries(cacheDir)) {
-    if (have.has(`${kind}/${key}`)) continue
+    if (have.has(`${kind}/${key}`)) {continue}
+
     const body = readFileSync(
       path.join(cacheDir, kind, `${key}.json`),
       'utf8',
     )
+
     const response = await fetch(`${endpoint}/${kind}/${key}`, {
       method: 'PUT',
       headers: {
@@ -102,8 +121,10 @@ export async function pushRemoteCache(
       },
       body,
     })
-    if (response.ok) pushed += 1
+
+    if (response.ok) {pushed += 1}
   }
+
   return pushed
 }
 
@@ -128,36 +149,47 @@ export function startRemoteCacheServer(options: {
     !token || context.req.header('authorization') === `Bearer ${token}`
 
   app.get('/index', context => {
-    if (!authed(context)) return context.text('unauthorized', 401)
+    if (!authed(context)) {return context.text('unauthorized', 401)}
+
     return context.json(localEntries(storeDir))
   })
 
   app.get('/:kind/:key', context => {
-    if (!authed(context)) return context.text('unauthorized', 401)
+    if (!authed(context)) {return context.text('unauthorized', 401)}
+
     const { kind, key } = context.req.param()
+
     if (kind !== 'mill' && kind !== 'output')
-      return context.text('bad kind', 400)
+      {return context.text('bad kind', 400)}
+
     const file = path.join(storeDir, kind, `${key}.json`)
-    if (!existsSync(file)) return context.text('miss', 404)
+
+    if (!existsSync(file)) {return context.text('miss', 404)}
+
     return context.body(readFileSync(file, 'utf8'), 200, {
       'content-type': 'application/json',
     })
   })
 
   app.put('/:kind/:key', async context => {
-    if (!authed(context)) return context.text('unauthorized', 401)
+    if (!authed(context)) {return context.text('unauthorized', 401)}
+
     const { kind, key } = context.req.param()
+
     if (kind !== 'mill' && kind !== 'output')
-      return context.text('bad kind', 400)
+      {return context.text('bad kind', 400)}
+
     const dir = path.join(storeDir, kind)
     mkdirSync(dir, { recursive: true })
     writeFileSync(
       path.join(dir, `${key}.json`),
       await context.req.text(),
     )
+
     return context.json({ ok: true })
   })
 
   const server = serve({ fetch: app.fetch, port })
+
   return { port, close: () => server.close() }
 }

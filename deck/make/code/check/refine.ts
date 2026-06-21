@@ -22,13 +22,17 @@ export function linear(
 
 function scale(a: Linear, k: number): Linear {
   const terms = new Map<string, number>()
-  for (const [v, c] of a.terms) terms.set(v, c * k)
+
+  for (const [v, c] of a.terms) {terms.set(v, c * k)}
+
   return { terms, constant: a.constant * k }
 }
 
 function plus(a: Linear, b: Linear): Linear {
   const terms = new Map(a.terms)
-  for (const [v, c] of b.terms) terms.set(v, (terms.get(v) ?? 0) + c)
+
+  for (const [v, c] of b.terms) {terms.set(v, (terms.get(v) ?? 0) + c)}
+
   return { terms, constant: a.constant + b.constant }
 }
 
@@ -54,11 +58,13 @@ function negate(ineq: Inequality): Inequality {
   return { linear: scale(ineq.linear, -1), strict: !ineq.strict }
 }
 
-function variables(ineqs: Array<Inequality>): Array<string> {
+function variables(ineqs: Inequality[]): string[] {
   const set = new Set<string>()
+
   for (const ineq of ineqs)
-    for (const v of ineq.linear.terms.keys())
-      if (Math.abs(ineq.linear.terms.get(v)!) > 1e-12) set.add(v)
+    {for (const v of ineq.linear.terms.keys())
+      {if (Math.abs(ineq.linear.terms.get(v)!) > 1e-12) {set.add(v)}}}
+
   return [...set]
 }
 
@@ -68,21 +74,26 @@ function coeff(ineq: Inequality, v: string): number {
 
 // eliminate one variable by Fourier-Motzkin: combine each positive-coefficient row with each negative one
 function eliminate(
-  ineqs: Array<Inequality>,
+  ineqs: Inequality[],
   v: string,
-): Array<Inequality> {
-  const positive: Array<Inequality> = []
-  const negative: Array<Inequality> = []
-  const free: Array<Inequality> = []
+): Inequality[] {
+  const positive: Inequality[] = []
+  const negative: Inequality[] = []
+  const free: Inequality[] = []
+
   for (const ineq of ineqs) {
     const c = coeff(ineq, v)
-    if (c > 1e-12) positive.push(ineq)
-    else if (c < -1e-12) negative.push(ineq)
-    else free.push(ineq)
+
+    if (c > 1e-12) {positive.push(ineq)}
+    else if (c < -1e-12) {negative.push(ineq)}
+    else {free.push(ineq)}
   }
+
   const out = [...free]
+
   for (const p of positive) {
     const cp = coeff(p, v)
+
     for (const n of negative) {
       const cn = coeff(n, v)
       // (-cn) * p + (cp) * n  cancels v (both multipliers positive)
@@ -90,11 +101,12 @@ function eliminate(
       out.push({ linear: combined, strict: p.strict || n.strict })
     }
   }
+
   return out
 }
 
 // is the system of constraints unsatisfiable?
-function unsatisfiable(ineqs: Array<Inequality>): boolean {
+function unsatisfiable(ineqs: Inequality[]): boolean {
   // integer tightening: the program variables are integers, so a strict `l < 0` is exactly `l + 1 <= 0`. Tightening
   // up front makes the procedure integer-sound (it now proves e.g. n > 0 => n >= 1, which is false over rationals).
   let system = ineqs.map(ineq =>
@@ -108,17 +120,20 @@ function unsatisfiable(ineqs: Array<Inequality>): boolean {
         }
       : ineq,
   )
-  for (const v of variables(system)) system = eliminate(system, v)
+
+  for (const v of variables(system)) {system = eliminate(system, v)}
+
   // every remaining constraint is `constant <= 0`; a positive constant is a contradiction
   for (const ineq of system) {
-    if (ineq.linear.constant > 1e-9) return true
+    if (ineq.linear.constant > 1e-9) {return true}
   }
+
   return false
 }
 
 // does the conjunction of assumptions imply the goal? (the verification condition is valid)
 export function proves(
-  assumptions: Array<Inequality>,
+  assumptions: Inequality[],
   goal: Inequality,
 ): boolean {
   // valid iff assumptions AND not(goal) is unsatisfiable

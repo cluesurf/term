@@ -23,9 +23,7 @@ export async function fetchPackageMeta(input: {
   config: FetchConfig
 }): Promise<RegistryPackageMeta> {
   if (input.config.offline) {
-    throw new Error(
-      `Cannot fetch ${input.name} in offline mode`,
-    )
+    throw new Error(`Cannot fetch ${input.name} in offline mode`)
   }
 
   const cached = metaCache.get(input.name)
@@ -83,12 +81,14 @@ export function getVersionList(input: {
 export function getVersionMeta(input: {
   meta: RegistryPackageMeta
   mark: string
-}): {
-  tarball: string
-  integrity: string
-  shasum: string
-  dependencies: Record<string, string>
-} | undefined {
+}):
+  | {
+      tarball: string
+      integrity: string
+      shasum: string
+      dependencies: Record<string, string>
+    }
+  | undefined {
   const entry = input.meta.versions[input.mark]
   if (!entry) return undefined
 

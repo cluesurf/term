@@ -23,17 +23,20 @@ const REBALANCE_DEPTH = 32 // rebuild when the tree gets this deep relative to i
 
 export function fromString(text: string): Rope {
   const points = Array.from(text) // split on codepoints, not UTF-16 units
+
   return build(points)
 }
 
 function build(points: string[]): Rope {
   if (points.length <= MAX_LEAF)
-    return {
+    {return {
       form: 'leaf',
       text: points.join(''),
       length: points.length,
-    }
+    }}
+
   const mid = points.length >> 1
+
   return branch(build(points.slice(0, mid)), build(points.slice(mid)))
 }
 
@@ -56,9 +59,12 @@ export function length(r: Rope): number {
 }
 
 export function concat(a: Rope, b: Rope): Rope {
-  if (a.length === 0) return b
-  if (b.length === 0) return a
+  if (a.length === 0) {return b}
+
+  if (b.length === 0) {return a}
+
   const joined = branch(a, b)
+
   return depthOf(joined) > REBALANCE_DEPTH
     ? fromString(toString(joined))
     : joined
@@ -67,16 +73,19 @@ export function concat(a: Rope, b: Rope): Rope {
 // the codepoint (as a string) at an index, O(log n)
 export function charAt(r: Rope, index: number): string {
   if (index < 0 || index >= r.length)
-    throw new Error(`index ${index} out of range (length ${r.length})`)
+    {throw new Error(`index ${index} out of range (length ${r.length})`)}
+
   let node = r
   let i = index
+
   while (node.form === 'branch') {
-    if (i < node.left.length) node = node.left
+    if (i < node.left.length) {node = node.left}
     else {
       i -= node.left.length
       node = node.right
     }
   }
+
   return Array.from(node.text)[i]!
 }
 
@@ -97,18 +106,25 @@ export function slice(
 ): Rope {
   const s = Math.max(0, start)
   const e = Math.min(r.length, end)
-  if (s >= e) return { form: 'leaf', text: '', length: 0 }
+
+  if (s >= e) {return { form: 'leaf', text: '', length: 0 }}
+
   if (r.form === 'leaf') {
     const points = Array.from(r.text).slice(s, e)
+
     return {
       form: 'leaf',
       text: points.join(''),
       length: points.length,
     }
   }
+
   const leftLen = r.left.length
-  if (e <= leftLen) return slice(r.left, s, e)
-  if (s >= leftLen) return slice(r.right, s - leftLen, e - leftLen)
+
+  if (e <= leftLen) {return slice(r.left, s, e)}
+
+  if (s >= leftLen) {return slice(r.right, s - leftLen, e - leftLen)}
+
   return concat(
     slice(r.left, s, leftLen),
     slice(r.right, 0, e - leftLen),
@@ -116,7 +132,8 @@ export function slice(
 }
 
 export function toString(r: Rope): string {
-  if (r.form === 'leaf') return r.text
+  if (r.form === 'leaf') {return r.text}
+
   return toString(r.left) + toString(r.right)
 }
 

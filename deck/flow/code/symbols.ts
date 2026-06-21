@@ -32,23 +32,23 @@ export type Reference = { name: string; span: Span }
 // the names a function makes available, with the span where each is introduced (for scope-aware completion)
 export type FunctionScope = {
   span: Span
-  locals: Array<{
+  locals: {
     name: string
     kind: SymbolKind
     detail: string
     span: Span
-  }>
+  }[]
 }
 
 export type SymbolIndex = {
   definitions: Map<string, Definition>
-  references: Array<Reference>
-  functions: Array<Definition>
-  scopes: Array<FunctionScope>
+  references: Reference[]
+  functions: Definition[]
+  scopes: FunctionScope[]
   // a function name -> its parameter types and result, for signature help
   signatures: Map<
     string,
-    { params: Array<{ name: string; type: string }>; result: string }
+    { params: { name: string; type: string }[]; result: string }
   >
 }
 
@@ -58,17 +58,18 @@ function signatureText(
   const params = node.params
     .map(p => `${p.name}: ${showType(p.type ?? { kind: 'unknown' })}`)
     .join(', ')
+
   return `(${params}) -> ${showType(node.result ?? { kind: 'unit' })}`
 }
 
 export function buildIndex(program: Program): SymbolIndex {
   const definitions = new Map<string, Definition>()
-  const references: Array<Reference> = []
-  const functions: Array<Definition> = []
-  const scopes: Array<FunctionScope> = []
+  const references: Reference[] = []
+  const functions: Definition[] = []
+  const scopes: FunctionScope[] = []
   const signatures = new Map<
     string,
-    { params: Array<{ name: string; type: string }>; result: string }
+    { params: { name: string; type: string }[]; result: string }
   >()
 
   const define = (
@@ -78,7 +79,11 @@ export function buildIndex(program: Program): SymbolIndex {
     detail: string,
   ): Definition => {
     const def = { name, kind, span, detail }
-    if (!definitions.has(name)) definitions.set(name, def)
+
+    if (!definitions.has(name)) {
+      definitions.set(name, def)
+    }
+
     return def
   }
 
@@ -92,6 +97,7 @@ export function buildIndex(program: Program): SymbolIndex {
           statement.span,
           signatureText(statement),
         )
+
         functions.push(def)
         signatures.set(statement.name, {
           params: statement.params.map(p => ({
@@ -102,6 +108,7 @@ export function buildIndex(program: Program): SymbolIndex {
         })
         break
       }
+
       case 'record-type': {
         define(
           statement.name,
@@ -109,15 +116,19 @@ export function buildIndex(program: Program): SymbolIndex {
           statement.span,
           statement.variants.length ? 'enum' : 'struct',
         )
-        for (const v of statement.variants)
+
+        for (const v of statement.variants) {
           define(
             v.name,
             'variant',
             statement.span,
             `${statement.name} variant`,
           )
+        }
+
         break
       }
+
       case 'mask':
         define(statement.name, 'trait', statement.span, 'trait')
         break
@@ -168,7 +179,11 @@ export function buildIndex(program: Program): SymbolIndex {
           expr(b.cond)
           expr(b.value)
         })
-        if (node.otherwise) expr(node.otherwise)
+
+        if (node.otherwise) {
+          expr(node.otherwise)
+        }
+
         break
       default:
         break
@@ -176,7 +191,7 @@ export function buildIndex(program: Program): SymbolIndex {
   }
 
   const walkStatements = (
-    body: Array<Statement>,
+    body: Statement[],
     locals: FunctionScope['locals'],
   ): void => {
     for (const s of body) {
@@ -199,7 +214,10 @@ export function buildIndex(program: Program): SymbolIndex {
           expr(s.expr)
           break
         case 'return':
-          if (s.value) expr(s.value)
+          if (s.value) {
+            expr(s.value)
+          }
+
           break
         case 'throw':
           expr(s.value)
@@ -223,12 +241,20 @@ export function buildIndex(program: Program): SymbolIndex {
             expr(b.cond)
             walkStatements(b.body, locals)
           })
-          if (s.otherwise) walkStatements(s.otherwise, locals)
+
+          if (s.otherwise) {
+            walkStatements(s.otherwise, locals)
+          }
+
           break
         case 'match':
           expr(s.subject)
           s.cases.forEach(c => walkStatements(c.body, locals))
-          if (s.otherwise) walkStatements(s.otherwise, locals)
+
+          if (s.otherwise) {
+            walkStatements(s.otherwise, locals)
+          }
+
           break
         default:
           break
@@ -237,13 +263,17 @@ export function buildIndex(program: Program): SymbolIndex {
   }
 
   for (const statement of program) {
-    if (statement.form !== 'function') continue
+    if (statement.form !== 'function') {
+      continue
+    }
+
     const locals: FunctionScope['locals'] = statement.params.map(p => ({
       name: p.name,
       kind: 'parameter' as const,
       detail: showType(p.type ?? { kind: 'unknown' }),
       span: statement.span,
     }))
+
     walkStatements(statement.body, locals)
     scopes.push({ span: statement.span, locals })
   }
@@ -257,10 +287,17 @@ export function referenceAt(
   position: LspPosition,
 ): Reference | undefined {
   let best: Reference | undefined
+
   for (const ref of index.references) {
-    if (!within(ref.span, position)) continue
-    if (!best || size(ref.span) < size(best.span)) best = ref
+    if (!within(ref.span, position)) {
+      continue
+    }
+
+    if (!best || size(ref.span) < size(best.span)) {
+      best = ref
+    }
   }
+
   return best
 }
 
@@ -268,12 +305,17 @@ export function referenceAt(
 export function occurrencesOf(
   index: SymbolIndex,
   name: string,
-): Array<Span> {
+): Span[] {
   const out = index.references
     .filter(r => r.name === name)
     .map(r => r.span)
+
   const def = index.definitions.get(name)
-  if (def) out.push(def.span)
+
+  if (def) {
+    out.push(def.span)
+  }
+
   return out
 }
 
@@ -282,9 +324,10 @@ export function occurrencesOf(
 export function scopeAt(
   index: SymbolIndex,
   position: LspPosition,
-): Array<Definition> {
-  const out: Array<Definition> = [...index.definitions.values()]
+): Definition[] {
+  const out: Definition[] = [...index.definitions.values()]
   const fn = index.scopes.find(s => within(s.span, position))
+
   if (fn) {
     for (const local of fn.locals) {
       if (local.kind === 'parameter' || before(local.span, position)) {
@@ -297,6 +340,7 @@ export function scopeAt(
       }
     }
   }
+
   return out
 }
 
@@ -308,6 +352,7 @@ export function callAt(
   let best:
     | { name: string; activeParam: number; span: Span }
     | undefined
+
   const visit = (node: Expression): void => {
     switch (node.form) {
       case 'call': {
@@ -321,17 +366,21 @@ export function callAt(
             node.args.filter(a => before(a.span, position)).length -
               (node.args.some(a => within(a.span, position)) ? 1 : 0),
           )
-          if (!best || size(node.span) < size(best.span))
+
+          if (!best || size(node.span) < size(best.span)) {
             best = {
               name: node.callee.name,
               activeParam,
               span: node.span,
             }
+          }
         }
+
         visit(node.callee)
         node.args.forEach(visit)
         break
       }
+
       case 'binary':
         visit(node.left)
         visit(node.right)
@@ -361,7 +410,8 @@ export function callAt(
         break
     }
   }
-  const walk = (body: Array<Statement>): void => {
+
+  const walk = (body: Statement[]): void => {
     for (const s of body) {
       switch (s.form) {
         case 'let':
@@ -376,7 +426,10 @@ export function callAt(
           visit(s.expr)
           break
         case 'return':
-          if (s.value) visit(s.value)
+          if (s.value) {
+            visit(s.value)
+          }
+
           break
         case 'throw':
           visit(s.value)
@@ -394,12 +447,20 @@ export function callAt(
             visit(b.cond)
             walk(b.body)
           })
-          if (s.otherwise) walk(s.otherwise)
+
+          if (s.otherwise) {
+            walk(s.otherwise)
+          }
+
           break
         case 'match':
           visit(s.subject)
           s.cases.forEach(c => walk(c.body))
-          if (s.otherwise) walk(s.otherwise)
+
+          if (s.otherwise) {
+            walk(s.otherwise)
+          }
+
           break
         case 'function':
           walk(s.body)
@@ -409,7 +470,9 @@ export function callAt(
       }
     }
   }
+
   walk(program)
+
   return best
     ? { name: best.name, activeParam: best.activeParam }
     : undefined

@@ -34,6 +34,7 @@ export class ModuleGraph {
   getById(id: string): ModuleNode | undefined {
     return this.byId.get(id)
   }
+
   getByUrl(url: string): ModuleNode | undefined {
     return this.byUrl.get(url)
   }
@@ -41,7 +42,9 @@ export class ModuleGraph {
   // get or create the node for (id, url, file). Idempotent: the same id returns the same node.
   ensure(id: string, url: string, file: string): ModuleNode {
     const existing = this.byId.get(id)
-    if (existing) return existing
+
+    if (existing) {return existing}
+
     const node: ModuleNode = {
       url,
       id,
@@ -54,8 +57,10 @@ export class ModuleGraph {
       lastHmrTimestamp: 0,
       loaded: false,
     }
+
     this.byId.set(id, node)
     this.byUrl.set(url, node)
+
     return node
   }
 
@@ -63,20 +68,25 @@ export class ModuleGraph {
   // returns any prior deps that lost their last importer (candidates to prune / dispose).
   setImports(
     node: ModuleNode,
-    deps: Array<ModuleNode>,
-  ): Array<ModuleNode> {
+    deps: ModuleNode[],
+  ): ModuleNode[] {
     const next = new Set(deps)
-    const pruned: Array<ModuleNode> = []
+    const pruned: ModuleNode[] = []
+
     // drop edges to deps no longer imported
     for (const previous of node.importedModules) {
       if (!next.has(previous)) {
         previous.importers.delete(node)
-        if (previous.importers.size === 0) pruned.push(previous)
+
+        if (previous.importers.size === 0) {pruned.push(previous)}
       }
     }
+
     // add edges to current deps
-    for (const dep of next) dep.importers.add(node)
+    for (const dep of next) {dep.importers.add(node)}
+
     node.importedModules = next
+
     return pruned
   }
 
@@ -88,7 +98,7 @@ export class ModuleGraph {
   }
 
   // every node, for diagnostics / tests
-  nodes(): Array<ModuleNode> {
+  nodes(): ModuleNode[] {
     return [...this.byId.values()]
   }
 }

@@ -14,20 +14,20 @@ export type FormSymbol = {
   kind: 'form'
   name: string
   module: string
-  fields: Array<{ name: string; type: string }>
-  variants: Array<string>
+  fields: { name: string; type: string }[]
+  variants: string[]
 }
 export type TaskSymbol = {
   kind: 'task'
   name: string
   module: string
-  params: Array<{ name: string; type: string }>
+  params: { name: string; type: string }[]
   result: string
 }
 export type Symbol = FormSymbol | TaskSymbol
 
 export type Inspection = {
-  symbols: Array<Symbol>
+  symbols: Symbol[]
   modules: number
   loadDiagnostics: number
 }
@@ -47,13 +47,19 @@ export function inspectModule(
   resolve: Resolver,
 ): Inspection {
   const { sources, diagnostics } = collectModules(entry, resolve)
-  const symbols: Array<Symbol> = []
+  const symbols: Symbol[] = []
+
   for (const source of sources) {
     const parsed = parse(source)
-    if (!parsed.ok) continue
+
+    if (!parsed.ok) {continue}
+
     const milled = mill(expandTemplates(parsed.tree), source.file)
-    if (!milled.ok) continue
+
+    if (!milled.ok) {continue}
+
     const module = moduleLabel(source.file)
+
     for (const statement of milled.program) {
       if (statement.form === 'record-type') {
         symbols.push({
@@ -82,6 +88,7 @@ export function inspectModule(
       }
     }
   }
+
   return {
     symbols,
     modules: sources.length,
@@ -95,23 +102,27 @@ export function signature(symbol: Symbol): string {
     const fields = symbol.fields
       .map(f => `${f.name}: ${f.type}`)
       .join('; ')
+
     const variants = symbol.variants.length
       ? ` | ${symbol.variants.join(' | ')}`
       : ''
+
     return `{ ${fields} }${variants}`
   }
+
   return `(${symbol.params
     .map(p => `${p.name}: ${p.type}`)
     .join(', ')}) -> ${symbol.result}`
 }
 
-export function toJson(symbols: Array<Symbol>): string {
+export function toJson(symbols: Symbol[]): string {
   return JSON.stringify(symbols, null, 2)
 }
 
 // a CSV with a quoted signature column (commas inside are safe)
-export function toCsv(symbols: Array<Symbol>): string {
+export function toCsv(symbols: Symbol[]): string {
   const rows = ['kind,name,module,signature']
+
   for (const symbol of symbols) {
     rows.push(
       [
@@ -122,15 +133,18 @@ export function toCsv(symbols: Array<Symbol>): string {
       ].join(','),
     )
   }
+
   return rows.join('\n')
 }
 
 // a readable aligned table (the default terminal view)
-export function toTable(symbols: Array<Symbol>): string {
+export function toTable(symbols: Symbol[]): string {
   const width = (key: keyof Symbol) =>
     Math.max(0, ...symbols.map(s => String(s[key] ?? '').length))
+
   const nameWidth = width('name')
   const moduleWidth = width('module')
+
   return symbols
     .map(
       s =>

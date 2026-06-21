@@ -47,11 +47,13 @@ export function check(
   // is cheap). The incremental compiler uses this for per-definition type checking. Default (undefined) checks all,
   // so the whole-program behavior is unchanged. See code/compile/incremental.ts (Tier 2).
   only?: string,
-): Array<Diagnostic> {
-  const diagnostics: Array<Diagnostic> = []
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = []
+
   // the file currently being checked. With a merged multi-module program `file` is only the entry; `fileOrigin` maps
   // each top-level statement to its module, so a type error points at the real source rather than the entry.
   let currentFile = file
+
   // the unification substitution, the atomic core of inference (code/check/substitution.ts). The local aliases keep
   // the rest of this pass reading naturally (`fresh()`, `resolve(t)`, `unify(a, b)`); the state and algorithms live in
   // the reusable class, the first extracted component of the modular checker.
@@ -71,28 +73,40 @@ export function check(
   // each variant's own fields, exposed inside a matching `case` branch (so `self/value` works after a match)
   const variantFields = new Map<string, Map<string, Type>>()
   // a form's generic parameter names, e.g. maybe -> ["t"], for parameterized named types (maybe<t>)
-  const formGenerics = new Map<string, Array<string>>()
+  const formGenerics = new Map<string, string[]>()
+
   for (const statement of program) {
     if (statement.form === 'record-type') {
       formGenerics.set(statement.name, statement.params)
+
       const fields = new Map<string, Type>()
       const nicks = new Map<string, string>()
+
       for (const field of statement.fields) {
         fields.set(field.name, field.type)
-        if (field.nick) nicks.set(field.name, field.nick)
+
+        if (field.nick) {nicks.set(field.name, field.nick)}
       }
+
       records.set(statement.name, fields)
-      if (nicks.size) fieldNick.set(statement.name, nicks)
+
+      if (nicks.size) {fieldNick.set(statement.name, nicks)}
+
       if (statement.variants.length > 0) {
         const set = new Set<string>()
+
         for (const variant of statement.variants) {
           set.add(variant.name)
           variantEnum.set(variant.name, statement.name)
+
           const own = new Map<string, Type>()
+
           for (const field of variant.fields)
-            own.set(field.name, field.type)
+            {own.set(field.name, field.type)}
+
           variantFields.set(variant.name, own)
         }
+
         enums.set(statement.name, set)
       }
     }
@@ -109,20 +123,23 @@ export function check(
   // Built from the whole merged program. This is what lets a frontend pass a plain `number` where a binding declares a
   // `GLuint`, instead of every WebGL/DOM call rejecting primitives.
   const transparentAlias = new Map<string, Type>()
+
   for (const statement of program)
-    if (
+    {if (
       statement.form === 'record-type' &&
       statement.alias &&
       statement.fields.length === 0 &&
       statement.variants.length === 0 &&
       statement.params.length === 0
     )
-      transparentAlias.set(statement.name, statement.alias)
+      {transparentAlias.set(statement.name, statement.alias)}}
 
   // unfold a transparent alias to its base, following a chain (guarded against cycles). Unification only.
   const unfoldAlias = (type: Type): Type => {
     let current = type
+
     const seen = new Set<string>()
+
     while (
       current.kind === 'named' &&
       transparentAlias.has(current.name) &&
@@ -131,6 +148,7 @@ export function check(
       seen.add(current.name)
       current = transparentAlias.get(current.name)!
     }
+
     return current
   }
 
@@ -155,27 +173,32 @@ export function check(
 
   // trait instances available: `${mask}:${type}` (for call-site instance resolution)
   const instances = new Set<string>()
+
   for (const statement of program)
-    if (statement.form === 'instance')
-      instances.add(`${statement.mask}:${statement.target}`)
+    {if (statement.form === 'instance')
+      {instances.add(`${statement.mask}:${statement.target}`)}}
 
   // trait-method names (every method any mask declares). A trait-method call whose receiver is a concrete form
   // dispatches to that form's instance method here; one whose receiver is a trait-bounded generic is left unresolved
   // so the dictionary-passing IR pass can thread the instance. So the single-owner dispatch guess below must NOT fire
   // for a trait method -- guessing the lone instance would wrongly hard-wire a generic call to one concrete type.
   const maskMethods = new Set<string>()
+
   for (const statement of program)
-    if (statement.form === 'mask')
-      for (const method of statement.methods) maskMethods.add(method)
+    {if (statement.form === 'mask')
+      {for (const method of statement.methods) {maskMethods.add(method)}}}
 
   // function name -> its signature: generic variable ids, their names, their trait bounds, and param/result types
   const functions = new Map<string, Signature>()
+
   for (const statement of program) {
-    if (statement.form !== 'function') continue
+    if (statement.form !== 'function') {continue}
+
     // a redefinition with a DIFFERENT arity corrupts the signature table (the body of one definition would be checked
     // against the other's parameters) and used to crash the checker. Flag it and keep the first. Same-arity
     // redefinitions are left as the existing last-wins behavior (template-generated term constants rely on it).
     const existing = functions.get(statement.name)
+
     if (existing) {
       // a different-arity redefinition is flagged only when it is in the entry module (the user's own code). Imported
       // packages legitimately carry same-name overloads (e.g. a generated binding's DOM method with several
@@ -192,21 +215,27 @@ export function check(
           }),
         )
       }
+
       continue
     }
+
     const genericVars = new Map<string, Type>()
     const genericIds = new Set<number>()
     const genericNames = new Map<number, string>()
     const bounds = new Map<number, string>()
+
     for (const g of statement.generics) {
       const variable = fresh()
       genericVars.set(g.name, variable)
+
       if (variable.kind === 'variable') {
         genericIds.add(variable.id)
         genericNames.set(variable.id, g.name)
-        if (g.need) bounds.set(variable.id, g.need)
+
+        if (g.need) {bounds.set(variable.id, g.need)}
       }
     }
+
     functions.set(statement.name, {
       generics: genericIds,
       genericNames,
@@ -221,8 +250,10 @@ export function check(
   // a declarative native binding registers a function-shaped signature (no generics, no body to check): calls resolve
   // and type-check against it, and each backend renders the env's native template in place of a real call.
   for (const statement of program) {
-    if (statement.form !== 'bind') continue
-    if (functions.has(statement.name)) continue
+    if (statement.form !== 'bind') {continue}
+
+    if (functions.has(statement.name)) {continue}
+
     const noGenerics = new Map<string, Type>()
     functions.set(statement.name, {
       generics: new Set<number>(),
@@ -239,11 +270,14 @@ export function check(
   // every bare method name, used to recognise a call site as a method call before dispatching.
   const methodTable = new Map<string, Map<string, string>>()
   const methodNames = new Set<string>()
+
   for (const statement of program) {
-    if (statement.form !== 'function' || !statement.method) continue
+    if (statement.form !== 'function' || !statement.method) {continue}
+
     const byName =
       methodTable.get(statement.method.form) ??
       new Map<string, string>()
+
     byName.set(statement.method.name, statement.name)
     methodTable.set(statement.method.form, byName)
     methodNames.add(statement.method.name)
@@ -253,18 +287,21 @@ export function check(
   // core's call sites stay natural. `Scheme` / `Env` / `isValueExpression` are imported directly.
   const instantiateScheme = (scheme: Scheme): Type =>
     instantiateSchemeImpl(scheme, sub)
+
   const freeTypeVars = (type: Type, into: Set<number>): void =>
     freeTypeVarsImpl(type, into, sub)
-  const generalize = (type: Type, env: Env): Array<number> =>
+
+  const generalize = (type: Type, env: Env): number[] =>
     generalizeImpl(type, env, sub)
 
   // the trait bounds carried by the generics of the function currently being checked (each a generic type variable
   // with the mask it is bound by). Used to discharge a bounded call whose argument is still one of the enclosing
   // generics rather than a concrete type. Compared by resolved representative, since unification may have linked it.
-  let currentBounds: Array<{ variable: Type; mask: string }> = []
+  let currentBounds: { variable: Type; mask: string }[] = []
 
   function inferExpression(node: Expression, env: Env): Type {
     let type: Type
+
     switch (node.form) {
       case 'integer':
         type = NUMBER
@@ -288,8 +325,10 @@ export function check(
       case 'hole':
         type = UNKNOWN
         break
+
       case 'variable': {
         const local = env.get(node.name)
+
         if (local) {
           type = instantiateScheme(local)
         } else if (functions.has(node.name)) {
@@ -303,14 +342,17 @@ export function check(
         } else {
           type = UNKNOWN
         }
+
         break
       }
+
       case 'unary':
         if (node.op === '-') {
           // negation preserves the operand's numeric kind (float stays float)
           const operand = inferExpression(node.operand, env)
           const numeric =
             resolve(operand).kind === 'float' ? FLOAT : NUMBER
+
           expect(operand, numeric, node.span, 'negation operand')
           type = numeric
         } else {
@@ -322,7 +364,9 @@ export function check(
           )
           type = BOOLEAN
         }
+
         break
+
       case 'binary': {
         const left = inferExpression(node.left, env)
         const right = inferExpression(node.right, env)
@@ -332,6 +376,7 @@ export function check(
           resolve(right).kind === 'float'
             ? FLOAT
             : NUMBER
+
         if (node.op === '&&' || node.op === '||') {
           expect(left, BOOLEAN, node.left.span, 'logical operand')
           expect(right, BOOLEAN, node.right.span, 'logical operand')
@@ -357,23 +402,29 @@ export function check(
           expect(right, numeric, node.right.span, 'arithmetic operand')
           type = numeric
         }
+
         break
       }
+
       case 'array': {
         const element = fresh()
+
         for (const item of node.items)
-          expect(
+          {expect(
             inferExpression(item, env),
             element,
             item.span,
             'array element',
-          )
+          )}
+
         type = { kind: 'array', element }
         break
       }
+
       case 'map': {
         const key = fresh()
         const value = fresh()
+
         for (const entry of node.entries) {
           expect(
             inferExpression(entry.key, env),
@@ -388,9 +439,11 @@ export function check(
             'map value',
           )
         }
+
         type = { kind: 'map', key, value }
         break
       }
+
       case 'record': {
         // a variant constructor is typed as its enum (`make red` : color); a struct as itself. The form's type
         // arguments are inferred by unifying the supplied field values against the declared (generic) field types.
@@ -400,35 +453,43 @@ export function check(
         const args = params.map(p => {
           const v = fresh()
           argMap.set(p, v)
+
           return v
         })
+
         const declared = variantEnum.has(node.name)
           ? variantFields.get(node.name)
           : records.get(node.name)
+
         for (const field of node.fields) {
           const valueType = inferExpression(field.value, env)
           const fieldType = declared?.get(field.name)
+
           // seedType (not substGenerics) so a declared `like list` field becomes array<...>, matching how a list
           // value is typed; it also resolves the form's generics via argMap
           if (fieldType)
-            expect(
+            {expect(
               valueType,
               seedType(fieldType, argMap),
               field.value.span,
               'field value',
-            )
+            )}
         }
+
         type = { kind: 'named', name: enumName, args }
         break
       }
+
       case 'await':
         // await unwraps an async result; we model the result type as the inner type
         type = inferExpression(node.expr, env)
         break
+
       case 'conditional': {
         // a value-position conditional: each branch's condition is a boolean and every branch (plus the otherwise)
         // yields the same result type, which is the type of the whole expression
         const result = fresh()
+
         for (const branch of node.branches) {
           expect(
             inferExpression(branch.cond, env),
@@ -442,15 +503,18 @@ export function check(
             branch.value.span,
           )
         }
+
         if (node.otherwise)
-          unify(
+          {unify(
             result,
             inferExpression(node.otherwise, env),
             node.otherwise.span,
-          )
+          )}
+
         type = result
         break
       }
+
       case 'member': {
         // variant-field access: inside a `case <v>` branch, the narrowed subject exposes that variant's fields,
         // with the subject's type arguments substituted for the enum's generics (maybe<number> -> value : number)
@@ -460,38 +524,50 @@ export function check(
         ) {
           const variant = narrowing.get(node.target.name)!
           const field = variantFields.get(variant)?.get(node.name)
+
           if (field) {
             const subject = resolve(
               env.get(node.target.name)?.type ?? UNKNOWN,
             )
+
             const params =
               formGenerics.get(variantEnum.get(variant) ?? '') ?? []
+
             const argMap = new Map<string, Type>()
+
             if (subject.kind === 'named' && subject.args)
-              params.forEach(
+              {params.forEach(
                 (p, i) =>
-                  subject.args![i] && argMap.set(p, subject.args![i]!),
-              )
+                  subject.args![i] && argMap.set(p, subject.args![i]),
+              )}
+
             type = seedType(field, argMap)
             break
           }
         }
+
         const target = resolve(inferExpression(node.target, env))
+
         if (target.kind === 'named' && records.has(target.name)) {
           const field = records.get(target.name)!.get(node.name)
+
           if (field) {
             // carry the field's foreign `name <...>` to the emitter, so a binding constant emits its native name
             const nick = fieldNick.get(target.name)?.get(node.name)
-            if (nick) node.nick = nick
+
+            if (nick) {node.nick = nick}
+
             // substitute the target's type arguments for the form's generics (pair<a,b> -> first : a); seedType (not
             // substGenerics) so a `like list` / `like hash` field reads as array / map, matching its values
             const params = formGenerics.get(target.name) ?? []
             const argMap = new Map<string, Type>()
+
             if (target.args)
-              params.forEach(
+              {params.forEach(
                 (p, i) =>
-                  target.args![i] && argMap.set(p, target.args![i]!),
-              )
+                  target.args![i] && argMap.set(p, target.args![i]),
+              )}
+
             type = seedType(field, argMap)
           } else {
             // not a field: a member access onto a form method (`document/create-element`) is a native method call.
@@ -499,11 +575,13 @@ export function check(
             // target, and the emitter lowers `target.create-element(args)` to `target.createElement(args)`. This is
             // how a JS-`this`-style binding (bind's DOM methods take no `self`) is invoked from seed.
             const mangled = methodTable.get(target.name)?.get(node.name)
+
             if (mangled && functions.has(mangled)) {
               const signature = instantiate(
                 functions.get(mangled)!,
                 sub,
               )
+
               type = {
                 kind: 'function',
                 params: signature.params,
@@ -527,10 +605,13 @@ export function check(
         } else {
           type = UNKNOWN
         }
+
         break
       }
+
       case 'call': {
         const args = node.args.map(arg => inferExpression(arg, env))
+
         // receiver dispatch: rewrite a bare method call (`call unwrap-or / <receiver>`) to the mangled method of the
         // receiver's form. The receiver is whichever argument is a form that owns this method (usually `self`, first).
         // A local binding of the same name (a parameter or let, e.g. maybe/filter's `test` task param) shadows both
@@ -543,7 +624,9 @@ export function check(
           methodNames.has(node.callee.name)
         ) {
           const method = node.callee.name
+
           let mangled: string | undefined
+
           for (const arg of args) {
             const receiver = resolve(arg)
             // a named form dispatches to its own methods; an array receiver dispatches to `list`'s methods and a map
@@ -557,14 +640,17 @@ export function check(
                   : receiver.kind === 'map'
                     ? 'hash'
                     : undefined
+
             if (owner) {
               const found = methodTable.get(owner)?.get(method)
+
               if (found) {
                 mangled = found
                 break
               }
             }
           }
+
           // if no argument pins the form but exactly one form owns this method name, it is unambiguous. Skip this guess
           // when a global function of the same name exists, since the call may target that global rather than a method.
           if (
@@ -575,11 +661,14 @@ export function check(
             const owners = [...methodTable.values()].filter(m =>
               m.has(method),
             )
-            if (owners.length === 1) mangled = owners[0]!.get(method)
+
+            if (owners.length === 1) {mangled = owners[0]!.get(method)}
           }
+
           if (mangled && functions.has(mangled))
-            node.callee.name = mangled
+            {node.callee.name = mangled}
         }
+
         if (
           node.callee.form === 'variable' &&
           functions.has(node.callee.name) &&
@@ -590,6 +679,7 @@ export function check(
             functions.get(node.callee.name)!,
             sub,
           )
+
           if (args.length !== signature.params.length) {
             diagnostics.push(
               diagnose('type-mismatch', {
@@ -608,11 +698,13 @@ export function check(
               ),
             )
           }
+
           // instance resolution: each trait bound must be satisfied for the type it resolved to. A concrete type
           // needs an instance; a type still equal to one of the enclosing function's generics needs that generic
           // to carry the same bound (bound propagation), otherwise the call is not justified.
           for (const bound of signature.bounds) {
             const concrete = resolve(bound.variable)
+
             if (
               concrete.kind === 'named' &&
               !instances.has(`${bound.mask}:${concrete.name}`)
@@ -626,13 +718,16 @@ export function check(
               )
             } else if (concrete.kind === 'variable') {
               const satisfied = currentBounds.some(b => {
-                if (b.mask !== bound.mask) return false
+                if (b.mask !== bound.mask) {return false}
+
                 const enclosing = resolve(b.variable)
+
                 return (
                   enclosing.kind === 'variable' &&
                   enclosing.id === concrete.id
                 )
               })
+
               if (!satisfied) {
                 diagnostics.push(
                   diagnose('no-instance', {
@@ -644,10 +739,12 @@ export function check(
               }
             }
           }
+
           type = signature.result
         } else {
           // calling a first-class function value (a local of function type, a parameter, etc.)
           const calleeType = resolve(inferExpression(node.callee, env))
+
           if (calleeType.kind === 'function') {
             if (args.length !== calleeType.params.length) {
               diagnostics.push(
@@ -667,6 +764,7 @@ export function check(
                 ),
               )
             }
+
             type = calleeType.result
           } else if (
             calleeType.kind === 'unknown' ||
@@ -686,8 +784,10 @@ export function check(
             type = UNKNOWN
           }
         }
+
         break
       }
+
       case 'closure': {
         // a function literal: check its body with the params in scope, and yield a function type
         const inner: Env = new Map(env)
@@ -696,26 +796,31 @@ export function check(
           inner.set(p.name, { vars: [], type: params[i]! }),
         )
         checkBody(node.body, inner, node.result ?? UNKNOWN)
+
         const fn: Type = {
           kind: 'function',
           params,
           result: node.result ?? UNKNOWN,
         }
-        if (node.async) fn.effects = ['async']
+
+        if (node.async) {fn.effects = ['async']}
+
         type = fn
         break
       }
     }
+
     node.type = type
+
     return type
   }
 
   function checkBody(
-    body: Array<Statement>,
+    body: Statement[],
     env: Env,
     result: Type,
   ): void {
-    for (const statement of body) checkStatement(statement, env, result)
+    for (const statement of body) {checkStatement(statement, env, result)}
   }
 
   function checkStatement(
@@ -726,6 +831,7 @@ export function check(
     switch (node.form) {
       case 'let': {
         const initType = inferExpression(node.init, env)
+
         // an explicit annotation (`host el, like element / read x`) types the binding: check the initializer against it
         // (gradual `unknown` from an opaque field unifies freely) and bind the declared type so the value can be re-typed
         // to a concrete form for receiver dispatch. Otherwise infer the binding's type from its initializer.
@@ -734,7 +840,8 @@ export function check(
           // synthesizes a unit placeholder, so do not check it against the declared type. A real initializer (a
           // re-type like `host el, like element / read x`, where the opaque field is gradual `unknown`) is checked.
           if (node.init.form !== 'unit')
-            expect(initType, node.type, node.span, 'binding')
+            {expect(initType, node.type, node.span, 'binding')}
+
           env.set(node.name, { vars: [], type: node.type })
         } else {
           // value-restricted let-generalization: an immutable binding to a syntactic value gets a polymorphic scheme
@@ -742,28 +849,33 @@ export function check(
             !node.mutable && isValueExpression(node.init)
               ? generalize(initType, env)
               : []
+
           env.set(node.name, { vars, type: initType })
           node.type = initType
         }
+
         break
       }
+
       case 'assign': {
         const valueType = inferExpression(node.value, env)
         const targetType = inferExpression(node.target, env)
         expect(valueType, targetType, node.span, 'assignment')
         break
       }
+
       case 'expression':
         inferExpression(node.expr, env)
         break
       case 'return':
         if (node.value)
-          expect(
+          {expect(
             inferExpression(node.value, env),
             result,
             node.span,
             'return value',
-          )
+          )}
+
         break
       case 'while':
         expect(
@@ -784,8 +896,11 @@ export function check(
           )
           checkBody(branch.body, env, result)
         }
-        if (node.otherwise) checkBody(node.otherwise, env, result)
+
+        if (node.otherwise) {checkBody(node.otherwise, env, result)}
+
         break
+
       case 'for-each': {
         const element = fresh()
         expect(
@@ -794,19 +909,23 @@ export function check(
           node.iterable.span,
           'iterable',
         )
+
         const inner = new Map(env)
         inner.set(node.item, { vars: [], type: element })
         checkBody(node.body, inner, result)
         break
       }
+
       case 'match': {
         const subjectType = resolve(inferExpression(node.subject, env))
+
         if (
           subjectType.kind === 'named' &&
           enums.has(subjectType.name)
         ) {
           const variants = enums.get(subjectType.name)!
           const covered = new Set(node.cases.map(c => c.label))
+
           for (const branch of node.cases) {
             if (!variants.has(branch.label)) {
               diagnostics.push(
@@ -818,8 +937,10 @@ export function check(
               )
             }
           }
+
           if (!node.otherwise) {
             const missing = [...variants].filter(v => !covered.has(v))
+
             if (missing.length > 0) {
               diagnostics.push(
                 diagnose('non-exhaustive', {
@@ -833,25 +954,33 @@ export function check(
             }
           }
         }
+
         // narrow the subject variable to each branch's variant, so the branch can read that variant's fields
         const subjectVar =
           node.subject.form === 'variable'
             ? node.subject.name
             : undefined
+
         for (const branch of node.cases) {
           const previous = subjectVar
             ? narrowing.get(subjectVar)
             : undefined
-          if (subjectVar) narrowing.set(subjectVar, branch.label)
+
+          if (subjectVar) {narrowing.set(subjectVar, branch.label)}
+
           checkBody(branch.body, env, result)
+
           if (subjectVar) {
-            if (previous === undefined) narrowing.delete(subjectVar)
-            else narrowing.set(subjectVar, previous)
+            if (previous === undefined) {narrowing.delete(subjectVar)}
+            else {narrowing.set(subjectVar, previous)}
           }
         }
-        if (node.otherwise) checkBody(node.otherwise, env, result)
+
+        if (node.otherwise) {checkBody(node.otherwise, env, result)}
+
         break
       }
+
       case 'hold':
         expect(
           inferExpression(node.expr, env),
@@ -886,9 +1015,10 @@ export function check(
     const signature = functions.get(node.name)!
     // the generics of this function carry their declared `need` bounds, available to discharge bounded calls
     currentBounds = [...signature.bounds].map(([id, mask]) => ({
-      variable: { kind: 'variable', id } as Type,
+      variable: { kind: 'variable', id },
       mask,
     }))
+
     const env: Env = new Map(moduleEnv)
     node.params.forEach((param, i) =>
       env.set(param.name, { vars: [], type: signature.params[i]! }),
@@ -899,39 +1029,50 @@ export function check(
   // type-check a zone's view: infer each embedded expression with the zone's params in scope, threading `save` bindings
   function checkZone(node: Extract<Statement, { form: 'zone' }>): void {
     currentBounds = []
+
     const env: Env = new Map(moduleEnv)
+
     for (const param of node.params)
-      env.set(param.name, {
+      {env.set(param.name, {
         vars: [],
         type: seedType(param.type, new Map()),
-      })
+      })}
+
     // element refs (`zone input / name x`) are `view`-typed locals, pre-declared so a handler can read any of them
-    const refs: Array<string> = []
-    const walkRefs = (list: Array<ZoneNode>): void => {
+    const refs: string[] = []
+
+    const walkRefs = (list: ZoneNode[]): void => {
       for (const member of list) {
         if (member.form === 'element') {
-          if (member.ref) refs.push(member.ref)
+          if (member.ref) {refs.push(member.ref)}
+
           walkRefs(member.children)
         } else if (member.form === 'fork') {
-          for (const branch of member.branches) walkRefs(branch.body)
-          if (member.otherwise) walkRefs(member.otherwise)
-        } else if (member.form === 'walk') walkRefs(member.body)
+          for (const branch of member.branches) {walkRefs(branch.body)}
+
+          if (member.otherwise) {walkRefs(member.otherwise)}
+        } else if (member.form === 'walk') {walkRefs(member.body)}
       }
     }
+
     walkRefs(node.body)
+
     for (const ref of refs)
-      env.set(ref, { vars: [], type: { kind: 'named', name: 'view' } })
+      {env.set(ref, { vars: [], type: { kind: 'named', name: 'view' } })}
+
     checkZoneNodes(node.body, env)
   }
 
-  function checkZoneNodes(nodes: Array<ZoneNode>, env: Env): void {
+  function checkZoneNodes(nodes: ZoneNode[], env: Env): void {
     for (const node of nodes) {
       switch (node.form) {
         case 'element':
           for (const attribute of node.attributes)
-            inferExpression(attribute.value, env)
+            {inferExpression(attribute.value, env)}
+
           for (const prop of node.props)
-            inferExpression(prop.value, env)
+            {inferExpression(prop.value, env)}
+
           checkZoneNodes(node.children, env)
           break
         case 'read':
@@ -948,9 +1089,12 @@ export function check(
             inferExpression(branch.cond, env)
             checkZoneNodes(branch.body, new Map(env))
           }
+
           if (node.otherwise)
-            checkZoneNodes(node.otherwise, new Map(env))
+            {checkZoneNodes(node.otherwise, new Map(env))}
+
           break
+
         case 'walk': {
           const iterable = resolve(inferExpression(node.iterable, env))
           const inner = new Map(env)
@@ -962,6 +1106,7 @@ export function check(
           checkZoneNodes(node.body, inner)
           break
         }
+
         case 'text':
         case 'slot':
           break
@@ -975,35 +1120,41 @@ export function check(
     'instance',
     'native',
   ])
+
   // first pass: type module-level bindings into the shared module env, so functions (checked next) see their types.
   // A foreign host global (`host page, name <document>`) is seeded too, so an imported, centrally-declared global is
   // typed for dispatch in every consuming function. But one whose name collides with a function is skipped: bind's
   // `Element`/`Text` host globals must not shadow the framework's `element`/`text` render helpers.
   for (const statement of program) {
     currentFile = fileOrigin?.get(statement) ?? file
+
     if (
       statement.form === 'function' ||
       topLevelSkip.has(statement.form)
     )
-      continue
+      {continue}
+
     if (
       statement.form === 'let' &&
       statement.foreign !== undefined &&
       functions.has(statement.name)
     )
-      continue
+      {continue}
+
     checkStatement(statement, moduleEnv, UNKNOWN)
   }
+
   for (const statement of program) {
     currentFile = fileOrigin?.get(statement) ?? file
+
     if (
       statement.form === 'function' &&
       (only === undefined || statement.name === only)
     )
-      checkFunction(statement)
+      {checkFunction(statement)}
     // zones are type-checked whole-program (not part of the per-definition incremental path yet)
     else if (statement.form === 'zone' && only === undefined)
-      checkZone(statement)
+      {checkZone(statement)}
   }
 
   // deeply resolve, mapping unsolved generic variables back to their names (component: code/check/zonk.ts)
@@ -1013,6 +1164,7 @@ export function check(
   // final pass: record fully resolved types (cross-function constraints from call sites are now known)
   for (const statement of program) {
     currentFile = fileOrigin?.get(statement) ?? file
+
     if (
       statement.form === 'function' &&
       (only === undefined || statement.name === only)
@@ -1042,11 +1194,12 @@ export function check(
 
   // walk a body, replacing each expression's `type` with its fully resolved form
   function zonkBody(
-    body: Array<Statement>,
+    body: Statement[],
     names: Map<number, string>,
   ): void {
     const visitExpression = (node: Expression): void => {
-      if (node.type) node.type = zonkGeneric(node.type, names)
+      if (node.type) {node.type = zonkGeneric(node.type, names)}
+
       switch (node.form) {
         case 'binary':
           visitExpression(node.left)
@@ -1081,6 +1234,7 @@ export function check(
           break
       }
     }
+
     for (const statement of body) {
       switch (statement.form) {
         case 'let':
@@ -1095,7 +1249,8 @@ export function check(
           visitExpression(statement.expr)
           break
         case 'return':
-          if (statement.value) visitExpression(statement.value)
+          if (statement.value) {visitExpression(statement.value)}
+
           break
         case 'throw':
           visitExpression(statement.value)
@@ -1113,12 +1268,16 @@ export function check(
             visitExpression(b.cond)
             zonkBody(b.body, names)
           })
-          if (statement.otherwise) zonkBody(statement.otherwise, names)
+
+          if (statement.otherwise) {zonkBody(statement.otherwise, names)}
+
           break
         case 'match':
           visitExpression(statement.subject)
           statement.cases.forEach(c => zonkBody(c.body, names))
-          if (statement.otherwise) zonkBody(statement.otherwise, names)
+
+          if (statement.otherwise) {zonkBody(statement.otherwise, names)}
+
           break
         default:
           break

@@ -31,8 +31,10 @@ export async function callLook(input: {
 
   // a package path resolves through the project resolver; otherwise it is a file on disk
   let entry: Source | undefined
+
   if (input.target.startsWith('@')) {
     entry = resolve(input.target, input.root)
+
     if (!entry) {
       logFail(
         `Could not resolve ${input.target} (is the package linked? run \`seed link\`)`,
@@ -41,6 +43,7 @@ export async function callLook(input: {
     }
   } else {
     const file = path.resolve(input.root, input.target)
+
     try {
       entry = { file, text: readFileSync(file, 'utf-8') }
     } catch {
@@ -50,11 +53,13 @@ export async function callLook(input: {
   }
 
   if (!input.json && !input.csv)
-    logStep(`Inspecting ${input.target}...`)
+    {logStep(`Inspecting ${input.target}...`)}
+
   const { symbols, modules, loadDiagnostics } = inspectModule(
     entry,
     resolve,
   )
+
   const filtered = input.kind
     ? symbols.filter(s => s.kind === input.kind)
     : symbols
@@ -66,6 +71,7 @@ export async function callLook(input: {
   } else {
     console.log('')
     console.log(toTable(filtered))
+
     const forms = symbols.filter(s => s.kind === 'form').length
     const tasks = symbols.filter(s => s.kind === 'task').length
     console.log('')

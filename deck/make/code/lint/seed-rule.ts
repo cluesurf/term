@@ -43,22 +43,28 @@ export async function loadSeedRule(
   readRuntime: (path: string) => string | undefined,
 ): Promise<Rule> {
   const result = compile(source, { resolve })
+
   if (!result.ok) {
     const messages = result.diagnostics.map(d => d.message).join('; ')
     throw new Error(`rule ${source.file} did not compile: ${messages}`)
   }
+
   const prelude = nativePrelude(result.program, 'node', readRuntime)
   const js = transformSync(`${prelude}\n${result.typescript}`, {
     loader: 'ts',
     format: 'esm',
   }).code
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-rule-'))
   const out = join(dir, 'rule.mjs')
   writeFileSync(out, js)
+
   const mod = (await import(pathToFileURL(out).href)) as {
     rule: () => SeedRule
   }
+
   const meta = mod.rule()
+
   return {
     name: meta.name,
     code: meta.code,
@@ -79,11 +85,13 @@ export async function loadSeedRules(
   dir: string,
   resolve: Resolver,
   readRuntime: (path: string) => string | undefined,
-): Promise<Array<Rule>> {
+): Promise<Rule[]> {
   const files = readdirSync(dir)
     .filter(name => name.endsWith('.tree'))
     .sort()
-  const rules: Array<Rule> = []
+
+  const rules: Rule[] = []
+
   for (const name of files) {
     const file = join(dir, name)
     rules.push(
@@ -94,5 +102,6 @@ export async function loadSeedRules(
       ),
     )
   }
+
   return rules
 }

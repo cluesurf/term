@@ -16,12 +16,15 @@ export type Resolver = (
 
 // the text of a name node (a keyword or an import-path token), or a group's head name
 function nameText(node: Node | undefined): string | undefined {
-  if (!node) return undefined
+  if (!node) {return undefined}
+
   if (node.kind === 'name')
-    return node.parts
+    {return node.parts
       .map(p => (p.kind === 'chunk' ? p.text : ''))
-      .join('')
-  if (node.kind === 'group') return nameText(node.nodes[0])
+      .join('')}
+
+  if (node.kind === 'group') {return nameText(node.nodes[0])}
+
   return undefined
 }
 
@@ -29,14 +32,19 @@ function nameText(node: Node | undefined): string | undefined {
 // the target module into the merged program; because the program is one flat namespace, a `bear`ed definition is then
 // automatically visible to anything that imports this module (the re-export). The native bindings (bind.tree) lead
 // every wrapper with a run of `bear @...` lines that surface the platform's types.
-function loadPaths(tree: RootNode): Array<string> {
-  const paths: Array<string> = []
+function loadPaths(tree: RootNode): string[] {
+  const paths: string[] = []
+
   for (const group of tree.nodes) {
     const keyword = nameText(group.nodes[0])
-    if (keyword !== 'load' && keyword !== 'bear') continue
+
+    if (keyword !== 'load' && keyword !== 'bear') {continue}
+
     const path = nameText(group.nodes[1])
-    if (path) paths.push(path)
+
+    if (path) {paths.push(path)}
   }
+
   return paths
 }
 
@@ -52,18 +60,22 @@ function hasZone(tree: RootNode): boolean {
 export function collectModules(
   entry: Source,
   resolve: Resolver,
-): { sources: Array<Source>; diagnostics: Array<Diagnostic> } {
-  const diagnostics: Array<Diagnostic> = []
-  const ordered: Array<Source> = []
+): { sources: Source[]; diagnostics: Diagnostic[] } {
+  const diagnostics: Diagnostic[] = []
+  const ordered: Source[] = []
   const done = new Set<string>()
   const active = new Set<string>()
 
   function visit(source: Source): void {
-    if (done.has(source.file) || active.has(source.file)) return // already included, or a cycle: stop
+    if (done.has(source.file) || active.has(source.file)) {return} // already included, or a cycle: stop
+
     active.add(source.file)
+
     const parsed = parse(source)
+
     if (parsed.ok) {
       const paths = loadPaths(parsed.tree)
+
       // a module with a zone implicitly depends on the render runtime (the emitter synthesizes its calls). Inject it
       // unless the module already loads it or IS it (the render module itself must not depend on itself).
       if (
@@ -71,17 +83,21 @@ export function collectModules(
         !paths.some(p => p.endsWith('zone/render')) &&
         !source.file.endsWith('zone/render.tree')
       )
-        paths.push(ZONE_RUNTIME_MODULE)
+        {paths.push(ZONE_RUNTIME_MODULE)}
+
       for (const path of paths) {
         const dependency = resolve(path, source.file)
-        if (dependency) visit(dependency) // unresolved imports are left to the checker's unknown-name diagnostics
+
+        if (dependency) {visit(dependency)} // unresolved imports are left to the checker's unknown-name diagnostics
       }
     }
+
     active.delete(source.file)
     done.add(source.file)
     ordered.push(source) // pushed after its dependencies, so they come first
   }
 
   visit(entry)
+
   return { sources: ordered, diagnostics }
 }

@@ -38,7 +38,10 @@ export function parseRoleFile(input: {
           const nextRaw = lines[i]!
           const nextIndent = nextRaw.length - nextRaw.trimStart().length
           const nextLine = nextRaw.trim()
-          if (!nextLine || nextLine.startsWith('#')) { i++; continue }
+          if (!nextLine || nextLine.startsWith('#')) {
+            i++
+            continue
+          }
           if (nextIndent <= indent) break
           i++
         }
@@ -55,7 +58,10 @@ export function parseRoleFile(input: {
         const nextRaw = lines[i]!
         const nextIndent = nextRaw.length - nextRaw.trimStart().length
         const nextLine = nextRaw.trim()
-        if (!nextLine || nextLine.startsWith('#')) { i++; continue }
+        if (!nextLine || nextLine.startsWith('#')) {
+          i++
+          continue
+        }
         if (nextIndent <= indent) break
 
         if (nextLine.startsWith('take ')) {
@@ -70,9 +76,13 @@ export function parseRoleFile(input: {
           // Check for miss children under this take
           while (i < lines.length) {
             const missRaw = lines[i]!
-            const missIndent = missRaw.length - missRaw.trimStart().length
+            const missIndent =
+              missRaw.length - missRaw.trimStart().length
             const missLine = missRaw.trim()
-            if (!missLine || missLine.startsWith('#')) { i++; continue }
+            if (!missLine || missLine.startsWith('#')) {
+              i++
+              continue
+            }
             if (missIndent <= takeIndent) break
             if (missLine.startsWith('miss ')) {
               missPatterns.push(
@@ -134,10 +144,7 @@ export function matchRole(input: {
 /**
  * Replace ~ prefix with the package root path.
  */
-function expandTilde(input: {
-  pattern: string
-  root: string
-}): string {
+function expandTilde(input: { pattern: string; root: string }): string {
   if (input.pattern.startsWith('~/')) {
     return input.root + input.pattern.slice(1)
   }

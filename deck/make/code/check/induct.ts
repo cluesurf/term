@@ -27,11 +27,13 @@ const intE = (value: number, span: Span): Expression => ({
   value,
   span,
 })
+
 const varE = (name: string, span: Span): Expression => ({
   form: 'variable',
   name,
   span,
 })
+
 const binE = (
   op: Binary['op'],
   left: Expression,
@@ -88,19 +90,22 @@ function replaceCall(
   switch (e.form) {
     case 'call': {
       const args = e.args.map(a => replaceCall(a, fname, match, build))
+
       if (
         e.callee.form === 'variable' &&
         e.callee.name === fname &&
         args.length === 1 &&
         match(args[0]!)
       )
-        return build(args[0]!)
+        {return build(args[0]!)}
+
       return {
         ...e,
         callee: replaceCall(e.callee, fname, match, build),
         args,
       }
     }
+
     case 'binary':
       return {
         ...e,
@@ -137,14 +142,17 @@ function recurrence(
   const fn = program.find(
     (s): s is Fn => s.form === 'function' && s.name === fname,
   )
-  if (!fn || fn.params.length !== 1 || fn.body.length !== 1) return null
+
+  if (fn?.params.length !== 1 || fn.body.length !== 1) {return null}
+
   const ret = fn.body[0]!
+
   if (
     ret.form !== 'return' ||
-    !ret.value ||
-    ret.value.form !== 'conditional'
+    ret.value?.form !== 'conditional'
   )
-    return null
+    {return null}
+
   const param = fn.params[0]!.name
   const base = ret.value.branches.find(
     b =>
@@ -155,29 +163,37 @@ function recurrence(
       b.cond.right.form === 'integer' &&
       Number(b.cond.right.value) === 0,
   )
-  if (!base || !ret.value.otherwise) return null
+
+  if (!base || !ret.value.otherwise) {return null}
+
   return { param, zero: base.value, otherwise: ret.value.otherwise }
 }
 
 // the first recursive function (with a usable recurrence) whose call appears in the goal
 function goalFunction(e: Expression, program: Program): string | null {
   let found: string | null = null
+
   const walk = (x: Expression): void => {
-    if (found) return
+    if (found) {return}
+
     if (
       x.form === 'call' &&
       x.callee.form === 'variable' &&
       recurrence(program, x.callee.name)
     ) {
       found = x.callee.name
+
       return
     }
+
     if (x.form === 'binary') {
       walk(x.left)
       walk(x.right)
-    } else if (x.form === 'call') x.args.forEach(walk)
+    } else if (x.form === 'call') {x.args.forEach(walk)}
   }
+
   walk(e)
+
   return found
 }
 
@@ -189,12 +205,17 @@ export function checkFold(
   goal: Expression,
   inductVar: string,
 ): boolean {
-  if (goal.form !== 'binary' || goal.op !== '==') return false
+  if (goal.form !== 'binary' || goal.op !== '==') {return false}
+
   const span = goal.span
   const fname = goalFunction(goal, program)
-  if (!fname) return false
+
+  if (!fname) {return false}
+
   const rec = recurrence(program, fname)
-  if (!rec) return false
+
+  if (!rec) {return false}
+
   const { param, zero, otherwise } = rec
 
   // base: n := 0, f(0) := zero
@@ -205,8 +226,9 @@ export function checkFold(
     a => ringEqual(a, intE(0, span)),
     () => zero,
   ) as Binary
+
   if (base.form !== 'binary' || !ringEqual(base.left, base.right))
-    return false
+    {return false}
 
   // step: n := k+1, f(k+1) := otherwise[param := k+1] (which recurses to f(k)); abstract f(k) as S in both the step
   // goal and the induction hypothesis, then ring-check that the two differences agree.
@@ -219,18 +241,24 @@ export function checkFold(
     a => ringEqual(a, kPlus1),
     () => expansion,
   )
+
   const S = varE('__induction_hypothesis', span)
   const matchK = (a: Expression): boolean =>
     ringEqual(a, varE(inductVar, span))
+
   const stepGoal = replaceCall(
     expanded,
     fname,
     matchK,
     () => S,
   ) as Binary
+
   const ih = replaceCall(goal, fname, matchK, () => S) as Binary
-  if (stepGoal.form !== 'binary' || ih.form !== 'binary') return false
+
+  if (stepGoal.form !== 'binary' || ih.form !== 'binary') {return false}
+
   const stepDiff = binE('-', stepGoal.left, stepGoal.right, span)
   const ihDiff = binE('-', ih.left, ih.right, span)
+
   return ringEqual(stepDiff, ihDiff)
 }

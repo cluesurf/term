@@ -35,13 +35,14 @@ export type FeedResult =
 // whole accumulated program with the real compiler, transpiling the emitted TypeScript to JS, importing it, and
 // calling the wrapper. Free of terminal I/O, so it is unit-testable.
 export class Repl {
-  private readonly definitions: Array<string> = []
+  private readonly definitions: string[] = []
 
   constructor(private readonly resolve?: Resolver) {}
 
   async feed(block: string): Promise<FeedResult> {
     const trimmed = block.replace(/\s+$/, '')
-    if (!trimmed.trim()) return { kind: 'empty' }
+
+    if (!trimmed.trim()) {return { kind: 'empty' }}
 
     if (DEFINITION.test(trimmed.trimStart())) {
       // a definition: accept it only if the program still compiles with it added
@@ -50,13 +51,17 @@ export class Repl {
         { file: 'repl.tree', text: trial },
         { resolve: this.resolve },
       )
+
       if (!result.ok)
-        return {
+        {return {
           kind: 'error',
           text: formatDiagnostics(result.diagnostics),
-        }
+        }}
+
       this.definitions.push(trimmed)
+
       const name = trimmed.trimStart().split(/\s+/)[1] ?? ''
+
       return { kind: 'definition', text: name }
     }
 
@@ -65,18 +70,22 @@ export class Repl {
       .split('\n')
       .map(l => `    ${l}`)
       .join('\n')}`
+
     const full = [...this.definitions, wrapped].join('\n\n')
     const result = compile(
       { file: 'repl.tree', text: full },
       { resolve: this.resolve },
     )
+
     if (!result.ok)
-      return {
+      {return {
         kind: 'error',
         text: formatDiagnostics(result.diagnostics),
-      }
+      }}
+
     try {
       const value = await run(result.typescript)
+
       return { kind: 'value', text: display(value) }
     } catch (error) {
       return {
@@ -93,23 +102,28 @@ async function run(typescript: string): Promise<unknown> {
     loader: 'ts',
     format: 'esm',
   }).code
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-repl-'))
   const file = join(dir, 'repl.mjs')
   writeFileSync(file, js)
+
   const module = (await import(pathToFileURL(file).href)) as {
     seedReplEval?: () => unknown
   }
+
   return module.seedReplEval ? module.seedReplEval() : undefined
 }
 
 // a runtime value to a readable line
 function display(value: unknown): string {
-  if (typeof value === 'string') return JSON.stringify(value)
-  if (value && typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'string') {return JSON.stringify(value)}
+
+  if (value && typeof value === 'object') {return JSON.stringify(value)}
+
   return String(value)
 }
 
-function formatDiagnostics(diagnostics: Array<Diagnostic>): string {
+function formatDiagnostics(diagnostics: Diagnostic[]): string {
   return diagnostics.map(d => `${d.name}: ${d.message}`).join('\n')
 }
 
@@ -122,12 +136,18 @@ export function stdlibResolver(): Resolver | undefined {
     // legacy sibling location, kept as a fallback during the move
     join(here, '..', '..', '..', '..', 'base.tree'),
   ]
+
   const base = candidates.find(c => existsSync(c))
-  if (!base) return undefined
+
+  if (!base) {return undefined}
+
   return (path: string): Source | undefined => {
     const prefix = '@cluesurf/base/'
-    if (!path.startsWith(prefix)) return undefined
+
+    if (!path.startsWith(prefix)) {return undefined}
+
     const file = join(base, `${path.slice(prefix.length)}.tree`)
+
     return existsSync(file)
       ? { file, text: readFileSync(file, 'utf8') }
       : undefined
@@ -139,11 +159,15 @@ export function stdlibResolver(): Resolver | undefined {
 // This is how a project resolves its linked packages (@cluesurf/base, @cluesurf/bind, @cluesurf/term, @cluesurf/site).
 export function linkResolver(root: string): Resolver {
   const linkDir = join(root, 'link')
+
   return (importPath: string): Source | undefined => {
-    const match = importPath.match(/^(@[^/]+\/[^/]+)\/(.+)$/)
-    if (!match) return undefined
+    const match = /^(@[^/]+\/[^/]+)\/(.+)$/.exec(importPath)
+
+    if (!match) {return undefined}
+
     const [, pkg, rest] = match
     const base = join(linkDir, pkg!)
+
     for (const candidate of [
       join(base, `${rest}.tree`),
       join(base, rest!, 'base.tree'),
@@ -152,11 +176,12 @@ export function linkResolver(root: string): Resolver {
       // canonicalize through the `link/` symlink so a file reached via a linked package and via its real path dedup
       // to one module (lets a package reference itself by name, e.g. `bear @cluesurf/site/code/dom/view`)
       if (existsSync(candidate))
-        return {
+        {return {
           file: realpathSync(candidate),
           text: readFileSync(candidate, 'utf8'),
-        }
+        }}
     }
+
     return undefined
   }
 }
@@ -178,31 +203,40 @@ export async function callWalk(_input: {
     output: process.stdout,
     prompt: bold('seed> '),
   })
-  let buffer: Array<string> = []
+
+  let buffer: string[] = []
 
   const flush = async (): Promise<void> => {
     const block = buffer.join('\n')
     buffer = []
-    if (!block.trim()) return
+
+    if (!block.trim()) {return}
+
     const result = await repl.feed(block)
-    if (result.kind === 'value') console.log(result.text)
+
+    if (result.kind === 'value') {console.log(result.text)}
     else if (result.kind === 'definition')
-      console.log(fade(`  added ${result.text}`))
-    else if (result.kind === 'error') logFail(result.text)
+      {console.log(fade(`  added ${result.text}`))}
+    else if (result.kind === 'error') {logFail(result.text)}
   }
 
   rl.prompt()
   rl.on('line', async line => {
-    if (line.trim() === 'exit') return rl.close()
+    if (line.trim() === 'exit') {return rl.close()}
+
     if (line.trim() === '') {
       await flush()
       rl.prompt()
+
       return
     }
+
     buffer.push(line)
+
     // a single-line expression evaluates immediately; an indented block waits for a blank line
     if (buffer.length === 1 && !DEFINITION.test(line.trimStart()))
-      await flush()
+      {await flush()}
+
     rl.prompt()
   })
   rl.on('close', () => {

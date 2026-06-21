@@ -14,25 +14,29 @@ import type {
 export function disambiguateOverloads(program: Program): void {
   // every arity each function name is defined at
   const arities = new Map<string, Set<number>>()
+
   for (const s of program)
-    if (s.form === 'function') {
+    {if (s.form === 'function') {
       const set = arities.get(s.name) ?? new Set<number>()
       set.add(s.params.length)
       arities.set(s.name, set)
-    }
+    }}
+
   // a name is overloaded when it is defined at more than one arity
   const overloaded = new Set<string>()
+
   for (const [name, set] of arities)
-    if (set.size > 1) overloaded.add(name)
-  if (overloaded.size === 0) return
+    {if (set.size > 1) {overloaded.add(name)}}
+
+  if (overloaded.size === 0) {return}
 
   const mangle = (name: string, arity: number): string =>
     overloaded.has(name) ? `${name}__${arity}` : name
 
   // rename each overloaded definition by its parameter count
   for (const s of program)
-    if (s.form === 'function' && overloaded.has(s.name))
-      s.name = mangle(s.name, s.params.length)
+    {if (s.form === 'function' && overloaded.has(s.name))
+      {s.name = mangle(s.name, s.params.length)}}
 
   // rewrite every call to an overloaded name to the overload matching its argument count
   const expr = (node: Expression): void => {
@@ -42,7 +46,8 @@ export function disambiguateOverloads(program: Program): void {
           node.callee.form === 'variable' &&
           overloaded.has(node.callee.name)
         )
-          node.callee.name = mangle(node.callee.name, node.args.length)
+          {node.callee.name = mangle(node.callee.name, node.args.length)}
+
         expr(node.callee)
         node.args.forEach(expr)
         break
@@ -76,7 +81,9 @@ export function disambiguateOverloads(program: Program): void {
           expr(b.cond)
           expr(b.value)
         })
-        if (node.otherwise) expr(node.otherwise)
+
+        if (node.otherwise) {expr(node.otherwise)}
+
         break
       case 'closure':
         node.body.forEach(stmt)
@@ -85,6 +92,7 @@ export function disambiguateOverloads(program: Program): void {
         break
     }
   }
+
   const stmt = (node: Statement): void => {
     switch (node.form) {
       case 'let':
@@ -98,7 +106,8 @@ export function disambiguateOverloads(program: Program): void {
         expr(node.expr)
         break
       case 'return':
-        if (node.value) expr(node.value)
+        if (node.value) {expr(node.value)}
+
         break
       case 'throw':
         expr(node.value)
@@ -133,5 +142,6 @@ export function disambiguateOverloads(program: Program): void {
         break
     }
   }
-  for (const s of program) stmt(s)
+
+  for (const s of program) {stmt(s)}
 }

@@ -23,36 +23,46 @@ export type Exists = (path: string) => boolean
 // ---- posix-style path helpers (browser-safe, no node path) ----
 function dirname(path: string): string {
   const i = path.lastIndexOf('/')
+
   return i <= 0 ? (i === 0 ? '/' : '.') : path.slice(0, i)
 }
 
 function joinPath(base: string, rest: string): string {
   const parts = (base + '/' + rest).split('/')
-  const out: Array<string> = []
+  const out: string[] = []
+
   for (const part of parts) {
-    if (part === '' || part === '.') continue
+    if (part === '' || part === '.') {continue}
+
     if (part === '..') {
-      if (out.length && out[out.length - 1] !== '..') out.pop()
-      else out.push('..')
-    } else out.push(part)
+      if (out.length && out[out.length - 1] !== '..') {out.pop()}
+      else {out.push('..')}
+    } else {out.push(part)}
   }
+
   const prefix = base.startsWith('/') ? '/' : ''
+
   return prefix + out.join('/')
 }
 
 // ---- classification ----
 export function classifyLoad(target: string, native = false): LoadKind {
-  if (native) return 'native'
-  if (target.includes('*')) return 'glob'
+  if (native) {return 'native'}
+
+  if (target.includes('*')) {return 'glob'}
+
   if (target.startsWith('./') || target.startsWith('../'))
-    return 'relative'
-  if (target.startsWith('/')) return 'absolute'
+    {return 'relative'}
+
+  if (target.startsWith('/')) {return 'absolute'}
+
   return 'package' // @host/deck or a bare name
 }
 
 // the candidate files to try for a path with no extension, in order
-export function fileCandidates(path: string): Array<string> {
-  if (path.endsWith('.tree')) return [path]
+export function fileCandidates(path: string): string[] {
+  if (path.endsWith('.tree')) {return [path]}
+
   return [`${path}.tree`, `${path}/base.tree`, `${path}/note.tree`]
 }
 
@@ -65,9 +75,11 @@ export function resolveFile(
   const base = target.startsWith('/')
     ? target
     : joinPath(dirname(fromFile), target)
+
   for (const candidate of fileCandidates(base)) {
-    if (exists(candidate)) return { kind: 'file', path: candidate }
+    if (exists(candidate)) {return { kind: 'file', path: candidate }}
   }
+
   return { kind: 'missing', target }
 }
 
@@ -83,9 +95,12 @@ export function parsePackage(target: string): {
     const name = parts[1] ?? ''
     const subpath =
       parts.length > 2 ? parts.slice(2).join('/') : undefined
+
     return { host, name, subpath }
   }
+
   const parts = target.split('/')
+
   return {
     host: '',
     name: parts[0] ?? '',
@@ -99,12 +114,17 @@ export function findDeckRoot(
   exists: Exists,
 ): string | undefined {
   let dir = dirname(fromFile)
+
   while (true) {
-    if (exists(`${dir}/deck.tree`)) return dir
+    if (exists(`${dir}/deck.tree`)) {return dir}
+
     const parent = dirname(dir)
-    if (parent === dir || parent === '.') break
+
+    if (parent === dir || parent === '.') {break}
+
     dir = parent
   }
+
   return undefined
 }
 
@@ -138,8 +158,10 @@ export function resolveLoad(
     case 'relative':
     case 'absolute':
       return resolveFile(target, fromFile, exists)
+
     case 'package': {
       const { host, name, subpath } = parsePackage(target)
+
       return { kind: 'package', host, name, subpath }
     }
   }

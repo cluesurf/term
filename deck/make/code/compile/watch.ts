@@ -41,6 +41,7 @@ export function watch(options: {
 }): Watcher {
   const { root, entry, resolve, onResult, debounceMs = 30 } = options
   const compiler = new IncrementalCompiler(resolve)
+
   const recompile = (changed: string | null): void => {
     onResult(
       compiler.compile({
@@ -54,20 +55,25 @@ export function watch(options: {
   recompile(null) // the initial build warms the cache
 
   let timer: ReturnType<typeof setTimeout> | undefined
+
   const fsWatcher = fsWatch(
     root,
     { recursive: true },
     (_event, filename) => {
       const name = typeof filename === 'string' ? filename : ''
-      if (!name.endsWith('.tree')) return
-      if (timer) clearTimeout(timer)
+
+      if (!name.endsWith('.tree')) {return}
+
+      if (timer) {clearTimeout(timer)}
+
       timer = setTimeout(() => recompile(name), debounceMs)
     },
   )
 
   return {
     close: () => {
-      if (timer) clearTimeout(timer)
+      if (timer) {clearTimeout(timer)}
+
       fsWatcher.close()
     },
   }
