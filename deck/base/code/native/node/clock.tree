@@ -1,0 +1,19 @@
+
+# Node.js clock implementation. Internal: reached only through the public clock API.
+
+dock load
+  load <node:perf_hooks>, name perf
+  load <node:timers/promises>, name timers
+
+task current-time
+  like number
+  send back
+    call perf/performance/now
+
+task delay
+  note async
+  take ms, like number
+  send back
+    call timers/set-timeout
+      read ms
+      wait true

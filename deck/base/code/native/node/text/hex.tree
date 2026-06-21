@@ -1,0 +1,26 @@
+# Node.js hexadecimal implementation (the host Buffer). Internal: reached only through the public hex API.
+
+dock load
+  load <global:Buffer>, name buffer
+
+task to-hex
+  take input, like text
+  like text
+  save bytes
+    call buffer/from
+      read input
+      text <utf8>
+  send back
+    call bytes/to-string
+      text <hex>
+
+task from-hex
+  take input, like text
+  like text
+  save bytes
+    call buffer/from
+      read input
+      text <hex>
+  send back
+    call bytes/to-string
+      text <utf8>

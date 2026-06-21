@@ -1,0 +1,55 @@
+
+load @cluesurf/base/code/process/current
+  find process-info
+
+task read
+  like process-info
+
+  send back
+    make process-info
+      bind id, read process/pid
+      bind arguments, read process/argv
+      bind directory
+        call process/cwd
+      bind executable, read process/exec-path
+
+task exit
+  take code, like size, fall 0
+
+  call process/exit
+    read code
+
+task listen
+  take signal, like text
+  take handler, like task
+
+  save signal-name
+    fork test
+      hook test
+        call is-equal
+          bind a, read signal
+          bind b, text <terminate>
+      hook hold
+        send back, text <SIGTERM>
+      hook miss
+        fork test
+          hook test
+            call is-equal
+              bind a, read signal
+              bind b, text <interrupt>
+          hook hold
+            send back, text <SIGINT>
+          hook miss
+            fork test
+              hook test
+                call is-equal
+                  bind a, read signal
+                  bind b, text <hangup>
+              hook hold
+                send back, text <SIGHUP>
+              hook miss
+                send back, read signal
+
+  call process/on
+    read signal-name
+    read handler

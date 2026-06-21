@@ -1,0 +1,43 @@
+
+form balanced-tree
+  head k
+  head v
+
+  task clear
+    like void
+
+  task copy
+    like balanced-tree
+      like k
+      like v
+
+  task exists
+    take key, like k
+    like bool
+
+  task get
+    take key, like k
+    like nullable, like v
+
+  task iterator
+    like iterator, like v
+
+  task key-value-iterator
+    like key-value-iterator
+      like k
+      like v
+
+  task keys
+    like iterator, like k
+
+  task remove
+    take key, like k
+    like bool
+
+  task set
+    take key, like k
+    take value, like v
+    like void
+
+  task to-string
+    like string

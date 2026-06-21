@@ -1,0 +1,101 @@
+
+tree gray
+  hook fuse
+    bind text-fill, term gray
+
+tree green
+  hook fuse
+    bind text-fill, term green
+
+tree red
+  hook fuse
+    bind text-fill, term red
+
+task make
+  fold make-zone
+    bind zone, read test-case
+
+zone test-case
+  take side, like size
+    base 0
+  take case
+    like or
+      like test-band
+      like test-call
+      like test-hold
+
+  scan case/form
+    case like test-band
+      zone test-band
+        bind band, read case
+        bind side, read side
+    case like test-call
+      zone test-call
+        bind call, read case
+        bind side, read side
+    case like test-hold
+      zone test-hold
+        bind hold, read case
+        bind side, read side
+
+zone side
+  take size, like size
+
+  walk size, read size
+    zone text, text <  >
+
+zone test-band
+  take band
+  take side
+  zone side, read side
+  zone text, text band
+    fuse gray
+  zone text, text < >
+  zone text, text <\<>
+    fuse gray
+  zone text, read band/head
+  zone text, text <\>>
+    fuse gray
+  zone text, text <\n>
+  walk list, read band/nest
+    hook link
+      zone test-case
+        bind case, read link
+        bind side
+          call 1/add, read size
+
+zone test-rise
+  take call
+  take side, like size
+  zone side, read side
+  zone text, text rise
+    fuse green
+  zone text, text < >
+  zone text, text <\<>
+    fuse gray
+  zone text, read band/head
+    fuse green-bold
+  zone text, text <\>>
+    fuse gray
+  zone text, text <\n>
+  zone side, call 1/add, read side
+  zone text, text time
+    fuse gray
+  zone text, text <\<>
+    fuse gray
+  fork roll
+    hook test
+      call call/time/is-less, 50
+      hook true
+        zone text, read call/time
+          fuse green-bold
+    hook test
+      call call/time/is-less, 200
+      hook true
+        zone text, read call/time
+          fuse yellow-bold
+    hook fall # default case
+      zone text, read call/time
+        fuse red-bold
+  zone text, text <\>>
+    fuse gray

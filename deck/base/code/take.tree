@@ -1,0 +1,17 @@
+
+# Take: a declared input. The uniform parameter node for component props, route params, and CLI options.
+
+load ./term
+  find term
+
+load ./like
+  find like
+
+load ./seed
+  find seed
+
+form take
+  link name, like term
+  link like, like like
+  link need, like boolean
+  link base, like seed

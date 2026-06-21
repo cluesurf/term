@@ -1,0 +1,13 @@
+
+load @cluesurf/base/code/wear
+  find wear
+
+mint wear
+  case name
+    slot name
+  case task, mint task
+    slot task
+  hook make
+    make wear
+      bind name, read name
+      bind task, read task

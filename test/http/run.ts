@@ -32,7 +32,7 @@ const DECK = path.resolve(SEED, '..')
 const resolve = projectResolver(SEED, 'node')
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'site.tree/code/test/site/api.tree')
+  const entry = path.join(DECK, 'seed/deck/site/code/test/site/api.tree')
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },

@@ -1,0 +1,11 @@
+
+# Bitwise And trait.
+
+mask intersection
+  head other, base self
+  head output
+
+  task meet
+    take self
+    take other, like other
+    like output

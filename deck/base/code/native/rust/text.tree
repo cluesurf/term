@@ -1,0 +1,7 @@
+
+coat form
+  suit text-utf-8
+    wear text-transformation
+      task make-utf-16
+        take self
+        free self/encoding

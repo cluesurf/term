@@ -1,0 +1,19 @@
+
+form coverage
+  link files, like list
+
+form file-coverage
+  link path, like text
+  link lines, like size
+  link branches, like size
+  link functions, like size
+  link uncovered, like list
+
+task read
+  note async
+  like coverage
+
+task format
+  take coverage, like coverage
+  take style, like text, fall text <summary>
+  like text

@@ -1,0 +1,8 @@
+
+mint lockfile
+  case base
+    slot base
+  case load, mint load
+    slot load
+  case link, mint link
+    slot link

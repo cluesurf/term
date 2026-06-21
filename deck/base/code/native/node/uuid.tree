@@ -1,0 +1,9 @@
+# Node.js UUID implementation (host node:crypto randomUUID). Internal: reached only through the public uuid API.
+
+dock load
+  load <node:crypto>, name crypto
+
+task generate-v4
+  like text
+  send back
+    call crypto/random-uuid

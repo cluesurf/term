@@ -1,0 +1,10 @@
+
+bear ./and
+bear ./any
+bear ./maybe
+bear ./never
+bear ./not
+bear ./or
+bear ./result
+bear ./some
+bear ./unknown

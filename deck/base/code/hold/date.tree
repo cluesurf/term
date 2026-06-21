@@ -1,0 +1,485 @@
+
+# https://github.com/v8/v8/blob/f6911f6be82f5ea1d9d095f594b717ea28e17588/src/date-delay.js
+# https://github.com/hebcal/hebcal-es6
+# https://github.com/commenthol/date-chinese
+# https://github.com/xsoh/solarHijri-js
+# https://github.com/vvo/tzdb
+
+host hours-per-day, code 24
+host minutes-per-hour, code 60
+host seconds-per-minute, code 60
+host milliseconds-per-second, code 1,000
+host milliseconds-per-minute, code 60,000
+host milliseconds-per-hour, code 3,600,000
+host milliseconds-per-day, code 86,400,000
+host milliseconds-per-month, code 2,592,000,000
+
+host k-day-zero-in-julian-day, code 2,440,588 # ToJulianDay(1970, 0, 1)
+host k-month-mask, mark #h1e0
+host k-day-mask, mark #h01f
+host k-year-shift, code 9
+host k-month-shift, code 5
+
+task get-days-in-year
+  take year
+
+  fork test
+    call is-not-equal
+      call remainder
+        read year
+        code 4
+      code 0
+    hook true, back 365
+
+  fork and
+    fork test
+      call is-equal
+        call remainder
+          read year
+          code 100
+        code 0
+    fork test
+      call is-not-equal
+        call remainder
+          read year
+          code 400
+        code 0
+    hook true, back 365
+
+  send back 366
+
+# https://en.wikipedia.org/wiki/Date_format_by_country
+
+function DayTriplet(year, month, date) {
+  this.year = year;
+  this.month = month;
+  this.date = date;
+}
+
+
+function GetMillisecondsFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return msFromTime(LocalTimeNoCheck(t));
+}
+
+
+function GetUTCMillisecondsFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return msFromTime(t);
+}
+
+
+function GetSecondsFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return SecFromTime(LocalTimeNoCheck(t));
+}
+
+
+function GetUTCSecondsFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return SecFromTime(t);
+}
+
+
+function GetMinutesFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return MinFromTime(LocalTimeNoCheck(t));
+}
+
+
+function GetUTCMinutesFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return MinFromTime(t);
+}
+
+
+function GetHoursFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return HourFromTime(LocalTimeNoCheck(t));
+}
+
+
+function GetUTCHoursFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return HourFromTime(t);
+}
+
+
+function GetFullYearFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return YearFromTime(LocalTimeNoCheck(t));
+}
+
+
+function GetUTCFullYearFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return YearFromTime(t);
+}
+
+
+function GetMonthFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return MonthFromTime(LocalTimeNoCheck(t));
+}
+
+
+function GetUTCMonthFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return MonthFromTime(t);
+}
+
+Intl.DateTimeFormat().resolvedOptions().timeZone
+
+function GetDateFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return DateFromTime(LocalTimeNoCheck(t));
+}
+var local_time_offset = DateLocalTimeOffset();
+
+function LocalTime(time) {
+  if ($isNaN(time)) return time;
+  return time + local_time_offset + DaylightSavingsOffset(time);
+}
+
+function LocalTimeNoCheck(time) {
+  return time + local_time_offset + DaylightSavingsOffset(time);
+}
+
+function GetUTCDateFrom(aDate) {
+  var t = aDate.getMilliseconds();
+  if ($isNaN(t)) return t;
+  return DateFromTime(t);
+}
+
+// Compute modified Julian day from year, month, date.
+// The missing days in 1582 are ignored for JavaScript compatibility.
+function ToJulianDay(year, month, date) {
+  var jy = (month > 1) ? year : year - 1;
+  var jm = (month > 1) ? month + 2 : month + 14;
+  var ja = FLOOR(0.01*jy);
+  return FLOOR(FLOOR(365.25*jy) + FLOOR(30.6001*jm) + date + 1720995) + 2 - ja + FLOOR(0.25*ja);
+}
+
+form date
+  take second
+  take millisecond
+  take zone
+
+  task get-millisecond
+    take self
+    call add
+      call multiply
+        read self/second
+        code 1000
+      read self/millisecond
+
+  task get-day
+    take self
+    call floor
+      call divide
+        call self/get-millisecond
+        read milliseconds-per-day
+
+  function YearFromTime(time) {
+  return FromJulianDay(Day(time) + kDayZeroInJulianDay).year;
+}
+// ECMA 262 - 15.9.1.4
+function MonthFromTime(time) {
+  return FromJulianDay(Day(time) + kDayZeroInJulianDay).month;
+}
+// ECMA 262 - 15.9.1.5
+function DateFromTime(time) {
+  return FromJulianDay(Day(time) + kDayZeroInJulianDay).date;
+}
+
+function aDate.getMilliseconds() {
+  if (IS_DATE(aDate)) return _ValueOf(aDate);
+  throw new $TypeError('this is not a Date object.');
+}
+
+
+function msFromTime(time) {
+  return Modulo(time, msPerSecond);
+}
+
+
+// ECMA 262 - 5.2
+function Modulo(value, remainder) {
+  var mod = value % remainder;
+  // Guard against returning -0.
+  if (mod == 0) return 0;
+  return mod >= 0 ? mod : mod + remainder;
+}
+
+task convert-from-julian-day-to-gregorian-day
+  take day
+  fork roll
+    fork and
+      call is-greater-than
+        read day
+        read k-day-zero-in-julian-day
+      call is-less-than
+        call subtract
+          read day
+          read k-day-zero-in-julian-day
+        code 40177
+      hook true
+        save jsimple
+          call add
+            call subtract
+              read day
+              read k-day-zero-in-julian-day
+            code 731
+        save y, code 1968
+        save after-1968
+          call shift-right
+            call multiply
+              read jsimple
+              code 22967
+            code 25
+        save y
+          call shift-left
+            read after-1968
+            code 2
+        save jsimple
+          call multiply
+            code 1461
+            read after-1968
+        save four-year-cycle, read four-year-cycle-table[jsimple]
+        send back seed
+          make day-triplet
+            call add
+              read y
+              call shift-right
+                read four-year-cycle
+                read k-year-shift
+            call shift-right
+              call bitwise-and
+                read four-year-cycle
+                read k-month-mask
+              read k-month-shift
+            call bitwise-and
+              read four-year-cycle
+              read k-day-mask
+  save jalpha
+    call floor
+      call divide
+        call subtract
+          read day
+          code 1867216.25
+        code 36524.25
+  save jb
+    call add
+      call subtract
+        call add
+          call add
+            read day
+            code 1
+          read jalpha
+        call floor
+          call multiply
+            code 0.25
+            read jalpha
+      code 1524
+  save jc
+    call floor
+      call add
+        code 6680
+        call divide
+          call subtract
+            call subtract
+              read jb
+              code 2439870
+            code 122.1
+          code 365.25
+  save jd
+    call floor
+      call add
+        call multiply
+          code 365
+          read jc
+        call multiply
+          code 0.25
+          read jc
+  save je
+    call floor
+      call divide
+        call subtract
+          read jb
+          read jd
+        code 30.6001
+  save m
+    call subtract
+      read je
+      code 1
+  fork test
+    call is-greater-than
+      read m
+      code 12
+    hook true
+      save m, code 13
+  save y
+    call subtract
+      read jc
+      code 4715
+  fork test
+    call is-greater-than
+      read m
+      code 2
+    hook true
+      save y, call decrement, read y
+      save m, call decrement, read m
+  save d
+    call subtract
+      call subtract
+        read jb
+        read jd
+      call floor
+        call multiply
+          code 30.6001
+          read je
+  send back seed
+    make day-triplet
+      read y
+      read m
+      read d
+
+task calculate-four-year-cycle-table
+  save month-lengths
+    make list
+      code 31
+      code 28
+      code 31
+      code 30
+      code 31
+      code 30
+      code 31
+      code 31
+      code 30
+      code 31
+      code 30
+      code 31
+  save four-year-cycle-table
+    make array
+      code 1461
+  save cumulative, code 0
+  save position, code 0
+  save leap-position, code 0
+  save month, code 0
+
+  walk test, fork fork5
+    hook test
+      call is-less-than
+        read month
+        code 12
+
+    hook true
+      save length, read month-lengths[month]
+      save day, code 1
+
+      walk test, fork fork3
+        hook test
+          call is-less-than-or-equal-to
+            read day
+            read length
+
+        hook true
+          save four-year-cycle-table[leap-position]
+            call add
+              call shift-left
+                read month
+                read k-month-shift
+              read day
+          save next-position
+            call add
+              code 366
+              read position
+          save four-year-cycle-table[next-position]
+            call add
+              call add
+                call shift-left
+                  code 1
+                  read k-year-shift
+                call shift-left
+                  read month
+                  read k-month-shift
+              read day
+          save next-position
+            call add
+              code 731
+              read position
+          save four-year-cycle-table[next-position]
+            call add
+              call add
+                call shift-left
+                  code 2
+                  read k-year-shift
+                call shift-left
+                  read month
+                  read k-month-shift
+              read day
+          save next-position
+            call add
+              code 1096
+              read position
+          save four-year-cycle-table[next-position]
+            call add
+              call add
+                call shift-left
+                  code 3
+                  read k-year-shift
+                call shift-left
+                  read month
+                  read k-month-shift
+              read day
+          save leap-position
+            call increment
+              bind value, read leap-position
+          save position
+            call increment
+              bind value, read position
+          save day
+            call increment
+              bind value, read day
+
+        hook false
+          bust fork3
+
+      fork test
+        call is-equal
+          read month
+          code 1
+
+        hook true
+          save next-position
+            save leap-position
+              call increment
+                bind value, read leap-position
+          save four-year-cycle-table[next-position]
+            call add
+              call shift-left
+                read month
+                read k-month-shift
+              code 29
+
+      save month
+        call increment
+          bind value, read month
+
+    hook false
+      bust fork5
+
+  send back seed, read four-year-cycle-table

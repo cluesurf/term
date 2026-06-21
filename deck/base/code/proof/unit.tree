@@ -1,0 +1,5 @@
+
+form unit
+  # Unit type with a single constructor. Represents trivial truth.
+
+  case sole

@@ -1,0 +1,157 @@
+
+task deep-equal
+  take a
+  take b
+  like boolean
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read a
+        bind b, read b
+    hook hold
+      send back, wave true
+
+  fork test
+    hook test
+      meet and
+        call is-list
+          bind value, read a
+        call is-list
+          bind value, read b
+    hook hold
+      save size-a
+        call list-size
+          bind list, read a
+      save size-b
+        call list-size
+          bind list, read b
+      fork test
+        hook test
+          call is-equal
+            bind a, read size-a
+            bind b, read size-b
+        hook miss
+          send back, wave false
+      save i, code 0
+      walk test
+        hook test
+          call is-below
+            bind a, read i
+            bind b, read size-a
+        hook hold
+          save item-a
+            call list-get
+              bind list, read a
+              bind index, read i
+          save item-b
+            call list-get
+              bind list, read b
+              bind index, read i
+          save eq
+            call deep-equal
+              bind a, read item-a
+              bind b, read item-b
+          fork test
+            hook test, read eq
+            hook miss
+              send back, wave false
+          save i
+            call add
+              bind a, read i
+              bind b, code 1
+      send back, wave true
+
+  send back, wave false
+
+task contains-text
+  take text, like text
+  take search, like text
+  like boolean
+
+  save text-size
+    call text-size
+      bind text, read text
+  save search-size
+    call text-size
+      bind text, read search
+  fork test
+    hook test
+      call is-equal
+        bind a, read search-size
+        bind b, code 0
+    hook hold
+      send back, wave true
+  fork test
+    hook test
+      call is-above
+        bind a, read search-size
+        bind b, read text-size
+    hook hold
+      send back, wave false
+  save i, code 0
+  save limit
+    call add
+      bind a
+        call subtract
+          bind a, read text-size
+          bind b, read search-size
+      bind b, code 1
+  walk test
+    hook test
+      call is-below
+        bind a, read i
+        bind b, read limit
+    hook hold
+      save slice
+        call text-slice
+          bind text, read text
+          bind start, read i
+          bind end
+            call add
+              bind a, read i
+              bind b, read search-size
+      fork test
+        hook test
+          call is-equal
+            bind a, read slice
+            bind b, read search
+        hook hold
+          send back, wave true
+      save i
+        call add
+          bind a, read i
+          bind b, code 1
+  send back, wave false
+
+task contains-list
+  take list
+  take value
+  like boolean
+
+  save size
+    call list-size
+      bind list, read list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        bind a, read i
+        bind b, read size
+    hook hold
+      save item
+        call list-get
+          bind list, read list
+          bind index, read i
+      fork test
+        hook test
+          call is-equal
+            bind a, read item
+            bind b, read value
+        hook hold
+          send back, wave true
+      save i
+        call add
+          bind a, read i
+          bind b, code 1
+  send back, wave false

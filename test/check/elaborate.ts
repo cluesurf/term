@@ -50,7 +50,7 @@ const RECURSIVE_FIB = `task fibonacci
     hook test
       call is-below
         loan n
-        mark 2
+        code 2
     hook hold
       send back n
     hook miss
@@ -59,11 +59,11 @@ const RECURSIVE_FIB = `task fibonacci
           call fibonacci
             call subtract
               loan n
-              mark 1
+              code 1
           call fibonacci
             call subtract
               loan n
-              mark 2
+              code 2
 `
 
 // two functions, one calling the other: the kernel must resolve the cross-function call type
@@ -110,7 +110,7 @@ const WRONG_ARGUMENT = `task oops
   send back
     call subtract
       loan flag
-      mark 1
+      code 1
 `
 
 // a generic identity function, and a caller that uses it at a concrete type. The kernel must give identity a
@@ -155,8 +155,8 @@ task bad-call
 const WHILE_LOOP = `task sum-below
   take n, like number
   like number
-  save total, mark 0
-  save i, mark 0
+  save total, code 0
+  save i, code 0
   walk test
     hook test
       call is-below
@@ -170,7 +170,7 @@ const WHILE_LOOP = `task sum-below
       save i
         call add
           loan i
-          mark 1
+          code 1
   send back total
 `
 
@@ -179,7 +179,7 @@ const FOR_EACH = `task sum-pair
   take a, like number
   take b, like number
   like number
-  save total, mark 0
+  save total, code 0
   save items
     make list
       loan a
@@ -204,9 +204,9 @@ task code-of
   like number
   fork case, read c
     case red
-      send back, mark 0
+      send back, code 0
     case green
-      send back, mark 1
+      send back, code 1
 `
 
 // async with await: the awaited result is typed transparently, so a typed async caller verifies
@@ -233,7 +233,7 @@ task use-async
 const BAD_ASSIGN = `task wrong-assign
   take n, like number
   like number
-  save total, mark 0
+  save total, code 0
   save total, wave true
   send back total
 `

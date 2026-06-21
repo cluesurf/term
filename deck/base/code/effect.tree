@@ -1,0 +1,27 @@
+
+# IO effect ADT for the HVM backend. Maps to IO_Done, IO_Call, IO_bind protocol.
+
+form effect
+  head result
+  case done
+    link value, like result
+  case call
+    link name, like text
+    link argument, like text
+    link next
+      like task
+        take result, like text
+        send back
+          like effect
+            fuse result, read result
+  case bind
+    head middle
+    link action
+      like effect
+        fuse result, read middle
+    link next
+      like task
+        take value, like middle
+        send back
+          like effect
+            fuse result, read result

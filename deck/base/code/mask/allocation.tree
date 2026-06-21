@@ -1,0 +1,15 @@
+
+suit allocation
+  head allocated, like dimension-free
+
+  task loan
+    take self
+    like allocated
+
+suit flex-allocation
+  head allocated, like dimension-free
+  base allocation, like allocated
+
+  task loan
+    take self, flex true
+    like allocated, flex true

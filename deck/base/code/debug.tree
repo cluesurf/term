@@ -1,0 +1,17 @@
+
+task inspect
+  take value
+  take depth, like size, fall 4
+  take color, like bool, fall true
+  take width, like size, fall 80
+  like text
+
+task print
+  take value
+  take label, like text, need false
+
+task pause
+
+task assert
+  take condition, like bool
+  take message, like text, need false

@@ -1,0 +1,35 @@
+
+# SCTP: Stream Control Transmission Protocol (RFC 4960). Message-oriented, multi-streamed transport. A packet is a
+# common header followed by one or more typed chunks.
+
+form sctp-common-header
+  link source-port, like u16
+  link destination-port, like u16
+  link verification-tag, like u32
+  link checksum, like u32
+
+# the kind of a chunk, from its leading type byte
+form sctp-chunk-type
+  case data
+  case initiation
+  case initiation-acknowledge
+  case selective-acknowledge
+  case heartbeat
+  case heartbeat-acknowledge
+  case abort
+  case shutdown
+  case shutdown-acknowledge
+  case operation-error
+  case cookie-echo
+  case cookie-acknowledge
+  case shutdown-complete
+
+form sctp-chunk
+  link kind, like sctp-chunk-type
+  link flags, like u8
+  link length, like u16
+  link value, like list
+
+form sctp-packet
+  link header, like sctp-common-header
+  link chunks, like list

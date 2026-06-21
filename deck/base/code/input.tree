@@ -1,0 +1,63 @@
+
+form input
+  task close
+    like void
+
+  task read
+    take nbytes, like int
+    like bytes
+
+  task read-all
+    take bufsize, like int-nullable
+    like bytes
+
+  task read-byte
+    like int
+
+  task read-bytes
+    take s, like bytes
+    take pos, like int
+    take len, like int
+    like int
+
+  task read-double
+    like float
+
+  task read-float
+    like float
+
+  task read-full-bytes
+    take s, like bytes
+    take pos, like int
+    take len, like int
+    like void
+
+  task read-int16
+    like int
+
+  task read-int24
+    like int
+
+  task read-int32
+    like int
+
+  task read-int8
+    like int
+
+  task read-line
+    like string
+
+  task read-string
+    take len, like int
+    take encoding, like encoding-nullable
+    like string
+
+  task read-uint16
+    like int
+
+  task read-uint24
+    like int
+
+  task read-until
+    take end, like int
+    like string

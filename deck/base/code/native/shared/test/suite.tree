@@ -1,0 +1,200 @@
+
+load ./context
+  find make
+  find set
+  find count
+
+load ./compare
+  find contains-text
+
+host test-registry
+host group-stack
+
+task init
+  note private
+  save test-registry
+    make list
+  save group-stack
+    make list
+
+task register
+  take name, like text
+  take work, like task
+  note private
+
+  save group, text <>
+  save stack-size
+    call list-size
+      bind list, read group-stack
+  fork test
+    hook test
+      call is-above
+        bind a, read stack-size
+        bind b, code 0
+    hook hold
+      save group
+        call text-join
+          bind list, read group-stack
+          bind separator, text < > >
+
+  save full-name, read name
+  fork test
+    hook test
+      call is-above
+        bind a, read stack-size
+        bind b, code 0
+    hook hold
+      save full-name
+        call text-concat
+          bind a
+            call text-concat
+              bind a, read group
+              bind b, text < > >
+          bind b, read name
+
+  save entry
+    make list
+  call list-push
+    bind list, read entry
+    bind item, read full-name
+  call list-push
+    bind list, read entry
+    bind item, read work
+
+  call list-push
+    bind list, read test-registry
+    bind item, read entry
+
+task describe
+  take name, like text
+  take work, like task
+
+  call list-push
+    bind list, read group-stack
+    bind item, read name
+
+  call work
+
+  call list-pop
+    bind list, read group-stack
+
+task run
+  note async
+  take filter, like text, need false
+  take timeout, like size, fall 5000
+  take parallel, like boolean, fall wave false
+  like report
+
+  save passed, code 0
+  save failed, code 0
+  save skipped, code 0
+  save failures
+    make list
+  save start
+    call clock/now/get
+
+  save size
+    call list-size
+      bind list, read test-registry
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        bind a, read i
+        bind b, read size
+    hook hold
+      save entry
+        call list-get
+          bind list, read test-registry
+          bind index, read i
+
+      save name
+        call list-get
+          bind list, read entry
+          bind index, code 0
+
+      save work
+        call list-get
+          bind list, read entry
+          bind index, code 1
+
+      fork test
+        hook test
+          call is-null
+            bind value, read filter
+        hook miss
+          save matches
+            call contains-text
+              bind text, read name
+              bind search, read filter
+          fork test
+            hook test, read matches
+            hook miss
+              save skipped
+                call add
+                  bind a, read skipped
+                  bind b, code 1
+              save i
+                call add
+                  bind a, read i
+                  bind b, code 1
+              turn next
+
+      save ctx
+        call make
+          bind name, read name
+          bind start-time
+            call clock/now/get
+
+      call set
+        bind ctx, read ctx
+
+      call work
+        note async
+
+      save fail-count
+        call count
+          bind ctx, read ctx
+
+      fork test
+        hook test, read ctx/skipped
+        hook hold
+          save skipped
+            call add
+              bind a, read skipped
+              bind b, code 1
+        hook miss
+          fork test
+            hook test
+              call is-equal
+                bind a, read fail-count
+                bind b, code 0
+            hook hold
+              save passed
+                call add
+                  bind a, read passed
+                  bind b, code 1
+            hook miss
+              save failed
+                call add
+                  bind a, read failed
+                  bind b, code 1
+
+      save i
+        call add
+          bind a, read i
+          bind b, code 1
+
+  save end
+    call clock/now/get
+  save duration
+    call subtract
+      bind a, read end
+      bind b, read start
+
+  send back
+    make report
+      bind passed, read passed
+      bind failed, read failed
+      bind skipped, read skipped
+      bind duration, read duration

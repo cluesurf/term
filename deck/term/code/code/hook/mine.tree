@@ -1,0 +1,29 @@
+
+load @cluesurf/term/code/code/line/mine
+  find line
+
+load @cluesurf/term/code/code/base/mine
+  find base
+
+load @cluesurf/term/code/code/tool/flow/mine
+  find flow
+
+load @cluesurf/term/code/code/task/mine
+  find task
+
+mine hook
+  mine term, term hook
+    mine term
+      slot name
+    mine maybe
+      mine term, term name
+        slot fork-name
+    mine list
+      mine form, like base
+        slot base
+    mine list
+      mine form, like flow
+        slot flow
+    mine list
+      mine form, like task
+        slot task

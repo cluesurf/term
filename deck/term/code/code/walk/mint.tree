@@ -1,0 +1,33 @@
+
+load @cluesurf/base/code/walk
+  find walk
+  find hook
+
+mint walk
+  case mode
+    slot mode
+  case seed, mint seed
+    slot seed
+  case bind, mint bind
+    slot bind
+  case hook, mint hook
+    slot hook
+  hook make
+    make walk
+      bind mode, read mode
+      bind seed, read seed
+      bind bind, read bind
+      bind hook, read hook
+
+mint hook
+  case name
+    slot name
+  case base, mint base
+    slot base
+  case flow, mint flow
+    slot flow
+  hook make
+    make hook
+      bind name, read name
+      bind base, read base
+      bind flow, read flow

@@ -1,0 +1,33 @@
+
+load @cluesurf/base/code/network/server/request
+  find request
+
+task read
+  note async
+  take request, like request
+  take format, like text, fall text <text>
+
+  save raw, read request/dock
+
+  save body-bytes
+    call hyper/body/to-bytes
+      note async
+      call raw/into-body
+      halt kink
+
+  fork case, read format
+    case text
+      send back
+        call string/from-utf8
+          call body-bytes/to-vec
+          halt kink
+    case bytes
+      send back
+        call body-bytes/to-vec
+    case json
+      send back
+        call serde-json/from-slice
+          read body-bytes
+          halt kink
+    case stream
+      send back, read raw

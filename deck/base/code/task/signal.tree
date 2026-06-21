@@ -1,0 +1,13 @@
+
+form signal
+  link dock, mark private
+
+task make
+  like signal
+
+task wait
+  note async
+  take signal, like signal
+
+task trigger
+  take signal, like signal

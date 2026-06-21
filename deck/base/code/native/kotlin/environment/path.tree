@@ -1,0 +1,68 @@
+
+task get
+  take kind, like text
+  like text
+
+  fork case, read kind
+    case home
+      send back
+        call kotlin-home-dir
+    case temporary
+      send back
+        call kotlin-temp-dir
+    case data
+      send back
+        call kotlin-data-dir
+    case configuration
+      send back
+        call kotlin-config-dir
+    case cache
+      send back
+        call kotlin-cache-dir
+
+task kotlin-home-dir
+  note private
+  dock call <System.getProperty("user.home") ?: "">
+
+task kotlin-temp-dir
+  note private
+  dock call <System.getProperty("java.io.tmpdir") ?: "">
+
+task kotlin-data-dir
+  note private
+  dock call <run {
+    val os = System.getProperty("os.name")?.lowercase() ?: ""
+    val home = System.getProperty("user.home") ?: ""
+    when {
+      os.contains("mac") -> "${'$'}home/Library/Application Support"
+      os.contains("win") -> System.getenv("APPDATA") ?: ""
+      else -> System.getenv("XDG_DATA_HOME") ?: "${'$'}home/.local/share"
+    }
+  }>
+
+task kotlin-config-dir
+  note private
+  dock call <run {
+    val os = System.getProperty("os.name")?.lowercase() ?: ""
+    val home = System.getProperty("user.home") ?: ""
+    when {
+      os.contains("mac") -> "${'$'}home/Library/Preferences"
+      os.contains("win") -> System.getenv("APPDATA") ?: ""
+      else -> System.getenv("XDG_CONFIG_HOME") ?: "${'$'}home/.config"
+    }
+  }>
+
+task kotlin-cache-dir
+  note private
+  dock call <run {
+    val os = System.getProperty("os.name")?.lowercase() ?: ""
+    val home = System.getProperty("user.home") ?: ""
+    when {
+      os.contains("mac") -> "${'$'}home/Library/Caches"
+      os.contains("win") -> {
+        val local = System.getenv("LOCALAPPDATA") ?: ""
+        "${'$'}local\\Temp"
+      }
+      else -> System.getenv("XDG_CACHE_HOME") ?: "${'$'}home/.cache"
+    }
+  }>

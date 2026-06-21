@@ -1,0 +1,17 @@
+
+mask incomplete-comparison
+  # Partial Equality.
+  head other, like dimension, base self
+
+  task is-equal
+    take self
+    take other, like other
+    free wave
+
+  task is-not-equal
+    take self
+    take other, like other
+    free wave
+
+mask comparison
+  # Total equality.

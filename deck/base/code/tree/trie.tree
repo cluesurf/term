@@ -1,0 +1,43 @@
+
+form trie
+  head v
+
+  task get
+    take self
+    take key, like text
+    like maybe
+
+  task set
+    take self, flex true
+    take key, like text
+    take value, like v
+
+  task has
+    take self
+    take key, like text
+    like boolean
+
+  task remove
+    take self, flex true
+    take key, like text
+    like boolean
+
+  task keys
+    take self
+    like list
+
+  task get-size
+    take self
+    like u64
+
+  task is-empty
+    take self
+    like boolean
+
+  task starts-with
+    take self
+    take prefix, like text
+    like list
+
+  task clear
+    take self, flex true

@@ -1,0 +1,12 @@
+
+mine text
+  mine list
+    mine form, like text-def
+      slot text
+
+mine text-def
+  mine term, term text
+    mine term
+      slot name
+    mine text
+      slot text

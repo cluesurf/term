@@ -1,0 +1,28 @@
+
+# DCCP: Datagram Congestion Control Protocol (RFC 4340). Unreliable datagrams with congestion control and
+# connection setup. Packets are distinguished by a type field in the header.
+
+form dccp-packet-type
+  case request
+  case response
+  case data
+  case acknowledge
+  case data-acknowledge
+  case close-request
+  case close
+  case reset
+  case sync
+  case sync-acknowledge
+
+form dccp-header
+  link source-port, like u16
+  link destination-port, like u16
+  link data-offset, like u8
+  link checksum-coverage, like u8
+  link checksum, like u16
+  link kind, like dccp-packet-type
+  link sequence-number, like u64
+
+form dccp-packet
+  link header, like dccp-header
+  link payload, like list

@@ -55,7 +55,7 @@ function have(tool: string): boolean {
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'seed-roundtrip-'))
-const baseTree = join(process.cwd(), '..', 'base.tree')
+const baseTree = join(process.cwd(), 'deck', 'base')
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
   if (!path.startsWith(prefix)) return undefined
@@ -896,17 +896,17 @@ task compute
     make list
   call push
     read xs
-    mark 10
+    code 10
   call push
     read xs
-    mark 20
+    code 20
   call push
     read xs
-    mark 30
+    code 30
   save n
     call get
       read xs
-      mark 1
+      code 1
   send back
     call add
       read n
@@ -925,16 +925,16 @@ task compute
     make find
   call set
     read m
-    mark 1
-    mark 100
+    code 1
+    code 100
   call set
     read m
-    mark 2
-    mark 200
+    code 2
+    code 200
   call set
     read m
-    mark 1
-    mark 300
+    code 1
+    code 300
   send back
     call size
       read m
@@ -954,13 +954,13 @@ task compute
     make list
   call push
     read xs
-    mark 1
+    code 1
   call push
     read xs
-    mark 2
+    code 2
   call push
     read xs
-    mark 3
+    code 3
   save doubled
     call map
       read xs
@@ -970,7 +970,7 @@ task compute
         send back
           call multiply
             read item
-            mark 2
+            code 2
   send back
     call reduce
       read doubled
@@ -982,7 +982,7 @@ task compute
           call add
             read total
             read item
-      mark 0
+      code 0
 `
 
 
@@ -1011,7 +1011,7 @@ task compute
         send back
           call multiply
             read n
-            mark 2
+            code 2
       read seed
 `
 // a closure stored in a struct field (the router handler case) and invoked through the field: route.handle(6) = 18.
@@ -1042,7 +1042,7 @@ task compute
             send back
               call multiply
                 read n
-                mark 3
+                code 3
       read seed
 `
 // a closure that CAPTURES an outer variable (`seed`) and is invoked through a higher-order task: the `move` closure
@@ -1070,7 +1070,43 @@ task compute
           call add
             read n
             read seed
-      mark 10
+      code 10
+`
+
+// a sum type (variant / enum) on LLVM: build a tagged value, match on it, read the payload. `make full` is tag 0 with
+// payload 7; the match reads the tag, takes the `full` arm, returns the payload -> 7. (Tagged union { i64, i64 }.)
+const VARIANT = `form box
+  case full
+    link value, like number
+  case empty
+
+task make-box
+  take flag, like boolean
+  like box
+  fork test
+    hook test
+      read flag
+    hook hold
+      send back
+        make full
+          bind value
+            code 7
+    hook miss
+      send back
+        make empty
+
+task compute
+  like number
+  save b
+    call make-box
+      wave true
+  fork case, read b
+    case full
+      send back
+        read b/value
+    case empty
+      send back
+        code 0
 `
 
 // a value-position conditional (a `fork` used as the returned value) with an else-if chain: grade(70) takes the second
@@ -1083,17 +1119,17 @@ const VALUE_COND = `task grade
       hook test
         call is-above
           read n
-          mark 90
+          code 90
       hook hold
-        mark 1
+        code 1
       hook test
         call is-above
           read n
-          mark 50
+          code 50
       hook hold
-        mark 2
+        code 2
       hook miss
-        mark 3
+        code 3
 `
 
 // a generic function reaching a monomorphic backend: identity<t> called at a number. LLVM has no type parameters, so
@@ -1109,7 +1145,7 @@ task compute
   like number
   send back
     call identity
-      mark 42
+      code 42
 `
 
 // a plain record reaching LLVM: build a struct, pass it by value, read a field. LLVM lowers it to a first-class
@@ -1131,21 +1167,21 @@ task compute
   like number
   save p
     call make-point
-      mark 7
-      mark 35
+      code 7
+      code 35
   send back
     read p/y
 `
 
 const FIB = `task find-fibonacci-via-loop
   take n
-  save a, mark 0
-  save b, mark 1
+  save a, code 0
+  save b, code 1
   walk test
     hook test
       call is-above
         loan n
-        mark 0
+        code 0
     hook step
       save next
         call add
@@ -1156,7 +1192,7 @@ const FIB = `task find-fibonacci-via-loop
       save n
         call subtract
           loan n
-          mark 1
+          code 1
   send back
     loan a
 `
@@ -1169,11 +1205,11 @@ task demo
   like number
   save m
     make some
-      bind value, mark 41
+      bind value, code 41
   save total
     call unwrap-or
       read m
-      mark 0
+      code 0
   save e
     make none
   save total
@@ -1181,7 +1217,7 @@ task demo
       read total
       call unwrap-or
         read e
-        mark 7
+        code 7
   send back, read total
 `
 
@@ -1216,8 +1252,8 @@ task compute
   like number
   send back
     call power
-      mark 2
-      mark 10
+      code 2
+      code 10
 `
 
 // a digest computed through the PUBLIC interface: sha256("abc") resolves to the declarative `bind` map, which inlines
@@ -1310,8 +1346,8 @@ task compute
   like number
   send back
     call integer
-      mark 5
-      mark 5
+      code 5
+      code 5
 `
 // secure random: two 16-byte draws differ (the OS-backed generator is not a constant). The draws are raw bytes (the
 // crypto currency); hex-encode each at the edge so the comparison is by value on every platform (a raw-buffer != would
@@ -1329,10 +1365,10 @@ task compute
     call is-unequal
       call to-hex
         call bytes
-          mark 16
+          code 16
       call to-hex
         call bytes
-          mark 16
+          code 16
 `
 // the bytes currency type as a native buffer: text "ab" + "cd" concatenated, hex-encoded, equals "61626364". The data
 // is a byte vector / Data / ByteArray the whole way through, hex only at the edge. Boolean so it is print-agnostic.
@@ -1482,18 +1518,18 @@ task compute
   save entries
     call list
       text </tmp/seed-roundtrip-listdir>
-  save count, mark 0
+  save count, code 0
   walk list, read entries
     hook next
       take site, name item
       save count
         call add
           read count
-          mark 1
+          code 1
   send back
     call is-equal
       read count
-      mark 1
+      code 1
 `
 // directory walk: make a nested directory tree, walk it recursively, and count the entries. Exercises each platform's
 // recursive enumerator (rust std::fs recursion, swift FileManager.enumerator, kotlin walkTopDown) returning a list.
@@ -1511,18 +1547,18 @@ task compute
   save entries
     call walk
       text </tmp/seed-roundtrip-walkdir>
-  save count, mark 0
+  save count, code 0
   walk list, read entries
     hook next
       take item, name value
       save count
         call add
           read count
-          mark 1
+          code 1
   send back
     call is-equal
       read count
-      mark 2
+      code 2
 `
 // path: join a base and a name, then read the last segment back. Exercises the path shim (node path, rust std::path,
 // swift Foundation, kotlin java.io.File). Asserted as a boolean over the exact cross-platform result.
@@ -1567,12 +1603,12 @@ task compute
   like boolean
   save m
     call make-utc
-      mark 2026
-      mark 6
-      mark 19
-      mark 12
-      mark 34
-      mark 56
+      code 2026
+      code 6
+      code 19
+      code 12
+      code 34
+      code 56
   send back
     call and
       call and
@@ -1588,8 +1624,8 @@ task compute
         call month
           call add-months
             read m
-            mark 1
-        mark 7
+            code 1
+        code 7
 `
 // X25519 ECDH: two key pairs derive the same shared secret from opposite sides (the agreement property), asserted as
 // a boolean. Exercises each platform's X25519 (rust x25519-dalek, swift CryptoKit, kotlin java.security).
@@ -1656,33 +1692,33 @@ task compute
         make find
   call insert
     read a
-    mark 1
+    code 1
   call insert
     read a
-    mark 2
+    code 2
   call insert
     read a
-    mark 3
+    code 3
   save b
     make set
       bind items
         make find
   call insert
     read b
-    mark 2
+    code 2
   call insert
     read b
-    mark 3
+    code 3
   call insert
     read b
-    mark 4
+    code 4
   send back
     call is-equal
       call size
         call intersect
           read a
           read b
-      mark 2
+      code 2
 `
 // list: build a list with push (in-place mutation persists), map it through a closure, then reduce. Exercises the
 // native list runtime -- mutation, the closure-taking ops (map / reduce), and `Box<dyn Fn>` / lambda closures.
@@ -1696,13 +1732,13 @@ task compute
     make list
   call push
     read xs
-    mark 1
+    code 1
   call push
     read xs
-    mark 2
+    code 2
   call push
     read xs
-    mark 3
+    code 3
   save doubled
     call map
       read xs
@@ -1712,7 +1748,7 @@ task compute
         send back
           call multiply
             read item
-            mark 2
+            code 2
   send back
     call reduce
       read doubled
@@ -1724,7 +1760,7 @@ task compute
           call add
             read total
             read item
-      mark 0
+      code 0
 `
 // json: parse a JSON array (no braces -- seed text literals interpolate single { ), index it, read the number.
 // as-number(get-item(parse("[10,20,30]"), 1)) == 20.0, through each platform's host JSON.
@@ -1741,7 +1777,7 @@ task compute
         call get-item
           call parse
             text <[10,20,30]>
-          mark 1
+          code 1
       20.0
 `
 // json encode: assemble a typed value (make-object + set-field + from-*), stringify it through the host JSON, then
@@ -1806,7 +1842,7 @@ task compute
   send back
     call is-above
       call now
-      mark 0
+      code 0
 `
 // console: compute() prints to stdout (it returns unit), so the runner just calls it and captures stdout
 const CONSOLE_PROG = `load @cluesurf/base/code/console
@@ -1826,7 +1862,7 @@ task compute
   send back
     call is-above
       call now
-      mark 0
+      code 0
 `
 // process / environment: return non-empty platform info, verified with regex (no member access)
 const PROCESS_PROG = `load @cluesurf/base/code/process
@@ -2041,6 +2077,13 @@ function main(): void {
     fib,
     '@find_fibonacci_via_loop(i64 10)',
     55,
+  )
+  // llvm sum type: build a variant, match on the tag, read the payload -> 7 (tagged union { tag, payload })
+  runLlvm(
+    'llvm: variant build + match + payload read (tagged union)',
+    frontEnd(VARIANT),
+    '@compute()',
+    7,
   )
   // llvm float: 7.0 / 2.0 == 3.5 via `fdiv double` + `fcmp oeq double` (not integer division)
   runLlvm(

@@ -1,0 +1,20 @@
+
+let content = try await SCShareableContent.excludingDesktopWindows(false,
+                                                                   onScreenWindowsOnly: true)
+https://img.ly/blog/record-screen-with-swift-replaykit/
+https://developer.apple.com/documentation/photokit/browsing_and_modifying_photo_albums?changes=_1_8
+https://jaredsinclair.com/2020/05/07/swiftui-cheat-sheet.html
+https://www.objc.io/blog/2021/11/25/transactions-and-animations/
+
+angle
+  accessor degrees
+  accessor radians
+
+host axis
+  term x
+  term y
+  term z
+
+form point
+  accessor x
+  accessor y

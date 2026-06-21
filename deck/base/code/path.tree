@@ -1,0 +1,46 @@
+
+# Filesystem path manipulation: join, directory, file name, file extension, and absoluteness. The per-env native implementation wraps the platform's own path library (node path, rust std::path, swift Foundation, kotlin java.io.File), selected at build time and hidden. The file extension carries its leading dot, an empty string when there is none.
+
+load @cluesurf/base/code/native/path
+  find do-join
+  find do-directory
+  find do-file-name
+  find do-file-extension
+  find do-is-absolute
+
+task join
+  take base, like text
+  take name, like text
+  like text
+  send back
+    call do-join
+      read base
+      read name
+
+task directory
+  take target, like text
+  like text
+  send back
+    call do-directory
+      read target
+
+task file-name
+  take target, like text
+  like text
+  send back
+    call do-file-name
+      read target
+
+task file-extension
+  take target, like text
+  like text
+  send back
+    call do-file-extension
+      read target
+
+task is-absolute
+  take target, like text
+  like boolean
+  send back
+    call do-is-absolute
+      read target

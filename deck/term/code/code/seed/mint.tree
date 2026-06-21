@@ -1,0 +1,84 @@
+
+mint seed
+  case text, mint text
+    slot value
+  case mark, mint mark
+    slot value
+  case wave, mint wave
+    slot value
+  case read, mint read
+    slot value
+  case link, mint link
+    slot value
+  case move, mint move
+    slot value
+  case loan, mint loan
+    slot value
+  case cite, mint cite
+    slot value
+  case make, mint make
+    slot value
+  case call, mint call
+    slot value
+  case task, mint task
+    slot value
+  case form, mint form
+    slot value
+  case meet, mint meet
+    slot value
+
+mint text
+  case text
+    slot text
+  hook make
+    make seed-text
+      bind text, read text
+
+mint mark
+  case value
+    slot value
+  hook make
+    make seed-mark
+      bind value, read value
+
+mint wave
+  case value
+    slot value
+  hook make
+    make seed-wave
+      bind value, read value
+
+mint read
+  case road
+    slot road
+  hook make
+    make seed-read
+      bind road, read road
+
+mint link
+  case road
+    slot road
+  hook make
+    make seed-link
+      bind road, read road
+
+mint move
+  case road
+    slot road
+  hook make
+    make seed-move
+      bind road, read road
+
+mint loan
+  case road
+    slot road
+  hook make
+    make seed-loan
+      bind road, read road
+
+mint cite
+  case road
+    slot road
+  hook make
+    make seed-cite
+      bind road, read road

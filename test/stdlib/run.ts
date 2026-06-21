@@ -12,7 +12,7 @@ import type { Source } from '@/code/compile/load'
 import { render } from '@/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', '..', 'base.tree') // deck/seed/deck/base.tree
+const baseTree = join(here, '..', '..', 'deck', 'base') // deck/seed/deck/base.tree
 
 // resolve `@cluesurf/base/code/<path>` to the stdlib .tree file on disk
 function resolveStdlib(importPath: string): Source | undefined {
@@ -69,22 +69,22 @@ task unwrap-present
   send back
     call unwrap-or
       make some
-        bind value, mark 42
-      mark 0
+        bind value, code 42
+      code 0
 
 task unwrap-absent
   like number
   send back
     call unwrap-or
       make none
-      mark 7
+      code 7
 
 task present
   like boolean
   send back
     call is-some
       make some
-        bind value, mark 1
+        bind value, code 1
 
 task absent
   like boolean
@@ -98,9 +98,9 @@ task map-add-one
     call unwrap-or
       call map
         make some
-          bind value, mark 41
+          bind value, code 41
         increment
-      mark 0
+      code 0
 
 task increment
   take n, like number
@@ -108,7 +108,7 @@ task increment
   send back
     call add
       loan n
-      mark 1
+      code 1
 `
 
 const RESULT = `load @cluesurf/base/code/result
@@ -119,23 +119,23 @@ task ok-value
   send back
     call unwrap-or
       make okay
-        bind value, mark 5
-      mark 0
+        bind value, code 5
+      code 0
 
 task err-default
   like number
   send back
     call unwrap-or
       make error
-        bind value, mark 99
-      mark 0
+        bind value, code 99
+      code 0
 
 task okay-check
   like boolean
   send back
     call is-okay
       make okay
-        bind value, mark 1
+        bind value, code 1
 `
 
 const PAIR = `load @cluesurf/base/code/pair
@@ -146,8 +146,8 @@ task first-of
   send back
     call get-first
       make pair
-        bind first, mark 3
-        bind second, mark 4
+        bind first, code 3
+        bind second, code 4
 
 task second-after-swap
   like number
@@ -155,8 +155,8 @@ task second-after-swap
     call get-second
       call swap
         make pair
-          bind first, mark 3
-          bind second, mark 4
+          bind first, code 3
+          bind second, code 4
 `
 
 const BOOLEAN = `load @cluesurf/base/code/boolean
@@ -199,16 +199,16 @@ task from-maybe
   send back
     call unwrap-or
       make some
-        bind value, mark 11
-      mark 0
+        bind value, code 11
+      code 0
 
 task from-result
   like number
   send back
     call unwrap-or
       make error
-        bind value, mark 1
-      mark 22
+        bind value, code 1
+      code 22
 `
 
 // the list type: native-array-backed methods, dispatched on the array receiver
@@ -221,9 +221,9 @@ task first-of
     call unwrap-or
       call first
         make list
-          mark 10
-          mark 20
-      mark 0
+          code 10
+          code 20
+      code 0
 
 task last-of
   like number
@@ -231,10 +231,10 @@ task last-of
     call unwrap-or
       call last
         make list
-          mark 10
-          mark 20
-          mark 30
-      mark 0
+          code 10
+          code 20
+          code 30
+      code 0
 
 task first-empty
   like number
@@ -242,44 +242,44 @@ task first-empty
     call unwrap-or
       call first
         make list
-      mark 99
+      code 99
 
 task size-of
   like number
   send back
     call size
       make list
-        mark 1
-        mark 2
-        mark 3
+        code 1
+        code 2
+        code 3
 
 task has-it
   like boolean
   send back
     call contains
       make list
-        mark 5
-        mark 6
-      mark 6
+        code 5
+        code 6
+      code 6
 
 task get-second
   like number
   send back
     call get
       make list
-        mark 7
-        mark 8
-        mark 9
-      mark 1
+        code 7
+        code 8
+        code 9
+      code 1
 
 task join-them
   like text
   send back
     call join
       make list
-        mark 1
-        mark 2
-        mark 3
+        code 1
+        code 2
+        code 3
       text <->
 
 task size-after-reverse
@@ -288,8 +288,8 @@ task size-after-reverse
     call size
       call reverse
         make list
-          mark 1
-          mark 2
+          code 1
+          code 2
 
 task double
   take n, like number
@@ -297,7 +297,7 @@ task double
   send back
     call multiply
       read n
-      mark 2
+      code 2
 
 task size-after-map
   like number
@@ -305,10 +305,10 @@ task size-after-map
     call size
       call map
         make list
-          mark 1
-          mark 2
-          mark 3
-          mark 4
+          code 1
+          code 2
+          code 3
+          code 4
         read double
 
 task add-two
@@ -325,11 +325,11 @@ task sum-of
   send back
     call reduce
       make list
-        mark 1
-        mark 2
-        mark 3
+        code 1
+        code 2
+        code 3
       read add-two
-      mark 0
+      code 0
 `
 
 // the combinators added to maybe / result / pair (and-then, or-else, filter, get-or-else, unwrap, map-error, ...)
@@ -350,7 +350,7 @@ task double-maybe
       bind value
         call multiply
           read n
-          mark 2
+          code 2
 
 task is-even
   take n, like number
@@ -359,17 +359,17 @@ task is-even
     call is-equal
       call modulo
         read n
-        mark 2
-      mark 0
+        code 2
+      code 0
 
 task nine
   like number
-  send back, mark 9
+  send back, code 9
 
 task to-nine
   take n, like number
   like number
-  send back, mark 9
+  send back, code 9
 
 task and-then-some
   like number
@@ -377,9 +377,9 @@ task and-then-some
     call unwrap-or
       call and-then
         make some
-          bind value, mark 5
+          bind value, code 5
         read double-maybe
-      mark 0
+      code 0
 
 task or-else-none
   like number
@@ -388,8 +388,8 @@ task or-else-none
       call or-else
         make none
         make some
-          bind value, mark 7
-      mark 0
+          bind value, code 7
+      code 0
 
 task filter-keep
   like number
@@ -397,9 +397,9 @@ task filter-keep
     call unwrap-or
       call filter
         make some
-          bind value, mark 4
+          bind value, code 4
         read is-even
-      mark 0
+      code 0
 
 task filter-drop
   like number
@@ -407,9 +407,9 @@ task filter-drop
     call unwrap-or
       call filter
         make some
-          bind value, mark 3
+          bind value, code 3
         read is-even
-      mark 99
+      code 99
 
 task get-or-else-none
   like number
@@ -423,7 +423,7 @@ task unwrap-some
   send back
     call unwrap
       make some
-        bind value, mark 8
+        bind value, code 8
 
 task double-okay
   take n, like number
@@ -433,7 +433,7 @@ task double-okay
       bind value
         call multiply
           read n
-          mark 2
+          code 2
 
 task and-then-okay
   like number
@@ -441,9 +441,9 @@ task and-then-okay
     call unwrap-or
       call and-then
         make okay
-          bind value, mark 6
+          bind value, code 6
         read double-okay
-      mark 0
+      code 0
 
 task map-second-pair
   like number
@@ -451,8 +451,8 @@ task map-second-pair
     call get-second
       call map-second
         make pair
-          bind first, mark 1
-          bind second, mark 10
+          bind first, code 1
+          bind second, code 10
         read to-nine
 `
 
@@ -468,13 +468,13 @@ task set-and-get
     call set
       read m
       text <a>
-      mark 10
+      code 10
   send back
     call unwrap-or
       call get
         read m
         text <a>
-      mark 0
+      code 0
 
 task get-missing
   like number
@@ -485,7 +485,7 @@ task get-missing
       call get
         read m
         text <nope>
-      mark 99
+      code 99
 
 task has-key
   like boolean
@@ -495,7 +495,7 @@ task has-key
     call set
       read m
       text <x>
-      mark 1
+      code 1
   send back
     call has
       read m
@@ -509,12 +509,12 @@ task entry-count
     call set
       read m
       text <a>
-      mark 1
+      code 1
   save m
     call set
       read m
       text <b>
-      mark 2
+      code 2
   send back
     call size
       read m
@@ -528,12 +528,12 @@ task entry-count-verb
     call set
       read m
       text <a>
-      mark 1
+      code 1
   save m
     call set
       read m
       text <b>
-      mark 2
+      code 2
   send back
     call count
       read m
@@ -548,18 +548,18 @@ task measure-range
   send back
     call length
       make range
-        bind start, mark 0
-        bind end, mark 10
-        bind step, mark 2
+        bind start, code 0
+        bind end, code 10
+        bind step, code 2
 
 task range-list-size
   like number
   save items
     call to-list
       make range
-        bind start, mark 0
-        bind end, mark 10
-        bind step, mark 2
+        bind start, code 0
+        bind end, code 10
+        bind step, code 2
   send back
     read items/length
 
@@ -568,32 +568,32 @@ task range-list-first
   save items
     call to-list
       make range
-        bind start, mark 3
-        bind end, mark 9
-        bind step, mark 2
+        bind start, code 3
+        bind end, code 9
+        bind step, code 2
   send back
     call items/at
-      mark 0
+      code 0
 
 task range-has
   like boolean
   send back
     call contains
       make range
-        bind start, mark 0
-        bind end, mark 10
-        bind step, mark 1
-      mark 5
+        bind start, code 0
+        bind end, code 10
+        bind step, code 1
+      code 5
 
 task range-excludes-end
   like boolean
   send back
     call contains
       make range
-        bind start, mark 0
-        bind end, mark 10
-        bind step, mark 1
-      mark 10
+        bind start, code 0
+        bind end, code 10
+        bind step, code 1
+      code 10
 `
 
 const SET = `load @cluesurf/base/code/set
@@ -608,11 +608,11 @@ task add-has
   save s
     call insert
       read s
-      mark 5
+      code 5
   send back
     call has
       read s
-      mark 5
+      code 5
 
 task missing
   like boolean
@@ -623,7 +623,7 @@ task missing
   send back
     call has
       read s
-      mark 99
+      code 99
 
 task unique-size
   like number
@@ -634,15 +634,15 @@ task unique-size
   save s
     call insert
       read s
-      mark 1
+      code 1
   save s
     call insert
       read s
-      mark 2
+      code 2
   save s
     call insert
       read s
-      mark 1
+      code 1
   send back
     call size
       read s
@@ -657,11 +657,11 @@ task unique-count
   save s
     call insert
       read s
-      mark 1
+      code 1
   save s
     call insert
       read s
-      mark 2
+      code 2
   send back
     call count
       read s
@@ -679,16 +679,16 @@ task push-pop
   save s
     call push
       read s
-      mark 10
+      code 10
   save s
     call push
       read s
-      mark 20
+      code 20
   send back
     call unwrap-or
       call pop
         read s
-      mark 0
+      code 0
 `
 
 const QUEUE = `load @cluesurf/base/code/list/queue
@@ -703,16 +703,16 @@ task fifo
   save q
     call enqueue
       read q
-      mark 10
+      code 10
   save q
     call enqueue
       read q
-      mark 20
+      code 20
   send back
     call unwrap-or
       call dequeue
         read q
-      mark 0
+      code 0
 `
 
 // linked-list: a recursive immutable ADT (empty | node)
@@ -726,11 +726,11 @@ task ll-length
   save l
     call prepend
       read l
-      mark 1
+      code 1
   save l
     call prepend
       read l
-      mark 2
+      code 2
   send back
     call length
       read l
@@ -742,12 +742,12 @@ task ll-head
   save l
     call prepend
       read l
-      mark 5
+      code 5
   send back
     call unwrap-or
       call head
         read l
-      mark 0
+      code 0
 
 task ll-empty
   like boolean
@@ -768,10 +768,10 @@ task bag-size
         make list
   call insert
     read b
-    mark 5
+    code 5
   call insert
     read b
-    mark 5
+    code 5
   send back
     call get-size
       read b
@@ -789,15 +789,15 @@ task oset-size
   save s
     call insert
       read s
-      mark 1
+      code 1
   save s
     call insert
       read s
-      mark 1
+      code 1
   save s
     call insert
       read s
-      mark 2
+      code 2
   send back
     call size
       read s
@@ -812,20 +812,20 @@ task sum-of
   send back
     call sum
       make list
-        mark 1
-        mark 2
-        mark 3
-        mark 4
+        code 1
+        code 2
+        code 3
+        code 4
 
 task index-of-twenty
   like number
   send back
     call index-of
       make list
-        mark 10
-        mark 20
-        mark 30
-      mark 20
+        code 10
+        code 20
+        code 30
+      code 20
 
 task take-two-size
   like number
@@ -833,11 +833,11 @@ task take-two-size
     call size
       call take-first
         make list
-          mark 1
-          mark 2
-          mark 3
-          mark 4
-        mark 2
+          code 1
+          code 2
+          code 3
+          code 4
+        code 2
 
 task drop-two-size
   like number
@@ -845,11 +845,11 @@ task drop-two-size
     call size
       call drop-first
         make list
-          mark 1
-          mark 2
-          mark 3
-          mark 4
-        mark 2
+          code 1
+          code 2
+          code 3
+          code 4
+        code 2
 
 task flatten-size
   like number
@@ -858,19 +858,19 @@ task flatten-size
       call flatten
         make list
           make list
-            mark 1
-            mark 2
+            code 1
+            code 2
           make list
-            mark 3
+            code 3
 
 task product-of
   like number
   send back
     call product
       make list
-        mark 2
-        mark 3
-        mark 4
+        code 2
+        code 3
+        code 4
 
 task unique-size
   like number
@@ -878,21 +878,21 @@ task unique-size
     call size
       call unique
         make list
-          mark 1
-          mark 1
-          mark 2
-          mark 3
-          mark 3
+          code 1
+          code 1
+          code 2
+          code 3
+          code 3
 
 task count-of-four
   like number
   send back
     call count
       make list
-        mark 1
-        mark 2
-        mark 3
-        mark 4
+        code 1
+        code 2
+        code 3
+        code 4
 
 task take-last-two-first
   like number
@@ -900,13 +900,13 @@ task take-last-two-first
     call get
       call take
         make list
-          mark 1
-          mark 2
-          mark 3
-          mark 4
-        mark 2
+          code 1
+          code 2
+          code 3
+          code 4
+        code 2
         make end
-      mark 0
+      code 0
 
 task drop-last-two-size
   like number
@@ -914,11 +914,11 @@ task drop-last-two-size
     call size
       call drop
         make list
-          mark 1
-          mark 2
-          mark 3
-          mark 4
-        mark 2
+          code 1
+          code 2
+          code 3
+          code 4
+        code 2
         make end
 
 task last-index-of-one
@@ -926,10 +926,10 @@ task last-index-of-one
   send back
     call last-index-of
       make list
-        mark 1
-        mark 2
-        mark 1
-      mark 1
+        code 1
+        code 2
+        code 1
+      code 1
 `
 
 // pair map-both: apply a different function to each side
@@ -942,7 +942,7 @@ task double
   send back
     call multiply
       read n
-      mark 2
+      code 2
 
 task add-ten
   take n, like number
@@ -950,15 +950,15 @@ task add-ten
   send back
     call add
       read n
-      mark 10
+      code 10
 
 task both-first
   like number
   save p
     call map-both
       make pair
-        bind first, mark 3
-        bind second, mark 4
+        bind first, code 3
+        bind second, code 4
       read double
       read add-ten
   send back
@@ -969,8 +969,8 @@ task both-second
   save p
     call map-both
       make pair
-        bind first, mark 3
-        bind second, mark 4
+        bind first, code 3
+        bind second, code 4
       read double
       read add-ten
   send back
@@ -986,27 +986,27 @@ task gray
   send back
     call grayscale
       make rgb-color
-        bind red, mark 30
-        bind green, mark 60
-        bind blue, mark 90
+        bind red, code 30
+        bind green, code 60
+        bind blue, code 90
 
 task lum-white
   like number
   send back
     call luminance
       make rgb-color
-        bind red, mark 255
-        bind green, mark 255
-        bind blue, mark 255
+        bind red, code 255
+        bind green, code 255
+        bind blue, code 255
 
 task inverted-red
   like number
   save c
     call invert
       make rgb-color
-        bind red, mark 0
-        bind green, mark 0
-        bind blue, mark 0
+        bind red, code 0
+        bind green, code 0
+        bind blue, code 0
   send back
     read c/red
 
@@ -1015,22 +1015,22 @@ task dark-check
   send back
     call is-dark
       make rgb-color
-        bind red, mark 10
-        bind green, mark 10
-        bind blue, mark 10
+        bind red, code 10
+        bind green, code 10
+        bind blue, code 10
 
 task blended-red
   like number
   save c
     call blend
       make rgb-color
-        bind red, mark 100
-        bind green, mark 0
-        bind blue, mark 0
+        bind red, code 100
+        bind green, code 0
+        bind blue, code 0
       make rgb-color
-        bind red, mark 200
-        bind green, mark 0
-        bind blue, mark 0
+        bind red, code 200
+        bind green, code 0
+        bind blue, code 0
   send back
     read c/red
 `

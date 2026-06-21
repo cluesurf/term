@@ -1,0 +1,216 @@
+
+# The blog HTTP API: the full backend loop. Routes are matched by the uniform trie router; each handler queries Postgres
+# through the abstract `post` repository (which uses only `@cluesurf/site/code/base/db`, never the driver) and returns
+# JSON. The transport is hono on node. This is userland: it imports the clean framework paths, no native modules.
+
+load ../back/post
+  find post
+  find setup
+  find create-post
+  find list-posts
+  find get-post
+
+load @cluesurf/site/code/base/db
+  find run
+
+load @cluesurf/site/code/http/http
+  find request
+  find response
+  find route
+  find server
+  find route-server
+
+load @cluesurf/site/code/http/serve
+  find serve
+
+load @cluesurf/base/code/list
+  find list
+  find push
+  find join
+
+load @cluesurf/base/code/maybe
+  find unwrap-or
+
+load @cluesurf/base/code/hash
+  find get
+
+# one post as a JSON object
+task post-json
+  take p, like post
+  like text
+  send back
+    call join
+      make list
+        text <{"id":">
+        read p/id
+        text <","title":">
+        read p/title
+        text <","body":">
+        read p/body
+        text <"}>
+      text <>
+
+# a list of posts as a JSON array
+task posts-json
+  take posts, like list
+  like text
+  save items
+    make list
+  walk list, read posts
+    hook next
+      take site, name p
+      call push
+        bind list, read items
+        bind item
+          call post-json
+            read p
+  send back
+    call join
+      make list
+        text <[>
+        call join
+          read items
+          text <,>
+        text <]>
+      text <>
+
+# GET /posts -> every post as a JSON array
+task list-handler
+  take request, like request
+  take params, like hash
+  mark async
+  like response
+  save posts
+    call list-posts
+      wait true
+  send back
+    make response
+      bind status, mark 200
+      bind body
+        call posts-json
+          read posts
+
+# GET /posts/:id -> one post as a JSON object
+task get-handler
+  take request, like request
+  take params, like hash
+  mark async
+  like response
+  save id
+    call unwrap-or
+      call get
+        read params
+        text <id>
+      text <>
+  save p
+    call get-post
+      read id
+      wait true
+  send back
+    make response
+      bind status, mark 200
+      bind body
+        call post-json
+          read p
+
+task build-app
+  like server
+  save routes
+    make list
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </>
+        bind handle, read list-handler
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </posts>
+        bind handle, read list-handler
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </posts/:id>
+        bind handle, read get-handler
+  send back
+    call route-server
+      read routes
+
+# connect to Postgres, ensure the schema, then start serving (hono transport on node). The raw entry the loop test uses.
+task start
+  take url, like text
+  take port, like u16
+  mark async
+  call setup
+    read url
+    wait true
+  call serve
+    call build-app
+    read port
+
+# seed a few sample posts the first time (only when the table is empty), so a fresh `seed boot` shows content
+task seed-sample
+  mark async
+  save posts
+    call list-posts
+      wait true
+  fork test
+    hook test
+      call is-equal
+        read posts/length
+        mark 0
+    hook hold
+      call create-post
+        text <hello-seed>
+        text <Hello from Seed>
+        text <This post lives in Postgres and was served through hono.>
+        wait true
+      call create-post
+        text <trie-router>
+        text <The trie router>
+        text <Static, :param, and ** catch-all, matched in O(path-depth).>
+        wait true
+      call create-post
+        text <full-loop>
+        text <The full loop>
+        text <fetch to hono to trie router to Postgres to JSON and back.>
+        wait true
+
+# the app entry `seed boot` runs: connect, ensure schema, seed samples if empty, then serve
+task boot
+  take url, like text
+  take port, like u16
+  mark async
+  call setup
+    read url
+    wait true
+  call seed-sample
+    wait true
+  call serve
+    call build-app
+    read port
+
+# test helpers: reset the table and seed a post (so the loop test controls the data)
+task reset
+  mark async
+  call run
+    text <DELETE FROM post>
+    make list
+    wait true
+
+task seed-post
+  take id, like text
+  take title, like text
+  take body, like text
+  mark async
+  call create-post
+    read id
+    read title
+    read body
+    wait true

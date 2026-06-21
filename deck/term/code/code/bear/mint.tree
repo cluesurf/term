@@ -1,0 +1,10 @@
+
+load @cluesurf/base/code/bear
+  find bear
+
+mint bear
+  case path
+    slot path
+  hook make
+    make bear
+      bind path, read path

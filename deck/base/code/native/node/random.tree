@@ -1,0 +1,29 @@
+# Node.js random implementation (host Math). Internal: reached only through the public random API.
+
+dock load
+  load <global:Math>, name math
+
+task random-number
+  like number
+  send back
+    call math/random
+
+task random-integer
+  take low, like number
+  take high, like number
+  like number
+  save span
+    call add
+      call subtract
+        read high
+        read low
+      code 1
+  save pick
+    call math/floor
+      call multiply
+        call math/random
+        read span
+  send back
+    call add
+      read low
+      read pick

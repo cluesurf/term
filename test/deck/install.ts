@@ -41,7 +41,7 @@ function writePackage(
   const dir = join(registry, host, name, version)
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'deck.tree'), deckText)
-  writeFileSync(join(dir, 'code.tree'), `task hello\n  back, mark 1\n`)
+  writeFileSync(join(dir, 'code.tree'), `task hello\n  back, code 1\n`)
 }
 
 function main(): void {

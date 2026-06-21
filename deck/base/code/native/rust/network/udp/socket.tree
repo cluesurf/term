@@ -1,0 +1,70 @@
+
+load @cluesurf/base/code/network/udp
+  find socket
+
+load @cluesurf/base/code/network/udp/socket
+  find datagram
+
+task send
+  note async
+  take socket, like socket
+  take data, like text
+  take host, like text
+  take port, like size
+
+  save raw, read socket/dock
+
+  save addr
+    call format
+      text <{}:{}>
+      read host
+      read port
+
+  save n
+    call raw/send-to
+      note async
+      call data/as-bytes
+      read addr
+      halt kink
+
+  send back, read n
+
+task receive
+  note async
+  take socket, like socket
+
+  save raw, read socket/dock
+
+  save buf
+    call vec/with-capacity, code 65536
+
+  save result
+    call raw/recv-from
+      note async
+      read buf
+      halt kink
+
+  save n, read result/0
+  save addr, read result/1
+
+  call buf/truncate, read n
+
+  send back
+    make datagram
+      bind data, call string/from-utf8-lossy, read buf
+      bind host, call addr/ip/to-string
+      bind port, call addr/port
+
+task stream
+  note async
+  take socket, like socket
+
+  save raw, read socket/dock
+  send back, read raw
+
+task close
+  note async
+  take socket, like socket
+
+  save raw, read socket/dock
+  call drop, read raw

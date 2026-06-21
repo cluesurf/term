@@ -1,0 +1,40 @@
+
+# Date and time.
+
+load @cluesurf/base/code/mixin/each
+  find define-each
+
+host interval
+  term year
+  term month
+  term day
+  term hour
+  term minute
+  term second
+
+tree interval-accessor
+  take name
+
+  hook bind
+    task get-{name}
+      like integer
+
+    task set-{name}
+      take value, like integer
+
+    task add-{name}s
+      take value, like integer
+
+form date
+  link year, like integer
+  link month, like integer
+  link day, like integer
+  link hour, like integer
+  link minute, like integer
+  link second, like integer
+
+  fuse define-each, read interval
+    read interval-accessor
+
+task now
+  like date

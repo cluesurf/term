@@ -1,0 +1,32 @@
+
+load @cluesurf/base/code/tree
+  find code-tree
+  find code-tree-take
+  find code-tree-body
+
+mint tree, like code-tree
+  case name
+    slot name
+  case take, mint tree-take
+    slot take
+  case body, mint tree-body
+    slot body
+  hook make
+    make code-tree
+      bind name, read name
+      bind take, read take
+      bind body, read body
+
+mint tree-take, like code-tree-take
+  case name
+    slot name
+  hook make
+    make code-tree-take
+      bind name, read name
+
+mint tree-body, like code-tree-body
+  case node
+    slot node
+  hook make
+    make code-tree-body
+      bind node, read node

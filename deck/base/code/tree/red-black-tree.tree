@@ -1,0 +1,85 @@
+
+form red-black-tree
+  head k
+  head v
+
+  task get
+    take self
+    take key, like k
+    like maybe
+
+  task set
+    take self, flex true
+    take key, like k
+    take value, like v
+
+  task has
+    take self
+    take key, like k
+    like boolean
+
+  task remove
+    take self, flex true
+    take key, like k
+    like boolean
+
+  task keys
+    take self
+    like list
+
+  task values
+    take self
+    like list
+
+  task get-size
+    take self
+    like u64
+
+  task is-empty
+    take self
+    like boolean
+
+  task min
+    take self
+    like maybe
+
+  task max
+    take self
+    like maybe
+
+  task clear
+    take self, flex true
+
+  task to-list
+    take self
+    like list
+
+  task fold
+    head s
+    take self
+    take initial, like s
+    take call
+      like task
+        take accumulator, like s
+        take key, like k
+        take value, like v
+        like s
+    like s
+
+  task filter
+    take self
+    take test
+      like task
+        take key, like k
+        take value, like v
+        like boolean
+    like red-black-tree
+
+  task map-values
+    head w
+    take self
+    take call
+      like task
+        take value, like v
+        like w
+    like red-black-tree

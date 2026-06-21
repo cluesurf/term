@@ -1,0 +1,33 @@
+# node regex implementation. Forwards to the linked regex runtime shim, which wraps the platform's regex engine. Internal: reached only through the public regex API.
+
+dock load
+  load <global:regex>, name regex
+
+task do-matches
+  take pattern, like text
+  take input, like text
+  like boolean
+  send back
+    call regex/matches
+      read pattern
+      read input
+
+task do-replace
+  take pattern, like text
+  take input, like text
+  take replacement, like text
+  like text
+  send back
+    call regex/replace
+      read pattern
+      read input
+      read replacement
+
+task do-find
+  take pattern, like text
+  take input, like text
+  like text
+  send back
+    call regex/find
+      read pattern
+      read input

@@ -1,0 +1,69 @@
+
+load @cluesurf/term/code/code/tool/flow/mint
+  find flow
+
+mint task, like task
+  case name
+    slot name
+  case head, mint head
+    slot head
+  case take, mint take
+    slot take
+  case flow, mint flow
+    slot flow
+  case task, mint task
+    slot task
+  case like, mint like
+    slot like
+  case wait
+    slot wait
+  case risk
+    slot risk
+  case hide
+    slot hide
+  case fold
+    slot fold
+  case note, mint note
+    slot note
+  case tag, mint tag
+    slot tag
+  hook make
+    make task
+      bind name, read name
+      bind head, read head
+      bind take, read take
+      bind flow, read flow
+      bind task, read task
+      bind like, read like
+      bind wait, read wait
+      bind risk, read risk
+      bind hide, read hide
+      bind fold, read fold
+      bind note, read note
+      bind tag, read tag
+
+mint head
+  case name
+    slot name
+  case form, mint form
+    slot form
+  case fall
+    slot fall
+  hook make
+    make head
+      bind name, read name
+      bind head-form, read form
+      bind fall, read fall
+
+mint take
+  case name
+    slot name
+  case like, mint like
+    slot like
+  case base, mint seed
+    slot base
+  hook make
+    make take
+      bind name, read name
+      bind like, read like
+      bind base, read base

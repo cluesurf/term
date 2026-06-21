@@ -24,7 +24,7 @@ const CONN = process.env.DATABASE_URL ?? 'postgresql://lancepollard@localhost:54
 const PORT = 38571
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'site.tree/test/site/hook/blog.tree')
+  const entry = path.join(DECK, 'seed/deck/site/test/site/hook/blog.tree')
   const result = compile({ file: entry, text: fs.readFileSync(entry, 'utf8') }, { resolve })
   ok('blog API compiles against the abstract db + http', result.ok, result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)))
   if (!result.ok) { console.log(`\nblog-loop: ${pass} pass, ${fail} fail`); process.exit(1) }

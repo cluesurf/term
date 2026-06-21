@@ -1,0 +1,16 @@
+
+load @cluesurf/base/code/deck
+  find deck-deck-mind
+
+mint deck-mind, like deck-deck-mind
+  case name
+    slot name
+  case base
+    slot base
+  case site
+    slot site
+  hook make
+    make deck-deck-mind
+      bind name, read name
+      bind base, read base
+      bind site, read site

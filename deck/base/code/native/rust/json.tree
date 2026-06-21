@@ -1,0 +1,120 @@
+# rust JSON implementation. Forwards to the linked json runtime shim (the host JSON library over the opaque dynamic value). Internal: reached only through the public json API.
+
+dock load
+  load <global:json>, name json
+
+task do-parse
+  take text, like text
+  like dynamic
+  send back
+    call json/parse
+      read text
+
+task do-stringify
+  take value, like dynamic
+  like text
+  send back
+    call json/stringify
+      read value
+
+task do-get-field
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  send back
+    call json/get-field
+      read value
+      read key
+
+task do-get-item
+  take value, like dynamic
+  take index, like number
+  like dynamic
+  send back
+    call json/get-item
+      read value
+      read index
+
+task do-as-number
+  take value, like dynamic
+  like decimal
+  send back
+    call json/as-number
+      read value
+
+task do-as-text
+  take value, like dynamic
+  like text
+  send back
+    call json/as-text
+      read value
+
+task do-as-boolean
+  take value, like dynamic
+  like boolean
+  send back
+    call json/as-boolean
+      read value
+
+task do-is-null
+  take value, like dynamic
+  like boolean
+  send back
+    call json/is-null
+      read value
+
+task do-make-object
+  like dynamic
+  send back
+    call json/make-object
+
+task do-set-field
+  take value, like dynamic
+  take key, like text
+  take field, like dynamic
+  like dynamic
+  send back
+    call json/set-field
+      read value
+      read key
+      read field
+
+task do-make-array
+  like dynamic
+  send back
+    call json/make-array
+
+task do-push-item
+  take value, like dynamic
+  take item, like dynamic
+  like dynamic
+  send back
+    call json/push-item
+      read value
+      read item
+
+task do-from-text
+  take value, like text
+  like dynamic
+  send back
+    call json/from-text
+      read value
+
+task do-from-number
+  take value, like decimal
+  like dynamic
+  send back
+    call json/from-number
+      read value
+
+task do-from-boolean
+  take value, like boolean
+  like dynamic
+  send back
+    call json/from-boolean
+      read value
+
+task do-make-null
+  like dynamic
+  send back
+    call json/make-null

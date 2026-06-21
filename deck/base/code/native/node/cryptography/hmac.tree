@@ -1,0 +1,34 @@
+# Node.js HMAC implementation (the host node:crypto module). Key, data, and result are raw bytes (a Uint8Array / Buffer). Internal: reached only through the public hmac API.
+
+dock load
+  load <node:crypto>, name crypto
+
+task hmac-sha256
+  note async
+  take key, like bytes
+  take data, like bytes
+  like bytes
+  save mac
+    call crypto/create-hmac
+      text <sha256>
+      read key
+  save updated
+    call mac/update
+      read data
+  send back
+    call updated/digest
+
+task hmac-sha512
+  note async
+  take key, like bytes
+  take data, like bytes
+  like bytes
+  save mac
+    call crypto/create-hmac
+      text <sha512>
+      read key
+  save updated
+    call mac/update
+      read data
+  send back
+    call updated/digest

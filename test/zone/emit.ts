@@ -35,7 +35,7 @@ function main(): void {
   // a zone emits a build task that calls the render runtime, and the output re-parses
   {
     const program = lower(
-      `zone counter\n  take label, like text\n  zone div\n    seed class, text <c>\n    zone button\n      seed click, call add\n      text <go>\n    read app/count\n    fork test\n      hook test\n        call is-above\n          read app/count\n          mark 10\n      hook hold\n        text <high>\n      hook miss\n        text <low>\n`,
+      `zone counter\n  take label, like text\n  zone div\n    seed class, text <c>\n    zone button\n      seed click, call add\n      text <go>\n    read app/count\n    fork test\n      hook test\n        call is-above\n          read app/count\n          code 10\n      hook hold\n        text <high>\n      hook miss\n        text <low>\n`,
     )
     const zone = program.find(
       (s): s is Extract<Statement, { form: 'zone' }> =>

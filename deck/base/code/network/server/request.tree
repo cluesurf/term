@@ -1,0 +1,14 @@
+
+form request
+  link method, like text
+  link url, like text
+  link path, like text
+  link query, like text
+  link headers, like hash
+  link dock, mark private
+
+task read
+  note async
+  take request, like request
+  take format, like text, fall text <text>
+  like text

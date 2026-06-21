@@ -1,0 +1,48 @@
+
+load @cluesurf/base/code/network/server/request
+  find request
+
+task read
+  note async
+  take request, like request
+  take format, like text, fall text <text>
+
+  save raw, read request/dock
+
+  save chunks, make list
+
+  call make-promise
+    task resolve
+      take ok
+      take fail
+      call raw/on
+        text <data>
+        task on-data
+          take chunk
+          call chunks/push, read chunk
+      call raw/on
+        text <end>
+        task on-end
+          save body
+            call concat-buffers, read chunks
+          fork case, read format
+            case text
+              call ok
+                call body/to-string
+                  text <utf8>
+            case bytes
+              call ok, read body
+            case json
+              call ok
+                call parse-json
+                  call body/to-string
+                    text <utf8>
+            case stream
+              call ok, read raw
+      call raw/on
+        text <error>
+        task on-error
+          take error
+          call fail, read error
+    note async
+    halt kink

@@ -1,0 +1,10 @@
+
+mask division
+  # Divide.
+  head other, base self
+  head output
+
+  task divide
+    take self
+    take other, like other
+    like output

@@ -1,0 +1,16 @@
+
+# flow <This is a paragraph of text.>
+# flow <Another paragraph.>
+#   bind fill
+
+mine flow
+  mine term, term flow
+    mine text
+      slot text
+    mine maybe
+      mine form, like flow-fill
+        slot fill
+
+mine flow-fill
+  mine term, term bind
+    mine term, term fill

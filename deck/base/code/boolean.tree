@@ -1,0 +1,27 @@
+form boolean
+  # Boolean: the stdlib source of truth for the boolean type. The compiler uses its native representation.
+  case true
+  case false
+  task and
+    take self
+    take other, like boolean
+    like boolean
+    fork test
+      hook test, read self
+      hook hold, send back, read other
+      hook miss, send back, wave false
+  task or
+    take self
+    take other, like boolean
+    like boolean
+    fork test
+      hook test, read self
+      hook hold, send back, wave true
+      hook miss, send back, read other
+  task not
+    take self
+    like boolean
+    fork test
+      hook test, read self
+      hook hold, send back, wave false
+      hook miss, send back, wave true

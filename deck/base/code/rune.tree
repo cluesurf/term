@@ -1,0 +1,8 @@
+
+form rune
+  # A character of a number of bytes.
+  link code
+    like or
+      like size-8
+      like size-16
+      like size-32

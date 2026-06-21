@@ -1,0 +1,12 @@
+
+load @cluesurf/bind/code/node/process
+  find process
+
+task get
+  send back
+    call process/cwd
+
+task set
+  take path, like text
+  call process/chdir
+    read path

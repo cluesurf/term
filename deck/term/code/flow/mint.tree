@@ -1,0 +1,61 @@
+
+load @cluesurf/base/code/flow
+  find flow-def
+  find flow-child
+  find flow-node
+  find flow-bind
+
+mint flow
+  case flow, mint flow-def
+    slot flow
+
+mint flow-def, like flow-def
+  case name
+    slot name
+  case head, mint head
+    slot head
+  case take, mint take
+    slot take
+  case like, mint like
+    slot like
+  case child, mint flow-child
+    slot child
+  case note, mint note
+    slot note
+  hook make
+    make flow-def
+      bind name, read name
+      bind head, read head
+      bind take, read take
+      bind like, read like
+      bind child, read child
+      bind note, read note
+
+mint flow-child
+  case node, mint flow-node
+    slot node
+  case bind, mint flow-bind
+    slot bind
+
+mint flow-node, like flow-node
+  case name
+    slot name
+  case bind, mint flow-bind
+    slot bind
+  case child, mint flow-child
+    slot child
+  hook make
+    make flow-node
+      bind name, read name
+      bind bind, read bind
+      bind child, read child
+
+mint flow-bind, like flow-bind
+  case name
+    slot name
+  case seed
+    slot seed
+  hook make
+    make flow-bind
+      bind name, read name
+      bind seed, read seed

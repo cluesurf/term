@@ -1,0 +1,8 @@
+
+form u64
+  fuse integer
+    bind self-type, like u64
+    bind actual-type, like u64
+    bind signed-type, like i64
+    bind bits, size 64
+    bind bits-minus-one, size 63

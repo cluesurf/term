@@ -1,0 +1,9 @@
+# swift time implementation. Forwards to the linked time runtime shim. Internal: reached only through the public time API.
+
+dock load
+  load <global:time>, name time
+
+task epoch-millis
+  like number
+  send back
+    call time/now

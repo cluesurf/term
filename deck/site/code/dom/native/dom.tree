@@ -1,0 +1,76 @@
+
+# The platform-agnostic DOM API (abstract native module). The render runtime and apps import this; the build rewrites
+# it to the target platform's impl (`native/browser/dom` or `native/node/dom`) via the native-env mechanism, so the
+# caller never names a platform. The `view` handle is the opaque host-node wrapper.
+
+load ../view
+  find view
+
+task create-element
+  take tag, like text
+  like view
+
+task create-text
+  take value, like text
+  like view
+
+task set-text
+  take node, like view
+  take value, like text
+
+task set-attribute
+  take node, like view
+  take name, like text
+  take value, like text
+
+task get-attribute
+  take node, like view
+  take name, like text
+  like text
+
+task set-style
+  take node, like view
+  take property, like text
+  take value, like text
+
+task add-class
+  take node, like view
+  take name, like text
+
+task remove-class
+  take node, like view
+  take name, like text
+
+task set-property
+  take node, like view
+  take name, like text
+  take value, like text
+
+task listen
+  take node, like view
+  take event, like text
+  take handler
+    like task
+
+task append
+  take parent, like view
+  take child, like view
+
+task remove
+  take node, like view
+
+task replace
+  take old, like view
+  take new, like view
+
+task child-count
+  take node, like view
+  like number
+
+task get-value
+  take node, like view
+  like text
+
+task set-value
+  take node, like view
+  take value, like text

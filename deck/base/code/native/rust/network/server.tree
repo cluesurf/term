@@ -1,0 +1,91 @@
+
+load @cluesurf/base/code/network/server
+  find server
+
+load @cluesurf/base/code/network/server/request
+  find request
+
+task start
+  note async
+  take port, like size
+  take host, like text, fall text <0.0.0.0>
+  take handler, like task
+  take secure, like bool, fall wave false
+  take certificate, like text, need false
+  take key, like text, need false
+
+  save addr
+    call format
+      text <{}:{}>
+      read host
+      read port
+
+  save service
+    call hyper/service/make-service-fn
+      task make-svc
+        take conn
+        send back
+          call ok
+            call hyper/service/service-fn
+              task handle-req
+                note async
+                take raw-req
+
+                save uri, call raw-req/uri
+                save path, call uri/path/to-string
+                save query
+                  fork test
+                    hook test
+                      call uri/query/is-some
+                    hook hold
+                      call uri/query/unwrap/to-string
+                    hook miss
+                      text <>
+
+                save req
+                  make request
+                    bind method, call raw-req/method/as-str/to-string
+                    bind url, call uri/to-string
+                    bind path, read path
+                    bind query, read query
+                    bind headers, call raw-req/headers/clone
+                    bind dock, read raw-req
+
+                save res
+                  call handler
+                    note async
+                    read req
+                    halt kink
+
+                save response
+                  call hyper/response/builder/new
+                    call status, read res/status
+                    call body
+                      call hyper/body/from
+                        read res/body
+                      halt kink
+
+                send back
+                  call ok, read response
+
+  save raw
+    call hyper/server/bind
+      call addr/parse
+        halt kink
+      call serve, read service
+
+  save handle
+    call tokio/spawn, read raw
+
+  send back
+    make server
+      bind dock, read handle
+      bind host, read host
+      bind port, read port
+
+task stop
+  note async
+  take server, like server
+
+  save raw, read server/dock
+  call raw/abort

@@ -1,0 +1,10 @@
+
+load @cluesurf/base/code/read
+  find read
+
+mint read
+  case name
+    slot name
+  hook make
+    make read
+      bind name, read name

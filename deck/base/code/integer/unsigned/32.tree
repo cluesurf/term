@@ -1,0 +1,8 @@
+
+form u32
+  fuse integer
+    bind self-type, like u32
+    bind actual-type, like u32
+    bind signed-type, like i32
+    bind bits, size 32
+    bind bits-minus-one, size 31

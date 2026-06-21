@@ -1,0 +1,27 @@
+
+fuse addition-form, like i8
+fuse addition-form, like i16
+fuse addition-form, like i32
+fuse addition-form, like i64
+fuse addition-form, like i128
+fuse addition-form, like u8
+fuse addition-form, like u16
+fuse addition-form, like u32
+fuse addition-form, like u64
+fuse addition-form, like u128
+fuse addition-form, like f32
+fuse addition-form, like f64
+
+tree addition-form
+  take type
+
+  hook bind
+    coat form
+      suit type
+        wear addition
+          fold well
+
+          task add
+            take self, move true
+            take other, move true
+              like type

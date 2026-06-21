@@ -1,0 +1,49 @@
+
+dock load
+  load <node:dgram>, name dgram
+
+load @cluesurf/base/code/network/udp
+  find socket
+
+task open
+  note async
+  take port, like size, need false
+  take host, like text, fall text <0.0.0.0>
+
+  save raw
+    call dgram/create-socket
+      text <udp4>
+
+  fork test
+    hook test
+      call is-some, read port
+    hook hold
+      call make-promise
+        task resolve
+          take ok
+          take fail
+          call raw/bind
+            read port
+            read host
+            task on-bind
+              call ok
+          call raw/once
+            text <error>
+            task on-error
+              take error
+              call fail, read error
+        note async
+        halt kink
+
+  send back
+    make socket
+      bind dock, read raw
+      bind host, read host
+      bind port
+        fork test
+          hook test
+            call is-some, read port
+          hook hold
+            read port
+          hook miss
+            code 0

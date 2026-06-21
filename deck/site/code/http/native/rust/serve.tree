@@ -1,0 +1,37 @@
+
+# Rust HTTP transport: wraps axum (on tokio). `serve` binds a listener and routes every incoming request through the
+# uniform router (`handle-request`) shared with every other backend. Only the transport is native here; the matching
+# and dispatch are the platform-agnostic `.tree`. This is the primary backend target.
+
+dock load
+  load <axum>, name axum
+  load <tokio>, name tokio
+
+load ../../http
+  find server
+  find request
+  find response
+  find handle-request
+
+task serve
+  take server, like server
+  take port, like u16
+  mark async
+
+  # one fallback handler for the whole app: convert the axum request to our `request`, run the uniform router, and
+  # write the resulting `response` back. axum owns the socket; the routing logic stays in `handle-request`.
+  save app
+    call axum/router
+      bind fallback
+        task on-request
+          take incoming, like request
+          like response
+          send back
+            call handle-request
+              read server
+              read incoming
+
+  call axum/serve
+    mark async
+    bind port, read port
+    bind app, read app

@@ -1,0 +1,61 @@
+
+task get
+  take name, like text
+  like text
+
+  send back
+    call kotlin-get-env
+      read name
+
+task set
+  take name, like text
+  take value, like text
+
+  call kotlin-set-property
+    read name
+    read value
+
+task remove
+  take name, like text
+
+  call kotlin-clear-property
+    read name
+
+task list
+  like hash
+
+  send back
+    call kotlin-list-env
+
+task check
+  take name, like text
+  like bool
+
+  send back
+    call kotlin-check-env
+      read name
+
+task kotlin-get-env
+  note private
+  take name, like text
+  dock call <System.getenv(name) ?: "">
+
+task kotlin-set-property
+  note private
+  take name, like text
+  take value, like text
+  dock call <System.setProperty(name, value)>
+
+task kotlin-clear-property
+  note private
+  take name, like text
+  dock call <System.clearProperty(name)>
+
+task kotlin-list-env
+  note private
+  dock call <System.getenv()>
+
+task kotlin-check-env
+  note private
+  take name, like text
+  dock call <System.getenv(name) != null>

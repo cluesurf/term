@@ -1,0 +1,198 @@
+
+form bloom-filter
+  take m
+  take k
+  take buckets
+  take locations
+
+  task get-locations
+    take v
+    save k, read self/k
+    save m, read self/m
+    save r, read self/locations
+    save a
+      call fnv-1a
+        bind read v
+    save b
+      call fnv-1a
+        bind read v
+        bind code 1576284489
+    save x
+      call remainder
+        read a
+        read m
+    save i, code 0
+    walk test
+      hook test
+        call is-less-than
+          read i
+          read k
+      hook true
+        save tmp6
+          call is-less-than
+            read x
+            code 0
+        save tmp7
+          call add
+            read x
+            read m
+        save tmp8
+        call test
+          tmp6
+          hook true
+            save tmp8, read tmp7
+          hook false
+            save tmp8, read x
+        save r[i], read tmp8
+        save x
+          call remainder
+            call add
+              read x
+              read b
+            read m
+        save i
+          call increment
+            bind value, read i
+      hook false
+        bust fork9
+    send back seed, read r
+  task add
+    take v
+    save tmp10
+      call self/get-locations
+        bind read v
+    save l, read tmp10
+    save k, read self/k
+    save buckets, read self/buckets
+    save i, code 0
+    walk test, fork fork12
+      hook test
+        call test
+          call is-less-than
+            read i
+            read k
+      hook true
+        save tmp11
+          call math/floor
+            call divide
+              read l[i]
+              code 32
+        save buckets[tmp11]
+          call assign-bitwise-or
+            bind buckets[tmp11]
+            call shift-left
+              code 1
+              call remainder
+                read l[i]
+                code 32
+        save i
+          call increment
+            bind value, read i
+      hook false
+        bust fork12
+  task test
+    take v
+    save tmp13
+      call self/get-locations
+        bind read v
+    save l, read tmp13
+    save k, read self/k
+    save buckets, read self/buckets
+    save i, code 0
+    walk test, fork fork15
+      hook test
+        call test
+          call is-less-than
+            read i
+            read k
+      hook true
+        save b, read l[i]
+        save tmp14
+          call math/floor
+            call divide
+              read b
+              code 32
+        call test
+          call is-strictly-equal
+            call bitwise-and
+              read buckets[tmp14]
+              call shift-left
+                code 1
+                call remainder
+                  read b
+                  code 32
+            code 0
+          hook true
+            send back seed, read false
+        save i
+          call increment
+            bind value, read i
+      hook false
+        bust fork15
+    send back seed, read true
+  task get-size
+    save buckets, read self/buckets
+    save bits, code 0
+    save i, code 0
+    save n, read buckets/length
+    walk test, fork fork16
+      hook test
+        call test
+          call is-less-than
+            read i
+            read n
+      hook true
+        save bits
+          call assign-increment
+            bind bits
+            call popcnt
+              bind read buckets[i]
+        save i
+          call increment
+            bind value, read i
+      hook false
+        bust fork16
+    send back seed
+      call divide
+        call multiply
+          call negative
+            bind bits, read self/m
+          call math/log
+            call subtract
+              code 1
+              call divide
+                read bits
+                read self/m
+        read self/k
+
+task make-bloom-filter
+  take m
+  take k
+  save n
+    call math/ceil
+      call divide
+        read m
+        code 32
+  save i
+    call negative
+      bind bits, code 1
+  save m
+    call multiply
+      read n
+      code 32
+  save bloom, make bloom-filter
+  save bloom/m, read m
+  save bloom/k, read k
+  save bloom/locations, make list
+  save bloom/buckets, make list
+  walk test
+    hook test
+      save i, call increment, read i
+      call is-less-than
+        read i
+        read n
+    hook true
+      call bloom/buckets/set
+        read i
+        code 0
+  read bloom

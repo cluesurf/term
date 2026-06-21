@@ -1,0 +1,6 @@
+
+deck @cluesurf/base
+  bear ./code
+  test ./test
+  mark <0.0.1>
+  link @cluesurf/case, mark <0.0.x>

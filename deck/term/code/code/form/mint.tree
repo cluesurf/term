@@ -1,0 +1,60 @@
+
+load @cluesurf/base/code/form
+  find form
+  find bond
+
+mint form
+  case name
+    slot name
+  case head, mint head
+    slot head
+  case like, mint like
+    slot like
+  case link, mint link
+    slot link
+  case case, mint case
+    slot case
+  case bond, mint bond
+    slot bond
+  case rein
+    slot rein
+  case task, mint task
+    slot task
+  case hold, mint hold
+    slot hold
+  case hide
+    slot hide
+  case fold
+    slot fold
+  case note, mint note
+    slot note
+  case tag, mint tag
+    slot tag
+  hook make
+    make form
+      bind name, read name
+      bind head, read head
+      bind like, read like
+      bind link, read link
+      bind case, read case
+      bind bond, read bond
+      bind rein, read rein
+      bind task, read task
+      bind hold, read hold
+      bind hide, read hide
+      bind fold, read fold
+      bind note, read note
+      bind tag, read tag
+
+mint bond
+  case name
+    slot name
+  case line
+    slot line
+  case call, mint call
+    slot call
+  hook make
+    make bond
+      bind name, read name
+      bind line, read line
+      bind call, read call

@@ -15,7 +15,7 @@ const SOURCE = `task increment
   send back
     call add
       loan n
-      mark 1
+      code 1
 
 task apply-twice
   take f
@@ -34,14 +34,14 @@ task run-twice
   send back
     call apply-twice
       read increment
-      mark 5
+      code 5
 
 task run-direct
   like number
   send back
     call apply-twice
       read double
-      mark 5
+      code 5
 
 task double
   take n, like number

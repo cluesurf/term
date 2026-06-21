@@ -1,0 +1,63 @@
+
+form process-result
+  link code, like size
+  link stdout, like text
+  link stderr, like text
+
+form process-info
+  link id, like size
+  link directory, like text
+  link executable, like text
+
+task process-result-make
+  take code, like size
+  take stdout, like text
+  take stderr, like text
+  send back
+    make process-result
+      bind code, read code
+      bind stdout, read stdout
+      bind stderr, read stderr
+
+task process-result-ok
+  take r, like process-result
+  fork case, read r
+    hook process-result, base code, base stdout, base stderr
+      send back
+        call is-equal
+          bind a, read code
+          bind b, code 0
+
+task process-result-code
+  take r, like process-result
+  fork case, read r
+    hook process-result, base code, base stdout, base stderr
+      send back, read code
+
+task process-result-stdout
+  take r, like process-result
+  fork case, read r
+    hook process-result, base code, base stdout, base stderr
+      send back, read stdout
+
+task process-result-stderr
+  take r, like process-result
+  fork case, read r
+    hook process-result, base code, base stdout, base stderr
+      send back, read stderr
+
+task process-info-make
+  take id, like size
+  take directory, like text
+  take executable, like text
+  send back
+    make process-info
+      bind id, read id
+      bind directory, read directory
+      bind executable, read executable
+
+task process-info-id
+  take p, like process-info
+  fork case, read p
+    hook process-info, base id, base directory, base executable
+      send back, read id

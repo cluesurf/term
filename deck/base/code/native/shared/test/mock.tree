@@ -1,0 +1,106 @@
+
+form call-record
+  link arguments, like list
+  link result
+
+form mock-data
+  link returns
+  link handler, need false
+  link calls, like list
+
+task make
+  take returns, need false
+  take handler, like task, need false
+  like mock
+  save data
+    make mock-data
+      bind returns, read returns
+      bind handler, read handler
+      bind calls
+        make list
+  send back
+    make mock
+      bind dock, read data
+
+task read
+  take mock, like mock
+  take field, like text, fall text <calls>
+
+  save data, read mock/dock
+  save calls, read data/calls
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read field
+        bind b, text <calls>
+    hook hold
+      send back, read calls
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read field
+        bind b, text <count>
+    hook hold
+      send back
+        call list-size
+          bind list, read calls
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read field
+        bind b, text <last>
+    hook hold
+      save len
+        call list-size
+          bind list, read calls
+      fork test
+        hook test
+          call is-equal
+            bind a, read len
+            bind b, code 0
+        hook hold
+          send back
+
+      send back
+        call list-get
+          bind list, read calls
+          bind index
+            call subtract
+              bind a, read len
+              bind b, code 1
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read field
+        bind b, text <arguments>
+    hook hold
+      save len
+        call list-size
+          bind list, read calls
+      fork test
+        hook test
+          call is-equal
+            bind a, read len
+            bind b, code 0
+        hook hold
+          send back
+
+      save last
+        call list-get
+          bind list, read calls
+          bind index
+            call subtract
+              bind a, read len
+              bind b, code 1
+      send back, read last/arguments
+
+task reset
+  take mock, like mock
+  save data, read mock/dock
+  save calls, read data/calls
+  call list-clear
+    bind list, read calls

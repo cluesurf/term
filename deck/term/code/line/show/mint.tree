@@ -1,0 +1,10 @@
+
+mint dock-show
+  case name
+    slot name
+  case text
+    slot text
+  hook make
+    make dock-show
+      bind name, read name
+      bind text, read text

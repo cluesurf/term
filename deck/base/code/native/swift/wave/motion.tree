@@ -1,0 +1,20 @@
+
+task is-motion-available
+  # A Boolean value that indicates whether the device-motion service is available on the device.
+  take motion
+  call motion/native/is-device-motion-available
+
+task is-gyroscope-available
+  # A Boolean value that indicates whether a gyroscope is available on the device.
+  take motion
+  call motion/native/is-gyro-available
+
+task is-magnetometer-available
+  # A Boolean value that indicates whether a magnetometer is available on the device.
+  take motion
+  call motion/native/is-magnetometer-available
+
+task is-accelerometer-available
+  # A Boolean value that indicates whether an accelerometer is available on the device.
+  take motion
+  call motion/native/is-accelerometer-available

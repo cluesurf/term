@@ -1,0 +1,13 @@
+
+task connect
+  like connection
+
+  take user, like text
+  take socket, like text
+    void true
+  take port, like size
+    void true
+  take pass, like text
+  take host, like text
+  take database, like text
+    void true

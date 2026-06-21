@@ -1,0 +1,150 @@
+
+form matrix-3
+
+task add
+  take self
+  take a
+  take b
+
+task adjoint
+  take self
+  take a
+
+task clone
+  take a
+
+task copy
+  take self
+  take a
+
+task create
+
+task determinant
+  take a
+
+task equals
+  take a
+  take b
+
+task exact-equals
+  take a
+  take b
+
+task frob
+  take a
+
+task from-mat2d
+  take self
+  take a
+
+task from-mat4
+  take self
+  take a
+
+task from-quat
+  take self
+  take q
+
+task from-rotation
+  take self
+  take rad
+
+task from-scaling
+  take self
+  take v
+
+task from-translation
+  take self
+  take v
+
+task from-values
+  take m00
+  take m01
+  take m02
+  take m10
+  take m11
+  take m12
+  take m20
+  take m21
+  take m22
+
+task identity
+  take self
+
+task invert
+  take self
+  take a
+
+task mul
+  take self
+  take a
+  take b
+
+task multiply
+  take self
+  take a
+  take b
+
+task multiply-scalar
+  take self
+  take a
+  take b
+
+task multiply-scalar-and-add
+  take self
+  take a
+  take b
+  take scale
+
+task normal-from-mat4
+  take self
+  take a
+
+task projection
+  take self
+  take width
+  take height
+
+task rotate
+  take self
+  take a
+  take rad
+
+task scale
+  take self
+  take a
+  take v
+
+task set
+  take self
+  take m00
+  take m01
+  take m02
+  take m10
+  take m11
+  take m12
+  take m20
+  take m21
+  take m22
+
+task str
+  take a
+
+task sub
+  take self
+  take a
+  take b
+
+task subtract
+  take self
+  take a
+  take b
+
+task translate
+  take self
+  take a
+  take v
+
+task transpose
+  take self
+  take a

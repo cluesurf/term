@@ -1,0 +1,21 @@
+
+tree call-promise-with-callback-result
+  take call
+  take result
+
+  hook fuse
+    call make-javascript-promise
+      task evaluate
+        take resolve, like task
+
+        fuse call
+          test is-present
+            read error
+            hook true
+              call resolve
+                make error
+                  read error
+            hook false
+              call resolve
+                make ok
+                  fuse result

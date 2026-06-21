@@ -1,0 +1,9 @@
+
+mask identification
+  # Test like
+
+  task like
+    # Get the form object it belongs to.
+
+  task is-like
+    like wave

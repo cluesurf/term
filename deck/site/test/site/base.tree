@@ -1,0 +1,10 @@
+
+# The @cluesurf/blog app index. A small full-stack example on @cluesurf/site: a Postgres-backed posts API plus a DOM
+# frontend, laid out in the application folder convention.
+#
+#   back/post   the repository (post model + queries over the abstract db)
+#   hook/blog   the HTTP API (trie-routed handlers) plus the `boot` entry `seed boot` runs
+#   face/blog   the frontend (DOM app)
+#   book/       guides
+#
+# Run it:  seed boot   (reads deck.tree's `boot ./hook/blog`)

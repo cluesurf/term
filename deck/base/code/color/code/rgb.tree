@@ -1,0 +1,27 @@
+
+load @cluesurf/base/code/mixin/each
+  find define-each
+
+load @cluesurf/base/code/mixin/access
+  find access
+
+load @cluesurf/base/code/color
+  find space
+
+form rgb
+  fuse access, term r
+  fuse access, term g
+  fuse access, term b
+  fuse access, term a
+
+  fuse define-each, read space
+    read define-space
+
+  task convert-to-css-string
+
+tree define-space
+  take name
+
+  hook bind
+    take convert-to-{name}-space
+      base convert-rgb-to-{name}-space

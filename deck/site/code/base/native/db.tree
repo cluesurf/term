@@ -1,0 +1,26 @@
+
+# The abstract database native module: the signatures the public `base/db` re-exports. The build rewrites this to the
+# target's impl (`native/node/db`, Postgres-backed) via the native-env mechanism. A `row` is an opaque result row.
+
+# an opaque result row (a dynamic record from the database)
+form row
+  link handle, mark private
+
+task connect
+  take url, like text
+
+task query
+  take sql, like text
+  take params, like list
+  like list
+  mark async
+
+task run
+  take sql, like text
+  take params, like list
+  mark async
+
+task field
+  take row, like row
+  take name, like text
+  like text

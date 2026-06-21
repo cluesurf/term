@@ -10,88 +10,82 @@ load @cluesurf/term/code/head/task/hook
   find task read-seed
 
 hook make
-  note <Create a new deck repository>
+  # Create a new deck repository
   take name
-  take head
-    lead <-t>
-    lead <--title>
-  take host
-    lead <-a>
-    lead <--author>
-  take mark
-    lead <-v>
-    lead <--version>
+  take title
+    code t
+  take author
+    code a
+  take version
+    code v
   task make-deck
   hook deck
-    note <Create a new deck repository>
+    # Create a new deck repository
     take name
     take lead
-      lead <-t>
-      lead <--title>
+      code t
     take host
-      lead <-a>
-      lead <--author>
+      code a
     take mark
-      lead <-v>
-      lead <--version>
+      code v
     task make-deck
   hook face
-    note <Create a person user>
+    # Create a person user
     take name
     task make-face
   hook host
-    note <Create an organization>
+    # Create an organization
     take name
     task make-host
 
 hook load
-  note <Install a deck locally>
+  # Install a deck locally
   take name
   task load
   hook deck
-    note <Install a deck locally>
+    # Install a deck locally
     take name
     task load
 
 hook link
-  note <Start the local system connected to the remote system>
-  hook deck, note <Share the deck with the base>
+  # Start the local system connected to the remote system
+  hook deck # Share the deck with the base
 
 hook lock
-  note <Login>
-  take cite, note <Email>
+  # Login
+  take cite # Email
   take code
     wait rise
-    note <Password>
+    # Password
   task lock
   hook void
-    note <Logout>
+    # Logout
     take cite
     task lock-void
 
 hook save
   hook seed
-    note <Create an environment variable>
+    # Create an environment variable
     take name
     take sift
     task save-seed
 
 hook read
   hook seed
-    note <Read environment variable>
+    # Read environment variable
     take name
     task read-seed
-  hook note, note <Tail the logs>
+  hook note # Tail the logs
 
 hook bind
-  note <Publish latest version of deck>
+  # Publish latest version of deck
   task bind-deck
   hook deck
-    note <Publish latest version of deck>
+    # Publish latest version of deck
     task bind-deck
 
 hook halt
-  note <Stop the system from running>
+  # Stop the system from running
   task halt
 
 hook mark
@@ -102,7 +96,7 @@ hook mark
 
 hook move
   hook mark
-    note <Bump to next version>
+    # Bump to next version
     take link
       like term
         case a

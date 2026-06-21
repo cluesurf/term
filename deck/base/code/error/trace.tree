@@ -1,0 +1,18 @@
+
+form frame
+  link name, like text
+  link file, like text
+  link line, like size
+  link column, like size
+
+task capture
+  take limit, like size, fall 10
+  like list
+
+task read
+  take error, like kink
+  like list
+
+task format
+  take frames, like list
+  like text

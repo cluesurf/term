@@ -1,0 +1,84 @@
+
+form schema
+  link name, like text
+  link description, like text
+  link version, like text
+  link commands, like list
+  link flags, like list
+  link arguments, like list
+
+form command-flag
+  link name, like text
+  link short, like text
+  link kind, like text
+  link description, like text
+  link required, like bool
+  link fallback
+  link choices, like list
+
+form command-argument
+  link name, like text
+  link description, like text
+  link required, like bool
+  link fallback
+
+form result
+  link ok, like bool
+  link command, like text
+  link flags, like hash
+  link arguments, like list
+  link errors, like list
+
+task parse
+  take schema, like schema
+  take arguments, like list, need false
+  like result
+
+task define
+  take name, like text
+  take description, like text, need false
+  take version, like text, need false
+  take commands, like list, need false
+  take flags, like list, need false
+  take arguments, like list, need false
+  like schema
+  send back
+    make schema
+      bind name, read name
+      bind description, read description
+      bind version, read version
+      bind commands, read commands
+      bind flags, read flags
+      bind arguments, read arguments
+
+task flag
+  take name, like text
+  take short, like text, need false
+  take kind, like text, fall text <text>
+  take description, like text, need false
+  take required, like bool, fall false
+  take fallback, need false
+  take choices, like list, need false
+  like command-flag
+  send back
+    make command-flag
+      bind name, read name
+      bind short, read short
+      bind kind, read kind
+      bind description, read description
+      bind required, read required
+      bind fallback, read fallback
+      bind choices, read choices
+
+task argument
+  take name, like text
+  take description, like text, need false
+  take required, like bool, fall true
+  take fallback, need false
+  like command-argument
+  send back
+    make command-argument
+      bind name, read name
+      bind description, read description
+      bind required, read required
+      bind fallback, read fallback

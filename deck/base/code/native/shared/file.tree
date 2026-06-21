@@ -1,0 +1,4 @@
+
+task test-path
+  take path
+  take pattern

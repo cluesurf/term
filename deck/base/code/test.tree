@@ -1,0 +1,161 @@
+# The test library. A test is a meta object: a name and a work that runs and reports whether it held. `run` executes a list of tests, prints each result, and returns a tally. Assertions (`want` and its named forms) return a boolean. Tests are ordinary Seed, so the compiler handles them with no special case. See note/library/seed/test-dsl.md.
+
+load @cluesurf/base/code/console
+  find log
+
+load @cluesurf/base/code/text
+  find contains
+
+# the meta object a test block constructs: a name and the work that returns whether it passed
+
+form test
+  link name, like text
+  link work
+    like task
+      note async
+      like boolean
+
+form report
+  link pass, like number
+  link fail, like number
+
+# build a test meta object: what a test block lowers to
+
+task case
+  take name, like text
+  take work
+    like task
+      note async
+      like boolean
+  like test
+  send back
+    make test
+      bind name, read name
+      bind work, read work
+
+# the convenience form for a pure equality test: name plus the two values. It captures got and expect now and compares them when run. Use `case` with a closure when a test needs setup or ordering.
+
+task check
+  head t
+  take name, like text
+  take got, like t
+  take expect, like t
+  like test
+  send back
+    make test
+      bind name, read name
+      bind work
+        task work
+          note async
+          like boolean
+          send back
+            call is-equal
+              read got
+              read expect
+
+# assertions: each returns whether it held, so a work ends with `send back, call want ...`
+
+task want
+  head t
+  take got, like t
+  take expect, like t
+  like boolean
+  send back
+    call is-equal
+      read got
+      read expect
+
+task want-true
+  take got, like boolean
+  like boolean
+  send back, read got
+
+task want-text
+  take got, like text
+  take part, like text
+  like boolean
+  send back
+    call contains
+      read got
+      read part
+
+# the negation of want: got and expect must differ
+
+task deny
+  head t
+  take got, like t
+  take expect, like t
+  like boolean
+  send back
+    call is-equal
+      call is-equal
+        read got
+        read expect
+      wave false
+
+task want-false
+  take got, like boolean
+  like boolean
+  send back
+    call is-equal
+      read got
+      wave false
+
+# ordered comparisons: got must be strictly above or below the bound
+
+task want-over
+  take got, like number
+  take bound, like number
+  like boolean
+  send back
+    call is-above
+      read got
+      read bound
+
+task want-under
+  take got, like number
+  take bound, like number
+  like boolean
+  send back
+    call is-below
+      read got
+      read bound
+
+# run a list of tests, print each name and result, return a pass/fail tally
+
+task run
+  note async
+  take cases
+    like list
+      like test
+  like report
+  save pass, code 0
+  save fail, code 0
+  walk list, read cases
+    hook next
+      take item, name row
+      call log
+        read row/name
+      save held
+        call row/work
+          wait true
+      fork test
+        hook test, read held
+        hook hold
+          call log
+            text <  ok>
+          save pass
+            call add
+              read pass
+              code 1
+        hook miss
+          call log
+            text <  FAIL>
+          save fail
+            call add
+              read fail
+              code 1
+  send back
+    make report
+      bind pass, read pass
+      bind fail, read fail

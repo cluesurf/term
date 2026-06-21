@@ -1,0 +1,49 @@
+
+load @cluesurf/base/code/environment/language
+  find locale
+
+task read
+  like locale
+
+  save options
+    call browser-intl-resolved-options
+  save tag
+    call browser-get-language
+  save parts
+    call split
+      read tag
+      text <->
+  save language
+    read parts/0
+  save region
+    fork test, call is-above, read parts/length, code 1
+      hook true
+        read parts/1
+      hook false
+        text <>
+  save timezone, read options/time-zone
+
+  send back
+    make locale
+      bind language, read language
+      bind region, read region
+      bind tag, read tag
+      bind timezone, read timezone
+
+task list
+  like list
+
+  send back
+    call browser-get-languages
+
+task browser-get-language
+  note private
+  dock call <navigator.language>
+
+task browser-get-languages
+  note private
+  dock call <Array.from(navigator.languages)>
+
+task browser-intl-resolved-options
+  note private
+  dock call <Intl.DateTimeFormat().resolvedOptions()>

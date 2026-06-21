@@ -1,0 +1,18 @@
+# swift base64 implementation. Forwards to the linked base64 runtime shim. Internal: reached only through the public base64 API.
+
+dock load
+  load <global:base64>, name base64
+
+task to-base64
+  take input, like text
+  like text
+  send back
+    call base64/encode
+      read input
+
+task from-base64
+  take input, like text
+  like text
+  send back
+    call base64/decode
+      read input

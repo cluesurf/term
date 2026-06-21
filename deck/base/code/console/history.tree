@@ -1,0 +1,20 @@
+
+task list
+  take limit, like size, fall 100
+  like list
+
+task search
+  take pattern, like text
+  take limit, like size, fall 10
+  like list
+
+task clear
+
+task save
+  note async
+  take path, like text
+
+task load
+  note async
+  take path, like text
+  like list

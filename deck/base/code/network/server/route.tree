@@ -1,0 +1,17 @@
+
+form router
+  link dock, mark private
+
+task make
+  like router
+
+task add
+  take router, like router
+  take method, like text
+  take pattern, like text
+  take handler, like task
+  like router
+
+task handle
+  take router, like router
+  like task

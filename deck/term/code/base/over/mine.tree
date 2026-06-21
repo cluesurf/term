@@ -1,0 +1,15 @@
+
+load @cluesurf/term/code/base/fold/mine
+  find db-fold
+
+load @cluesurf/term/code/base/sort/mine
+  find db-sort
+
+mine db-over
+  mine term, term over
+    mine list
+      mine form, like db-fold
+        slot fold
+    mine list
+      mine form, like db-sort
+        slot sort

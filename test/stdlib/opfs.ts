@@ -19,7 +19,7 @@ import { withNativeEnv, nativePrelude } from '@/code/compile/native'
 import type { Source } from '@/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', '..', 'base.tree')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
   if (!path.startsWith(prefix)) return undefined

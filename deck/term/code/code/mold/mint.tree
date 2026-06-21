@@ -1,0 +1,25 @@
+
+load @cluesurf/base/code/case-type
+  find case-type
+
+mint case-type, like case-type
+  case name
+    slot name
+  case like, mint like
+    slot like
+  case head, mint head
+    slot head
+  case link, mint link
+    slot link
+  case bind, mint bind
+    slot bind
+  case hide
+    slot hide
+  hook make
+    make case-type
+      bind name, read name
+      bind like, read like
+      bind head, read head
+      bind link, read link
+      bind bind, read bind
+      bind hide, read hide

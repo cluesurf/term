@@ -1,0 +1,35 @@
+
+form network-kink
+  link code, like text
+  link note, like text
+  link hint, like text, need false
+
+host kink-code
+  term connection-refused
+  term dns-not-found
+  term timeout
+  term connection-reset
+  term address-in-use
+  term tls-error
+  term websocket-error
+  term body-too-large
+
+task make
+  take code, like text
+  take note, like text
+  take hint, like text, need false
+  send back
+    make network-kink
+      bind code, read code
+      bind note, read note
+      bind hint, read hint
+
+task throw
+  take code, like text
+  take note, like text
+  take hint, like text, need false
+  halt kink
+    call make
+      bind code, read code
+      bind note, read note
+      bind hint, read hint

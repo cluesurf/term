@@ -1,0 +1,76 @@
+
+task send-request
+  note async
+
+  stem try
+    call url-session-form/shared/data
+      note async
+      bind from, read url
+      save data
+    fuse catch-and-return-error
+
+  send back seed, read data
+
+task upload-file
+  take request
+  take data
+
+  stem try
+    call url-session-form/shared/upload
+      bind for, read request
+      bind from, read data
+      save response-data
+      save response
+    fuse catch-and-return-error
+
+  send back seed, read response
+
+task download-file-from-url
+  take url
+
+  free seed
+    like result
+      like ok
+        like file
+      like error
+
+  stem try
+    call url-session-form/shared/download
+      note async
+      bind from, read url
+      save local-url
+    fuse catch-and-return-error
+
+  make ok
+    make file
+      bind url, read local-url
+
+tree catch-and-return-error
+  hook bind
+    hook error
+      take error
+      send back seed, read error
+
+tree return-if-error-exists
+  take error, like optional, like error
+
+  hook bind
+    stem test
+      test is-present
+        read error
+      hook true
+        send back seed
+          make error
+            read error/option
+
+tree return-if-value-exists
+  take value, like optional
+
+  hook bind
+    stem test
+      test is-present
+        read value
+      hook true
+        send back seed
+          make ok
+            read value/option

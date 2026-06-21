@@ -1,0 +1,168 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:path>, name path
+
+task list
+  note async
+  take path, like text
+  take deep, like bool, fall wave false
+
+  fork test, name deep
+    hook true
+      send back
+        call list-deep
+          read path
+          text <>
+    hook false
+      send back
+        call fs-promise/readdir
+          note async
+          read path
+          halt kink
+
+task list-deep
+  note async
+  note private
+  take base, like text
+  take prefix, like text
+
+  save entries
+    call fs-promise/readdir
+      note async
+      read base
+      make options
+        bind with-file-types, wave true
+      halt kink
+
+  save result, make list
+
+  walk list
+    read entries
+    hook tick
+      take entry
+      save full-path
+        call path/join
+          read base
+          read entry/name
+      save relative
+        call path/join
+          read prefix
+          read entry/name
+
+      fork test
+        call entry/is-directory
+        hook true
+          call result/push
+            read relative
+          save sub
+            call list-deep
+              read full-path
+              read relative
+          call result/concat
+            read sub
+        hook false
+          call result/push
+            read relative
+
+  send back, read result
+
+task make
+  note async
+  take path, like text
+
+  call fs-promise/mkdir
+    note async
+    read path
+    make options
+      bind recursive, wave true
+    halt kink
+
+task walk
+  note async
+  take path, like text
+  take depth, like size, fall code 0
+
+  save result, make list
+
+  call walk-step
+    read path
+    read path
+    code 0
+    read depth
+    read result
+
+  send back, read result
+
+task walk-step
+  note async
+  note private
+  take base, like text
+  take current, like text
+  take level, like size
+  take max-depth, like size
+  take result, like list
+
+  save entries
+    call fs-promise/readdir
+      note async
+      read current
+      make options
+        bind with-file-types, wave true
+      halt kink
+
+  walk list
+    read entries
+    hook tick
+      take entry
+      save full-path
+        call path/join
+          read current
+          read entry/name
+
+      save kind, text <file>
+      fork test
+        call entry/is-directory
+        hook true
+          save kind, text <directory>
+      fork test
+        call entry/is-symbolic-link
+        hook true
+          save kind, text <link>
+
+      call result/push
+        make walk-entry
+          bind path, read full-path
+          bind kind, read kind
+          bind depth, read level
+
+      fork test
+        call entry/is-directory
+        hook true
+          fork test
+            call is-above
+              bind a, read max-depth
+              bind b, code 0
+            hook true
+              fork test
+                call is-below
+                  bind a, read level
+                  bind b, read max-depth
+                hook true
+                  call walk-step
+                    read base
+                    read full-path
+                    call add
+                      bind a, read level
+                      bind b, code 1
+                    read max-depth
+                    read result
+            hook false
+              call walk-step
+                read base
+                read full-path
+                call add
+                  bind a, read level
+                  bind b, code 1
+                read max-depth
+                read result

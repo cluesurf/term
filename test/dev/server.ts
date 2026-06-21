@@ -21,7 +21,7 @@ const PORT = 39512
 
 // a tiny 2-module app in a temp dir (the entry loads a helper)
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-dev-'))
-fs.writeFileSync(path.join(dir, 'helper.tree'), `task helper-value\n  like number\n  send back\n    mark 42\n`)
+fs.writeFileSync(path.join(dir, 'helper.tree'), `task helper-value\n  like number\n  send back\n    code 42\n`)
 const entry = path.join(dir, 'entry.tree')
 fs.writeFileSync(entry, `load ./helper\n  find helper-value\n\ntask main\n  like number\n  send back\n    call helper-value\n`)
 

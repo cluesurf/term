@@ -79,7 +79,7 @@ task respond
   like response
   send back
     make response
-      bind status, mark 200
+      bind status, code 200
       bind body
         call unwrap-or
           call get

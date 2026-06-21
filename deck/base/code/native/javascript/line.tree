@@ -1,0 +1,80 @@
+
+load @cluesurf/base
+  take face array
+    save face native-array
+
+form line
+  head item-type
+
+  link dock, like native-array
+    note private
+
+  task get
+    like item-type
+    take position, like mark-32
+    call javascript-dynamic-get
+      read self/dock
+      read position
+
+  task set
+    take position, like mark-32
+    take item, like item-type
+    call javascript-dynamic-set
+      read self/dock
+      read position
+      read item
+
+  task walk
+    take step, like task
+
+    save i, size 0
+    save n
+      call get-size
+        read self
+
+    call loop-javascript
+      fork loop
+      hook test
+        test is-less-than
+          read i
+          read n
+      hook step
+        kick step
+          call get-at-index
+            read self
+            read i
+          read i
+
+          hook bust
+            bust loop
+
+        call increment
+          read i, lock free
+
+  task reverse
+    call self/dock/reverse
+    like self
+
+  task find-first
+
+  task filter
+
+  task map
+    take hook
+    free seed
+      like line
+        like item-type
+
+    save result
+      make line
+
+    call self/walk
+      hook step
+        take item
+        take position
+        call result/push
+          call hook
+            read item
+            read position
+
+    move result

@@ -1,0 +1,15 @@
+# kotlin process implementation. Forwards to the linked process runtime shim. Internal: reached only through the public process API.
+
+dock load
+  load <global:process>, name process
+
+task get-platform
+  like text
+  send back
+    call process/get-platform
+
+task exit-with
+  take code, like number
+  like void
+  call process/exit-with
+    read code

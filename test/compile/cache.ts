@@ -37,13 +37,13 @@ const DOUBLE = `task double
   send back
     call multiply
       read n
-      mark 2
+      code 2
 `
 
 // a tiny module graph: an entry that loads a `helper` module
 const helper: Source = {
   file: 'helper.tree',
-  text: `task triple\n  take n, like number\n  like number\n  back\n    call multiply\n      read n\n      mark 3\n`,
+  text: `task triple\n  take n, like number\n  like number\n  back\n    call multiply\n      read n\n      code 3\n`,
 }
 function entryText(constant: number): string {
   return `load @app/helper\n  find triple\n\ntask run\n  like number\n  back\n    call triple\n      mark ${constant}\n`

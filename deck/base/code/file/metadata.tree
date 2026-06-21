@@ -1,0 +1,28 @@
+
+# File metadata: size and kind. The clean uniform interface, the per-env native implementation is selected at build time and hidden. A missing path reads as size 0 and kind false, so the API stays total.
+
+load @cluesurf/base/code/native/file/metadata
+  find metadata-size
+  find metadata-is-directory
+  find metadata-is-file
+
+task size
+  take path, like text
+  like number
+  send back
+    call metadata-size
+      read path
+
+task is-directory
+  take path, like text
+  like boolean
+  send back
+    call metadata-is-directory
+      read path
+
+task is-file
+  take path, like text
+  like boolean
+  send back
+    call metadata-is-file
+      read path

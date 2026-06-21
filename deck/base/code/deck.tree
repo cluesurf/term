@@ -1,0 +1,34 @@
+
+load ../text
+  find text
+
+load ../term
+  find term
+
+form deck
+  # Package manifest
+  link name, like text
+  link mark, like text
+  link head, like text
+  link mind, like text
+  link lock, like text
+  link sort, like text
+  link term, list term
+  link link, list deck-link
+  link task, like text
+  link read, like text
+
+form deck-link
+  # Package dependency
+  link name, like text
+  link mark, like deck-mark
+
+form deck-mark
+  # Version constraint
+
+  case exact
+    link mark, like text
+
+  case band
+    link base, like text
+    link head, like text

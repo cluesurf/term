@@ -1,0 +1,11 @@
+
+task get
+  take kind, like text
+  like text
+
+  send back
+    call browser-get-origin
+
+task browser-get-origin
+  note private
+  dock call <location.origin>

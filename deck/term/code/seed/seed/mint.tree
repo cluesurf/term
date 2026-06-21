@@ -1,0 +1,13 @@
+
+load @cluesurf/base/code/seed
+  find seed-item
+
+mint host, like seed-item
+  case name
+    slot name
+  case seed, mint seed
+    slot seed
+  hook make
+    make seed-item
+      bind name, read name
+      bind seed, read seed

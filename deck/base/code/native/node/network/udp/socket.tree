@@ -1,0 +1,90 @@
+
+load @cluesurf/base/code/network/udp
+  find socket
+
+load @cluesurf/base/code/network/udp/socket
+  find datagram
+
+task send
+  note async
+  take socket, like socket
+  take data, like text
+  take host, like text
+  take port, like size
+
+  save raw, read socket/dock
+
+  save result
+    call make-promise
+      task resolve
+        take ok
+        take fail
+        call raw/send
+          read data
+          read port
+          read host
+          task on-send
+            take error
+            fork test
+              hook test
+                call is-some, read error
+              hook hold
+                call fail, read error
+              hook miss
+                call ok
+      note async
+      halt kink
+
+  send back, read result
+
+task receive
+  note async
+  take socket, like socket
+
+  save raw, read socket/dock
+
+  save result
+    call make-promise
+      task resolve
+        take ok
+        take fail
+        call raw/once
+          text <message>
+          task on-message
+            take data
+            take info
+            call ok
+              make datagram
+                bind data, read data
+                bind host, read info/address
+                bind port, read info/port
+        call raw/once
+          text <error>
+          task on-error
+            take error
+            call fail, read error
+      note async
+      halt kink
+
+  send back, read result
+
+task stream
+  note async
+  take socket, like socket
+
+  save raw, read socket/dock
+  send back, read raw
+
+task close
+  note async
+  take socket, like socket
+
+  save raw, read socket/dock
+
+  call make-promise
+    task resolve
+      take ok
+      call raw/close
+        task on-close
+          call ok
+    note async

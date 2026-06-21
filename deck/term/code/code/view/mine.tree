@@ -1,0 +1,60 @@
+
+mine view
+  mine term, term view
+    mine term
+      slot name
+    mine list
+      mine form, like latch
+        slot latch
+    mine list
+      mine form, like child
+        slot child
+
+mine check
+  mine term, term check
+    mine term
+      slot name
+    mine list
+      mine form, like child
+        slot child
+
+mine list
+  mine term, term list
+    mine term
+      slot trace
+    mine list
+      mine form, like start
+        slot start
+    mine list
+      mine form, like child
+        slot child
+
+mine start
+  mine term, term start
+    mine term
+      slot term
+    mine term, term term
+      mine term
+        slot start
+
+mine child
+  mine term, term view
+    mine term
+      slot name
+    mine list
+      mine form, like mount
+        slot mount
+    mine list
+      mine form, like watch
+        slot watch
+    mine list
+      mine form, like child
+        slot child
+
+mine watch
+  mine term, term watch
+    mine term
+      slot name
+    mine list
+      mine form, like cause
+        slot cause

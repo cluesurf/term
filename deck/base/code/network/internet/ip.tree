@@ -1,0 +1,43 @@
+
+# IP: Internet Protocol. Addressing and the packet header at the internet layer, for both version 4 and version 6.
+
+form ip-version
+  case four
+  case six
+
+# a 32-bit IPv4 address, stored as its four octets
+form ipv4-address
+  link octets, like list
+
+# a 128-bit IPv6 address, stored as its eight 16-bit groups
+form ipv6-address
+  link groups, like list
+
+# either address family
+form ip-address
+  case v4
+    link value, like ipv4-address
+  case v6
+    link value, like ipv6-address
+
+form ipv4-packet
+  link version, like u8
+  link header-length, like u8
+  link total-length, like u16
+  link identification, like u16
+  link time-to-live, like u8
+  link protocol, like u8
+  link checksum, like u16
+  link source, like ipv4-address
+  link destination, like ipv4-address
+  link payload, like list
+
+form ipv6-packet
+  link traffic-class, like u8
+  link flow-label, like u32
+  link payload-length, like u16
+  link next-header, like u8
+  link hop-limit, like u8
+  link source, like ipv6-address
+  link destination, like ipv6-address
+  link payload, like list

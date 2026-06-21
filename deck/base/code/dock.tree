@@ -1,0 +1,59 @@
+
+# Dock: the unified routing + CLI AST. One construct covers three surfaces:
+#   - server route:  `dock /users` with `task get` method handlers
+#   - client route:  `seed route` with `dock /users` mapping to a `zone` component
+#   - CLI command:   `dock make` with `take` options and a `call` handler
+# The matcher and arg-policy are ours (uniform everywhere); transport/argv delegate to native per backend.
+# Public surface: book/site/routes.md, book/site/navigation.md, book/line/calls.md.
+
+load ./term
+  find term
+
+load ./take
+  find take
+
+load ./bind
+  find bind
+
+load ./seed
+  find seed
+  find seed-call
+
+form dock
+  link path, like text
+  link take, list take
+  link task, list dock-task
+  link call, list seed-call
+  link zone, like dock-zone
+  link seed, list dock-seed
+  link send, list dock-send
+  link hook, list dock-hook
+  link dock, list dock
+
+# an HTTP method handler on a server route: `task get` / `task post`
+form dock-task
+  link name, like term
+  link take, list take
+  link call, list seed-call
+  link send, list dock-send
+  link seed, list dock-seed
+
+# the component a client route renders: `zone user-detail / bind id, read id`
+form dock-zone
+  link name, like term
+  link bind, list bind
+
+# a directive: `seed guard`, `seed redirect`, `seed cors`, `seed code`, `seed env`, `seed static`, ...
+form dock-seed
+  link name, like term
+  link bond, like seed
+
+# a response: `send json`, `send text`, `send back`
+form dock-send
+  link name, like term
+  link seed, like seed
+
+# lifecycle / middleware: `hook boot`, `hook halt`
+form dock-hook
+  link name, like term
+  link call, list seed-call

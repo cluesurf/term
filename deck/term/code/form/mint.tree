@@ -1,0 +1,55 @@
+
+load @cluesurf/base/code/form
+  find form-def
+  find form-case
+
+mint form
+  case form, mint form-def
+    slot form
+
+mint form-def, like form-def
+  case name
+    slot name
+  case head, mint head
+    slot head
+  case like, mint like
+    slot like
+  case link, mint link
+    slot link
+  case case, mint form-case
+    slot case
+  case hold
+    slot hold
+  case hide
+    slot hide
+  case fold
+    slot fold
+  case note, mint note
+    slot note
+  hook make
+    make form-def
+      bind name, read name
+      bind head, read head
+      bind like, read like
+      bind link, read link
+      bind case, read case
+      bind hold, read hold
+      bind hide, read hide
+      bind fold, read fold
+      bind note, read note
+
+mint form-case, like form-case
+  case name
+    slot name
+  case link, mint link
+    slot link
+  case hold
+    slot hold
+  case note, mint note
+    slot note
+  hook make
+    make form-case
+      bind name, read name
+      bind link, read link
+      bind hold, read hold
+      bind note, read note

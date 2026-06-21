@@ -1,0 +1,23 @@
+
+# SSH: Secure Shell. Message types and the binary packet structure of the transport-layer protocol.
+
+form ssh-message-type
+  case disconnect
+  case ignore
+  case service-request
+  case service-accept
+  case key-exchange-initiation
+  case new-keys
+  case user-authentication-request
+  case user-authentication-success
+  case user-authentication-failure
+  case channel-open
+  case channel-data
+  case channel-close
+
+form ssh-packet
+  link length, like u32
+  link padding-length, like u8
+  link kind, like ssh-message-type
+  link payload, like list
+  link message-authentication-code, like list

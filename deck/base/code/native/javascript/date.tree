@@ -1,0 +1,29 @@
+
+load @cluesurf/base
+  find form date
+
+task read-now
+  make date
+    call native-date/now
+
+form date
+  # this is the object that this form abstracts around.
+  dock native-date
+
+  wear date
+
+  link month
+    task read
+      like mark
+      take self
+      call self/dock/get-month
+    task save
+      take self
+      take mark
+      call self/dock/set-month
+        move mark
+
+  hook make
+    take value
+    make native-date
+      move value

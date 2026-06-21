@@ -1,0 +1,67 @@
+
+tree is-not-or-return-error
+  take a
+  take b
+
+  hook bind
+    stem test
+      call is-not
+        read a
+        read b
+      hook false
+        send back seed
+          make not-error
+
+tree is-below-or-return-error
+  take a
+  take b
+
+  hook bind
+    fuse is-bound-or-return-error
+      term below
+      read a
+      read b
+
+tree is-above-or-return-error
+  take a
+  take b
+
+  hook bind
+    fuse is-bound-or-return-error
+      term above
+      read a
+      read b
+
+tree is-bound-or-return-error
+  take type
+  take a
+  take b
+
+  hook bind
+    stem test
+      call is-{type}
+        read a
+        read b
+      hook false
+        send back seed
+          make range-error
+            term type
+
+tree is-minimally-or-return-error
+  take a
+  take b
+
+  hook bind
+    fuse is-bound-or-return-error
+      term minimally
+      read a
+      read b
+
+tree free-result
+  take ok, like like
+
+  hook bind
+    free seed
+      like result
+        like ok
+        like error

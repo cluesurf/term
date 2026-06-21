@@ -1,0 +1,13 @@
+
+mine fuse
+  mine term, term fuse
+    slot name
+    mine list
+      mine form, like fuse-bind
+        slot bind
+
+mine fuse-bind
+  mine term, term bind
+    slot name
+    mine any
+      slot value

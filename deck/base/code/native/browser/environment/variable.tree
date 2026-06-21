@@ -1,0 +1,52 @@
+
+task get
+  take name, like text
+  like text
+
+  send back
+    call local-storage/get-item
+      read name
+
+task set
+  take name, like text
+  take value, like text
+
+  call local-storage/set-item
+    read name
+    read value
+
+task remove
+  take name, like text
+
+  call local-storage/remove-item
+    read name
+
+task list
+  like hash
+
+  send back
+    call browser-list-variables
+
+task check
+  take name, like text
+  like bool
+
+  send back
+    call browser-check-variable
+      read name
+
+task browser-list-variables
+  note private
+  dock call <run {
+    const result = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      result[key] = localStorage.getItem(key);
+    }
+    return result;
+  }>
+
+task browser-check-variable
+  note private
+  take name
+  dock call <localStorage.getItem(name) !== null>

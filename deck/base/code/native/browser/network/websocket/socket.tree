@@ -1,0 +1,77 @@
+
+load @cluesurf/base/code/network/websocket
+  find socket
+
+load @cluesurf/base/code/network/websocket/socket
+  find message
+
+task send
+  note async
+  take socket, like socket
+  take data, like text
+
+  save raw, read socket/dock
+
+  call make-promise
+    task resolve
+      take ok
+      take fail
+      save on-error
+        task handle-error
+          take error
+          call fail, read error
+      save raw/onerror, read on-error
+      call raw/send, read data
+      call ok
+    note async
+    halt kink
+
+task close
+  note async
+  take socket, like socket
+  take code, like size, fall 1000
+  take reason, like text, need false
+
+  save raw, read socket/dock
+  call raw/close, read code, read reason
+
+  call make-promise
+    task resolve
+      take ok
+      save on-close
+        task handle-close
+          call ok
+      save raw/onclose, read on-close
+    note async
+
+task stream
+  note async
+  take socket, like socket
+
+  save raw, read socket/dock
+  save queue, make list
+  save done, wave false
+
+  save on-message
+    task handle-message
+      take event
+      save msg
+        make message
+          bind kind, text <text>
+          bind data, read event/data
+      call queue/push, read msg
+
+  save on-error
+    task handle-error
+      take error
+      save done, wave true
+
+  save on-close
+    task handle-close
+      save done, wave true
+
+  save raw/onmessage, read on-message
+  save raw/onerror, read on-error
+  save raw/onclose, read on-close
+
+  send back, read queue

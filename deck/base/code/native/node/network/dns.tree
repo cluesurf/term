@@ -1,0 +1,21 @@
+# node DNS implementation. Forwards to the linked dns runtime shim (node:dns lookup). Internal: reached only through the public dns API.
+
+dock load
+  load <global:dns>, name dns
+
+task do-resolve
+  note async
+  take hostname, like text
+  like list
+    like text
+  send back
+    call dns/resolve
+      read hostname
+
+task do-resolve-one
+  note async
+  take hostname, like text
+  like text
+  send back
+    call dns/resolve-one
+      read hostname

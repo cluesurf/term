@@ -1,0 +1,149 @@
+
+form integer
+  task abs
+    like integer
+
+  task add
+    take head, like integer
+    like integer
+
+  task and
+    take head, like integer
+    like integer
+
+  task and-not
+    take head, like integer
+    like integer
+
+  task bit-count
+    like i32
+
+  task bit-length
+    like i32
+
+  task clear-bit
+    take head, like i32
+    like integer
+
+  task compare-to
+    take head, like integer
+    like i32
+
+  task divide
+    take head, like integer
+    like integer
+
+  task divide-and-remainder
+    take head, like integer
+    like list, like integer
+
+  task equals
+    take head, like integer
+    like bool
+
+  task flip-bit
+    take head, like i32
+    like integer
+
+  task gcd
+    take head, like integer
+    like integer
+
+  task get-lowest-set-bit
+    like i32
+
+  task hash-code
+    like i32
+
+  task is-probable-prime
+    take head, like i32
+    like bool
+
+  task max
+    take head, like integer
+    like integer
+
+  task min
+    take head, like integer
+    like integer
+
+  task mod
+    take head, like integer
+    like integer
+
+  task mod-inverse
+    take head, like integer
+    like integer
+
+  task mod-pow
+    take head, like integer
+    take param2, like integer
+    like integer
+
+  task multiply
+    take head, like integer
+    like integer
+
+  task negate
+    like integer
+
+  task next-probable-prime
+    like integer
+
+  task not
+    like integer
+
+  task or
+    take head, like integer
+    like integer
+
+  task pow
+    take head, like i32
+    like integer
+
+  task remainder
+    take head, like integer
+    like integer
+
+  task set-bit
+    take head, like i32
+    like integer
+
+  task shift-left
+    take head, like i32
+    like integer
+
+  task shift-right
+    take head, like i32
+    like integer
+
+  task signum
+    like i32
+
+  task subtract
+    take head, like integer
+    like integer
+
+  task test-bit
+    take head, like i32
+    like bool
+
+  task to-byte-array
+    like list, like i8
+
+  task to-string
+    like text
+
+  task to-string
+    take head, like i32
+    like text
+
+  task xor
+    take head, like integer
+    like integer
+
+  task byte-value
+    like i8
+
+  task short-value
+    like i16

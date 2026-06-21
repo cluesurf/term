@@ -1,0 +1,41 @@
+
+dock load
+  load <std::io>, name io
+  load <std::io::Read>, name read-trait
+  load <std::io::Write>, name write-trait
+
+load @cluesurf/base/code/process
+  find child
+
+task connect
+  note async
+  take from, like child
+  take to, like child
+
+  save stdout
+    call from/dock/stdout/take
+  save stdin
+    call to/dock/stdin/take
+
+  save buf, make list
+    code 8192
+
+  walk test, wave true
+    hook step
+      save n
+        call stdout/read
+          read buf
+          halt kink
+      fork test
+        call is-equal
+          bind a, read n
+          bind b, code 0
+        hook true
+          halt
+      call stdin/write-all
+        call buf/slice
+          code 0
+          read n
+        halt kink
+
+  call drop, read stdin

@@ -1,0 +1,129 @@
+
+hook suite
+  host add-free
+    host zero
+      host a, code 0
+      host b, code 0
+      host r, make some, code 0
+    host small
+      host a, code 0
+      host b, code 1
+      host r, make some, code 1
+    host inner
+      host a, code 5
+      host b, code 5
+      host r, make some, code 10
+    host boundary-base
+      host a, code 255
+      host b, code 1
+      host number-overflow-error
+    host boundary-head
+      host a, code 1
+      host b, code 255
+      host number-overflow-error
+    host max
+      host a, code 255
+      host b, code 255
+      host number-overflow-error
+
+  host subtract-free
+    host zero
+      host a, code 0
+      host b, code 0
+      host r, make some, code 0
+    host small
+      host a, code 1
+      host b, code 0
+      host r, make some, code 1
+    host inner
+      host a, code 5
+      host b, code 5
+      host r, make some, code 0
+    host boundary-base
+      host a, code 255
+      host b, code 1
+      host r, make some, code 254
+    host boundary-head
+      host a, code 1
+      host b, code 255
+      host r, make some, code 254
+    host max
+      host a, code 255
+      host b, code 255
+      host r, make some, code 0
+    host min-negative
+      host a, code 0
+      host b, code 1
+      host r, make number-underflow-error
+    host max-negative
+      host a, code 0
+      host b, code 255
+      host r, make number-underflow-error
+    host negative
+      host a, code 254
+      host b, code 255
+      host r, make number-underflow-error
+
+  host shift-head
+    host start
+      host a, code 0b10000000
+      host b, code 1
+      host r, code 0b01000000
+    host middle
+      host a, code 0b00100000
+      host b, code 1
+      host r, code 0b00010000
+    host end
+      host a, code 0b00000001
+      host b, code 1
+      host r, code 0b00000000
+    host zero
+      host a, code 0b00000000
+      host b, code 1
+      host r, code 0b00000000
+
+  host shift-base
+    host start
+      host a, code 0b00000001
+      host b, code 1
+      host r, code 0b00000010
+    host middle
+      host a, code 0b00100000
+      host b, code 1
+      host r, code 0b01000000
+    host end
+      host a, code 0b10000000
+      host b, code 1
+      host r, code 0b00000000
+    host zero
+      host a, code 0b00000000
+      host b, code 1
+      host r, code 0b00000000
+
+  host rotate-head
+    host start
+      host a, code 0b10000000
+      host b, code 1
+      host r, code 0b01000000
+    host middle
+      host a, code 0b00100000
+      host b, code 1
+      host r, code 0b00010000
+    host end
+      host a, code 0b00000001
+      host b, code 1
+      host r, code 0b10000000
+
+  host rotate-base
+    host end
+      host a, code 0b10000000
+      host b, code 1
+      host r, code 0b00000001
+    host middle
+      host a, code 0b00010000
+      host b, code 1
+      host r, code 0b00100000
+    host start
+      host a, code 0b01000000
+      host b, code 1
+      host r, code 0b10000000

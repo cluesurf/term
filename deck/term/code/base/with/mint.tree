@@ -1,0 +1,14 @@
+
+mint db-with
+  case find, mint db-find
+    slot find
+  hook make
+    make db-with
+      bind find, read find
+
+mint db-with-loop
+  case find, mint db-find
+    slot find
+  hook make
+    make db-with-loop
+      bind find, read find

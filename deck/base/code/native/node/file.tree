@@ -1,0 +1,82 @@
+
+# Node.js file system implementation. Internal: reached only through the public file API.
+
+dock load
+  load <node:fs/promises>, name fs
+  load <node:fs>, name fssync
+
+task read-file
+  note async
+  take path, like text
+  like text
+  send back
+    call fs/read-file
+      read path
+      text <utf8>
+
+task write-file
+  note async
+  take path, like text
+  take data, like text
+  send back
+    call fs/write-file
+      read path
+      read data
+
+task read-file-bytes
+  note async
+  take path, like text
+  like bytes
+  send back
+    call fs/read-file
+      read path
+
+task write-file-bytes
+  note async
+  take path, like text
+  take data, like bytes
+  send back
+    call fs/write-file
+      read path
+      read data
+
+task append-file
+  note async
+  take path, like text
+  take data, like text
+  send back
+    call fs/append-file
+      read path
+      read data
+
+task remove-file
+  note async
+  take path, like text
+  send back
+    call fs/rm
+      read path
+
+task copy-file
+  note async
+  take from, like text
+  take to, like text
+  send back
+    call fs/copy-file
+      read from
+      read to
+
+task move-file
+  note async
+  take from, like text
+  take to, like text
+  send back
+    call fs/rename
+      read from
+      read to
+
+task file-exists
+  take path, like text
+  like boolean
+  send back
+    call fssync/exists-sync
+      read path

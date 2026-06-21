@@ -1,0 +1,49 @@
+
+# bind cite
+#   mind <author-key>
+#     name <Author Name>
+#   cite <cite-key>
+#     date <2024-01-01>
+#     name <Title>
+#     site <https://example.com>
+#     mind <author-key>
+
+mine bind
+  mine term, term bind
+    slot kind
+    mine list
+      mine any
+        mine form, like bind-mind
+          slot mind
+        mine form, like bind-cite
+          slot cite
+
+mine bind-mind
+  mine term, term mind
+    mine text
+      slot key
+    mine maybe
+      mine term, term name
+        mine text
+          slot name
+
+mine bind-cite
+  mine term, term cite
+    mine text
+      slot key
+    mine maybe
+      mine term, term date
+        mine text
+          slot date
+    mine maybe
+      mine term, term name
+        mine text
+          slot name
+    mine maybe
+      mine term, term site
+        mine text
+          slot site
+    mine maybe
+      mine term, term mind
+        mine text
+          slot mind

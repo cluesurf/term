@@ -1,0 +1,10 @@
+
+# Node.js time implementation. Internal: reached only through the public time API.
+
+dock load
+  load <global:Date>, name date
+
+task epoch-millis
+  like number
+  send back
+    call date/now

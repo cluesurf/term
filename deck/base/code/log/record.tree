@@ -1,0 +1,13 @@
+
+form record
+  link level, like text
+  link message, like text
+  link timestamp, like size
+  link fields, like hash
+  link error
+
+task format
+  take record, like record
+  take style, like text, fall text <text>
+  take color, like bool, fall false
+  like text

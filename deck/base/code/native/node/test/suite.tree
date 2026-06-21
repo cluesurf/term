@@ -1,0 +1,33 @@
+
+load @cluesurf/base/code/native/shared/test/suite
+  find init
+  find describe as shared-describe
+  find register
+  find run as shared-run
+
+load @cluesurf/base/code/test/suite
+  find report
+
+task describe
+  take name, like text
+  take work, like task
+
+  call shared-describe
+    bind name, read name
+    bind work, read work
+
+task run
+  note async
+  take filter, like text, need false
+  take timeout, like size, fall 5000
+  take parallel, like boolean, fall wave false
+  like report
+
+  call init
+
+  send back
+    call shared-run
+      note async
+      bind filter, read filter
+      bind timeout, read timeout
+      bind parallel, read parallel

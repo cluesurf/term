@@ -1,0 +1,28 @@
+# kotlin log implementation. Forwards to the linked log runtime shim. Internal: reached only through the public log API.
+
+dock load
+  load <global:log>, name log
+
+task write-info
+  take message, like text
+  like void
+  call log/write-info
+    read message
+
+task write-warn
+  take message, like text
+  like void
+  call log/write-warn
+    read message
+
+task write-error
+  take message, like text
+  like void
+  call log/write-error
+    read message
+
+task write-debug
+  take message, like text
+  like void
+  call log/write-debug
+    read message

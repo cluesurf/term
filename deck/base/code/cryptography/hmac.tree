@@ -1,0 +1,91 @@
+# Keyed-hash message authentication (HMAC). Each algorithm is a declarative `bind`: one block lists the native expression per backend, inlined at the call site (the hmac crate on rust, CryptoKit on swift, node:crypto on node, javax.crypto on kotlin, Web Crypto on the browser). No hand-written per-platform shim, one source of truth. Key, data, and result are raw `bytes` (the zero-copy crypto currency); hex / base64 are edge codecs. The interface is async so it stays uniform with the browser's async-only Web Crypto: a sync backend's value and the browser's Promise both flow through the caller's `wait true`. Rust wraps its synchronous crate work in an `async move` block so the awaited call yields a future.
+
+bind hmac-sha256
+  take key, like bytes
+  take data, like bytes
+  like bytes
+  case node
+    text <crypto.createHmac('sha256', $key).update($data).digest()>
+    load <node:crypto>, name crypto
+  case rust
+    text <async move { let mut mac = Hmac::<Sha256>::new_from_slice(&$key).unwrap(); mac.update(&$data); mac.finalize().into_bytes().to_vec() }>
+    load <sha2/Sha256>
+    load <hmac/Hmac>
+    load <hmac/Mac>
+  case swift
+    text <Data(CryptoKit.HMAC<CryptoKit.SHA256>.authenticationCode(for: $data, using: CryptoKit.SymmetricKey(data: $key)))>
+    load <CryptoKit>
+  case kotlin
+    text <javax.crypto.Mac.getInstance("HmacSHA256").apply { init(javax.crypto.spec.SecretKeySpec($key, "HmacSHA256")) }.doFinal($data)>
+  case browser
+    text <globalThis.crypto.subtle.importKey('raw', $key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']).then(function (k) { return globalThis.crypto.subtle.sign('HMAC', k, $data) }).then(function (s) { return new Uint8Array(s) })>
+
+bind hmac-sha512
+  take key, like bytes
+  take data, like bytes
+  like bytes
+  case node
+    text <crypto.createHmac('sha512', $key).update($data).digest()>
+    load <node:crypto>, name crypto
+  case rust
+    text <async move { let mut mac = Hmac::<Sha512>::new_from_slice(&$key).unwrap(); mac.update(&$data); mac.finalize().into_bytes().to_vec() }>
+    load <sha2/Sha512>
+    load <hmac/Hmac>
+    load <hmac/Mac>
+  case swift
+    text <Data(CryptoKit.HMAC<CryptoKit.SHA512>.authenticationCode(for: $data, using: CryptoKit.SymmetricKey(data: $key)))>
+    load <CryptoKit>
+  case kotlin
+    text <javax.crypto.Mac.getInstance("HmacSHA512").apply { init(javax.crypto.spec.SecretKeySpec($key, "HmacSHA512")) }.doFinal($data)>
+  case browser
+    text <globalThis.crypto.subtle.importKey('raw', $key, { name: 'HMAC', hash: 'SHA-512' }, false, ['sign']).then(function (k) { return globalThis.crypto.subtle.sign('HMAC', k, $data) }).then(function (s) { return new Uint8Array(s) })>
+
+# the HMAC algorithm selector
+form hmac-algorithm
+  case sha-256
+  case sha-512
+
+# authenticate data under a key with the chosen algorithm. The named sha256 / sha512 forms below are the readable
+# default; this verb is for an algorithm chosen at runtime. A constant algorithm specializes to the one native call.
+task hmac
+  note async
+  take key, like bytes
+  take data, like bytes
+  take algorithm, like hmac-algorithm
+  like bytes
+  fork case, read algorithm
+    case sha-256
+      send back
+        call hmac-sha256
+          read key
+          read data
+          wait true
+    case sha-512
+      send back
+        call hmac-sha512
+          read key
+          read data
+          wait true
+
+# named algorithm forms: the readable, primary surface
+task sha256
+  note async
+  take key, like bytes
+  take data, like bytes
+  like bytes
+  send back
+    call hmac-sha256
+      read key
+      read data
+      wait true
+
+task sha512
+  note async
+  take key, like bytes
+  take data, like bytes
+  like bytes
+  send back
+    call hmac-sha512
+      read key
+      read data
+      wait true

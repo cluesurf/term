@@ -1,0 +1,19 @@
+# Base64 text encoding. The clean uniform interface; the per-env native implementation is selected at build time and hidden behind the API.
+
+load @cluesurf/base/code/native/text/base64
+  find to-base64
+  find from-base64
+
+task encode
+  take input, like text
+  like text
+  send back
+    call to-base64
+      read input
+
+task decode
+  take input, like text
+  like text
+  send back
+    call from-base64
+      read input

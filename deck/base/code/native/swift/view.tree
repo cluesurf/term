@@ -1,0 +1,251 @@
+
+form decimal
+  dock cg-float
+
+form alignment
+  take anchor
+  take offset
+
+host vertical-alignment
+  term top
+  term center
+  term bottom
+  term first-text-baseline
+  term last-text-baseline
+
+host horizontal-alignment
+  term leading
+  term center
+  term trailing
+
+host blending-mode
+  term normal
+  term darken
+  term multiply
+  term color-burn
+  term plus-darker
+  term lighten
+  term screen
+  term color-dodge
+  term plus-lighter
+  term overlay
+  term soft-light
+  term hard-light
+  term difference
+  term exclusion
+  term hue
+  term saturation
+  term color
+  term luminosity
+  term source-atop
+  term destination-over
+  term destination-out
+
+form dock
+  link dock, like native-view
+
+  task set-vertical-align-top
+    call self/dock/alignment-guide
+      read vertical-align/top
+
+  task set-vertical-align-center
+    call self/dock/alignment-guide
+      read vertical-align/center
+
+  task set-vertical-align-bottom
+    call self/dock/alignment-guide
+      read vertical-align/bottom
+
+  task set-vertical-align-first-text-baseline
+    call self/dock/alignment-guide
+      read vertical-align/first-text-baseline
+
+  task set-vertical-align-last-text-baseline
+    call self/dock/alignment-guide
+      read vertical-align/last-text-baseline
+
+  task set-horizontal-align-leading
+    call self/dock/alignment-guide
+      read horizontal-align/leading
+
+  task set-horizontal-align-center
+    call self/dock/alignment-guide
+      read horizontal-align/center
+
+  task set-horizontal-align-trailing
+    call self/dock/alignment-guide
+      read horizontal-align/trailing
+
+  task set-blend-mode-normal
+    call self/dock/blend-mode
+      read blend-mode/normal
+
+  task set-blend-mode-darken
+    call self/dock/blend-mode
+      read blend-mode/darken
+
+  task set-blend-mode-multiply
+    call self/dock/blend-mode
+      read blend-mode/multiply
+
+  task set-blend-mode-color-burn
+    call self/dock/blend-mode
+      read blend-mode/color-burn
+
+  task set-blend-mode-plus-darker
+    call self/dock/blend-mode
+      read blend-mode/plus-darker
+
+  task set-blend-mode-lighten
+    call self/dock/blend-mode
+      read blend-mode/lighten
+
+  task set-blend-mode-screen
+    call self/dock/blend-mode
+      read blend-mode/screen
+
+  task set-blend-mode-color-dodge
+    call self/dock/blend-mode
+      read blend-mode/color-dodge
+
+  task set-blend-mode-plus-lighter
+    call self/dock/blend-mode
+      read blend-mode/plus-lighter
+
+  task set-blend-mode-overlay
+    call self/dock/blend-mode
+      read blend-mode/overlay
+
+  task set-blend-mode-soft-light
+    call self/dock/blend-mode
+      read blend-mode/soft-light
+
+  task set-blend-mode-hard-light
+    call self/dock/blend-mode
+      read blend-mode/hard-light
+
+  task set-blend-mode-difference
+    call self/dock/blend-mode
+      read blend-mode/difference
+
+  task set-blend-mode-exclusion
+    call self/dock/blend-mode
+      read blend-mode/exclusion
+
+  task set-blend-mode-hue
+    call self/dock/blend-mode
+      read blend-mode/hue
+
+  task set-blend-mode-saturation
+    call self/dock/blend-mode
+      read blend-mode/saturation
+
+  task set-blend-mode-color
+    call self/dock/blend-mode
+      read blend-mode/color
+
+  task set-blend-mode-luminosity
+    call self/dock/blend-mode
+      read blend-mode/luminosity
+
+  task set-blend-mode-source-atop
+    call self/dock/blend-mode
+      read blend-mode/source-atop
+
+  task set-blend-mode-destination-over
+    call self/dock/blend-mode
+      read blend-mode/destination-over
+
+  task set-blend-mode-destination-out
+    call self/dock/blend-mode
+      read blend-mode/destination-out
+
+  task set-blur
+    take radius, like decimal
+    call self/dock/blur
+      bind radius, read radius
+      bind opaque, term true
+
+  task set-border
+    take color, like color-rgb
+    take width, like decimal
+    call self/dock/border
+      make native-color
+        read native-color/rgb-color-space/srgb
+        bind red, read color/red
+        bind green, read color/green
+        bind blue, read color/blue
+      read width
+
+  task set-brightness
+    func brightness(Double)
+  task set-clip-shape
+    func clipShape<S>(_ shape: S, style: FillStyle = FillStyle()) -> some View where S : Shape
+  task set-color-invert
+    func colorInvert()
+  task set-color-multiply
+    func colorMultiply(Color)
+  task set-container-shape
+  task set-context-menu
+    func contextMenu<MenuItems>(menuItems: () -> MenuItems)
+  task set-contrast
+    func contrast(Double)
+  task set-coordinate-space
+  task set-corner-radius
+    func cornerRadius(CGFloat, antialiased: Bool)
+  task set-disabled
+    func disabled(Bool)
+  task set-file-exporter
+  task set-fixed-size
+    func fixedSize()
+  task set-focusable
+    func focusable(Bool)
+  task set-focused
+    func focused(FocusState<Bool>.Binding)
+  task set-font
+    func font(Font?)
+  task set-foreground-color
+    func foregroundColor(Color?)
+    func foregroundStyle<S>(_ style: S) -> some View where S : ShapeStyle
+  task set-grayscale
+    func grayscale(Double)
+  task set-help
+    func help(Text)
+  task set-hidden
+    func hidden()
+  task set-hue-rotation
+    func hueRotation(Angle)
+  task set-line-spacing
+    func lineSpacing(CGFloat)
+
+  luminanceToAlpha
+    func luminanceToAlpha()
+  task set-mask
+    func mask<Mask>(alignment: Alignment, () -> Mask)
+  func menuIndicator(Visibility)
+  func offset(CGSize)
+  func offset(x: CGFloat, y: CGFloat)
+  func onAppear(perform: (() -> Void)?)
+  func onDisappear(perform: (() -> Void)?)
+  func onDrag(() -> NSItemProvider)
+  func onDrop(of: [UTType], delegate: DropDelegate)
+  func onHover(perform: (Bool) -> Void)
+  func onLongPressGesture(minimumDuration: Double, maximumDistance: CGFloat, perform: () -> Void, onPressingChanged: ((Bool) -> Void)?)
+  func onMoveCommand(perform: ((MoveCommandDirection) -> Void)?)
+  func onPasteCommand(of: [UTType], perform: ([NSItemProvider]) -> Void)
+  func onTapGesture(count: Int, perform: () -> Void)
+  func opacity(Double)
+  func overlay<S>(S, ignoresSafeAreaEdges: Edge.Set)
+  func padding(CGFloat)
+  func padding(EdgeInsets)
+  func popover<Content>(isPresented: Binding<Bool>, attachmentAnchor: PopoverAttachmentAnchor, arrowEdge: Edge, content: () -> Content)
+  func position(CGPoint)
+  func refreshable(action: () async -> Void)
+  func saturation(Double)
+  func scaledToFill()
+  func scaledToFit()
+  func shadow(color: Color, radius: CGFloat, x: CGFloat, y: CGFloat)
+  func sheet<Content>(isPresented: Binding<Bool>, onDismiss: (() -> Void)?, content: () -> Content)
+  func sheet<Item, Content>(item: Binding<Item?>, onDismiss: (() -> Void)?, content: (Item) -> Content)
+  func tint(Color?)
+  func zIndex(Double)

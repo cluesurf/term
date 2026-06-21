@@ -1,0 +1,11 @@
+
+form connection
+  task close, like void
+  task commit, like void
+  task db-name, like string
+  task escapes, like string
+  task last-insert-id, like int
+  task quotes, like string
+  task requests, like result-set
+  task rollback, like void
+  task start-transaction, like void

@@ -1,0 +1,53 @@
+
+# Stack (LIFO), backed by the native array.
+
+load @cluesurf/base/code/list
+  find list
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+form stack
+  head t
+  link items, like list
+
+  task push
+    take self
+    take item, like t
+    like stack
+    call push
+      read self/items
+      read item
+    send back, read self
+
+  task pop
+    take self
+    like maybe
+    fork test
+      hook test
+        call is-above
+          read self/items/length
+          code 0
+      hook hold
+        send back
+          make some
+            bind value
+              call pop
+                read self/items
+      hook miss
+        send back
+          make none
+
+  task peek
+    take self
+    like maybe
+    send back
+      call last
+        read self/items
+
+  task size
+    take self
+    like number
+    send back
+      call size
+        read self/items

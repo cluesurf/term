@@ -1,0 +1,73 @@
+
+task reverse
+  take n
+  call bitwise-or
+    call shift-left
+      call reversal-table/get
+        call bitwise-and
+          read n
+          code 15
+      code 4
+    call reversal-table/get
+      call shift-right
+        read n
+        code 4
+
+task is-bit-count-odd
+  take x, like integer-8
+  save x
+    call oppose-bitwise
+      call shift-head
+        read x
+        code 4
+      read x
+  save x
+    call oppose-bitwise
+      call shift-head
+        read x
+        code 2
+      read x
+  save x
+    call oppose-bitwise
+      call shift-head
+        read x
+        code 1
+      read x
+  call intersect-bitwise
+    read x
+    code 1
+
+task count-zeroes-in-integer-8
+  call count-ones-in-integer-8
+    call bitwise-negate
+      read i
+
+task count-ones-in-integer-8
+  free seed, like integer-8
+  call add
+    call add
+      call add
+        call self/bitwise-intersect
+          call self/bitwise-shift-head
+            read i
+            code 3
+          code 1
+        call self/bitwise-intersect
+          call self/bitwise-shift-head
+            read i
+            code 2
+          code 1
+      call self/bitwise-intersect
+        call self/bitwise-shift-head
+          read i
+          code 1
+        code 1
+    call self/bitwise-intersect
+      read i
+      code 1
+
+task reverse-bits-byte
+  take n
+  send back seed
+    call bit-reversal-table/get
+      bind read n

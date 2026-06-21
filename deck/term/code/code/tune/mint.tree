@@ -1,0 +1,16 @@
+
+load @cluesurf/base/code/tune
+  find tune
+
+mint tune
+  case name
+    slot name
+  case head, mint head
+    slot head
+  case host
+    slot host
+  hook make
+    make tune
+      bind name, read name
+      bind head, read head
+      bind host, read host

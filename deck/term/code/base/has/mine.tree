@@ -1,0 +1,8 @@
+
+load @cluesurf/term/code/base/find/mine
+  find db-find
+
+mine db-has
+  mine term, term has
+    mine form, like db-find
+      slot find

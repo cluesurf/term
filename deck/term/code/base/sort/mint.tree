@@ -1,0 +1,13 @@
+
+mint db-sort
+  case direction
+    slot direction
+  case name
+    slot name
+  case fork, mint db-send-fork
+    slot fork
+  hook make
+    make db-sort
+      bind direction, read direction
+      bind name, read name
+      bind fork, read fork

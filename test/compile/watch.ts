@@ -25,7 +25,7 @@ function expect(name: string, got: unknown, want: unknown): void {
 const files = new Map<string, string>([
   [
     '@app/helper',
-    'task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      mark 3\n',
+    'task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 3\n',
   ],
 ])
 const resolve = (path: string): Source | undefined =>
@@ -70,7 +70,7 @@ expect(
 // 4. edit the helper itself: now the helper re-mills (a miss), the entry text is unchanged so it is reused
 files.set(
   '@app/helper',
-  'task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      mark 4\n',
+  'task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 4\n',
 )
 const hitsBeforeHelper = compiler.stats.hits
 const afterHelper = compiler.compile(entry(9))

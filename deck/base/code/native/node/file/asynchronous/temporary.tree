@@ -1,0 +1,45 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:path>, name path
+  load <node:os>, name os
+
+task make
+  note async
+  take kind, like text, fall text <file>
+  take prefix, like text, fall text <tmp->
+  take suffix, like text, fall text <>
+
+  save base
+    call path/join
+      call os/tmpdir
+      read prefix
+
+  fork test, call is-equal, read kind, text <directory>
+    hook true
+      send back
+        call fs-promise/mkdtemp
+          note async
+          read base
+          halt kink
+
+  save dir
+    call fs-promise/mkdtemp
+      note async
+      read base
+      halt kink
+
+  save file-path
+    call path/join
+      read dir
+      call concat
+        text <file>
+        read suffix
+
+  call fs-promise/write-file
+    note async
+    read file-path
+    text <>
+    halt kink
+
+  send back, read file-path

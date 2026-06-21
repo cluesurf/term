@@ -1,0 +1,19 @@
+
+form server
+  link dock, mark private
+  link host, like text
+  link port, like size
+
+task start
+  note async
+  take port, like size
+  take host, like text, fall text <0.0.0.0>
+  take handler, like task
+  take secure, like bool, fall false
+  take certificate, like text, need false
+  take key, like text, need false
+  like server
+
+task stop
+  note async
+  take server, like server

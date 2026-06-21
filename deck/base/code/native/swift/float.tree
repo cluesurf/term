@@ -1,0 +1,62 @@
+# swift float math (the linked fmath shim). Internal: reached only through the public float API.
+
+dock load
+  load <global:fmath>, name fmath
+
+task do-sqrt
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/sqrt
+      read value
+
+task do-floor
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/floor
+      read value
+
+task do-ceil
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/ceil
+      read value
+
+task do-round
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/round
+      read value
+
+task do-power
+  take base, like decimal
+  take exponent, like decimal
+  like decimal
+  send back
+    call fmath/pow
+      read base
+      read exponent
+
+task do-absolute
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/abs
+      read value
+
+task do-sine
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/sin
+      read value
+
+task do-cosine
+  take value, like decimal
+  like decimal
+  send back
+    call fmath/cos
+      read value

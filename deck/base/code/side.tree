@@ -1,0 +1,6 @@
+# The side selector: which end a directional operation works from or on. `start` is the front, `end` is the back, `both` is both ends. It is the one enum behind the whole `-first` / `-last` / `-start` / `-end` family: `take(count, side)`, `find(target, side)`, `trim(side)`, `pad(count, side)`. A constant side specializes to the native call for that end, so the named forms and the verb compile to identical code.
+
+form side
+  case start
+  case end
+  case both

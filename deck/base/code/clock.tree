@@ -1,0 +1,19 @@
+
+# Clock: current time and delays. Platform implementation is selected at build time and hidden behind this API.
+
+load @cluesurf/base/code/native/clock
+  find current-time
+  find delay
+
+task now
+  like number
+  send back
+    call current-time
+
+task sleep
+  note async
+  take ms, like number
+  send back
+    call delay
+      read ms
+      wait true

@@ -1,0 +1,64 @@
+
+form log-record
+  link level, like text
+  link message, like text
+  link timestamp, like size
+
+form log-level
+  case trace
+  case debug
+  case info
+  case warn
+  case error
+  case fatal
+
+task log-record-make
+  take level, like text
+  take message, like text
+  take timestamp, like size
+  send back
+    make log-record
+      bind level, read level
+      bind message, read message
+      bind timestamp, read timestamp
+
+task log-record-level
+  take r, like log-record
+  fork case, read r
+    hook log-record, base level, base message, base timestamp
+      send back, read level
+
+task log-record-message
+  take r, like log-record
+  fork case, read r
+    hook log-record, base level, base message, base timestamp
+      send back, read message
+
+task log-level-rank
+  take level, like log-level
+  fork case, read level
+    hook trace
+      send back, code 0
+    hook debug
+      send back, code 1
+    hook info
+      send back, code 2
+    hook warn
+      send back, code 3
+    hook error
+      send back, code 4
+    hook fatal
+      send back, code 5
+
+task log-level-is-above
+  take a, like log-level
+  take b, like log-level
+  save a-rank
+    call log-level-rank
+      bind level, read a
+  save b-rank
+    call log-level-rank
+      bind level, read b
+  call is-greater-or-equal
+    bind a, read a-rank
+    bind b, read b-rank

@@ -1,0 +1,67 @@
+
+task get
+  take name, like text
+  like text
+
+  send back
+    call rust-env-var
+      read name
+
+task set
+  take name, like text
+  take value, like text
+
+  call rust-set-var
+    read name
+    read value
+
+task remove
+  take name, like text
+
+  call rust-remove-var
+    read name
+
+task list
+  like hash
+
+  send back
+    call rust-env-vars
+
+task check
+  take name, like text
+  like bool
+
+  send back
+    call rust-env-var-is-set
+      read name
+
+task rust-env-var
+  note private
+  take name, like text
+  dock call <std::env::var(&name).unwrap_or_default()>
+
+task rust-set-var
+  note private
+  take name, like text
+  take value, like text
+  dock call <std::env::set_var(&name, &value)>
+
+task rust-remove-var
+  note private
+  take name, like text
+  dock call <std::env::remove_var(&name)>
+
+task rust-env-vars
+  note private
+  dock call <run {
+    let mut map = std::collections::HashMap::new();
+    for (key, value) in std::env::vars() {
+      map.insert(key, value);
+    }
+    map
+  }>
+
+task rust-env-var-is-set
+  note private
+  take name, like text
+  dock call <std::env::var(&name).is_ok()>

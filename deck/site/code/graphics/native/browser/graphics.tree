@@ -1,0 +1,203 @@
+
+# Browser graphics impl: delegates to WebGL2 through @cluesurf/bind. Conforms to the abstract API in ../graphics. The
+# surface handle is opaque (an erased WebGL2 context), so each task re-types it to the bind context form and calls the
+# method with member syntax (`call gl/clear`). bind's methods are JS-`this`-style, so the receiver is the member
+# target and the args are the method's params; the emitter lowers `gl.clear(...)`. Constants are `link` fields on the
+# context (`read gl/color-buffer-bit` lowers to `gl.COLOR_BUFFER_BIT`).
+# This is the verified-compiling subset: open / size / clear (the canvas-clear render path) plus make-shader /
+# make-program. The make-buffer + draw pipeline is the next iteration: it needs member lookup through the form base
+# chain (buffer-data lives on the WebGL2 overloads interface) and a typed array for the vertex data. See
+# note/seed/plan/graphics-layer.md.
+
+load ../../../dom/native/global
+  find page
+
+load @cluesurf/bind/code/browser/dom/web-gl-rendering-context-base
+  find web-gl-rendering-context-base
+
+load @cluesurf/bind/code/browser/dom/web-gl-rendering-context-overloads
+  find web-gl-rendering-context-overloads
+
+load ../../surface
+  find surface
+  find shader
+  find program
+  find gpu-buffer
+  find shader-kind
+  find primitive-kind
+
+# Acquire the canvas by id and its WebGL2 context. The context is stored opaque in the surface handle.
+task open
+  take id, like text
+  like surface
+  host canvas
+    call page/get-element-by-id
+      read id
+  host made
+    call canvas/get-context
+      text <webgl2>
+  send back
+    make surface
+      bind handle, read made
+
+# Set the drawing buffer viewport.
+task size
+  take pane, like surface
+  take width, like u32
+  take height, like u32
+  host gl, like web-gl-rendering-context-base
+    read pane/handle
+  call gl/viewport
+    mark 0
+    mark 0
+    read width
+    read height
+
+# Clear the surface to a color. Each channel is 0..1; integer 0/1 give primary-color clears today (full float colors
+# wait on GL-float fidelity, see the plan).
+task clear
+  take pane, like surface
+  take red, like number
+  take green, like number
+  take blue, like number
+  take alpha, like number
+  host gl, like web-gl-rendering-context-base
+    read pane/handle
+  call gl/clear-color
+    read red
+    read green
+    read blue
+    read alpha
+  call gl/clear
+    read gl/color-buffer-bit
+
+# Compile a shader for the given GL stage constant. Private: make-shader maps the kind union to the constant.
+task make-stage
+  mark private
+  take gl, like web-gl-rendering-context-base
+  take type-code
+  take source, like text
+  like shader
+  host made
+    call gl/create-shader
+      read type-code
+  call gl/shader-source
+    read made
+    read source
+  call gl/compile-shader
+    read made
+  send back
+    make shader
+      bind handle, read made
+
+# Compile one shader stage from its source.
+task make-shader
+  take pane, like surface
+  take kind, like shader-kind
+  take source, like text
+  like shader
+  host gl, like web-gl-rendering-context-base
+    read pane/handle
+  fork case, read kind
+    case vertex
+      send back
+        call make-stage
+          read gl
+          read gl/vertex-shader
+          read source
+    case fragment
+      send back
+        call make-stage
+          read gl
+          read gl/fragment-shader
+          read source
+
+# Link a vertex and fragment shader into a draw program.
+task make-program
+  take pane, like surface
+  take vertex, like shader
+  take fragment, like shader
+  like program
+  host gl, like web-gl-rendering-context-base
+    read pane/handle
+  host made
+    call gl/create-program
+  call gl/attach-shader
+    read made
+    read vertex/handle
+  call gl/attach-shader
+    read made
+    read fragment/handle
+  call gl/link-program
+    read made
+  send back
+    make program
+      bind handle, read made
+
+# Upload vertex data (a typed array provided by the caller) to a GPU buffer. buffer-data lives on the overloads form,
+# so the handle is re-typed to it for that call.
+task make-buffer
+  take pane, like surface
+  take data
+  like gpu-buffer
+  host gl, like web-gl-rendering-context-base
+    read pane/handle
+  host glo, like web-gl-rendering-context-overloads
+    read pane/handle
+  host made
+    call gl/create-buffer
+  call gl/bind-buffer
+    read gl/array-buffer
+    read made
+  call glo/buffer-data
+    read gl/array-buffer
+    read data
+    read gl/static-draw
+  send back
+    make gpu-buffer
+      bind handle, read made
+
+# Map a primitive-kind to its GL mode constant.
+task mode-code
+  mark private
+  take gl, like web-gl-rendering-context-base
+  take kind, like primitive-kind
+  fork case, read kind
+    case triangles
+      send back, read gl/triangles
+    case lines
+      send back, read gl/lines
+    case points
+      send back, read gl/points
+
+# Draw `count` vertices from the buffer with the program. Attribute 0 is two floats per vertex.
+task draw
+  take pane, like surface
+  take prog, like program
+  take verts, like gpu-buffer
+  take kind, like primitive-kind
+  take count, like u32
+  host gl, like web-gl-rendering-context-base
+    read pane/handle
+  call gl/use-program
+    read prog/handle
+  call gl/bind-buffer
+    read gl/array-buffer
+    read verts/handle
+  call gl/enable-vertex-attrib-array
+    mark 0
+  call gl/vertex-attrib-pointer
+    mark 0
+    mark 2
+    read gl/float
+    wave false
+    mark 0
+    mark 0
+  host mode
+    call mode-code
+      read gl
+      read kind
+  call gl/draw-arrays
+    read mode
+    mark 0
+    read count

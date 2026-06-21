@@ -1,0 +1,112 @@
+
+load @cluesurf/base/code/bind
+  find bind-form
+  find bind-link
+  find bind-case
+  find bind-task
+  find bind-take
+  find bind-seed
+
+mint bind
+  case form, mint bind-form
+    slot form
+  case task, mint bind-task
+    slot task
+  case seed, mint bind-seed
+    slot seed
+
+mint bind-form, like bind-form
+  case name
+    slot name
+  case code-name
+    slot code-name
+  case head, mint head
+    slot head
+  case link, mint bind-link
+    slot link
+  case case, mint bind-case
+    slot case
+  case note, mint note
+    slot note
+  hook make
+    make bind-form
+      bind name, read name
+      bind code-name, read code-name
+      bind head, read head
+      bind link, read link
+      bind case, read case
+      bind note, read note
+
+mint bind-link, like bind-link
+  case name
+    slot name
+  case code-name
+    slot code-name
+  case like, mint like
+    slot like
+  hook make
+    make bind-link
+      bind name, read name
+      bind code-name, read code-name
+      bind like, read like
+
+mint bind-case, like bind-case
+  case name
+    slot name
+  case code-name
+    slot code-name
+  case link, mint bind-link
+    slot link
+  hook make
+    make bind-case
+      bind name, read name
+      bind code-name, read code-name
+      bind link, read link
+
+mint bind-task, like bind-task
+  case name
+    slot name
+  case code-name
+    slot code-name
+  case head, mint head
+    slot head
+  case take, mint bind-take
+    slot take
+  case like, mint like
+    slot like
+  case note, mint note
+    slot note
+  hook make
+    make bind-task
+      bind name, read name
+      bind code-name, read code-name
+      bind head, read head
+      bind take, read take
+      bind like, read like
+      bind note, read note
+
+mint bind-take, like bind-take
+  case name
+    slot name
+  case code-name
+    slot code-name
+  case like, mint like
+    slot like
+  hook make
+    make bind-take
+      bind name, read name
+      bind code-name, read code-name
+      bind like, read like
+
+mint bind-seed, like bind-seed
+  case name
+    slot name
+  case code-name
+    slot code-name
+  case seed
+    slot seed
+  hook make
+    make bind-seed
+      bind name, read name
+      bind code-name, read code-name
+      bind seed, read seed

@@ -1,0 +1,96 @@
+
+dock load
+  load <Foundation>, name foundation
+
+load @cluesurf/base/code/process
+  find child
+
+task wait
+  note async
+  take child, like child
+  like size
+
+  call child/dock/wait-until-exit
+
+  send back
+    call child/dock/termination-status
+
+task stop
+  take child, like child
+  take form, like text, fall text <gentle>
+
+  fork test, call is-equal, read form, text <force>
+    hook true
+      call kill
+        call child/dock/process-identifier
+        code 9
+    hook false
+      call child/dock/terminate
+
+task write
+  note async
+  take child, like child
+  take data, like text
+
+  save pipe
+    call child/dock/standard-input
+  save handle
+    call pipe/file-handle-for-writing
+  call handle/write
+    call data/data
+      bind using, text <utf8>
+
+task close
+  note async
+  take child, like child
+
+  save pipe
+    call child/dock/standard-input
+  call pipe/file-handle-for-writing/close-file
+
+task read
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <text>
+  like text
+
+  save pipe
+    fork test, call is-equal, read kind, text <stderr>
+      hook true
+        send back
+          call child/dock/standard-error
+      hook false
+        send back
+          call child/dock/standard-output
+
+  save data
+    call pipe/file-handle-for-reading/read-data-to-end-of-file
+
+  fork test, call is-equal, read format, text <text>
+    hook true
+      send back
+        call foundation/string
+          bind data, read data
+          bind encoding, text <utf8>
+    hook false
+      send back, read data
+
+task stream
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <bytes>
+  like list
+
+  save pipe
+    fork test, call is-equal, read kind, text <stderr>
+      hook true
+        send back
+          call child/dock/standard-error
+      hook false
+        send back
+          call child/dock/standard-output
+
+  send back
+    call pipe/file-handle-for-reading

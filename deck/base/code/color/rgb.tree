@@ -1,0 +1,88 @@
+# RGB color: three integer channels, each 0 to 255. Pure-logic color operations, no platform dependency.
+
+form rgb-color
+  link red, like number
+  link green, like number
+  link blue, like number
+
+  task grayscale
+    take self
+    like number
+    send back
+      call divide
+        call add
+          call add
+            read self/red
+            read self/green
+          read self/blue
+        code 3
+
+  task luminance
+    take self
+    like number
+    send back
+      call divide
+        call add
+          call add
+            call multiply
+              read self/red
+              code 299
+            call multiply
+              read self/green
+              code 587
+          call multiply
+            read self/blue
+            code 114
+        code 1000
+
+  task invert
+    take self
+    like rgb-color
+    send back
+      make rgb-color
+        bind red
+          call subtract
+            code 255
+            read self/red
+        bind green
+          call subtract
+            code 255
+            read self/green
+        bind blue
+          call subtract
+            code 255
+            read self/blue
+
+  task is-dark
+    take self
+    like boolean
+    send back
+      call is-below
+        call luminance
+          read self
+        code 128
+
+  task blend
+    take self
+    take other, like rgb-color
+    like rgb-color
+    send back
+      make rgb-color
+        bind red
+          call divide
+            call add
+              read self/red
+              read other/red
+            code 2
+        bind green
+          call divide
+            call add
+              read self/green
+              read other/green
+            code 2
+        bind blue
+          call divide
+            call add
+              read self/blue
+              read other/blue
+            code 2

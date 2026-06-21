@@ -1,0 +1,137 @@
+
+dock load
+  load <node:net>, name net
+  load <node:tls>, name tls
+
+load @cluesurf/base/code/network/tcp
+  find connection
+  find listener
+
+task connect
+  note async
+  take host, like text
+  take port, like size
+  take secure, like bool, fall wave false
+
+  fork test
+    hook test
+      read secure
+    hook hold
+      save raw
+        call make-promise
+          task resolve
+            take ok
+            take fail
+            save socket
+              call tls/connect
+                read port
+                read host
+            call socket/on
+              text <connect>
+              task on-connect
+                call ok, read socket
+            call socket/on
+              text <error>
+              task on-error
+                take error
+                call fail, read error
+          note async
+          halt kink
+      send back
+        make connection
+          bind dock, read raw
+          bind host, read host
+          bind port, read port
+          bind local-host, call raw/local-address
+          bind local-port, call raw/local-port
+          bind secure, wave true
+    hook miss
+      save raw
+        call make-promise
+          task resolve
+            take ok
+            take fail
+            save socket
+              call net/create-connection
+                read port
+                read host
+            call socket/on
+              text <connect>
+              task on-connect
+                call ok, read socket
+            call socket/on
+              text <error>
+              task on-error
+                take error
+                call fail, read error
+          note async
+          halt kink
+      send back
+        make connection
+          bind dock, read raw
+          bind host, read host
+          bind port, read port
+          bind local-host, call raw/local-address
+          bind local-port, call raw/local-port
+          bind secure, wave false
+
+task listen
+  note async
+  take port, like size
+  take host, like text, fall text <0.0.0.0>
+  take secure, like bool, fall wave false
+  take certificate, like text, need false
+  take key, like text, need false
+
+  fork test
+    hook test
+      read secure
+    hook hold
+      save cert-data
+        call fs-promise/read-file
+          note async
+          read certificate
+          halt kink
+      save key-data
+        call fs-promise/read-file
+          note async
+          read key
+          halt kink
+      save raw
+        call tls/create-server
+          make options
+            bind cert, read cert-data
+            bind key, read key-data
+      call make-promise
+        task resolve
+          take ok
+          call raw/listen
+            read port
+            read host
+            task on-listen
+              call ok
+        note async
+        halt kink
+      send back
+        make listener
+          bind dock, read raw
+          bind host, read host
+          bind port, read port
+    hook miss
+      save raw
+        call net/create-server
+      call make-promise
+        task resolve
+          take ok
+          call raw/listen
+            read port
+            read host
+            task on-listen
+              call ok
+        note async
+        halt kink
+      send back
+        make listener
+          bind dock, read raw
+          bind host, read host
+          bind port, read port

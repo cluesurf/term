@@ -45,14 +45,14 @@ const SOURCE = `task find-fibonacci
     hook test
       call is-below
         loan n
-        mark 2
+        code 2
     hook hold
       send back n
     hook miss
       send back
         call add
           loan n
-          mark 1
+          code 1
 `
 
 function main(): void {
@@ -77,16 +77,16 @@ function main(): void {
   // a call with arguments stacks its arguments (would flatten ambiguously if inlined)
   ok(
     'nested call arguments are stacked',
-    /call add\n\s+loan n\n\s+mark 1/.test(once),
+    /call add\n\s+loan n\n\s+code 1/.test(once),
     once,
   )
 
   // a stacked value list that could fit on one line is normalized to the inline form
-  const stacked = `save\n  a\n  mark 0\n`
+  const stacked = `save\n  a\n  code 0\n`
   const formatted = format({ file: 's.tree', text: stacked })
   ok(
     'normalizes stacked value list to inline',
-    formatted.trim() === 'save a, mark 0',
+    formatted.trim() === 'save a, code 0',
     JSON.stringify(formatted),
   )
 

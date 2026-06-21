@@ -1,0 +1,84 @@
+# A minimal blog as a zone (view component): a title input, a body textarea, an "Add post" button, and a reactive
+# list of posts. State is a signal holding the list. Clicking Add reads the inputs (by ref), appends a post, and
+# clears the inputs; writing the signal re-renders the list. Everything goes through the platform-agnostic dom +
+# reactive runtime, so the same component runs in the browser (via @cluesurf/bind) or against the in-memory tree.
+
+load @cluesurf/site/code/dom/dom
+  find view
+  find get-value
+  find set-value
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+
+load @cluesurf/base/code/list
+  find list
+  find push
+
+form post
+  link title, like text
+  link body, like text
+
+# read the two inputs, append a post to the list signal, then clear the inputs. Called from the button's click handler
+# with the input refs and the posts signal.
+task add-post
+  take title-field, like view
+  take body-field, like view
+  take posts, like signal
+  save title-text
+    call get-value, read title-field
+  save body-text
+    call get-value, read body-field
+  save current
+    call read-signal, read posts
+  call push
+    bind list, read current
+    bind item
+      make post
+        bind title, read title-text
+        bind body, read body-text
+  call write-signal
+    bind self, read posts
+    read current
+  call set-value
+    read title-field
+    text <>
+  call set-value
+    read body-field
+    text <>
+
+zone blog
+  take host, like view
+
+  # the growing list of posts, held in a signal so the list re-renders on change
+  save posts
+    call make-signal
+      make list
+
+  zone div
+    zone input
+      name title-input
+    zone textarea
+      name body-input
+    zone button
+      seed click
+        call add-post
+          read title-input
+          read body-input
+          read posts
+      text <Add post>
+    zone div
+      name post-list
+      walk list, call read-signal, read posts
+        hook next
+          take site, name item
+          zone div
+            zone h2
+              read
+                read item/title
+            zone p
+              read
+                read item/body

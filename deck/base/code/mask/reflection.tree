@@ -1,0 +1,13 @@
+
+# Reflection: runtime information about a type. Carried by errors and diagnostics (see complication).
+
+mask reflection
+  head t
+
+  task get-name
+    take self
+    like text
+
+  task get-full-name
+    take self
+    like text

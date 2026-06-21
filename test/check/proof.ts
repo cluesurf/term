@@ -126,7 +126,7 @@ task use-it
   hold
     call is-equal
       loan n
-      mark 5
+      code 5
     melt both
   send back n
 `,

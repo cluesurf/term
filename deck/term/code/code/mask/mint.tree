@@ -1,0 +1,16 @@
+
+load @cluesurf/base/code/mask
+  find mask
+
+mint mask
+  case name
+    slot name
+  case head, mint head
+    slot head
+  case task, mint task
+    slot task
+  hook make
+    make mask
+      bind name, read name
+      bind head, read head
+      bind task, read task

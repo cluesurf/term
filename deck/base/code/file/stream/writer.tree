@@ -1,0 +1,19 @@
+
+form writer
+  link dock, mark private
+  link path, like text
+
+task create
+  note async
+  take path, like text
+  take append, like bool, fall wave false
+  like writer
+
+task write
+  note async
+  take stream, like writer
+  take data, like text
+
+task close
+  note async
+  take stream, like writer

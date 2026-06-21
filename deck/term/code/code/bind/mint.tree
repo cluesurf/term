@@ -1,0 +1,13 @@
+
+load @cluesurf/base/code/bind
+  find bind
+
+mint bind, like bind
+  case name
+    slot term
+  case seed, mint seed
+    slot bond
+  hook make
+    make bind
+      bind term, read term
+      bind bond, read bond

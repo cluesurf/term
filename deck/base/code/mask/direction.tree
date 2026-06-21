@@ -1,0 +1,11 @@
+
+mask incomplete-direction
+  # Partial order.
+
+mask direction
+  # Total order.
+
+host direction-type
+  term base, diff -1
+  term meet, diff 0
+  term head, diff 1

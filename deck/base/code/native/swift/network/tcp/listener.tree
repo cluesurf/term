@@ -1,0 +1,57 @@
+
+load @cluesurf/base/code/network/tcp
+  find listener
+  find connection
+
+task accept
+  note async
+  take listener, like listener
+
+  save raw, read listener/dock
+
+  save nw-conn
+    call make-continuation
+      note async
+      task resolve
+        take ok
+        take fail
+        save raw/new-connection-handler
+          task on-connection
+            take conn
+            call conn/start
+              text <queue>
+              call dispatch-queue/main
+            call ok, read conn
+
+  save remote
+    call nw-conn/current-path/remote-endpoint
+
+  send back
+    make connection
+      bind dock, read nw-conn
+      bind host
+        fork test
+          hook test
+            call is-some, read remote
+          hook hold
+            call remote/description
+          hook miss
+            text <0.0.0.0>
+      bind port, read listener/port
+      bind local-host, read listener/host
+      bind local-port, read listener/port
+      bind secure, wave false
+
+task close
+  note async
+  take listener, like listener
+
+  save raw, read listener/dock
+  call raw/cancel
+
+task stream
+  note async
+  take listener, like listener
+
+  save raw, read listener/dock
+  send back, read raw

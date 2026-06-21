@@ -18,7 +18,7 @@ import type { Source } from '@/code/compile/load'
 import { render } from '@/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', '..', 'base.tree')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
   if (!path.startsWith(prefix)) return undefined
@@ -81,11 +81,11 @@ task build
   call set
     read h
     text <a>
-    mark 1
+    code 1
   call set
     read h
     text <b>
-    mark 2
+    code 2
   send back, read h
 
 task keys-of
@@ -115,13 +115,13 @@ task set-a
         make find
   call insert
     read a
-    mark 1
+    code 1
   call insert
     read a
-    mark 2
+    code 2
   call insert
     read a
-    mark 3
+    code 3
   send back, read a
 
 task set-b
@@ -133,13 +133,13 @@ task set-b
         make find
   call insert
     read b
-    mark 2
+    code 2
   call insert
     read b
-    mark 3
+    code 3
   call insert
     read b
-    mark 4
+    code 4
   send back, read b
 
 task union-list
@@ -179,9 +179,9 @@ task list-of
   send back
     call to-list
       make range
-        bind start, mark 0
-        bind end, mark 5
-        bind step, mark 1
+        bind start, code 0
+        bind end, code 5
+        bind step, code 1
 `
 
 async function main(): Promise<void> {

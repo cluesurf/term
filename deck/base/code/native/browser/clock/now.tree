@@ -1,0 +1,15 @@
+
+task get
+  take precise, like bool, fall wave false
+
+  fork test, read precise
+    hook true
+      send back
+        call browser-performance-now
+    hook false
+      send back
+        call date/now
+
+task browser-performance-now
+  note private
+  dock call <performance.now()>

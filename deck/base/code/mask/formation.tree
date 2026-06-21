@@ -1,0 +1,17 @@
+
+# Formation: construct a value of this type from a source value. The dual of conversion.
+
+mask formation
+  head from
+
+  task form
+    take source, like from
+    like self
+
+mask failable-formation
+  head from
+
+  task form
+    take source, like from
+    like maybe
+      like self

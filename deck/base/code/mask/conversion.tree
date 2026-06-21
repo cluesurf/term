@@ -1,0 +1,12 @@
+
+mask conversion
+  # Typecasting
+  head like, like like
+
+  task cast
+    link self, like self
+    free seed, like like
+
+  task is-cast
+    link self, like self
+    free seed, like sink

@@ -1,0 +1,107 @@
+
+load @cluesurf/term/code/code/bind/mine
+  find bind
+
+load @cluesurf/term/code/code/need/mine
+  find need
+
+load @cluesurf/term/code/code/tag/mine
+  find tag
+
+load @cluesurf/term/code/base/hold/mine
+  find db-hold
+
+load @cluesurf/term/code/base/db-make/mine
+  find db-make-link
+
+mine db-mold
+  mine term, term mold
+    mine term, term table
+    mine maybe
+      mine term, term name
+        mine term
+          slot name
+    mine list
+      mine any
+        mine form, like db-mold-make-column
+          slot make-column
+        mine form, like db-mold-toss-column
+          slot toss-column
+        mine form, like db-mold-column
+          slot mold-column
+        mine form, like db-mold-make-constraint
+          slot make-constraint
+        mine form, like db-mold-toss-constraint
+          slot toss-constraint
+        mine form, like bind
+          slot bind
+
+mine db-mold-make-column
+  mine term, term make
+    mine term, term column
+    mine maybe
+      mine term, term name
+        mine term
+          slot name
+    mine maybe
+      mine term, term like
+        mine term
+          slot like
+    mine maybe
+      mine form, like need
+        slot need
+    mine maybe
+      mine term, term base
+        mine term
+          slot base
+
+mine db-mold-toss-column
+  mine term, term toss
+    mine term, term column
+    mine maybe
+      mine term, term name
+        mine term
+          slot name
+
+mine db-mold-column
+  mine term, term mold
+    mine term, term column
+    mine maybe
+      mine term, term name
+        mine term
+          slot name
+    mine list
+      mine any
+        mine form, like bind
+          slot bind
+        mine form, like need
+          slot need
+        mine form, like db-mold-column-toss
+          slot toss
+
+mine db-mold-column-toss
+  mine term, term toss
+    mine term
+      slot name
+
+mine db-mold-make-constraint
+  mine term, term make
+    mine term, term constraint
+    mine maybe
+      mine term, term name
+        mine term
+          slot name
+    mine list
+      mine any
+        mine form, like tag
+          slot tag
+        mine form, like db-hold
+          slot hold
+
+mine db-mold-toss-constraint
+  mine term, term toss
+    mine term, term constraint
+    mine maybe
+      mine term, term name
+        mine term
+          slot name

@@ -1,0 +1,8 @@
+
+# Road: a path of name steps, e.g. `self/user/name`. The unit of every dynamic read in the DSLs.
+
+load ./term
+  find term
+
+form road
+  link step, list term

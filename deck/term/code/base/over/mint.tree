@@ -1,0 +1,10 @@
+
+mint db-over
+  case fold, mint db-fold
+    slot fold
+  case sort, mint db-sort
+    slot sort
+  hook make
+    make db-over
+      bind fold, read fold
+      bind sort, read sort

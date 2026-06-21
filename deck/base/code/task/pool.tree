@@ -1,0 +1,24 @@
+
+form pool
+  link dock, mark private
+  link size, like size
+
+task make
+  take size, like size, need false
+  like pool
+
+task run
+  note async
+  take pool, like pool
+  take work, like task
+
+task map
+  note async
+  take pool, like pool
+  take list, like list
+  take work, like task
+  like list
+
+task close
+  note async
+  take pool, like pool

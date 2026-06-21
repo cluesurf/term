@@ -1,0 +1,104 @@
+
+host max
+  call rise
+    code 2
+    code 32
+
+host suite
+  host add-free
+    host zero
+      host a, code 0
+      host b, code 0
+      host r, make some, code 0
+    host small
+      host a, code 0
+      host b, code 1
+      host r, make some, code 1
+    host inner
+      host a, code 1000
+      host b, code 1000
+      host r, make some, code 2000
+    host boundary-base
+      host a, read max
+      host b, code 1
+      host error
+    host boundary-head
+      host a, code 1
+      host b, read max
+      host error
+    host max
+      host a, read max
+      host b, read max
+      host error
+
+  host shift-head
+    host start
+      host a, code 0b10000000000000000000000000000000
+      host b, code 1
+      host r, code 0b01000000000000000000000000000000
+    host middle
+      host a, code 0b00100000000000000000000000000000
+      host b, code 1
+      host r, code 0b00010000000000000000000000000000
+    host end
+      host a, code 0b00000000000000000000000000000001
+      host b, code 1
+      host r, code 0b00000000000000000000000000000000
+    host zero
+      host a, code 0b00000000000000000000000000000000
+      host b, code 1
+      host r, code 0b00000000000000000000000000000000
+
+  host shift-base
+    host start
+      host a, code 0b00000000000000000000000000000001
+      host b, code 1
+      host r, code 0b00000000000000000000000000000010
+    host middle
+      host a, code 0b00100000000000000000000000000000
+      host b, code 1
+      host r, code 0b01000000000000000000000000000000
+    host end
+      host a, code 0b10000000000000000000000000000000
+      host b, code 1
+      host r, code 0b00000000000000000000000000000000
+    host zero
+      host a, code 0b00000000000000000000000000000000
+      host b, code 1
+      host r, code 0b00000000000000000000000000000000
+
+  host rotate-head
+    host start
+      host a, code 0b10000000000000000000000000000000
+      host b, code 1
+      host r, code 0b01000000000000000000000000000000
+    host middle
+      host a, code 0b00100000000000000000000000000000
+      host b, code 1
+      host r, code 0b00010000000000000000000000000000
+    host end
+      host a, code 0b00000000000000000000000000000001
+      host b, code 1
+      host r, code 0b10000000000000000000000000000000
+    host zero
+      host a, code 0b00000000000000000000000000000000
+      host b, code 1
+      host r, code 0b00000000000000000000000000000000
+
+  host rotate-base
+    host start
+      host a, code 0b01000000000000000000000000000000
+      host b, code 1
+      host r, code 0b10000000000000000000000000000000
+    host middle
+      host a, code 0b00010000000000000000000000000000
+      host b, code 1
+      host r, code 0b00100000000000000000000000000000
+    host end
+      host a, code 0b10000000000000000000000000000000
+      host b, code 1
+      host r, code 0b00000000000000000000000000000001
+    host zero
+      host a, code 0b00000000000000000000000000000000
+      host b, code 1
+      host r, code 0b00000000000000000000000000000000

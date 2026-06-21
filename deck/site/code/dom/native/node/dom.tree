@@ -1,0 +1,243 @@
+
+# In-memory DOM: the native host implementation for server-side rendering and headless testing. A node is a real
+# element record (tag, text, attributes, styles, classes, children, listeners, parent), so the full DOM API works
+# without a browser: build a tree, mutate it, fire stored listeners, remove and replace nodes. Conforms to ../../dom.
+
+load @cluesurf/base/code/list
+  find list
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+load ../../view
+  find view
+
+form element
+  link tag, like text
+  link text, like text
+  link value, like text
+  link attributes, like list
+  link styles, like list
+  link classes, like list
+  link children, like list
+  link listeners, like list
+  link parent, like maybe
+
+form pair
+  link name, like text
+  link value, like text
+
+form listener
+  link event, like text
+  link handle
+    like task
+
+task create-element
+  take tag, like text
+  like view
+  send back
+    make view
+      bind handle
+        make element
+          bind tag, read tag
+          bind text, text <>
+          bind value, text <>
+          bind attributes
+            make list
+          bind styles
+            make list
+          bind classes
+            make list
+          bind children
+            make list
+          bind listeners
+            make list
+          bind parent
+            make none
+
+task create-text
+  take value, like text
+  like view
+  send back
+    make view
+      bind handle
+        make element
+          bind tag, text <>
+          bind text, read value
+          bind value, text <>
+          bind attributes
+            make list
+          bind styles
+            make list
+          bind classes
+            make list
+          bind children
+            make list
+          bind listeners
+            make list
+          bind parent
+            make none
+
+task set-text
+  take node, like view
+  take value, like text
+  save node/handle/text, read value
+
+task set-attribute
+  take node, like view
+  take name, like text
+  take value, like text
+  # retype the opaque handle so `attributes` is a list and `filter` dispatches to the list method (see `remove`)
+  host self, like element
+    read node/handle
+  save kept
+    call filter
+      read self/attributes
+      task keep
+        take entry, like pair
+        like boolean
+        send back
+          call is-unequal
+            read entry/name
+            read name
+  save self/attributes, read kept
+  call push
+    bind list, read self/attributes
+    bind item
+      make pair
+        bind name, read name
+        bind value, read value
+
+task get-attribute
+  take node, like view
+  take name, like text
+  like text
+  host self, like element
+    read node/handle
+  save found
+    call find
+      read self/attributes
+      task match
+        take entry, like pair
+        like boolean
+        send back
+          call is-equal
+            read entry/name
+            read name
+  fork case, read found
+    case some
+      send back, read found/value/value
+    case none
+      send back, text <>
+
+task set-style
+  take node, like view
+  take property, like text
+  take value, like text
+  call push
+    bind list, read node/handle/styles
+    bind item
+      make pair
+        bind name, read property
+        bind value, read value
+
+task add-class
+  take node, like view
+  take name, like text
+  call push
+    bind list, read node/handle/classes
+    bind item, read name
+
+task remove-class
+  take node, like view
+  take name, like text
+  host self, like element
+    read node/handle
+  save kept
+    call filter
+      read self/classes
+      task keep
+        take entry, like text
+        like boolean
+        send back
+          call is-unequal
+            read entry
+            read name
+  save self/classes, read kept
+
+task set-property
+  take node, like view
+  take name, like text
+  take value, like text
+  call set-attribute
+    read node
+    read name
+    read value
+
+task listen
+  take node, like view
+  take event, like text
+  take handler
+    like task
+  call push
+    bind list, read node/handle/listeners
+    bind item
+      make listener
+        bind event, read event
+        bind handle, read handler
+
+task append
+  take parent, like view
+  take child, like view
+  call push
+    bind list, read parent/handle/children
+    bind item, read child
+  save child/handle/parent
+    make some
+      bind value, read parent
+
+task remove
+  take node, like view
+  # retype the opaque view handle to this impl's concrete element, so `children` reads as a list and `filter`
+  # dispatches to the list method (an opaque handle has unknown type, where method dispatch cannot resolve)
+  host self, like element
+    read node/handle
+  host edge, like maybe
+    read self/parent
+  fork case, read edge
+    case some
+      host owner, like element
+        read edge/value/handle
+      save kept
+        call filter
+          read owner/children
+          task keep
+            take entry, like view
+            like boolean
+            send back
+              call is-unequal
+                read entry
+                read node
+      save owner/children, read kept
+    case none
+      send back
+
+task replace
+  take old, like view
+  take new, like view
+  save old/handle, read new/handle
+
+task child-count
+  take node, like view
+  like number
+  send back, read node/handle/children/length
+
+task get-value
+  take node, like view
+  like text
+  send back, read node/handle/value
+
+task set-value
+  take node, like view
+  take value, like text
+  save node/handle/value, read value

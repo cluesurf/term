@@ -1,0 +1,20 @@
+# browser X25519 ECDH implementation. Forwards to the linked x25519 runtime shim (browser Web Crypto X25519). make-key-pair returns the 32-byte private key and 32-byte public key concatenated as hex. Internal: reached only through the public key-agreement API.
+
+dock load
+  load <global:x25519>, name x25519
+
+task make-key-pair-bytes
+  note async
+  like text
+  send back
+    call x25519/make-key-pair
+
+task compute-shared-secret
+  note async
+  take private-key, like text
+  take public-key, like text
+  like text
+  send back
+    call x25519/shared-secret
+      read private-key
+      read public-key

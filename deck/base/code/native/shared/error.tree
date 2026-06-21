@@ -1,0 +1,48 @@
+
+load @cluesurf/base/code/base/result
+  find result
+
+load @cluesurf/base/code/base/kink
+  find kink
+
+task make
+  take code, like text
+  take message, like text
+  take fields, like hash, need false
+  take cause, like kink, need false
+  take trace, like bool, fall false
+  send back
+    make kink
+      bind code, read code
+      bind note, read message
+      bind hint, read fields
+
+task throw
+  take error, like kink
+  halt kink, read error
+
+task catch
+  take work, like task
+  note unsafe
+    save value
+      call work
+    send back
+      make okay
+        bind value, read value
+  halt take
+    take error
+    send back
+      make error
+        bind value, read error
+
+task wrap
+  take data
+  send back
+    make okay
+      bind value, read data
+
+task fail
+  take error, like kink
+  send back
+    make error
+      bind value, read error

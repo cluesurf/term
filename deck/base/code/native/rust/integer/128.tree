@@ -1,0 +1,7 @@
+
+form i128
+  fuse integer
+    bind self-type, like i128
+    bind unsigned-type, like u128
+    bind bits, size 128
+    bind bits-minus-one, size 127

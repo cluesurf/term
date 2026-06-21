@@ -1,0 +1,12 @@
+
+form response
+  link status, like size
+  link headers, like hash
+  link body, like text
+  link dock, mark private
+
+task make
+  take status, like size, fall 200
+  take headers, like hash, need false
+  take body, like text, need false
+  like response

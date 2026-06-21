@@ -1,0 +1,5 @@
+
+task request-access
+  call query-permissions
+    note async
+    text <accelerometer>

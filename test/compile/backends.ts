@@ -40,7 +40,7 @@ const FIB = `task fibonacci
     hook test
       call is-below
         loan n
-        mark 2
+        code 2
     hook hold
       send back n
     hook miss
@@ -49,11 +49,11 @@ const FIB = `task fibonacci
           call fibonacci
             call subtract
               loan n
-              mark 1
+              code 1
           call fibonacci
             call subtract
               loan n
-              mark 2
+              code 2
 `
 
 function main(): void {
@@ -140,7 +140,7 @@ task danger
     hook test
       call is-below
         loan n
-        mark 0
+        code 0
     hook hold
       bust
         text <oops>

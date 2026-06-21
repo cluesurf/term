@@ -1,0 +1,39 @@
+
+load @cluesurf/base/code/network/http
+  find response
+
+task read
+  take response, like response
+  take format, like text, fall text <text>
+
+  fork case, read format
+    case text
+      send back
+        call kotlin-response-text
+          read response/dock
+    case bytes
+      send back
+        call kotlin-response-bytes
+          read response/dock
+    case json
+      send back
+        call kotlin-response-json
+          read response/dock
+
+task kotlin-response-text
+  note private
+  take raw
+  dock call <raw["body"] as? String ?: "">
+
+task kotlin-response-bytes
+  note private
+  take raw
+  dock call <(raw["body"] as? String ?: "").toByteArray()>
+
+task kotlin-response-json
+  note private
+  take raw
+  dock call <run {
+    val text = raw["body"] as? String ?: "{}"
+    org.json.JSONObject(text)
+  }>

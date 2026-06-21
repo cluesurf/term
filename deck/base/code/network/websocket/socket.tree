@@ -1,0 +1,23 @@
+
+load @cluesurf/base/code/network/websocket
+  find socket
+
+form message
+  link kind, like text
+  link data, like text
+
+task send
+  note async
+  take socket, like socket
+  take data, like text
+
+task close
+  note async
+  take socket, like socket
+  take code, like size, fall 1000
+  take reason, like text, need false
+
+task stream
+  note async
+  take socket, like socket
+  like list

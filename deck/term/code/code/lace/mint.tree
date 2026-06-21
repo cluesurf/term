@@ -1,0 +1,61 @@
+
+load @cluesurf/base/code/lace
+  find lace
+  find walk
+  find test
+
+mint lace
+  case name
+    slot name
+  case base, mint base
+    slot base
+  case flow, mint flow
+    slot flow
+  hook make
+    make lace
+      bind name, read name
+      bind base, read base
+      bind flow, read flow
+
+mint flow
+  case text
+    slot text
+  case walk, mint walk
+    slot walk
+  case test, mint test
+    slot test
+  case form, mint form
+    slot form
+  case call, mint call
+    slot call
+  case task, mint task
+    slot task
+
+mint walk
+  case road
+    slot road
+  case base, mint base
+    slot base
+  case flow, mint flow
+    slot flow
+  hook make
+    make walk
+      bind road, read road
+      bind base, read base
+      bind flow, read flow
+
+mint test
+  case road
+    slot road
+  case bind, mint bind
+    slot bind
+  case flow, mint flow
+    slot flow
+  case hook, mint hook
+    slot hook
+  hook make
+    make test
+      bind road, read road
+      bind bind, read bind
+      bind flow, read flow
+      bind hook, read hook

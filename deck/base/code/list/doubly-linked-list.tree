@@ -1,0 +1,55 @@
+form doubly-linked-list-node
+  head t
+  link value, like t
+  link next, void doubly-linked-list-node, like t
+  link prev, void doubly-linked-list-node, like t
+
+form doubly-linked-list
+  head t
+
+  link head, void doubly-linked-list-node, like t
+  link tail, void doubly-linked-list-node, like t
+
+  link size, like number
+
+  task length
+    like number
+
+  task is-empty
+    like boolean
+
+  task contains
+    take value
+    like boolean
+
+  task get
+    take index, like number
+    like t
+
+  task get-first
+    like t
+
+  task get-last
+    like t
+
+  task add-last
+    take value, like t
+    like void
+
+  task add-first
+    take value, like t
+    like void
+
+  task remove
+    take value, like t
+    like void
+
+  task remove-first
+    like void
+
+  task remove-last
+    like void
+
+  task index-of
+    take value, like t
+    like number

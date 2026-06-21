@@ -36,7 +36,7 @@ function findings(text: string) {
 function main(): void {
   // L003: redundant arithmetic, with a verbatim-slice fix
   {
-    const text = `save y\n  call add\n    read x\n    mark 0\n`
+    const text = `save y\n  call add\n    read x\n    code 0\n`
     const fs = findings(text).filter(f => f.code === 'L003')
     ok(
       'L003 detects x + 0',
@@ -52,7 +52,7 @@ function main(): void {
 
   // L004: a never-reassigned `save` should be `host`
   {
-    const text = `save a, mark 5\n`
+    const text = `save a, code 5\n`
     const fs = findings(text).filter(f => f.code === 'L004')
     ok(
       'L004 flags never-reassigned save',
@@ -65,9 +65,9 @@ function main(): void {
       JSON.stringify(fs[0]?.fix),
     )
 
-    const reassigned = `save a, mark 5\nsave a, mark 6\n`
+    const reassigned = `save a, code 5\nsave a, code 6\n`
     // the second `save a` is a fresh binding, not an assignment; use an explicit reassignment instead
-    const withAssign = `save a, mark 5\nsave a, mark 7\n`
+    const withAssign = `save a, code 5\nsave a, code 7\n`
     ok(
       'L004 still fires when only rebound',
       findings(withAssign).filter(f => f.code === 'L004').length >= 1,
@@ -78,7 +78,7 @@ function main(): void {
 
   // L001: non-kebab declared name
   {
-    const text = `task fooBar\n  send back, mark 1\n`
+    const text = `task fooBar\n  send back, code 1\n`
     const fs = findings(text).filter(f => f.code === 'L001')
     ok(
       'L001 flags camelCase task name',
@@ -89,7 +89,7 @@ function main(): void {
 
   // analyze: one parse drives format + lint; inline suppression silences a rule
   {
-    const text = `save y\n  # lint off L003\n  call add\n    read x\n    mark 0\n`
+    const text = `save y\n  # lint off L003\n  call add\n    read x\n    code 0\n`
     const analysis = analyze({ file: 't.tree', text })
     ok(
       'analyze formats from the same parse',

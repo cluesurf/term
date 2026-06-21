@@ -1,0 +1,228 @@
+
+tree integer
+  take self-type, like like
+  take unsigned-type, like like
+
+  hook fuse
+    task seek-add
+      take a, like self-type
+      take b, like self-type
+      fuse free-result, like self-type
+
+    task seek-add-signed
+      take a, like self-type
+      take b, like self-type
+
+    task seek-divide-base
+      take a, like self-type
+      take b, like self-type
+
+    task seek-divide-head
+      take a, like self-type
+      take b, like self-type
+
+    task seek-divide-euclid
+      take a, like self-type
+      take b, like self-type
+
+    task seek-fall
+      take a, like self-type
+      take base, like self-type
+
+    task seek-fall-10
+      take a, like self-type
+
+    task seek-fall-2
+      take a, like self-type
+
+    task seek-multiply
+      take a, like self-type
+      take b, like self-type
+
+    task seek-get-next-multiple-of
+    task seek-get-next-power-of-two
+    task seek-rise
+    task seek-remainder
+    task seek-remainder-euclid
+    task seek-shift-left
+    task seek-shift-right
+    task seek-subtract
+    task seek-unsign
+
+    # checked
+    task test-add
+      take a, like self-type
+      take b, like self-type
+      like maybe, like self-type
+
+    task test-add-signed
+    task test-divide
+    task test-divide-euclid
+    task test-fall
+    task test-fall-10
+    task test-fall-2
+    task test-multiply
+    task test-negate
+    task test-get-next-multiple-of
+    task test-get-next-power-of-two
+    task test-rise
+    task test-remainder
+    task test-remainder-euclid
+    task test-shift-left
+    task test-shift-right
+    task test-subtract
+    task test-unsign
+
+    # clamped
+    task sink-add
+    task sink-add-signed
+    task sink-divide
+    task sink-divide-euclid
+    task sink-fall
+    task sink-fall-10
+    task sink-fall-2
+    task sink-multiply
+    task sink-negate
+    task sink-get-next-multiple-of
+    task sink-get-next-power-of-two
+    task sink-rise
+    task sink-remainder
+    task sink-remainder-euclid
+    task sink-shift-left
+    task sink-shift-right
+    task sink-subtract
+    task sink-unsign
+
+    task roll-add
+    task roll-add-signed
+    task roll-divide
+    task roll-divide-euclid
+    task roll-fall
+    task roll-fall-10
+    task roll-fall-2
+    task roll-multiply
+    task roll-negate
+    task roll-get-next-multiple-of
+    task roll-get-next-power-of-two
+    task roll-rise
+    task roll-remainder
+    task roll-remainder-euclid
+    task roll-shift-left
+    task roll-shift-right
+    task roll-subtract
+    task roll-unsign
+
+    # unchecked
+    task free-add
+      note unsafe
+    task free-multiply
+      note unsafe
+    task free-shift-left
+      note unsafe
+    task free-shift-right
+      note unsafe
+    task free-subtract
+      note unsafe
+
+    task roll-test-add
+    task roll-test-add-signed
+    task roll-test-divide
+    task roll-test-divide-euclid
+    task roll-test-fall
+    task roll-test-fall-10
+    task roll-test-fall-2
+    task roll-test-multiply
+    task roll-test-negate
+    task roll-test-get-next-multiple-of
+    task roll-test-get-next-power-of-two
+    task roll-test-rise
+    task roll-test-remainder
+    task roll-test-remainder-euclid
+    task roll-test-shift-left
+    task roll-test-shift-right
+    task roll-test-subtract
+    task roll-test-unsign
+
+    task is-negative
+    task is-positive
+
+    task make-big-endian-bytes
+    task make-little-endian-bytes
+    task make-native-endian-bytes
+    task make-big-endian
+    task make-little-endian
+    task rotate-left
+    task rotate-right
+    task swap-bytes
+    task reverse-bits
+    task bitwise-intersect
+      take a, like self-type
+      take b, like self-type
+
+    task bitwise-unify
+      take a, like self-type
+      take b, like self-type
+
+    task bitwise-miss
+      take a, like self-type
+      take b, like self-type
+
+    task count-ones
+      like unsigned-type
+
+    task count-zeroes
+      like unsigned-type
+
+    task count-leading-ones
+      like unsigned-type
+
+    task count-leading-zeroes
+      like unsigned-type
+
+    task count-trailing-ones
+      like unsigned-type
+
+    task count-trailing-zeroes
+      like unsigned-type
+
+    task clone
+
+form i8
+  fuse integer
+    bind self-type, like i8
+    bind unsigned-type, like u8
+
+form i16
+  fuse integer
+    bind self-type, like i16
+    bind unsigned-type, like u16
+
+form i32
+  fuse integer
+    bind self-type, like i32
+    bind unsigned-type, like u32
+
+form i64
+  fuse integer
+    bind self-type, like i64
+    bind unsigned-type, like u64
+
+form u8
+  fuse integer
+    bind self-type, like u8
+    bind unsigned-type, like u8
+
+form u16
+  fuse integer
+    bind self-type, like u16
+    bind unsigned-type, like u16
+
+form u32
+  fuse integer
+    bind self-type, like u32
+    bind unsigned-type, like u32
+
+form u64
+  fuse integer
+    bind self-type, like u64
+    bind unsigned-type, like u64

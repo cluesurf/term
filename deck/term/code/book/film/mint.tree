@@ -1,0 +1,24 @@
+
+load @cluesurf/term/code/book/film
+  find book-film
+  find book-film-bind
+
+mint film, like book-film
+  case kind
+    slot kind
+  case bind, mint film-bind
+    slot bind
+  hook make
+    make book-film
+      bind kind, read kind
+      bind bind, read bind
+
+mint film-bind, like book-film-bind
+  case name
+    slot name
+  case value
+    slot value
+  hook make
+    make book-film-bind
+      bind name, read name
+      bind value, read value

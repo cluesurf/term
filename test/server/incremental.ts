@@ -12,8 +12,8 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const helperOk = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
-const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      mark 5\n`
-const otherSrc = `task other\n  like number\n  send back\n    mark 0\n`
+const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      code 5\n`
+const otherSrc = `task other\n  like number\n  send back\n    code 0\n`
 const withHelper = (helper: string): string => `${helper}\n${callerSrc}\n${otherSrc}`
 
 async function main(): Promise<void> {
@@ -46,14 +46,14 @@ async function main(): Promise<void> {
     const otherTyped = db.runs('typed:other')
 
     // edit ONLY helper's body
-    await analyzer.analyze({ file: 'm.tree', text: withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      mark 2\n`) })
+    await analyzer.analyze({ file: 'm.tree', text: withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n`) })
     ok('editing helper does NOT re-type-check the caller', db.runs('typed:caller') === callerTyped)
     ok('editing helper does NOT re-type-check the unrelated function', db.runs('typed:other') === otherTyped)
     ok('editing helper DOES re-type-check helper', db.runs('typed:helper') >= 2)
 
     // a no-op re-analyze recomputes nothing new
     const before = db.recomputes
-    await analyzer.analyze({ file: 'm.tree', text: withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      mark 2\n`) })
+    await analyzer.analyze({ file: 'm.tree', text: withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n`) })
     ok('a no-op re-analyze does no extra work', db.recomputes === before, `delta ${db.recomputes - before}`)
   }
 

@@ -1,0 +1,29 @@
+
+load @cluesurf/base/code/network/server/response
+  find response
+
+task make
+  take status, like size, fall 200
+  take headers, like hash, need false
+  take body, like text, need false
+
+  send back
+    make response
+      bind status, read status
+      bind headers
+        fork test
+          hook test
+            call is-some, read headers
+          hook hold
+            read headers
+          hook miss
+            make find
+      bind body
+        fork test
+          hook test
+            call is-some, read body
+          hook hold
+            read body
+          hook miss
+            text <>
+      bind dock, wave true

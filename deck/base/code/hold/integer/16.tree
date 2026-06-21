@@ -1,0 +1,47 @@
+
+task is-bit-count-odd
+  take n, like integer-8
+  save n
+    call oppose-bitwise
+      call shift-head
+        read n
+        code 8
+      read n
+  save n
+    call oppose-bitwise
+      call shift-head
+        read n
+        code 4
+      read n
+  save n
+    call oppose-bitwise
+      call shift-head
+        read n
+        code 2
+      read n
+  save n
+    call oppose-bitwise
+      call shift-head
+        read n
+        code 1
+      read n
+  call intersect-bitwise
+    read n
+    code 1
+
+task reverse-bits-word
+  take n
+  send back seed
+    call bitwise-or
+      call bit-reversal-table/get
+        call bitwise-and
+          call shift-right
+            read n
+            code 8
+          code 255
+      call shift-left
+        call bit-reversal-table/get
+          call bitwise-and
+            read n
+            code 255
+        code 8

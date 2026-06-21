@@ -1,0 +1,13 @@
+
+form socket
+  link dock, mark private
+  link url, like text
+  link protocol, like text
+  link ready, like bool
+
+task connect
+  note async
+  take url, like text
+  take headers, like hash, need false
+  take protocols, like list, need false
+  like socket

@@ -1,0 +1,45 @@
+
+# DNS: Domain Name System. Query and response messages for resolving names to records.
+
+form dns-record-type
+  case a
+  case quad-a
+  case canonical-name
+  case mail-exchange
+  case name-server
+  case text
+  case start-of-authority
+  case pointer
+  case service
+
+form dns-class
+  case internet
+  case chaos
+  case hesiod
+
+form dns-header
+  link id, like u16
+  link is-response, like boolean
+  link is-authoritative, like boolean
+  link is-truncated, like boolean
+  link recursion-desired, like boolean
+  link recursion-available, like boolean
+  link question-count, like u16
+  link answer-count, like u16
+
+form dns-question
+  link name, like text
+  link kind, like dns-record-type
+  link class, like dns-class
+
+form dns-record
+  link name, like text
+  link kind, like dns-record-type
+  link class, like dns-class
+  link time-to-live, like u32
+  link data, like list
+
+form dns-message
+  link header, like dns-header
+  link questions, like list
+  link answers, like list

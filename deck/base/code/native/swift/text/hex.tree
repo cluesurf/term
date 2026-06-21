@@ -1,0 +1,18 @@
+# swift hex implementation. Forwards to the linked hex runtime shim. Internal: reached only through the public hex API.
+
+dock load
+  load <global:hex>, name hex
+
+task to-hex
+  take input, like text
+  like text
+  send back
+    call hex/encode
+      read input
+
+task from-hex
+  take input, like text
+  like text
+  send back
+    call hex/decode
+      read input

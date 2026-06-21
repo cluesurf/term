@@ -10,7 +10,7 @@ import { render } from '@/code/parser/diagnostic'
 
 const SOURCE = `task fetch-answer
   wait true
-  send back, mark 42
+  send back, code 42
 
 task run
   wait true

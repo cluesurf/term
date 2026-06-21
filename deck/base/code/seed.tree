@@ -1,0 +1,33 @@
+
+# Seed: a value expression in a DSL binding. A literal, a path read, or a call result. The uniform value node used
+# across the routing, component, and CLI DSLs.
+
+load ./term
+  find term
+
+load ./road
+  find road
+
+load ./bind
+  find bind
+
+form seed
+  case text, like seed-text
+  case mark, like seed-mark
+  case wave, like seed-wave
+  case read, like road
+  case call, like seed-call
+
+form seed-text
+  link text, like text
+
+form seed-mark
+  link value, like size
+
+form seed-wave
+  link value, like boolean
+
+# a value produced by a call: `call add / bind a, ... / bind b, ...`
+form seed-call
+  link name, like term
+  link bind, list bind

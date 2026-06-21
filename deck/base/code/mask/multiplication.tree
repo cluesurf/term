@@ -1,0 +1,10 @@
+
+mask multiplication
+  # Multiply.
+  head other, base self
+  take output
+
+  task multiply
+    take self
+    take other, like other
+    free self/output

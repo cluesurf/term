@@ -1,0 +1,56 @@
+<!doctype html>
+<!--
+  Live WebGL render of the {3,4,3,4} vibe substrate: the 24-cell drawn as its F4 Coxeter-plane shadow (two dodecagons,
+  96 edges). This page runs the exact WebGL2 call sequence that deck/seed/deck/site.tree/code/example/vibe.tree compiles
+  to (createShader -> shaderSource -> compileShader -> createProgram -> attachShader -> linkProgram -> createBuffer ->
+  bufferData -> drawArrays(LINES)), reading the same baked geometry as the static lattice.svg. Open it in any browser.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{3,4,3,4} lattice - code.surf</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0a0e14; }
+      body { display: grid; place-items: center; gap: 16px; font-family: monospace; color: #5a7a99; }
+      canvas { background: #0a0e14; }
+      p { margin: 0; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <canvas id="lattice-canvas" width="640" height="640"></canvas>
+    <p>{3,4,3,4} . 24-cell . F4 Coxeter plane . two dodecagons, 96 edges</p>
+    <script type="module">
+      import { vertices, count, vertexSource, fragmentSource } from './lattice.data.js'
+
+      const canvas = document.getElementById('lattice-canvas')
+      const gl = canvas.getContext('webgl2')
+
+      gl.viewport(0, 0, canvas.width, canvas.height)
+      gl.clearColor(0.039, 0.055, 0.078, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      function makeShader(kind, source) {
+        const shader = gl.createShader(kind)
+        gl.shaderSource(shader, source)
+        gl.compileShader(shader)
+        return shader
+      }
+
+      const program = gl.createProgram()
+      gl.attachShader(program, makeShader(gl.VERTEX_SHADER, vertexSource))
+      gl.attachShader(program, makeShader(gl.FRAGMENT_SHADER, fragmentSource))
+      gl.linkProgram(program)
+
+      const buffer = gl.createBuffer()
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW)
+
+      gl.useProgram(program)
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+      gl.enableVertexAttribArray(0)
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
+      gl.drawArrays(gl.LINES, 0, count)
+    </script>
+  </body>
+</html>

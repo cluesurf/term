@@ -1,0 +1,44 @@
+
+load @cluesurf/base/code/native/shared/test/assert
+  find assert
+  find deny
+  find mark-skip
+  find mark-fail
+
+task assert
+  take value
+  take form, like text, fall text <truthy>
+  take expected, need false
+  take message, like text, need false
+  take tolerance, need false
+
+  call assert
+    bind value, read value
+    bind form, read form
+    bind expected, read expected
+    bind message, read message
+    bind tolerance, read tolerance
+
+task deny
+  take value
+  take form, like text, fall text <truthy>
+  take expected, need false
+  take message, like text, need false
+
+  call deny
+    bind value, read value
+    bind form, read form
+    bind expected, read expected
+    bind message, read message
+
+task skip
+  take reason, like text, need false
+
+  call mark-skip
+    bind reason, read reason
+
+task fail
+  take message, like text
+
+  call mark-fail
+    bind message, read message

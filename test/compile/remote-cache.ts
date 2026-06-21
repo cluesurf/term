@@ -20,7 +20,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   if (cond) { pass++; console.log(`ok    ${name}`) } else { fail++; console.log(`FAIL  ${name}  ${info}`) }
 }
 
-const SOURCE = `task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      mark 3\n`
+const SOURCE = `task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 3\n`
 const PORT = 39623
 const TOKEN = 'secret'
 

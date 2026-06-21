@@ -1,0 +1,102 @@
+# kotlin calendar implementation. Forwards to the linked calendar runtime shim (java.time). All operations are UTC. Internal: reached only through the public calendar API.
+
+dock load
+  load <global:calendar>, name calendar
+
+task do-format
+  take millis, like number
+  like text
+  send back
+    call calendar/format
+      read millis
+
+task do-parse
+  take text, like text
+  like number
+  send back
+    call calendar/parse
+      read text
+
+task do-year
+  take millis, like number
+  like integer
+  send back
+    call calendar/year
+      read millis
+
+task do-month
+  take millis, like number
+  like integer
+  send back
+    call calendar/month
+      read millis
+
+task do-day
+  take millis, like number
+  like integer
+  send back
+    call calendar/day
+      read millis
+
+task do-hour
+  take millis, like number
+  like integer
+  send back
+    call calendar/hour
+      read millis
+
+task do-minute
+  take millis, like number
+  like integer
+  send back
+    call calendar/minute
+      read millis
+
+task do-second
+  take millis, like number
+  like integer
+  send back
+    call calendar/second
+      read millis
+
+task do-weekday
+  take millis, like number
+  like integer
+  send back
+    call calendar/weekday
+      read millis
+
+task do-build
+  take year, like integer
+  take month, like integer
+  take day, like integer
+  take hour, like integer
+  take minute, like integer
+  take second, like integer
+  like number
+  send back
+    call calendar/build
+      read year
+      read month
+      read day
+      read hour
+      read minute
+      read second
+
+task do-add-months
+  take millis, like number
+  take count, like number
+  like number
+  send back
+    call calendar/add-months
+      read millis
+      read count
+
+task do-add-years
+  take millis, like number
+  take count, like number
+  like number
+  send back
+    call calendar/add-years
+      read millis
+      read count

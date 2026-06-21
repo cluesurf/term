@@ -1,0 +1,7 @@
+
+# Public graphics API: userland imports this clean path (never a native/... module). Re-exports the opaque handles and
+# the abstract native graphics API, which the build rewrites to the target platform's impl (browser WebGPU/WebGL, or
+# the server stub) through the native-env mechanism. Render code is thus platform-agnostic. Mirrors ../dom/dom.
+
+bear @cluesurf/site/code/graphics/surface
+bear @cluesurf/site/code/graphics/native/graphics

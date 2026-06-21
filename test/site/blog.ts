@@ -79,7 +79,7 @@ function textOf(node: any): string {
 }
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'site.tree/test/site/face/blog.tree')
+  const entry = path.join(DECK, 'seed/deck/site/test/site/face/blog.tree')
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },
@@ -190,7 +190,7 @@ async function main(): Promise<void> {
   )
 
   // emit runnable artifacts
-  const web = path.join(DECK, 'site.tree/host/web-blog')
+  const web = path.join(DECK, 'seed/deck/site/host/web-blog')
   fs.mkdirSync(web, { recursive: true })
   fs.writeFileSync(path.join(web, 'app.js'), code)
   fs.writeFileSync(

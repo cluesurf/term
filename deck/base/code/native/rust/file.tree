@@ -1,0 +1,77 @@
+# Rust file system implementation. Forwards to the linked `io` runtime (code/compile/io-runtime SEED_IO_RUNTIME_RUST), which wraps std::fs and absorbs its Result type so the public file API stays total. Internal: reached only through the public file API.
+
+dock load
+  load <global:io>, name io
+
+task read-file
+  take path, like text
+  like text
+  send back
+    call io/file-read
+      read path
+
+task write-file
+  take path, like text
+  take data, like text
+  like void
+  send back
+    call io/file-write
+      read path
+      read data
+
+task read-file-bytes
+  take path, like text
+  like bytes
+  send back
+    call io/file-read-bytes
+      read path
+
+task write-file-bytes
+  take path, like text
+  take data, like bytes
+  like void
+  send back
+    call io/file-write-bytes
+      read path
+      read data
+
+task append-file
+  take path, like text
+  take data, like text
+  like void
+  send back
+    call io/file-append
+      read path
+      read data
+
+task remove-file
+  take path, like text
+  like void
+  send back
+    call io/file-remove
+      read path
+
+task copy-file
+  take from, like text
+  take to, like text
+  like void
+  send back
+    call io/file-copy
+      read from
+      read to
+
+task move-file
+  take from, like text
+  take to, like text
+  like void
+  send back
+    call io/file-move
+      read from
+      read to
+
+task file-exists
+  take path, like text
+  like boolean
+  send back
+    call io/file-exists
+      read path

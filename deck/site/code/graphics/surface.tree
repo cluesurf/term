@@ -1,0 +1,27 @@
+
+# The graphics handles: opaque wrappers around the platform's GPU objects (a WebGPU/WebGL surface, shader, program, and
+# buffer in the browser, or empty records on the server). The uniform graphics API and apps only ever pass these
+# handles around, never a host primitive. Mirrors the `view` handle in ../dom/view.
+
+form surface
+  link handle, mark private
+
+form shader
+  link handle, mark private
+
+form program
+  link handle, mark private
+
+form gpu-buffer
+  link handle, mark private
+
+# Which stage a shader runs at. A union, never a stringly-typed option (see conventions).
+form shader-kind
+  case vertex
+  case fragment
+
+# Which primitive a draw assembles its vertices into. A union, mapped to the GL constant by the native impl.
+form primitive-kind
+  case triangles
+  case lines
+  case points

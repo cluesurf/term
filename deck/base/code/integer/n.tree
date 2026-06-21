@@ -1,0 +1,170 @@
+
+load ../8
+  find i8
+
+tree integer
+  take size, like i8
+
+  hook fuse
+    form i{{size}}
+      task seek-add
+        take a, like i{{size}}
+        take b, like i{{size}}
+        fuse free-result, like i{{size}}
+
+      task seek-add-signed
+        take a, like i{{size}}
+        take b, like i{{size}}
+
+      task seek-divide-base
+        take a, like i{{size}}
+        take b, like i{{size}}
+
+      task seek-divide-head
+        take a, like i{{size}}
+        take b, like i{{size}}
+
+      task seek-divide-euclid
+        take a, like i{{size}}
+        take b, like i{{size}}
+      task seek-fall
+        take a, like i{{size}}
+        take base, like i{{size}}
+
+      task seek-fall-10
+        take a, like i{{size}}
+
+      task seek-fall-2
+        take a, like i{{size}}
+
+      task seek-multiply
+        take a, like i{{size}}
+        take b, like i{{size}}
+
+      task seek-get-next-multiple-of
+
+      task seek-get-next-power-of-two
+      task seek-rise
+      task seek-remainder
+      task seek-remainder-euclid
+      task seek-shift-base
+      task seek-shift-head
+      task seek-subtract
+      task seek-unsign
+
+      # checked
+      task checked-add
+        take a, like i{{size}}
+        take b, like i{{size}}
+        like maybe, like i{{size}}
+
+      task checked-add-signed
+        take a, like i{{size}}
+        take b, like i{{size}}
+        like maybe, like i{{size}}
+
+      task checked-divide
+        take a, like i{{size}}
+        take b, like i{{size}}
+        like maybe, like i{{size}}
+
+      task checked-divide-euclid
+        take a, like i{{size}}
+        take b, like i{{size}}
+        like maybe, like i{{size}}
+
+      task checked-fall
+        take a, like i{{size}}
+        take base, like i{{size}}
+        like maybe, like i{{size}}
+
+      task checked-fall-10
+      task checked-fall-2
+      task checked-multiply
+        take a, like i{{size}}
+        take b, like i{{size}}
+        like maybe, like i{{size}}
+
+      task checked-negate
+      task checked-get-next-multiple-of
+      task checked-get-next-power-of-two
+      task checked-rise
+      task checked-remainder
+      task checked-remainder-euclid
+      task checked-shift-base
+      task checked-shift-head
+      task checked-subtract
+      task checked-unsign
+
+      # clamped
+      task clamped-add
+      task clamped-add-signed
+      task clamped-divide
+      task clamped-divide-euclid
+      task clamped-fall
+      task clamped-fall-10
+      task clamped-fall-2
+      task clamped-multiply
+      task clamped-negate
+      task clamped-get-next-multiple-of
+      task clamped-get-next-power-of-two
+      task clamped-rise
+      task clamped-remainder
+      task clamped-remainder-euclid
+      task clamped-shift-base
+      task clamped-shift-head
+      task clamped-subtract
+      task clamped-unsign
+
+      task wrapping-add
+      task wrapping-add-signed
+      task wrapping-divide
+      task wrapping-divide-euclid
+      task wrapping-fall
+      task wrapping-fall-10
+      task wrapping-fall-2
+      task wrapping-multiply
+      task wrapping-negate
+      task wrapping-get-next-multiple-of
+      task wrapping-get-next-power-of-two
+      task wrapping-rise
+      task wrapping-remainder
+      task wrapping-remainder-euclid
+      task wrapping-shift-base
+      task wrapping-shift-head
+      task wrapping-subtract
+      task wrapping-unsign
+
+      # unchecked
+      task unchecked-add
+        note unsafe
+      task unchecked-multiply
+        note unsafe
+      task unchecked-shift-base
+        note unsafe
+      task unchecked-shift-head
+        note unsafe
+      task unchecked-subtract
+        note unsafe
+
+      task add-test-and-roll
+      task add-signed-test-and-roll
+      task divide-test-and-roll
+      task divide-euclid-test-and-roll
+      task fall-test-and-roll
+      task fall-10-test-and-roll
+      task fall-2-test-and-roll
+      task multiply-test-and-roll
+      task negate-test-and-roll
+      task get-next-multiple-of-test-and-roll
+      task get-next-power-of-two-test-and-roll
+      task rise-test-and-roll
+      task remainder-test-and-roll
+      task remainder-euclid-test-and-roll
+      task shift-base-test-and-roll
+      task shift-head-test-and-roll
+      task subtract-test-and-roll
+      task unsign-test-and-roll
+
+      task is-negative
+      task is-positive

@@ -1,0 +1,6 @@
+
+# The platform-agnostic database API. Userland imports this clean path (never a driver or a `native/...` module). It
+# re-exports the abstract native db module, which the build rewrites to the target's impl (`native/node/db`, a
+# Postgres-backed impl) via the native-env mechanism.
+
+bear @cluesurf/site/code/base/native/db

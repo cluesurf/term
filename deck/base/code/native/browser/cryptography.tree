@@ -1,0 +1,57 @@
+
+task digest
+  note async
+  take algorithm, like text
+  take data, like text
+
+  save name
+    call browser-digest-name
+      read algorithm
+
+  save encoded
+    call browser-text-encode
+      read data
+
+  save hash
+    call crypto/subtle/digest
+      note async
+      read name
+      read encoded
+      halt kink
+
+  send back
+    call browser-bytes-to-hex
+      read hash
+
+task random-bytes
+  take size, like size
+
+  save array
+    call make-uint8-array
+      read size
+
+  call crypto/get-random-values
+    read array
+
+  send back, read array
+
+task browser-digest-name
+  note private
+  take algorithm, like text
+  dock call <run {
+    const map = { sha256: "SHA-256", sha384: "SHA-384", sha512: "SHA-512", sha1: "SHA-1" };
+    return map[algorithm] || algorithm.toUpperCase();
+  }>
+
+task browser-text-encode
+  note private
+  take data, like text
+  dock call <new TextEncoder().encode(data)>
+
+task browser-bytes-to-hex
+  note private
+  take buffer
+  dock call <run {
+    const bytes = new Uint8Array(buffer);
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  }>

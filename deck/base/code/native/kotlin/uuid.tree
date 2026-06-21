@@ -1,0 +1,9 @@
+# kotlin UUID implementation. Forwards to the linked uuid runtime shim. Internal: reached only through the public uuid API.
+
+dock load
+  load <global:uuid>, name uuid
+
+task generate-v4
+  like text
+  send back
+    call uuid/version4

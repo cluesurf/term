@@ -1,0 +1,17 @@
+
+mine load
+  mine term, term load
+    mine text
+      slot path
+    mine list
+      mine form, like find
+        slot find
+
+mine find
+  mine term, term find
+    mine term
+      slot text
+    mine maybe
+      mine term, term name
+        mine term
+          slot name

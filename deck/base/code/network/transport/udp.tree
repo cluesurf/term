@@ -1,0 +1,11 @@
+
+# UDP: User Datagram Protocol. The connectionless datagram structure at the transport layer.
+# The socket-level open/send API lives in ../../udp.
+
+# a datagram: an eight-byte header plus the payload bytes
+form udp-datagram
+  link source-port, like u16
+  link destination-port, like u16
+  link length, like u16
+  link checksum, like u16
+  link payload, like list

@@ -1,0 +1,91 @@
+# Common string operations over the text type. The clean uniform interface; the per-env native implementation is selected at build time and hidden. node and browser call the host String methods directly; the compiled targets call a thin text shim over their platform string API.
+
+load @cluesurf/base/code/native/text/string
+  find do-upper
+  find do-lower
+  find do-trim
+  find do-repeat
+  find do-contains
+  find do-starts-with
+  find do-ends-with
+  find do-replace
+  find do-slice
+
+task to-upper
+  take input, like text
+  like text
+  send back
+    call do-upper
+      read input
+
+task to-lower
+  take input, like text
+  like text
+  send back
+    call do-lower
+      read input
+
+task trim
+  take input, like text
+  like text
+  send back
+    call do-trim
+      read input
+
+task repeat
+  take input, like text
+  take count, like number
+  like text
+  send back
+    call do-repeat
+      read input
+      read count
+
+task contains
+  take input, like text
+  take part, like text
+  like boolean
+  send back
+    call do-contains
+      read input
+      read part
+
+task starts-with
+  take input, like text
+  take prefix, like text
+  like boolean
+  send back
+    call do-starts-with
+      read input
+      read prefix
+
+task ends-with
+  take input, like text
+  take suffix, like text
+  like boolean
+  send back
+    call do-ends-with
+      read input
+      read suffix
+
+task replace
+  take input, like text
+  take from, like text
+  take to, like text
+  like text
+  send back
+    call do-replace
+      read input
+      read from
+      read to
+
+task slice
+  take input, like text
+  take start, like number
+  take end, like number
+  like text
+  send back
+    call do-slice
+      read input
+      read start
+      read end

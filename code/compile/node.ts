@@ -358,6 +358,10 @@ export type DockTake = {
   name: string
   type?: Type
   required: boolean
+  // a CLI short flag: `take title / code t` makes `--title` also available as `-t`
+  short?: string
+  // masked input (a password / secret): `take code / wait rise` reads without echoing
+  masked?: boolean
   span: Span
 }
 export type DockMethod = {

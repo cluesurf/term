@@ -1,0 +1,17 @@
+
+load @cluesurf/term/code/code/head/mine
+  find head
+
+load @cluesurf/term/code/seed/seed/mine
+  find host
+
+mine tune
+  mine term, term tune
+    mine term
+      slot name
+    mine list
+      mine form, like head
+        slot head
+    mine list
+      mine form, like host
+        slot host

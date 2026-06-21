@@ -156,6 +156,15 @@ export function check(
     if (statement.form === 'instance')
       instances.add(`${statement.mask}:${statement.target}`)
 
+  // trait-method names (every method any mask declares). A trait-method call whose receiver is a concrete form
+  // dispatches to that form's instance method here; one whose receiver is a trait-bounded generic is left unresolved
+  // so the dictionary-passing IR pass can thread the instance. So the single-owner dispatch guess below must NOT fire
+  // for a trait method -- guessing the lone instance would wrongly hard-wire a generic call to one concrete type.
+  const maskMethods = new Set<string>()
+  for (const statement of program)
+    if (statement.form === 'mask')
+      for (const method of statement.methods) maskMethods.add(method)
+
   // function name -> its signature: generic variable ids, their names, their trait bounds, and param/result types
   const functions = new Map<string, Signature>()
   for (const statement of program) {
@@ -548,7 +557,7 @@ export function check(
           }
           // if no argument pins the form but exactly one form owns this method name, it is unambiguous. Skip this guess
           // when a global function of the same name exists, since the call may target that global rather than a method.
-          if (!mangled && !functions.has(method)) {
+          if (!mangled && !functions.has(method) && !maskMethods.has(method)) {
             const owners = [...methodTable.values()].filter(m =>
               m.has(method),
             )

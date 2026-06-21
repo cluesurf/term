@@ -1,0 +1,163 @@
+
+# Text (string) operations. Each delegates to the native string method on the value.
+
+task char-at
+  take value, like text
+  take index, like integer
+  like text
+  send back
+    call value/char-at
+      read index
+
+task char-code-at
+  take value, like text
+  take index, like integer
+  like integer
+  send back
+    call value/char-code-at
+      read index
+
+task index-of
+  take value, like text
+  take search, like text
+  take start-index, like integer, need false
+  like integer
+  send back
+    call value/index-of
+      read search
+      read start-index
+
+task last-index-of
+  take value, like text
+  take search, like text
+  take start-index, like integer, need false
+  like integer
+  send back
+    call value/last-index-of
+      read search
+      read start-index
+
+task split
+  take value, like text
+  take delimiter, like text
+  like list
+  send back
+    call value/split
+      read delimiter
+
+task substring
+  take value, like text
+  take start-index, like integer
+  take end-index, like integer, need false
+  like text
+  send back
+    call value/substring
+      read start-index
+      read end-index
+
+task to-lower-case
+  take value, like text
+  like text
+  send back
+    call value/to-lower-case
+
+task to-upper-case
+  take value, like text
+  like text
+  send back
+    call value/to-upper-case
+
+task starts-with
+  take value, like text
+  take prefix, like text
+  like boolean
+  send back
+    call value/starts-with
+      read prefix
+
+task ends-with
+  take value, like text
+  take suffix, like text
+  like boolean
+  send back
+    call value/ends-with
+      read suffix
+
+task trim
+  take value, like text
+  like text
+  send back
+    call value/trim
+
+task trim-start
+  take value, like text
+  like text
+  send back
+    call value/trim-start
+
+task trim-end
+  take value, like text
+  like text
+  send back
+    call value/trim-end
+
+task pad-left
+  take value, like text
+  take length, like integer
+  take fill, like text
+  like text
+  send back
+    call value/pad-start
+      read length
+      read fill
+
+task pad-right
+  take value, like text
+  take length, like integer
+  take fill, like text
+  like text
+  send back
+    call value/pad-end
+      read length
+      read fill
+
+task replace
+  take value, like text
+  take search, like text
+  take replacement, like text
+  like text
+  send back
+    call value/replace
+      read search
+      read replacement
+
+task replace-all
+  take value, like text
+  take search, like text
+  take replacement, like text
+  like text
+  send back
+    call value/replace-all
+      read search
+      read replacement
+
+task contains
+  take value, like text
+  take search, like text
+  like boolean
+  send back
+    call value/includes
+      read search
+
+# Character encodings.
+
+form encoding
+  case ascii
+  case base-64
+  case hex
+  case latin-1
+  case utf-8
+  case utf-16
+  case utf-16-be
+  case utf-16-le
+  case utf-32

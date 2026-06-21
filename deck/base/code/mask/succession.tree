@@ -1,0 +1,8 @@
+
+mask succession
+  # Iteration trait.
+  take item, like like
+
+  task head
+    take self, flex true
+    free maybe, like self/item

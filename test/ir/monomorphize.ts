@@ -40,7 +40,7 @@ task run-number
   like number
   send back
     call identity
-      mark 1
+      code 1
 
 task run-string
   like text

@@ -1,0 +1,7 @@
+
+mint db-fold
+  case name
+    slot name
+  hook make
+    make db-fold
+      bind name, read name

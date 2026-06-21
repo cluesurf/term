@@ -1,0 +1,40 @@
+
+host http2, call require, text <http2>
+
+task handle
+
+tree server
+  take server-form
+
+  hook bind
+    form server
+      take x-server, read server-form
+        note private
+      take port, like unsigned-integer-16
+        note private
+
+      task listen
+        free seed, like self
+        call self/x-server/listen
+          read self/port
+
+      task get-port
+        read self/port
+
+tree make-server
+  take http2-create-server
+  take extra-properties
+    void true
+
+  hook bind
+    task make-server
+      take handle, like task, base handle
+      take port, like unsigned-integer-16
+      fuse extra-properties
+
+      free server, like server
+
+      make server
+        fuse http2-create-server
+        read port
+        save server

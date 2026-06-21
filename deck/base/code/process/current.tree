@@ -1,0 +1,16 @@
+
+form process-info
+  link id, like size
+  link arguments, like list
+  link directory, like text
+  link executable, like text
+
+task read
+  like process-info
+
+task exit
+  take code, like size, fall 0
+
+task listen
+  take signal, like text
+  take handler, like task

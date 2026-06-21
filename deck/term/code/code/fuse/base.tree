@@ -1,0 +1,4 @@
+
+mill fuse
+  bind mine, load ./mine
+  bind mint, load ./mint

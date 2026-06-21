@@ -1,0 +1,25 @@
+# swift file metadata. Forwards to the linked io runtime shim (the platform filesystem). Internal: reached only through the public file/metadata API.
+
+dock load
+  load <global:io>, name io
+
+task metadata-size
+  take path, like text
+  like number
+  send back
+    call io/file-size
+      read path
+
+task metadata-is-directory
+  take path, like text
+  like boolean
+  send back
+    call io/is-directory
+      read path
+
+task metadata-is-file
+  take path, like text
+  like boolean
+  send back
+    call io/is-file
+      read path

@@ -6,180 +6,180 @@ This is the first prototype of the CLI tool for base.
 
 ```bash
 # link local repo to global dependency store
-term link deck
-term link
+seed link deck
+seed link
 # link globally linked dependency to local project
-term link deck @foo/bar
-term link @foo/bar
+seed link deck @foo/bar
+seed link @foo/bar
 # remove a symlink
-term toss deck link <deck>
-term toss link <deck>
+seed toss deck link <deck>
+seed toss link <deck>
 # run project tests
-term test deck
-term test
+seed test deck
+seed test
 # install defined packages
-term load deck
-term load
+seed load deck
+seed load
 # install defined decks without dev(work)/test
-term load deck --like base
+seed load deck --like base
 # install packages
-term save deck @foo/bar
-term save @foo/bar
+seed save deck @foo/bar
+seed save @foo/bar
 # install packages globally
-term save deck <deck> --slot base
+seed save deck <deck> --slot base
 # check if decks are installed
-term seek
+seed seek
 # create a new package
-term cast deck
-term cast
+seed cast deck
+seed cast
 # build/compile the package
-term make deck
-term make
+seed make deck
+seed make
 # watch the directory and recompile
-term make --ride
+seed make --ride
 # start a repl for the current deck
-term walk deck
-term walk
+seed walk deck
+seed walk
 # apply configuration like terraform
-term bind deck
-term bind
+seed bind deck
+seed bind
 # create a user account
-term cast mind
+seed cast mind
 # update user profile property
-term save mind <name> <value>
+seed save mind <name> <value>
 # read user profile data
-term read mind
+seed read mind
 # read user profile value
-term read mind <name>
+seed read mind <name>
 # create an org/namespace
-term cast host
+seed cast host
 # update host profile property
-term save host <name> <value>
+seed save host <name> <value>
 # change the default registry from base.link to something else
-term save hold <url>
+seed save hold <url>
 # change the org registry
-term save hold <host> <url>
+seed save hold <host> <url>
 # login
-term dock mind
+seed dock mind
 # logout
-term void mind
+seed void mind
 # publish a package
-term host deck
-term host
+seed host deck
+seed host
 # bump patch version
-term move mark 3
-term move mark
+seed move mark 3
+seed move mark
 # bump minor version
-term move mark 2
+seed move mark 2
 # bump major version
-term move mark 1
+seed move mark 1
 # show dependency tree
-term show deck tree
+seed show deck tree
 # run the code
-term boot deck
-term boot
+seed boot deck
+seed boot
 # clean artifacts
-term wash deck
+seed wash deck
 # make documentation, hosted in ./hint/code
-term make code book
+seed make code book
 # generate markdown from book
-term make book --like md
-term make book
+seed make book --like md
+seed make book
 # generate pdf from book
-term make book --like pdf
+seed make book --like pdf
 # remove package from manifest
-term toss deck <deck>
-term toss <deck>
+seed toss deck <deck>
+seed toss <deck>
 # add owner to package
-term link deck mind <mind>
+seed link deck mind <mind>
 # remove owner
-term toss deck mind <mind>
+seed toss deck mind <mind>
 # show info about this deck
-term note deck
+seed note deck
 # show info about a deck
-term note deck <deck>
-term note <deck>
+seed note deck <deck>
+seed note <deck>
 # show info and problems about current deck
 # shows TODOs as well, and stats.
-term note
+seed note
 # show file sizes
-term note deck file size
-term note file size
-term note size
+seed note deck file size
+seed note file size
+seed note size
 # list outdated decks
-term diff deck
+seed diff deck
 # see if module is outdated
-term diff deck <deck>
+seed diff deck <deck>
 # term version
-term show mark
+seed show mark
 # show basic information about term and operating system for debugging help
-term show
+seed show
 # show intro helper menu
 base
 # show source location of deck
-term show deck link
+seed show deck link
 # open deck in editor
-term show deck <deck>
+seed show deck <deck>
 # execute an arbitrary task
-term <name>
+seed <name>
 # execute arbitrary task from another repo
-term <name> <deck>
+seed <name> <deck>
 # run the make command of another repo
-term make @foo/bar
+seed make @foo/bar
 # deprecate a deck version
-term void deck my-thing@"< 0.2.3" "critical bug fixed in v0.2.3"
+seed void deck my-thing@"< 0.2.3" "critical bug fixed in v0.2.3"
 # switch to a different version of base
-term move self <version>
+seed move self <version>
 # set the default version to use
-term bind self <version>
+seed bind self <version>
 # install the latest term itself
-term save self
+seed save self
 # install a specific version of term itself
-term save self <version>
+seed save self <version>
 # check if the term has a new version
-term diff self
+seed diff self
 # list installed versions of base
-term list self
+seed list self
 # where term is located itself, and other things
-term show self
+seed show self
 # start development server
-term work
+seed work
 # plan a terraform configuration
-term brew site
-term brew
+seed brew site
+seed brew
 # read config value
-term read <name>
+seed read <name>
 # terraform bind
-term bind site
+seed bind site
 # load db console
-term bind base
+seed bind base
 # create Database
-term make base
+seed make base
 # drop database
-term toss base
+seed toss base
 # load seed data
-term seed base
+seed seed base
 # clear logs
-term wash tail
+seed wash tail
 # run migrations
-term bind term head
-term bind base
+seed bind term head
+seed bind base
 # rollback migrations
-term bind term back
+seed bind term back
 # generate UI component
-term make dock
+seed make dock
 # custom commands
-term call <command>
+seed call <command>
 ```
 
 Since you can add your own commands to `base`, the convention is:
 
 ```bash
-term <verb> <...objects> <...options>
+seed <verb> <...objects> <...options>
 ```
 
 ```bash
-term test view
+seed test view
 ```
 
 ## Generic Options

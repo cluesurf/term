@@ -1,0 +1,35 @@
+
+load @cluesurf/base/code/network/udp
+  find socket
+
+task open
+  note async
+  take port, like size, need false
+  take host, like text, fall text <0.0.0.0>
+
+  save bind-port
+    fork test
+      hook test
+        call is-some, read port
+      hook hold
+        read port
+      hook miss
+        code 0
+
+  save addr
+    call format
+      text <{}:{}>
+      read host
+      read bind-port
+
+  save raw
+    call tokio/net/udp-socket/bind
+      note async
+      read addr
+      halt kink
+
+  send back
+    make socket
+      bind dock, read raw
+      bind host, read host
+      bind port, read bind-port

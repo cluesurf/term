@@ -1,0 +1,129 @@
+
+load @cluesurf/base/code/flow
+  find flow
+  find show
+  find dive
+  find hint
+  find tell
+  find bust
+  find halt
+  find save
+  find turn
+  find back
+
+mint flow
+  case call, mint call
+    slot call
+  case make, mint make
+    slot make
+  case save, mint save
+    slot save
+  case fork, mint fork
+    slot fork
+  case walk, mint walk
+    slot walk
+  case back, mint back
+    slot back
+  case meet, mint meet
+    slot meet
+  case turn, mint turn
+    slot turn
+  case next
+    slot next
+  case rest
+    slot rest
+  case rein
+    slot rein
+  case show, mint show
+    slot show
+  case dive, mint dive
+    slot dive
+  case hint, mint hint
+    slot hint
+  case tell, mint tell
+    slot tell
+  case bust, mint bust
+    slot bust
+  case halt, mint halt
+    slot halt
+  case fuse, mint fuse
+    slot fuse
+  case slot, mint slot
+    slot slot
+  case beam, mint beam
+    slot beam
+
+mint show
+  case seed, mint seed
+    slot seed
+  hook make
+    make show
+      bind seed, read seed
+
+mint dive
+  case seed, mint seed
+    slot seed
+  hook make
+    make dive
+      bind seed, read seed
+
+mint hint
+  case seed, mint seed
+    slot seed
+  hook make
+    make hint
+      bind seed, read seed
+
+mint tell
+  case seed, mint seed
+    slot seed
+  hook make
+    make tell
+      bind seed, read seed
+
+mint bust
+  case seed, mint seed
+    slot seed
+  hook make
+    make bust
+      bind seed, read seed
+
+mint halt
+  case mode
+    slot mode
+  case seed, mint seed
+    slot seed
+  hook make
+    make halt
+      bind mode, read mode
+      bind seed, read seed
+
+mint save
+  case name
+    slot name
+  case seed, mint seed
+    slot seed
+  hook make
+    make save
+      bind name, read name
+      bind seed, read seed
+
+mint turn
+  case name
+    slot name
+  case seed, mint seed
+    slot seed
+  case line
+    slot line
+  hook make
+    make turn
+      bind name, read name
+      bind seed, read seed
+      bind line, read line
+
+mint back
+  case seed, mint seed
+    slot seed
+  hook make
+    make back
+      bind seed, read seed

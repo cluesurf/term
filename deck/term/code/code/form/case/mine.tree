@@ -1,0 +1,73 @@
+
+mine base
+  mine term, term base
+    mine term
+      slot name
+    mine maybe
+      mine any
+        mine form, like list
+          slot list
+        mine form, like draw
+          slot draw
+        mine form, like form
+          slot form
+        mine form, like take
+          slot take
+    mine maybe
+      mine form, like free
+        slot free
+    mine maybe
+      mine form, like fall
+        slot fall
+
+mine head
+  mine term, term head
+    mine term
+      slot name
+    mine maybe
+      mine any
+        mine form, like list
+          slot list
+        mine form, like draw
+          slot draw
+        mine form, like form
+          slot form
+        mine form, like take
+          slot take
+    mine maybe
+      mine form, like free
+        slot free
+    mine maybe
+      mine form, like fall
+        slot fall
+
+mine host
+  mine term, term host
+    mine term
+      slot name
+    mine maybe
+      mine any
+        mine form, like list
+          slot list
+        mine form, like draw
+          slot draw
+        mine form, like form
+          slot form
+    mine maybe
+      mine form, like fall
+        slot fall
+
+mine list
+  mine term, term list
+    mine term
+      slot form
+
+mine draw
+  mine term, term draw
+    mine term
+      slot form
+
+mine free
+  mine term, term free
+    mine term
+      slot term

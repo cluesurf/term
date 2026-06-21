@@ -1,0 +1,69 @@
+
+# A small browser app: a button and a label. Clicking the button writes the label signal, and the label's text node
+# updates reactively (fine-grained, no re-render). Compiled against the browser DOM and bundled, this runs in a page;
+# the headless test runs it against a DOM stub. `mount-app` takes the host node to render into (the document body).
+
+load ../../zone/render
+  find element
+  find text
+  find dynamic
+  find event
+  find mount
+load ../../zone/reactive
+  find make-signal
+  find read-signal
+  find write-signal
+load ../../dom/dom
+  find view
+
+task mount-app
+  take host, like view
+
+  save label
+    call make-signal
+      bind value, text <ready>
+
+  save root
+    call element
+      bind tag, text <div>
+
+  save button
+    call element
+      bind tag, text <button>
+
+  call event
+    bind node, read button
+    bind name, text <click>
+    bind handler
+      task on-click
+        call write-signal
+          bind self, read label
+          bind value, text <clicked>
+
+  call append
+    bind parent, read button
+    bind child
+      call text
+        bind value, text <click me>
+
+  call append
+    bind parent, read root
+    bind child, read button
+
+  call append
+    bind parent, read root
+    bind child
+      call dynamic
+        bind source
+          task source
+            like text
+            send back
+              call read-signal
+                bind self, read label
+
+  call mount
+    bind host, read host
+    bind build
+      task build
+        like view
+        send back, read root

@@ -1,0 +1,21 @@
+
+# host bundle
+#   host font-size, size 14, code px
+
+mine host
+  mine term, term host
+    slot name
+    mine list
+      mine form, like host-bind
+        slot bind
+
+mine host-bind
+  mine term, term host
+    slot name
+    mine maybe
+      mine term, term size
+        slot size
+    mine maybe
+      mine term, term code
+        mine text
+          slot unit

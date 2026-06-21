@@ -1,0 +1,24 @@
+
+load @cluesurf/term/code/book/load
+  find book-load
+  find book-load-find
+
+mint load, like book-load
+  case path
+    slot path
+  case find, mint find
+    slot find
+  hook make
+    make book-load
+      bind path, read path
+      bind find, read find
+
+mint find, like book-load-find
+  case text
+    slot name
+  case name
+    slot alias
+  hook make
+    make book-load-find
+      bind name, read name
+      bind alias, read alias

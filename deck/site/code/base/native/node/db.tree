@@ -1,0 +1,43 @@
+
+# Node database impl: Postgres-backed, conforming to the abstract API in ../../db. Docks the `<global:postgres>` runtime
+# shim (which wraps the `pg` driver), so the driver and its connection plumbing never appear in userland.
+
+dock load
+  load <global:postgres>, name postgres
+
+load ../db
+  find row
+
+task connect
+  take url, like text
+  call postgres/connect
+    read url
+
+task query
+  take sql, like text
+  take params, like list
+  like list
+  mark async
+  send back
+    call postgres/query
+      read sql
+      read params
+      wait true
+
+task run
+  take sql, like text
+  take params, like list
+  mark async
+  call postgres/run
+    read sql
+    read params
+    wait true
+
+task field
+  take row, like row
+  take name, like text
+  like text
+  send back
+    call postgres/field
+      read row
+      read name

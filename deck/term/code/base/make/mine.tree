@@ -1,0 +1,123 @@
+
+load @cluesurf/term/code/code/tag/mine
+  find tag
+
+load @cluesurf/term/code/code/bind/mine
+  find bind
+
+load @cluesurf/term/code/code/need/mine
+  find need
+
+load @cluesurf/term/code/code/seed/mine
+  find seed
+
+load @cluesurf/term/code/code/take/mine
+  find take
+
+load @cluesurf/term/code/base/hold/mine
+  find db-hold
+
+load @cluesurf/term/code/base/send/mine
+  find db-send
+
+load @cluesurf/term/code/base/bond/mine
+  find db-bond
+
+load @cluesurf/term/code/base/fold/mine
+  find db-fold
+
+mine db-make
+  mine term, term make
+    mine term
+      slot kind
+    mine maybe
+      mine term, term name
+        mine term
+          slot name
+    mine list
+      mine any
+        mine form, like db-make-link
+          slot link
+        mine form, like db-hold
+          slot hold
+        mine form, like db-send
+          slot send
+        mine form, like db-bond
+          slot bond
+        mine form, like db-fold
+          slot fold
+        mine form, like bind
+          slot bind
+        mine form, like tag
+          slot tag
+        mine form, like take
+          slot take
+        mine form, like db-make-hook
+          slot hook
+        mine form, like db-make-term
+          slot term
+    mine maybe
+      mine term, term base
+        mine term
+          slot base
+        mine list
+          mine form, like db-make-base-link
+            slot base-link
+
+mine db-make-link
+  mine term, term link
+    mine term
+      slot name
+    mine maybe
+      mine term, term like
+        mine term
+          slot like
+    mine maybe
+      mine form, like need
+        slot need
+    mine maybe
+      mine term, term base
+        mine form, like seed
+          slot base
+    mine list
+      mine form, like db-hold
+        slot hold
+    mine list
+      mine form, like tag
+        slot tag
+
+mine db-make-base-link
+  mine term, term link
+    mine term
+      slot name
+
+mine db-make-hook
+  mine term, term hook
+    mine term
+      slot name
+    mine maybe
+      mine term, term base
+        mine term
+          slot base
+        mine list
+          mine form, like db-make-base-link
+            slot link
+    mine list
+      mine form, like db-hold
+        slot hold
+    mine maybe
+      mine form, like db-make-call
+        slot call
+
+mine db-make-call
+  mine term, term call
+    mine term
+      slot name
+    mine list
+      mine form, like bind
+        slot bind
+
+mine db-make-term
+  mine term, term term
+    mine term
+      slot name

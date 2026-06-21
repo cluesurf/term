@@ -1,0 +1,61 @@
+
+task get
+  take name, like text
+  like text
+
+  send back
+    call swift-get-env
+      read name
+
+task set
+  take name, like text
+  take value, like text
+
+  call swift-set-env
+    read name
+    read value
+
+task remove
+  take name, like text
+
+  call swift-unset-env
+    read name
+
+task list
+  like hash
+
+  send back
+    call swift-list-env
+
+task check
+  take name, like text
+  like bool
+
+  send back
+    call swift-check-env
+      read name
+
+task swift-get-env
+  note private
+  take name, like text
+  dock call <ProcessInfo.processInfo.environment[name] ?? "">
+
+task swift-set-env
+  note private
+  take name, like text
+  take value, like text
+  dock call <setenv(name, value, 1)>
+
+task swift-unset-env
+  note private
+  take name, like text
+  dock call <unsetenv(name)>
+
+task swift-list-env
+  note private
+  dock call <ProcessInfo.processInfo.environment>
+
+task swift-check-env
+  note private
+  take name, like text
+  dock call <ProcessInfo.processInfo.environment[name] != nil>

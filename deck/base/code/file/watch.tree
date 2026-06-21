@@ -1,0 +1,6 @@
+
+# Moved to file/base.tree as task watch
+
+form watch-event
+  link kind, like text
+  link path, like text

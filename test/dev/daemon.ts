@@ -16,7 +16,7 @@ const SEED = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const PORT = 39631
 const FILE = path.join(SEED, 'daemon-doc.tree') // a path; text is supplied per request, no disk read needed
 
-const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      mark 5\n`
+const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      code 5\n`
 const helperOk = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
 const helperBad = `task helper\n  take n, like number\n  like number\n  send back\n    text <oops>\n`
 

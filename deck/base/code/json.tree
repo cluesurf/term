@@ -1,0 +1,167 @@
+# JSON. parse / stringify and navigation over the host JSON library, hidden per-env. The parsed value is the opaque dynamic value (a JS any, a rust serde_json::Value, a swift / kotlin Any); the accessors read it natively. No hand-rolled parser or value representation.
+
+load @cluesurf/base/code/native/json
+  find do-parse
+  find do-stringify
+  find do-get-field
+  find do-get-item
+  find do-as-number
+  find do-as-text
+  find do-as-boolean
+  find do-is-null
+  find do-make-object
+  find do-set-field
+  find do-make-array
+  find do-push-item
+  find do-from-text
+  find do-from-number
+  find do-from-boolean
+  find do-make-null
+
+task parse
+  take text, like text
+  like dynamic
+  send back
+    call do-parse
+      read text
+
+task stringify
+  take value, like dynamic
+  like text
+  send back
+    call do-stringify
+      read value
+
+task get-field
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  send back
+    call do-get-field
+      read value
+      read key
+
+task get-item
+  take value, like dynamic
+  take index, like number
+  like dynamic
+  send back
+    call do-get-item
+      read value
+      read index
+
+task as-number
+  take value, like dynamic
+  like decimal
+  send back
+    call do-as-number
+      read value
+
+task as-text
+  take value, like dynamic
+  like text
+  send back
+    call do-as-text
+      read value
+
+task as-boolean
+  take value, like dynamic
+  like boolean
+  send back
+    call do-as-boolean
+      read value
+
+task is-null
+  take value, like dynamic
+  like boolean
+  send back
+    call do-is-null
+      read value
+
+task field-text
+  take value, like dynamic
+  take key, like text
+  like text
+  send back
+    call as-text
+      call get-field
+        read value
+        read key
+
+task field-number
+  take value, like dynamic
+  take key, like text
+  like decimal
+  send back
+    call as-number
+      call get-field
+        read value
+        read key
+
+task field-boolean
+  take value, like dynamic
+  take key, like text
+  like boolean
+  send back
+    call as-boolean
+      call get-field
+        read value
+        read key
+
+# Builder side: assemble a dynamic value from a typed form's fields, then stringify. Symmetric with the field accessors above. set-field and push-item return the container so calls chain.
+
+task make-object
+  like dynamic
+  send back
+    call do-make-object
+
+task set-field
+  take value, like dynamic
+  take key, like text
+  take field, like dynamic
+  like dynamic
+  send back
+    call do-set-field
+      read value
+      read key
+      read field
+
+task make-array
+  like dynamic
+  send back
+    call do-make-array
+
+task push-item
+  take value, like dynamic
+  take item, like dynamic
+  like dynamic
+  send back
+    call do-push-item
+      read value
+      read item
+
+task from-text
+  take value, like text
+  like dynamic
+  send back
+    call do-from-text
+      read value
+
+task from-number
+  take value, like decimal
+  like dynamic
+  send back
+    call do-from-number
+      read value
+
+task from-boolean
+  take value, like boolean
+  like dynamic
+  send back
+    call do-from-boolean
+      read value
+
+task make-null
+  like dynamic
+  send back
+    call do-make-null

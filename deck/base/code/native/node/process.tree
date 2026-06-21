@@ -1,0 +1,15 @@
+
+# Node.js process implementation. Internal: reached only through the public process API.
+
+dock load
+  load <global:process>, name process
+
+task get-platform
+  like text
+  send back
+    read process/platform
+
+task exit-with
+  take code, like number
+  call process/exit
+    read code

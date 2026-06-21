@@ -78,9 +78,11 @@ async function findTestFiles(input: {
         await walk(full)
       } else if (entry.name.endsWith('.tree')) {
         const text = await fs.readFile(full, 'utf-8')
-        // a file is collected if it carries runnable tests (`test`) OR proof obligations (`hold` / `rule`); both are
-        // verified by `seed test` -- tests by running, proofs by the kernel during compilation.
-        if (/^(test|hold|rule) /m.test(text)) {
+        // a file is collected if it carries runnable tests (`test`) OR proof obligations (`hold` / `rule`), at any
+        // indentation -- a `hold` inside a `task` states a UNIVERSAL law over the task's parameters (proved by the
+        // linear prover for all values), not just a top-level closed witness. Both are verified by `seed test`:
+        // tests by running, proofs by the kernel and linear prover during compilation.
+        if (/^\s*(test|hold|rule) /m.test(text)) {
           if (input.filter) {
             if (
               full.includes(input.filter) ||

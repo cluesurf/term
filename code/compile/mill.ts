@@ -305,6 +305,22 @@ function headName(group: GroupNode): string | undefined {
   return first && first.kind === 'name' ? nameText(first) : undefined
 }
 
+// the literal text inside a `<...>` node
+function textOf(node: { parts: Array<{ kind: string; text?: string }> }): string {
+  return node.parts.map(p => (p.kind === 'chunk' ? p.text ?? '' : '')).join('')
+}
+
+// turn a free-text phrase into a slug name (`<two is below five>` -> `two-is-below-five`), so a hold or rule can be
+// named with a readable phrase instead of a kebab identifier
+function slugify(phrase: string): string {
+  return (
+    phrase
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'hold'
+  )
+}
+
 function rest(group: GroupNode): Array<Node> {
   return group.nodes.slice(1)
 }
@@ -862,11 +878,15 @@ export function mill(tree: RootNode, file: string): MillResult {
         }
         case 'hold': {
           const parts = rest(node)
-          // optional inline name (`hold <name>`): a bare word with siblings after it makes the hold a citable lemma
+          // optional inline name, either a bare word (`hold double-fact`) or a readable phrase (`hold <double is
+          // add>`); both make the hold a citable lemma, with the phrase slugified to an identifier.
           let nameValue: string | undefined
           let propIndex = 0
           const first = parts[0]
-          if (
+          if (parts.length > 1 && first && first.kind === 'text') {
+            nameValue = slugify(textOf(first))
+            propIndex = 1
+          } else if (
             parts.length > 1 &&
             first &&
             first.kind === 'group' &&
@@ -1496,10 +1516,14 @@ export function mill(tree: RootNode, file: string): MillResult {
     }
   }
 
-  // extract trait instances from `wear <mask>` children, implemented for `target`
+  // extract trait instances from `wear <mask>` children, implemented for `target`. Besides recording the instance, the
+  // method bodies are desugared the SAME way as a form's own methods (free functions `<target>_<method>` with `self`
+  // typed as the target and a `method` tag for receiver dispatch), so a trait method call dispatches exactly like a
+  // form method -- no separate dictionary machinery needed.
   function wearInstances(
     group: GroupNode,
     target: string,
+    formParams: Array<string> = [],
   ): Array<Statement> {
     const out: Array<Statement> = []
     for (const child of rest(group)) {
@@ -1509,7 +1533,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         maskGroup && maskGroup.kind === 'group'
           ? headName(maskGroup)
           : undefined
-      if (mask)
+      if (mask) {
         out.push({
           form: 'instance',
           mask,
@@ -1517,6 +1541,9 @@ export function mill(tree: RootNode, file: string): MillResult {
           methods: methodNames(child),
           span: spanOf(child),
         })
+        // the implementations: methods over `target`, dispatched like the form's own methods
+        out.push(...formMethods(child, target, formParams))
+      }
     }
     return out
   }
@@ -1774,6 +1801,27 @@ export function mill(tree: RootNode, file: string): MillResult {
         )
         const take: DockTake = { name, required, span: spanOf(child) }
         if (likeGroup) take.type = parseLikeType(likeGroup)
+        // a CLI short flag: `code <letter>` (e.g. `take title / code t` -> `-t`)
+        const codeGroup = rest(child).find(
+          (n): n is GroupNode =>
+            n.kind === 'group' && headName(n) === 'code',
+        )
+        if (codeGroup) {
+          const letter = rest(codeGroup)[0]
+          if (letter && letter.kind === 'group')
+            take.short = headName(letter)
+        }
+        // masked input: `wait rise` reads a secret without echoing
+        if (
+          rest(child).some(
+            n =>
+              n.kind === 'group' &&
+              headName(n) === 'wait' &&
+              rest(n)[0]?.kind === 'group' &&
+              headName(rest(n)[0] as GroupNode) === 'rise',
+          )
+        )
+          take.masked = true
         takes.push(take)
       } else if (headKw === 'link') {
         const varGroup = rest(child)[0]
@@ -2189,6 +2237,48 @@ export function mill(tree: RootNode, file: string): MillResult {
     }
   }
 
+  // a top-level CLI command tree: `hook <command> / take <arg> / task <impl> / hook <subcommand> ...`. This is the CLI
+  // DSL (replacing the routing dock for command-line tools): each `hook` is a command, its `take`s are arguments /
+  // flags, its `task` binds the implementation that runs it, and nested `hook`s are subcommands. Reuses the route
+  // structure (a CLI command is a route whose `path` is the command name and whose `calls` is the bound task).
+  function buildHookCommand(group: GroupNode): DockRoute {
+    const span = spanOf(group)
+    const nameGroup = rest(group)[0]
+    const path =
+      nameGroup && nameGroup.kind === 'group'
+        ? headName(nameGroup) ?? ''
+        : ''
+    // the implementation: a `task <impl>` child binds the function that runs this command
+    const calls: Array<DockCall> = []
+    for (const child of rest(group)) {
+      if (child.kind !== 'group' || headName(child) !== 'task') continue
+      const implGroup = rest(child)[0]
+      const impl =
+        implGroup && implGroup.kind === 'group'
+          ? headName(implGroup)
+          : undefined
+      if (impl) calls.push({ name: impl, args: [], span: spanOf(child) })
+    }
+    // nested `hook`s are subcommands
+    const children = rest(group)
+      .filter(
+        (n): n is GroupNode =>
+          n.kind === 'group' && headName(n) === 'hook',
+      )
+      .map(buildHookCommand)
+    return {
+      path,
+      takes: buildDockTakes(group),
+      methods: [],
+      calls,
+      directives: [],
+      sends: [],
+      hooks: [],
+      children,
+      span,
+    }
+  }
+
   // distinguish the FFI form (`dock load / load <module>`) from a routing / CLI dock (`dock /path`, `dock make`)
   function isFfiDock(group: GroupNode): boolean {
     const first = rest(group)[0]
@@ -2249,8 +2339,11 @@ export function mill(tree: RootNode, file: string): MillResult {
       } else {
         const rt = buildRecordType(group)
         if (rt) program.push(rt)
-        // `wear <mask>` blocks inside the form are trait instances for it
-        if (formName) program.push(...wearInstances(group, formName))
+        // `wear <mask>` blocks inside the form are trait instances for it (methods carry the form's generics)
+        const formParams =
+          rt && rt.form === 'record-type' ? rt.params : []
+        if (formName)
+          program.push(...wearInstances(group, formName, formParams))
         if (formName && rt && rt.form === 'record-type')
           program.push(...formMethods(group, formName, rt.params))
       }
@@ -2268,6 +2361,13 @@ export function mill(tree: RootNode, file: string): MillResult {
           route: buildDockRoute(group),
           span: spanOf(group),
         })
+    } else if (keyword === 'hook') {
+      // a top-level CLI command tree (the `hook` DSL): lower to a route statement, command name as the path
+      program.push({
+        form: 'dock',
+        route: buildHookCommand(group),
+        span: spanOf(group),
+      })
     } else if (
       keyword === 'load' ||
       keyword === 'bear' ||

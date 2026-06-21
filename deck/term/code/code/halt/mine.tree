@@ -1,0 +1,12 @@
+
+load @cluesurf/term/code/code/seed/mine
+  find seed
+
+mine halt
+  mine term, term halt
+    mine maybe
+      mine term
+        slot mode
+    mine maybe
+      mine form, like seed
+        slot seed

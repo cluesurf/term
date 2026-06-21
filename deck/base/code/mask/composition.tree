@@ -1,0 +1,6 @@
+
+mask composition-text
+  # Convert to being text.
+
+mask composition-text-free
+  # Convert to being text.

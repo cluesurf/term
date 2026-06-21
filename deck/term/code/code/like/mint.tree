@@ -1,0 +1,29 @@
+
+load @cluesurf/base/code/like
+  find like
+  find or
+  find and
+
+mint like
+  case or, mint or
+    slot value
+  case and, mint and
+    slot value
+  case task, mint task
+    slot value
+  case name
+    slot value
+
+mint or
+  case like, mint like
+    slot like
+  hook make
+    make or
+      bind like, read like
+
+mint and
+  case like, mint like
+    slot like
+  hook make
+    make and
+      bind like, read like

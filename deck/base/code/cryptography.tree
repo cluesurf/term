@@ -1,0 +1,480 @@
+
+# https://github.com/briansmith/ring
+
+form hash
+  task copy
+  task update
+  task digest
+
+form hmac
+  task update
+  task digest
+
+form key-pair
+  task get-private-key
+  task get-public-key
+
+form ecdh
+  task get-curve-name
+
+task make-hmac
+  take algorithm
+  take key
+  free hmac, like hmac
+
+task make-diffie-hellman
+  take group-name
+  like diffie-hellman
+
+task make-ecdh
+  take curve-name
+  like ecdh
+
+fuse define-asymmetric-key-pair
+  term synchronously
+  term false
+
+fuse define-asymmetric-key-pair
+  term asynchronously
+  term true
+
+task check-prime
+  take candidate
+  take number-of-checks, need false
+
+  fuse check-prime-result
+
+task make-hmac-key
+
+task make-aes-key
+
+task make-prime
+
+task encrypt-private-key
+task encrypt-public-key
+
+task decrypt-private-key
+task decrypt-public-key
+
+task make-scrypt
+
+task get-random-bytes
+  take size
+
+task get-random-bytes-synchronously
+  take size
+
+fuse define-each, read private-key
+  term define-private-key
+
+fuse define-each, read public-key
+  term define-public-key
+
+fuse define-each, read cipher-iv
+  term define-cipher-iv
+
+fuse define-each, read digest-algorithm
+  term define-sign
+
+fuse define-each, read digest-algorithm
+  term define-verify
+
+fuse define-each, read digest-algorithm
+  term define-digest-algorithm
+
+fuse define-each, read digest-algorithm
+  term define-hkdf-key
+
+fuse define-each, read digest-algorithm
+  term define-hmac
+
+fuse define-each, read diffie-hellman-key-type
+  term define-diffie-hellman
+
+host diffie-hellman-key-type
+  term dh
+    # Diffie-Hellman
+  term ec
+    # ECDH
+  term x448
+  term x25519
+    # ECDH-ES
+
+host cipher-mode
+  term cbc
+  term ccm
+  term cfb
+  term ctr
+  term ecb
+  term gcm
+  term ocb
+  term ofb
+  term stream
+  term wrap
+  term xts
+
+host private-key
+  term der
+  term jwk
+  term pkcs1-pem
+  term pkcs8-pem
+  term sec1-pem
+
+host public-key
+  term der
+  term jwk
+  term pkcs1-pem
+  term spki-pem
+
+host cipher-iv
+  term aes-128-cbc
+  term aes-128-ecb
+  term aes-192-cbc
+  term aes-192-ecb
+  term aes-256-cbc
+  term aes-256-ecb
+  term base64
+  term bf
+  term bf-cbc
+  term bf-cfb
+  term bf-ecb
+  term bf-ofb
+  term camellia-128-cbc
+  term camellia-128-ecb
+  term camellia-192-cbc
+  term camellia-192-ecb
+  term camellia-256-cbc
+  term camellia-256-ecb
+  term cast
+  term cast-cbc
+  term cast5-cbc
+  term cast5-cfb
+  term cast5-ecb
+  term cast5-ofb
+  term chacha
+  term des
+  term des-cbc
+  term des-cfb
+  term des-ecb
+  term des-ede
+  term des-ede-cbc
+  term des-ede-cfb
+  term des-ede-ofb
+  term des-ede3
+  term des-ede3-cbc
+  term des-ede3-cfb
+  term des-ede3-ofb
+  term des-ofb
+  term des3
+  term desx
+  term rc2
+  term rc2-40-cbc
+  term rc2-64-cbc
+  term rc2-cbc
+  term rc2-cfb
+  term rc2-ecb
+  term rc2-ofb
+  term rc4
+  term rc4-40
+
+host digest-algorithm
+  term blake2b512
+  term blake2s256
+  term id-rsassa-pkcs1-v1-5-with-sha3-224
+  term id-rsassa-pkcs1-v1-5-with-sha3-256
+  term id-rsassa-pkcs1-v1-5-with-sha3-384
+  term id-rsassa-pkcs1-v1-5-with-sha3-512
+  term md4
+  term md4-with-rsa-encryption
+  term md5
+  term md5-sha1
+  term md5-with-rsa-encryption
+  term mdc2
+  term mdc2-with-rsa
+  term ripemd
+  term ripemd160
+  term ripemd160-with-rsa
+  term rmd160
+  term rsa-md4
+  term rsa-md5
+  term rsa-mdc2
+  term rsa-ripemd160
+  term rsa-sha1
+  term rsa-sha1-2
+  term rsa-sha224
+  term rsa-sha256
+  term rsa-sha3-224
+  term rsa-sha3-256
+  term rsa-sha3-384
+  term rsa-sha3-512
+  term rsa-sha384
+  term rsa-sha512
+  term rsa-sha512-224
+  term rsa-sha512-256
+  term rsa-sm3
+  term sha1
+  term sha1-with-rsa-encryption
+  term sha224
+  term sha224-with-rsa-encryption
+  term sha256
+  term sha256-with-rsa-encryption
+  term sha3-224
+  term sha3-256
+  term sha3-384
+  term sha3-512
+  term sha384
+  term sha384-with-rsa-encryption
+  term sha512
+  term sha512-224
+  term sha512-224-with-rsa-encryption
+  term sha512-256
+  term sha512-256-with-rsa-encryption
+  term sha512-with-rsa-encryption
+  term shake128
+  term shake256
+  term sm3
+  term sm3-with-rsa-encryption
+  term ssl3-md5
+  term ssl3-sha1
+  term whirlpool
+
+host curve
+  term brainpool-p160r1
+  term brainpool-p160t1
+  term brainpool-p192r1
+  term brainpool-p192t1
+  term brainpool-p224r1
+  term brainpool-p224t1
+  term brainpool-p256r1
+  term brainpool-p256t1
+  term brainpool-p320r1
+  term brainpool-p320t1
+  term brainpool-p384r1
+  term brainpool-p384t1
+  term brainpool-p512r1
+  term brainpool-p512t1
+  term c2pnb163v1
+  term c2pnb163v2
+  term c2pnb163v3
+  term c2pnb176v1
+  term c2pnb208w1
+  term c2pnb272w1
+  term c2pnb304w1
+  term c2pnb368w1
+  term c2tnb191v1
+  term c2tnb191v2
+  term c2tnb191v3
+  term c2tnb239v1
+  term c2tnb239v2
+  term c2tnb239v3
+  term c2tnb359v1
+  term c2tnb431r1
+  term oakley-ec2-n-3
+  term oakley-ec2-n-4
+  term prime192v1
+  term prime192v2
+  term prime192v3
+  term prime239v1
+  term prime239v2
+  term prime239v3
+  term prime256v1
+  term secp112r1
+  term secp112r2
+  term secp128r1
+  term secp128r2
+  term secp160k1
+  term secp160r1
+  term secp160r2
+  term secp192k1
+  term secp224k1
+  term secp224r1
+  term secp256k1
+  term secp384r1
+  term secp521r1
+  term sect113r1
+  term sect113r2
+  term sect131r1
+  term sect131r2
+  term sect163k1
+  term sect163r1
+  term sect163r2
+  term sect193r1
+  term sect193r2
+  term sect233k1
+  term sect233r1
+  term sect239k1
+  term sect283k1
+  term sect283r1
+  term sect409k1
+  term sect409r1
+  term sect571k1
+  term sect571r1
+  term sm2
+  term wap-wsg-idm-ecid-wtls1
+  term wap-wsg-idm-ecid-wtls10
+  term wap-wsg-idm-ecid-wtls11
+  term wap-wsg-idm-ecid-wtls12
+  term wap-wsg-idm-ecid-wtls3
+  term wap-wsg-idm-ecid-wtls4
+  term wap-wsg-idm-ecid-wtls5
+  term wap-wsg-idm-ecid-wtls6
+  term wap-wsg-idm-ecid-wtls7
+  term wap-wsg-idm-ecid-wtls8
+  term wap-wsg-idm-ecid-wtls9
+
+host diffie-hellman-group
+  term modp1
+  term modp2
+  term modp5
+  term modp14
+  term modp15
+  term modp16
+  term modp17
+  term modp18
+
+tree define-asymmetric-key-pair
+  take scope
+  take wait, like boolean
+    void true
+
+  hook fuse
+    task generate-asymmetric-rsa-key-pair-{{scope}}
+      take modulus-length
+      take public-exponent
+      wait read wait
+      free pair, like key-pair
+
+    task generate-asymmetric-rsa-pss-key-pair-{{scope}}
+      take hash-algorithm
+      take mgf1-hash-algorithm
+      take salt-length
+      wait read wait
+      free pair, like key-pair
+
+    task generate-asymmetric-dsa-key-pair-{{scope}}
+      take divisor-length
+      wait read wait
+      free pair, like key-pair
+
+    task generate-asymmetric-ec-key-pair-{{scope}}
+      take named-curve
+      wait read wait
+      free pair, like key-pair
+
+    task generate-asymmetric-ed25519-key-pair-{{scope}}
+      wait read wait
+      free pair, like key-pair
+
+    task generate-asymmetric-ed448-key-pair-{{scope}}
+      wait read wait
+      free pair, like key-pair
+
+    task generate-asymmetric-x25519-key-pair-{{scope}}
+      wait read wait
+      free pair, like key-pair
+
+    task generate-asymmetric-x448-key-pair-{{scope}}
+      wait read wait
+      free pair, like key-pair
+
+    task generate-asymmetric-dh-key-pair-{{scope}}
+      take prime
+      take prime-length
+      take generator
+      take group-name
+      wait read wait
+      free pair, like key-pair
+
+tree define-private-key
+  take name
+
+  hook fuse
+    task make-{{name}}-private-key
+      take key
+      take passphrase
+      free {{name}}-private-key
+
+tree define-public-key
+  take name
+
+  hook fuse
+    task make-{{name}}-public-key
+      take key
+      take passphrase
+      free {{name}}-public-key
+
+tree define-diffie-hellman
+  take name
+
+  hook fuse
+    task make-{{name}}-diffie-hellman
+      take private-key
+      take public-key
+
+tree define-cipher-iv
+  take name
+
+  hook fuse
+    task make-{{name}}-cipher-iv
+      take key
+      take initialization-vector
+      like {{name}}-cypher
+
+    task make-{{name}}-decipher-iv
+      take key
+      take initialization-vector
+      like {{name}}-decypher
+
+tree define-verify
+  take name
+
+  hook fuse
+    task make-{{name}}-verify
+      free {{name}}-verify
+
+    task verify-{{name}}
+      take data
+      take key
+      take signature
+
+tree define-sign
+  take name
+
+  hook fuse
+    task make-{{name}}-sign
+      free {{name}}-sign
+
+    task sign-{{name}}
+      take data
+      take key
+      take signature
+
+tree define-digest-algorithm
+  take name
+
+  hook fuse
+    task make-{{name}}-hash
+      free {{name}}-hash
+
+tree define-hkdf-key
+  take name
+
+  hook fuse
+    task make-{{name}}-key
+      free result
+        like list
+          like unsigned-integer-8
+
+tree define-hmac
+  take name
+
+  hook fuse
+    task make-{{name}}-hmac
+      free {{name}}-hmac
+
+tree check-prime-result
+  hook fuse
+    free result
+      like result
+        like boolean
+        like error

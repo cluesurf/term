@@ -1,0 +1,20 @@
+# rust HTTP client. Forwards to the linked http runtime shim, which wraps the platform's HTTP library. Internal: reached only through the public http API.
+
+load @cluesurf/base/code/network/response
+  find http-response
+
+dock load
+  load <global:http>, name http
+
+task do-request
+  note async
+  take method, like text
+  take url, like text
+  take body, like text
+  like http-response
+  send back
+    call http/request
+      read method
+      read url
+      read body
+      wait true

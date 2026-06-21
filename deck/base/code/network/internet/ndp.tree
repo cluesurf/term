@@ -1,0 +1,30 @@
+
+# NDP: Neighbor Discovery Protocol (RFC 4861). The IPv6 mechanism for finding link-layer addresses, routers, and
+# prefixes. Messages ride inside ICMPv6.
+
+load ./ip
+  find ipv6-address
+
+form ndp-message-type
+  case router-solicitation
+  case router-advertisement
+  case neighbor-solicitation
+  case neighbor-advertisement
+  case redirect
+
+form ndp-option-type
+  case source-link-layer-address
+  case target-link-layer-address
+  case prefix-information
+  case redirected-header
+  case maximum-transmission-unit
+
+form ndp-option
+  link kind, like ndp-option-type
+  link length, like u8
+  link value, like list
+
+form ndp-message
+  link kind, like ndp-message-type
+  link target, like ipv6-address
+  link options, like list

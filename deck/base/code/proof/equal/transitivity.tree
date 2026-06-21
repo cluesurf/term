@@ -1,0 +1,29 @@
+
+load @cluesurf/base/code/proof/equal
+  find equal
+
+rule transitivity
+  head a
+  take x, like a
+  take y, like a
+  take z, like a
+  take left
+    like equal a x y
+  take right
+    like equal a y z
+  like equal a x z
+
+test transitivity
+  take x, like a
+  take y, like a
+  take z, like a
+  take left
+    like equal a x y
+  take right
+    like equal a y z
+  fork case, read left
+    case refl
+      fork case, read right
+        case refl
+          send back
+            make equal/refl

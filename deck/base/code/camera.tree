@@ -1,0 +1,15 @@
+task check-authorization-status
+
+task request-access
+
+task get-default-device
+
+task clear-take-photo-settings
+
+task is-auto-red-eye-reduction-enabled
+  # A Boolean value that determines whether to use auto red-eye reduction on flash captures.
+
+form camera
+  task has-flash
+  task set-flash, take mode
+  task clear-settings

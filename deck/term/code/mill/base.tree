@@ -1,0 +1,4 @@
+
+mill mill
+  bind mine, load ./mine
+  bind mint, load ./mint

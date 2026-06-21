@@ -1,0 +1,33 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+
+task make
+  note async
+  take from, like text
+  take to, like text
+  take hard, like bool, fall wave false
+
+  fork test, name hard
+    hook true
+      call fs-promise/link
+        note async
+        read from
+        read to
+        halt kink
+    hook false
+      call fs-promise/symlink
+        note async
+        read from
+        read to
+        halt kink
+
+task read
+  note async
+  take path, like text
+
+  send back
+    call fs-promise/readlink
+      note async
+      read path
+      halt kink

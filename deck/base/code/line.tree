@@ -1,0 +1,38 @@
+
+form line
+  head t
+
+  task get
+    take self
+    take index, like u64
+
+  task set
+    take self, flex true
+    take index, like u64
+    take item, like t
+
+  task get-size
+    take self
+    like u64
+
+  task map
+    head s
+    take self
+    like line
+
+  task filter
+    take self
+    like list
+
+  task sort
+    take self, flex true
+
+  task clone
+    take self
+    like line
+
+  task slice
+    take self
+    take start, like u64
+    take end, like u64
+    like line

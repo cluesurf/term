@@ -19,7 +19,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 // a shared library module both projects load (its file path is identical across projects, like a linked stdlib file)
 const lib: Source = {
   file: '/shared/lib.tree',
-  text: `task lib-value\n  like number\n  send back\n    mark 7\n`,
+  text: `task lib-value\n  like number\n  send back\n    code 7\n`,
 }
 const resolve = (p: string): Source | undefined =>
   p === '@shared/lib' ? lib : undefined

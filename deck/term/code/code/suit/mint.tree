@@ -1,0 +1,13 @@
+
+load @cluesurf/base/code/suit
+  find suit
+
+mint suit
+  case name
+    slot name
+  case wear, mint wear
+    slot wear
+  hook make
+    make suit
+      bind name, read name
+      bind wear, read wear

@@ -1,0 +1,21 @@
+
+task get
+  like text
+
+  send back
+    call rust-current-dir
+
+task set
+  take path, like text
+
+  call rust-set-current-dir
+    read path
+
+task rust-current-dir
+  note private
+  dock call <std::env::current_dir().unwrap().to_string_lossy().to_string()>
+
+task rust-set-current-dir
+  note private
+  take path, like text
+  dock call <std::env::set_current_dir(&path).unwrap()>

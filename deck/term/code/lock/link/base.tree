@@ -1,0 +1,4 @@
+
+mill link
+  bind mine, load ./mine
+  bind mint, load ./mint

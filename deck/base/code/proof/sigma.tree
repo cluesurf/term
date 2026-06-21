@@ -1,0 +1,12 @@
+
+form sigma
+  head a
+  head b
+    like task
+      take value, like a
+
+  case pair
+    link first, like a
+    link second
+      call b
+        bind value, read first

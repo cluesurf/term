@@ -47,7 +47,7 @@ function expectEffectError(name: string, source: string): void {
 
 const FETCH = `task fetch
   wait true
-  send back, mark 42
+  send back, code 42
 `
 
 function main(): void {
@@ -78,7 +78,7 @@ task run
   expectEffectError(
     'awaiting a non-async task is rejected',
     `task plain
-  send back, mark 42
+  send back, code 42
 
 task run
   wait true
@@ -172,7 +172,7 @@ task quiet
   send back
     call add
       loan n
-      mark 1
+      code 1
 `
   const parsed = parse({ file: 'e.tree', text: THROW })
   const built = parsed.ok

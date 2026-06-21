@@ -1,0 +1,29 @@
+
+load @cluesurf/base/code/mixin/access
+  find access
+
+form luv
+  fuse access, term l
+  fuse access, term u
+  fuse access, term v
+  fuse access, term alpha
+
+  task convert-to-rgb
+    like rgb-color
+
+host channel
+  term l
+  term u
+  term v
+  term alpha
+
+host range
+  host l
+    host start, size 0
+    host end, size 100
+  host u
+    host start, size -84.936
+    host end, size 175.042
+  host v
+    host start, size -125.882
+    host end, size 87.243

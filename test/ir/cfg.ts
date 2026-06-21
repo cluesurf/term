@@ -30,7 +30,7 @@ function bodyOf(text: string): Array<Statement> {
 function main(): void {
   // straight line: no branches, the body reaches the exit
   const straight = buildCfg(
-    bodyOf(`task f\n  take n\n  save a, mark 1\n  back a\n`),
+    bodyOf(`task f\n  take n\n  save a, code 1\n  back a\n`),
   )
   ok(
     'straight-line has a return terminator',
@@ -44,7 +44,7 @@ function main(): void {
   // an if produces a branch with two distinct successors
   const branch = buildCfg(
     bodyOf(
-      `task f\n  take n\n  fork test\n    hook test\n      call is-above\n        loan n\n        mark 0\n    hook hold\n      back n\n    hook miss\n      back, mark 0\n`,
+      `task f\n  take n\n  fork test\n    hook test\n      call is-above\n        loan n\n        code 0\n    hook hold\n      back n\n    hook miss\n      back, code 0\n`,
     ),
   )
   const branchBlock = branch.blocks.find(
@@ -60,7 +60,7 @@ function main(): void {
   // a while loop has a back edge: the body returns to the header
   const loop = buildCfg(
     bodyOf(
-      `task f\n  take n\n  walk test\n    hook test\n      call is-above\n        loan n\n        mark 0\n    hook step\n      save n\n        call subtract\n          loan n\n          mark 1\n  back n\n`,
+      `task f\n  take n\n  walk test\n    hook test\n      call is-above\n        loan n\n        code 0\n    hook step\n      save n\n        call subtract\n          loan n\n          code 1\n  back n\n`,
     ),
   )
   const header = loop.blocks.find(b => b.terminator.kind === 'branch')

@@ -1,0 +1,69 @@
+# Floating-point math. The clean uniform interface over the host float library, hidden per-env. Operates on the float type (decimal literals, JSON numbers, fractional results). Distinct from the integer `math` module.
+
+load @cluesurf/base/code/native/float
+  find do-sqrt
+  find do-floor
+  find do-ceil
+  find do-round
+  find do-power
+  find do-absolute
+  find do-sine
+  find do-cosine
+
+task square-root
+  take value, like decimal
+  like decimal
+  send back
+    call do-sqrt
+      read value
+
+task round-down
+  take value, like decimal
+  like decimal
+  send back
+    call do-floor
+      read value
+
+task round-up
+  take value, like decimal
+  like decimal
+  send back
+    call do-ceil
+      read value
+
+task round
+  take value, like decimal
+  like decimal
+  send back
+    call do-round
+      read value
+
+task power
+  take base, like decimal
+  take exponent, like decimal
+  like decimal
+  send back
+    call do-power
+      read base
+      read exponent
+
+task absolute
+  take value, like decimal
+  like decimal
+  send back
+    call do-absolute
+      read value
+
+task sine
+  take value, like decimal
+  like decimal
+  send back
+    call do-sine
+      read value
+
+task cosine
+  take value, like decimal
+  like decimal
+  send back
+    call do-cosine
+      read value

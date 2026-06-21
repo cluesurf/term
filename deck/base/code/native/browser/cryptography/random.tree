@@ -1,0 +1,11 @@
+# browser secure random implementation. Forwards to the linked crypto runtime shim (Web Crypto getRandomValues). Internal: reached only through the public random API.
+
+dock load
+  load <global:crypto>, name crypto
+
+task random-bytes
+  take size, like number
+  like text
+  send back
+    call crypto/random-bytes
+      read size

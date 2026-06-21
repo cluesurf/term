@@ -1,0 +1,141 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:fs>, name fs
+
+task read
+  note async
+  take path, like text
+  take format, like text, fall text <text>
+
+  fork test, call is-equal, read format, text <bytes>
+    hook true
+      save result
+        call fs-promise/read-file
+          note async
+          read path
+          halt kink
+      send back, read result
+    hook false
+      save result
+        call fs-promise/read-file
+          note async
+          read path
+          text <utf8>
+          halt kink
+      send back, read result
+
+task write
+  note async
+  take path, like text
+  take data, like text
+
+  call fs-promise/write-file
+    note async
+    read path
+    read data
+    halt kink
+
+task append
+  note async
+  take path, like text
+  take data, like text
+
+  call fs-promise/append-file
+    note async
+    read path
+    read data
+    halt kink
+
+task copy
+  note async
+  take from, like text
+  take to, like text
+  take deep, like bool, fall wave false
+
+  fork test, name deep
+    hook true
+      call fs-promise/cp
+        note async
+        read from
+        read to
+        make options
+          bind recursive, wave true
+        halt kink
+    hook false
+      call fs-promise/copy-file
+        note async
+        read from
+        read to
+        halt kink
+
+task move
+  note async
+  take from, like text
+  take to, like text
+
+  call fs-promise/rename
+    note async
+    read from
+    read to
+    halt kink
+
+task remove
+  note async
+  take path, like text
+  take deep, like bool, fall wave false
+
+  call fs-promise/rm
+    note async
+    read path
+    make options
+      bind recursive, read deep
+      bind force, wave true
+    halt kink
+
+task test
+  note async
+  take path, like text
+  take kind, like text, need false
+
+  call fs-promise/access
+    note async
+    read path
+    halt kink
+
+  fork test, call is-null, read kind
+    hook true
+      send back, wave true
+
+  save stats
+    call fs-promise/stat
+      note async
+      read path
+      halt kink
+
+  fork test, call is-equal, read kind, text <file>
+    hook true
+      send back
+        call stats/is-file
+
+  fork test, call is-equal, read kind, text <directory>
+    hook true
+      send back
+        call stats/is-directory
+
+  fork test, call is-equal, read kind, text <link>
+    hook true
+      send back
+        call stats/is-symbolic-link
+
+  send back, wave true
+
+task watch
+  note async
+  take path, like text
+  take deep, like bool, fall wave false
+
+  call fs/watch
+    read path
+    make options
+      bind recursive, read deep

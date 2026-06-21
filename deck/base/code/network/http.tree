@@ -1,0 +1,43 @@
+# HTTP client. The clean uniform interface; the per-env native implementation wraps the platform's HTTP library (fetch on node/browser, reqwest/URLSession/ktor elsewhere) and is selected at build time, hidden behind the API. Async on every target (network is async everywhere).
+
+load @cluesurf/base/code/native/network/http
+  find do-request
+
+load @cluesurf/base/code/network/response
+  find http-response
+
+task request
+  note async
+  take method, like text
+  take url, like text
+  take body, like text
+  like http-response
+  send back
+    call do-request
+      read method
+      read url
+      read body
+      wait true
+
+task get
+  note async
+  take url, like text
+  like http-response
+  send back
+    call request
+      text <GET>
+      read url
+      text <>
+      wait true
+
+task post
+  note async
+  take url, like text
+  take body, like text
+  like http-response
+  send back
+    call request
+      text <POST>
+      read url
+      read body
+      wait true

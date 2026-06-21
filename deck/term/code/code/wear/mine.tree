@@ -1,0 +1,10 @@
+load @cluesurf/term/code/code/task/mine
+  find task
+
+mine wear
+  mine term, term wear
+    mine term
+      slot name
+    mine list
+      mine form, like task
+        slot task

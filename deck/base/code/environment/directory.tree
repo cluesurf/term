@@ -1,0 +1,6 @@
+
+task get
+  like text
+
+task set
+  take path, like text

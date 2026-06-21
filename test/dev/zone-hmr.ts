@@ -37,7 +37,7 @@ zone counter
   take host, like view
   save count
     call make-signal
-      mark 0
+      code 0
   zone div
     text <${label}>
     read

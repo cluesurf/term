@@ -1,0 +1,25 @@
+
+load @cluesurf/base
+  find form size-32
+
+load ../n
+  find tree checked-add
+
+host test-list
+  host rise
+    host checked-add-middle
+      host a, 1, like size-32
+      host b, 2, like size-32
+      host c, 3, like size-32
+      fuse checked-add, size 32
+    host checked-add-low
+      host a, 0, like size-32
+      host b, 0, like size-32
+      host c, 0, like size-32
+      fuse checked-add, size 32
+  host fall
+    host checked-add-high
+      host a, 4294967295, like size-32
+      host b, 1, like size-32
+      host kink, <Too high>
+      fuse checked-add, size 32

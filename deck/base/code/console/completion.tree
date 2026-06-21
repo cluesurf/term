@@ -1,0 +1,13 @@
+
+form suggestion
+  link text, like text
+  link label, like text
+  link kind, like text, need false
+
+task suggest
+  take input, like text
+  take cursor, like size
+  like list
+
+task register
+  take source, like task

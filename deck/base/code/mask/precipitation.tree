@@ -1,0 +1,11 @@
+
+# Remainder / modulo trait.
+
+mask precipitation
+  head other, base self
+  take output
+
+  task remainder
+    take self
+    take other, like other
+    free self/output

@@ -1,0 +1,49 @@
+
+load @cluesurf/base/code/network/websocket
+  find socket
+
+task connect
+  note async
+  take url, like text
+  take headers, like hash, need false
+  take protocols, like list, need false
+
+  save options
+    make find
+
+  fork test
+    hook test
+      call is-some, read headers
+    hook hold
+      call options/set
+        text <headers>
+        read headers
+
+  save raw
+    call make-websocket
+      read url
+      read protocols
+      read options
+
+  call make-promise
+    task resolve
+      take ok
+      take fail
+      call raw/on
+        text <open>
+        task on-open
+          call ok
+      call raw/on
+        text <error>
+        task on-error
+          take error
+          call fail, read error
+    note async
+    halt kink
+
+  send back
+    make socket
+      bind dock, read raw
+      bind url, read url
+      bind protocol, call raw/get-protocol
+      bind ready, wave true

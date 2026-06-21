@@ -1,0 +1,112 @@
+
+load @cluesurf/base/code/process
+  find result
+  find child
+
+task run
+  note async
+  take command, like text
+  take arguments, like list, need false
+  take directory, like text, need false
+  take environment, like hash, need false
+  take shell, like bool, fall false
+  take timeout, like size, need false
+  take input, like text, need false
+  like result
+
+  save worker
+    call browser-make-worker
+      read command
+
+  save output
+    call browser-worker-run
+      note async
+      read worker
+      read input
+      read timeout
+
+  send back, read output
+
+task spawn
+  note async
+  take command, like text
+  take arguments, like list, need false
+  take directory, like text, need false
+  take environment, like hash, need false
+  take shell, like bool, fall false
+  like child
+
+  save id
+    call browser-next-worker-id
+
+  save worker
+    call browser-make-worker
+      read command
+
+  send back
+    make child
+      bind dock, read worker
+      bind id, read id
+
+task browser-make-worker
+  note private
+  take url
+  dock call <new Worker(url)>
+
+host browser-worker-counter
+  note private
+  dock call <{ value: 0 }>
+
+task browser-next-worker-id
+  note private
+  dock call <run {
+    const c = browser_worker_counter;
+    c.value += 1;
+    return c.value;
+  }>
+
+task browser-worker-run
+  note private
+  note async
+  take worker
+  take input
+  take timeout
+  dock call <run {
+    return new Promise((resolve, reject) => {
+      let timer;
+      worker.onmessage = (e) => {
+        if (timer) clearTimeout(timer);
+        worker.terminate();
+        resolve({
+          code: 0,
+          stdout: typeof e.data === "string" ? e.data : JSON.stringify(e.data),
+          stderr: "",
+          ok: true
+        });
+      };
+      worker.onerror = (e) => {
+        if (timer) clearTimeout(timer);
+        worker.terminate();
+        resolve({
+          code: 1,
+          stdout: "",
+          stderr: e.message || "worker error",
+          ok: false
+        });
+      };
+      if (timeout) {
+        timer = setTimeout(() => {
+          worker.terminate();
+          resolve({
+            code: 1,
+            stdout: "",
+            stderr: "timeout",
+            ok: false
+          });
+        }, timeout);
+      }
+      if (input != null) {
+        worker.postMessage(input);
+      }
+    });
+  }>

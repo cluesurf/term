@@ -1,0 +1,7 @@
+
+form i8
+  fuse integer
+    bind self-type, like i8
+    bind unsigned-type, like u8
+    bind bits, size 8
+    bind bits-minus-one, size 7

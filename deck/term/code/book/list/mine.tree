@@ -1,0 +1,78 @@
+
+# list size          ordered list
+#   flow <item 1>
+#   flow <item 2>
+# list flow          unordered list
+#   flow <item 1>
+# list mesh          table
+#   bind head
+#     flow <col 1>
+#   bind base
+#     make line
+#       flow <cell>
+# list link          table of contents / link list
+#   link ./file.md
+# list turn          tabs
+#   turn <tab name>
+
+mine list
+  mine term, term list
+    slot kind
+    mine any
+      mine form, like list-mesh
+        slot mesh
+      mine form, like list-link
+        slot link
+      mine form, like list-turn
+        slot turn
+      mine form, like list-items
+        slot items
+
+mine list-items
+  mine list
+    mine form, like flow
+      slot flow
+
+mine list-mesh
+  mine maybe
+    mine term, term bind
+      mine term, term head
+        mine list
+          mine form, like flow
+            slot head
+  mine maybe
+    mine term, term bind
+      mine term, term base
+        mine list
+          mine form, like list-mesh-line
+            slot line
+
+mine list-mesh-line
+  mine term, term make
+    mine term, term line
+      mine list
+        mine form, like flow
+          slot cell
+
+mine list-link
+  mine list
+    mine form, like list-link-item
+      slot link
+
+mine list-link-item
+  mine term, term link
+    mine text
+      slot path
+    mine list
+      mine form, like list-link-item
+        slot link
+
+mine list-turn
+  mine list
+    mine form, like list-turn-item
+      slot turn
+
+mine list-turn-item
+  mine term, term turn
+    mine text
+      slot name

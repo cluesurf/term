@@ -1,0 +1,7 @@
+
+mint risk
+  case text
+    slot text
+  hook make
+    make risk
+      bind text, read text

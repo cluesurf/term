@@ -1,0 +1,112 @@
+
+load @cluesurf/base/code/shared/hash
+  take task hash-djb2-xor
+    save task hash
+
+form hash-table
+  take capacity
+  take list
+
+  hook make
+    take self
+    take capacity
+
+    save self/list
+      make array
+        read capacity
+    save self/size, code 0
+
+  task is-full
+    call is-equal
+      read self/list/size
+      read self/size
+
+  task is-empty
+    call is-equal
+      read self/list/size
+      code 0
+
+  save set
+    take key
+    take value
+    fuse initialize-loop
+    walk test
+      hook test
+        call is-present
+          read self/list[i]
+      hook true
+        fuse update-hash
+    save self/list[i]
+      make leaf
+        read key
+        read value
+    save self/size
+      call increment
+        read self/size
+
+  task find
+    take key
+    fuse initialize-loop
+    walk test
+      hook step
+        stem roll
+          stem test
+            call not, read self/list[i]
+            hook true, back seed
+          stem test
+            call is-equal
+              read self/list[i]/key
+              read key
+            hook true
+              send back seed, read self/list[i]/value
+          stem fall
+            fuse update-hash
+        fuse increment-step
+
+  task remove
+    take key
+    fuse initialize-loop
+    walk test
+      hook step
+        stem roll
+          stem test
+            call not, read self/list[i]
+            hook true, back seed
+          stem test
+            call is-equal
+              read self/list[i]/key
+              read key
+            hook true
+              save self/list[i], read void
+              save self/size
+                call decrement
+                  read self/size
+          stem fall
+            fuse update-hash
+        fuse increment-step
+
+form leaf
+  take key
+  take value
+
+tree update-hash
+  hook bind
+    save i
+      call hash
+        call add
+          read base
+          call multiply
+            read step
+            read step
+
+tree increment-step
+  hook bind
+    save step
+      call increment
+        read step
+
+tree initialize-loop
+  hook bind
+    save base, call hash, read key
+    save i, read base
+    save step, code 1

@@ -1,0 +1,140 @@
+
+load @cluesurf/base/code/mill
+  find mill-mine
+  find mill-mint
+  find mill-mill
+
+mint mill
+  case mine, mint mill-mine
+    slot mine
+  case mint, mint mill-mint
+    slot mint
+  case mill, mint mill-mill
+    slot mill
+
+mint mill-mine, like mill-mine
+  case name
+    slot name
+  case child, mint mill-mine-child
+    slot child
+  hook make
+    make mill-mine
+      bind name, read name
+      bind child, read child
+
+mint mill-mine-child
+  case term, mint mill-mine-term
+    slot term
+  case list, mint mill-mine-list
+    slot list
+  case maybe, mint mill-mine-maybe
+    slot maybe
+  case case, mint mill-mine-case
+    slot case
+  case any, mint mill-mine-any
+    slot any
+  case text
+    slot text
+  case path
+    slot path
+  case form, mint mill-mine-form
+    slot form
+
+mint mill-mine-term
+  case term
+    slot term
+  case child, mint mill-mine-child
+    slot child
+
+mint mill-mine-list
+  case child, mint mill-mine-child
+    slot child
+
+mint mill-mine-maybe
+  case child, mint mill-mine-child
+    slot child
+
+mint mill-mine-case
+  case child, mint mill-mine-child
+    slot child
+
+mint mill-mine-any
+  case child, mint mill-mine-child
+    slot child
+
+mint mill-mine-form
+  case like
+    slot like
+  case name
+    slot name
+
+mint mill-mint, like mill-mint
+  case name
+    slot name
+  case like
+    slot like
+  case child, mint mill-mint-child
+    slot child
+  hook make
+    make mill-mint
+      bind name, read name
+      bind like, read like
+      bind child, read child
+
+mint mill-mint-child
+  case case, mint mill-mint-case
+    slot case
+  case hook, mint mill-mint-hook
+    slot hook
+
+mint mill-mint-case
+  case name
+    slot name
+  case mint
+    slot mint
+  case child, mint mill-mint-child
+    slot child
+
+mint mill-mint-hook
+  case name
+    slot name
+  case child, mint mill-mint-hook-child
+    slot child
+
+mint mill-mint-hook-child
+  case make, mint mill-mint-make
+    slot make
+  case bind, mint mill-mint-bind
+    slot bind
+
+mint mill-mint-make
+  case name
+    slot name
+  case bind, mint mill-mint-bind
+    slot bind
+
+mint mill-mint-bind
+  case name
+    slot name
+  case value
+    slot value
+
+mint mill-mill, like mill-mill
+  case name
+    slot name
+  case bind, mint mill-mill-bind
+    slot bind
+  hook make
+    make mill-mill
+      bind name, read name
+      bind bind, read bind
+
+mint mill-mill-bind
+  case name
+    slot name
+  case path
+    slot path
+  hook make
+    make mill-mill-bind
+      bind name, read name
+      bind path, read path

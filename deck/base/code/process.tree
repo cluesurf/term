@@ -1,0 +1,17 @@
+
+# Process: platform info and lifecycle. Platform implementation is selected at build time and hidden behind this API.
+
+load @cluesurf/base/code/native/process
+  find get-platform
+  find exit-with
+
+task platform
+  like text
+  send back
+    call get-platform
+
+task exit
+  take code, like number
+  like void
+  call exit-with
+    read code

@@ -1,0 +1,27 @@
+
+form trace-entry
+  link name, like text
+  link duration, like size
+  link depth, like size
+
+task trace-entry-make
+  take name, like text
+  take duration, like size
+  take depth, like size
+  send back
+    make trace-entry
+      bind name, read name
+      bind duration, read duration
+      bind depth, read depth
+
+task trace-entry-name
+  take e, like trace-entry
+  fork case, read e
+    hook trace-entry, base name, base duration, base depth
+      send back, read name
+
+task trace-entry-duration
+  take e, like trace-entry
+  fork case, read e
+    hook trace-entry, base name, base duration, base depth
+      send back, read duration

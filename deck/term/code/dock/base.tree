@@ -1,0 +1,6 @@
+
+# The dock mill: the routing + CLI DSL. Grammar in ./mine, builder in ./mint, AST in @cluesurf/base/code/dock.
+
+mill dock
+  bind mine, load ./mine
+  bind mint, load ./mint

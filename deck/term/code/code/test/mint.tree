@@ -1,0 +1,15 @@
+
+note <lower a `test <phrase>` block to the `test` meta object: its name is the phrase, its work is the body's flow wrapped as a task. `run` (in @cluesurf/base/code/test) executes a list of these. No special compiler support: a milled `test` is an ordinary record the backend emits like any other.>
+
+load @cluesurf/base/code/test
+  find test
+
+mint test
+  case name
+    slot name
+  case work, mint flow
+    slot work
+  hook make
+    make test
+      bind name, read name
+      bind work, read work

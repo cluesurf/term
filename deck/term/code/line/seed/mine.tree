@@ -1,0 +1,29 @@
+
+mine dock-seed
+  mine any
+    mine form, like dock-seed-code
+      slot code
+    mine form, like dock-seed-policy
+      slot policy
+
+mine dock-seed-code
+  mine term, term seed
+    mine term, term code
+      mine list
+        mine form, like dock-seed-code-case
+          slot case
+
+mine dock-seed-code-case
+  mine term, term seed
+    mine term
+      slot name
+    mine term, term mark
+      mine term
+        slot value
+
+mine dock-seed-policy
+  mine term, term seed
+    mine term
+      slot name
+    mine term
+      slot value

@@ -1,0 +1,39 @@
+
+load @cluesurf/base/code/take
+  find take
+  find take-value
+
+mint take
+  case name
+    slot name
+  case like, mint like
+    slot like
+  case alias
+    slot alias
+  case need
+    slot need
+  case base, mint seed
+    slot base
+  case take, mint take-value
+    slot take
+  hook make
+    make take
+      bind name, read name
+      bind like, read like
+      bind alias, read alias
+      bind need, read need
+      bind base, read base
+      bind take, read take
+
+mint take-value, like take-value
+  case term
+    slot term
+  case text
+    slot text
+  case mark
+    slot mark
+  hook make
+    make take-value
+      bind term, read term
+      bind text, read text
+      bind mark, read mark

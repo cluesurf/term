@@ -1,0 +1,10 @@
+
+form mark
+  link dock, mark private
+
+task start
+  like mark
+
+task read
+  take mark, like mark
+  like size

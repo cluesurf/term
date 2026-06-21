@@ -1,0 +1,46 @@
+
+# https://github.com/Evercoder/culori
+
+load @cluesurf/base/code/mixin/each
+  find define-each
+
+fuse define-each, read space
+  read define-space
+
+host space
+  term a98
+  term cubehelix
+  term dlch
+  term hsi
+  term hsl
+  term hsv
+  term hwb
+  term jab
+  term jch
+  term lab
+  term lab65
+  term lch
+  term lchuv
+  term lrgb
+  term luv
+  term okhsl
+  term okhsv
+  term oklab
+  term p3
+  term prophoto
+  term rec2020
+  term xyz50
+  term xyz65
+  term yiq
+
+tree define-space
+  take name
+
+  hook bind
+    task convert-rgb-to-{name}-space
+      take value, like rgb-color
+      like {name}-color
+
+    task convert-{name}-to-rgb-space
+      take value, like {name}-color
+      like rgb-color

@@ -1,0 +1,16 @@
+# Hex color formatting (#rrggbb). The clean uniform interface; the byte-to-hex formatting is delegated to the per-env native implementation, hidden behind the API.
+
+load @cluesurf/base/code/color/rgb
+  find rgb-color
+
+load @cluesurf/base/code/native/color/hex
+  find rgb-to-hex
+
+task from-rgb
+  take color, like rgb-color
+  like text
+  send back
+    call rgb-to-hex
+      read color/red
+      read color/green
+      read color/blue

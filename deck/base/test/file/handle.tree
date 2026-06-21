@@ -1,0 +1,145 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:path>, name path
+  load <node:os>, name os
+
+task make-temp-dir
+  wait true
+  take x, like text
+
+  save tmp
+    call os/tmpdir
+
+  save prefix
+    call path/join
+      bind a, read tmp
+      bind b, text <seed-test->
+
+  send back
+    call fs-promise/mkdtemp
+      wait true
+      bind path, read prefix
+
+task run-tests
+  wait true
+  take x, like text
+
+  save dir
+    call make-temp-dir
+      wait true
+      bind x, text <x>
+
+  save fp
+    call path/join
+      bind a, read dir
+      bind b, text <handle-test.txt>
+
+  note <Test open and write via handle>
+  save handle
+    call fs-promise/open
+      wait true
+      bind path, read fp
+      bind flags, text <w>
+
+  call handle/write
+    wait true
+    bind data, text <hello handle>
+
+  call handle/close
+    wait true
+
+  note <Test read back>
+  save content
+    call fs-promise/read-file
+      wait true
+      bind path, read fp
+      bind encoding, text <utf8>
+
+  fork test
+    call is-equal
+      bind a, read content
+      bind b, text <hello handle>
+    hook true
+      call console/log
+        bind msg, text <pass: handle-write-read>
+    hook false
+      call console/log
+        bind msg, text <fail: handle-write-read>
+
+  note <Test truncate via handle>
+  save handle2
+    call fs-promise/open
+      wait true
+      bind path, read fp
+      bind flags, text <r+>
+
+  call handle2/truncate
+    wait true
+    bind len, mark 5
+
+  call handle2/close
+    wait true
+
+  save truncated
+    call fs-promise/read-file
+      wait true
+      bind path, read fp
+      bind encoding, text <utf8>
+
+  fork test
+    call is-equal
+      bind a, read truncated
+      bind b, text <hello>
+    hook true
+      call console/log
+        bind msg, text <pass: handle-truncate>
+    hook false
+      call console/log
+        bind msg, text <fail: handle-truncate>
+
+  note <Test datasync (flush)>
+  save handle3
+    call fs-promise/open
+      wait true
+      bind path, read fp
+      bind flags, text <w>
+
+  call handle3/write
+    wait true
+    bind data, text <flushed>
+
+  call handle3/datasync
+    wait true
+
+  call handle3/close
+    wait true
+
+  save flushed
+    call fs-promise/read-file
+      wait true
+      bind path, read fp
+      bind encoding, text <utf8>
+
+  fork test
+    call is-equal
+      bind a, read flushed
+      bind b, text <flushed>
+    hook true
+      call console/log
+        bind msg, text <pass: handle-flush>
+    hook false
+      call console/log
+        bind msg, text <fail: handle-flush>
+
+  note <Cleanup>
+  call fs-promise/rm
+    wait true
+    bind path, read fp
+
+  call fs-promise/rmdir
+    wait true
+    bind path, read dir
+
+  call console/log
+    bind msg, text <done>

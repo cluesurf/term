@@ -1,0 +1,15 @@
+
+# cast slab              new page
+# cast size, size 1, code cm    vertical space
+# cast line, size 12     line break
+
+mine cast
+  mine term, term cast
+    slot kind
+    mine maybe
+      mine term, term size
+        slot size
+    mine maybe
+      mine term, term code
+        mine text
+          slot unit

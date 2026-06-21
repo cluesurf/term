@@ -1,0 +1,161 @@
+# Calendar: formatting, components, construction, and arithmetic over a UTC timestamp (epoch milliseconds, an integer). The clean uniform interface; the per-env native implementation is selected at build time and hidden. Each platform delegates to its best date library (node / browser the host Date, rust chrono, swift Foundation, kotlin java.time). Everything is UTC, so results are deterministic across hosts. Formatting and parsing use ISO 8601 with millisecond precision and a Z suffix (2026-06-19T12:34:56.000Z). Fixed-length units (second / minute / hour / day) are pure integer arithmetic on the timestamp; calendar-aware units (month / year) delegate to the platform, which handles month lengths and leap years.
+
+load @cluesurf/base/code/native/calendar
+  find do-format
+  find do-parse
+  find do-year
+  find do-month
+  find do-day
+  find do-hour
+  find do-minute
+  find do-second
+  find do-weekday
+  find do-build
+  find do-add-months
+  find do-add-years
+
+form date-parts
+  link year, like integer
+  link month, like integer
+  link day, like integer
+  link hour, like integer
+  link minute, like integer
+  link second, like integer
+  link weekday, like integer
+
+task format
+  take millis, like number
+  like text
+  send back, call do-format, read millis
+
+task parse
+  take text, like text
+  like number
+  send back, call do-parse, read text
+
+task year
+  take millis, like number
+  like integer
+  send back, call do-year, read millis
+
+task month
+  take millis, like number
+  like integer
+  send back, call do-month, read millis
+
+task day
+  take millis, like number
+  like integer
+  send back, call do-day, read millis
+
+task hour
+  take millis, like number
+  like integer
+  send back, call do-hour, read millis
+
+task minute
+  take millis, like number
+  like integer
+  send back, call do-minute, read millis
+
+task second
+  take millis, like number
+  like integer
+  send back, call do-second, read millis
+
+task weekday
+  take millis, like number
+  like integer
+  send back, call do-weekday, read millis
+
+task make-utc
+  take year, like integer
+  take month, like integer
+  take day, like integer
+  take hour, like integer
+  take minute, like integer
+  take second, like integer
+  like number
+  send back
+    call do-build
+      read year
+      read month
+      read day
+      read hour
+      read minute
+      read second
+
+task to-parts
+  take millis, like number
+  like date-parts
+  send back
+    make date-parts
+      bind year, call year, read millis
+      bind month, call month, read millis
+      bind day, call day, read millis
+      bind hour, call hour, read millis
+      bind minute, call minute, read millis
+      bind second, call second, read millis
+      bind weekday, call weekday, read millis
+
+task add-seconds
+  take millis, like number
+  take count, like number
+  like number
+  send back
+    call add
+      read millis
+      call multiply
+        read count
+        code 1000
+
+task add-minutes
+  take millis, like number
+  take count, like number
+  like number
+  send back
+    call add
+      read millis
+      call multiply
+        read count
+        code 60000
+
+task add-hours
+  take millis, like number
+  take count, like number
+  like number
+  send back
+    call add
+      read millis
+      call multiply
+        read count
+        code 3600000
+
+task add-days
+  take millis, like number
+  take count, like number
+  like number
+  send back
+    call add
+      read millis
+      call multiply
+        read count
+        code 86400000
+
+task add-months
+  take millis, like number
+  take count, like number
+  like number
+  send back
+    call do-add-months
+      read millis
+      read count
+
+task add-years
+  take millis, like number
+  take count, like number
+  like number
+  send back
+    call do-add-years
+      read millis
+      read count

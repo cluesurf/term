@@ -1,0 +1,142 @@
+
+load ./context
+  find get
+  find fail
+
+load ./compare
+  find deep-equal
+
+load @cluesurf/base/code/native/shared/test
+  find make-failure
+
+task resolve
+  take name, like text
+  take format, like text
+  note private
+  save ext, text <.json>
+  fork test
+    hook test
+      call is-equal
+        bind a, read format
+        bind b, text <text>
+    hook hold
+      save ext, text <.txt>
+  send back
+    call text-concat
+      bind a
+        call text-concat
+          bind a, text <.seed/snapshot/>
+          bind b, read name
+      bind b, read ext
+
+task serialize
+  take value
+  take format, like text
+  note private
+  like text
+  fork test
+    hook test
+      call is-equal
+        bind a, read format
+        bind b, text <json>
+    hook hold
+      send back
+        call json-serialize
+          bind value, read value
+  send back
+    call to-text
+      bind value, read value
+
+task deserialize
+  take raw, like text
+  take format, like text
+  note private
+  fork test
+    hook test
+      call is-equal
+        bind a, read format
+        bind b, text <json>
+    hook hold
+      send back
+        call json-parse
+          bind text, read raw
+  send back, read raw
+
+task match
+  note async
+  take value
+  take name, like text
+  take format, like text, fall text <json>
+
+  save path
+    call resolve
+      bind name, read name
+      bind format, read format
+
+  save exists
+    call file/test
+      note async
+      bind path, read path
+
+  fork test
+    hook test, read exists
+    hook miss
+      save data
+        call serialize
+          bind value, read value
+          bind format, read format
+      call file/write
+        note async
+        bind path, read path
+        bind data, read data
+      send back
+
+  save raw
+    call file/read
+      note async
+      bind path, read path
+
+  save stored
+    call deserialize
+      bind raw, read raw
+      bind format, read format
+
+  save eq
+    call deep-equal
+      bind a, read value
+      bind b, read stored
+
+  fork test
+    hook test, read eq
+    hook miss
+      save ctx
+        call get
+      call fail
+        bind ctx, read ctx
+        bind failure
+          call make-failure
+            bind name, read ctx/name
+            bind message, text <Snapshot mismatch>
+            bind expected, read stored
+            bind actual, read value
+
+task update
+  note async
+  take value
+  take name, like text
+  take format, like text, fall text <json>
+
+  save path
+    call resolve
+      bind name, read name
+      bind format, read format
+
+  save data
+    call serialize
+      bind value, read value
+      bind format, read format
+
+  call file/write
+    note async
+    bind path, read path
+    bind data, read data

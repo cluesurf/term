@@ -1,0 +1,4 @@
+
+task open
+  take file, like text
+  like connection

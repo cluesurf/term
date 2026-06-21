@@ -1,0 +1,8 @@
+
+load @cluesurf/base/code/command
+  find result
+
+task check
+  take result, like result
+  take rules, like list
+  like list

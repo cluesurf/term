@@ -1,0 +1,12 @@
+
+# tell <attribution>
+#   cite <source>
+
+mine tell
+  mine term, term tell
+    mine text
+      slot text
+    mine maybe
+      mine term, term cite
+        mine text
+          slot cite

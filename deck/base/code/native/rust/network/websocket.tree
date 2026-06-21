@@ -1,0 +1,45 @@
+
+load @cluesurf/base/code/network/websocket
+  find socket
+
+task connect
+  note async
+  take url, like text
+  take headers, like hash, need false
+  take protocols, like list, need false
+
+  save request
+    call url/into-client-request
+      halt kink
+
+  fork test
+    hook test
+      call is-some, read headers
+    hook hold
+      save req-headers
+        call request/headers-mut
+      walk list, read headers
+        hook next
+          take site, name entry
+          call req-headers/insert
+            call header-name/from-bytes
+              read entry/0
+              halt kink
+            call header-value/from-str
+              read entry/1
+              halt kink
+
+  save result
+    call tokio-tungstenite/connect-async
+      note async
+      read request
+      halt kink
+
+  save raw, read result/0
+
+  send back
+    make socket
+      bind dock, read raw
+      bind url, read url
+      bind protocol, text <>
+      bind ready, wave true

@@ -38,7 +38,7 @@ const resolve = (path: string): Source | undefined =>
 const direct = compile(
   {
     file: 'main.tree',
-    text: 'load @app/a\n  find widget\n\ntask one\n  like number\n  save w\n    make widget\n      bind size, mark 5\n  send back, read w/size\n',
+    text: 'load @app/a\n  find widget\n\ntask one\n  like number\n  save w\n    make widget\n      bind size, code 5\n  send back, read w/size\n',
   },
   { resolve },
 )
@@ -53,7 +53,7 @@ expect(
 const transitive = compile(
   {
     file: 'main.tree',
-    text: 'load @app/c\n  find widget\n\ntask two\n  like number\n  save w\n    make widget\n      bind size, mark 9\n  send back, read w/size\n',
+    text: 'load @app/c\n  find widget\n\ntask two\n  like number\n  save w\n    make widget\n      bind size, code 9\n  send back, read w/size\n',
   },
   { resolve },
 )

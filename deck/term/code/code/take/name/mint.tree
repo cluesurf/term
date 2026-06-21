@@ -1,0 +1,7 @@
+
+mint name
+  case name
+    slot name
+  hook make
+    make name
+      bind name, read name

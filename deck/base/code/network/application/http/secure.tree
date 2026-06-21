@@ -1,0 +1,13 @@
+
+# HTTPS: HTTP over TLS. The request and response shapes are shared with plain HTTP (see ../http); this adds the
+# transport-security parameters for a secure connection.
+
+form tls-version
+  case one-two
+  case one-three
+
+form secure-options
+  link certificate, like text, need false
+  link key, like text, need false
+  link minimum-version, like tls-version
+  link verify-peer, like boolean

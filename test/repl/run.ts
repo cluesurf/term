@@ -9,7 +9,7 @@ import { Repl } from '@/code/call/walk'
 import type { Source } from '@/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', '..', 'base.tree')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 const resolver = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
   if (!path.startsWith(prefix)) return undefined
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
   const repl = new Repl(resolver)
 
   // evaluate a bare expression
-  const lit = await repl.feed('call add\n  mark 40\n  mark 2')
+  const lit = await repl.feed('call add\n  code 40\n  code 2')
   expect(
     'evaluates a bare expression',
     lit.kind === 'value' && lit.text,
@@ -48,14 +48,14 @@ async function main(): Promise<void> {
 
   // add a definition, then call it
   const def = await repl.feed(
-    'task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      mark 2',
+    'task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2',
   )
   expect(
     'accepts a definition',
     def.kind === 'definition' && def.text,
     'double',
   )
-  const used = await repl.feed('call double\n  mark 21')
+  const used = await repl.feed('call double\n  code 21')
   expect(
     'calls a user-defined task',
     used.kind === 'value' && used.text,
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   await repl.feed(
     'task quadruple\n  take n, like number\n  like number\n  send back\n    call double\n      call double\n        read n',
   )
-  const built = await repl.feed('call quadruple\n  mark 3')
+  const built = await repl.feed('call quadruple\n  code 3')
   expect(
     'definitions compose',
     built.kind === 'value' && built.text,
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   )
   expect('accepts a stdlib load', load.kind, 'definition')
   const unwrap = await repl.feed(
-    'call unwrap-or\n  make some\n    bind value, mark 7\n  mark 0',
+    'call unwrap-or\n  make some\n    bind value, code 7\n  code 0',
   )
   expect(
     'runs a stdlib method',
@@ -96,7 +96,7 @@ async function main(): Promise<void> {
     'task oops\n  send back\n    read missing',
   )
   expect('rejects a broken definition', broken.kind, 'error')
-  const stillWorks = await repl.feed('call double\n  mark 5')
+  const stillWorks = await repl.feed('call double\n  code 5')
   expect(
     'session survives a rejected definition',
     stillWorks.kind === 'value' && stillWorks.text,

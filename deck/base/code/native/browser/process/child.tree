@@ -1,0 +1,115 @@
+
+load @cluesurf/base/code/process
+  find child
+
+task wait
+  note async
+  take child, like child
+  like size
+
+  save code
+    call browser-worker-wait
+      note async
+      read child/dock
+
+  send back, read code
+
+task stop
+  take child, like child
+  take form, like text, fall text <gentle>
+
+  call child/dock/terminate
+
+task write
+  note async
+  take child, like child
+  take data, like text
+
+  call child/dock/post-message
+    read data
+
+task close
+  note async
+  take child, like child
+
+  call child/dock/post-message
+    make object
+      bind type, text <close>
+
+task read
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <text>
+  like text
+
+  save output
+    call browser-worker-read
+      note async
+      read child/dock
+
+  send back, read output
+
+task stream
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <bytes>
+  like list
+
+  save messages, make list
+
+  call browser-worker-stream
+    read child/dock
+    read messages
+
+  send back, read messages
+
+task browser-worker-wait
+  note private
+  note async
+  take worker
+  dock call <run {
+    return new Promise((resolve) => {
+      worker.addEventListener("message", (e) => {
+        if (e.data && e.data.type === "exit") {
+          resolve(e.data.code || 0);
+        }
+      });
+      worker.addEventListener("error", () => {
+        resolve(1);
+      });
+    });
+  }>
+
+task browser-worker-read
+  note private
+  note async
+  take worker
+  dock call <run {
+    return new Promise((resolve) => {
+      const chunks = [];
+      worker.addEventListener("message", (e) => {
+        if (e.data && e.data.type === "exit") {
+          resolve(chunks.join(""));
+        } else {
+          chunks.push(typeof e.data === "string" ? e.data : JSON.stringify(e.data));
+        }
+      });
+      worker.addEventListener("error", () => {
+        resolve(chunks.join(""));
+      });
+    });
+  }>
+
+task browser-worker-stream
+  note private
+  take worker
+  take messages
+  dock call <run {
+    worker.addEventListener("message", (e) => {
+      if (e.data && e.data.type !== "exit" && e.data.type !== "close") {
+        messages.push(e.data);
+      }
+    });
+  }>

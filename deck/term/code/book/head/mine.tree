@@ -1,0 +1,9 @@
+
+# head 1, text <Introduction>
+# head 2, text <Getting Started>
+
+mine head
+  mine term, term head
+    slot level
+    mine text
+      slot title

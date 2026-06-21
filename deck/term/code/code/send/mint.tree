@@ -1,0 +1,10 @@
+
+load @cluesurf/base/code/back
+  find back
+
+mint back
+  case seed, mint seed
+    slot seed
+  hook make
+    make back
+      bind seed, read seed

@@ -1,0 +1,24 @@
+
+host exit-code
+  term success
+  term failure
+  term usage-error
+  term not-executable
+  term not-found
+  term signal-interrupt
+  term signal-kill
+  term signal-terminate
+
+task is-success
+  take code, like size
+  send back
+    call is-equal
+      bind a, read code
+      bind b, code 0
+
+task from-signal
+  take signal, like size
+  send back
+    call add
+      bind a, code 128
+      bind b, read signal

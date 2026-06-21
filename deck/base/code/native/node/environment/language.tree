@@ -1,0 +1,39 @@
+
+dock load
+  load <node:os>, name os
+
+task read
+  save options
+    call intl-date-time-format-resolved-options
+  save tag, read options/locale
+  save parts
+    call split
+      read tag
+      text <->
+  save language
+    read parts/0
+  save region
+    fork test, call is-above, read parts/length, code 1
+      hook true
+        read parts/1
+      hook false
+        text <>
+  save timezone, read options/time-zone
+  send back
+    make locale
+      bind language, read language
+      bind region, read region
+      bind tag, read tag
+      bind timezone, read timezone
+
+task list
+  save options
+    call intl-date-time-format-resolved-options
+  save tag, read options/locale
+  send back
+    make list
+      read tag
+
+task intl-date-time-format-resolved-options
+  note private
+  dock call <() => Intl.DateTimeFormat().resolvedOptions()>

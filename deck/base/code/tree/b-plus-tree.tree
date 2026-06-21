@@ -1,0 +1,49 @@
+
+form b-plus-tree
+  head k
+  head v
+
+  task get
+    take self
+    take key, like k
+    like maybe
+
+  task set
+    take self, flex true
+    take key, like k
+    take value, like v
+
+  task has
+    take self
+    take key, like k
+    like boolean
+
+  task remove
+    take self, flex true
+    take key, like k
+    like boolean
+
+  task range
+    take self
+    take start, like k
+    take end, like k
+    like list
+
+  task get-size
+    take self
+    like u64
+
+  task is-empty
+    take self
+    like boolean
+
+  task min
+    take self
+    like maybe
+
+  task max
+    take self
+    like maybe
+
+  task clear
+    take self, flex true

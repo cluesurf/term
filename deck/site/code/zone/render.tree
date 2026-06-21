@@ -1,0 +1,164 @@
+
+# Render helpers: the small set of primitives a compiled zone calls to build its view. `element` and `text` make
+# static nodes; `attribute` and `event` wire them; `dynamic` makes a text node an effect keeps in sync; `show` swaps
+# a subtree on a reactive condition; `each` renders a reactive list; `mount` attaches a built tree to a host. All host
+# work goes through the platform-agnostic dom API, so this logic is identical on browser and server.
+
+load @cluesurf/base/code/list
+  find list
+
+load ../dom/native/dom
+  find view
+  find create-element
+  find create-text
+  find set-text
+  find set-attribute
+  find listen
+  find append
+  find replace
+  find remove
+
+load @cluesurf/base/code/list
+  find list
+  find push
+
+load ./reactive
+  find make-effect
+
+task element
+  take tag, like text
+  like view
+  send back
+    call create-element
+      bind tag, read tag
+
+task text
+  take value, like text
+  like view
+  send back
+    call create-text
+      bind value, read value
+
+task attribute
+  take node, like view
+  take name, like text
+  take value, like text
+  call set-attribute
+    bind node, read node
+    bind name, read name
+    bind value, read value
+
+task event
+  take node, like view
+  take name, like text
+  take handler
+    like task
+  call listen
+    bind node, read node
+    bind event, read name
+    bind handler, read handler
+
+# a text node kept in sync with a reactive getter
+task dynamic
+  take source
+    like task
+      like text
+  like view
+  save host
+    call create-text
+      bind value, text <>
+  call make-effect
+    bind run
+      task tick
+        call set-text
+          bind node, read host
+          bind value
+            call source
+  send back, read host
+
+# swap a subtree on a reactive condition. An effect re-evaluates `when` and mounts `then` or `other`, replacing the
+# node mounted last time. Reads inside `when` subscribe the effect, so the branch updates when state changes.
+task show
+  take host, like view
+  take when
+    like task
+      like boolean
+  take then
+    like task
+      like view
+  take other
+    like task
+      like view
+  save current
+    call create-text
+      bind value, text <>
+  call append
+    bind parent, read host
+    bind child, read current
+  call make-effect
+    bind run
+      task swap
+        save next
+          fork test
+            hook test
+              call when
+            hook hold
+              call then
+            hook miss
+              call other
+        call replace
+          bind old, read current
+          bind new, read next
+        save current, read next
+
+# render each item of a list under a host, calling `build` per item. `items` is a getter, read inside an effect, so
+# the list re-renders whenever a signal it reads changes. Reconciliation is simple: remove the nodes built last time,
+# then build and append the current items.
+task each
+  head t
+  take host, like view
+  take items
+    like task
+      like list
+        like t
+  take build
+    like task
+      take item, like t
+      like view
+  save mounted
+    make list
+  call make-effect
+    bind run
+      task render
+        walk list, read mounted
+          hook next
+            take site, name old
+            call remove
+              bind node, read old
+        save fresh
+          make list
+        save current, call items
+        walk list, read current
+          hook next
+            take site, name item
+            save node
+              call build
+                bind item, read item
+            call append
+              bind parent, read host
+              bind child, read node
+            call push
+              bind list, read fresh
+              bind item, read node
+        save mounted, read fresh
+
+# attach a built child under a host
+task mount
+  take host, like view
+  take build
+    like task
+      like view
+  call append
+    bind parent, read host
+    bind child
+      call build

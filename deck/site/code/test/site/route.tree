@@ -1,0 +1,17 @@
+
+# Client route tree in the dock DSL. Maps paths to zone components.
+# Route matching is ours; navigation delegates to the browser History API.
+
+dock /
+  zone home-page
+
+dock /counter
+  zone counter
+    bind label, text <hits>
+
+dock /users/:id
+  take path
+    take id
+      like text
+  zone user-detail
+    bind id, read id

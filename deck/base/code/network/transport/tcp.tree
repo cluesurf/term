@@ -1,0 +1,39 @@
+
+# TCP: Transmission Control Protocol. The segment structure and connection lifecycle at the transport layer.
+# The socket-level connect/listen API lives in ../../tcp.
+
+# control flags carried in a segment header
+form tcp-flags
+  link fin, like boolean
+  link syn, like boolean
+  link reset, like boolean
+  link push, like boolean
+  link acknowledge, like boolean
+  link urgent, like boolean
+
+# a single segment: the header fields plus the payload bytes
+form tcp-segment
+  link source-port, like u16
+  link destination-port, like u16
+  link sequence-number, like u32
+  link acknowledgement-number, like u32
+  link data-offset, like u8
+  link flags, like tcp-flags
+  link window-size, like u16
+  link checksum, like u16
+  link urgent-pointer, like u16
+  link payload, like list
+
+# the connection state machine (RFC 793)
+form tcp-state
+  case closed
+  case listen
+  case syn-sent
+  case syn-received
+  case established
+  case fin-wait-one
+  case fin-wait-two
+  case close-wait
+  case closing
+  case last-acknowledge
+  case time-wait

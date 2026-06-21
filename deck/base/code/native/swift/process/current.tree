@@ -1,0 +1,63 @@
+
+dock load
+  load <Foundation>, name foundation
+
+load @cluesurf/base/code/process/current
+  find process-info
+
+task read
+  like process-info
+
+  save info
+    call foundation/process-info/process-info
+
+  send back
+    make process-info
+      bind id
+        call info/process-identifier
+      bind arguments
+        call info/arguments
+      bind directory
+        call foundation/file-manager/default/current-directory-path
+      bind executable
+        call info/arguments/first
+
+task exit
+  take code, like size, fall 0
+
+  call foundation/exit
+    read code
+
+task listen
+  take signal, like text
+  take handler, like task
+
+  save signal-id
+    fork roll
+      hook test
+        call is-equal
+          bind a, read signal
+          bind b, text <terminate>
+        send back, code 15
+      hook test
+        call is-equal
+          bind a, read signal
+          bind b, text <interrupt>
+        send back, code 2
+      hook test
+        call is-equal
+          bind a, read signal
+          bind b, text <hangup>
+        send back, code 1
+      hook fall
+        halt text <unknown signal>
+
+  save source
+    call foundation/dispatch-source/make-signal-source
+      bind signal, read signal-id
+      bind queue, call foundation/dispatch-queue/main
+
+  call source/set-event-handler
+    read handler
+
+  call source/resume

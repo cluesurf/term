@@ -1,0 +1,208 @@
+
+task slice
+  take value, like text
+  take start, like size
+  take end, like size, need false
+
+  fork test
+    hook test
+      call is-some, read end
+    hook hold
+      send back
+        call kotlin-substring
+          read value
+          read start
+          read end
+    hook miss
+      send back
+        call kotlin-substring-from
+          read value
+          read start
+
+task find
+  take value, like text
+  take search, like text
+  take start, like size, fall code 0
+
+  send back
+    call kotlin-index-of
+      read value
+      read search
+      read start
+
+task replace
+  take value, like text
+  take search, like text
+  take replacement, like text
+  take all, like bool, fall wave false
+
+  fork test, name all
+    hook true
+      send back
+        call kotlin-replace-all
+          read value
+          read search
+          read replacement
+    hook false
+      send back
+        call kotlin-replace-first
+          read value
+          read search
+          read replacement
+
+task split
+  take value, like text
+  take separator, like text
+
+  send back
+    call kotlin-split
+      read value
+      read separator
+
+task join
+  take list, like list
+  take separator, like text, fall text <>
+
+  send back
+    call kotlin-join
+      read list
+      read separator
+
+task trim
+  take value, like text
+
+  send back
+    call kotlin-trim
+      read value
+
+task to-upper
+  take value, like text
+
+  send back
+    call kotlin-to-upper
+      read value
+
+task to-lower
+  take value, like text
+
+  send back
+    call kotlin-to-lower
+      read value
+
+task starts-with
+  take value, like text
+  take search, like text
+
+  send back
+    call kotlin-starts-with
+      read value
+      read search
+
+task ends-with
+  take value, like text
+  take search, like text
+
+  send back
+    call kotlin-ends-with
+      read value
+      read search
+
+task contains
+  take value, like text
+  take search, like text
+
+  send back
+    call kotlin-contains
+      read value
+      read search
+
+task length
+  take value, like text
+
+  send back
+    call kotlin-length
+      read value
+
+task kotlin-substring
+  note private
+  take value, like text
+  take start, like size
+  take end, like size
+  dock call <value.substring(start.toInt(), end.toInt())>
+
+task kotlin-substring-from
+  note private
+  take value, like text
+  take start, like size
+  dock call <value.substring(start.toInt())>
+
+task kotlin-index-of
+  note private
+  take value, like text
+  take search, like text
+  take start, like size
+  dock call <value.indexOf(search, start.toInt())>
+
+task kotlin-replace-all
+  note private
+  take value, like text
+  take search, like text
+  take replacement, like text
+  dock call <value.replace(search, replacement)>
+
+task kotlin-replace-first
+  note private
+  take value, like text
+  take search, like text
+  take replacement, like text
+  dock call <value.replaceFirst(search, replacement)>
+
+task kotlin-split
+  note private
+  take value, like text
+  take separator, like text
+  dock call <value.split(separator)>
+
+task kotlin-join
+  note private
+  take list, like list
+  take separator, like text
+  dock call <list.joinToString(separator)>
+
+task kotlin-trim
+  note private
+  take value, like text
+  dock call <value.trim()>
+
+task kotlin-to-upper
+  note private
+  take value, like text
+  dock call <value.uppercase()>
+
+task kotlin-to-lower
+  note private
+  take value, like text
+  dock call <value.lowercase()>
+
+task kotlin-starts-with
+  note private
+  take value, like text
+  take search, like text
+  dock call <value.startsWith(search)>
+
+task kotlin-ends-with
+  note private
+  take value, like text
+  take search, like text
+  dock call <value.endsWith(search)>
+
+task kotlin-contains
+  note private
+  take value, like text
+  take search, like text
+  dock call <value.contains(search)>
+
+task kotlin-length
+  note private
+  take value, like text
+  dock call <value.length>

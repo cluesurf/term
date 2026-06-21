@@ -1,0 +1,21 @@
+
+# Network request and response.
+
+form request
+  link method, like text
+  link url, like text
+  link body, like text
+
+form response
+  link status, like integer
+  link body, like text
+
+task cast
+  # Make a request
+  note async
+  take request, like request
+  like response
+
+task hook
+  # Handle a response
+  take response, like response

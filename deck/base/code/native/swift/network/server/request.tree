@@ -1,0 +1,57 @@
+
+load @cluesurf/base/code/network/server/request
+  find request
+
+task read
+  note async
+  take request, like request
+  take format, like text, fall text <text>
+
+  save raw, read request/dock
+
+  save result
+    call make-continuation
+      note async
+      task resolve
+        take ok
+        take fail
+        call raw/receive
+          text <minimumIncompleteLength>
+          code 1
+          text <maximumLength>
+          code 1048576
+          task on-receive
+            take content
+            take context
+            take is-complete
+            take error
+            fork test
+              hook test
+                call is-some, read error
+              hook hold
+                call fail, read error
+              hook miss
+                fork case, read format
+                  case text
+                    call ok
+                      fork test
+                        hook test
+                          call is-some, read content
+                        hook hold
+                          call string
+                            text <data>
+                            read content
+                            text <encoding>
+                            text <.utf8>
+                        hook miss
+                          text <>
+                  case bytes
+                    call ok, read content
+                  case json
+                    call ok
+                      call json-serialization/json-object
+                        text <with>
+                        read content
+                        halt kink
+                  case stream
+                    call ok, read raw

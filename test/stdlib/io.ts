@@ -23,7 +23,7 @@ import type { Source } from '@/code/compile/load'
 import { render } from '@/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', '..', 'base.tree')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
   if (!path.startsWith(prefix)) return undefined
@@ -323,42 +323,42 @@ task abs-neg
   send back
     call absolute
       call subtract
-        mark 0
-        mark 7
+        code 0
+        code 7
 
 task two-to-ten
   like number
   send back
     call power
-      mark 2
-      mark 10
+      code 2
+      code 10
 
 task root-of
   like number
   send back
     call square-root
-      mark 144
+      code 144
 
 task clamp-high
   like number
   send back
     call clamp
-      mark 15
-      mark 0
-      mark 10
+      code 15
+      code 0
+      code 10
 
 task gcd-of
   like number
   send back
     call greatest-common-divisor
-      mark 12
-      mark 18
+      code 12
+      code 18
 
 task fact-of
   like number
   send back
     call factorial
-      mark 5
+      code 5
 `
 
 // color HSL: convert RGB to HSL through the math interface (max/min), integer-scaled
@@ -375,9 +375,9 @@ task blue-hue
   save c
     call from-rgb
       make rgb-color
-        bind red, mark 0
-        bind green, mark 0
-        bind blue, mark 255
+        bind red, code 0
+        bind green, code 0
+        bind blue, code 255
   send back
     read c/hue
 
@@ -386,9 +386,9 @@ task green-hue
   save c
     call from-rgb
       make rgb-color
-        bind red, mark 0
-        bind green, mark 255
-        bind blue, mark 0
+        bind red, code 0
+        bind green, code 255
+        bind blue, code 0
   send back
     read c/hue
 
@@ -397,9 +397,9 @@ task white-saturation
   save c
     call from-rgb
       make rgb-color
-        bind red, mark 255
-        bind green, mark 255
-        bind blue, mark 255
+        bind red, code 255
+        bind green, code 255
+        bind blue, code 255
   send back
     read c/saturation
 
@@ -408,9 +408,9 @@ task back-to-red
   save c
     call to-rgb
       make hsl-color
-        bind hue, mark 0
-        bind saturation, mark 100
-        bind lightness, mark 50
+        bind hue, code 0
+        bind saturation, code 100
+        bind lightness, code 50
   send back
     read c/red
 
@@ -419,9 +419,9 @@ task back-to-green-channel
   save c
     call to-rgb
       make hsl-color
-        bind hue, mark 120
-        bind saturation, mark 100
-        bind lightness, mark 50
+        bind hue, code 120
+        bind saturation, code 100
+        bind lightness, code 50
   send back
     read c/green
 
@@ -430,9 +430,9 @@ task white-back-blue
   save c
     call to-rgb
       make hsl-color
-        bind hue, mark 0
-        bind saturation, mark 0
-        bind lightness, mark 100
+        bind hue, code 0
+        bind saturation, code 0
+        bind lightness, code 100
   send back
     read c/blue
 
@@ -441,9 +441,9 @@ task red-lightness
   save c
     call from-rgb
       make rgb-color
-        bind red, mark 255
-        bind green, mark 0
-        bind blue, mark 0
+        bind red, code 255
+        bind green, code 0
+        bind blue, code 0
   send back
     read c/lightness
 `
@@ -546,9 +546,9 @@ task hex-of
   send back
     call from-rgb
       make rgb-color
-        bind red, mark 255
-        bind green, mark 0
-        bind blue, mark 128
+        bind red, code 255
+        bind green, code 0
+        bind blue, code 128
 `
 
 // hmac-sha256, delegating to the host node:crypto (async interface)
@@ -587,9 +587,9 @@ task red-value
   save c
     call from-rgb
       make rgb-color
-        bind red, mark 255
-        bind green, mark 0
-        bind blue, mark 0
+        bind red, code 255
+        bind green, code 0
+        bind blue, code 0
   send back
     read c/value
 
@@ -598,9 +598,9 @@ task red-saturation
   save c
     call from-rgb
       make rgb-color
-        bind red, mark 255
-        bind green, mark 0
-        bind blue, mark 0
+        bind red, code 255
+        bind green, code 0
+        bind blue, code 0
   send back
     read c/saturation
 
@@ -609,9 +609,9 @@ task gray-saturation
   save c
     call from-rgb
       make rgb-color
-        bind red, mark 128
-        bind green, mark 128
-        bind blue, mark 128
+        bind red, code 128
+        bind green, code 128
+        bind blue, code 128
   send back
     read c/saturation
 `
@@ -644,7 +644,7 @@ task tripled
   send back
     call repeat
       read m
-      mark 3
+      code 3
 
 task has-prefix
   take m, like text
@@ -689,15 +689,15 @@ task fixed
   like number
   send back
     call integer
-      mark 5
-      mark 5
+      code 5
+      code 5
 
 task ranged
   like number
   send back
     call integer
-      mark 1
-      mark 6
+      code 1
+      code 6
 `
 
 // regex, delegating to the host engine via the regex shim (wraps new RegExp on node)
@@ -770,7 +770,7 @@ task item-number
       call get-item
         call parse
           read text
-        mark 1
+        code 1
 
 task bool-of
   take text, like text
@@ -1216,12 +1216,12 @@ task stamp
   like number
   send back
     call make-utc
-      mark 2026
-      mark 6
-      mark 19
-      mark 12
-      mark 34
-      mark 56
+      code 2026
+      code 6
+      code 19
+      code 12
+      code 34
+      code 56
 
 task formatted
   take m, like number
@@ -1251,7 +1251,7 @@ task next-day
     call format
       call add-days
         read m
-        mark 1
+        code 1
 
 task next-month
   take m, like number
@@ -1260,7 +1260,7 @@ task next-month
     call month
       call add-months
         read m
-        mark 1
+        code 1
 
 task parts-weekday
   take m, like number

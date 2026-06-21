@@ -1,0 +1,4 @@
+
+task get
+  take precise, like bool, fall false
+  like size

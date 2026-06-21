@@ -1,0 +1,102 @@
+
+dock load
+  load <Network>, name network
+
+load @cluesurf/base/code/network/tcp
+  find connection
+  find listener
+
+task connect
+  note async
+  take host, like text
+  take port, like size
+  take secure, like bool, fall wave false
+
+  save params
+    fork test
+      hook test
+        read secure
+      hook hold
+        call nw-parameters/tls
+      hook miss
+        call nw-parameters/tcp
+
+  save nw-conn
+    call nw-connection
+      text <host>
+      call nw-endpoint/host
+        read host
+        text <port>
+        call nw-endpoint/port
+          call uint16, read port
+      text <using>
+      read params
+
+  call nw-conn/start
+    text <queue>
+    call dispatch-queue/main
+
+  call wait-for-connection-ready
+    note async
+    read nw-conn
+    halt kink
+
+  save local-endpoint
+    call nw-conn/current-path/local-endpoint
+
+  send back
+    make connection
+      bind dock, read nw-conn
+      bind host, read host
+      bind port, read port
+      bind local-host
+        fork test
+          hook test
+            call is-some, read local-endpoint
+          hook hold
+            call local-endpoint/description
+          hook miss
+            text <0.0.0.0>
+      bind local-port, read port
+      bind secure, read secure
+
+task listen
+  note async
+  take port, like size
+  take host, like text, fall text <0.0.0.0>
+  take secure, like bool, fall wave false
+  take certificate, like text, need false
+  take key, like text, need false
+
+  save params
+    fork test
+      hook test
+        read secure
+      hook hold
+        call nw-parameters/tls
+      hook miss
+        call nw-parameters/tcp
+
+  save raw
+    call nw-listener
+      text <using>
+      read params
+      text <on>
+      call nw-endpoint/port
+        call uint16, read port
+      halt kink
+
+  call raw/start
+    text <queue>
+    call dispatch-queue/main
+
+  call wait-for-listener-ready
+    note async
+    read raw
+    halt kink
+
+  send back
+    make listener
+      bind dock, read raw
+      bind host, read host
+      bind port, read port

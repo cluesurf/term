@@ -1,0 +1,18 @@
+
+task get
+  take name, like text
+  like text
+
+task set
+  take name, like text
+  take value, like text
+
+task remove
+  take name, like text
+
+task list
+  like hash
+
+task check
+  take name, like text
+  like bool

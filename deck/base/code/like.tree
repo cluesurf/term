@@ -1,0 +1,9 @@
+
+# Like: a type annotation. A named type with optional type arguments (e.g. `like list` of `like text`).
+
+load ./term
+  find term
+
+form like
+  link name, like term
+  link arg, list like

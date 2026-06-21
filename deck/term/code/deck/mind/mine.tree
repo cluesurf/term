@@ -1,0 +1,13 @@
+
+mine deck-mind
+  mine term, term mind
+    mine text
+      slot name
+    mine maybe
+      mine term, term base
+        mine text
+          slot base
+    mine maybe
+      mine term, term site
+        mine text
+          slot site

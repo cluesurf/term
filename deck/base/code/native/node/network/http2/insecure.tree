@@ -1,0 +1,15 @@
+
+load @cluesurf/base/code/node/network/http2/shared
+  take tree server
+  take tree make-server
+
+fuse server
+  like nodejs-http2-server
+
+fuse make-server
+  read http2-create-server
+
+tree http2-create-server
+  hook bind
+    call http2/create-server
+      read handle

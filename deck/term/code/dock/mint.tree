@@ -1,0 +1,118 @@
+
+# Builder for the dock (routing + CLI) DSL: map parsed slots onto the dock AST forms in @cluesurf/base/code/dock.
+# Handlers (`call`) build the clean seed-call value form. Shared builders (take, bind, seed) come from the code mills.
+
+load @cluesurf/base/code/dock
+  find dock
+  find dock-task
+  find dock-zone
+  find dock-seed
+  find dock-send
+  find dock-hook
+
+load @cluesurf/base/code/seed
+  find seed-call
+
+mint dock
+  case dock, mint dock-def
+    slot dock
+
+mint dock-def, like dock
+  case path
+    slot path
+  case take, mint take
+    slot take
+  case task, mint dock-task
+    slot task
+  case call, mint dock-call
+    slot call
+  case zone, mint dock-zone
+    slot zone
+  case seed, mint dock-seed
+    slot seed
+  case send, mint dock-send
+    slot send
+  case hook, mint dock-hook
+    slot hook
+  case dock, mint dock-def
+    slot dock
+  hook make
+    make dock
+      bind path, read path
+      bind take, read take
+      bind task, read task
+      bind call, read call
+      bind zone, read zone
+      bind seed, read seed
+      bind send, read send
+      bind hook, read hook
+      bind dock, read dock
+
+mint dock-task, like dock-task
+  case name
+    slot name
+  case take, mint take
+    slot take
+  case call, mint dock-call
+    slot call
+  case send, mint dock-send
+    slot send
+  case seed, mint dock-seed
+    slot seed
+  hook make
+    make dock-task
+      bind name, read name
+      bind take, read take
+      bind call, read call
+      bind send, read send
+      bind seed, read seed
+
+mint dock-call, like seed-call
+  case name
+    slot name
+  case bind, mint bind
+    slot bind
+  hook make
+    make seed-call
+      bind name, read name
+      bind bind, read bind
+
+mint dock-zone, like dock-zone
+  case name
+    slot name
+  case bind, mint bind
+    slot bind
+  hook make
+    make dock-zone
+      bind name, read name
+      bind bind, read bind
+
+mint dock-seed, like dock-seed
+  case name
+    slot name
+  case bond, mint seed
+    slot bond
+  hook make
+    make dock-seed
+      bind name, read name
+      bind bond, read bond
+
+mint dock-send, like dock-send
+  case name
+    slot name
+  case seed, mint seed
+    slot seed
+  hook make
+    make dock-send
+      bind name, read name
+      bind seed, read seed
+
+mint dock-hook, like dock-hook
+  case name
+    slot name
+  case call, mint dock-call
+    slot call
+  hook make
+    make dock-hook
+      bind name, read name
+      bind call, read call

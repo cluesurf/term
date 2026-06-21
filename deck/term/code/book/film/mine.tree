@@ -1,0 +1,16 @@
+
+# film youtube
+#   bind id, <123>
+
+mine film
+  mine term, term film
+    slot kind
+    mine list
+      mine form, like film-bind
+        slot bind
+
+mine film-bind
+  mine term, term bind
+    slot name
+    mine text
+      slot value

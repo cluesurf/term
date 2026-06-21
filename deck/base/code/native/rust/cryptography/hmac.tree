@@ -1,0 +1,24 @@
+# rust HMAC implementation. Forwards to the linked crypto runtime shim, which wraps the platform's built-in crypto library. Internal: reached only through the public hmac API.
+
+dock load
+  load <global:crypto>, name crypto
+
+task hmac-sha256
+  note async
+  take key, like bytes
+  take data, like bytes
+  like bytes
+  send back
+    call crypto/hmac-sha256
+      read key
+      read data
+
+task hmac-sha512
+  note async
+  take key, like bytes
+  take data, like bytes
+  like bytes
+  send back
+    call crypto/hmac-sha512
+      read key
+      read data

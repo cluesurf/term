@@ -1,0 +1,22 @@
+
+load @cluesurf/base/code/hook
+  find hook
+
+mint hook, like hook
+  case name
+    slot name
+  case line
+    slot line
+  case base, mint base
+    slot base
+  case flow, mint flow
+    slot flow
+  case task, mint task
+    slot task
+  hook make
+    make hook
+      bind name, read name
+      bind line, read line
+      bind base, read base
+      bind flow, read flow
+      bind task, read task

@@ -1,0 +1,11 @@
+
+form show-text
+  # Log
+  link time, form time
+  link host, form term
+  link term, list term
+    # Type of log
+  link text, form text
+    # Message
+  link tree
+    # Data

@@ -1,0 +1,72 @@
+
+dock load
+  load <std::process>, name proc
+  load <std::env>, name env
+  load <libc>
+  load <signal_hook>, name signal-hook
+
+load @cluesurf/base/code/process/current
+  find process-info
+
+task read
+  like process-info
+
+  send back
+    make process-info
+      bind id
+        call proc/id
+      bind arguments
+        call env/args
+          call collect
+      bind directory
+        call env/current-dir
+          halt kink
+          call to-string-lossy
+            call to-string
+      bind executable
+        call env/current-exe
+          halt kink
+          call to-string-lossy
+            call to-string
+
+task exit
+  take code, like size, fall 0
+
+  call proc/exit
+    read code
+
+task listen
+  take signal, like text
+  take handler, like task
+
+  save signal-id
+    fork test
+      hook test
+        call is-equal
+          bind a, read signal
+          bind b, text <terminate>
+      hook hold
+        send back, read libc/sigterm
+      hook miss
+        fork test
+          hook test
+            call is-equal
+              bind a, read signal
+              bind b, text <interrupt>
+          hook hold
+            send back, read libc/sigint
+          hook miss
+            fork test
+              hook test
+                call is-equal
+                  bind a, read signal
+                  bind b, text <hangup>
+              hook hold
+                send back, read libc/sighup
+              hook miss
+                halt text <unknown signal>
+
+  call signal-hook/flag/register
+    read signal-id
+    read handler
+    halt kink

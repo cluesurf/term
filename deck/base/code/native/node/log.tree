@@ -1,0 +1,24 @@
+# Node.js logger implementation. Forwards each level to the matching console method. Internal: reached only through the public log API.
+
+dock load
+  load <global:console>, name console
+
+task write-info
+  take message, like text
+  call console/info
+    read message
+
+task write-warn
+  take message, like text
+  call console/warn
+    read message
+
+task write-error
+  take message, like text
+  call console/error
+    read message
+
+task write-debug
+  take message, like text
+  call console/debug
+    read message

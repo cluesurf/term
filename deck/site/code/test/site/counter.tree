@@ -1,0 +1,33 @@
+
+# Component in the zone DSL. A counter: shows a count from the store and a button to increment it.
+# This is the public surface a developer writes; the zone mill lowers it to the zone AST, which the framework
+# renders per environment.
+
+zone counter
+  take label, like text
+
+  zone div
+    seed class, text <counter>
+
+    zone span
+      read label
+
+    zone span
+      seed class, text <count>
+      read app/count
+
+    zone button
+      seed click, call app/add
+      text <increment>
+
+    fork test
+      hook test
+        call is-above
+          read app/count
+          mark 10
+      hook hold
+        zone span
+          text <high>
+      hook miss
+        zone span
+          text <low>

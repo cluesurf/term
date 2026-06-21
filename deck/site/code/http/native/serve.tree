@@ -1,0 +1,11 @@
+
+# The abstract HTTP transport: the `serve` signature the public `http` re-exports. The build rewrites this to the
+# target's impl (`native/node/serve` over node http, `native/rust/serve` over axum) via the native-env mechanism. The
+# router (`handle-request`) is shared and platform-agnostic; only this transport differs per backend.
+
+load ../http
+  find server
+
+task serve
+  take server, like server
+  take port, like u16

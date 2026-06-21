@@ -1,0 +1,7 @@
+load ../term, find term
+
+load ../bond, find bond
+
+form bind
+  link term, like term
+  link bond, like bond

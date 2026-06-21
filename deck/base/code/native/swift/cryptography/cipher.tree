@@ -1,0 +1,28 @@
+# swift AES-256-GCM implementation. Forwards to the linked cipher runtime shim (CryptoKit AES.GCM). Internal: reached only through the public cipher API.
+
+dock load
+  load <global:cipher>, name cipher
+
+task encrypt-aes-gcm
+  note async
+  take key, like text
+  take nonce, like text
+  take plain, like text
+  like text
+  send back
+    call cipher/encrypt
+      read key
+      read nonce
+      read plain
+
+task decrypt-aes-gcm
+  note async
+  take key, like text
+  take nonce, like text
+  take sealed, like text
+  like text
+  send back
+    call cipher/decrypt
+      read key
+      read nonce
+      read sealed

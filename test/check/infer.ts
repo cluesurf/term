@@ -52,7 +52,7 @@ function main(): void {
 task use-number
   send back
     call identity
-      mark 5
+      code 5
 
 task use-text
   send back
@@ -70,7 +70,7 @@ task use-text
   send back
     call add
       loan b
-      mark 1
+      code 1
 `,
     'type-mismatch',
   )
@@ -110,7 +110,7 @@ task good
       file: 'i.tree',
       text: `task waste
   take n
-  save unused, mark 5
+  save unused, code 5
   send back n
 `,
     })
@@ -158,8 +158,8 @@ task good
     `task scores
   host table
     make find
-      save alice, mark 1
-      save bob, mark 2
+      save alice, code 1
+      save bob, code 2
   send back table
 `,
   )
@@ -168,7 +168,7 @@ task good
     `task bad
   host table
     make find
-      save alice, mark 1
+      save alice, code 1
       save bob, wave true
   send back table
 `,
@@ -186,7 +186,7 @@ task good
   like number
   send back
     call f
-      mark 1
+      code 1
 
 task wrong
   take b, like boolean
@@ -217,11 +217,60 @@ task run
     read identity
   save a
     call id
-      mark 1
+      code 1
   save b
     call id
       text <hello>
   send back a
+`,
+  )
+
+  // ARITY OVERLOADING: two functions may share a name at different arities; each call resolves by argument count.
+  expectOk(
+    'same-name functions at different arities (overloading)',
+    `task render
+  take n, like number
+  like text
+  send back
+    text <one>
+
+task render
+  take n, like number
+  take base, like number
+  like text
+  send back
+    text <two>
+
+task use-one
+  like text
+  send back
+    call render
+      code 42
+
+task use-two
+  like text
+  send back
+    call render
+      code 42
+      code 16
+`,
+  )
+
+  // same name AND same arity is not an overload: it is last-wins (template-generated constants rely on this), so it
+  // compiles rather than erroring -- overloading only distinguishes different arities
+  expectOk(
+    'same-name same-arity is last-wins (not an overload)',
+    `task render
+  take n, like number
+  like text
+  send back
+    text <a>
+
+task render
+  take m, like number
+  like text
+  send back
+    text <b>
 `,
   )
 

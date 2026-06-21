@@ -1,0 +1,129 @@
+
+dock load
+  load <node:http>, name http
+  load <node:https>, name https
+  load <node:fs/promises>, name fs-promise
+
+load @cluesurf/base/code/network/server
+  find server
+
+load @cluesurf/base/code/network/server/request
+  find request
+
+task start
+  note async
+  take port, like size
+  take host, like text, fall text <0.0.0.0>
+  take handler, like task
+  take secure, like bool, fall wave false
+  take certificate, like text, need false
+  take key, like text, need false
+
+  save wrapper
+    task on-request
+      take raw-request
+      take raw-response
+
+      save url-obj
+        call make-url
+          read raw-request/url
+          text <http://localhost>
+
+      save req
+        make request
+          bind method, read raw-request/method
+          bind url, read raw-request/url
+          bind path, read url-obj/pathname
+          bind query, read url-obj/search
+          bind headers, read raw-request/headers
+          bind dock, read raw-request
+
+      save res
+        call handler
+          note async
+          read req
+          halt kink
+
+      call raw-response/write-head
+        read res/status
+        read res/headers
+      call raw-response/end
+        read res/body
+
+  fork test
+    hook test
+      read secure
+    hook hold
+      save cert-data
+        call fs-promise/read-file
+          note async
+          read certificate
+          halt kink
+      save key-data
+        call fs-promise/read-file
+          note async
+          read key
+          halt kink
+      save raw
+        call https/create-server
+          make options
+            bind cert, read cert-data
+            bind key, read key-data
+          read wrapper
+      call make-promise
+        task resolve
+          take ok
+          call raw/listen
+            read port
+            read host
+            task on-listen
+              call ok
+        note async
+        halt kink
+      send back
+        make server
+          bind dock, read raw
+          bind host, read host
+          bind port, read port
+    hook miss
+      save raw
+        call http/create-server
+          read wrapper
+      call make-promise
+        task resolve
+          take ok
+          call raw/listen
+            read port
+            read host
+            task on-listen
+              call ok
+        note async
+        halt kink
+      send back
+        make server
+          bind dock, read raw
+          bind host, read host
+          bind port, read port
+
+task stop
+  note async
+  take server, like server
+
+  save raw, read server/dock
+
+  call make-promise
+    task resolve
+      take ok
+      take fail
+      call raw/close
+        task on-close
+          take error
+          fork test
+            hook test
+              call is-some, read error
+            hook hold
+              call fail, read error
+            hook miss
+              call ok
+    note async
+    halt kink

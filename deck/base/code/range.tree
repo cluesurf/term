@@ -1,0 +1,50 @@
+
+# Numeric range: from start (inclusive) to end (exclusive) by step.
+
+form range
+  link start, like number
+  link end, like number
+  link step, like number
+
+  task length
+    take self
+    like number
+    send back
+      call divide
+        call subtract
+          read self/end
+          read self/start
+        read self/step
+
+  task contains
+    take self
+    take value, like number
+    like boolean
+    send back
+      call and
+        call is-minimum
+          read value
+          read self/start
+        call is-below
+          read value
+          read self/end
+
+  task to-list
+    take self
+    like list
+    save out
+      make list
+    save at, read self/start
+    walk test
+      hook test
+        call is-below
+          read at
+          read self/end
+      hook step
+        call out/push
+          read at
+        save at
+          call add
+            read at
+            read self/step
+    send back, read out

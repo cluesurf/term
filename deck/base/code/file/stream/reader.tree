@@ -1,0 +1,19 @@
+
+form reader
+  link dock, mark private
+  link path, like text
+
+task create
+  note async
+  take path, like text
+  take start, like size, fall code 0
+  take size, like size, fall code 0
+  like reader
+
+task read
+  note async
+  take stream, like reader
+
+task close
+  note async
+  take stream, like reader

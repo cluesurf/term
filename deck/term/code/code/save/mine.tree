@@ -1,0 +1,11 @@
+
+load @cluesurf/term/code/code/seed/mine
+  find seed
+
+mine save
+  mine term, term save
+    mine save-path
+      slot name
+    mine maybe
+      mine form, like seed
+        slot seed

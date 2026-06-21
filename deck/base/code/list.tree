@@ -1,0 +1,403 @@
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+load @cluesurf/base/code/side
+  find side
+
+form list
+  # List: the stdlib source of truth for the list type. The compiler uses the native array representation, so a list value is built with `make list`. Each method delegates to the native array operation.
+
+  head t
+
+  task size
+    take self
+    like number
+    send back, read self/length
+
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        read self/length
+        code 0
+
+  task push
+    take self
+    take item, like t
+    like number
+    send back
+      call self/push
+        read item
+
+  task pop
+    take self
+    like t
+    send back
+      call self/pop
+
+  task get
+    take self
+    take index, like number
+    like t
+    send back
+      call self/at
+        read index
+
+  task contains
+    take self
+    take item, like t
+    like boolean
+    send back
+      call self/includes
+        read item
+
+  task find-index
+    take self
+    take test
+      like task
+        take item, like t
+        like boolean
+    like number
+    send back
+      call self/findIndex
+        read test
+
+  task join
+    take self
+    take separator, like text
+    like text
+    send back
+      call self/join
+        read separator
+
+  task reverse
+    take self
+    like list
+      like t
+    send back
+      call self/toReversed
+
+  task concat
+    take self
+    take other
+      like list
+        like t
+    like list
+      like t
+    send back
+      call self/concat
+        read other
+
+  task slice
+    take self
+    take start, like number
+    take end, like number
+    like list
+      like t
+    send back
+      call self/slice
+        read start
+        read end
+
+  task map
+    head s
+    take self
+    take call
+      like task
+        take item, like t
+        like s
+    like list
+      like s
+    send back
+      call self/map
+        read call
+
+  task filter
+    take self
+    take test
+      like task
+        take item, like t
+        like boolean
+    like list
+      like t
+    send back
+      call self/filter
+        read test
+
+  task any
+    take self
+    take test
+      like task
+        take item, like t
+        like boolean
+    like boolean
+    send back
+      call self/some
+        read test
+
+  task all
+    take self
+    take test
+      like task
+        take item, like t
+        like boolean
+    like boolean
+    send back
+      call self/every
+        read test
+
+  task reduce
+    head s
+    take self
+    take call
+      like task
+        take total, like s
+        take item, like t
+        like s
+    take initial, like s
+    like s
+    send back
+      call self/reduce
+        read call
+        read initial
+
+  task first
+    take self
+    like maybe
+      like t
+    fork test
+      hook test
+        call is-above
+          read self/length
+          code 0
+      hook hold
+        send back
+          make some
+            bind value
+              call self/at
+                code 0
+      hook miss
+        send back
+          make none
+
+  task last
+    take self
+    like maybe
+      like t
+    fork test
+      hook test
+        call is-above
+          read self/length
+          code 0
+      hook hold
+        send back
+          make some
+            bind value
+              call self/at
+                call subtract
+                  read self/length
+                  code 1
+      hook miss
+        send back
+          make none
+
+  task index-of
+    take self
+    take item, like t
+    like number
+    send back
+      call self/indexOf
+        read item
+
+  task take-first
+    take self
+    take count, like number
+    like list
+      like t
+    send back
+      call self/slice
+        code 0
+        read count
+
+  task drop-first
+    take self
+    take count, like number
+    like list
+      like t
+    send back
+      call self/slice
+        read count
+
+  # the canonical length verb (alias of size)
+  task count
+    take self
+    like number
+    send back, read self/length
+
+  # take `count` items from the chosen side. The named take-first / take-last forms are the readable default; this verb
+  # is for a side chosen at runtime. A constant side specializes to the one native slice.
+  task take
+    take self
+    take count, like number
+    take side, like side
+    like list
+      like t
+    fork case, read side
+      case end
+        send back
+          call self/slice
+            call subtract
+              read self/length
+              read count
+      case start
+        send back
+          call self/slice
+            code 0
+            read count
+      case both
+        send back
+          call self/slice
+            code 0
+            read count
+
+  # drop `count` items from the chosen side
+  task drop
+    take self
+    take count, like number
+    take side, like side
+    like list
+      like t
+    fork case, read side
+      case end
+        send back
+          call self/slice
+            code 0
+            call subtract
+              read self/length
+              read count
+      case start
+        send back
+          call self/slice
+            read count
+      case both
+        send back
+          call self/slice
+            read count
+
+  # take / drop from the end: readable sugar over the verb
+  task take-last
+    take self
+    take count, like number
+    like list
+      like t
+    send back
+      call self/slice
+        call subtract
+          read self/length
+          read count
+
+  task drop-last
+    take self
+    take count, like number
+    like list
+      like t
+    send back
+      call self/slice
+        code 0
+        call subtract
+          read self/length
+          read count
+
+  # locate the last occurrence of a value (the `end` side of index-of)
+  task last-index-of
+    take self
+    take item, like t
+    like number
+    send back
+      call self/lastIndexOf
+        read item
+
+  task flatten
+    take self
+    like list
+      like t
+    send back
+      call self/flat
+
+  task sum
+    take self
+    like number
+    save total, code 0
+    walk list, read self
+      hook next
+        take item, name value
+        save total
+          call add
+            read total
+            read value
+    send back, read total
+
+  task product
+    take self
+    like number
+    save total, code 1
+    walk list, read self
+      hook next
+        take item, name value
+        save total
+          call multiply
+            read total
+            read value
+    send back, read total
+
+  task unique
+    take self
+    like list
+      like t
+    save out
+      make list
+    walk list, read self
+      hook next
+        take item, name value
+        save seen
+          call out/includes
+            read value
+        fork test
+          hook test
+            call is-equal
+              read seen
+              wave false
+          hook hold
+            call out/push
+              read value
+    send back, read out
+
+  task find
+    take self
+    take test
+      like task
+        take item, like t
+        like boolean
+    like maybe
+      like t
+    save index
+      call find-index
+        read self
+        read test
+    fork test
+      hook test
+        call is-minimum
+          read index
+          code 0
+      hook hold
+        send back
+          make some
+            bind value
+              call get
+                read self
+                read index
+      hook miss
+        send back
+          make none

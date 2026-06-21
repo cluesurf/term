@@ -1,0 +1,23 @@
+
+task test-suite
+  take suite
+  take scope
+
+  walk list, read suite
+    hook step
+      take call
+      walk list, read call/nest
+        hook step
+          take t, name test
+          stem case, read t/nest/size
+            case 2
+              test {scope}-{call/name}-{t/name}
+                call fork[call/name]
+                  read call/a
+                  read call/r
+            case 3
+              test {scope}-{call/name}-{t/name}
+                call fork[call/name]
+                  read call/a
+                  read call/b
+                  read call/r

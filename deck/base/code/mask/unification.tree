@@ -1,0 +1,10 @@
+
+mask unification
+  # Bitwise Or.
+  head other, base self
+  take output
+
+  task fuse
+    take self
+    take other, like other
+    free self/output

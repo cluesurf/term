@@ -1,0 +1,33 @@
+
+load @cluesurf/term/code/code/call/mine
+  find call
+
+load @cluesurf/term/code/code/fork/mine
+  find fork
+
+load @cluesurf/term/code/code/save/mine
+  find save
+
+load @cluesurf/term/code/code/save/send
+  find send
+
+load @cluesurf/term/code/code/save/halt
+  find halt
+
+load @cluesurf/term/code/code/save/bust
+  find bust
+
+mine flow
+  mine any
+    mine form, like call
+      slot call
+    mine form, like save
+      slot save
+    mine form, like send
+      slot send
+    mine form, like fork
+      slot fork
+    mine form, like halt
+      slot halt
+    mine form, like bust
+      slot bust

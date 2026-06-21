@@ -1,0 +1,7 @@
+
+# The render runtime's host-node handle: an opaque wrapper around a platform node (a browser Element via bind, or an
+# in-memory record on the server). Every native impl stores its concrete node in `handle`; the render runtime and apps
+# only ever pass a `view` around, never a host primitive.
+
+form view
+  link handle, mark private

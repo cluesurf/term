@@ -1,0 +1,104 @@
+
+# Posts: the data model plus a repository over the platform-agnostic database API. This is userland — it imports only
+# the abstract `@cluesurf/site/code/base/db` (query / run / field), never the Postgres driver or any native module.
+
+load @cluesurf/site/code/base/db
+  find connect
+  find query
+  find run
+  find field
+  find row
+
+load @cluesurf/base/code/list
+  find list
+  find push
+
+task setup
+  take url, like text
+  mark async
+  call connect
+    read url
+  call ensure-schema
+    wait true
+
+form post
+  link id, like text
+  link title, like text
+  link body, like text
+
+task ensure-schema
+  mark async
+  call run
+    text <CREATE TABLE IF NOT EXISTS post (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL)>
+    make list
+    wait true
+
+task create-post
+  take id, like text
+  take title, like text
+  take body, like text
+  mark async
+  call run
+    text <INSERT INTO post (id, title, body) VALUES ($1, $2, $3)>
+    make list
+      read id
+      read title
+      read body
+    wait true
+
+# a row to a post
+task post-of
+  take r, like row
+  like post
+  send back
+    make post
+      bind id
+        call field
+          read r
+          text <id>
+      bind title
+        call field
+          read r
+          text <title>
+      bind body
+        call field
+          read r
+          text <body>
+
+task list-posts
+  like list
+  mark async
+  save rows
+    call query
+      text <SELECT id, title, body FROM post ORDER BY id>
+      make list
+      wait true
+  save posts
+    make list
+  walk list, read rows
+    hook next
+      take site, name r
+      call push
+        bind list, read posts
+        bind item
+          call post-of
+            read r
+  send back, read posts
+
+task get-post
+  take id, like text
+  like post
+  mark async
+  save rows
+    call query
+      text <SELECT id, title, body FROM post WHERE id = $1>
+      make list
+        read id
+      wait true
+  save r
+    call get
+      read rows
+      mark 0
+  send back
+    call post-of
+      read r

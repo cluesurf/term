@@ -1,0 +1,30 @@
+
+load @cluesurf/base/code/network/http
+  find response
+
+task read
+  note async
+  take response, like response
+  take format, like text, fall text <text>
+
+  save raw, read response/dock
+
+  fork case, read format
+    case text
+      send back
+        call raw/text
+          note async
+          halt kink
+    case bytes
+      send back
+        call raw/array-buffer
+          note async
+          halt kink
+    case json
+      send back
+        call raw/json
+          note async
+          halt kink
+    case stream
+      send back
+        read raw/body

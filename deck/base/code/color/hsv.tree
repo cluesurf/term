@@ -1,0 +1,112 @@
+# HSV color (hue 0-360, saturation 0-100, value 0-100) and conversion from RGB. Integer-scaled, pure logic on top of the math interface.
+
+load @cluesurf/base/code/color/rgb
+  find rgb-color
+
+load @cluesurf/base/code/math
+  find minimum
+  find maximum
+
+form hsv-color
+  link hue, like number
+  link saturation, like number
+  link value, like number
+
+task from-rgb
+  take color, like rgb-color
+  like hsv-color
+  save high
+    call maximum
+      call maximum
+        read color/red
+        read color/green
+      read color/blue
+  save low
+    call minimum
+      call minimum
+        read color/red
+        read color/green
+      read color/blue
+  save delta
+    call subtract
+      read high
+      read low
+  save value
+    call divide
+      call multiply
+        read high
+        code 100
+      code 255
+  save saturation, code 0
+  save hue, code 0
+  fork test
+    hook test
+      call is-above
+        read delta
+        code 0
+    hook hold
+      save saturation
+        call divide
+          call multiply
+            read delta
+            code 100
+          read high
+      fork test
+        hook test
+          call is-equal
+            read high
+            read color/red
+        hook hold
+          save hue
+            call divide
+              call multiply
+                call subtract
+                  read color/green
+                  read color/blue
+                code 60
+              read delta
+        hook test
+          call is-equal
+            read high
+            read color/green
+        hook hold
+          save hue
+            call divide
+              call multiply
+                call add
+                  call multiply
+                    read delta
+                    code 2
+                  call subtract
+                    read color/blue
+                    read color/red
+                code 60
+              read delta
+        hook miss
+          save hue
+            call divide
+              call multiply
+                call add
+                  call multiply
+                    read delta
+                    code 4
+                  call subtract
+                    read color/red
+                    read color/green
+                code 60
+              read delta
+      fork test
+        hook test
+          call is-below
+            read hue
+            code 0
+        hook hold
+          save hue
+            call add
+              read hue
+              code 360
+  send back
+    make hsv-color
+      bind hue, read hue
+      bind saturation, read saturation
+      bind value, read value

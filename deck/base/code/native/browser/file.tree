@@ -1,0 +1,80 @@
+# Browser file system implementation over the Origin Private File System (OPFS). Forwards to the linked `io` runtime shim, which drives navigator.storage.getDirectory(). OPFS is asynchronous, so every operation (including existence) is async. Internal: reached only through the public file API.
+
+dock load
+  load <global:io>, name io
+
+task read-file
+  note async
+  take path, like text
+  like text
+  send back
+    call io/file-read
+      read path
+
+task write-file
+  note async
+  take path, like text
+  take data, like text
+  send back
+    call io/file-write
+      read path
+      read data
+
+task read-file-bytes
+  note async
+  take path, like text
+  like bytes
+  send back
+    call io/file-read-bytes
+      read path
+
+task write-file-bytes
+  note async
+  take path, like text
+  take data, like bytes
+  send back
+    call io/file-write-bytes
+      read path
+      read data
+
+task append-file
+  note async
+  take path, like text
+  take data, like text
+  send back
+    call io/file-append
+      read path
+      read data
+
+task remove-file
+  note async
+  take path, like text
+  send back
+    call io/file-remove
+      read path
+
+task copy-file
+  note async
+  take from, like text
+  take to, like text
+  send back
+    call io/file-copy
+      read from
+      read to
+
+task move-file
+  note async
+  take from, like text
+  take to, like text
+  send back
+    call io/file-move
+      read from
+      read to
+
+task file-exists
+  note async
+  take path, like text
+  like boolean
+  send back
+    call io/file-exists
+      read path

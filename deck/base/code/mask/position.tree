@@ -1,0 +1,18 @@
+
+# Get by index
+
+mask position
+  head i, like dimension-free
+  take output, like dimension-free
+  task get
+    take self
+    take position, like i
+    free self/output
+
+mask position-flex
+  head i, like dimension-free
+  take output, like dimension-free
+  task get
+    take self, flex true
+    take position, like i
+    free self/output, flex true

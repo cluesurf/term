@@ -1,0 +1,10 @@
+
+mask iteration
+  task walk
+    take self
+    like succession
+
+mask iteration-flex
+  task walk
+    take self, flex true
+    like succession-flex

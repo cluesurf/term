@@ -32,7 +32,7 @@ const root = mkdtempSync(join(tmpdir(), 'seed-project-'))
 mkdirSync(join(root, 'code'), { recursive: true })
 writeFileSync(
   join(root, 'code', 'double.tree'),
-  'task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      mark 2\n',
+  'task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n',
 )
 
 const good = compileProject(root)

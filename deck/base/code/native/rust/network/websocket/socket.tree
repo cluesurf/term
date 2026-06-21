@@ -1,0 +1,52 @@
+
+load @cluesurf/base/code/network/websocket
+  find socket
+
+load @cluesurf/base/code/network/websocket/socket
+  find message
+
+task send
+  note async
+  take socket, like socket
+  take data, like text
+
+  save raw, read socket/dock
+
+  call raw/send
+    note async
+    call tungstenite/message/text
+      read data
+    halt kink
+
+task close
+  note async
+  take socket, like socket
+  take code, like size, fall 1000
+  take reason, like text, need false
+
+  save raw, read socket/dock
+
+  call raw/close
+    note async
+    call some
+      call tungstenite/protocol/close-frame
+        make close-frame
+          bind code
+            call tungstenite/protocol/close-code/from
+              read code
+          bind reason
+            fork test
+              hook test
+                call is-some, read reason
+              hook hold
+                read reason
+              hook miss
+                text <>
+    halt kink
+
+task stream
+  note async
+  take socket, like socket
+
+  save raw, read socket/dock
+  send back, read raw

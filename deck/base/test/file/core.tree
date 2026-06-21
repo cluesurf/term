@@ -1,0 +1,241 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:path>, name path
+  load <node:os>, name os
+
+task make-temp-dir
+  wait true
+  take x, like text
+
+  save tmp
+    call os/tmpdir
+
+  save prefix
+    call path/join
+      bind a, read tmp
+      bind b, text <seed-test->
+
+  send back
+    call fs-promise/mkdtemp
+      wait true
+      bind path, read prefix
+
+task write-file
+  wait true
+  take p, like text
+  take data, like text
+
+  call fs-promise/write-file
+    wait true
+    bind path, read p
+    bind data, read data
+
+task read-file
+  wait true
+  take p, like text
+
+  send back
+    call fs-promise/read-file
+      wait true
+      bind path, read p
+      bind encoding, text <utf8>
+
+task append-file
+  wait true
+  take p, like text
+  take data, like text
+
+  call fs-promise/append-file
+    wait true
+    bind path, read p
+    bind data, read data
+
+task copy-file
+  wait true
+  take src, like text
+  take dest, like text
+
+  call fs-promise/copy-file
+    wait true
+    bind src, read src
+    bind dest, read dest
+
+task move-file
+  wait true
+  take a, like text
+  take b, like text
+
+  call fs-promise/rename
+    wait true
+    bind oldPath, read a
+    bind newPath, read b
+
+task remove-file
+  wait true
+  take p, like text
+
+  call fs-promise/rm
+    wait true
+    bind path, read p
+
+task make-dir
+  wait true
+  take p, like text
+
+  call fs-promise/mkdir
+    wait true
+    bind path, read p
+
+task run-tests
+  wait true
+  take x, like text
+
+  save dir
+    call make-temp-dir
+      wait true
+      bind x, text <x>
+
+  save p1
+    call path/join
+      bind a, read dir
+      bind b, text <test1.txt>
+
+  save p2
+    call path/join
+      bind a, read dir
+      bind b, text <test2.txt>
+
+  save p3
+    call path/join
+      bind a, read dir
+      bind b, text <test3.txt>
+
+  call write-file
+    wait true
+    bind p, read p1
+    bind data, text <hello world>
+
+  save content
+    call read-file
+      wait true
+      bind p, read p1
+
+  fork test
+    call is-equal
+      bind a, read content
+      bind b, text <hello world>
+    hook true
+      call console/log
+        bind msg, text <pass: read-write-text>
+    hook false
+      call console/log
+        bind msg, text <fail: read-write-text>
+
+  call write-file
+    wait true
+    bind p, read p2
+    bind data, text <aaa>
+
+  call append-file
+    wait true
+    bind p, read p2
+    bind data, text <bbb>
+
+  save appended
+    call read-file
+      wait true
+      bind p, read p2
+
+  fork test
+    call is-equal
+      bind a, read appended
+      bind b, text <aaabbb>
+    hook true
+      call console/log
+        bind msg, text <pass: append>
+    hook false
+      call console/log
+        bind msg, text <fail: append>
+
+  call copy-file
+    wait true
+    bind src, read p1
+    bind dest, read p3
+
+  save copied
+    call read-file
+      wait true
+      bind p, read p3
+
+  fork test
+    call is-equal
+      bind a, read copied
+      bind b, text <hello world>
+    hook true
+      call console/log
+        bind msg, text <pass: copy>
+    hook false
+      call console/log
+        bind msg, text <fail: copy>
+
+  save p4
+    call path/join
+      bind a, read dir
+      bind b, text <moved.txt>
+
+  call move-file
+    wait true
+    bind a, read p3
+    bind b, read p4
+
+  save moved
+    call read-file
+      wait true
+      bind p, read p4
+
+  fork test
+    call is-equal
+      bind a, read moved
+      bind b, text <hello world>
+    hook true
+      call console/log
+        bind msg, text <pass: move>
+    hook false
+      call console/log
+        bind msg, text <fail: move>
+
+  call remove-file
+    wait true
+    bind p, read p4
+
+  call remove-file
+    wait true
+    bind p, read p1
+
+  call remove-file
+    wait true
+    bind p, read p2
+
+  save subdir
+    call path/join
+      bind a, read dir
+      bind b, text <sub>
+
+  call make-dir
+    wait true
+    bind p, read subdir
+
+  call console/log
+    bind msg, text <pass: make-dir>
+
+  call fs-promise/rmdir
+    wait true
+    bind path, read subdir
+
+  call fs-promise/rmdir
+    wait true
+    bind path, read dir
+
+  call console/log
+    bind msg, text <done>

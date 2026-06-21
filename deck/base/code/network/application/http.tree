@@ -1,0 +1,44 @@
+
+form request
+  task get-header-by-key
+  task get-headers-iterator
+  task get-body
+  task get-method
+  task get-url
+  task get-ip-address
+
+form response
+  task set-status
+  task set-header-by-key
+  task write
+  task end
+  task redirect
+
+form handle-context
+  task get-request
+    like request
+  task get-response
+    like response
+
+task handle
+  take context, like handle-context
+
+task make-server
+  take handler, like task, base handle
+  take port, like unsigned-integer-16
+
+  free server, like server
+
+form server
+  task listen
+    free seed, like self
+
+task host
+  # Start server
+
+task free
+
+task fork
+
+task work
+  # Process request

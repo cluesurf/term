@@ -1,0 +1,19 @@
+
+form mark
+  link start, like size
+
+task start
+  take now, like size
+  send back
+    make mark
+      bind start, read now
+
+task read
+  take m, like mark
+  take now, like size
+  fork case, read m
+    case mark, base start
+      send back
+        call subtract
+          bind a, read now
+          bind b, read start

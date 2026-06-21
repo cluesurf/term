@@ -1,0 +1,11 @@
+
+mine beam
+  mine term, term beam
+    slot name
+    mine list
+      mine form, like beam-body
+        slot body
+
+mine beam-body
+  mine any
+    slot node

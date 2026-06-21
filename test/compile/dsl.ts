@@ -92,6 +92,30 @@ function main(): void {
     )
   }
 
+  // a CLI command tree in the `hook` DSL lowers to a route: command name, its takes, the bound implementation task,
+  // and nested subcommands
+  {
+    const program = lower(
+      `hook make\n  take name\n  task make-deck\n  hook face\n    take name\n    task make-face\n`,
+    )
+    const hook = program.find(
+      (s): s is Extract<Statement, { form: 'dock' }> =>
+        s.form === 'dock' && s.route.path === 'make',
+    )
+    ok('hook command lowers to a route', hook !== undefined)
+    ok('hook keeps the command name', hook?.route.path === 'make')
+    ok('hook collects its takes', hook?.route.takes[0]?.name === 'name')
+    ok(
+      'hook binds the implementation task',
+      hook?.route.calls[0]?.name === 'make-deck',
+    )
+    ok(
+      'hook nests subcommands',
+      hook?.route.children[0]?.path === 'face' &&
+        hook?.route.children[0]?.calls[0]?.name === 'make-face',
+    )
+  }
+
   // a client route lowers to a dock that renders a zone component
   {
     const program = lower(

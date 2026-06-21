@@ -1,0 +1,58 @@
+
+mine lace
+  mine term, term lace
+    mine term
+      slot name
+    mine list
+      mine form, like base
+        slot base
+    mine list
+      mine form, like flow
+        slot flow
+
+mine flow
+  mine any
+    mine form, like text
+      slot text
+    mine form, like walk
+      slot walk
+    mine form, like test
+      slot test
+    mine form, like form
+      slot form
+    mine form, like call
+      slot call
+    mine form, like task
+      slot task
+
+mine text
+  mine term, term lace
+    mine term, term text
+    mine term, term text
+      mine text
+        slot text
+
+mine walk
+  mine term, term walk
+    mine term
+      slot road
+    mine list
+      mine form, like base
+        slot base
+    mine list
+      mine form, like flow
+        slot flow
+
+mine test
+  mine term, term test
+    mine term
+      slot road
+    mine list
+      mine form, like bind
+        slot bind
+    mine list
+      mine form, like flow
+        slot flow
+    mine list
+      mine form, like hook
+        slot hook

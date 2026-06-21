@@ -1,0 +1,41 @@
+
+load @cluesurf/base/code/network/tcp
+  find listener
+  find connection
+
+task accept
+  note async
+  take listener, like listener
+
+  save raw, read listener/dock
+
+  save result
+    call raw/accept
+      note async
+      halt kink
+
+  save stream, read result/0
+  save addr, read result/1
+
+  send back
+    make connection
+      bind dock, read stream
+      bind host, call addr/ip/to-string
+      bind port, call addr/port
+      bind local-host, call stream/local-addr/ip/to-string
+      bind local-port, call stream/local-addr/port
+      bind secure, wave false
+
+task close
+  note async
+  take listener, like listener
+
+  save raw, read listener/dock
+  call drop, read raw
+
+task stream
+  note async
+  take listener, like listener
+
+  save raw, read listener/dock
+  send back, read raw

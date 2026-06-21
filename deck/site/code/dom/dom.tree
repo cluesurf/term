@@ -1,0 +1,7 @@
+
+# Public DOM API: userland imports this clean path (never a `native/...` module). Re-exports the `view` handle and the
+# abstract native dom API, which the build rewrites to the target platform's impl (browser via @cluesurf/bind, or the
+# in-memory server tree) through the native-env mechanism. Frontend code is thus platform-agnostic.
+
+bear @cluesurf/site/code/dom/view
+bear @cluesurf/site/code/dom/native/dom

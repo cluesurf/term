@@ -1,0 +1,4 @@
+
+mill db-mold
+  bind mine, load ./mine
+  bind mint, load ./mint

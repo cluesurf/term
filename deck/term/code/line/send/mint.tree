@@ -1,0 +1,7 @@
+
+mint dock-send
+  case name
+    slot name
+  hook make
+    make dock-send
+      bind name, read name

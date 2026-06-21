@@ -1,0 +1,17 @@
+
+# view ./path, name <alt text>
+# draw <component-name>
+
+mine view
+  mine term, term view
+    mine text
+      slot path
+    mine maybe
+      mine term, term name
+        mine text
+          slot name
+
+mine draw
+  mine term, term draw
+    mine text
+      slot name

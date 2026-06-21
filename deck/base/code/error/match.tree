@@ -1,0 +1,12 @@
+
+load @cluesurf/base/code/base/kink
+  find kink
+
+task test
+  take error, like kink
+  take code, like text
+  like bool
+
+task get
+  take error, like kink
+  take field, like text

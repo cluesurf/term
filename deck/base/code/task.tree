@@ -1,0 +1,20 @@
+
+# Concurrency: spawn and manage tasks.
+
+form handle
+  link name, like text
+  link alive, like boolean
+
+task spawn
+  note async
+  take work, like task
+  take name, like text, need false
+  like handle
+
+task wait
+  note async
+  take handle, like handle
+
+task cancel
+  note async
+  take handle, like handle

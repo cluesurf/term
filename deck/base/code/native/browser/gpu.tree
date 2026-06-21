@@ -1,0 +1,21 @@
+
+task get-adapter
+  call native-navigator/gpu/request-adapter
+
+task get-device-from-adapter
+  take adapter
+  call adapter/request-device
+
+task configure-context
+task create-vertices
+task create-shader-program
+task create-vertex-buffer-descriptor
+task create-render-pipeline
+task create-command-encoder
+task create-pass-encoder
+task submit-draw-operations
+task submit-command-to-queue
+
+# https://web.dev/gpu-compute/
+# https://austin-eng.com/webgpu-samples/samples/helloTriangle
+# https://github.com/gpuweb/types/blob/main/dist/index.d.ts

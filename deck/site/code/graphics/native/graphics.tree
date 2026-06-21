@@ -1,0 +1,59 @@
+
+# The platform-agnostic graphics API (abstract native module). Apps and the render runtime import this; the build
+# rewrites it to the target platform's impl (native/browser via WebGPU/WebGL, or the native/node stub) through the
+# native-env mechanism, so the caller never names a platform. The handles are opaque host wrappers (see ../surface).
+
+load ../surface
+  find surface
+  find shader
+  find program
+  find gpu-buffer
+  find shader-kind
+  find primitive-kind
+
+# Acquire a drawing surface over the canvas element with the given id. WebGPU when available, else WebGL2.
+task open
+  take id, like text
+  like surface
+
+# Resize the surface's drawing buffer.
+task size
+  take pane, like surface
+  take width, like u32
+  take height, like u32
+
+# Clear the surface to a color. Each channel is 0..1.
+task clear
+  take pane, like surface
+  take red, like number
+  take green, like number
+  take blue, like number
+  take alpha, like number
+
+# Compile one shader stage from its source.
+task make-shader
+  take pane, like surface
+  take kind, like shader-kind
+  take source, like text
+  like shader
+
+# Link a vertex and fragment shader into a draw program.
+task make-program
+  take pane, like surface
+  take vertex, like shader
+  take fragment, like shader
+  like program
+
+# Upload vertex data to a buffer.
+task make-buffer
+  take pane, like surface
+  take data
+  like gpu-buffer
+
+# Draw `count` vertices from the buffer with the program, assembled as the given primitive.
+task draw
+  take pane, like surface
+  take prog, like program
+  take verts, like gpu-buffer
+  take kind, like primitive-kind
+  take count, like u32

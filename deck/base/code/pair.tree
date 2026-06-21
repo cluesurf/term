@@ -1,0 +1,76 @@
+
+form pair
+  head a
+  head b
+  link first, like a
+  link second, like b
+
+  task get-first
+    take self
+    like a
+    send back, read self/first
+
+  task get-second
+    take self
+    like b
+    send back, read self/second
+
+  task swap
+    take self
+    like pair
+    send back
+      make pair
+        bind first, read self/second
+        bind second, read self/first
+
+  task map-first
+    head c
+    take self
+    take call
+      like task
+        take value, like a
+        like c
+    like pair
+    send back
+      make pair
+        bind first
+          call call
+            read self/first
+        bind second, read self/second
+
+  task map-second
+    head c
+    take self
+    take call
+      like task
+        take value, like b
+        like c
+    like pair
+    send back
+      make pair
+        bind first, read self/first
+        bind second
+          call call
+            read self/second
+
+  task map-both
+    head c
+    head d
+    take self
+    take on-first
+      like task
+        take value, like a
+        like c
+    take on-second
+      like task
+        take value, like b
+        like d
+    like pair
+    send back
+      make pair
+        bind first
+          call on-first
+            read self/first
+        bind second
+          call on-second
+            read self/second

@@ -1,0 +1,9 @@
+
+form import
+  link path, like text
+  link reference, list import-reference
+
+form import-reference
+  link name, like term
+  link alias, like term
+    need false

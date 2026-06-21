@@ -1,0 +1,13 @@
+
+load @cluesurf/term/code/book/head
+  find book-head
+
+mint head, like book-head
+  case level
+    slot level
+  case title
+    slot title
+  hook make
+    make book-head
+      bind level, read level
+      bind title, read title

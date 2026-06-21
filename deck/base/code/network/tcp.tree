@@ -1,0 +1,29 @@
+
+form connection
+  link dock, mark private
+  link host, like text
+  link port, like size
+  link local-host, like text
+  link local-port, like size
+  link secure, like bool
+
+form listener
+  link dock, mark private
+  link host, like text
+  link port, like size
+
+task connect
+  note async
+  take host, like text
+  take port, like size
+  take secure, like bool, fall false
+  like connection
+
+task listen
+  note async
+  take port, like size
+  take host, like text, fall text <0.0.0.0>
+  take secure, like bool, fall false
+  take certificate, like text, need false
+  take key, like text, need false
+  like listener

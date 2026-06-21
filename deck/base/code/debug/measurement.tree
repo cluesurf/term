@@ -1,0 +1,10 @@
+
+task start
+  take name, like text
+
+task stop
+  take name, like text
+  like size
+
+task log
+  take name, like text

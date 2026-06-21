@@ -1,0 +1,26 @@
+# Node.js base64 implementation (the host Buffer). Internal: reached only through the public base64 API.
+
+dock load
+  load <global:Buffer>, name buffer
+
+task to-base64
+  take input, like text
+  like text
+  save bytes
+    call buffer/from
+      read input
+      text <utf8>
+  send back
+    call bytes/to-string
+      text <base64>
+
+task from-base64
+  take input, like text
+  like text
+  save bytes
+    call buffer/from
+      read input
+      text <base64>
+  send back
+    call bytes/to-string
+      text <utf8>

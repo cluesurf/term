@@ -1,0 +1,46 @@
+
+task get-light-level
+  take device
+  read device/native/torch-level
+
+task has-light
+  # A Boolean value that specifies whether the capture device has a torch.
+  take device
+  like boolean
+  read device/native/has-torch
+
+task is-light-available
+  # Indicates whether the torch is currently available for use.
+  take device
+  like boolean
+  read device/native/is-torch-available
+
+task is-light-active
+  # A Boolean value indicating whether the device's torch is currently active.
+  take device
+  like boolean
+  read device/native/is-torch-active
+
+task set-light-mode
+  take device
+  take mode
+
+  call is-true
+    read device/has-light
+    hook true
+      stem seek
+        call device/native/lock-for-configuration
+        hook fail, back false
+
+      save device/native/torch-mode
+        stem case
+          read mode
+          case auto
+            read av-capture-device/torch-mode/auto
+          case on
+            read av-capture-device/torch-mode/on
+          case off
+            read av-capture-device/torch-mode/off
+
+      call device/native/unlock-for-configuration
+      send back true

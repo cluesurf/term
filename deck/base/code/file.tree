@@ -1,0 +1,91 @@
+
+# File system operations. The platform implementation is selected at build time and hidden behind this API.
+
+load @cluesurf/base/code/native/file
+  find read-file
+  find write-file
+  find read-file-bytes
+  find write-file-bytes
+  find append-file
+  find remove-file
+  find copy-file
+  find move-file
+  find file-exists
+
+task read
+  note async
+  take path, like text
+  like text
+  send back
+    call read-file
+      read path
+
+task write
+  note async
+  take path, like text
+  take data, like text
+  send back
+    call write-file
+      read path
+      read data
+
+# Raw byte IO. The data stays a native buffer end to end (node fs returns a Buffer, rust std::fs returns a byte vector), with no utf8 round-trip. This is the zero-copy path for binary files.
+
+task read-bytes
+  note async
+  take path, like text
+  like bytes
+  send back
+    call read-file-bytes
+      read path
+
+task write-bytes
+  note async
+  take path, like text
+  take data, like bytes
+  send back
+    call write-file-bytes
+      read path
+      read data
+
+task append
+  note async
+  take path, like text
+  take data, like text
+  send back
+    call append-file
+      read path
+      read data
+
+task remove
+  note async
+  take path, like text
+  send back
+    call remove-file
+      read path
+
+task copy
+  note async
+  take from, like text
+  take to, like text
+  send back
+    call copy-file
+      read from
+      read to
+
+task move
+  note async
+  take from, like text
+  take to, like text
+  send back
+    call move-file
+      read from
+      read to
+
+task test
+  note async
+  take path, like text
+  like boolean
+  send back
+    call file-exists
+      read path

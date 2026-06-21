@@ -1,0 +1,89 @@
+
+# Hash map: the stdlib map type, backed by the native map. Build a value with `make find`.
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+form hash
+  head k
+  head v
+
+  task get
+    take self
+    take key, like k
+    like maybe
+      like v
+    fork test
+      hook test
+        call self/has
+          read key
+      hook hold
+        send back
+          make some
+            bind value
+              call self/get
+                read key
+      hook miss
+        send back
+          make none
+
+  task set
+    take self
+    take key, like k
+    take value, like v
+    like hash
+      like k
+      like v
+    send back
+      call self/set
+        read key
+        read value
+
+  task has
+    take self
+    take key, like k
+    like boolean
+    send back
+      call self/has
+        read key
+
+  task remove
+    take self
+    take key, like k
+    like boolean
+    send back
+      call self/delete
+        read key
+
+  task size
+    take self
+    like number
+    send back, read self/size
+
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        read self/size
+        code 0
+
+  task keys
+    take self
+    like list
+      like k
+    send back
+      call self/keys
+
+  task values
+    take self
+    like list
+      like v
+    send back
+      call self/values
+
+  # the canonical length verb (alias of size)
+  task count
+    take self
+    like number
+    send back, read self/size

@@ -7,12 +7,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { compileZone } from '@/code/zone/compile'
 
 const SOURCE = `zone counter
-  state count, mark 0
+  state count, code 0
   hook click
     save count
       call add
         loan count
-        mark 1
+        code 1
 `
 
 let pass = 0

@@ -1,0 +1,35 @@
+# Regular expressions. The clean uniform interface; the per-env native implementation wraps the platform's regex engine and is selected at build time, hidden behind the API.
+
+load @cluesurf/base/code/native/regex
+  find do-matches
+  find do-replace
+  find do-find
+
+task matches
+  take pattern, like text
+  take input, like text
+  like boolean
+  send back
+    call do-matches
+      read pattern
+      read input
+
+task replace
+  take pattern, like text
+  take input, like text
+  take replacement, like text
+  like text
+  send back
+    call do-replace
+      read pattern
+      read input
+      read replacement
+
+task find
+  take pattern, like text
+  take input, like text
+  like text
+  send back
+    call do-find
+      read pattern
+      read input

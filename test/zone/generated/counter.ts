@@ -1,9 +1,9 @@
 import { signal } from '@/code/zone/reactive'
 
 export function counter() {
-  const [count, setCount] = signal(0)
+  const [count, setCount] = signal(undefined)
   function onClick() {
-    setCount(count() + 1)
+    setCount(count() + undefined)
   }
   return { count, onClick }
 }

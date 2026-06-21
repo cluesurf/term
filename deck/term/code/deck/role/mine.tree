@@ -1,0 +1,20 @@
+
+mine role
+  mine term, term role
+    slot name
+    mine list
+      mine form, like role-take
+        slot take
+
+mine role-take
+  mine term, term take
+    mine text
+      slot glob
+    mine list
+      mine form, like role-miss
+        slot miss
+
+mine role-miss
+  mine term, term miss
+    mine text
+      slot glob

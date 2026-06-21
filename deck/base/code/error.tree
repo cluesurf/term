@@ -1,0 +1,52 @@
+
+load @cluesurf/base/code/base/result
+  find result
+
+form error
+  link code, like text
+  link note, like text
+  link hint, like text
+
+task make
+  take code, like text
+  take message, like text
+  take hint, like text, need false
+  like error
+  send back
+    make error
+      bind code, read code
+      bind note, read message
+      bind hint, read hint
+
+task throw
+  take error, like error
+  halt error, read error
+
+task catch
+  take work, like task
+  like result
+  note unsafe
+    save value
+      call work
+    send back
+      make okay
+        bind value, read value
+  halt take
+    take error
+    send back
+      make error
+        bind value, read error
+
+task wrap
+  take data
+  like result
+  send back
+    make okay
+      bind value, read data
+
+task fail
+  take error, like error
+  like result
+  send back
+    make error
+      bind value, read error

@@ -1,0 +1,114 @@
+# Cryptographic digests (one-way hashes). Each algorithm is a declarative `bind`: one block lists the native expression per backend, and the compiler inlines the direct call (CryptoKit on swift, the sha2 crate on rust, node:crypto on node, java.security on kotlin, Web Crypto on the browser). No hand-written per-platform shim, one source of truth. Input and output are raw `bytes` (the zero-copy crypto currency); hex / base64 are edge codecs. The interface is async so it stays uniform with the browser's async-only Web Crypto: a sync backend's value and the browser's Promise both flow through the caller's `wait true`.
+
+# per-backend native digest expressions: one source of truth, inlined at the call site, awaited by the caller
+bind digest-sha256
+  take input, like bytes
+  like bytes
+  case node
+    text <crypto.createHash('sha256').update($input).digest()>
+    load <node:crypto>, name crypto
+  case rust
+    text <async move { Sha256::digest(&$input).to_vec() }>
+    load <sha2/Sha256>
+    load <sha2/Digest>
+  case swift
+    text <Data(CryptoKit.SHA256.hash(data: $input))>
+    load <CryptoKit>
+  case kotlin
+    text <java.security.MessageDigest.getInstance("SHA-256").digest($input)>
+  case browser
+    text <globalThis.crypto.subtle.digest('SHA-256', $input).then(function (b) { return new Uint8Array(b) })>
+
+bind digest-sha512
+  take input, like bytes
+  like bytes
+  case node
+    text <crypto.createHash('sha512').update($input).digest()>
+    load <node:crypto>, name crypto
+  case rust
+    text <async move { Sha512::digest(&$input).to_vec() }>
+    load <sha2/Sha512>
+    load <sha2/Digest>
+  case swift
+    text <Data(CryptoKit.SHA512.hash(data: $input))>
+    load <CryptoKit>
+  case kotlin
+    text <java.security.MessageDigest.getInstance("SHA-512").digest($input)>
+  case browser
+    text <globalThis.crypto.subtle.digest('SHA-512', $input).then(function (b) { return new Uint8Array(b) })>
+
+bind digest-md5
+  take input, like bytes
+  like bytes
+  case node
+    text <crypto.createHash('md5').update($input).digest()>
+    load <node:crypto>, name crypto
+  case rust
+    text <async move { Md5::digest(&$input).to_vec() }>
+    load <md5/Md5>
+    load <md5/Digest>
+  case swift
+    text <Data(Insecure.MD5.hash(data: $input))>
+    load <CryptoKit>
+  case kotlin
+    text <java.security.MessageDigest.getInstance("MD5").digest($input)>
+  case browser
+    text <Promise.reject(new Error('MD5 is not available in the Web Crypto API'))>
+
+# the digest algorithm selector
+form digest-algorithm
+  case sha-256
+  case sha-512
+  case md5
+
+# compute a one-way hash of the input bytes with the chosen algorithm. The named sha256 / sha512 / md5 forms below are
+# the readable default; this verb is for an algorithm chosen at runtime.
+task digest
+  note async
+  take input, like bytes
+  take algorithm, like digest-algorithm
+  like bytes
+  fork case, read algorithm
+    case sha-256
+      send back
+        call digest-sha256
+          read input
+          wait true
+    case sha-512
+      send back
+        call digest-sha512
+          read input
+          wait true
+    case md5
+      send back
+        call digest-md5
+          read input
+          wait true
+
+# named algorithm forms: the readable, primary surface
+task sha256
+  note async
+  take input, like bytes
+  like bytes
+  send back
+    call digest-sha256
+      read input
+      wait true
+
+task sha512
+  note async
+  take input, like bytes
+  like bytes
+  send back
+    call digest-sha512
+      read input
+      wait true
+
+task md5
+  note async
+  take input, like bytes
+  like bytes
+  send back
+    call digest-md5
+      read input
+      wait true

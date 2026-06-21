@@ -1,0 +1,16 @@
+# kotlin console implementation. Forwards to the linked console runtime shim. Internal: reached only through the public console API.
+
+dock load
+  load <global:console>, name console
+
+task write-line
+  take message, like text
+  like void
+  call console/write-line
+    read message
+
+task write-error
+  take message, like text
+  like void
+  call console/write-error
+    read message

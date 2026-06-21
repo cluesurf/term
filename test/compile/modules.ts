@@ -31,8 +31,8 @@ task origin-point
   like point
   send back
     make point
-      bind x, mark 0
-      bind y, mark 0
+      bind x, code 0
+      bind y, code 0
 
 task greeting
   like text
@@ -102,7 +102,7 @@ ok('the wired ESM modules run: startPoint() builds the cross-module form', M.sta
 fs.rmSync(dir, { recursive: true, force: true })
 
 // ---- real multi-module app: the blog (native delegation + bear + types + methods) ----
-const blogEntry = path.join(DECK, 'site.tree/test/site/hook/blog.tree')
+const blogEntry = path.join(DECK, 'seed/deck/site/test/site/hook/blog.tree')
 const blog = compile(
   { file: blogEntry, text: fs.readFileSync(blogEntry, 'utf8') },
   { resolve: projectResolver(SEED, 'node'), modules: f => `/${hashText(f)}.mjs` },

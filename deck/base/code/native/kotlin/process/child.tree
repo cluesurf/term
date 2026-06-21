@@ -1,0 +1,90 @@
+
+load @cluesurf/base/code/process
+  find child
+
+task wait
+  take child, like child
+
+  send back
+    call kotlin-wait-process
+      read child/dock
+
+task stop
+  take child, like child
+  take form, like text, fall text <gentle>
+
+  fork test
+    call is-equal
+      bind a, read form
+      bind b, text <force>
+    hook true
+      call kotlin-destroy-forcibly
+        read child/dock
+    hook false
+      call kotlin-destroy
+        read child/dock
+
+task write
+  take child, like child
+  take data, like text
+
+  call kotlin-write-stdin
+    read child/dock
+    read data
+
+task close
+  take child, like child
+
+  call kotlin-close-stdin
+    read child/dock
+
+task read
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <text>
+
+  fork test, call is-equal, read kind, text <stderr>
+    hook true
+      send back
+        call kotlin-read-stderr
+          read child/dock
+    hook false
+      send back
+        call kotlin-read-stdout
+          read child/dock
+
+task kotlin-wait-process
+  note private
+  take proc
+  dock call <run { proc.waitFor(); proc.exitValue() }>
+
+task kotlin-destroy-forcibly
+  note private
+  take proc
+  dock call <proc.destroyForcibly()>
+
+task kotlin-destroy
+  note private
+  take proc
+  dock call <proc.destroy()>
+
+task kotlin-write-stdin
+  note private
+  take proc
+  take data, like text
+  dock call <proc.outputStream.write(data.toByteArray())>
+
+task kotlin-close-stdin
+  note private
+  take proc
+  dock call <proc.outputStream.close()>
+
+task kotlin-read-stdout
+  note private
+  take proc
+  dock call <proc.inputStream.bufferedReader().readText()>
+
+task kotlin-read-stderr
+  note private
+  take proc
+  dock call <proc.errorStream.bufferedReader().readText()>

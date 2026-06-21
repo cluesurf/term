@@ -59,7 +59,7 @@ const FIB = `task fib
     hook test
       call is-below
         loan n
-        mark 2
+        code 2
     hook hold
       send back n
     hook miss
@@ -68,11 +68,11 @@ const FIB = `task fib
           call fib
             call subtract
               loan n
-              mark 1
+              code 1
           call fib
             call subtract
               loan n
-              mark 2
+              code 2
 `
 
 // loops forever: the recursive call passes the argument unchanged
@@ -91,7 +91,7 @@ const PLAIN = `task plus-one
   send back
     call add
       loan n
-      mark 1
+      code 1
 `
 
 // mutual recursion with no cross-function descent argument: neither calls itself directly, so only the call graph

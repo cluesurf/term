@@ -1,0 +1,10 @@
+{
+  "name": "@cluesurf/seed-node-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Base libraries the Seed stdlib's node target wraps. fetch, node:crypto, node:fs, Buffer, and JSON are built into node 18+. The HTTP server wraps Hono (Web-standard Request/Response, so the same server code runs on node, browser/edge, bun, and deno).",
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "hono": "^4"
+  }
+}

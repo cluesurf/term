@@ -1,0 +1,32 @@
+
+# Node HTTP transport: hono (via @hono/node-server). `serve` builds a listener whose request handler converts the hono
+# request into our `request`, runs the uniform trie router (`handle-request`), and writes the `response` back. hono owns
+# the socket + request/response plumbing; the matching + dispatch stay in the platform-agnostic `handle-request`. The
+# `<global:transport>` shim wraps hono so it never appears in userland.
+
+dock load
+  load <global:transport>, name runtime
+
+load ../../http
+  find server
+  find request
+  find response
+  find handle-request
+
+task serve
+  take server, like server
+  take port, like u16
+
+  save listener
+    call runtime/create-server
+      bind handle
+        task on-request
+          take incoming, like request
+          like response
+          send back
+            call handle-request
+              read server
+              read incoming
+
+  call listener/listen
+    bind port, read port

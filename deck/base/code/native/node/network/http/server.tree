@@ -1,0 +1,41 @@
+
+host http, call require, text <http>
+
+form server
+  take x-server, like nodejs-http-server
+    note private
+  take port, like unsigned-integer-16
+    note private
+
+  task listen
+    free seed, like self
+    call self/x-server/listen
+      read self/port
+
+  task get-port
+    read self/port
+
+task make-server
+  take handler, like task, base response-handler
+  take port, like unsigned-integer-16
+  take max-header-size, like unsigned-integer-32
+
+  free server, like server
+
+  make server
+    call http/create-server
+      make http-create-server-options
+        bind max-header-size, read max-header-size
+      read handler
+    read port
+
+task make-server
+  take handler, like task, base response-handler
+  take port, like unsigned-integer-16
+
+  free server, like server
+
+  make server
+    call http/create-server
+      read handler
+    read port

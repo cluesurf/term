@@ -1,0 +1,14 @@
+
+form stream
+  task initiate-push-stream
+    take headers
+      like map
+        like string
+        like string
+    call make-javascript-promise
+      hook done
+        take fall
+        take push-stream
+        call resolve
+          make push-stream
+            read push-stream

@@ -1,0 +1,13 @@
+# The lint plugin interface. A rule is a meta object: a name, a stable code, a note, and a spot that inspects one AST node and tells a finding. Rules are ordinary Seed, authored in .tree and loaded by the lint engine, so a new rule is a new file, never an edit to the engine. The node is the type-checked AST node as a dynamic value (read its fields by name: node/form, node/op, node/left, node/span). tell reports a finding at a span. See note/library/seed/lint-plugins.md.
+
+form rule
+  link name, like text
+  link code, like text
+  link note, like text
+  link spot
+    like task
+      take node, like dynamic
+      take tell
+        like task
+          take message, like text
+          take span, like dynamic

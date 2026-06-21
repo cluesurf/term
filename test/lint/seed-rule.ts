@@ -14,7 +14,7 @@ import type { Source } from '@/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const seedRoot = resolvePath(here, '..', '..')
-const baseTree = resolvePath(seedRoot, '..', 'base.tree')
+const baseTree = resolvePath(seedRoot, 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
@@ -55,14 +55,14 @@ ok(
   rules.some(r => r.name === 'no-redundant-arithmetic' && r.code === 'L003'),
 )
 
-// `call add / read x / mark 0` mills to a binary `+` with a zero literal — the L003 case
+// `call add / read x / code 0` mills to a binary `+` with a zero literal — the L003 case
 const offending = `task compute
   take x, like number
   like number
   send back
     call add
       read x
-      mark 0
+      code 0
 `
 const parsed = parse({ file: 'main.tree', text: offending })
 const built = parsed.ok ? mill(parsed.tree, 'main.tree') : undefined
@@ -83,7 +83,7 @@ const clean = `task compute
   send back
     call add
       read x
-      mark 2
+      code 2
 `
 const cleanParsed = parse({ file: 'main.tree', text: clean })
 const cleanBuilt = cleanParsed.ok

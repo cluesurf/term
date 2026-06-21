@@ -1,0 +1,19 @@
+
+form file
+  take dock
+    # File descriptor
+    note private
+  take path
+
+tree open-head
+  take note
+  hook bind
+    note note
+    take path, like string
+
+tree open-result
+  hook bind
+    free seed
+      like result
+        like unsigned-integer-32
+        like error

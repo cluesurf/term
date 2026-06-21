@@ -1,0 +1,112 @@
+
+dock load
+  load <java.nio.file.Files>, name files
+  load <java.nio.file.Paths>, name paths
+  load <java.nio.file.Path>, name path-type
+
+load @cluesurf/base/code/native/shared/test/snapshot
+  find resolve
+  find serialize
+  find deserialize
+
+load @cluesurf/base/code/native/shared/test/context
+  find get
+  find fail
+
+load @cluesurf/base/code/native/shared/test
+  find make-failure
+
+load @cluesurf/base/code/native/shared/test/compare
+  find deep-equal
+
+task match
+  note async
+  take value
+  take name, like text
+  take format, like text, fall text <json>
+
+  save path
+    call resolve
+      bind name, read name
+      bind format, read format
+
+  save file-path
+    call paths/get
+      bind path, read path
+
+  save exists
+    call files/exists
+      bind path, read file-path
+
+  fork test
+    hook test, read exists
+    hook miss
+      call files/create-directories
+        bind path
+          call paths/get
+            bind path, text <.seed/snapshot>
+      save data
+        call serialize
+          bind value, read value
+          bind format, read format
+      call files/write-string
+        bind path, read file-path
+        bind data, read data
+      send back
+
+  save raw
+    call files/read-string
+      bind path, read file-path
+
+  save stored
+    call deserialize
+      bind raw, read raw
+      bind format, read format
+
+  save eq
+    call deep-equal
+      bind a, read value
+      bind b, read stored
+
+  fork test
+    hook test, read eq
+    hook miss
+      save ctx
+        call get
+      call fail
+        bind ctx, read ctx
+        bind failure
+          call make-failure
+            bind name, read ctx/name
+            bind message, text <Snapshot mismatch>
+            bind expected, read stored
+            bind actual, read value
+
+task update
+  note async
+  take value
+  take name, like text
+  take format, like text, fall text <json>
+
+  save path
+    call resolve
+      bind name, read name
+      bind format, read format
+
+  save file-path
+    call paths/get
+      bind path, read path
+
+  call files/create-directories
+    bind path
+      call paths/get
+        bind path, text <.seed/snapshot>
+
+  save data
+    call serialize
+      bind value, read value
+      bind format, read format
+
+  call files/write-string
+    bind path, read file-path
+    bind data, read data

@@ -1,0 +1,10 @@
+
+# Time: the current epoch time. Implementation selected at build time, hidden behind this API.
+
+load @cluesurf/base/code/native/time
+  find epoch-millis
+
+task now
+  like number
+  send back
+    call epoch-millis

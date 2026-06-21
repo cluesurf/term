@@ -1,0 +1,10 @@
+
+load @cluesurf/base/code/slot
+  find code-slot
+
+mint slot, like code-slot
+  case name
+    slot name
+  hook make
+    make code-slot
+      bind name, read name

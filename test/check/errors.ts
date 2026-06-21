@@ -63,12 +63,12 @@ function main(): void {
   // a warning renders distinctly and a report summarizes a batch
   const warned = compile({
     file: 'w.tree',
-    text: `task f\n  take n\n  save unused, mark 1\n  back n\n`,
+    text: `task f\n  take n\n  save unused, code 1\n  back n\n`,
   })
   if (warned.ok) {
     const summary = report(
       warned.warnings,
-      'task f\n  take n\n  save unused, mark 1\n  back n'.split('\n'),
+      'task f\n  take n\n  save unused, code 1\n  back n'.split('\n'),
       false,
     )
     ok(
@@ -94,12 +94,12 @@ function main(): void {
   // a multi-span blame renders as multiple site/call frames
   const blame = compile({
     file: 'b.tree',
-    text: `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, mark 0\n  back n\n`,
+    text: `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, code 0\n  back n\n`,
   })
   if (!blame.ok) {
     const k = renderKink(
       blame.diagnostics[0]!,
-      `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, mark 0\n  back n`.split(
+      `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, code 0\n  back n`.split(
         '\n',
       ),
       false,

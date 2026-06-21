@@ -1,0 +1,12 @@
+
+load @cluesurf/base/code/void
+  find void
+
+rule absurd
+  head a
+  take proof, like void
+  like a
+
+test absurd
+  take proof, like void
+  fork case, read proof

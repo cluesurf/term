@@ -1,0 +1,35 @@
+
+load @cluesurf/base/code/process
+  find child
+
+task wait
+  note async
+  take child, like child
+  like size
+
+task stop
+  take child, like child
+  take form, like text, fall text <gentle>
+
+task write
+  note async
+  take child, like child
+  take data, like text
+
+task close
+  note async
+  take child, like child
+
+task read
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <text>
+  like text
+
+task stream
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <bytes>
+  like list

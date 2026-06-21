@@ -1,0 +1,49 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+
+task read
+  note async
+  take path, like text
+  take follow, like bool, fall wave true
+
+  save stats
+    fork test, name follow
+      hook true
+        call fs-promise/stat
+          note async
+          read path
+          halt kink
+      hook false
+        call fs-promise/lstat
+          note async
+          read path
+          halt kink
+
+  save kind, text <other>
+  fork test
+    call stats/is-directory
+    hook true
+      save kind, text <directory>
+  fork test
+    call stats/is-symbolic-link
+    hook true
+      save kind, text <link>
+  fork test
+    call stats/is-file
+    hook true
+      save kind, text <file>
+
+  send back
+    make file-metadata
+      bind size, read stats/size
+      bind kind, read kind
+      bind made
+        call stats/birth-time/get-time
+      bind changed
+        call stats/mtime/get-time
+      bind opened
+        call stats/atime/get-time
+      bind mode, read stats/mode
+      bind link
+        call stats/is-symbolic-link

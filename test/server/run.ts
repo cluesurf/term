@@ -88,7 +88,7 @@ expect(
 
 // open a valid document: no error diagnostics, then hover an integer literal and expect `number`
 const GOOD =
-  'task add-one\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      mark 1\n'
+  'task add-one\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      code 1\n'
 const good = await server.dispatch({
   jsonrpc: '2.0',
   method: 'textDocument/didOpen',
@@ -145,7 +145,7 @@ expect(
 
 // --- navigation: definition / references / rename / symbols / completion / signature help ---
 const NAV =
-  'task helper\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      mark 1\n\ntask runner\n  like number\n  back\n    call helper\n      mark 5\n'
+  'task helper\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      code 1\n\ntask runner\n  like number\n  back\n    call helper\n      code 5\n'
 const navServer = new LanguageServer()
 await navServer.dispatch({
   jsonrpc: '2.0',

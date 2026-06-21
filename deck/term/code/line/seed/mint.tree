@@ -1,0 +1,33 @@
+
+mint dock-seed
+  case code, mint dock-seed-code
+    slot code
+  case policy, mint dock-seed-policy
+    slot policy
+
+mint dock-seed-code
+  case case, mint dock-seed-code-case
+    slot case
+  hook make
+    make dock-seed-code
+      bind case, read case
+
+mint dock-seed-code-case
+  case name
+    slot name
+  case value
+    slot value
+  hook make
+    make dock-seed-code-case
+      bind name, read name
+      bind value, read value
+
+mint dock-seed-policy
+  case name
+    slot name
+  case value
+    slot value
+  hook make
+    make dock-seed-policy
+      bind name, read name
+      bind value, read value

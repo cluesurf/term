@@ -1,0 +1,112 @@
+
+load @cluesurf/term/code/code/seed/mine
+  find seed
+
+load @cluesurf/term/code/line/mill/mine
+  find dock-mill
+
+mine dock-take
+  mine term, term take
+    mine term
+      slot name
+    mine maybe
+      mine term, term code
+        mine term
+          slot code
+    mine maybe
+      mine form, like dock-take-like
+        slot like
+    mine maybe
+      mine form, like dock-take-list
+        slot list
+    mine maybe
+      mine term, term need
+        mine term
+          slot need
+    mine maybe
+      mine term, term base
+        mine any
+          mine form, like seed
+            slot base
+          mine term
+            slot base-term
+    mine list
+      mine form, like dock-take-case
+        slot case
+    mine maybe
+      mine form, like dock-mill
+        slot mill
+    mine maybe
+      mine form, like dock-take-seed
+        slot seed
+    mine maybe
+      mine form, like dock-take-mark
+        slot mark
+
+mine dock-take-like
+  mine term, term like
+    mine term
+      slot name
+
+mine dock-take-list
+  mine term, term list
+    mine term
+      slot name
+
+mine dock-take-case
+  mine term, term case
+    mine term
+      slot name
+
+mine dock-take-seed
+  mine any
+    mine form, like dock-take-seed-env
+      slot env
+    mine form, like dock-take-seed-call
+      slot call
+
+mine dock-take-seed-env
+  mine term, term seed
+    mine term, term env
+      mine text
+        slot name
+
+mine dock-take-seed-call
+  mine term, term seed
+    mine term, term call
+      mine form, like dock-take-seed-call-bind
+        slot call
+
+mine dock-take-seed-call-bind
+  mine term, term call
+    mine term
+      slot name
+
+mine dock-take-mark
+  mine any
+    mine form, like dock-take-mark-private
+      slot private
+    mine form, like dock-take-mark-deprecated
+      slot deprecated
+    mine form, like dock-take-mark-experimental
+      slot experimental
+
+mine dock-take-mark-private
+  mine term, term mark
+    mine term, term private
+
+mine dock-take-mark-deprecated
+  mine term, term mark
+    mine term, term deprecated
+      mine maybe
+        mine form, like dock-take-mark-deprecated-call
+          slot call
+
+mine dock-take-mark-deprecated-call
+  mine term, term call
+    mine term
+      slot name
+
+mine dock-take-mark-experimental
+  mine term, term mark
+    mine term, term experimental

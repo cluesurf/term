@@ -1,0 +1,43 @@
+# Node.js digest implementation (the host node:crypto module). Input and output are raw bytes (a Uint8Array / Buffer): `update` accepts the buffer and `digest` with no encoding returns one. Internal: reached only through the public digest API.
+
+dock load
+  load <node:crypto>, name crypto
+
+task digest-sha256
+  note async
+  take input, like bytes
+  like bytes
+  save hasher
+    call crypto/create-hash
+      text <sha256>
+  save updated
+    call hasher/update
+      read input
+  send back
+    call updated/digest
+
+task digest-sha512
+  note async
+  take input, like bytes
+  like bytes
+  save hasher
+    call crypto/create-hash
+      text <sha512>
+  save updated
+    call hasher/update
+      read input
+  send back
+    call updated/digest
+
+task digest-md5
+  note async
+  take input, like bytes
+  like bytes
+  save hasher
+    call crypto/create-hash
+      text <md5>
+  save updated
+    call hasher/update
+      read input
+  send back
+    call updated/digest

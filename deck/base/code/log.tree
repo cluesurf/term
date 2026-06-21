@@ -1,0 +1,31 @@
+# Leveled logger. The clean uniform public API forwards to the per-env native implementation, hidden from the user. The build target selects the platform.
+
+load @cluesurf/base/code/native/log
+  find write-info
+  find write-warn
+  find write-error
+  find write-debug
+
+task info
+  take message, like text
+  like void
+  call write-info
+    read message
+
+task warn
+  take message, like text
+  like void
+  call write-warn
+    read message
+
+task error
+  take message, like text
+  like void
+  call write-error
+    read message
+
+task debug
+  take message, like text
+  like void
+  call write-debug
+    read message

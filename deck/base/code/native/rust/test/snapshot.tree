@@ -1,0 +1,99 @@
+
+dock load
+  load <std::fs>, name fs
+  load <std::path::Path>, name path
+
+load @cluesurf/base/code/native/shared/test/snapshot
+  find resolve
+  find serialize
+  find deserialize
+
+load @cluesurf/base/code/native/shared/test/context
+  find get
+  find fail
+
+load @cluesurf/base/code/native/shared/test
+  find make-failure
+
+load @cluesurf/base/code/native/shared/test/compare
+  find deep-equal
+
+task match
+  note async
+  take value
+  take name, like text
+  take format, like text, fall text <json>
+
+  save path
+    call resolve
+      bind name, read name
+      bind format, read format
+
+  save exists
+    call path/exists
+      bind path, read path
+
+  fork test
+    hook test, read exists
+    hook miss
+      call fs/create-dir-all
+        bind path, text <.seed/snapshot>
+      save data
+        call serialize
+          bind value, read value
+          bind format, read format
+      call fs/write
+        bind path, read path
+        bind contents, read data
+      send back
+
+  save raw
+    call fs/read-to-string
+      bind path, read path
+
+  save stored
+    call deserialize
+      bind raw, read raw
+      bind format, read format
+
+  save eq
+    call deep-equal
+      bind a, read value
+      bind b, read stored
+
+  fork test
+    hook test, read eq
+    hook miss
+      save ctx
+        call get
+      call fail
+        bind ctx, read ctx
+        bind failure
+          call make-failure
+            bind name, read ctx/name
+            bind message, text <Snapshot mismatch>
+            bind expected, read stored
+            bind actual, read value
+
+task update
+  note async
+  take value
+  take name, like text
+  take format, like text, fall text <json>
+
+  save path
+    call resolve
+      bind name, read name
+      bind format, read format
+
+  call fs/create-dir-all
+    bind path, text <.seed/snapshot>
+
+  save data
+    call serialize
+      bind value, read value
+      bind format, read format
+
+  call fs/write
+    bind path, read path
+    bind contents, read data

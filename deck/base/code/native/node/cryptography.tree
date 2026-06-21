@@ -1,0 +1,34 @@
+
+form ecdh
+  take bulb, like nodejs-ecdh
+    hide take
+  take curve-name
+
+  task compute-secret
+    take self
+    take public-key
+    call self/bulb/compute-secret
+      read public-key
+
+  task generate-compressed-keys
+    take self
+    call self/bulb/generate-keys
+      read void
+      text <compressed>
+
+  task generate-uncompressed-keys
+    take self
+    call self/bulb/generate-keys
+      read void
+      text <uncompressed>
+
+  task get-private-key
+    take self
+    call self/bulb/get-private-key
+
+  task set-private-key
+    take self
+    take private-key
+    call self/bulb/set-private-key
+      read private-key
+    read self

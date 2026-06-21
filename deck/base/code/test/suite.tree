@@ -1,0 +1,24 @@
+
+form report
+  link passed, like size
+  link failed, like size
+  link skipped, like size
+  link duration, like size
+  link failures, like list
+
+form failure
+  link name, like text
+  link message, like text
+  link expected
+  link actual
+
+task describe
+  take name, like text
+  take work, like task
+
+task run
+  note async
+  take filter, like text, need false
+  take timeout, like size, fall 5000
+  take parallel, like bool, fall false
+  like report

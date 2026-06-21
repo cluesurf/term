@@ -1,0 +1,21 @@
+
+# code javascript, <console.log('hello')>
+# code math
+#   set
+#     sup
+#       i a
+#       n 2
+
+mine code
+  mine term, term code
+    slot lang
+    mine any
+      mine text
+        slot text
+      mine form, like code-tree
+        slot tree
+
+mine code-tree
+  mine list
+    mine term
+      slot node

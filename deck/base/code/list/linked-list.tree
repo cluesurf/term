@@ -1,0 +1,55 @@
+
+# Singly linked list: a recursive immutable list (empty | node value next).
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+form linked-list
+  head t
+  case empty
+  case node
+    link value, like t
+    link next, like linked-list
+
+  task prepend
+    take self
+    take item, like t
+    like linked-list
+    send back
+      make node
+        bind value, read item
+        bind next, read self
+
+  task is-empty
+    take self
+    like boolean
+    fork case, read self
+      case empty
+        send back, wave true
+      case node
+        send back, wave false
+
+  task head
+    take self
+    like maybe
+    fork case, read self
+      case empty
+        send back
+          make none
+      case node
+        send back
+          make some
+            bind value, read self/value
+
+  task length
+    take self
+    like number
+    fork case, read self
+      case empty
+        send back, code 0
+      case node
+        send back
+          call add
+            code 1
+            call length
+              read self/next

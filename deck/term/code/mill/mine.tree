@@ -1,0 +1,179 @@
+
+mine mill
+  mine list
+    mine any
+      mine form, like mill-mine
+        slot mine
+      mine form, like mill-mint
+        slot mint
+      mine form, like mill-mill
+        slot mill
+
+mine mill-mine
+  mine term, term mine
+    mine term
+      slot name
+    mine list
+      mine form, like mill-mine-child
+        slot child
+
+mine mill-mine-child
+  mine any
+    mine form, like mill-mine-term
+      slot term
+    mine form, like mill-mine-list
+      slot list
+    mine form, like mill-mine-maybe
+      slot maybe
+    mine form, like mill-mine-case
+      slot case
+    mine form, like mill-mine-any
+      slot any
+    mine form, like mill-mine-text
+      slot text
+    mine form, like mill-mine-path
+      slot path
+    mine form, like mill-mine-form
+      slot form
+
+mine mill-mine-term
+  mine term, term term
+    mine maybe
+      mine term, term term
+        slot term
+    mine list
+      mine form, like mill-mine-child
+        slot child
+
+mine mill-mine-list
+  mine term, term list
+    mine list
+      mine form, like mill-mine-child
+        slot child
+
+mine mill-mine-maybe
+  mine term, term maybe
+    mine list
+      mine form, like mill-mine-child
+        slot child
+
+mine mill-mine-case
+  mine term, term case
+    mine list
+      mine form, like mill-mine-child
+        slot child
+
+mine mill-mine-any
+  mine term, term any
+    mine list
+      mine form, like mill-mine-child
+        slot child
+
+mine mill-mine-text
+  mine term, term text
+    slot name
+
+mine mill-mine-path
+  mine term, term path
+    slot name
+
+mine mill-mine-form
+  mine term, term form
+    mine maybe
+      mine term, term like
+        slot like
+    slot name
+
+mine mill-mint
+  mine term, term mint
+    mine term
+      slot name
+    mine maybe
+      mine term, term like
+        mine term
+          slot like
+    mine list
+      mine form, like mill-mint-child
+        slot child
+
+mine mill-mint-child
+  mine any
+    mine form, like mill-mint-case
+      slot case
+    mine form, like mill-mint-hook
+      slot hook
+
+mine mill-mint-case
+  mine term, term case
+    mine term
+      slot name
+    mine maybe
+      mine term, term mint
+        mine term
+          slot mint
+    mine list
+      mine form, like mill-mint-child
+        slot child
+
+mine mill-mint-hook
+  mine term, term hook
+    mine term
+      slot name
+    mine list
+      mine form, like mill-mint-hook-child
+        slot child
+
+mine mill-mint-hook-child
+  mine any
+    mine form, like mill-mint-make
+      slot make
+    mine form, like mill-mint-bind
+      slot bind
+
+mine mill-mint-make
+  mine term, term make
+    mine term
+      slot name
+    mine list
+      mine form, like mill-mint-bind
+        slot bind
+
+mine mill-mint-bind
+  mine term, term bind
+    mine term
+      slot name
+    mine form, like mill-mint-bind-value
+      slot value
+
+mine mill-mint-bind-value
+  mine any
+    mine form, like mill-mint-read
+      slot read
+    mine form, like mill-mint-slot
+      slot slot
+
+mine mill-mint-read
+  mine term, term read
+    mine term
+      slot name
+
+mine mill-mint-slot
+  mine term, term slot
+    mine term
+      slot name
+
+mine mill-mill
+  mine term, term mill
+    mine term
+      slot name
+    mine list
+      mine form, like mill-mill-bind
+        slot bind
+
+mine mill-mill-bind
+  mine term, term bind
+    mine term
+      slot name
+    mine term, term load
+      mine text
+        slot path

@@ -111,8 +111,10 @@ function formatDiagnostics(diagnostics: Array<Diagnostic>): string {
 export function stdlibResolver(): Resolver | undefined {
   const here = dirname(fileURLToPath(import.meta.url))
   const candidates = [
+    // the in-package location (base is a sub-package of the seed monorepo): code/call -> ../../deck/base
+    join(here, '..', '..', 'deck', 'base'),
+    // legacy sibling location, kept as a fallback during the move
     join(here, '..', '..', '..', 'base.tree'),
-    join(here, '..', '..', 'base.tree'),
   ]
   const base = candidates.find(c => existsSync(c))
   if (!base) return undefined

@@ -1,0 +1,62 @@
+
+dock load
+  load <node:fs>, name fs
+
+form reader
+  link dock, mark private
+  link path, like text
+
+task create
+  note async
+  take path, like text
+  take start, like size, fall code 0
+  take size, like size, fall code 0
+
+  save options, make object
+
+  fork test
+    call is-above
+      bind a, read start
+      bind b, code 0
+    hook true
+      call options/set
+        text <start>
+        read start
+
+  fork test
+    call is-above
+      bind a, read size
+      bind b, code 0
+    hook true
+      call options/set
+        text <end>
+        call add
+          bind a, read start
+          bind b, read size
+
+  save handle
+    call fs/create-read-stream
+      read path
+      read options
+
+  send back
+    make reader
+      bind dock, read handle
+      bind path, read path
+
+task read
+  note async
+  take stream, like reader
+
+  save chunk
+    call stream/dock/read
+      note async
+
+  send back, read chunk
+
+task close
+  note async
+  take stream, like reader
+
+  call stream/dock/destroy
+    note async

@@ -44,6 +44,9 @@ import {
   showTerm,
 } from '@/code/check/judge'
 import { terminatingFunctions } from '@/code/check/totality'
+import { isLinearGoal } from '@/code/check/holds'
+import { ringEqual, nonNegativeDifference } from '@/code/check/ring'
+import { checkFold } from '@/code/check/induct'
 
 // ---- term builders ----
 const constant = (name: string): Term => ({ tag: 'const', name })
@@ -833,7 +836,52 @@ export function elaborateReport(
     context: Context,
   ): void {
     const goal = statement.expr
-    if (goal.form !== 'binary' || goal.op !== '==') return
+    if (goal.form !== 'binary') return
+    const hasProof = (statement.proof?.length ?? 0) > 0
+    // explicit induction: `fold <var>` proves a universal `L(n) == R(n)` by Peano induction over a recursive function
+    // in the goal, discharged symbolically by the ring normalizer (no kernel computation). See induct.ts.
+    const tactic = statement.proof?.[0]
+    if (tactic && tactic.head === 'fold' && tactic.arg) {
+      if (checkFold(program, goal, tactic.arg)) discharged.push(statement.span)
+      else
+        diagnostics.push(
+          diagnose('invalid-proof', {
+            file,
+            span: statement.span,
+            message: 'the induction did not establish the equality',
+          }),
+        )
+      return
+    }
+    // non-negativity by a sum-of-squares certificate: `E >= F` (or `F <= E`) holds for ALL values when E - F is a sum
+    // of square monomials. This proves the non-linear inequality "every square is non-negative" and its kin (for any
+    // bound, not just zero) without induction.
+    if (!hasProof) {
+      if (goal.op === '>=' && nonNegativeDifference(goal.left, goal.right)) {
+        discharged.push(statement.span)
+        return
+      }
+      if (goal.op === '<=' && nonNegativeDifference(goal.right, goal.left)) {
+        discharged.push(statement.span)
+        return
+      }
+    }
+    if (goal.op !== '==') return
+    // a commutative-ring identity (when no explicit proof is given): L and R normalize to the same polynomial, so the
+    // equality holds for ALL values of the variables. This discharges the non-linear algebraic universals (the
+    // multiplicative norm, the four-square and doubling identities) that the linear prover (degree one) and the
+    // kernel's opaque arithmetic cannot. Sound: a zero polynomial is identically zero over any commutative ring. With
+    // an explicit proof present, the kernel validates that proof instead, so a bogus tactic is still caught.
+    if (!hasProof && ringEqual(goal.left, goal.right)) {
+      discharged.push(statement.span)
+      return
+    }
+    // the kernel handles the NON-linear (definitional / structural) fragment; the linear prover (checkHolds) owns the
+    // linear fragment. When a goal the linear prover can decide carries NO explicit proof tree, skip it here so the
+    // linear prover is authoritative -- this is what stops the kernel from wrongly discharging a value-false
+    // arithmetic claim like `add 3 3 == add 4 4` through its opaque view of number literals. A goal WITH an explicit
+    // proof (`calm`/`cite`/...) is still validated by the kernel, so a bogus tactic is caught.
+    if (!hasProof && isLinearGoal(goal)) return
     const left = expr(goal.left, scope, context)
     const right = expr(goal.right, scope, context)
     if (!left || !right) return

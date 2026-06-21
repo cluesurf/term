@@ -1,0 +1,111 @@
+
+mint db-make
+  case kind
+    slot kind
+  case name
+    slot name
+  case link, mint db-make-link
+    slot link
+  case hold, mint db-hold
+    slot hold
+  case send, mint db-send
+    slot send
+  case bond, mint db-bond
+    slot bond
+  case fold, mint db-fold
+    slot fold
+  case bind, mint bind
+    slot bind
+  case tag, mint tag
+    slot tag
+  case take, mint take
+    slot take
+  case hook, mint db-make-hook
+    slot hook
+  case term, mint db-make-term
+    slot term
+  case base
+    slot base
+  case base-link, mint db-make-base-link
+    slot base-link
+  hook make
+    make db-make
+      bind kind, read kind
+      bind name, read name
+      bind link, read link
+      bind hold, read hold
+      bind send, read send
+      bind bond, read bond
+      bind fold, read fold
+      bind bind, read bind
+      bind tag, read tag
+      bind take, read take
+      bind hook, read hook
+      bind term, read term
+      bind base, read base
+      bind base-link, read base-link
+
+mint db-make-link
+  case name
+    slot name
+  case like
+    slot like
+  case need, mint need
+    slot need
+  case base, mint seed
+    slot base
+  case hold, mint db-hold
+    slot hold
+  case tag, mint tag
+    slot tag
+  hook make
+    make db-make-link
+      bind name, read name
+      bind like, read like
+      bind need, read need
+      bind base, read base
+      bind hold, read hold
+      bind tag, read tag
+
+mint db-make-base-link
+  case name
+    slot name
+  hook make
+    make db-make-base-link
+      bind name, read name
+
+mint db-make-hook
+  case name
+    slot name
+  case base
+    slot base
+  case link, mint db-make-base-link
+    slot link
+  case hold, mint db-hold
+    slot hold
+  case call, mint db-make-call
+    slot call
+  hook make
+    make db-make-hook
+      bind name, read name
+      bind base, read base
+      bind link, read link
+      bind hold, read hold
+      bind call, read call
+
+mint db-make-call
+  case name
+    slot name
+  case bind, mint bind
+    slot bind
+  hook make
+    make db-make-call
+      bind name, read name
+      bind bind, read bind
+
+mint db-make-term
+  case name
+    slot name
+  hook make
+    make db-make-term
+      bind name, read name

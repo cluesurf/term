@@ -1,0 +1,4 @@
+
+mill db-make
+  bind mine, load ./mine
+  bind mint, load ./mint

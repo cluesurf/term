@@ -1,0 +1,10 @@
+
+mint save
+  case name
+    slot name
+  case seed, mint seed
+    slot seed
+  hook make
+    make save
+      bind name, read name
+      bind seed, read seed

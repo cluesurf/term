@@ -1,0 +1,16 @@
+
+load @cluesurf/base/code/make
+  find make
+
+mint make
+  case name
+    slot name
+  case bind, mint bind
+    slot bind
+  case save, mint save
+    slot save
+  hook make
+    make make
+      bind name, read name
+      bind bind, read bind
+      bind save, read save

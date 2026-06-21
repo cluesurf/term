@@ -1,0 +1,110 @@
+
+dock load
+  load <node:v8>, name v8
+
+load @cluesurf/base/code/test/coverage
+  find coverage
+  find file-coverage
+
+task read
+  note async
+  like coverage
+
+  save raw
+    call v8/take-coverage
+      note async
+
+  save files
+    make list
+
+  walk list, read raw
+    hook next
+      take site, name entry
+      save fc
+        make file-coverage
+          bind path, read entry/url
+          bind lines, code 0
+          bind branches, code 0
+          bind functions, read entry/functions/length
+          bind uncovered
+            make list
+      call list-push
+        bind list, read files
+        bind item, read fc
+
+  send back
+    make coverage
+      bind files, read files
+
+task format
+  take coverage, like coverage
+  take style, like text, fall text <summary>
+  like text
+
+  save total, code 0
+  save covered, code 0
+
+  walk list, read coverage/files
+    hook next
+      take site, name fc
+      save total
+        call add
+          bind a, read total
+          bind b, read fc/functions
+      save covered
+        call add
+          bind a, read covered
+          bind b, read fc/functions
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read style
+        bind b, text <summary>
+    hook hold
+      send back
+        call text-concat
+          bind a, text <Coverage: >
+          bind b
+            call text-concat
+              bind a
+                call to-text
+                  bind value, read covered
+              bind b
+                call text-concat
+                  bind a, text </>
+                  bind b
+                    call to-text
+                      bind value, read total
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read style
+        bind b, text <json>
+    hook hold
+      send back
+        call json-serialize
+          bind value, read coverage
+
+  save lines
+    make list
+  walk list, read coverage/files
+    hook next
+      take site, name fc
+      call list-push
+        bind list, read lines
+        bind item
+          call text-concat
+            bind a, read fc/path
+            bind b
+              call text-concat
+                bind a, text <: >
+                bind b
+                  call to-text
+                    bind value, read fc/functions
+
+  send back
+    call text-join
+      bind list, read lines
+      bind separator, text <\n>

@@ -45,7 +45,7 @@ type Repo = {
 }
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'site.tree/test/site/back/post.tree')
+  const entry = path.join(DECK, 'seed/deck/site/test/site/back/post.tree')
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },

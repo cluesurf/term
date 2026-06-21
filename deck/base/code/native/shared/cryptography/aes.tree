@@ -1,0 +1,398 @@
+save sbox, make list
+save invsbox, make list
+save submix0, make list
+save submix1, make list
+save submix2, make list
+save submix3, make list
+save invsubmix0, make list
+save invsubmix1, make list
+save invsubmix2, make list
+save invsubmix3, make list
+save key-size, call 256/divide, code 32
+call create-tables
+task create-tables
+  save d, make list
+  save i, code 0
+  walk test
+    hook test
+      call i/is-below, code 256
+    hook step
+      stem roll
+        stem test, call i/is-below, code 128
+          hook true
+            save d[i], call i/shift-base, code 1
+        save d[i]
+          call i/shift-base, code 1
+            link oppose-bitwise, code 283
+      save i, call increment, read i
+  save x, code 0
+  save xi, code 0
+  save i, code 0
+  walk test
+    hook test
+      call i/is-below, code 256
+    hook step
+      save sx
+        call xi/oppose-bitwise, call xi/shift-base, code 1
+          link oppose-bitwise, call xi/shift-base, code 2
+          link oppose-bitwise, call xi/shift-base, code 3
+          link oppose-bitwise, call xi/shift-base, code 4
+      save sx
+        call sx/shift-head-unsigned, code 8
+          link oppose-bitwise, call sx/intersect-bitwise, code 255
+          link oppose-bitwise, code 99
+      save sbox[x], read sx
+      save invsbox[sx], read x
+      save x2, d[x]
+      save x4, d[x2]
+      save x8, d[x4]
+      save t
+        call d[sx]/multiply, code 257
+          link oppose-bitwise, call sx/multiply, code 16843008
+      save submix0[x]
+        call t/shift-base, code 24
+          link unite-bitwise, call t/shift-head-unsigned, code 8
+      save submix1[x]
+        call t/shift-base, code 16
+          link unite-bitwise, call t/shift-head-unsigned, code 16
+      save submix2[x]
+        call t/shift-base, code 8
+          link unite-bitwise, call t/shift-head-unsigned, code 24
+      save submix3[x], read t
+      save t
+        call x8/multiply, code 16843009
+          link oppose-bitwise, call x4/multiply, code 65537
+          link oppose-bitwise, call x2/multiply, code 257
+          link oppose-bitwise, call x/multiply, code 16843008
+      save invsubmix0[sx]
+        call t/shift-base, code 24
+          link unite-bitwise, call t/shift-head-unsigned, code 8
+      save invsubmix1[sx]
+        call t/shift-base, code 16
+          link unite-bitwise, call t/shift-head-unsigned, code 16
+      save invsubmix2[sx]
+        call t/shift-base, code 8
+          link unite-bitwise, call t/shift-head-unsigned, code 24
+      save invsubmix3[sx], read t
+      stem roll
+        stem test, call not, read x
+          hook true
+            save xi, code 1
+            save x, read xi
+        save tmp1, call x8/oppose-bitwise, read x2
+        save x, call x2/oppose-bitwise, read d[d[d[tmp1]]]
+        save xi
+          call oppose-bitwise
+            read xi
+            d[d[xi]]
+      save i, call increment, read i
+
+save rcon
+  make list
+    code 0
+    code 1
+    code 2
+    code 4
+    code 8
+    code 16
+    code 32
+    code 64
+    code 128
+    code 27
+    code 54
+task do-reset
+  save t
+  stem test, call self/n-rounds/intersect, call self/key-prior-reset/is-strictly-equal, read self/key
+    hook true
+      send back seed
+  save key, save self/key-prior-reset, read self/key
+  save key-words, key/words
+  save key-size, call key/sig-bytes/divide, code 4
+  save n-rounds, save self/n-rounds, call key-size/add, code 6
+  save ks-rows
+    call n-rounds/add, code 1
+      link multiply, code 4
+  save key-schedule, save self/key-schedule, make list
+  save ks-row, code 0
+  walk test
+    hook test
+      call ks-row/is-below, read ks-rows
+    hook step
+      stem roll
+        stem test, call ks-row/is-below, read key-size
+          hook true
+            save key-schedule[ks-row], read key-words[ks-row]
+        save tmp3, call ks-row/subtract, code 1
+        save t, read key-schedule[tmp3]
+        stem roll
+          stem test, call not, call ks-row/remainder, read key-size
+            hook true
+              save t
+                call t/shift-base, code 8
+                  link unite-bitwise, call t/shift-head-unsigned, code 24
+              save tmp4, call t/shift-head-unsigned, code 24
+              save tmp5
+                call t/shift-head-unsigned, code 16
+                  link intersect-bitwise, code 255
+              save tmp6
+                call t/shift-head-unsigned, code 8
+                  link intersect-bitwise, code 255
+              save tmp7, call t/intersect-bitwise, code 255
+              save t
+                call sbox[tmp4]/shift-base, code 24
+                  link unite-bitwise, call sbox[tmp5]/shift-base, code 16
+                  link unite-bitwise, call sbox[tmp6]/shift-base, code 8
+                  link unite-bitwise, read sbox[tmp7]
+              save tmp8
+                call ks-row/divide, read key-size
+                  link unite-bitwise, code 0
+              save t
+                call oppose-bitwise
+                  read t
+                  call rcon[tmp8]/shift-base, code 24
+          stem test
+            call key-size/is-above, code 6
+              link intersect
+                call ks-row/remainder, read key-size
+                  link is-equal, code 4
+            hook true
+              save tmp9, call t/shift-head-unsigned, code 24
+              save tmp10
+                call t/shift-head-unsigned, code 16
+                  link intersect-bitwise, code 255
+              save tmp11
+                call t/shift-head-unsigned, code 8
+                  link intersect-bitwise, code 255
+              save tmp12, call t/intersect-bitwise, code 255
+              save t
+                call sbox[tmp9]/shift-base, code 24
+                  link unite-bitwise, call sbox[tmp10]/shift-base, code 16
+                  link unite-bitwise, call sbox[tmp11]/shift-base, code 8
+                  link unite-bitwise, read sbox[tmp12]
+        save tmp13, call ks-row/subtract, read key-size
+        save key-schedule[ks-row], call key-schedule[tmp13]/oppose-bitwise, read t
+      save ks-row, call increment, read ks-row
+  save inv-key-schedule, save self/inv-key-schedule, make list
+  save inv-ks-row, code 0
+  walk test
+    hook test
+      call inv-ks-row/is-below, read ks-rows
+    hook step
+      save ks-row, call ks-rows/subtract, read inv-ks-row
+      stem roll
+        stem test, call inv-ks-row/remainder, code 4
+          hook true
+            save t, key-schedule[ks-row]
+        save tmp15, call ks-row/subtract, code 4
+        save t, key-schedule[tmp15]
+      stem roll
+        stem test
+          call inv-ks-row/is-below, code 4
+            link unite, call ks-row/is-max, code 4
+          hook true
+            save inv-key-schedule[inv-ks-row], read t
+        save tmp16, call t/shift-head-unsigned, code 24
+        save tmp17
+          call t/shift-head-unsigned, code 16
+            link intersect-bitwise, code 255
+        save tmp18
+          call t/shift-head-unsigned, code 8
+            link intersect-bitwise, code 255
+        save tmp19, call t/intersect-bitwise, code 255
+        save inv-key-schedule[inv-ks-row]
+          call invsubmix0[sbox[tmp16]]/oppose-bitwise, read invsubmix1[sbox[tmp17]]
+            link oppose-bitwise, read invsubmix2[sbox[tmp18]]
+            link oppose-bitwise, read invsubmix3[sbox[tmp19]]
+      save inv-ks-row, call increment, read inv-ks-row
+
+task encrypt-block
+  take m
+  take offset
+  call self/do-crypt-block
+    read m
+    read offset
+    read self/key-schedule
+    read submix0
+    read submix1
+    read submix2
+    read submix3
+    read sbox
+
+task decrypt-block
+  take m
+  take offset
+  save tmp21, call offset/add, code 1
+  save t, m[tmp21]
+  save tmp22, call offset/add, code 1
+  save tmp23, call offset/add, code 3
+  save m[tmp22], read m[tmp23]
+  save tmp24, call offset/add, code 3
+  save m[tmp24], read t
+  call self/do-crypt-block
+    read m
+    read offset
+    read self/inv-key-schedule
+    read invsubmix0
+    read invsubmix1
+    read invsubmix2
+    read invsubmix3
+    read invsbox
+  save tmp25, call offset/add, code 1
+  save t, m[tmp25]
+  save tmp26, call offset/add, code 1
+  save tmp27, call offset/add, code 3
+  save m[tmp26], read m[tmp27]
+  save tmp28, call offset/add, code 3
+  save m[tmp28], read t
+
+task do-crypt-block
+  take m
+  take offset
+  take key-schedule
+  take submix0
+  take submix1
+  take submix2
+  take submix3
+  take sbox
+  save n-rounds, self/n-rounds
+  save s0, call m[offset]/oppose-bitwise, read key-schedule[0]
+  save tmp29, call offset/add, code 1
+  save s1, call m[tmp29]/oppose-bitwise, read key-schedule[1]
+  save tmp30, call offset/add, code 2
+  save s2, call m[tmp30]/oppose-bitwise, read key-schedule[2]
+  save tmp31, call offset/add, code 3
+  save s3, call m[tmp31]/oppose-bitwise, read key-schedule[3]
+  save ks-row, code 4
+  save round, code 1
+  walk test
+    hook test
+      call round/is-below, read n-rounds
+    hook step
+      save tmp32, call s0/shift-head-unsigned, code 24
+      save tmp33
+        call s1/shift-head-unsigned, code 16
+          link intersect-bitwise, code 255
+      save tmp34
+        call s2/shift-head-unsigned, code 8
+          link intersect-bitwise, code 255
+      save tmp35, call s3/intersect-bitwise, code 255
+      save tmp36, save ks-row, call increment, read ks-row
+      save t0
+        call submix0[tmp32]/oppose-bitwise, read submix1[tmp33]
+          link oppose-bitwise, read submix2[tmp34]
+          link oppose-bitwise, read submix3[tmp35]
+          link oppose-bitwise, read key-schedule[tmp36]
+      save tmp37, call s1/shift-head-unsigned, code 24
+      save tmp38
+        call s2/shift-head-unsigned, code 16
+          link intersect-bitwise, code 255
+      save tmp39
+        call s3/shift-head-unsigned, code 8
+          link intersect-bitwise, code 255
+      save tmp40, call s0/intersect-bitwise, code 255
+      save tmp41, save ks-row, call increment, read ks-row
+      save t1
+        call submix0[tmp37]/oppose-bitwise, read submix1[tmp38]
+          link oppose-bitwise, read submix2[tmp39]
+          link oppose-bitwise, read submix3[tmp40]
+          link oppose-bitwise, read key-schedule[tmp41]
+      save tmp42, call s2/shift-head-unsigned, code 24
+      save tmp43
+        call s3/shift-head-unsigned, code 16
+          link intersect-bitwise, code 255
+      save tmp44
+        call s0/shift-head-unsigned, code 8
+          link intersect-bitwise, code 255
+      save tmp45, call s1/intersect-bitwise, code 255
+      save tmp46, save ks-row, call increment, read ks-row
+      save t2
+        call submix0[tmp42]/oppose-bitwise, read submix1[tmp43]
+          link oppose-bitwise, read submix2[tmp44]
+          link oppose-bitwise, read submix3[tmp45]
+          link oppose-bitwise, read key-schedule[tmp46]
+      save tmp47, call s3/shift-head-unsigned, code 24
+      save tmp48
+        call s0/shift-head-unsigned, code 16
+          link intersect-bitwise, code 255
+      save tmp49
+        call s1/shift-head-unsigned, code 8
+          link intersect-bitwise, code 255
+      save tmp50, call s2/intersect-bitwise, code 255
+      save tmp51, save ks-row, call increment, read ks-row
+      save t3
+        call submix0[tmp47]/oppose-bitwise, read submix1[tmp48]
+          link oppose-bitwise, read submix2[tmp49]
+          link oppose-bitwise, read submix3[tmp50]
+          link oppose-bitwise, read key-schedule[tmp51]
+      save s0, read t0
+      save s1, read t1
+      save s2, read t2
+      save s3, read t3
+      save round, call increment, read round
+  save tmp53, call s0/shift-head-unsigned, code 24
+  save tmp54
+    call s1/shift-head-unsigned, code 16
+      link intersect-bitwise, code 255
+  save tmp55
+    call s2/shift-head-unsigned, code 8
+      link intersect-bitwise, code 255
+  save tmp56, call s3/intersect-bitwise, code 255
+  save tmp57, save ks-row, call increment, read ks-row
+  save t0
+    call sbox[tmp53]/shift-base, code 24
+      link unite-bitwise, call sbox[tmp54]/shift-base, code 16
+      link unite-bitwise, call sbox[tmp55]/shift-base, code 8
+      link unite-bitwise, read sbox[tmp56]
+      link oppose-bitwise, read key-schedule[tmp57]
+  save tmp58, call s1/shift-head-unsigned, code 24
+  save tmp59
+    call s2/shift-head-unsigned, code 16
+      link intersect-bitwise, code 255
+  save tmp60
+    call s3/shift-head-unsigned, code 8
+      link intersect-bitwise, code 255
+  save tmp61, call s0/intersect-bitwise, code 255
+  save tmp62, save ks-row, call increment, read ks-row
+  save t1
+    call sbox[tmp58]/shift-base, code 24
+      link unite-bitwise, call sbox[tmp59]/shift-base, code 16
+      link unite-bitwise, call sbox[tmp60]/shift-base, code 8
+      link unite-bitwise, read sbox[tmp61]
+      link oppose-bitwise, read key-schedule[tmp62]
+  save tmp63, call s2/shift-head-unsigned, code 24
+  save tmp64
+    call s3/shift-head-unsigned, code 16
+      link intersect-bitwise, code 255
+  save tmp65
+    call s0/shift-head-unsigned, code 8
+      link intersect-bitwise, code 255
+  save tmp66, call s1/intersect-bitwise, code 255
+  save tmp67, save ks-row, call increment, read ks-row
+  save t2
+    call sbox[tmp63]/shift-base, code 24
+      link unite-bitwise, call sbox[tmp64]/shift-base, code 16
+      link unite-bitwise, call sbox[tmp65]/shift-base, code 8
+      link unite-bitwise, read sbox[tmp66]
+      link oppose-bitwise, read key-schedule[tmp67]
+  save tmp68, call s3/shift-head-unsigned, code 24
+  save tmp69
+    call s0/shift-head-unsigned, code 16
+      link intersect-bitwise, code 255
+  save tmp70
+    call s1/shift-head-unsigned, code 8
+      link intersect-bitwise, code 255
+  save tmp71, call s2/intersect-bitwise, code 255
+  save tmp72, save ks-row, call increment, read ks-row
+  save t3
+    call sbox[tmp68]/shift-base, code 24
+      link unite-bitwise, call sbox[tmp69]/shift-base, code 16
+      link unite-bitwise, call sbox[tmp70]/shift-base, code 8
+      link unite-bitwise, read sbox[tmp71]
+      link oppose-bitwise, read key-schedule[tmp72]
+  save m[offset], read t0
+  save tmp73, call offset/add, code 1
+  save m[tmp73], read t1
+  save tmp74, call offset/add, code 2
+  save m[tmp74], read t2
+  save tmp75, call offset/add, code 3
+  save m[tmp75], read t3

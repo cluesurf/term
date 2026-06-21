@@ -1,0 +1,73 @@
+
+host current
+
+form context
+  link name, like text
+  link failures, like list
+  link skipped, like boolean
+  link start-time, like size
+
+task make
+  take name, like text
+  take start-time, like size
+  send back
+    make context
+      bind name, read name
+      bind failures
+        make list
+      bind skipped, wave false
+      bind start-time, read start-time
+
+task set
+  take ctx, like context
+  save current, read ctx
+
+task get
+  like context
+  send back, read current
+
+task fail
+  take ctx, like context
+  take failure, like failure
+  fork case, read ctx
+    case context, base name, base failures, base skipped, base start-time
+      call list-push
+        bind list, read failures
+        bind item, read failure
+
+task is-passed
+  take ctx, like context
+  like boolean
+  fork case, read ctx
+    case context, base name, base failures, base skipped, base start-time
+      fork test
+        hook test, read skipped
+        hook hold
+          send back, wave false
+      save count
+        call list-size
+          bind list, read failures
+      fork test
+        hook test
+          call is-equal
+            bind a, read count
+            bind b, code 0
+        hook hold
+          send back, wave true
+        hook miss
+          send back, wave false
+
+task skip
+  take ctx, like context
+  fork case, read ctx
+    case context, base name, base failures, base skipped, base start-time
+      save skipped, wave true
+
+task count
+  take ctx, like context
+  like size
+  fork case, read ctx
+    case context, base name, base failures, base skipped, base start-time
+      send back
+        call list-size
+          bind list, read failures

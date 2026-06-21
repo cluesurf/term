@@ -1,0 +1,114 @@
+
+load @cluesurf/base/code/process
+  find child
+
+task wait
+  note async
+  take child, like child
+  like size
+
+  save code
+    call promise/make
+      note async
+      take resolve, like task
+      call child/dock/on
+        text <exit>
+        take exit-code
+        call resolve, read exit-code
+
+  send back, read code
+
+task stop
+  take child, like child
+  take form, like text, fall text <gentle>
+
+  fork test
+    call is-equal
+      bind a, read form
+      bind b, text <force>
+    hook true
+      call child/dock/kill
+        text <SIGKILL>
+    hook false
+      call child/dock/kill
+        text <SIGTERM>
+
+task write
+  note async
+  take child, like child
+  take data, like text
+
+  call child/dock/stdin/write
+    read data
+
+task close
+  note async
+  take child, like child
+
+  call child/dock/stdin/end
+
+task read
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <text>
+  like text
+
+  save stream
+    fork test
+      call is-equal
+        bind a, read kind
+        bind b, text <stderr>
+      hook true
+        send back, read child/dock/stderr
+      hook false
+        send back, read child/dock/stdout
+
+  save chunks, make list
+
+  save output
+    call promise/make
+      note async
+      take resolve, like task
+
+      call stream/on
+        text <data>
+        take chunk
+        call chunks/push
+          read chunk
+
+      call stream/on
+        text <end>
+        call resolve
+          call buffer/concat
+            read chunks
+
+  fork test
+    call is-equal
+      bind a, read format
+      bind b, text <text>
+    hook true
+      send back
+        call output/to-string
+          text <utf8>
+    hook false
+      send back, read output
+
+task stream
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <bytes>
+  like list
+
+  save source
+    fork test
+      call is-equal
+        bind a, read kind
+        bind b, text <stderr>
+      hook true
+        send back, read child/dock/stderr
+      hook false
+        send back, read child/dock/stdout
+
+  send back, read source

@@ -1,0 +1,16 @@
+
+# Guide: the blog app.
+#
+# The full loop: a browser/fetch request -> hono (transport) -> the uniform trie router -> the post repository ->
+# Postgres -> JSON -> back. Userland imports only clean framework paths and never names a driver.
+#
+# Layout (application folder convention):
+#   back/post   repository: the `post` model + create/list/get over @cluesurf/site/code/base/db
+#   hook/blog   API: routes (`GET /posts`, `GET /posts/:id`) + the `boot` entry (connect, seed-if-empty, serve)
+#   face/blog   frontend: the DOM app
+#
+# Build + run is the `seed` CLI:
+#   seed boot                 reads deck.tree (`boot ./hook/blog`), compiles, prepends shims, caches, serves
+#   seed boot ./hook/blog     explicit entry
+#
+# Config comes from the environment: DATABASE_URL (Postgres connection) and PORT.

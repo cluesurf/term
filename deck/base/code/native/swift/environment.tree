@@ -1,0 +1,16 @@
+# swift environment implementation. Forwards to the linked environment runtime shim. Internal: reached only through the public environment API.
+
+dock load
+  load <global:environment>, name environment
+
+task current-directory
+  like text
+  send back
+    call environment/current-directory
+
+task get-variable
+  take name, like text
+  like text
+  send back
+    call environment/get-variable
+      read name

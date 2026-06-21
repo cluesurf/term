@@ -1,0 +1,117 @@
+
+task query
+  take selector, like text
+  take root, need false
+
+  fork test
+    hook test
+      call is-some, read root
+    hook hold
+      send back
+        call root/query-selector
+          read selector
+    hook miss
+      send back
+        call document/query-selector
+          read selector
+
+task query-all
+  take selector, like text
+  take root, need false
+
+  fork test
+    hook test
+      call is-some, read root
+    hook hold
+      save nodes
+        call root/query-selector-all
+          read selector
+      send back
+        call array/from
+          read nodes
+    hook miss
+      save nodes
+        call document/query-selector-all
+          read selector
+      send back
+        call array/from
+          read nodes
+
+task create-element
+  take tag, like text
+
+  send back
+    call document/create-element
+      read tag
+
+task set-attribute
+  take element
+  take name, like text
+  take value, like text
+
+  call element/set-attribute
+    read name
+    read value
+
+task get-attribute
+  take element
+  take name, like text
+
+  send back
+    call element/get-attribute
+      read name
+
+task append
+  take parent
+  take child
+
+  call parent/append-child
+    read child
+
+task remove
+  take element
+
+  call element/remove
+
+task set-text
+  take element
+  take value, like text
+
+  save element/text-content, read value
+
+task get-text
+  take element
+
+  send back, read element/text-content
+
+task add-class
+  take element
+  take name, like text
+
+  call element/class-list/add
+    read name
+
+task remove-class
+  take element
+  take name, like text
+
+  call element/class-list/remove
+    read name
+
+task add-listener
+  take element
+  take event, like text
+  take handler, like task
+
+  call element/add-event-listener
+    read event
+    read handler
+
+task remove-listener
+  take element
+  take event, like text
+  take handler, like task
+
+  call element/remove-event-listener
+    read event
+    read handler

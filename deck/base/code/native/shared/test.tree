@@ -1,0 +1,16 @@
+
+load @cluesurf/base/code/test/suite
+  find failure
+
+task make-failure
+  take name, like text
+  take message, like text
+  take expected
+  take actual
+  like failure
+  send back
+    make failure
+      bind name, read name
+      bind message, read message
+      bind expected, read expected
+      bind actual, read actual

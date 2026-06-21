@@ -1,0 +1,22 @@
+
+load @cluesurf/base/code/deck
+  find deck-deck-case
+
+load @cluesurf/term/code/deck/deck/link/mint
+  find deck-link
+
+load @cluesurf/term/code/deck/deck/host/mint
+  find deck-host
+
+mint deck-case, like deck-deck-case
+  case name
+    slot name
+  case link, mint deck-link
+    slot link
+  case host, mint deck-host
+    slot host
+  hook make
+    make deck-deck-case
+      bind name, read name
+      bind link, read link
+      bind host, read host

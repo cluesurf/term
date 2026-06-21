@@ -1,0 +1,11 @@
+
+task make
+  note async
+  take from, like text
+  take to, like text
+  take hard, like bool, fall false
+
+task read
+  note async
+  take path, like text
+  like text

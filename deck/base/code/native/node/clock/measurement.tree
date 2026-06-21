@@ -1,0 +1,26 @@
+
+load ../now
+  find get
+
+load ../../shared/clock/measurement
+  find mark
+
+task start
+  save now
+    call get
+      bind precise, wave true
+  send back
+    make mark
+      bind start, read now
+
+task read
+  take m, like mark
+  save now
+    call get
+      bind precise, wave true
+  fork case, read m
+    case mark, base start
+      send back
+        call subtract
+          bind a, read now
+          bind b, read start

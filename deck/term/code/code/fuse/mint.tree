@@ -1,0 +1,24 @@
+
+load @cluesurf/base/code/fuse
+  find code-fuse
+  find code-fuse-bind
+
+mint fuse, like code-fuse
+  case name
+    slot name
+  case bind, mint fuse-bind
+    slot bind
+  hook make
+    make code-fuse
+      bind name, read name
+      bind bind, read bind
+
+mint fuse-bind, like code-fuse-bind
+  case name
+    slot name
+  case value
+    slot value
+  hook make
+    make code-fuse-bind
+      bind name, read name
+      bind value, read value

@@ -1,0 +1,54 @@
+
+# Unique bag: a set. Each value appears at most once. Backed by a list, with a membership check guarding insertion.
+
+form unique-bag
+  head t
+
+  link items, like list
+
+  task make
+    like unique-bag
+    send back
+      make unique-bag
+        bind items
+          make list
+
+  task add
+    take self, flex true
+    take item, like t
+    like void
+    fork test
+      hook test
+        call self/items/includes
+          read item
+      hook hold
+        send back
+      hook miss
+        call self/items/push
+          read item
+
+  task contains
+    take self
+    take item, like t
+    like boolean
+    send back
+      call self/items/includes
+        read item
+
+  task get-size
+    take self
+    like number
+    send back, read self/items/length
+
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        read self/items/length
+        code 0
+
+  task to-list
+    take self
+    like list
+    send back, read self/items

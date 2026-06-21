@@ -1,0 +1,47 @@
+
+# Ordered set: unique values in insertion order, backed by the native array.
+
+load @cluesurf/base/code/list
+  find list
+
+form ordered-set
+  head t
+  link items, like list
+
+  task insert
+    take self
+    take item, like t
+    like ordered-set
+    fork test
+      hook test
+        call contains
+          read self/items
+          read item
+      hook hold
+        send back, read self
+      hook miss
+        call push
+          read self/items
+          read item
+        send back, read self
+
+  task has
+    take self
+    take item, like t
+    like boolean
+    send back
+      call contains
+        read self/items
+        read item
+
+  task size
+    take self
+    like number
+    send back
+      call size
+        read self/items
+
+  task to-list
+    take self
+    like list
+    send back, read self/items

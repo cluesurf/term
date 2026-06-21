@@ -1,0 +1,49 @@
+
+load @cluesurf/base/code/environment/language
+  find locale
+
+task read
+  like locale
+
+  save tag
+    call rust-get-locale
+  save parts
+    call split
+      read tag
+      text <->
+  save language
+    read parts/0
+  save region
+    fork test, call is-above, read parts/length, code 1
+      hook true
+        read parts/1
+      hook false
+        text <>
+
+  send back
+    make locale
+      bind language, read language
+      bind region, read region
+      bind tag, read tag
+      bind timezone, text <>
+
+task list
+  like list
+
+  save tag
+    call rust-get-locale
+  send back
+    make list
+      read tag
+
+task rust-get-locale
+  note private
+  dock call <run {
+    match std::env::var("LANG") {
+      Ok(lang) => {
+        let l = lang.split('.').next().unwrap_or("en");
+        l.replace('_', "-").to_string()
+      }
+      Err(_) => String::from("en"),
+    }
+  }>

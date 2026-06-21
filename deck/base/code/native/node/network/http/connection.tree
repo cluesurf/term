@@ -1,0 +1,33 @@
+
+task make-connection
+  call net/create-connection
+
+form connection
+  task get-bytes-read
+  task get-bytes-written
+  task connect
+  task is-connecting
+    read self/x-connection/connecting
+
+  task destroy
+
+  task is-destroyed
+    read self/x-connection/destroyed
+
+  task end
+
+  task get-local-address
+  task get-local-port
+  task pause
+  task is-pending
+  task get-remote-address
+  task get-remote-family
+  task get-remote-port
+  task resume
+  task set-encoding
+  task set-keep-alive
+  task set-no-delay
+  task set-timeout
+  task get-timeout-amount
+  task write
+  task is-ready-state

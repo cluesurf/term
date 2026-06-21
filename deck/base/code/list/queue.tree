@@ -1,0 +1,52 @@
+
+# Queue (FIFO), backed by the native array.
+
+load @cluesurf/base/code/list
+  find list
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+form queue
+  head t
+  link items, like list
+
+  task enqueue
+    take self
+    take item, like t
+    like queue
+    call push
+      read self/items
+      read item
+    send back, read self
+
+  task dequeue
+    take self
+    like maybe
+    fork test
+      hook test
+        call is-above
+          read self/items/length
+          code 0
+      hook hold
+        send back
+          make some
+            bind value
+              call self/items/shift
+      hook miss
+        send back
+          make none
+
+  task peek
+    take self
+    like maybe
+    send back
+      call first
+        read self/items
+
+  task size
+    take self
+    like number
+    send back
+      call size
+        read self/items

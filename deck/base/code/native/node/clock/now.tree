@@ -1,0 +1,14 @@
+
+dock load
+  load <perf_hooks>, name perf
+
+task get
+  take precise, like bool, fall wave false
+
+  fork test, read precise
+    hook test
+      send back
+        call perf/performance/now
+    hook miss
+      send back
+        call date/now

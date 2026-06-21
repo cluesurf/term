@@ -1,0 +1,109 @@
+
+# Browser DOM impl: delegates to the real DOM through @cluesurf/bind. Conforms to the abstract API in ../dom. The
+# `view` handle is opaque (an erased host node), so each task re-types it to the bind form that owns the method it
+# needs (document / element / node / child-node) and calls the method with member syntax (`call made/set-attribute`).
+# bind's methods are JS-`this`-style, so the receiver is the member target and the args are exactly the method's
+# params; the emitter lowers the call to `made.setAttribute(...)`. The native delegation lives inside bind.
+
+load ../global
+  find page
+
+load @cluesurf/bind/code/browser/dom/element
+  find element
+
+load @cluesurf/bind/code/browser/dom/node
+  find node
+
+load @cluesurf/bind/code/browser/dom/child-node
+  find child-node
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+load ../../view
+  find view
+
+task create-element
+  take tag, like text
+  like view
+  # the result is bind's html-element; it is stored in the opaque handle, so no re-type is needed here
+  host made
+    call page/create-element
+      read tag
+      make none
+  send back
+    make view
+      bind handle, read made
+
+task create-text
+  take value, like text
+  like view
+  host made
+    call page/create-text-node
+      read value
+  send back
+    make view
+      bind handle, read made
+
+task set-text
+  take node, like view
+  take value, like text
+  save node/handle/text-content, read value
+
+task set-attribute
+  take node, like view
+  take name, like text
+  take value, like text
+  host made, like element
+    read node/handle
+  call made/set-attribute
+    read name
+    read value
+
+task listen
+  take node, like view
+  take event, like text
+  take handler
+    like task
+  host made, like element
+    read node/handle
+  # bind's addEventListener wants its EventListener union; the handler is a real function at runtime, so bridge it
+  # through the gradual `any` (it is passed straight through, never structurally matched)
+  host listener, like any
+    read handler
+  call made/add-event-listener
+    read event
+    read listener
+    make none
+
+task append
+  take parent, like view
+  take child, like view
+  host made, like node
+    read parent/handle
+  call made/append-child
+    read child/handle
+
+task replace
+  take old, like view
+  take new, like view
+  host made, like child-node
+    read old/handle
+  call made/replace-with
+    read new/handle
+
+task remove
+  take node, like view
+  host made, like child-node
+    read node/handle
+  call made/remove
+
+task get-value
+  take node, like view
+  like text
+  send back, read node/handle/value
+
+task set-value
+  take node, like view
+  take value, like text
+  save node/handle/value, read value

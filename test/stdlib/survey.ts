@@ -11,7 +11,7 @@ import { withNativeEnv } from '@/code/compile/native'
 import type { Source } from '@/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const base = join(here, '..', '..', '..', 'base.tree')
+const base = join(here, '..', '..', 'deck', 'base')
 const codeDir = join(base, 'code')
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'

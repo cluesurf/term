@@ -1,0 +1,88 @@
+
+# Zone: the component (view) AST. A zone is a named tree of nodes: nested zone instances, html elements, literal
+# text, dynamic reads, a slot for children, conditional forks, list walks, and computed locals. The public surface
+# is documented in book/site (navigation, state, forms). Rendering is delegated per environment via dock to native.
+
+load ./term
+  find term
+
+load ./take
+  find take
+
+load ./bind
+  find bind
+
+load ./road
+  find road
+
+load ./seed
+  find seed
+
+form zone-def
+  link name, like term
+  link take, list take
+  link node, list zone-node
+
+form zone-node
+  case zone, like zone-element
+  case text, like zone-text
+  case read, like seed
+  case slot, like zone-slot
+  case fork, like zone-fork
+  case walk, like zone-walk
+  case save, like zone-save
+
+# a `zone <name>` node: either an html element (`zone div`) or a nested component (`zone user-card`). Attributes
+# and events attach with `seed` (seed class, seed click); component props attach with `bind`; children nest below.
+form zone-element
+  link name, like term
+  link seed, list zone-seed
+  link bind, list bind
+  link node, list zone-node
+
+# an attribute or event binding: `seed click, call toggle` / `seed class, read theme`
+form zone-seed
+  link name, like term
+  link bond, like seed
+
+form zone-text
+  link text, like text
+
+# the outlet for child content / the active child route
+form zone-slot
+  link name, like term
+
+# a conditional: a flat list of hooks (`hook test` / `hook hold` / `hook miss`), paired during lowering
+form zone-fork
+  link hook, list zone-fork-hook
+
+form zone-fork-hook
+  case test, like zone-fork-test
+  case hold, like zone-fork-hold
+  case miss, like zone-fork-miss
+
+form zone-fork-test
+  link seed, like seed
+
+form zone-fork-hold
+  link node, list zone-node
+
+form zone-fork-miss
+  link node, list zone-node
+
+# iterate a list: `walk list, read items / hook next / take site, name item / <body>`
+form zone-walk
+  link road, like seed
+  link next, list zone-walk-next
+
+form zone-walk-next
+  link site, like zone-walk-site
+  link node, list zone-node
+
+form zone-walk-site
+  link name, like term
+
+# a computed local: `save total / call count, ...`
+form zone-save
+  link name, like term
+  link seed, like seed

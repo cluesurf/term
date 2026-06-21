@@ -85,6 +85,14 @@ type Inequality = ReturnType<typeof atMost>
 
 // a hold goal: the list of inequalities that must ALL hold (an equality goal splits into two), or null if the
 // comparison is outside the linear fragment (then it cannot be discharged here). Mod side-constraints go in `side`.
+// whether a hold's goal lies in the decidable linear fragment (both sides translate to linear forms). The kernel
+// proof layer (elaborate) skips these so the linear prover here is the single authority for arithmetic, which is what
+// keeps it from wrongly discharging a value-false claim like `add 3 3 == add 4 4` (the kernel treats number literals
+// opaquely, so it cannot tell 6 from 8; the linear prover can).
+export function isLinearGoal(expr: Expression): boolean {
+  return goalInequalities(expr, []) !== null
+}
+
 function goalInequalities(
   expr: Expression,
   side: Array<Inequality>,

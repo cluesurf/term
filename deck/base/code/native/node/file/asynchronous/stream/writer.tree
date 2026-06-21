@@ -1,0 +1,44 @@
+
+dock load
+  load <node:fs>, name fs
+
+form writer
+  link dock, mark private
+  link path, like text
+
+task create
+  note async
+  take path, like text
+  take append, like bool, fall wave false
+
+  save flags
+    fork test, name append
+      hook true, text <a>
+      hook false, text <w>
+
+  save handle
+    call fs/create-write-stream
+      read path
+      make options
+        bind flags, read flags
+
+  send back
+    make writer
+      bind dock, read handle
+      bind path, read path
+
+task write
+  note async
+  take stream, like writer
+  take data, like text
+
+  call stream/dock/write
+    note async
+    read data
+
+task close
+  note async
+  take stream, like writer
+
+  call stream/dock/end
+    note async

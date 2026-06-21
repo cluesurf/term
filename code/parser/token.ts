@@ -107,7 +107,7 @@ const PATTERN: Record<TokenKind, RegExp> = {
   [TokenKind.CloseParen]: /^\)/,
   [TokenKind.CloseAngle]: /^>/,
   [TokenKind.Comma]: /^, */,
-  [TokenKind.Comment]: /^# +[^\n]+/,
+  [TokenKind.Comment]: /^#(?: +[^\n]+)?/,
   [TokenKind.Decimal]: /^-?\d+\.\d+/,
   [TokenKind.Radix]: /^0[xXbBoO]\w+/,
   [TokenKind.Newline]: /^\n/,

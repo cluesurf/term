@@ -1,0 +1,70 @@
+
+form socket
+  task add-sni-certificate
+    take cb-servername-match
+      like task
+        take text
+        like bool
+    take cert, like certificate
+    take key, like key
+    like void
+
+  task handshake
+    like void
+
+  task peer-certificate
+    like certificate
+
+  task set-ca
+    take cert, like certificate
+    like void
+
+  task set-certificate
+    take cert, like certificate
+    take key, like key
+    like void
+
+  task set-hostname
+    take name, like string
+    like void
+
+  task custom
+    like dynamic
+
+  task input
+    like input
+
+  task output
+    like output
+
+  task host
+    like dynamic
+    fields
+      port, like int
+      host, like host
+
+  task listen
+    take connections, like int
+    like void
+
+  task peer
+    like dynamic
+    fields
+      port, like int
+      host, like host
+
+  task set-fast-send
+    take b, like bool
+    like void
+
+  task set-timeout
+    take timeout, like float
+    like void
+
+  task shutdown
+    take read, like bool
+    take write, like bool
+    like void
+
+  task wait-for-read
+    like void

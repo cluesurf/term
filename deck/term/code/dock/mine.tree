@@ -1,0 +1,104 @@
+
+# Grammar for the dock (routing + CLI) DSL. A dock is `dock <path-or-name>` with optional params (`take`), method
+# handlers (`task`), a handler / exec (`call`), a client component (`zone`), directives (`seed`), responses (`send`),
+# lifecycle hooks (`hook`), and nested docks. Shared sub-grammars (take, bind, seed) come from the code mills.
+
+load @cluesurf/term/code/code/take/mine
+  find take
+
+load @cluesurf/term/code/code/bind/mine
+  find bind
+
+load @cluesurf/term/code/code/seed/mine
+  find seed
+
+mine dock
+  mine list
+    mine form, like dock-def
+      slot dock
+
+mine dock-def
+  mine term, term dock
+    mine term
+      slot path
+    mine list
+      mine form, like take
+        slot take
+    mine list
+      mine form, like dock-task
+        slot task
+    mine list
+      mine form, like dock-call
+        slot call
+    mine maybe
+      mine form, like dock-zone
+        slot zone
+    mine list
+      mine form, like dock-seed
+        slot seed
+    mine list
+      mine form, like dock-send
+        slot send
+    mine list
+      mine form, like dock-hook
+        slot hook
+    mine list
+      mine form, like dock-def
+        slot dock
+
+mine dock-task
+  mine term, term task
+    mine term
+      slot name
+    mine list
+      mine form, like take
+        slot take
+    mine list
+      mine form, like dock-call
+        slot call
+    mine list
+      mine form, like dock-send
+        slot send
+    mine list
+      mine form, like dock-seed
+        slot seed
+
+mine dock-call
+  mine term, term call
+    mine term
+      slot name
+    mine list
+      mine form, like bind
+        slot bind
+
+mine dock-zone
+  mine term, term zone
+    mine term
+      slot name
+    mine list
+      mine form, like bind
+        slot bind
+
+mine dock-seed
+  mine term, term seed
+    mine term
+      slot name
+    mine maybe
+      mine form, like seed
+        slot bond
+
+mine dock-send
+  mine term, term send
+    mine term
+      slot name
+    mine maybe
+      mine form, like seed
+        slot seed
+
+mine dock-hook
+  mine term, term hook
+    mine term
+      slot name
+    mine list
+      mine form, like dock-call
+        slot call

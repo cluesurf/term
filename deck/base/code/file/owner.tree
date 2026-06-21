@@ -1,0 +1,15 @@
+
+form file-owner
+  link user, like size
+  link group, like size
+
+task read
+  note async
+  take path, like text
+  like file-owner
+
+task write
+  note async
+  take path, like text
+  take user, like size
+  take group, like size

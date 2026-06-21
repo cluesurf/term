@@ -1,0 +1,10 @@
+
+task read
+  note async
+  take path, like text
+  like size
+
+task write
+  note async
+  take path, like text
+  take mode, like size

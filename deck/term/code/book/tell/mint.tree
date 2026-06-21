@@ -1,0 +1,13 @@
+
+load @cluesurf/term/code/book/tell
+  find book-tell
+
+mint tell, like book-tell
+  case text
+    slot text
+  case cite
+    slot cite
+  hook make
+    make book-tell
+      bind text, read text
+      bind cite, read cite

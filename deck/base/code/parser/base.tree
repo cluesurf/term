@@ -1,0 +1,104 @@
+
+load ./state
+  find state
+
+load ./error
+  find error
+
+load @cluesurf/base/code/result
+  find result
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+load @cluesurf/base/code/list
+  find list
+
+form parser
+  head t
+
+  task run
+    take self
+    take input, like text
+    like result
+
+  task map
+    head s
+    take self
+    take call
+      like task
+        take value, like t
+        like s
+    like parser
+
+  task bind
+    head s
+    take self
+    take call
+      like task
+        take value, like t
+        like parser
+    like parser
+
+  task alternative
+    take self
+    take other, like parser
+    like parser
+
+task pure
+  head t
+  take value, like t
+  like parser
+
+task fail
+  take note, like text
+  like parser
+
+task char
+  take value, like text
+  like parser
+
+task match-text
+  take value, like text
+  like parser
+
+task digit
+  like parser
+
+task letter
+  like parser
+
+task take-while
+  take test
+    like task
+      take value, like text
+      like boolean
+  like parser
+
+task many
+  head t
+  take inner, like parser
+  like parser
+
+task many1
+  head t
+  take inner, like parser
+  like parser
+
+task choice
+  head t
+  take options, like list
+  like parser
+
+task sequence
+  head t
+  take parsers, like list
+  like parser
+
+task peek
+  head t
+  take inner, like parser
+  like parser
+
+task skip-spaces
+  like parser

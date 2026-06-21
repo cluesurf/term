@@ -1,0 +1,31 @@
+
+mint mark
+  case kind
+    slot kind
+  case bind, mint mark-bind
+    slot bind
+  hook make
+    make mark
+      bind kind, read kind
+      bind bind, read bind
+
+mint mark-bind
+  case key
+    slot key
+  case text-value
+    slot value
+  case number-value
+    slot value
+  case term-value, mint mark-bind-term
+    slot value
+  hook make
+    make mark-bind
+      bind key, read key
+      bind value, read value
+
+mint mark-bind-term
+  case name
+    slot name
+  hook make
+    make mark-bind-term
+      bind name, read name

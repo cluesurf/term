@@ -1,0 +1,10 @@
+
+mint db-mesh
+  case mode
+    slot mode
+  case find, mint db-find
+    slot find
+  hook make
+    make db-mesh
+      bind mode, read mode
+      bind find, read find

@@ -1,0 +1,25 @@
+
+# Typed message-passing channel for concurrent tasks.
+
+form channel
+  head item
+  case sender
+    link id, like text
+  case receiver
+    link id, like text
+
+task make
+  head item
+  like channel
+
+task send
+  head item
+  note async
+  take target, like channel
+  take value, like item
+
+task receive
+  head item
+  note async
+  take source, like channel
+  like item

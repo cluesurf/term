@@ -1,0 +1,62 @@
+# Browser float math (the host Math global). Internal: reached only through the public float API.
+
+dock load
+  load <global:Math>, name math
+
+task do-sqrt
+  take value, like decimal
+  like decimal
+  send back
+    call math/sqrt
+      read value
+
+task do-floor
+  take value, like decimal
+  like decimal
+  send back
+    call math/floor
+      read value
+
+task do-ceil
+  take value, like decimal
+  like decimal
+  send back
+    call math/ceil
+      read value
+
+task do-round
+  take value, like decimal
+  like decimal
+  send back
+    call math/round
+      read value
+
+task do-power
+  take base, like decimal
+  take exponent, like decimal
+  like decimal
+  send back
+    call math/pow
+      read base
+      read exponent
+
+task do-absolute
+  take value, like decimal
+  like decimal
+  send back
+    call math/abs
+      read value
+
+task do-sine
+  take value, like decimal
+  like decimal
+  send back
+    call math/sin
+      read value
+
+task do-cosine
+  take value, like decimal
+  like decimal
+  send back
+    call math/cos
+      read value

@@ -1,0 +1,192 @@
+
+load @cluesurf/base/code/node/file
+  take tree open-head
+  take tree open-result
+  take host fs
+  take form file
+
+form file
+  task read-synchronously, base read-file
+  task write-synchronously, base file-write
+  task clear-synchronously, base clear-file
+
+task open
+  fuse open-head, text <Synchronous open read only>
+  take can-read, like true
+  fuse open-body, text <r>
+
+task open
+  fuse open-head, text <Synchronous open read and write>
+  take can-read, like true
+  take can-write, like true
+  fuse open-body, text <r+>
+
+task open
+  fuse open-head, text <Synchronous open create, clear, write>
+  take can-create, like true
+  take can-clear, like true
+  take can-write, like true
+  fuse open-body, text <w>
+
+task open
+  fuse open-head, text <Synchronous open create, write>
+  take can-create, like true
+  take can-write, like true
+  fuse open-body, text <wx>
+
+task open
+  fuse open-head, text <Synchronous open create, clear, read, write>
+  take can-create, like true
+  take can-clear, like true
+  take can-read, like true
+  take can-write, like true
+  fuse open-body, text <w+>
+
+task open
+  fuse open-head, text <Synchronous open create, read, write>
+  take can-create, like true
+  take can-read, like true
+  take can-write, like true
+  fuse open-body, text <wx+>
+
+task open
+  fuse open-head, text <Synchronous open create, clear, append>
+  take can-create, like true
+  take can-clear, like true
+  take can-append, like true
+  fuse open-body, text <a>
+
+task open
+  fuse open-head, text <Synchronous open create, append>
+  take can-create, like true
+  take can-append, like true
+  fuse open-body, text <ax>
+
+task open
+  fuse open-head, text <Synchronous open create, clear, read, append>
+  take can-create, like true
+  take can-clear, like true
+  take can-read, like true
+  take can-append, like true
+  fuse open-body, text <a+>
+
+task open
+  fuse open-head, text <Synchronous open create, clear, read, append>
+  take can-create, like true
+  take can-read, like true
+  take can-append, like true
+  fuse open-body, text <ax+>
+
+task read
+  take path
+  fuse try, read read-call
+
+task write
+  take path
+  take content
+  fuse try, read write-call
+
+task remove
+  take path
+  fuse try, read remove-call
+
+task save-file
+  take file, like file
+  take buffer
+  take buffer-start-position
+  take byte-count
+  take file-start-position
+  free number-of-bytes-written, like unsigned-integer
+  fuse try, read save-file-call
+
+task read-file
+  take file, like file
+  take buffer
+  take buffer-start-position
+  take byte-count
+  take file-start-position
+  free number-of-bytes-read, like unsigned-integer
+  fuse try, read read-file-call
+
+task clear-file
+  take file, like file
+  fuse try, read clear-file-call-1
+
+task clear-file
+  take file, like file
+  take leave-bytes, like unsigned-integer
+  fuse try, read clear-file-call-2
+
+tree open-body
+  take node-flag
+  hook fuse
+    fuse open-result
+    save flag, read node-flag
+    fuse open-body-call
+
+tree open-body-call
+  hook fuse
+    fuse try, read open-call
+
+tree open-call
+  hook fuse
+    make file
+      read path
+      call fs/open-sync
+        read path
+        read flag
+
+tree read-call
+  hook fuse
+    call fs/read-file-sync
+      read path
+
+tree write-call
+  hook fuse
+    call fs/write-file-sync
+      read path
+      read content
+
+tree remove-call
+  call fs/unlink-sync
+    read path
+
+tree file-write-call
+  hook fuse
+    call fs/write-sync
+      read file/dock
+      read buffer
+      read buffer-start-position
+      read byte-count
+      read file-start-position
+
+tree read-file-call
+  hook fuse
+    call fs/read-sync
+      read file/dock
+      read buffer
+      read buffer-start-position
+      read byte-count
+      read file-start-position
+
+tree clear-file-call-1
+  hook fuse
+    call fs/ftruncate
+      read file
+
+tree clear-file-call-2
+  hook fuse
+    call fs/ftruncate
+      read file
+      read leave-bytes
+
+tree try
+  take call
+
+  hook fuse
+    call try
+      make ok
+        fuse call
+      hook fault
+        take error
+        read error

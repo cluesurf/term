@@ -1,0 +1,10 @@
+
+# UDP-Lite: a UDP variant (RFC 3828) where the checksum covers only a prefix of the datagram, so partially damaged
+# payloads still reach the application. The `checksum-coverage` field replaces UDP's `length`.
+
+form udp-lite-datagram
+  link source-port, like u16
+  link destination-port, like u16
+  link checksum-coverage, like u16
+  link checksum, like u16
+  link payload, like list

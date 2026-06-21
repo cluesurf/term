@@ -1,0 +1,240 @@
+
+task make
+  head item-type
+  take capacity
+  save length, code 0
+  save list, make list, like item-type
+  save list/growth-factor, flex 2
+  save list/length, read length
+  save list/capacity
+    call math/max
+      read length
+      read capacity
+  save list/line
+    make line, like item-type
+      read self/capacity
+
+form list
+  head item-type
+
+  task set
+    take index
+    take item, like item-type
+    stem test
+      call is-less-than
+        read self/length
+        read index
+      hook true
+        send back seed, make error
+    call self/line/set
+      read item
+    send back seed, read self
+
+  task get
+    take index
+    stem test
+      call is-less-than
+        read self/length
+        read index
+      hook true
+        send back seed, make error
+    send back seed
+      call self/line/get
+        read index
+
+  task reallocate
+    take capacity
+    stem test
+      call is-equal
+        read capacity
+        read self/capacity
+      hook true
+        send back seed, read self
+    save old-line, read self/line
+    stem test
+      call is-greater-than
+        read capacity
+        read self/capacity
+      hook true
+        save self/line
+          make line, like item-type
+            read capacity
+        call self/line/set
+          read old-line
+          code 0
+      hook false
+        save self/line
+          call old-line/slice
+            code 0
+            read capacity
+    stem test
+      call is-less-than
+        read capacity
+        read self/length
+      hook true
+        save self/length, read capacity
+    save self/capacity, read capacity
+    send back seed, read self
+
+  task grow
+    take capacity
+    call test
+      call is-greater-than-or-equal-to
+        read self/capacity
+        read capacity
+      hook true
+        send back seed, read self
+    save new-capacity, read self/capacity
+    walk test
+      hook test
+        call is-less-than
+          read new-capacity
+          read capacity
+      hook true
+        save new-capacity
+          call scale
+            read new-capacity
+            read self/growth-factor
+    call self/reallocate
+      read new-capacity
+    send back seed, read self
+
+  task grow
+    save new-capacity
+      call scale
+        read self/capacity
+        read self/growth-factor
+    call self/reallocate
+      read new-capacity
+    send back seed, read self
+
+  task resize
+    take length
+    stem test
+      call is-equal
+        read length
+        read self/length
+      hook true
+        send back seed, read self
+
+    stem test
+      call is-less-than
+        read length
+        read self/length
+      hook true
+        save i
+          call subtract
+            read self/length
+            code 1
+        walk test
+          hook test
+            call is-greater-than
+              read i
+              read length
+          hook true
+            save self/line[i], read void
+            save i, call decrement, read i
+        save self/length, read length
+        send back seed, read self
+    save self/length, read length
+    call self/reallocate
+      read length
+    send back seed, read self
+
+  task push
+    take value
+    stem test
+      call is-equal
+        read self/capacity
+        read self/length
+      hook true
+        call self/grow
+
+    call self/line/set
+      read self/length
+      read value
+    save self/length, call increment, read self/length
+    send back seed, read self
+
+  task pop
+    stem test
+      call is-equal
+        read self/length
+        code 0
+      hook true
+        send back seed, make none
+    save self/length, call decrement, read self/length
+    send back seed
+      call self/line/get
+        read self/length
+
+  task replace
+    take pattern, like text-utf-8
+    take replacement, like text-utf-8
+    free seed, like text-utf-8
+
+  task replace
+    take pattern, like text-utf-8
+    take replacement
+      like task
+        take text
+        free seed, like text-utf-8
+    free seed, like text-utf-8
+
+  task get-every-match-position
+    take self
+    take pattern
+    free positions, like list, like mark-32
+
+  task get-first-match-position
+    take self
+    take pattern
+    free position, like mark-32
+
+  task get-first-match-binding
+
+  task get-first-match
+
+  task get-last-match-position
+    take self
+    take pattern
+    free position, like mark-32
+
+  task insert
+    take element
+  task insert
+    take elements
+
+  task append
+    take element
+  task append
+    take elements
+
+  task prepend
+    take element
+  task prepend
+    take elements
+
+  task split
+
+  task clone
+
+  task map
+
+  task filter
+
+  task reduce
+
+  task sort
+
+  task fill
+
+  task walk
+
+  task reverse
+
+  task shuffle
+
+  task trim
+  task trim-start
+  task trim-end

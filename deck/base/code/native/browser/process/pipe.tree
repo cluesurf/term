@@ -1,0 +1,22 @@
+
+load @cluesurf/base/code/process
+  find child
+
+task connect
+  note async
+  take from, like child
+  take to, like child
+
+  call browser-pipe-workers
+    read from/dock
+    read to/dock
+
+task browser-pipe-workers
+  note private
+  take from-worker
+  take to-worker
+  dock call <run {
+    from_worker.addEventListener("message", (e) => {
+      to_worker.postMessage(e.data);
+    });
+  }>

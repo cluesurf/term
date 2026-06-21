@@ -1,0 +1,17 @@
+
+task request-access-to-video
+  call home/navigator/media-devices/get-user-media
+
+task request-access-to-audio
+  call home/navigator/media-devices/get-user-media
+
+task request-access-to-audio-and-video
+  call home/navigator/media-devices/get-user-media
+
+# {
+#   audio: true,
+#   video: {
+#     width: { min: 1024, ideal: 1280, max: 1920 },
+#     height: { min: 576, ideal: 720, max: 1080 }
+#   }
+# }

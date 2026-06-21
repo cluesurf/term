@@ -1,0 +1,79 @@
+
+load @cluesurf/base/code/view
+  find view-def
+  find view-child
+  find view-node
+  find view-bind
+  find view-fork
+  find view-walk
+
+mint view
+  case view, mint view-def
+    slot view
+
+mint view-def, like view-def
+  case name
+    slot name
+  case head, mint head
+    slot head
+  case take, mint take
+    slot take
+  case like, mint like
+    slot like
+  case child, mint view-child
+    slot child
+  case note, mint note
+    slot note
+  hook make
+    make view-def
+      bind name, read name
+      bind head, read head
+      bind take, read take
+      bind like, read like
+      bind child, read child
+      bind note, read note
+
+mint view-child
+  case node, mint view-node
+    slot node
+  case text
+    slot text
+  case slot
+    slot slot
+  case fork, mint view-fork
+    slot fork
+  case walk, mint view-walk
+    slot walk
+
+mint view-node, like view-node
+  case name
+    slot name
+  case bind, mint view-bind
+    slot bind
+  case child, mint view-child
+    slot child
+  hook make
+    make view-node
+      bind name, read name
+      bind bind, read bind
+      bind child, read child
+
+mint view-bind, like view-bind
+  case name
+    slot name
+  case seed
+    slot seed
+  hook make
+    make view-bind
+      bind name, read name
+      bind seed, read seed
+
+mint view-fork, like view-fork
+  case hook
+    slot hook
+
+mint view-walk, like view-walk
+  case seed
+    slot seed
+  case child, mint view-child
+    slot child

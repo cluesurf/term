@@ -1,0 +1,90 @@
+
+load @cluesurf/base/code/host
+  find host-form
+  find host-task
+  find host-hook
+  find host-bind
+
+mint host
+  case form, mint host-form
+    slot form
+  case task, mint host-task
+    slot task
+  case hook, mint host-hook
+    slot hook
+  case bind, mint host-bind
+    slot bind
+
+mint host-form, like host-form
+  case name
+    slot name
+  case head, mint head
+    slot head
+  case link, mint host-form-link
+    slot link
+  case note, mint note
+    slot note
+  hook make
+    make host-form
+      bind name, read name
+      bind head, read head
+      bind link, read link
+      bind note, read note
+
+mint host-form-link
+  case name
+    slot name
+  case like, mint like
+    slot like
+  hook make
+    make host-form-link
+      bind name, read name
+      bind like, read like
+
+mint host-task, like host-task
+  case name
+    slot name
+  case head, mint head
+    slot head
+  case take, mint take
+    slot take
+  case like, mint like
+    slot like
+  case flow
+    slot flow
+  case note, mint note
+    slot note
+  hook make
+    make host-task
+      bind name, read name
+      bind head, read head
+      bind take, read take
+      bind like, read like
+      bind flow, read flow
+      bind note, read note
+
+mint host-hook, like host-hook
+  case name
+    slot name
+  case take, mint take
+    slot take
+  case flow
+    slot flow
+  case note, mint note
+    slot note
+  hook make
+    make host-hook
+      bind name, read name
+      bind take, read take
+      bind flow, read flow
+      bind note, read note
+
+mint host-bind, like host-bind
+  case name
+    slot name
+  case seed
+    slot seed
+  hook make
+    make host-bind
+      bind name, read name
+      bind seed, read seed

@@ -1,0 +1,155 @@
+
+# Set: a collection of unique values, backed by the native map for O(1) membership.
+
+load @cluesurf/base/code/hash
+  find hash
+
+form set
+  head t
+  link items
+    like hash
+      like t
+      like boolean
+
+  task insert
+    take self
+    take item, like t
+    like set
+    call set
+      read self/items
+      read item
+      wave true
+    send back, read self
+
+  task has
+    take self
+    take item, like t
+    like boolean
+    send back
+      call has
+        read self/items
+        read item
+
+  task remove
+    take self
+    take item, like t
+    like boolean
+    send back
+      call remove
+        read self/items
+        read item
+
+  task size
+    take self
+    like number
+    send back
+      call size
+        read self/items
+
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        call size
+          read self/items
+        code 0
+
+  # the canonical length verb (alias of size)
+  task count
+    take self
+    like number
+    send back
+      call size
+        read self/items
+
+  task to-list
+    take self
+    like list
+      like t
+    send back
+      call keys
+        read self/items
+
+  task union
+    take self
+    take other
+      like set
+        like t
+    like set
+      like t
+    save result
+      make set
+        bind items
+          make find
+    walk list
+      call to-list
+        read self
+      hook next
+        take site, name item
+        call insert
+          read result
+          read item
+    walk list
+      call to-list
+        read other
+      hook next
+        take site, name item
+        call insert
+          read result
+          read item
+    send back, read result
+
+  task intersect
+    take self
+    take other
+      like set
+        like t
+    like set
+      like t
+    save result
+      make set
+        bind items
+          make find
+    walk list
+      call to-list
+        read self
+      hook next
+        take site, name item
+        fork test
+          hook test
+            call has
+              read other
+              read item
+          hook hold
+            call insert
+              read result
+              read item
+    send back, read result
+
+  task difference
+    take self
+    take other
+      like set
+        like t
+    like set
+      like t
+    save result
+      make set
+        bind items
+          make find
+    walk list
+      call to-list
+        read self
+      hook next
+        take site, name item
+        fork test
+          hook test
+            call has
+              read other
+              read item
+          hook miss
+            call insert
+              read result
+              read item
+    send back, read result

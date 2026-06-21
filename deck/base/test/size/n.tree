@@ -1,0 +1,62 @@
+
+load @cluesurf/base
+  find form kink
+  find form size-8
+  find form text
+
+tree size
+  take size, like size-8
+
+  take list
+    link rise
+      link a, like size-{{size}}
+      link b, like size-{{size}}
+      link c, like size-{{size}}
+      task work
+        take a, like size-{{size}}
+        take b, like size-{{size}}
+        like size-{{size}}
+    link fall
+      link a, like size-{{size}}
+      link b, like size-{{size}}
+      link kink, like term
+      task work
+        take a, like size-{{size}}
+        take b, like size-{{size}}
+        like result
+
+  hook fuse
+    slot card
+
+    walk hash, read list/rise
+      take key
+      beam card
+        test key
+          save result, like size-{{size}}
+            call value/work
+              read value/a
+              read value/b
+          hold result/is-identical
+            read value/c
+
+    walk hash, read list/fall
+      beam card
+        test key
+          save kink, like kink
+            call value/work
+              read value/a
+              read value/b
+
+          hold kink/is-present
+
+          hold kink/text/is-identical
+            read value/kink
+
+tree checked-add
+  take size, like size-8
+
+  hook fuse
+    task work
+      take a, like size-{{size}}
+      take b, like size-{{size}}
+      call a/checked-add, read b

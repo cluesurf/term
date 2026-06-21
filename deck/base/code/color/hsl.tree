@@ -1,0 +1,242 @@
+# HSL color (hue 0-360, saturation 0-100, lightness 0-100) and conversion from RGB. Integer-scaled, pure logic on top of the math interface.
+
+load @cluesurf/base/code/color/rgb
+  find rgb-color
+
+load @cluesurf/base/code/math
+  find minimum
+  find maximum
+  find absolute
+
+form hsl-color
+  link hue, like number
+  link saturation, like number
+  link lightness, like number
+
+task from-rgb
+  take color, like rgb-color
+  like hsl-color
+  save high
+    call maximum
+      call maximum
+        read color/red
+        read color/green
+      read color/blue
+  save low
+    call minimum
+      call minimum
+        read color/red
+        read color/green
+      read color/blue
+  save total
+    call add
+      read high
+      read low
+  save lightness
+    call divide
+      call multiply
+        read total
+        code 100
+      code 510
+  save delta
+    call subtract
+      read high
+      read low
+  save hue, code 0
+  save saturation, code 0
+  fork test
+    hook test
+      call is-above
+        read delta
+        code 0
+    hook hold
+      save denominator, read total
+      fork test
+        hook test
+          call is-above
+            read total
+            code 255
+        hook hold
+          save denominator
+            call subtract
+              code 510
+              read total
+      save saturation
+        call divide
+          call multiply
+            read delta
+            code 100
+          read denominator
+      fork test
+        hook test
+          call is-equal
+            read high
+            read color/red
+        hook hold
+          save hue
+            call divide
+              call multiply
+                call subtract
+                  read color/green
+                  read color/blue
+                code 60
+              read delta
+        hook test
+          call is-equal
+            read high
+            read color/green
+        hook hold
+          save hue
+            call divide
+              call multiply
+                call add
+                  call multiply
+                    read delta
+                    code 2
+                  call subtract
+                    read color/blue
+                    read color/red
+                code 60
+              read delta
+        hook miss
+          save hue
+            call divide
+              call multiply
+                call add
+                  call multiply
+                    read delta
+                    code 4
+                  call subtract
+                    read color/red
+                    read color/green
+                code 60
+              read delta
+      fork test
+        hook test
+          call is-below
+            read hue
+            code 0
+        hook hold
+          save hue
+            call add
+              read hue
+              code 360
+  send back
+    make hsl-color
+      bind hue, read hue
+      bind saturation, read saturation
+      bind lightness, read lightness
+
+task to-rgb
+  take color, like hsl-color
+  like rgb-color
+  save one-minus
+    call subtract
+      code 100
+      call absolute
+        call subtract
+          call multiply
+            read color/lightness
+            code 2
+          code 100
+  save chroma
+    call divide
+      call multiply
+        call multiply
+          read one-minus
+          read color/saturation
+        code 255
+      code 10000
+  save hue-prime
+    call divide
+      call multiply
+        read color/hue
+        code 100
+      code 60
+  save hue-mod
+    call modulo
+      read hue-prime
+      code 200
+  save x-factor
+    call subtract
+      code 100
+      call absolute
+        call subtract
+          read hue-mod
+          code 100
+  save second
+    call divide
+      call multiply
+        read chroma
+        read x-factor
+      code 100
+  save match
+    call subtract
+      call divide
+        call multiply
+          read color/lightness
+          code 255
+        code 100
+      call divide
+        read chroma
+        code 2
+  save sector
+    call divide
+      read color/hue
+      code 60
+  save red-base, code 0
+  save green-base, code 0
+  save blue-base, code 0
+  fork test
+    hook test
+      call is-equal
+        read sector
+        code 0
+    hook hold
+      save red-base, read chroma
+      save green-base, read second
+    hook test
+      call is-equal
+        read sector
+        code 1
+    hook hold
+      save red-base, read second
+      save green-base, read chroma
+    hook test
+      call is-equal
+        read sector
+        code 2
+    hook hold
+      save green-base, read chroma
+      save blue-base, read second
+    hook test
+      call is-equal
+        read sector
+        code 3
+    hook hold
+      save green-base, read second
+      save blue-base, read chroma
+    hook test
+      call is-equal
+        read sector
+        code 4
+    hook hold
+      save red-base, read second
+      save blue-base, read chroma
+    hook miss
+      save red-base, read chroma
+      save blue-base, read second
+  send back
+    make rgb-color
+      bind red
+        call add
+          read red-base
+          read match
+      bind green
+        call add
+          read green-base
+          read match
+      bind blue
+        call add
+          read blue-base
+          read match

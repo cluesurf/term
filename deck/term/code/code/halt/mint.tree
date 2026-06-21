@@ -1,0 +1,10 @@
+
+mint halt
+  case mode
+    slot mode
+  case seed, mint seed
+    slot seed
+  hook make
+    make halt
+      bind mode, read mode
+      bind seed, read seed

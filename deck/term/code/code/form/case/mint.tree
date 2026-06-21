@@ -1,0 +1,72 @@
+
+load @cluesurf/base/code/case
+  find head
+  find base
+  find list
+  find draw
+  find free
+
+mint head
+  case name
+    slot name
+  case list, mint list
+    slot form
+  case draw, mint draw
+    slot form
+  case form, mint form
+    slot form
+  case take, mint take
+    slot form
+  case free
+    slot free
+  case fall
+    slot fall
+  hook make
+    make head
+      bind name, read name
+      bind form, read form
+      bind free, read free
+      bind fall, read fall
+
+mint base
+  case name
+    slot name
+  case list, mint list
+    slot form
+  case draw, mint draw
+    slot form
+  case form, mint form
+    slot form
+  case take, mint take
+    slot form
+  case free
+    slot free
+  case fall
+    slot fall
+  hook make
+    make base
+      bind name, read name
+      bind form, read form
+      bind free, read free
+      bind fall, read fall
+
+mint list
+  case form
+    slot form
+  hook make
+    make list
+      bind form, read form
+
+mint draw
+  case form
+    slot form
+  hook make
+    make draw
+      bind form, read form
+
+mint free
+  case term
+    slot term
+  hook make
+    make free
+      bind term, read term

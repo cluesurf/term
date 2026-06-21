@@ -1,0 +1,103 @@
+
+dock load
+  load <std::io>, name io
+  load <std::io::Read>, name read-trait
+  load <std::io::Write>, name write-trait
+
+load @cluesurf/base/code/process
+  find child
+
+task wait
+  note async
+  take child, like child
+  like size
+
+  save status
+    call child/dock/wait
+      halt kink
+
+  send back
+    call status/code
+
+task stop
+  take child, like child
+  take form, like text, fall text <gentle>
+
+  fork test, call is-equal, read form, text <force>
+    hook true
+      call child/dock/kill
+        halt kink
+    hook false
+      save id
+        call child/dock/id
+      call libc/kill
+        read id
+        read libc/sigterm
+
+task write
+  note async
+  take child, like child
+  take data, like text
+
+  save stdin
+    call child/dock/stdin/as-mut
+
+  call stdin/write-all
+    call data/as-bytes
+    halt kink
+
+task close
+  note async
+  take child, like child
+
+  call drop
+    call child/dock/stdin/take
+
+task read
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <text>
+  like text
+
+  save buf, make string
+
+  fork test, call is-equal, read kind, text <stderr>
+    hook true
+      save stream
+        call child/dock/stderr/as-mut
+      call stream/read-to-string
+        read buf
+        halt kink
+    hook false
+      save stream
+        call child/dock/stdout/as-mut
+      call stream/read-to-string
+        read buf
+        halt kink
+
+  send back, read buf
+
+task stream
+  note async
+  take child, like child
+  take kind, like text, fall text <stdout>
+  take format, like text, fall text <bytes>
+  like list
+
+  save source
+    fork test, call is-equal, read kind, text <stderr>
+      hook true
+        save s
+          call child/dock/stderr/take
+        send back
+          call io/buf-reader/new
+            read s
+      hook false
+        save s
+          call child/dock/stdout/take
+        send back
+          call io/buf-reader/new
+            read s
+
+  send back, read source

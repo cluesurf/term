@@ -1,0 +1,17 @@
+
+form lock
+  link dock, mark private
+
+form guard
+  link dock, mark private
+
+task make
+  like lock
+
+task acquire
+  note async
+  take lock, like lock
+  like guard
+
+task release
+  take guard, like guard

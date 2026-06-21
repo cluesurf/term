@@ -1,0 +1,25 @@
+
+mine basic-value
+  mine any
+    mine number
+      take number
+    mine text
+      take text
+    mine code
+      take code
+
+mine computed-value
+  mine any
+    mine form, like read
+      take read
+    mine form, like call
+      take call
+    mine form, like meet
+      take meet
+
+mine value
+  mine any
+    mine form, like basic-value
+      take basic
+    mine form, like computed-value
+      take computed

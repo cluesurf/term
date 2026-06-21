@@ -38,9 +38,9 @@ function main(): void {
   send back
     call add
       call multiply
-        mark 6
-        mark 7
-      mark 0
+        code 6
+        code 7
+      code 0
 `,
     'return 42',
   )
@@ -53,7 +53,7 @@ function main(): void {
   send back
     call add
       loan n
-      mark 0
+      code 0
 `,
     'return n',
   )
@@ -66,7 +66,7 @@ function main(): void {
   send back
     call multiply
       loan n
-      mark 1
+      code 1
 `,
     'return n',
   )

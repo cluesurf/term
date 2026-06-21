@@ -1,0 +1,26 @@
+
+load @cluesurf/bind/code/node/process
+  find process
+
+task get
+  take name, like text
+  send back, read process/env/{name}
+
+task set
+  take name, like text
+  take value, like text
+  save process/env/{name}, read value
+
+task remove
+  take name, like text
+  save process/env/{name}, read void
+
+task list
+  send back, read process/env
+
+task check
+  take name, like text
+  send back
+    call is-not-equal
+      read process/env/{name}
+      read void

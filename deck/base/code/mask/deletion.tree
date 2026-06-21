@@ -1,0 +1,6 @@
+
+mask deletion
+  # Drop like in rust
+
+  task drop
+    take self, like self

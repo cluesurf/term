@@ -14,7 +14,7 @@ const SOURCE = `form point
 
 task sum-x-coords
   take items
-  save total, mark 0
+  save total, code 0
   walk list, loan items
     hook next
       take site, name item
@@ -28,11 +28,11 @@ task run
   host points
     make list
       make point
-        bind x, mark 3
-        bind y, mark 0
+        bind x, code 3
+        bind y, code 0
       make point
-        bind x, mark 4
-        bind y, mark 0
+        bind x, code 4
+        bind y, code 0
   send back
     call sum-x-coords
       loan points

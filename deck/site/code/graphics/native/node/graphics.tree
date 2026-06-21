@@ -1,0 +1,67 @@
+
+# Server stub for the graphics API: rendering is a no-op off the browser, so headless and server-side builds resolve
+# the abstract graphics module to these no-ops. Each handle wraps a trivial marker. Conforms to ../../native/graphics.
+
+load ../../surface
+  find surface
+  find shader
+  find program
+  find gpu-buffer
+  find shader-kind
+  find primitive-kind
+
+task open
+  take id, like text
+  like surface
+  send back
+    make surface
+      bind handle
+        mark 0
+
+task size
+  take pane, like surface
+  take width, like u32
+  take height, like u32
+
+task clear
+  take pane, like surface
+  take red, like number
+  take green, like number
+  take blue, like number
+  take alpha, like number
+
+task make-shader
+  take pane, like surface
+  take kind, like shader-kind
+  take source, like text
+  like shader
+  send back
+    make shader
+      bind handle
+        mark 0
+
+task make-program
+  take pane, like surface
+  take vertex, like shader
+  take fragment, like shader
+  like program
+  send back
+    make program
+      bind handle
+        mark 0
+
+task make-buffer
+  take pane, like surface
+  take data
+  like gpu-buffer
+  send back
+    make gpu-buffer
+      bind handle
+        mark 0
+
+task draw
+  take pane, like surface
+  take prog, like program
+  take verts, like gpu-buffer
+  take kind, like primitive-kind
+  take count, like u32

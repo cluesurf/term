@@ -1,0 +1,142 @@
+
+tree integer
+  take self-type, like like
+
+  hook fuse
+    task add
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task subtract
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task multiply
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task divide
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task remainder
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task negate
+      take a, like self-type
+      like self-type
+
+    task abs
+      take a, like self-type
+      like self-type
+
+    task pow
+      take a, like self-type
+      take exp, like i32
+      like self-type
+
+    task min
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task max
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task compare-to
+      take a, like self-type
+      take b, like self-type
+      like i32
+
+    task equals
+      take a, like self-type
+      take b, like self-type
+      like bool
+
+    task bitwise-and
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task bitwise-or
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task bitwise-xor
+      take a, like self-type
+      take b, like self-type
+      like self-type
+
+    task bitwise-invert
+      take a, like self-type
+      like self-type
+
+    task shift-left
+      take a, like self-type
+      take bits, like i32
+      like self-type
+
+    task shift-right
+      take a, like self-type
+      take bits, like i32
+      like self-type
+
+    task shift-right-unsigned
+      take a, like self-type
+      take bits, like i32
+      like self-type
+
+    task to-byte
+      take a, like self-type
+      like i8
+
+    task to-short
+      take a, like self-type
+      like i16
+
+    task to-int
+      take a, like self-type
+      like i32
+
+    task to-long
+      take a, like self-type
+      like i64
+
+    task to-float
+      take a, like self-type
+      like f32
+
+    task to-double
+      take a, like self-type
+      like f64
+
+    task to-string
+      take a, like self-type
+      like text
+
+    task clone
+
+form i8
+  fuse integer
+    bind self-type, like i8
+
+form i16
+  fuse integer
+    bind self-type, like i16
+
+form i32
+  fuse integer
+    bind self-type, like i32
+
+form i64
+  fuse integer
+    bind self-type, like i64

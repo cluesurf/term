@@ -1,0 +1,6 @@
+
+mask presentation
+  # Display trait.
+
+  task show
+    take self

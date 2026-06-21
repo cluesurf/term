@@ -1,0 +1,17 @@
+
+load @cluesurf/base/code/text
+  find text-def
+
+mint text
+  case text, mint text-def
+    slot text
+
+mint text-def, like text-def
+  case name
+    slot name
+  case text
+    slot text
+  hook make
+    make text-def
+      bind name, read name
+      bind text, read text

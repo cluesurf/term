@@ -1,0 +1,30 @@
+
+load @cluesurf/base/code/network/udp
+  find socket
+
+form datagram
+  link data, like text
+  link host, like text
+  link port, like size
+
+task send
+  note async
+  take socket, like socket
+  take data, like text
+  take host, like text
+  take port, like size
+  like size
+
+task receive
+  note async
+  take socket, like socket
+  like datagram
+
+task stream
+  note async
+  take socket, like socket
+  like list
+
+task close
+  note async
+  take socket, like socket

@@ -1,0 +1,95 @@
+
+form walk
+  head t
+
+  task get-next
+    take self, flex true
+
+  task get-size
+    take self
+    like u64
+
+  task map
+    head s
+    take self
+    like walk
+
+  task filter
+    take self
+    like walk
+
+  task collect
+    take self
+    like list
+
+  task reduce
+    take self
+
+  task zip
+    take self
+    take other, like walk
+
+  task flatten
+    take self
+    like walk
+
+  task get-first
+    take self
+
+  task partition
+    take self
+
+  task test-all
+    take self
+    like boolean
+
+  task test-any
+    take self
+    like boolean
+
+  task take
+    take self
+    take count, like u64
+    like walk
+
+  task drop
+    take self
+    take count, like u64
+    like walk
+
+  task take-while
+    take self
+    take test
+      like task
+        take item, like t
+        like boolean
+    like walk
+
+  task drop-while
+    take self
+    take test
+      like task
+        take item, like t
+        like boolean
+    like walk
+
+  task enumerate
+    take self
+    like walk
+
+  task chain
+    take self
+    take other, like walk
+    like walk
+
+  task find
+    take self
+    take test
+      like task
+        take item, like t
+        like boolean
+    like maybe
+
+  task count
+    take self
+    like u64

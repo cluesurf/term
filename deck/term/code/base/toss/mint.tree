@@ -1,0 +1,57 @@
+
+mint db-toss
+  case schema, mint db-toss-schema
+    slot schema
+  case row, mint db-toss-row
+    slot row
+  case role, mint db-toss-role
+    slot role
+
+mint db-toss-schema
+  case kind
+    slot kind
+  case name
+    slot name
+  case base
+    slot base
+  case tag, mint tag
+    slot tag
+  hook make
+    make db-toss-schema
+      bind kind, read kind
+      bind name, read name
+      bind base, read base
+      bind tag, read tag
+
+mint db-toss-row
+  case base
+    slot base
+  case hold, mint db-hold
+    slot hold
+  case send, mint db-send
+    slot send
+  hook make
+    make db-toss-row
+      bind base, read base
+      bind hold, read hold
+      bind send, read send
+
+mint db-toss-role
+  case name
+    slot name
+  case task, mint db-toss-role-task
+    slot task
+  case base
+    slot base
+  hook make
+    make db-toss-role
+      bind name, read name
+      bind task, read task
+      bind base, read base
+
+mint db-toss-role-task
+  case name
+    slot name
+  hook make
+    make db-toss-role-task
+      bind name, read name

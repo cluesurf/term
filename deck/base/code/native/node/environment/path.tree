@@ -1,0 +1,103 @@
+
+load @cluesurf/bind/code/node/os
+  find platform
+  find homedir
+  find tmpdir
+
+load @cluesurf/bind/code/node/process
+  find process
+
+task get
+  take kind, like text
+  fork roll
+    hook test, call is-equal, read kind, text <home>
+      send back
+        call homedir
+    hook test, call is-equal, read kind, text <temporary>
+      send back
+        call tmpdir
+    hook test, call is-equal, read kind, text <data>
+      save system
+        call platform
+      fork roll
+        hook test, call is-equal, read system, text <darwin>
+          save home
+            call homedir
+          send back
+            call concat
+              read home
+              text </Library/Application Support>
+        hook test, call is-equal, read system, text <win32>
+          send back
+            read process/env/APPDATA
+        hook else
+          save xdg
+            read process/env/XDG_DATA_HOME
+          fork test, call is-not-equal, read xdg, read void
+            hook true
+              send back, read xdg
+            hook false
+              save home
+                call homedir
+              send back
+                call concat
+                  read home
+                  text </.local/share>
+    hook test, call is-equal, read kind, text <configuration>
+      save system
+        call platform
+      fork roll
+        hook test, call is-equal, read system, text <darwin>
+          save home
+            call homedir
+          send back
+            call concat
+              read home
+              text </Library/Preferences>
+        hook test, call is-equal, read system, text <win32>
+          send back
+            read process/env/APPDATA
+        hook else
+          save xdg
+            read process/env/XDG_CONFIG_HOME
+          fork test, call is-not-equal, read xdg, read void
+            hook true
+              send back, read xdg
+            hook false
+              save home
+                call homedir
+              send back
+                call concat
+                  read home
+                  text </.config>
+    hook test, call is-equal, read kind, text <cache>
+      save system
+        call platform
+      fork roll
+        hook test, call is-equal, read system, text <darwin>
+          save home
+            call homedir
+          send back
+            call concat
+              read home
+              text </Library/Caches>
+        hook test, call is-equal, read system, text <win32>
+          save local
+            read process/env/LOCALAPPDATA
+          send back
+            call concat
+              read local
+              text <\Temp>
+        hook else
+          save xdg
+            read process/env/XDG_CACHE_HOME
+          fork test, call is-not-equal, read xdg, read void
+            hook true
+              send back, read xdg
+            hook false
+              save home
+                call homedir
+              send back
+                call concat
+                  read home
+                  text </.cache>

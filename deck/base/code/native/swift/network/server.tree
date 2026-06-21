@@ -1,0 +1,142 @@
+
+dock load
+  load <Network>, name network
+
+load @cluesurf/base/code/network/server
+  find server
+
+load @cluesurf/base/code/network/server/request
+  find request
+
+task start
+  note async
+  take port, like size
+  take host, like text, fall text <0.0.0.0>
+  take handler, like task
+  take secure, like bool, fall wave false
+  take certificate, like text, need false
+  take key, like text, need false
+
+  save params
+    fork test
+      hook test
+        read secure
+      hook hold
+        call nw-parameters/tls
+      hook miss
+        call nw-parameters/tcp
+
+  save raw
+    call nw-listener
+      text <using>
+      read params
+      text <on>
+      call nw-endpoint/port
+        call uint16, read port
+      halt kink
+
+  save raw/new-connection-handler
+    task on-connection
+      take conn
+      call conn/start
+        text <queue>
+        call dispatch-queue/main
+
+      call conn/receive
+        text <minimumIncompleteLength>
+        code 1
+        text <maximumLength>
+        code 65536
+        task on-receive
+          note async
+          take content
+          take context
+          take is-complete
+          take error
+
+          save body-text
+            fork test
+              hook test
+                call is-some, read content
+              hook hold
+                call string
+                  text <data>
+                  read content
+                  text <encoding>
+                  text <.utf8>
+              hook miss
+                text <>
+
+          save lines
+            call body-text/components
+              text <separatedBy>
+              text <\r\n>
+
+          save first-line
+            call lines/first/components
+              text <separatedBy>
+              text < >
+
+          save method, read first-line/0
+          save path, read first-line/1
+
+          save req
+            make request
+              bind method, read method
+              bind url, read path
+              bind path, read path
+              bind query, text <>
+              bind headers, make find
+              bind dock, read conn
+
+          save res
+            call handler
+              note async
+              read req
+              halt kink
+
+          save response-text
+            call format
+              text <HTTP/1.1 {} OK\r\nContent-Length: {}\r\n\r\n{}>
+              read res/status
+              call res/body/count
+              read res/body
+
+          save response-data
+            call response-text/data
+              text <using>
+              text <.utf8>
+
+          call conn/send
+            text <content>
+            read response-data
+            text <contentContext>
+            call nw-connection/content-context/final-message
+            text <isComplete>
+            wave true
+            text <completion>
+            call nw-connection/send-completion/content-processed
+              task on-done
+                take error
+
+  call raw/start
+    text <queue>
+    call dispatch-queue/main
+
+  call wait-for-listener-ready
+    note async
+    read raw
+    halt kink
+
+  send back
+    make server
+      bind dock, read raw
+      bind host, read host
+      bind port, read port
+
+task stop
+  note async
+  take server, like server
+
+  save raw, read server/dock
+  call raw/cancel

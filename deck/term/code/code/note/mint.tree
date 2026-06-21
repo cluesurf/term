@@ -1,0 +1,7 @@
+
+mint note
+  case text
+    slot text
+  hook make
+    make note
+      bind text, read text

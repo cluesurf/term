@@ -1,0 +1,18 @@
+
+# Environment: working directory, platform info, and environment variables. Implementation selected at build time, hidden behind this API.
+
+load @cluesurf/base/code/native/environment
+  find current-directory
+  find get-variable
+
+task directory
+  like text
+  send back
+    call current-directory
+
+task variable
+  take name, like text
+  like text
+  send back
+    call get-variable
+      read name

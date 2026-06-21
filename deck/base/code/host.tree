@@ -1,0 +1,12 @@
+
+form host
+  link mark, like text
+  link name, like text
+  link term, like term
+  link head, like text
+  link read, like text
+  link deck, hash deck, link name
+  link link, list face-link
+  link face, list face
+  link cite, list cite
+  link site, like site

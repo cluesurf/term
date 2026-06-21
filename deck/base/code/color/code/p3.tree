@@ -1,0 +1,18 @@
+
+load @cluesurf/base/code/mixin/access
+  find access
+
+form p3
+  fuse access, term r
+  fuse access, term g
+  fuse access, term b
+  fuse access, term alpha
+
+  task convert-to-rgb
+    like rgb-color
+
+host channel
+  term r
+  term g
+  term b
+  term alpha

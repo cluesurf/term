@@ -1,0 +1,47 @@
+
+load @cluesurf/base/code/environment/language
+  find locale
+
+task read
+  like locale
+
+  save tag
+    call kotlin-get-locale-tag
+  save parts
+    call split
+      read tag
+      text <->
+  save language
+    read parts/0
+  save region
+    fork test, call is-above, read parts/length, code 1
+      hook true
+        read parts/1
+      hook false
+        text <>
+  save timezone
+    call kotlin-get-timezone
+
+  send back
+    make locale
+      bind language, read language
+      bind region, read region
+      bind tag, read tag
+      bind timezone, read timezone
+
+task list
+  like list
+
+  save tag
+    call kotlin-get-locale-tag
+  send back
+    make list
+      read tag
+
+task kotlin-get-locale-tag
+  note private
+  dock call <java.util.Locale.getDefault().toLanguageTag()>
+
+task kotlin-get-timezone
+  note private
+  dock call <java.util.TimeZone.getDefault().id>

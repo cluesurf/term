@@ -1,0 +1,6 @@
+
+load @cluesurf/base/code/shared/test
+  find test-suite
+
+call test-suite, read suite
+  term integer-8

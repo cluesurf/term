@@ -1,0 +1,21 @@
+# Node.js hex color implementation (the host Buffer formats the three bytes as hex). Internal: reached only through the public hex color API.
+
+dock load
+  load <global:Buffer>, name buffer
+
+task rgb-to-hex
+  take red, like number
+  take green, like number
+  take blue, like number
+  like text
+  save bytes
+    call buffer/from
+      make list
+        read red
+        read green
+        read blue
+  send back
+    call add
+      text <#>
+      call bytes/to-string
+        text <hex>

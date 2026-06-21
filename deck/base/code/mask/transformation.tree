@@ -1,0 +1,9 @@
+
+# Octal, Hex traits.
+
+mask text-transformation
+  take encoding
+
+  task make-utf-16
+    take self
+    free self/encoding

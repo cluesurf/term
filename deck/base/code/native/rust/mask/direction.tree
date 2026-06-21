@@ -1,0 +1,41 @@
+
+# impl<T: PartialOrd> PartialOrd for Reverse<T>
+
+coat form
+  head t, base incomplete-direction
+
+  suit reverse
+    head t
+
+    wear incomplete-direction
+
+coat form
+  head a, base dimension-free
+  head b, base dimension-free
+
+  suit a, read true
+    wear incomplete-direction
+      task incomplete-compare
+        take self
+        take other, like b
+        free maybe, like direction
+
+      task is-less-than
+        take self
+        take other, like b
+        free wave
+
+      task is-less-than-or-equal-to
+        take self
+        take other, like b
+        free wave
+
+      task is-greater-than
+        take self
+        take other, like b
+        free wave
+
+      task is-greater-than-or-equal-to
+        take self
+        take other, like b
+        free wave

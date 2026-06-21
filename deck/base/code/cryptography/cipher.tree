@@ -1,0 +1,75 @@
+# Authenticated encryption with AES-256-GCM. A declarative `bind`: each backend's built-in AEAD is inlined at the call site (node / browser Web Crypto SubtleCrypto, rust aes-gcm, swift CryptoKit AES.GCM, kotlin javax.crypto). The key (32 bytes), nonce (12 bytes), plaintext, and ciphertext are all raw `bytes` (the zero-copy crypto currency); render to hex / base64 with the `bytes` codecs at the edge. encrypt returns the ciphertext with the 16-byte authentication tag appended (ciphertext || tag), matching every platform; decrypt takes that same buffer and returns the plaintext, or fails if the tag does not verify. The interface is async because the Web Crypto API only exposes encryption asynchronously, and it stays uniform across every target. Rust wraps its synchronous crate work in an `async move` block so the awaited call yields a future.
+
+bind encrypt-aes-gcm
+  take key, like bytes
+  take nonce, like bytes
+  take plain, like bytes
+  like bytes
+  case node
+    text <globalThis.crypto.subtle.importKey('raw', $key, { name: 'AES-GCM' }, false, ['encrypt']).then(function (k) { return globalThis.crypto.subtle.encrypt({ name: 'AES-GCM', iv: $nonce }, k, $plain) }).then(function (b) { return new Uint8Array(b) })>
+  case browser
+    text <globalThis.crypto.subtle.importKey('raw', $key, { name: 'AES-GCM' }, false, ['encrypt']).then(function (k) { return globalThis.crypto.subtle.encrypt({ name: 'AES-GCM', iv: $nonce }, k, $plain) }).then(function (b) { return new Uint8Array(b) })>
+  case rust
+    text <async move { Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&$key)).encrypt(Nonce::from_slice(&$nonce), $plain.as_ref()).unwrap() }>
+    load <aes_gcm/Aes256Gcm>
+    load <aes_gcm/Key>
+    load <aes_gcm/Nonce>
+    load <aes_gcm/aead/Aead>
+    load <aes_gcm/aead/KeyInit>
+  case swift
+    text <{ let sealed = try! CryptoKit.AES.GCM.seal($plain, using: CryptoKit.SymmetricKey(data: $key), nonce: try! CryptoKit.AES.GCM.Nonce(data: $nonce)); return Data(sealed.ciphertext + sealed.tag) }()>
+    load <Foundation>
+    load <CryptoKit>
+  case kotlin
+    text <javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply { init(javax.crypto.Cipher.ENCRYPT_MODE, javax.crypto.spec.SecretKeySpec($key, "AES"), javax.crypto.spec.GCMParameterSpec(128, $nonce)) }.doFinal($plain)>
+
+bind decrypt-aes-gcm
+  take key, like bytes
+  take nonce, like bytes
+  take sealed, like bytes
+  like bytes
+  case node
+    text <globalThis.crypto.subtle.importKey('raw', $key, { name: 'AES-GCM' }, false, ['decrypt']).then(function (k) { return globalThis.crypto.subtle.decrypt({ name: 'AES-GCM', iv: $nonce }, k, $sealed) }).then(function (b) { return new Uint8Array(b) })>
+  case browser
+    text <globalThis.crypto.subtle.importKey('raw', $key, { name: 'AES-GCM' }, false, ['decrypt']).then(function (k) { return globalThis.crypto.subtle.decrypt({ name: 'AES-GCM', iv: $nonce }, k, $sealed) }).then(function (b) { return new Uint8Array(b) })>
+  case rust
+    text <async move { Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&$key)).decrypt(Nonce::from_slice(&$nonce), $sealed.as_ref()).unwrap() }>
+    load <aes_gcm/Aes256Gcm>
+    load <aes_gcm/Key>
+    load <aes_gcm/Nonce>
+    load <aes_gcm/aead/Aead>
+    load <aes_gcm/aead/KeyInit>
+  case swift
+    text <{ let combined = $sealed; let box = try! CryptoKit.AES.GCM.SealedBox(nonce: try! CryptoKit.AES.GCM.Nonce(data: $nonce), ciphertext: combined.prefix(combined.count - 16), tag: combined.suffix(16)); return try! CryptoKit.AES.GCM.open(box, using: CryptoKit.SymmetricKey(data: $key)) }()>
+    load <Foundation>
+    load <CryptoKit>
+  case kotlin
+    text <javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply { init(javax.crypto.Cipher.DECRYPT_MODE, javax.crypto.spec.SecretKeySpec($key, "AES"), javax.crypto.spec.GCMParameterSpec(128, $nonce)) }.doFinal($sealed)>
+
+# seal plaintext under a 32-byte key and 12-byte nonce, returning ciphertext || 16-byte tag
+task encrypt
+  note async
+  take key, like bytes
+  take nonce, like bytes
+  take plain, like bytes
+  like bytes
+  send back
+    call encrypt-aes-gcm
+      read key
+      read nonce
+      read plain
+      wait true
+
+# open ciphertext || tag under the same key and nonce, returning the plaintext (fails if the tag does not verify)
+task decrypt
+  note async
+  take key, like bytes
+  take nonce, like bytes
+  take sealed, like bytes
+  like bytes
+  send back
+    call decrypt-aes-gcm
+      read key
+      read nonce
+      read sealed
+      wait true

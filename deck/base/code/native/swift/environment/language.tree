@@ -1,0 +1,48 @@
+
+load @cluesurf/base/code/environment/language
+  find locale
+
+task read
+  like locale
+
+  save tag
+    call swift-get-locale
+  save parts
+    call split
+      read tag
+      text <->
+  save language
+    read parts/0
+  save region
+    fork test, call is-above, read parts/length, code 1
+      hook true
+        read parts/1
+      hook false
+        text <>
+  save timezone
+    call swift-get-timezone
+
+  send back
+    make locale
+      bind language, read language
+      bind region, read region
+      bind tag, read tag
+      bind timezone, read timezone
+
+task list
+  like list
+
+  send back
+    call swift-preferred-languages
+
+task swift-get-locale
+  note private
+  dock call <Locale.current.identifier.replacingOccurrences(of: "_", with: "-")>
+
+task swift-get-timezone
+  note private
+  dock call <TimeZone.current.identifier>
+
+task swift-preferred-languages
+  note private
+  dock call <Locale.preferredLanguages>

@@ -1,0 +1,16 @@
+
+load @cluesurf/base/code/meet
+  find meet
+
+mint meet
+  case mode
+    slot mode
+  case seed, mint seed
+    slot seed
+  case meet, mint meet
+    slot meet
+  hook make
+    make meet
+      bind mode, read mode
+      bind seed, read seed
+      bind meet, read meet

@@ -1,0 +1,78 @@
+
+# A runnable backend: build a tiny API (a static route + a `:param` route) with the trie router, then `serve` it. On the
+# node target the transport is hono (via @hono/node-server); the matching stays in the uniform `handle-request`. The test
+# starts this on a port and fetches it over real HTTP, proving hono-as-transport + trie-as-matcher end to end.
+
+load @cluesurf/site/code/http/http
+  find request
+  find response
+  find route
+  find server
+  find route-server
+
+load @cluesurf/site/code/http/serve
+  find serve
+
+load @cluesurf/base/code/list
+  find list
+  find push
+
+load @cluesurf/base/code/maybe
+  find unwrap-or
+
+load @cluesurf/base/code/hash
+  find get
+
+task build-app
+  like server
+
+  save routes
+    make list
+
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </health>
+        bind handle
+          task health
+            take request, like request
+            take params, like hash
+            like response
+            send back
+              make response
+                bind status, mark 200
+                bind body, text <ok>
+
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </users/:id>
+        bind handle
+          task user
+            take request, like request
+            take params, like hash
+            like response
+            send back
+              make response
+                bind status, mark 200
+                bind body
+                  call unwrap-or
+                    call get
+                      read params
+                      text <id>
+                    text <none>
+
+  send back
+    call route-server
+      read routes
+
+# start the server on the given port (hono transport on node)
+task start
+  take port, like u16
+  call serve
+    call build-app
+    read port

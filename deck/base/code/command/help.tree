@@ -1,0 +1,13 @@
+
+load @cluesurf/base/code/command
+  find schema
+
+task generate
+  take schema, like schema
+  take command, like text, need false
+  like text
+
+task format
+  take title, like text
+  take items, like list
+  like text

@@ -1,0 +1,13 @@
+
+task set-flash-mode
+  # The flash setting of the capture device.
+
+task take-photo
+  take image-height, like decimal
+  take image-width, like decimal
+  take red-eye-reduction, like boolean
+    base true
+
+task clear-take-photo-settings
+
+# https://stackoverflow.com/questions/40854886/take-a-photo-and-save-to-photo-library-in-swift

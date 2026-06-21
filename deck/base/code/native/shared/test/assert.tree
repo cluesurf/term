@@ -1,0 +1,282 @@
+
+load ./context
+  find get
+  find fail
+  find skip
+  find count
+
+load ./compare
+  find deep-equal
+  find contains-text
+  find contains-list
+
+load @cluesurf/base/code/native/shared/test
+  find make-failure
+
+task assert
+  take value
+  take form, like text, fall text <truthy>
+  take expected, need false
+  take message, like text, need false
+  take tolerance, need false
+
+  save ctx
+    call get
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <truthy>
+    hook hold
+      fork test
+        hook test, read value
+        hook miss
+          call fail
+            bind ctx, read ctx
+            bind failure
+              call make-failure
+                bind name, read ctx/name
+                bind message, text <Expected truthy value>
+                bind expected, wave true
+                bind actual, read value
+      send back
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <equal>
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            bind a, read value
+            bind b, read expected
+        hook miss
+          call fail
+            bind ctx, read ctx
+            bind failure
+              call make-failure
+                bind name, read ctx/name
+                bind message, text <Expected values to be equal>
+                bind expected, read expected
+                bind actual, read value
+      send back
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <deep-equal>
+    hook hold
+      save eq
+        call deep-equal
+          bind a, read value
+          bind b, read expected
+      fork test
+        hook test, read eq
+        hook miss
+          call fail
+            bind ctx, read ctx
+            bind failure
+              call make-failure
+                bind name, read ctx/name
+                bind message, text <Expected values to be deeply equal>
+                bind expected, read expected
+                bind actual, read value
+      send back
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <contains>
+    hook hold
+      save has, wave false
+      fork test
+        hook test
+          call is-text
+            bind value, read value
+        hook hold
+          save has
+            call contains-text
+              bind text, read value
+              bind search, read expected
+        hook miss
+          save has
+            call contains-list
+              bind list, read value
+              bind value, read expected
+      fork test
+        hook test, read has
+        hook miss
+          call fail
+            bind ctx, read ctx
+            bind failure
+              call make-failure
+                bind name, read ctx/name
+                bind message, text <Expected value to contain target>
+                bind expected, read expected
+                bind actual, read value
+      send back
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <greater>
+    hook hold
+      fork test
+        hook test
+          call is-above
+            bind a, read value
+            bind b, read expected
+        hook miss
+          call fail
+            bind ctx, read ctx
+            bind failure
+              call make-failure
+                bind name, read ctx/name
+                bind message, text <Expected value to be greater>
+                bind expected, read expected
+                bind actual, read value
+      send back
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <less>
+    hook hold
+      fork test
+        hook test
+          call is-below
+            bind a, read value
+            bind b, read expected
+        hook miss
+          call fail
+            bind ctx, read ctx
+            bind failure
+              call make-failure
+                bind name, read ctx/name
+                bind message, text <Expected value to be less>
+                bind expected, read expected
+                bind actual, read value
+      send back
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <near>
+    hook hold
+      save diff
+        call absolute
+          bind value
+            call subtract
+              bind a, read value
+              bind b, read expected
+      save tol, code 0.001
+      fork test
+        hook test
+          call is-null
+            bind value, read tolerance
+        hook miss
+          save tol, read tolerance
+      fork test
+        hook test
+          call is-above
+            bind a, read diff
+            bind b, read tol
+        hook hold
+          call fail
+            bind ctx, read ctx
+            bind failure
+              call make-failure
+                bind name, read ctx/name
+                bind message, text <Expected values to be near>
+                bind expected, read expected
+                bind actual, read value
+      send back
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <type>
+    hook hold
+      save actual-type
+        call type-of
+          bind value, read value
+      fork test
+        hook test
+          call is-equal
+            bind a, read actual-type
+            bind b, read expected
+        hook miss
+          call fail
+            bind ctx, read ctx
+            bind failure
+              call make-failure
+                bind name, read ctx/name
+                bind message, text <Expected value to be of type>
+                bind expected, read expected
+                bind actual, read actual-type
+      send back
+
+task deny
+  take value
+  take form, like text, fall text <truthy>
+  take expected, need false
+  take message, like text, need false
+
+  save ctx
+    call get
+  save before
+    call count
+      bind ctx, read ctx
+
+  call assert
+    bind value, read value
+    bind form, read form
+    bind expected, read expected
+
+  save after
+    call count
+      bind ctx, read ctx
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read before
+        bind b, read after
+    hook hold
+      call fail
+        bind ctx, read ctx
+        bind failure
+          call make-failure
+            bind name, read ctx/name
+            bind message, text <Expected assertion to fail but it passed>
+            bind expected, text <negation>
+            bind actual, read value
+
+task mark-skip
+  take reason, like text, need false
+  save ctx
+    call get
+  call skip
+    bind ctx, read ctx
+
+task mark-fail
+  take message, like text
+  save ctx
+    call get
+  call fail
+    bind ctx, read ctx
+    bind failure
+      call make-failure
+        bind name, read ctx/name
+        bind message, read message
+        bind expected, text <not reached>
+        bind actual, text <fail called>

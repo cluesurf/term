@@ -1,0 +1,6 @@
+
+form text-utf-32
+  take list
+    like list-type
+      like mark-32
+    note private

@@ -1,0 +1,21 @@
+
+load @cluesurf/base/code/proof/equal
+  find equal
+
+rule symmetry
+  head a
+  take x, like a
+  take y, like a
+  take proof
+    like equal a x y
+  like equal a y x
+
+test symmetry
+  take x, like a
+  take y, like a
+  take proof
+    like equal a x y
+  fork case, read proof
+    case refl
+      send back
+        make equal/refl

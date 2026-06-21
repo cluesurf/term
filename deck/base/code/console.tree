@@ -1,0 +1,18 @@
+
+# Console output. Platform implementation is selected at build time and hidden behind this API.
+
+load @cluesurf/base/code/native/console
+  find write-line
+  find write-error
+
+task log
+  take message, like text
+  like void
+  call write-line
+    read message
+
+task error
+  take message, like text
+  like void
+  call write-error
+    read message

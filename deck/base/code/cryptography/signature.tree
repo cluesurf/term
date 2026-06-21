@@ -1,0 +1,112 @@
+# EdDSA (Ed25519) digital signatures. A declarative `bind`: each backend's built-in Ed25519 is inlined at the call site (node / browser Web Crypto, rust ed25519-dalek, swift CryptoKit Curve25519, kotlin java.security). Keys, messages, and signatures are all raw `bytes` (the zero-copy crypto currency): the private key and public key are 32 bytes each, a signature is 64 bytes. make-key-pair generates a matched pair together (the only safe way, since a public key cannot be re-derived from a private one on every host) as the 64-byte private || public buffer, which the public verb splits. Web Crypto and java.security import a raw key inside a fixed DER envelope, so the constant Ed25519 PKCS8 (private) and X.509 (public) prefixes are prepended inline. The interface is async to stay uniform with the browser's async-only Web Crypto; rust wraps its synchronous crate work in an `async move` block.
+
+# generate a fresh Ed25519 key pair as the 64-byte buffer: 32-byte private seed followed by 32-byte public key
+bind make-key-pair-bytes
+  like bytes
+  case node
+    text <globalThis.crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']).then(function (pair) { return Promise.all([globalThis.crypto.subtle.exportKey('pkcs8', pair.privateKey), globalThis.crypto.subtle.exportKey('raw', pair.publicKey)]) }).then(function (parts) { return Uint8Array.from(Array.from(new Uint8Array(parts[0])).slice(-32).concat(Array.from(new Uint8Array(parts[1])))) })>
+  case browser
+    text <globalThis.crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']).then(function (pair) { return Promise.all([globalThis.crypto.subtle.exportKey('pkcs8', pair.privateKey), globalThis.crypto.subtle.exportKey('raw', pair.publicKey)]) }).then(function (parts) { return Uint8Array.from(Array.from(new Uint8Array(parts[0])).slice(-32).concat(Array.from(new Uint8Array(parts[1])))) })>
+  case rust
+    text <async move { let signing = SigningKey::generate(&mut OsRng); let mut out = signing.to_bytes().to_vec(); out.extend_from_slice(signing.verifying_key().as_bytes()); out }>
+    load <ed25519_dalek/SigningKey>
+    load <rand/rngs/OsRng>
+  case swift
+    text <{ let signing = CryptoKit.Curve25519.Signing.PrivateKey(); return signing.rawRepresentation + signing.publicKey.rawRepresentation }()>
+    load <Foundation>
+    load <CryptoKit>
+  case kotlin
+    text <java.security.KeyPairGenerator.getInstance("Ed25519").generateKeyPair().let { (it.private as java.security.interfaces.EdECPrivateKey).bytes.get() + it.public.encoded.copyOfRange(it.public.encoded.size - 32, it.public.encoded.size) }>
+
+# sign a message with a 32-byte private key, returning a 64-byte signature
+bind sign-message
+  take private-key, like bytes
+  take message, like bytes
+  like bytes
+  case node
+    text <globalThis.crypto.subtle.importKey('pkcs8', Uint8Array.from([48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 112, 4, 34, 4, 32].concat(Array.from($private-key))), { name: 'Ed25519' }, false, ['sign']).then(function (k) { return globalThis.crypto.subtle.sign('Ed25519', k, $message) }).then(function (b) { return new Uint8Array(b) })>
+  case browser
+    text <globalThis.crypto.subtle.importKey('pkcs8', Uint8Array.from([48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 112, 4, 34, 4, 32].concat(Array.from($private-key))), { name: 'Ed25519' }, false, ['sign']).then(function (k) { return globalThis.crypto.subtle.sign('Ed25519', k, $message) }).then(function (b) { return new Uint8Array(b) })>
+  case rust
+    text <async move { let seed: [u8; 32] = $private-key.as_slice().try_into().unwrap(); SigningKey::from_bytes(&seed).sign($message.as_ref()).to_bytes().to_vec() }>
+    load <ed25519_dalek/SigningKey>
+    load <ed25519_dalek/Signer>
+  case swift
+    text <{ let signing = try! CryptoKit.Curve25519.Signing.PrivateKey(rawRepresentation: $private-key); return try! signing.signature(for: $message) }()>
+    load <Foundation>
+    load <CryptoKit>
+  case kotlin
+    text <java.security.Signature.getInstance("Ed25519").apply { initSign(java.security.KeyFactory.getInstance("Ed25519").generatePrivate(java.security.spec.PKCS8EncodedKeySpec(byteArrayOf(48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 112, 4, 34, 4, 32) + $private-key))); update($message) }.sign()>
+
+# verify a 64-byte signature over a message against a 32-byte public key
+bind verify-message
+  take public-key, like bytes
+  take message, like bytes
+  take signature, like bytes
+  like boolean
+  case node
+    text <globalThis.crypto.subtle.importKey('raw', $public-key, { name: 'Ed25519' }, false, ['verify']).then(function (k) { return globalThis.crypto.subtle.verify('Ed25519', k, $signature, $message) })>
+  case browser
+    text <globalThis.crypto.subtle.importKey('raw', $public-key, { name: 'Ed25519' }, false, ['verify']).then(function (k) { return globalThis.crypto.subtle.verify('Ed25519', k, $signature, $message) })>
+  case rust
+    text <async move { let pk: [u8; 32] = match $public-key.as_slice().try_into() { Ok(b) =\> b, Err(_) =\> return false }; let sig: [u8; 64] = match $signature.as_slice().try_into() { Ok(b) =\> b, Err(_) =\> return false }; match VerifyingKey::from_bytes(&pk) { Ok(k) =\> k.verify($message.as_ref(), &Signature::from_bytes(&sig)).is_ok(), Err(_) =\> false } }>
+    load <ed25519_dalek/VerifyingKey>
+    load <ed25519_dalek/Verifier>
+    load <ed25519_dalek/Signature>
+  case swift
+    text <{ guard let key = try? CryptoKit.Curve25519.Signing.PublicKey(rawRepresentation: $public-key) else { return false }; return key.isValidSignature($signature, for: $message) }()>
+    load <Foundation>
+    load <CryptoKit>
+  case kotlin
+    text <java.security.Signature.getInstance("Ed25519").apply { initVerify(java.security.KeyFactory.getInstance("Ed25519").generatePublic(java.security.spec.X509EncodedKeySpec(byteArrayOf(48, 42, 48, 5, 6, 3, 43, 101, 112, 3, 33, 0) + $public-key))); update($message) }.verify($signature)>
+
+load @cluesurf/base/code/bytes
+  find slice
+
+form key-pair
+  link private-key, like bytes
+  link public-key, like bytes
+
+# generate a matched private / public key pair
+task make-key-pair
+  note async
+  like key-pair
+  save raw
+    call make-key-pair-bytes
+      wait true
+  send back
+    make key-pair
+      bind private-key
+        call slice
+          read raw
+          code 0
+          code 32
+      bind public-key
+        call slice
+          read raw
+          code 32
+          code 64
+
+task sign
+  note async
+  take private-key, like bytes
+  take message, like bytes
+  like bytes
+  send back
+    call sign-message
+      read private-key
+      read message
+      wait true
+
+task verify
+  note async
+  take public-key, like bytes
+  take message, like bytes
+  take signature, like bytes
+  like boolean
+  send back
+    call verify-message
+      read public-key
+      read message
+      read signature
+      wait true

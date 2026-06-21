@@ -1,0 +1,143 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+
+task open
+  note async
+  take path, like text
+  take read, like bool, fall wave true
+  take write, like bool, fall wave false
+  take create, like bool, fall wave false
+  take append, like bool, fall wave false
+  take clear, like bool, fall wave false
+
+  save flags, text <r>
+
+  fork test, name append
+    hook true
+      fork test, name read
+        hook true
+          save flags, text <a+>
+        hook false
+          save flags, text <a>
+
+  fork test, name write
+    hook true
+      fork test, name read
+        hook true
+          fork test, name create
+            hook true
+              save flags, text <w+>
+            hook false
+              save flags, text <r+>
+        hook false
+          save flags, text <w>
+
+  save handle
+    call fs-promise/open
+      note async
+      read path
+      read flags
+      halt kink
+
+  send back
+    make file
+      bind dock, read handle
+      bind path, read path
+
+task close
+  note async
+  take file, like file
+
+  call file/dock/close
+    note async
+    halt kink
+
+task read
+  note async
+  take file, like file
+  take size, like size
+
+  save buffer
+    call buffer/alloc
+      read size
+
+  save result
+    call file/dock/read
+      note async
+      read buffer
+      code 0
+      read size
+      halt kink
+
+  send back, read result/buffer
+
+task write
+  note async
+  take file, like file
+  take data
+
+  save result
+    call file/dock/write
+      note async
+      read data
+      halt kink
+
+  send back, read result/bytes-written
+
+task seek
+  note async
+  take file, like file
+  take offset, like size
+  take frame, like text, fall text <start>
+
+  fork test, call is-equal, read frame, text <start>
+    hook true
+      call file/dock/seek
+        note async
+        read offset
+        halt kink
+
+  fork test, call is-equal, read frame, text <relative>
+    hook true
+      save current
+        call file/dock/stat
+          note async
+          halt kink
+      call file/dock/seek
+        note async
+        call add
+          bind a, read current/size
+          bind b, read offset
+        halt kink
+
+  fork test, call is-equal, read frame, text <end>
+    hook true
+      save stats
+        call file/dock/stat
+          note async
+          halt kink
+      call file/dock/seek
+        note async
+        call subtract
+          bind a, read stats/size
+          bind b, read offset
+        halt kink
+
+task flush
+  note async
+  take file, like file
+
+  call file/dock/datasync
+    note async
+    halt kink
+
+task clear
+  note async
+  take file, like file
+  take size, like size, fall code 0
+
+  call file/dock/truncate
+    note async
+    read size
+    halt kink

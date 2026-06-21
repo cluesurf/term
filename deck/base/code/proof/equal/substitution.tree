@@ -1,0 +1,33 @@
+
+load @cluesurf/base/code/proof/equal
+  find equal
+
+rule substitution
+  head a
+  take p
+    like task
+      take value, like a
+  take x, like a
+  take y, like a
+  take proof
+    like equal a x y
+  take px
+    call p
+      bind value, read x
+  like call p
+    bind value, read y
+
+test substitution
+  take p
+    like task
+      take value, like a
+  take x, like a
+  take y, like a
+  take proof
+    like equal a x y
+  take px
+    call p
+      bind value, read x
+  fork case, read proof
+    case refl
+      send back, read px

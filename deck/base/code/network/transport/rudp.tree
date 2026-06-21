@@ -1,0 +1,19 @@
+
+# RUDP: Reliable UDP. A lightweight reliability layer over UDP datagrams: sequence numbers, acknowledgements, and
+# retransmission, without the full weight of TCP. The header rides inside a UDP payload.
+
+form rudp-flags
+  link syn, like boolean
+  link acknowledge, like boolean
+  link reset, like boolean
+  link null, like boolean
+
+form rudp-header
+  link flags, like rudp-flags
+  link sequence-number, like u32
+  link acknowledgement-number, like u32
+  link checksum, like u16
+
+form rudp-segment
+  link header, like rudp-header
+  link payload, like list

@@ -1,0 +1,134 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:path>, name path
+  load <node:os>, name os
+
+task make-temp-dir
+  wait true
+  take x, like text
+
+  save tmp
+    call os/tmpdir
+
+  save prefix
+    call path/join
+      bind a, read tmp
+      bind b, text <seed-test->
+
+  send back
+    call fs-promise/mkdtemp
+      wait true
+      bind path, read prefix
+
+task run-tests
+  wait true
+  take x, like text
+
+  save dir
+    call make-temp-dir
+      wait true
+      bind x, text <x>
+
+  save source
+    call path/join
+      bind a, read dir
+      bind b, text <source.txt>
+
+  call fs-promise/write-file
+    wait true
+    bind path, read source
+    bind data, text <link content>
+
+  note <Test symlink>
+  save sym
+    call path/join
+      bind a, read dir
+      bind b, text <sym.txt>
+
+  call fs-promise/symlink
+    wait true
+    bind target, read source
+    bind path, read sym
+
+  save sym-content
+    call fs-promise/read-file
+      wait true
+      bind path, read sym
+      bind encoding, text <utf8>
+
+  fork test
+    call is-equal
+      bind a, read sym-content
+      bind b, text <link content>
+    hook true
+      call console/log
+        bind msg, text <pass: symlink-read>
+    hook false
+      call console/log
+        bind msg, text <fail: symlink-read>
+
+  note <Test readlink>
+  save target
+    call fs-promise/readlink
+      wait true
+      bind path, read sym
+
+  fork test
+    call is-equal
+      bind a, read target
+      bind b, read source
+    hook true
+      call console/log
+        bind msg, text <pass: readlink>
+    hook false
+      call console/log
+        bind msg, text <fail: readlink>
+
+  note <Test hard link>
+  save hard
+    call path/join
+      bind a, read dir
+      bind b, text <hard.txt>
+
+  call fs-promise/link
+    wait true
+    bind existingPath, read source
+    bind newPath, read hard
+
+  save hard-content
+    call fs-promise/read-file
+      wait true
+      bind path, read hard
+      bind encoding, text <utf8>
+
+  fork test
+    call is-equal
+      bind a, read hard-content
+      bind b, text <link content>
+    hook true
+      call console/log
+        bind msg, text <pass: hard-link-read>
+    hook false
+      call console/log
+        bind msg, text <fail: hard-link-read>
+
+  note <Cleanup>
+  call fs-promise/rm
+    wait true
+    bind path, read sym
+
+  call fs-promise/rm
+    wait true
+    bind path, read hard
+
+  call fs-promise/rm
+    wait true
+    bind path, read source
+
+  call fs-promise/rmdir
+    wait true
+    bind path, read dir
+
+  call console/log
+    bind msg, text <done>

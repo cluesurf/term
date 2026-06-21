@@ -1,0 +1,33 @@
+
+form request
+  take x-request
+    note private
+
+  task get-header-by-key
+    take self
+    take key
+    call self/x-request/get-header
+      read key
+
+  task get-headers-iterator
+    make object-iterator
+      call self/x-request/headers
+
+  task get-body
+
+  task get-host
+    read self/x-request/host
+
+  task get-http-version
+    read self/x-request/http-version
+
+  task get-protocol
+    read self/x-request/protocol
+
+  task get-method
+    read self/x-request/method
+
+  task get-path
+    read self/x-request/path
+
+  task get-ip-address

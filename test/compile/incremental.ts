@@ -20,8 +20,8 @@ const run = <T>(
 
 const A = 'a.tree'
 const B = 'b.tree'
-const aV1 = `task a-value\n  like number\n  send back\n    mark 1\n`
-const bV1 = `task b-value\n  like number\n  send back\n    mark 2\n`
+const aV1 = `task a-value\n  like number\n  send back\n    code 1\n`
+const bV1 = `task b-value\n  like number\n  send back\n    code 2\n`
 
 async function main(): Promise<void> {
   const qc = new QueryCompiler()
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
 
   // a REAL edit to A: the milled AST changes -> the merged program rebuilds (parse + mill + program = 3)
   const before2 = qc.db.recomputes
-  qc.setSource(A, `task a-value\n  like number\n  send back\n    mark 99\n`)
+  qc.setSource(A, `task a-value\n  like number\n  send back\n    code 99\n`)
   const afterReal = await run(qc, cx => qc.program(cx, [A, B]))
   ok('real edit rebuilds the program', afterReal.ok)
   const realDelta = qc.db.recomputes - before2
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
 
   // editing A does not re-mill B (B is reused across the edit)
   const before3 = qc.db.recomputes
-  qc.setSource(A, `task a-value\n  like number\n  send back\n    mark 7\n`)
+  qc.setSource(A, `task a-value\n  like number\n  send back\n    code 7\n`)
   await run(qc, cx => qc.program(cx, [A, B]))
   const onlyADelta = qc.db.recomputes - before3
   ok('editing A never re-mills the unchanged B', onlyADelta === 3, `delta ${onlyADelta}`)
@@ -64,8 +64,8 @@ async function main(): Promise<void> {
   // ---- the signature firewall on real definitions ----
   {
     const X = 'x.tree'
-    const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      mark 5\n`
-    const otherSrc = `task other\n  like number\n  send back\n    mark 0\n`
+    const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      code 5\n`
+    const otherSrc = `task other\n  like number\n  send back\n    code 0\n`
     const withHelper = (helper: string): string => `${helper}\n${callerSrc}\n${otherSrc}`
     const helperV1 = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
 
@@ -84,19 +84,19 @@ async function main(): Promise<void> {
     const helperRuns = fw.db.runs('checkDef:helper')
 
     // edit helper BODY only (signature unchanged)
-    fw.setSource(X, withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    mark 42\n`))
+    fw.setSource(X, withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    code 42\n`))
     await checkAll()
     ok('editing the callee BODY re-checks the callee', fw.db.runs('checkDef:helper') === helperRuns + 1)
     ok('editing the callee BODY does NOT re-check the caller (firewall)', fw.db.runs('checkDef:caller') === callerRuns)
 
     // edit helper SIGNATURE (param type number -> text)
-    fw.setSource(X, withHelper(`task helper\n  take n, like text\n  like number\n  send back\n    mark 42\n`))
+    fw.setSource(X, withHelper(`task helper\n  take n, like text\n  like number\n  send back\n    code 42\n`))
     await checkAll()
     ok('editing the callee SIGNATURE re-checks the caller', fw.db.runs('checkDef:caller') === callerRuns + 1)
 
     // editing an unrelated definition (other) never re-checks caller
     const callerRuns2 = fw.db.runs('checkDef:caller')
-    fw.setSource(X, withHelper(`task helper\n  take n, like text\n  like number\n  send back\n    mark 42\n`).replace('mark 0', 'mark 1'))
+    fw.setSource(X, withHelper(`task helper\n  take n, like text\n  like number\n  send back\n    code 42\n`).replace('code 0', 'code 1'))
     await checkAll()
     ok('editing an unrelated definition does NOT re-check the caller', fw.db.runs('checkDef:caller') === callerRuns2)
   }
@@ -104,8 +104,8 @@ async function main(): Promise<void> {
   // ---- functional per-definition resolve (real resolve, firewalled) ----
   {
     const X = 'r.tree'
-    const otherSrc = `task other\n  like number\n  send back\n    mark 0\n`
-    const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      mark 5\n`
+    const otherSrc = `task other\n  like number\n  send back\n    code 0\n`
+    const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      code 5\n`
     const withHelper = (helper: string): string => `${helper}\n${callerSrc}\n${otherSrc}`
     const helperV1 = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
 
@@ -123,7 +123,7 @@ async function main(): Promise<void> {
     await resolveAll()
     const callerRuns = rc.db.runs('resolved:caller')
 
-    rc.setSource(X, withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    mark 9\n`))
+    rc.setSource(X, withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    code 9\n`))
     await resolveAll()
     ok('resolvedDef: editing the callee body does NOT re-resolve the caller', rc.db.runs('resolved:caller') === callerRuns)
     ok('resolvedDef: the callee is re-resolved', rc.db.runs('resolved:helper') >= 2)
@@ -137,8 +137,8 @@ async function main(): Promise<void> {
   // ---- functional per-definition type-checking (real infer) ----
   {
     const X = 't.tree'
-    const otherSrc = `task other\n  like number\n  send back\n    mark 0\n`
-    const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      mark 5\n`
+    const otherSrc = `task other\n  like number\n  send back\n    code 0\n`
+    const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      code 5\n`
     const withHelper = (helper: string): string => `${helper}\n${callerSrc}\n${otherSrc}`
     const helperOk = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
 
@@ -150,7 +150,7 @@ async function main(): Promise<void> {
     ok('typedDef: a well-typed function checks clean (real inference)', caller.diagnostics.length === 0, JSON.stringify(caller.diagnostics.map(d => d.name)))
     const callerType = structureKeyOf(caller.def)
 
-    tc.setSource(X, withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      mark 2\n`))
+    tc.setSource(X, withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n`))
     const caller2 = await run(tc, cx => tc.typedDef(cx, files, 'caller'))
     ok('typedDef: a callee body edit leaves the caller typed-result unchanged (firewall via backdating)', structureKeyOf(caller2.def) === callerType)
 
@@ -163,8 +163,8 @@ async function main(): Promise<void> {
   // ---- per-definition emit (stage 3) ----
   {
     const X = 'e.tree'
-    const otherSrc = `task other\n  like number\n  send back\n    mark 0\n`
-    const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      mark 5\n`
+    const otherSrc = `task other\n  like number\n  send back\n    code 0\n`
+    const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      code 5\n`
     const withHelper = (helper: string): string => `${helper}\n${callerSrc}\n${otherSrc}`
     const helperV1 = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
 
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
     const callerEmit = await run(ec, cx => ec.emitDef(cx, files, 'caller'))
     const callerEmitRuns = ec.db.runs('emit:caller')
 
-    ec.setSource(X, withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      mark 2\n`))
+    ec.setSource(X, withHelper(`task helper\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n`))
     await run(ec, cx => ec.emitProgram(cx, files))
     ok('emitDef: editing the callee body does NOT re-emit the caller', ec.db.runs('emit:caller') === callerEmitRuns)
     ok('emitDef: the callee is re-emitted', ec.db.runs('emit:helper') >= 2)

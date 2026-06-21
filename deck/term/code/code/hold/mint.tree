@@ -1,0 +1,56 @@
+
+load @cluesurf/base/code/hold
+  find hold
+  find hold-hook
+
+mint hold, like hold
+  case name
+    slot name
+  case bind, mint bind
+    slot bind
+  case save, mint save
+    slot save
+  case turn, mint turn
+    slot turn
+  case hook, mint hold-hook
+    slot hook
+  hook make
+    make hold
+      bind name, read name
+      bind bind, read bind
+      bind save, read save
+      bind turn, read turn
+      bind hook, read hook
+
+mint hold-hook, like hold-hook
+  case name
+    slot name
+  case line
+    slot line
+  case base, mint base
+    slot base
+  case flow, mint flow
+    slot flow
+  case task, mint task
+    slot task
+  hook make
+    make hold-hook
+      bind name, read name
+      bind line, read line
+      bind base, read base
+      bind flow, read flow
+      bind task, read task
+
+mint save
+  case road
+    slot road
+  hook make
+    make save
+      bind road, read road
+
+mint turn
+  case term
+    slot term
+  hook make
+    make turn
+      bind term, read term

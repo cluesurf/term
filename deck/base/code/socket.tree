@@ -1,0 +1,51 @@
+
+# TCP socket.
+
+form socket-address
+  link host, like text
+  link port, like integer
+
+form socket
+  task bind
+    take host, like text
+    take port, like integer
+
+  task close
+
+  task connect
+    note async
+    take host, like text
+    take port, like integer
+
+  task host
+    like socket-address
+
+  task listen
+    take connections, like integer
+
+  task peer
+    like socket-address
+
+  task read
+    note async
+    like text
+
+  task set-blocking
+    take blocking, like boolean
+
+  task set-fast-send
+    take fast, like boolean
+
+  task set-timeout
+    take timeout, like float
+
+  task shutdown
+    take read, like boolean
+    take write, like boolean
+
+  task wait-for-read
+    note async
+
+  task write
+    note async
+    take content, like text

@@ -1,0 +1,19 @@
+# Hexadecimal text encoding. The clean uniform interface; the per-env native implementation is selected at build time and hidden behind the API.
+
+load @cluesurf/base/code/native/text/hex
+  find to-hex
+  find from-hex
+
+task encode
+  take input, like text
+  like text
+  send back
+    call to-hex
+      read input
+
+task decode
+  take input, like text
+  like text
+  send back
+    call from-hex
+      read input

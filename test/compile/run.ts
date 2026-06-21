@@ -10,13 +10,13 @@ import { render } from '@/code/parser/diagnostic'
 
 const FIB_LOOP = `task find-fibonacci-via-loop
   take n
-  save a, mark 0
-  save b, mark 1
+  save a, code 0
+  save b, code 1
   walk test
     hook test
       call is-above
         loan n
-        mark 0
+        code 0
     hook step
       save next
         call add
@@ -27,7 +27,7 @@ const FIB_LOOP = `task find-fibonacci-via-loop
       save n
         call subtract
           loan n
-          mark 1
+          code 1
   send back a
 `
 
@@ -40,7 +40,7 @@ const CONDITIONAL_EXPRESSION = `task classify
       hook test
         call is-above
           loan n
-          mark 0
+          code 0
       hook hold
         text <positive>
       hook miss
@@ -54,7 +54,7 @@ const FIB_RECURSION = `task find-fibonacci-via-recursion
     hook test
       call is-below
         loan n
-        mark 2
+        code 2
     hook hold
       send back n
     hook miss
@@ -63,11 +63,11 @@ const FIB_RECURSION = `task find-fibonacci-via-recursion
           call find-fibonacci-via-recursion
             call subtract
               loan n
-              mark 1
+              code 1
           call find-fibonacci-via-recursion
             call subtract
               loan n
-              mark 2
+              code 2
 `
 
 let pass = 0

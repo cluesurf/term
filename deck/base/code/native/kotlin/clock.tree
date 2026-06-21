@@ -1,0 +1,16 @@
+# kotlin clock implementation. Forwards to the linked clock runtime shim. Internal: reached only through the public clock API.
+
+dock load
+  load <global:clock>, name clock
+
+task current-time
+  like number
+  send back
+    call clock/current-time
+
+task delay
+  note async
+  take ms, like number
+  like void
+  call clock/sleep
+    read ms

@@ -1,0 +1,109 @@
+# Raw byte buffers: the `bytes` currency type, backed by the platform's native octet buffer (a JS Uint8Array, a rust byte vector, a swift Data, a kotlin ByteArray). This is the zero-copy currency for cryptography, encoding, file IO, and the network. Text (utf8), hex, and base64 are explicit codecs at the edges, not a tax paid on every call. The per-env native implementation is selected at build time and hidden.
+
+load @cluesurf/base/code/native/bytes
+  find do-from-text
+  find do-to-text
+  find do-to-hex
+  find do-from-hex
+  find do-to-base64
+  find do-from-base64
+  find do-length
+  find do-concat
+  find do-slice
+
+# convert utf8 text to and from raw bytes
+task from-text
+  take text, like text
+  like bytes
+  send back, call do-from-text, read text
+
+task to-text
+  take value, like bytes
+  like text
+  send back, call do-to-text, read value
+
+# encode bytes to a text representation in the given base (16 = hex, 64 = base64). The named `to-hex` / `to-base64`
+# forms below are the readable default; this verb is for a base chosen at runtime. A constant base specializes to the
+# one native codec, so both spellings emit the same call.
+task encode
+  take value, like bytes
+  take base, like number
+  like text
+  fork test
+    hook test
+      call is-equal
+        read base
+        code 64
+    hook hold
+      send back, call do-to-base64, read value
+    hook miss
+      send back, call do-to-hex, read value
+
+# decode a text representation in the given base back to bytes
+task decode
+  take text, like text
+  take base, like number
+  like bytes
+  fork test
+    hook test
+      call is-equal
+        read base
+        code 64
+    hook hold
+      send back, call do-from-base64, read text
+    hook miss
+      send back, call do-from-hex, read text
+
+# named codec forms: the readable, primary surface. Each calls the native codec directly, so it is optimal with no
+# dependence on the specialization pass.
+task to-hex
+  take value, like bytes
+  like text
+  send back, call do-to-hex, read value
+
+task from-hex
+  take text, like text
+  like bytes
+  send back, call do-from-hex, read text
+
+task to-base64
+  take value, like bytes
+  like text
+  send back, call do-to-base64, read value
+
+task from-base64
+  take text, like text
+  like bytes
+  send back, call do-from-base64, read text
+
+# the number of bytes
+task count
+  take value, like bytes
+  like number
+  send back, call do-length, read value
+
+# `length` is kept as a familiar alias for `count`
+task length
+  take value, like bytes
+  like number
+  send back, call do-length, read value
+
+task concat
+  take left, like bytes
+  take right, like bytes
+  like bytes
+  send back
+    call do-concat
+      read left
+      read right
+
+task slice
+  take value, like bytes
+  take start, like number
+  take end, like number
+  like bytes
+  send back
+    call do-slice
+      read value
+      read start
+      read end

@@ -34,7 +34,7 @@ const resolve = projectResolver(SEED, 'node')
 async function main(): Promise<void> {
   const entry = path.join(
     DECK,
-    'site.tree/code/test/site/ssr-demo.tree',
+    'seed/deck/site/code/test/site/ssr-demo.tree',
   )
   // this test calls the dom primitives directly (createElement / createText / ...); compile un-optimized so the
   // specializer does not inline + drop those single-return exports, which only an external caller like this test uses

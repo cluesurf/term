@@ -1,0 +1,25 @@
+
+load @cluesurf/base/code/import
+  find import
+  find import-reference
+
+# `like load` references the import form
+mint load, like import
+  case path
+    slot path
+  case find, mint reference
+    slot reference
+  hook make
+    make import
+      bind path, read path
+      bind reference, read reference
+
+mint reference, like import-reference
+  case text
+    slot name
+  case name
+    slot alias
+  hook make
+    make import-reference
+      bind name, read name
+      bind alias, read alias

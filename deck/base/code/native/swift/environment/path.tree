@@ -1,0 +1,50 @@
+
+task get
+  take kind, like text
+  like text
+
+  fork case, read kind
+    case home
+      send back
+        call swift-home-dir
+    case temporary
+      send back
+        call swift-temp-dir
+    case data
+      send back
+        call swift-data-dir
+    case configuration
+      send back
+        call swift-config-dir
+    case cache
+      send back
+        call swift-cache-dir
+
+task swift-home-dir
+  note private
+  dock call <NSHomeDirectory()>
+
+task swift-temp-dir
+  note private
+  dock call <NSTemporaryDirectory()>
+
+task swift-data-dir
+  note private
+  dock call <run {
+    let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+    return paths.first?.path ?? ""
+  }>
+
+task swift-config-dir
+  note private
+  dock call <run {
+    let home = NSHomeDirectory()
+    return "\(home)/Library/Preferences"
+  }>
+
+task swift-cache-dir
+  note private
+  dock call <run {
+    let paths = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
+    return paths.first?.path ?? ""
+  }>

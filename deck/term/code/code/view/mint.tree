@@ -1,0 +1,80 @@
+
+load @cluesurf/base/code/view
+  find view
+  find view-child
+  find view-watch
+  find view-list
+  find view-start
+  find view-check
+
+mint view
+  case name
+    slot name
+  case latch, mint latch
+    slot latch
+  case child, mint child
+    slot child
+  hook make
+    make view
+      bind name, read name
+      bind latch, read latch
+      bind child, read child
+
+mint check
+  case name
+    slot name
+  case child, mint child
+    slot child
+  hook make
+    make view-check
+      bind name, read name
+      bind child, read child
+
+mint list
+  case trace
+    slot trace
+  case start, mint start
+    slot start
+  case child, mint child
+    slot child
+  hook make
+    make view-list
+      bind trace, read trace
+      bind start, read start
+      bind child, read child
+
+mint start
+  case term
+    slot term
+  case start
+    slot start
+  hook make
+    make view-start
+      bind term, read term
+      bind start, read start
+
+mint child
+  case name
+    slot name
+  case mount, mint mount
+    slot mount
+  case watch, mint watch
+    slot watch
+  case child, mint child
+    slot child
+  hook make
+    make view-child
+      bind name, read name
+      bind mount, read mount
+      bind watch, read watch
+      bind child, read child
+
+mint watch
+  case name
+    slot name
+  case cause, mint cause
+    slot cause
+  hook make
+    make view-watch
+      bind name, read name
+      bind cause, read cause

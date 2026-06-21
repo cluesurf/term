@@ -1,0 +1,21 @@
+
+task get
+  like text
+
+  send back
+    call kotlin-current-dir
+
+task set
+  take path, like text
+
+  call kotlin-set-current-dir
+    read path
+
+task kotlin-current-dir
+  note private
+  dock call <System.getProperty("user.dir") ?: "">
+
+task kotlin-set-current-dir
+  note private
+  take path, like text
+  dock call <System.setProperty("user.dir", path)>

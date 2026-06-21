@@ -1,0 +1,15 @@
+
+load @cluesurf/base/code/void
+  find void
+
+form decidable
+  head a
+
+  case yes
+    link proof, like a
+
+  case no
+    link refutation
+      like task
+        take value, like a
+        like void

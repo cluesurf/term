@@ -1,0 +1,19 @@
+
+form tool
+  link dock, like readline/interface
+
+  hook make
+    take i
+    take o
+
+    bind dock
+      call readline/create-interface
+        move i
+        move o
+
+  task ask
+    take self
+    take text
+    note async
+    call self/dock/question
+      move text

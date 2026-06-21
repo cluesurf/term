@@ -1,0 +1,83 @@
+# rust string implementation. Forwards to the linked text runtime shim, which wraps the platform's string API. Internal: reached only through the public string API.
+
+dock load
+  load <global:text>, name text
+
+task do-upper
+  take input, like text
+  like text
+  send back
+    call text/upper
+      read input
+
+task do-lower
+  take input, like text
+  like text
+  send back
+    call text/lower
+      read input
+
+task do-trim
+  take input, like text
+  like text
+  send back
+    call text/trim
+      read input
+
+task do-repeat
+  take input, like text
+  take count, like number
+  like text
+  send back
+    call text/repeated
+      read input
+      read count
+
+task do-contains
+  take input, like text
+  take part, like text
+  like boolean
+  send back
+    call text/contains
+      read input
+      read part
+
+task do-starts-with
+  take input, like text
+  take prefix, like text
+  like boolean
+  send back
+    call text/starts-with
+      read input
+      read prefix
+
+task do-ends-with
+  take input, like text
+  take suffix, like text
+  like boolean
+  send back
+    call text/ends-with
+      read input
+      read suffix
+
+task do-replace
+  take input, like text
+  take from, like text
+  take to, like text
+  like text
+  send back
+    call text/replace
+      read input
+      read from
+      read to
+
+task do-slice
+  take input, like text
+  take start, like number
+  take end, like number
+  like text
+  send back
+    call text/slice
+      read input
+      read start
+      read end

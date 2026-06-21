@@ -1,0 +1,66 @@
+
+load @cluesurf/base/code/process/current
+  find process-info
+
+task read
+  like process-info
+
+  send back
+    make process-info
+      bind id, code 0
+      bind arguments, make list
+      bind directory
+        call browser-current-directory
+      bind executable
+        call browser-current-executable
+
+task exit
+  take code, like size, fall 0
+
+  call browser-exit
+
+task listen
+  take signal, like text
+  take handler, like task
+
+  fork case, read signal
+    case terminate
+      call browser-listen-beforeunload
+        read handler
+    case interrupt
+      call browser-listen-visibility
+        read handler
+
+task browser-current-directory
+  note private
+  dock call <location.pathname>
+
+task browser-current-executable
+  note private
+  dock call <location.href>
+
+task browser-exit
+  note private
+  dock call <run {
+    if (typeof self !== "undefined" && typeof self.close === "function" && typeof window === "undefined") {
+      self.close();
+    } else if (typeof window !== "undefined") {
+      window.close();
+    }
+  }>
+
+task browser-listen-beforeunload
+  note private
+  take handler
+  dock call <window.addEventListener("beforeunload", handler)>
+
+task browser-listen-visibility
+  note private
+  take handler
+  dock call <run {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        handler();
+      }
+    });
+  }>

@@ -1,0 +1,12 @@
+
+form locale
+  link language, like text
+  link region, like text
+  link tag, like text
+  link timezone, like text
+
+task read
+  like locale
+
+task list
+  like list

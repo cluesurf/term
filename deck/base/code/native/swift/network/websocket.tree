@@ -1,0 +1,68 @@
+
+dock load
+  load <Foundation>, name foundation
+
+load @cluesurf/base/code/network/websocket
+  find socket
+
+task connect
+  note async
+  take url, like text
+  take headers, like hash, need false
+  take protocols, like list, need false
+
+  save url-obj
+    call url
+      text <string>
+      read url
+      halt kink
+
+  save request
+    call url-request
+      text <url>
+      read url-obj
+
+  fork test
+    hook test
+      call is-some, read headers
+    hook hold
+      walk list, read headers
+        hook next
+          take site, name entry
+          call request/set-value
+            read entry/1
+            text <forHTTPHeaderField>
+            read entry/0
+
+  save session
+    call url-session/shared
+
+  save task
+    call session/web-socket-task
+      text <with>
+      read request
+
+  call task/resume
+
+  call make-continuation
+    note async
+    task resolve
+      take ok
+      take fail
+      call task/send-ping
+        task on-pong
+          take error
+          fork test
+            hook test
+              call is-some, read error
+            hook hold
+              call fail, read error
+            hook miss
+              call ok
+
+  send back
+    make socket
+      bind dock, read task
+      bind url, read url
+      bind protocol, text <>
+      bind ready, wave true

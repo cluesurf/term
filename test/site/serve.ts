@@ -23,7 +23,7 @@ const resolve = projectResolver(SEED, 'node')
 const PORT = 38561
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'site.tree/test/site/serve.tree')
+  const entry = path.join(DECK, 'seed/deck/site/test/site/serve.tree')
   const result = compile({ file: entry, text: fs.readFileSync(entry, 'utf8') }, { resolve })
   ok('serve app compiles', result.ok, result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)))
   if (!result.ok) { console.log(`\nserve: ${pass} pass, ${fail} fail`); process.exit(1) }

@@ -1,0 +1,19 @@
+
+form mock
+  link dock, mark private
+
+task make
+  take returns, need false
+  take handler, like task, need false
+  like mock
+
+task replace
+  take target, like task
+  take mock, like mock
+
+task read
+  take mock, like mock
+  take field, like text, fall text <calls>
+
+task reset
+  take mock, like mock

@@ -1,0 +1,73 @@
+
+load @cluesurf/base/code/fork
+  find fork-test
+  find fork-test-pair
+  find fork-miss
+  find fork-case
+  find fork-arm
+  find fork-tree
+
+mint fork
+  case test, mint fork-test
+    slot test
+  case case, mint fork-case
+    slot case
+  case tree, mint fork-tree
+    slot tree
+
+mint fork-test, like fork-test
+  case pair, mint fork-test-pair
+    slot pair
+  case miss, mint fork-miss
+    slot miss
+  hook make
+    make fork-test
+      bind pair, read pair
+      bind miss, read miss
+
+mint fork-test-pair, like fork-test-pair
+  case test
+    slot test
+  case hold
+    slot hold
+  hook make
+    make fork-test-pair
+      bind test, read test
+      bind hold, read hold
+
+mint fork-miss, like fork-miss
+  case flow
+    slot flow
+  hook make
+    make fork-miss
+      bind flow, read flow
+
+mint fork-case, like fork-case
+  case seed, mint seed
+    slot seed
+  case arm, mint fork-arm
+    slot arm
+  hook make
+    make fork-case
+      bind seed, read seed
+      bind arm, read arm
+
+mint fork-arm, like fork-arm
+  case name
+    slot name
+  case base
+    slot base
+  case flow
+    slot flow
+  hook make
+    make fork-arm
+      bind name, read name
+      bind base, read base
+      bind flow, read flow
+
+mint fork-tree, like fork-tree
+  case flow
+    slot flow
+  hook make
+    make fork-tree
+      bind flow, read flow

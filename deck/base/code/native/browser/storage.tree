@@ -1,0 +1,83 @@
+
+task get
+  take key, like text
+  take store, like text, fall text <local>
+
+  fork test, call is-equal, read store, text <session>
+    hook true
+      send back
+        call session-storage/get-item
+          read key
+    hook false
+      send back
+        call local-storage/get-item
+          read key
+
+task set
+  take key, like text
+  take value, like text
+  take store, like text, fall text <local>
+
+  fork test, call is-equal, read store, text <session>
+    hook true
+      call session-storage/set-item
+        read key
+        read value
+    hook false
+      call local-storage/set-item
+        read key
+        read value
+
+task remove
+  take key, like text
+  take store, like text, fall text <local>
+
+  fork test, call is-equal, read store, text <session>
+    hook true
+      call session-storage/remove-item
+        read key
+    hook false
+      call local-storage/remove-item
+        read key
+
+task clear
+  take store, like text, fall text <local>
+
+  fork test, call is-equal, read store, text <session>
+    hook true
+      call session-storage/clear
+    hook false
+      call local-storage/clear
+
+task list-keys
+  take store, like text, fall text <local>
+
+  fork test, call is-equal, read store, text <session>
+    hook true
+      send back
+        call browser-storage-keys
+          read session-storage
+    hook false
+      send back
+        call browser-storage-keys
+          read local-storage
+
+task length
+  take store, like text, fall text <local>
+
+  fork test, call is-equal, read store, text <session>
+    hook true
+      send back, read session-storage/length
+    hook false
+      send back, read local-storage/length
+
+task browser-storage-keys
+  note private
+  take storage
+  dock call <run {
+    const keys = [];
+    for (let i = 0; i < storage.length; i++) {
+      keys.push(storage.key(i));
+    }
+    return keys;
+  }>

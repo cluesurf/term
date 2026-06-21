@@ -104,7 +104,7 @@ function main(): void {
     hook test
       loan n
     hook step
-      save n, mark 0
+      save n, code 0
   send back n
 `,
     'type-mismatch',
@@ -141,7 +141,7 @@ task helper
   send back
     call add
       loan x
-      mark 1
+      code 1
 `,
   )
 
@@ -154,7 +154,7 @@ task helper
     hook test
       loan n
     hook step
-      save n, mark 0
+      save n, code 0
   send back n
 `,
   )

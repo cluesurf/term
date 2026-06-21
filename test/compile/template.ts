@@ -55,7 +55,7 @@ const DOUBLER = `tree doubler
       send back
         call multiply
           loan n
-          mark 2
+          code 2
 
 fuse doubler
   bind name, int
@@ -117,7 +117,7 @@ function main(): void {
       send back
         call add
           loan n
-          mark 1
+          code 1
 
 fuse make-adder
   bind suffix, one

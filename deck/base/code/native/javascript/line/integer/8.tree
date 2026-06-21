@@ -1,0 +1,9 @@
+
+form line-mark-8
+  like line, like mark-8
+
+  dock javascript-uint8-array
+
+  task sum
+  task get-minimum
+  task get-maximum

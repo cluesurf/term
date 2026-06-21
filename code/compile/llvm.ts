@@ -64,17 +64,27 @@ type LlvmType =
   | 'ptr'
   | 'void'
   | '{ ptr, ptr }'
+  | '{ i64, i64 }'
   | `%struct.${string}`
 // a closure value is a flat pair { code pointer, environment handle }. The environment is a `seed_list` of captured
 // words (reusing the list runtime), so a closure needs no new allocator: the captures push into a fresh list.
 const CLOSURE_TYPE = '{ ptr, ptr }'
+// a sum type (variant / enum, e.g. maybe, result) is a tagged union: { i64 tag, i64 payload }. The tag is the variant's
+// declared index; the payload is its single field as a word (a float / pointer reinterpreted at the boundary).
+const VARIANT_TYPE = '{ i64, i64 }'
 // the field layout of a plain record (product) type, in declared order, for first-class struct lowering
 type RecordLayout = { fields: Array<{ name: string; type: Type }> }
+// a variant label resolved to its owning sum type, its tag (index), and its single payload field (if any)
+type VariantOf = Map<
+  string,
+  { owner: string; tag: number; field?: { name: string; type: Type } }
+>
 // the LLVM representation of a checked type: strings are managed pointers, unit is void, floats are double, a plain
-// record is a first-class struct value (`%struct.Name`), everything else is a 64-bit word
+// record is a first-class struct value (`%struct.Name`), a sum type is a tagged union, everything else is a 64-bit word
 function llty(
   type: Type | undefined,
   records?: Map<string, RecordLayout>,
+  variants?: Set<string>,
 ): LlvmType {
   if (type?.kind === 'string') return 'ptr'
   if (type?.kind === 'unit') return 'void'
@@ -82,9 +92,33 @@ function llty(
   if (type?.kind === 'array') return 'ptr' // a list is an opaque handle to the heap buffer
   if (type?.kind === 'map') return 'ptr' // a map is an opaque handle to the heap hash
   if (type?.kind === 'function') return CLOSURE_TYPE // a first-class function value: { code, env }
+  if (type?.kind === 'named' && variants?.has(type.name))
+    return VARIANT_TYPE
   if (type?.kind === 'named' && records?.has(type.name))
     return `%struct.${mangle(type.name)}`
   return 'i64'
+}
+
+// the sum (variant) types of a program: a record-type with variants. Each label maps to its owner, tag, and single
+// payload field. Variants with two or more fields are not lowered here (their construction emits an explicit gap).
+function variantLayouts(program: Program): {
+  owners: Set<string>
+  of: VariantOf
+} {
+  const owners = new Set<string>()
+  const of: VariantOf = new Map()
+  for (const s of program)
+    if (s.form === 'record-type' && s.variants.length > 0) {
+      owners.add(s.name)
+      s.variants.forEach((variant, tag) => {
+        of.set(variant.name, {
+          owner: s.name,
+          tag,
+          field: variant.fields[0],
+        })
+      })
+    }
+  return { owners, of }
 }
 
 // the plain-record (product) types of a program, indexed by name: a record-type with fields and no variants. Sum types
@@ -278,11 +312,12 @@ export function emitLlvm(input: Program): string {
 
   // plain records lower to named LLVM struct types, declared once at module scope
   const records = recordLayouts(program)
+  const variants = variantLayouts(program)
   const structDecls: Array<string> = []
   for (const [name, layout] of records)
     structDecls.push(
       `%struct.${mangle(name)} = type { ${layout.fields
-        .map(f => llty(f.type, records))
+        .map(f => llty(f.type, records, variants.owners))
         .join(', ')} }`,
     )
 
@@ -293,7 +328,9 @@ export function emitLlvm(input: Program): string {
   const functions: Array<string> = []
   for (const s of program) {
     if (s.form !== 'function' || s.generics.length > 0) continue // generic functions are removed by monomorphization
-    functions.push(emitFunction(s, internString, records, lifted, closureId))
+    functions.push(
+      emitFunction(s, internString, records, lifted, closureId, [], false, variants),
+    )
   }
   return (
     [
@@ -318,9 +355,16 @@ function emitFunction(
   closureId: { n: number } = { n: 0 },
   captures: Array<Capture> = [], // the env words a lifted closure unpacks at entry (may be empty)
   isClosure = false, // a lifted closure ALWAYS takes a leading `ptr %env`, even with no captures, for a uniform ABI
+  variants: { owners: Set<string>; of: VariantOf } = {
+    owners: new Set(),
+    of: new Map(),
+  },
 ): string {
-  // record-aware type lowering, used everywhere in this function so a record-typed value gets its `%struct.Name` type
-  const llt = (type: Type | undefined): LlvmType => llty(type, records)
+  // record/variant-aware type lowering, used everywhere so a record gets `%struct.Name` and a sum type the tagged union
+  const llt = (type: Type | undefined): LlvmType =>
+    llty(type, records, variants.owners)
+  // variant payloads bound in the current match arm: `<subjectVar>/<field>` -> the extracted value (for member reads)
+  const variantBindings = new Map<string, string>()
 
   // a list stores every element as an i64 word, so a non-integer scalar is reinterpreted to / from i64 at the boundary:
   // a float bit-casts, a pointer (string handle) converts with ptrtoint / inttoptr.
@@ -739,6 +783,27 @@ function emitFunction(
       // a plain record literal builds a first-class struct value via an `insertvalue` chain over `undef`, in the
       // record-type's declared field order (the literal's fields may be written in any order).
       case 'record': {
+        // a variant constructor (`make some / bind value, x`) builds the tagged union { tag, payload }
+        const variant = variants.of.get(node.name)
+        if (variant) {
+          let payload = '0'
+          if (variant.field) {
+            const written = node.fields.find(
+              f => f.name === variant.field!.name,
+            )
+            if (written)
+              payload = toWord(expr(written.value), variant.field.type)
+          }
+          const v0 = fresh()
+          cur.lines.push(
+            `${v0} = insertvalue ${VARIANT_TYPE} undef, i64 ${variant.tag}, 0`,
+          )
+          const v1 = fresh()
+          cur.lines.push(
+            `${v1} = insertvalue ${VARIANT_TYPE} ${v0}, i64 ${payload}, 1`,
+          )
+          return v1
+        }
         const layout = records.get(node.name)
         if (!layout) {
           cur.lines.push(unsupported('LLVM', `record ${node.name}`, ';'))
@@ -761,6 +826,13 @@ function emitFunction(
       }
       // a field read off a record is an `extractvalue` at the field's declared index
       case 'member': {
+        // inside a match arm, `subject/field` reads the variant payload bound for this arm
+        if (node.target.form === 'variable') {
+          const bound = variantBindings.get(
+            `${node.target.name}/${node.name}`,
+          )
+          if (bound !== undefined) return bound
+        }
         // `xs.length` on a list / `m.size` on a map reads the runtime count
         const read = collectionRead(node)
         if (read && read.kind === 'array') {
@@ -1013,8 +1085,61 @@ function emitFunction(
       case 'hold':
         cur.lines.push('; hold: verified at compile time')
         break
+      // a pattern match on a sum type: read the tag, branch per variant, bind the payload in each arm
+      case 'match': {
+        const subjectVar =
+          node.subject.form === 'variable'
+            ? node.subject.name
+            : undefined
+        const subject = expr(node.subject)
+        const tag = fresh()
+        cur.lines.push(
+          `${tag} = extractvalue ${VARIANT_TYPE} ${subject}, 0`,
+        )
+        const merge = freshLabel('match.end')
+        for (const arm of node.cases) {
+          const info = variants.of.get(arm.label)
+          const cmp = fresh()
+          cur.lines.push(
+            `${cmp} = icmp eq i64 ${tag}, ${info?.tag ?? -1}`,
+          )
+          const armL = freshLabel('arm')
+          const nextL = freshLabel('arm.next')
+          cur.lines.push(`br i1 ${cmp}, label %${armL}, label %${nextL}`)
+          cur.done = true
+          cur = block(armL)
+          // bind the payload so a `subject/field` read in this arm resolves to it (restored after the arm)
+          let restore: [string, string | undefined] | undefined
+          if (info?.field && subjectVar) {
+            const pay = fresh()
+            cur.lines.push(
+              `${pay} = extractvalue ${VARIANT_TYPE} ${subject}, 1`,
+            )
+            const value = fromWord(pay, info.field.type)
+            const key = `${subjectVar}/${info.field.name}`
+            restore = [key, variantBindings.get(key)]
+            variantBindings.set(key, value)
+          }
+          arm.body.forEach(s => stmt(s))
+          if (restore) {
+            if (restore[1] === undefined) variantBindings.delete(restore[0])
+            else variantBindings.set(restore[0], restore[1])
+          }
+          if (!cur.done) {
+            cur.lines.push(`br label %${merge}`)
+            cur.done = true
+          }
+          cur = block(nextL)
+        }
+        if (node.otherwise) node.otherwise.forEach(s => stmt(s))
+        if (!cur.done) {
+          cur.lines.push(`br label %${merge}`)
+          cur.done = true
+        }
+        cur = block(merge)
+        break
+      }
       case 'for-each':
-      case 'match':
       case 'throw':
       case 'break':
       case 'continue':

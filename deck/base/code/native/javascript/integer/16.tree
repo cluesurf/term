@@ -1,0 +1,5 @@
+
+load ../n
+  find integer
+
+fuse integer, 16

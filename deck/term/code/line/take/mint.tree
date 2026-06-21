@@ -1,0 +1,118 @@
+
+load @cluesurf/term/code/code/seed/mint
+  find seed
+
+mint dock-take
+  case name
+    slot name
+  case code
+    slot code
+  case like, mint dock-take-like
+    slot like
+  case list, mint dock-take-list
+    slot list
+  case need
+    slot need
+  case base, mint seed
+    slot base
+  case base-term
+    slot base-term
+  case case, mint dock-take-case
+    slot case
+  case mill, mint dock-mill
+    slot mill
+  case seed, mint dock-take-seed
+    slot seed
+  case mark, mint dock-take-mark
+    slot mark
+  hook make
+    make dock-take
+      bind name, read name
+      bind code, read code
+      bind like, read like
+      bind list, read list
+      bind need, read need
+      bind base, read base
+      bind base-term, read base-term
+      bind case, read case
+      bind mill, read mill
+      bind seed, read seed
+      bind mark, read mark
+
+mint dock-take-like
+  case name
+    slot name
+  hook make
+    make dock-take-like
+      bind name, read name
+
+mint dock-take-list
+  case name
+    slot name
+  hook make
+    make dock-take-list
+      bind name, read name
+
+mint dock-take-case
+  case name
+    slot name
+  hook make
+    make dock-take-case
+      bind name, read name
+
+mint dock-take-seed
+  case env, mint dock-take-seed-env
+    slot env
+  case call, mint dock-take-seed-call
+    slot call
+
+mint dock-take-seed-env
+  case name
+    slot name
+  hook make
+    make dock-take-seed-env
+      bind name, read name
+
+mint dock-take-seed-call
+  case call, mint dock-take-seed-call-bind
+    slot call
+  hook make
+    make dock-take-seed-call
+      bind call, read call
+
+mint dock-take-seed-call-bind
+  case name
+    slot name
+  hook make
+    make dock-take-seed-call-bind
+      bind name, read name
+
+mint dock-take-mark
+  case private, mint dock-take-mark-private
+    slot private
+  case deprecated, mint dock-take-mark-deprecated
+    slot deprecated
+  case experimental, mint dock-take-mark-experimental
+    slot experimental
+
+mint dock-take-mark-private
+  hook make
+    make dock-take-mark-private
+
+mint dock-take-mark-deprecated
+  case call, mint dock-take-mark-deprecated-call
+    slot call
+  hook make
+    make dock-take-mark-deprecated
+      bind call, read call
+
+mint dock-take-mark-deprecated-call
+  case name
+    slot name
+  hook make
+    make dock-take-mark-deprecated-call
+      bind name, read name
+
+mint dock-take-mark-experimental
+  hook make
+    make dock-take-mark-experimental

@@ -88,7 +88,7 @@ function main(): void {
   hold
     call is-minimum
       loan n
-      mark 0
+      code 0
 `,
   )
 
@@ -100,7 +100,7 @@ function main(): void {
   hold
     call is-above
       loan n
-      mark 0
+      code 0
 `,
   )
 
@@ -113,8 +113,8 @@ function main(): void {
     call is-above
       call add
         loan n
-        mark 1
-      mark 0
+        code 1
+      code 0
 `,
   )
 
@@ -125,8 +125,8 @@ function main(): void {
   take n
   hold
     call is-minimum
-      mark 0
-      mark 1
+      code 0
+      code 1
 `,
   )
 
@@ -139,12 +139,12 @@ function main(): void {
     hook test
       call is-minimum
         loan n
-        mark 5
+        code 5
     hook hold
       hold
         call is-minimum
           loan n
-          mark 0
+          code 0
 `,
   )
 
@@ -157,17 +157,17 @@ function main(): void {
     hook test
       call is-minimum
         loan n
-        mark 5
+        code 5
     hook hold
       hold
         call is-minimum
           loan n
-          mark 0
+          code 0
     hook miss
       hold
         call is-below
           loan n
-          mark 5
+          code 5
 `,
   )
 
@@ -179,11 +179,11 @@ function main(): void {
   host m
     call add
       loan n
-      mark 1
+      code 1
   hold
     call is-minimum
       loan m
-      mark 1
+      code 1
 `,
   )
 
@@ -195,11 +195,11 @@ function main(): void {
   save m
     call add
       loan n
-      mark 1
+      code 1
   hold
     call is-minimum
       loan m
-      mark 1
+      code 1
 `,
   )
 
@@ -212,8 +212,8 @@ function main(): void {
     call is-below
       call modulo
         loan n
-        mark 3
-      mark 3
+        code 3
+      code 3
 `,
   )
 
@@ -226,8 +226,8 @@ function main(): void {
     call is-minimum
       call modulo
         loan n
-        mark 3
-      mark 0
+        code 3
+      code 0
 `,
   )
 
@@ -283,7 +283,7 @@ task check-it
       call multiply
         loan n
         loan n
-      mark 0
+      code 0
 `,
     'unchecked-hold',
   )

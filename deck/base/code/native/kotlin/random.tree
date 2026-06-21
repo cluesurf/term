@@ -1,0 +1,18 @@
+# kotlin random implementation. Forwards to the linked random runtime shim. Internal: reached only through the public random API.
+
+dock load
+  load <global:random>, name random
+
+task random-number
+  like number
+  send back
+    call random/number
+
+task random-integer
+  take low, like number
+  take high, like number
+  like number
+  send back
+    call random/integer
+      read low
+      read high

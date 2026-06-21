@@ -1,0 +1,196 @@
+# Math: the clean uniform interface. Each operation with a host equivalent is a declarative `bind`: one name, the native expression per backend, emitted inline at the call site (no per-env shim, no runtime library). Operations with no host primitive (clamp, gcd, factorial) compose from the interface. `number` is the platform integer (i64 / Int / Long), so floor / ceil / round are the identity.
+
+bind abs
+  take value, like number
+  like number
+  case node
+    text <Math.abs($value)>
+  case rust
+    text <($value as i64).abs()>
+  case swift
+    text <Swift.abs($value)>
+  case kotlin
+    text <kotlin.math.abs($value)>
+
+bind min
+  take a, like number
+  take b, like number
+  like number
+  case node
+    text <Math.min($a, $b)>
+  case rust
+    text <($a as i64).min($b as i64)>
+  case swift
+    text <Swift.min($a, $b)>
+  case kotlin
+    text <minOf($a, $b)>
+
+bind max
+  take a, like number
+  take b, like number
+  like number
+  case node
+    text <Math.max($a, $b)>
+  case rust
+    text <($a as i64).max($b as i64)>
+  case swift
+    text <Swift.max($a, $b)>
+  case kotlin
+    text <maxOf($a, $b)>
+
+bind pow
+  take base, like number
+  take exponent, like number
+  like number
+  case node
+    text <Math.pow($base, $exponent)>
+  case rust
+    text <($base as i64).pow($exponent as u32)>
+  case swift
+    text <Int(Foundation.pow(Double($base), Double($exponent)))>
+    load <Foundation>
+  case kotlin
+    text <Math.pow($base.toDouble(), $exponent.toDouble()).toLong()>
+
+bind signum
+  take value, like number
+  like number
+  case node
+    text <Math.sign($value)>
+  case rust
+    text <($value as i64).signum()>
+  case swift
+    text <$value.signum()>
+  case kotlin
+    text <$value.compareTo(0L).toLong()>
+
+bind sqrt
+  take value, like number
+  like number
+  case node
+    text <Math.sqrt($value)>
+  case rust
+    text <(($value as f64).sqrt() as i64)>
+  case swift
+    text <Int(Double($value).squareRoot())>
+  case kotlin
+    text <Math.sqrt($value.toDouble()).toLong()>
+
+task absolute
+  take value, like number
+  like number
+  send back
+    call abs
+      read value
+
+task minimum
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call min
+      read a
+      read b
+
+task maximum
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call max
+      read a
+      read b
+
+task power
+  take base, like number
+  take exponent, like number
+  like number
+  send back
+    call pow
+      read base
+      read exponent
+
+task sign
+  take value, like number
+  like number
+  send back
+    call signum
+      read value
+
+task square-root
+  take value, like number
+  like number
+  send back
+    call sqrt
+      read value
+
+task round-down
+  take value, like number
+  like number
+  send back
+    read value
+
+task round-up
+  take value, like number
+  like number
+  send back
+    read value
+
+task round
+  take value, like number
+  like number
+  send back
+    read value
+
+task clamp
+  take value, like number
+  take low, like number
+  take high, like number
+  like number
+  send back
+    call minimum
+      call maximum
+        read value
+        read low
+      read high
+
+task greatest-common-divisor
+  take a, like number
+  take b, like number
+  like number
+  save x, read a
+  save y, read b
+  walk test
+    hook test
+      call is-above
+        read y
+        code 0
+    hook step
+      save temp, read y
+      save y
+        call modulo
+          read x
+          read y
+      save x, read temp
+  send back, read x
+
+task factorial
+  take n, like number
+  like number
+  save result, code 1
+  save count, code 1
+  walk test
+    hook test
+      call is-maximum
+        read count
+        read n
+    hook step
+      save result
+        call multiply
+          read result
+          read count
+      save count
+        call add
+          read count
+          code 1
+  send back, read result

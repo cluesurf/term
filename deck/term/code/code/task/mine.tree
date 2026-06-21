@@ -1,0 +1,62 @@
+
+load @cluesurf/term/code/code/head/mine
+  find head
+
+load @cluesurf/term/code/code/take/mine
+  find take
+
+load @cluesurf/term/code/code/like/mine
+  find like
+
+load @cluesurf/term/code/code/tool/flow/mine
+  find flow
+
+load @cluesurf/term/code/code/fold/mine
+  find fold
+
+load @cluesurf/term/code/code/note/mine
+  find note
+
+load @cluesurf/term/code/code/tag/mine
+  find tag
+
+load ./risk/mine
+  find risk
+
+mine task
+  mine term, term task
+    mine term
+      slot name
+    mine list
+      mine form, like head
+        slot head
+    mine list
+      mine form, like take
+        slot take
+    mine list
+      mine form, like flow
+        slot flow
+    mine list
+      mine form, like task
+        slot task
+    mine maybe
+      mine form, like like
+        slot like
+    mine maybe
+      mine form, like wait
+        slot wait
+    mine maybe
+      mine form, like risk
+        slot risk
+    mine maybe
+      mine form, like hide
+        slot hide
+    mine maybe
+      mine form, like fold
+        slot fold
+    mine maybe
+      mine form, like note
+        slot note
+    mine list
+      mine form, like tag
+        slot tag
