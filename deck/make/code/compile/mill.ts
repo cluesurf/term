@@ -455,7 +455,75 @@ export function mill(tree: RootNode, file: string): MillResult {
     }
   }
 
+  // `link` CHAINING: a value expression may carry `link <fn>` children, each piping the running value in as the first
+  // argument of <fn> (with any extra `bind`/positional args following). `call f, x / link g / link h` reads top-down as
+  // h(g(f(x))), flattening nested calls. The links are stripped before the base is built, then folded back on in order.
   function groupExpression(
+    group: GroupNode,
+    scope: Set<string>,
+  ): Expression {
+    // chain `link`s follow the base's primary argument, so they never sit at rest[0]. Skipping rest[0] leaves a `link`
+    // CONSTRUCTOR (`make link ...`, where `link` names a variant) alone, since there it is the head argument, not a pipe.
+    const links = rest(group)
+      .slice(1)
+      .filter(
+        (n): n is GroupNode =>
+          n.kind === 'group' && headName(n) === 'link',
+      )
+
+    if (links.length === 0) {return groupExpressionCore(group, scope)}
+
+    const baseGroup: GroupNode = {
+      ...group,
+      nodes: group.nodes.filter(n => !links.includes(n as GroupNode)),
+    }
+
+    let value = groupExpressionCore(baseGroup, scope)
+
+    for (const linkGroup of links)
+      {value = applyLink(value, linkGroup, scope)}
+
+    return value
+  }
+
+  // fold one `link <fn>[, extra...]` onto the running value: fn(value, ...extra). Extra args are positional, or the
+  // values of any `bind <name>, <value>` children (the name is documentation; the call itself is positional).
+  function applyLink(
+    value: Expression,
+    linkGroup: GroupNode,
+    scope: Set<string>,
+  ): Expression {
+    const parts = rest(linkGroup)
+    const fnNode = parts[0]
+    const fnName =
+      fnNode?.kind === 'group' ? headName(fnNode) : ''
+    const span = spanOf(linkGroup)
+
+    const extra = parts.slice(1).map(part => {
+      if (part.kind === 'group' && headName(part) === 'bind') {
+        const bound = rest(part)[1]
+
+        return bound
+          ? toExpression(bound, scope)
+          : ({ form: 'unit', span: spanOf(part) } as Expression)
+      }
+
+      return toExpression(part, scope)
+    })
+
+    return {
+      form: 'call',
+      callee: {
+        form: 'variable',
+        name: fnName,
+        span: fnNode ? spanOf(fnNode) : span,
+      },
+      args: [value, ...extra],
+      span,
+    }
+  }
+
+  function groupExpressionCore(
     group: GroupNode,
     scope: Set<string>,
   ): Expression {
@@ -3324,12 +3392,15 @@ export function mill(tree: RootNode, file: string): MillResult {
         for (const child of rest(group)) {
           if (child.kind !== 'group' || headName(child) !== 'find') {continue}
 
-          const parts = rest(child).filter(p => p.kind === 'group')
+          const parts = rest(child).filter(
+            (p): p is GroupNode => p.kind === 'group',
+          )
           const target = parts[0] ? headName(parts[0]) : undefined
           const nameGroup = parts.find(p => headName(p) === 'name')
+          const aliasNode = nameGroup ? rest(nameGroup)[0] : undefined
           const local =
-            nameGroup && rest(nameGroup)[0]?.kind === 'group'
-              ? headName(rest(nameGroup)[0])
+            aliasNode && aliasNode.kind === 'group'
+              ? headName(aliasNode)
               : undefined
 
           if (target && local && local !== target) {aliases.set(local, target)}
@@ -3344,10 +3415,10 @@ export function mill(tree: RootNode, file: string): MillResult {
 
   if (diagnostics.length) {return { ok: false, diagnostics }}
 
-  // apply import aliases. A reference is either a `variable` expression (covers reads, calls, and `make` constructors,
-  // which all lower to a variable callee) or a `named` type. Definitions are `function`/form nodes, not `variable`, and
-  // the alias name is imported (never defined here), so every match is a genuine reference. String literals and member
-  // field names are plain strings, never visited as nodes, so they are untouched.
+  // apply import aliases. A reference is a `variable` expression (reads and calls), a `record` construction (`make X`),
+  // or a `named` type. Definitions are `function`/`record-type` nodes whose name is not a `variable`/`record`/`named`
+  // field, and the alias name is imported (never defined here), so every match is a genuine reference. String literals
+  // and a record's own field names are plain strings, never visited as `name` here, so they are untouched.
   if (aliases.size) {
     const rewriteName = (name: string): string => aliases.get(name) ?? name
 
@@ -3361,7 +3432,10 @@ export function mill(tree: RootNode, file: string): MillResult {
 
       const record = node as Record<string, unknown>
 
-      if (record.form === 'variable' && typeof record.name === 'string') {
+      if (
+        (record.form === 'variable' || record.form === 'record') &&
+        typeof record.name === 'string'
+      ) {
         record.name = rewriteName(record.name)
       } else if (record.kind === 'named' && typeof record.name === 'string') {
         record.name = rewriteName(record.name)

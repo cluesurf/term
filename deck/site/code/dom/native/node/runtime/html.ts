@@ -144,6 +144,22 @@ function importMapScript(): string {
   return importMapTag
 }
 
+// dev live-reload: a tiny inline poller that watches `/base/__id` (bumped by the server on every style rebuild) and
+// reloads the page when it changes -- so an edit shows in the browser with no manual refresh. Dev only (off in prod).
+const DEV = process.env.NODE_ENV !== 'production'
+
+function devReloadScript(): string {
+  if (!DEV) {
+    return ''
+  }
+
+  return (
+    '<script>(function(){var id;function p(){fetch("/base/__id",{cache:"no-store"})' +
+    '.then(function(r){return r.text()}).then(function(t){if(id===undefined){id=t}' +
+    'else if(t!==id){location.reload()}}).catch(function(){})}setInterval(p,500)})()</script>'
+  )
+}
+
 function elementOf(node: { handle?: Element } | Element): Element {
   return ('handle' in node && node.handle ? node.handle : node) as Element
 }
@@ -254,6 +270,7 @@ function documentShell(body: string, fallbackTitle = 'ClueSurf'): string {
       `<link rel="stylesheet" href="${styleHref}">` +
       importMap +
       `<script type="module" src="${scriptSrc}"></script>` +
+      devReloadScript() +
       '</head><body>' +
       body +
       '</body></html>'
@@ -277,6 +294,7 @@ function documentShell(body: string, fallbackTitle = 'ClueSurf'): string {
     `    <link rel="stylesheet" href="${styleHref}">`,
     ...(importMap ? [`    ${importMap}`] : []),
     `    <script type="module" src="${scriptSrc}"></script>`,
+    ...(DEV ? [`    ${devReloadScript()}`] : []),
     '  </head>',
     '  <body>',
     indentedBody,

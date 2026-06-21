@@ -1,4 +1,4 @@
-note <Tests for rune ASCII predicates: digit, letter, upper, lower, whitespace, addressed by code point.>
+note <Tests for rune predicates: ASCII (pure) plus full Unicode (native-powered) letter / number / case predicates and case mapping, addressed by code point.>
 
 load @cluesurf/base/code/rune
   find rune
@@ -8,6 +8,11 @@ load @cluesurf/base/code/rune
   find is-ascii-upper
   find is-ascii-lower
   find is-ascii-whitespace
+  find is-letter
+  find is-number
+  find is-uppercase
+  find to-uppercase
+  find to-lowercase
 
 test <the digit five is an ascii digit>
   want hold
@@ -50,3 +55,41 @@ test <a letter is not whitespace>
     call is-ascii-whitespace
       call make-rune
         mark 65
+
+test <accented e is a Unicode letter>
+  want hold
+    call is-letter
+      call make-rune
+        mark 233
+
+test <accented e is not a number>
+  want miss
+    call is-number
+      call make-rune
+        mark 233
+
+test <uppercase A is uppercase>
+  want hold
+    call is-uppercase
+      call make-rune
+        mark 65
+
+test <to-uppercase of a maps to A>
+  save up
+    call to-uppercase
+      call make-rune
+        mark 97
+  want hold
+    call is-equal
+      read up/code
+      mark 65
+
+test <to-lowercase of A maps to a>
+  save down
+    call to-lowercase
+      call make-rune
+        mark 65
+  want hold
+    call is-equal
+      read down/code
+      mark 97

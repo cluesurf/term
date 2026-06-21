@@ -282,11 +282,12 @@ task listen-pop
                   read place/host
             hook hold
               call event/prevent-default
+              # pass the href string straight through. Wrapping it in `make some` made pushState receive the maybe
+              # record, which stringified to "[object Object]" in the URL bar -- the nav bug.
               call past/push-state
                 text <>
                 text <>
-                make some
-                  bind value, read href
+                read href
               call go
   call page/add-event-listener
     text <click>

@@ -290,8 +290,13 @@ export function elaborateReport(
   const dataSignature: { name: string; type: Term }[] = []
   const recordFields = new Map<string, string[]>() // record name -> field names in declaration order
   const variantNames = new Map<string, string[]>() // enum name -> variant names in declaration order
-  const variantToEnum = new Map<string, string>() // variant name -> its enum
-  // variant name -> its fields (surface name + kernel type term), for binding them in a match branch
+  // a variant's SURFACE name -> every enum that declares it. Constructors are namespaced internally as `enum__variant`,
+  // so one surface name (e.g. `minus` on both `pole` and `spin`) lives in two enums without clashing. A use site picks
+  // the owning enum from the expected type, or from the unique owner when only one enum has it. See the `record` case.
+  const variantToEnum = new Map<string, string[]>()
+  const ctorKey = (enumName: string, variant: string): string =>
+    `${enumName}__${variant}`
+  // internal `enum__variant` key -> its fields (surface name + kernel type term), for binding them in a match branch
   const variantFieldInfo = new Map<
     string,
     { name: string; type: Term }[]
@@ -318,15 +323,17 @@ export function elaborateReport(
         )
 
         dataSignature.push({
-          name: variant.name,
+          name: ctorKey(statement.name, variant.name),
           type: fieldTypes.reduceRight<Term>(
             (codomain, domain) => arrow(domain, codomain),
             self,
           ),
         })
-        variantToEnum.set(variant.name, statement.name)
+        const owners = variantToEnum.get(variant.name) ?? []
+        owners.push(statement.name)
+        variantToEnum.set(variant.name, owners)
         variantFieldInfo.set(
-          variant.name,
+          ctorKey(statement.name, variant.name),
           variant.fields.map((f, fi) => ({
             name: f.name,
             type: fieldTypes[fi]!,
@@ -376,7 +383,10 @@ export function elaborateReport(
       let body: Term = apply(variable(n), variable(n + 1)) // P x
 
       for (let i = n - 1; i >= 0; i--)
-        {body = arrow(apply(variable(i), constant(variants[i]!)), body)} // P v_i -> ..
+        {body = arrow(
+          apply(variable(i), constant(ctorKey(statement.name, variants[i]!))),
+          body,
+        )} // P v_i -> ..
 
       body = arrow(arrow(self, TYPE0), body) // (P : e -> Type0) -> ..
       enumEncodings.push({
@@ -399,7 +409,7 @@ export function elaborateReport(
           {cbody = apply(cbody, variable(n + k - j))} // f_0 .. f_{k-1}
 
         enumDefs.push({
-          name: variant.name,
+          name: ctorKey(statement.name, variant.name),
           term: lambdas(k + 1 + n, cbody),
         })
       })
@@ -538,6 +548,9 @@ export function elaborateReport(
     node: Expression,
     scope: Scope,
     context: Context,
+    // the type this expression is checked against, when known. Used to resolve an OVERLOADED constructor (a surface
+    // name shared by two enums) to the enum the position expects. Absent for pure synthesis positions.
+    expected?: Value,
   ): Term | null {
     switch (node.form) {
       case 'integer':
@@ -570,28 +583,50 @@ export function elaborateReport(
       }
 
       case 'binary': {
-        const left = expr(node.left, scope, context)
-        const right = expr(node.right, scope, context)
-
-        if (!left || !right) {return null}
-
         if (node.op === '==' || node.op === '!=') {
-          // polymorphic equality: synthesize the operand type from the kernel and pass it as the erased witness
-          let witness: Term
+          // polymorphic equality. Elaborate one operand, synthesize its type, then elaborate the OTHER operand against
+          // that type so an overloaded constructor (a surface name shared by two enums) resolves to the operand's enum.
+          // Prefer whichever side elaborates without a guiding type (the concrete one), then guide the other.
+          let left = expr(node.left, scope, context)
+          let right: Term | null
+          let operandType: Value
 
-          try {
-            witness = quote(context.level, infer(context, left).type)
-          } catch {
-            return null
+          if (left) {
+            try {
+              operandType = infer(context, left).type
+            } catch {
+              return null
+            }
+
+            right = expr(node.right, scope, context, operandType)
+          } else {
+            right = expr(node.right, scope, context)
+
+            if (!right) {return null}
+
+            try {
+              operandType = infer(context, right).type
+            } catch {
+              return null
+            }
+
+            left = expr(node.left, scope, context, operandType)
           }
+
+          if (!left || !right) {return null}
 
           return apply(
             constant(node.op === '==' ? 'equal' : 'notequal'),
-            witness,
+            quote(context.level, operandType),
             left,
             right,
           )
         }
+
+        const left = expr(node.left, scope, context)
+        const right = expr(node.right, scope, context)
+
+        if (!left || !right) {return null}
 
         const op = OPERATOR[node.op]
 
@@ -614,15 +649,35 @@ export function elaborateReport(
           () => freshMeta(TYPE0_VALUE),
         )
 
+        // peel the function's value-parameter types (skipping the erased generic binders) so an overloaded-constructor
+        // argument can resolve against the parameter it fills. Only a CLOSED `const` parameter type is a usable guide;
+        // a dependent one is left unguided (the arg falls back to its unique owner, or declines).
+        const paramDomains: (Term | undefined)[] = []
+        let pt: Term | undefined = functionType.get(node.callee.name)
+
+        while (pt && pt.tag === 'pi') {
+          if (pt.mult !== 0)
+            {paramDomains.push(pt.domain.tag === 'const' ? pt.domain : undefined)}
+
+          pt = pt.codomain
+        }
+
         const args: Term[] = []
 
-        for (const argument of node.args) {
-          const term = expr(argument, scope, context)
+        node.args.forEach((argument, i) => {
+          const domain = paramDomains[i]
+          const term = expr(
+            argument,
+            scope,
+            context,
+            domain ? evaluate([], domain) : undefined,
+          )
 
-          if (!term) {return null}
+          if (!term) {args.push(null as unknown as Term)}
+          else {args.push(term)}
+        })
 
-          args.push(term)
-        }
+        if (args.some(a => a === null)) {return null}
 
         return apply(
           constant(node.callee.name),
@@ -659,17 +714,61 @@ export function elaborateReport(
       case 'record': {
         // a variant constructor (fieldless or applied), or a struct construction via make__r
         if (variantToEnum.has(node.name)) {
+          const owners = variantToEnum.get(node.name)!
+
+          // pick the owning enum: the unique declarer, or the one the expected type names when the surface name is
+          // shared (an overloaded constructor like `minus` on both `pole` and `spin`). The expected type is matched by
+          // convertibility, not by name, because an enum is transparently equal to its self-encoding (so it does not
+          // always quote back to a bare `const`).
+          let enumName: string | undefined
+
+          if (owners.length === 1) {
+            enumName = owners[0]
+          } else if (expected) {
+            const want = quote(context.level, expected)
+
+            if (want.tag === 'const' && owners.includes(want.name)) {
+              enumName = want.name
+            } else {
+              for (const owner of owners) {
+                if (
+                  convertibleModulo(
+                    context.level,
+                    expected,
+                    evaluate([], constant(owner)),
+                    [],
+                  )
+                ) {
+                  enumName = owner
+                  break
+                }
+              }
+            }
+          }
+
+          // an overloaded constructor with no guiding type is ambiguous here: decline so the surface checker reports it
+          if (!enumName) {return null}
+
+          const declared =
+            variantFieldInfo.get(ctorKey(enumName, node.name)) ?? []
           const fieldValues: Term[] = []
 
           for (const field of node.fields) {
-            const value = expr(field.value, scope, context)
+            // give a nested constructor its expected type, so an overloaded one resolves against this field's type
+            const fieldType = declared.find(d => d.name === field.name)?.type
+            const value = expr(
+              field.value,
+              scope,
+              context,
+              fieldType ? evaluate([], fieldType) : undefined,
+            )
 
             if (!value) {return null}
 
             fieldValues.push(value)
           }
 
-          return apply(constant(node.name), ...fieldValues)
+          return apply(constant(ctorKey(enumName, node.name)), ...fieldValues)
         }
 
         const order = recordFields.get(node.name)
@@ -760,7 +859,7 @@ export function elaborateReport(
             ? constant('unitValue')
             : null}
 
-        return expr(head.value, scope, context)
+        return expr(head.value, scope, context, resultValue)
       }
 
       case 'let': {
@@ -876,7 +975,7 @@ export function elaborateReport(
 
           // bind the variant's fields: each branch is a lambda over its fields (the eliminator passes them in), with
           // the fields in scope in the branch body. `succ p`'s branch becomes `\p. <body using p>`.
-          const fieldInfo = variantFieldInfo.get(variant) ?? []
+          const fieldInfo = variantFieldInfo.get(ctorKey(enumName!, variant)) ?? []
           let branchScope = scope
           let branchContext = context
 
@@ -1640,7 +1739,7 @@ export function elaborateReport(
     )
     // branch_i : (its fields) -> separator_i ; ignores the fields, returns the i-th separator
     const branches = order.map((variant, i) => {
-      const fieldCount = (variantFieldInfo.get(variant) ?? []).length
+      const fieldCount = (variantFieldInfo.get(ctorKey(enumName, variant)) ?? []).length
 
       return lambdas(fieldCount + n, variable(n - 1 - i))
     })
@@ -1664,6 +1763,39 @@ export function elaborateReport(
         {return i}}
 
     return null
+  }
+
+  // elaborate the two sides of an equality goal, letting each side guide the other's overloaded constructors: the
+  // concrete side is elaborated first, its type synthesized, and the other side elaborated against it. Used wherever a
+  // goal `L == R` is re-elaborated (the induction case splits, the equational tactics), so a shared constructor name
+  // (e.g. `pair` on both `line` and `way`) resolves to the goal's type.
+  function elaborateGoalSides(
+    leftNode: Expression,
+    rightNode: Expression,
+    scope: Scope,
+    ctx: Context,
+  ): [Term | null, Term | null] {
+    const guide = (term: Term): Value | undefined => {
+      try {
+        return infer(ctx, term).type
+      } catch {
+        return undefined
+      }
+    }
+
+    let left = expr(leftNode, scope, ctx)
+
+    if (left) {
+      return [left, expr(rightNode, scope, ctx, guide(left))]
+    }
+
+    const right = expr(rightNode, scope, ctx)
+
+    if (!right) {return [null, null]}
+
+    left = expr(leftNode, scope, ctx, guide(right))
+
+    return [left, right]
   }
 
   // is an equation hypothesis ABSURD, i.e. does it equate two DISTINCT constructors of the same enum? Constructors are
@@ -1841,7 +1973,7 @@ export function elaborateReport(
       // becomes `succ q`) reflects the split. Try to close the case; if it does not reduce and budget remains, pick an
       // inductive-typed field still standing for a neutral, split it into its own constructors, and recurse on each.
       // Bounded case analysis on sub-terms (what a function matching a field needs); sound because every leaf is a case.
-      type Recipe = { variant: string; fieldLevels: number[] }
+      type Recipe = { variant: string; enumName: string; fieldLevels: number[] }
 
       const buildSplitEnv = (
         ctx: Context,
@@ -1855,7 +1987,7 @@ export function elaborateReport(
           env[ctx.level - lvl - 1] = evaluate(
             env,
             apply(
-              constant(recipe.variant),
+              constant(ctorKey(recipe.enumName, recipe.variant)),
               ...recipe.fieldLevels.map(fl =>
                 variable(ctx.level - fl - 1),
               ),
@@ -1875,8 +2007,12 @@ export function elaborateReport(
         generalIH: { binderCount: number; lhs: Term; rhs: Term; holes: Set<number> }[] = [],
         ihLevel = -1,
       ): boolean => {
-        const lt = expr(goal.left, scope, ctx)
-        const rt = expr(goal.right, scope, ctx)
+        const [lt, rt] = elaborateGoalSides(
+          goal.left,
+          goal.right,
+          scope,
+          ctx,
+        )
 
         if (!lt || !rt) {return false}
 
@@ -1911,7 +2047,8 @@ export function elaborateReport(
           let allClosed = true
 
           for (const targetVariant of targetVariants) {
-            const subFields = variantFieldInfo.get(targetVariant) ?? []
+            const subFields =
+              variantFieldInfo.get(ctorKey(target.enumName, targetVariant)) ?? []
             let inner2 = ctx
             const subLevels: number[] = []
 
@@ -1923,6 +2060,7 @@ export function elaborateReport(
             const subst2 = new Map(subst)
             subst2.set(target.level, {
               variant: targetVariant,
+              enumName: target.enumName,
               fieldLevels: subLevels,
             })
 
@@ -1962,7 +2100,7 @@ export function elaborateReport(
       }
 
       for (const variant of variants) {
-        const fields = variantFieldInfo.get(variant) ?? []
+        const fields = variantFieldInfo.get(ctorKey(typeTerm.name, variant)) ?? []
         const k = fields.length
 
         // extend the context with one fresh free variable per field of this constructor
@@ -1975,14 +2113,18 @@ export function elaborateReport(
         const consValue = evaluate(
           inner.env,
           apply(
-            constant(variant),
+            constant(ctorKey(typeTerm.name, variant)),
             ...fields.map((_, j) => variable(k - 1 - j)),
           ),
         )
 
         // re-elaborate the goal in the extended context: the induction variable is now at index `index + k`
-        const leftTerm = expr(goal.left, scope, inner)
-        const rightTerm = expr(goal.right, scope, inner)
+        const [leftTerm, rightTerm] = elaborateGoalSides(
+          goal.left,
+          goal.right,
+          scope,
+          inner,
+        )
 
         if (!leftTerm || !rightTerm) {return false}
 
@@ -2090,6 +2232,7 @@ export function elaborateReport(
                 varLevel,
                 {
                   variant,
+                  enumName: typeTerm.name,
                   fieldLevels: fields.map((_, j) => context.level + j),
                 },
               ],
@@ -2162,7 +2305,7 @@ export function elaborateReport(
 
         for (const choice of chosen) {
           const consTerm = apply(
-            constant(choice.variant),
+            constant(ctorKey(choice.enumName, choice.variant)),
             ...choice.fields.map((_, j) =>
               variable(ctx.level - choice.fieldLevels[j]! - 1),
             ),
@@ -2173,8 +2316,12 @@ export function elaborateReport(
           )
         }
 
-        const leftTerm = expr(goal.left, scope, ctx)
-        const rightTerm = expr(goal.right, scope, ctx)
+        const [leftTerm, rightTerm] = elaborateGoalSides(
+          goal.left,
+          goal.right,
+          scope,
+          ctx,
+        )
 
         if (!leftTerm || !rightTerm) {return false}
 
@@ -2240,7 +2387,7 @@ export function elaborateReport(
         const info = infos[i]!
 
         for (const variant of info.variants) {
-          const fields = variantFieldInfo.get(variant) ?? []
+          const fields = variantFieldInfo.get(ctorKey(info.enumName, variant)) ?? []
           let inner = ctx
           const fieldLevels: number[] = []
 
@@ -2283,8 +2430,12 @@ export function elaborateReport(
     if (!name || goal.form !== 'binary') {return}
 
     try {
-      const left = expr(goal.left, scope, context)
-      const right = expr(goal.right, scope, context)
+      const [left, right] = elaborateGoalSides(
+        goal.left,
+        goal.right,
+        scope,
+        context,
+      )
 
       if (!left || !right) {return}
 
@@ -2316,8 +2467,12 @@ export function elaborateReport(
     if (!lemma || lemma.binderCount !== 1) {return false}
 
     try {
-      const left = expr(goal.left, scope, context)
-      const right = expr(goal.right, scope, context)
+      const [left, right] = elaborateGoalSides(
+        goal.left,
+        goal.right,
+        scope,
+        context,
+      )
 
       if (!left || !right) {return false}
 
@@ -2384,8 +2539,9 @@ export function elaborateReport(
           if (equationAbsurd(context, leftTerm, lv, rv)) {
             discharged.push(statement.span)
           } else {
-            errors.push(
-              error('invalid-proof', {
+            diagnostics.push(
+              diagnose('invalid-proof', {
+                file,
                 span: statement.span,
                 message:
                   'calm miss needs the two sides to compute to distinct constructors',
@@ -2514,8 +2670,12 @@ export function elaborateReport(
     // proof (`calm`/`cite`/...) is still validated by the kernel, so a bogus tactic is caught.
     if (!hasProof && isLinearGoal(goal)) {return}
 
-    const left = expr(goal.left, scope, context)
-    const right = expr(goal.right, scope, context)
+    const [left, right] = elaborateGoalSides(
+      goal.left,
+      goal.right,
+      scope,
+      context,
+    )
 
     if (!left || !right) {return}
 

@@ -1,0 +1,55 @@
+# rust rune (Unicode code point) predicates and case mapping as declarative bindings over the standard char tables. Each inlines to a direct call at the use site, no hand-written native file. `$code` is the code point. Internal: reached only through the public rune API.
+
+bind do-is-letter
+  take code, like number
+  like boolean
+  case rust
+    text <char::from_u32($code as u32).map_or(false, |c| c.is_alphabetic())>
+
+bind do-is-number
+  take code, like number
+  like boolean
+  case rust
+    text <char::from_u32($code as u32).map_or(false, |c| c.is_numeric())>
+
+bind do-is-whitespace
+  take code, like number
+  like boolean
+  case rust
+    text <char::from_u32($code as u32).map_or(false, |c| c.is_whitespace())>
+
+bind do-is-uppercase
+  take code, like number
+  like boolean
+  case rust
+    text <char::from_u32($code as u32).map_or(false, |c| c.is_uppercase())>
+
+bind do-is-lowercase
+  take code, like number
+  like boolean
+  case rust
+    text <char::from_u32($code as u32).map_or(false, |c| c.is_lowercase())>
+
+bind do-is-alphanumeric
+  take code, like number
+  like boolean
+  case rust
+    text <char::from_u32($code as u32).map_or(false, |c| c.is_alphanumeric())>
+
+bind do-is-control
+  take code, like number
+  like boolean
+  case rust
+    text <char::from_u32($code as u32).map_or(false, |c| c.is_control())>
+
+bind do-to-uppercase
+  take code, like number
+  like number
+  case rust
+    text <char::from_u32($code as u32).and_then(|c| c.to_uppercase().next()).map_or($code, |c| c as i64)>
+
+bind do-to-lowercase
+  take code, like number
+  like number
+  case rust
+    text <char::from_u32($code as u32).and_then(|c| c.to_lowercase().next()).map_or($code, |c| c as i64)>

@@ -1,0 +1,43 @@
+
+# Viewport hook — the Seed port of @cluesurf/face's `use-viewport`. A signal holding the window width, seeded from the
+# current width and kept in sync by a resize listener (the listener detaches via on-cleanup when the owning scope is
+# disposed -- the Solid analogue of useViewport's effect cleanup). Window access is env-abstracted (native/viewport),
+# so the SSR render reads 0 and registers no listener, then the client takes over. `use-viewport-layout` derives the
+# responsive 3-section style table from this signal.
+
+load ./native/viewport
+  find current-width
+  find listen-resize
+load @cluesurf/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+  find on-cleanup
+
+# create a viewport-width signal that tracks the window
+task make-viewport
+  like signal
+  save self
+    call make-signal
+      bind value
+        call current-width
+  # update on every resize; detach on scope dispose
+  save drop
+    call listen-resize
+      task on-resize
+        call write-signal
+          bind self, read self
+          bind value
+            call current-width
+  call on-cleanup
+    read drop
+  send back, read self
+
+# the current viewport width (a reactive read -- subscribes the calling effect)
+task viewport-width
+  take self, like signal
+  like number
+  send back
+    call read-signal
+      bind self, read self

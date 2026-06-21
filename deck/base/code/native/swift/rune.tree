@@ -1,0 +1,55 @@
+# swift rune (Unicode code point) predicates and case mapping as declarative bindings over Character / Unicode.Scalar. Each inlines to a direct call at the use site, no hand-written native file. `$code` is the code point. Internal: reached only through the public rune API.
+
+bind do-is-letter
+  take code, like number
+  like boolean
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).map { Character($0).isLetter } ?? false)>
+
+bind do-is-number
+  take code, like number
+  like boolean
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).map { Character($0).isNumber } ?? false)>
+
+bind do-is-whitespace
+  take code, like number
+  like boolean
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).map { Character($0).isWhitespace } ?? false)>
+
+bind do-is-uppercase
+  take code, like number
+  like boolean
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).map { Character($0).isUppercase } ?? false)>
+
+bind do-is-lowercase
+  take code, like number
+  like boolean
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).map { Character($0).isLowercase } ?? false)>
+
+bind do-is-alphanumeric
+  take code, like number
+  like boolean
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).map { Character($0).isLetter || Character($0).isNumber } ?? false)>
+
+bind do-is-control
+  take code, like number
+  like boolean
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).map { $0.properties.generalCategory == .control } ?? false)>
+
+bind do-to-uppercase
+  take code, like number
+  like number
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).flatMap { Character($0).uppercased().unicodeScalars.first.map { Int($0.value) } } ?? $code)>
+
+bind do-to-lowercase
+  take code, like number
+  like number
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).flatMap { Character($0).lowercased().unicodeScalars.first.map { Int($0.value) } } ?? $code)>

@@ -1,0 +1,67 @@
+# browser rune (Unicode code point) predicates, via the linked rune runtime shim (host Unicode tables). Internal: reached only through the public rune API.
+
+dock load
+  load <global:rune>, name rune
+
+task do-is-letter
+  take code, like number
+  like boolean
+  send back
+    call rune/is-letter
+      read code
+
+task do-is-number
+  take code, like number
+  like boolean
+  send back
+    call rune/is-number
+      read code
+
+task do-is-whitespace
+  take code, like number
+  like boolean
+  send back
+    call rune/is-whitespace
+      read code
+
+task do-is-uppercase
+  take code, like number
+  like boolean
+  send back
+    call rune/is-uppercase
+      read code
+
+task do-is-lowercase
+  take code, like number
+  like boolean
+  send back
+    call rune/is-lowercase
+      read code
+
+task do-is-alphanumeric
+  take code, like number
+  like boolean
+  send back
+    call rune/is-alphanumeric
+      read code
+
+task do-is-control
+  take code, like number
+  like boolean
+  send back
+    call rune/is-control
+      read code
+
+task do-to-uppercase
+  take code, like number
+  like number
+  send back
+    call rune/to-uppercase
+      read code
+
+task do-to-lowercase
+  take code, like number
+  like number
+  send back
+    call rune/to-lowercase
+      read code

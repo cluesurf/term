@@ -1,0 +1,154 @@
+# Unicode-aware text measurement and normalization. Native-powered through declarative bindings: one source of truth per
+# operation, a native expression per backend that inlines to a direct call (js spread / TextEncoder, rust char + str,
+# swift unicodeScalars / utf8, kotlin codePointCount / toByteArray, and the platform normalizers). The Unicode data
+# lives in each platform, never shipped here. `$value` is the text.
+
+# the number of Unicode code points (runes) in the text
+bind rune-count
+  take value, like text
+  like number
+  case node
+    text <[...$value].length>
+  case browser
+    text <[...$value].length>
+  case rust
+    text <$value.chars().count() as i64>
+  case swift
+    text <$value.unicodeScalars.count>
+  case kotlin
+    text <$value.codePointCount(0, $value.length).toLong()>
+
+# the number of bytes in the UTF-8 encoding of the text
+bind byte-count
+  take value, like text
+  like number
+  case node
+    text <Buffer.byteLength($value)>
+  case browser
+    text <new TextEncoder().encode($value).length>
+  case rust
+    text <$value.len() as i64>
+  case swift
+    text <$value.utf8.count>
+  case kotlin
+    text <$value.toByteArray(Charsets.UTF_8).size.toLong()>
+
+# the number of grapheme clusters (user-perceived characters) in the text. rust uses the unicode-segmentation crate,
+# node uses Intl.Segmenter, swift's String is already grapheme-indexed, kotlin uses BreakIterator.
+bind grapheme-count
+  take value, like text
+  like number
+  case node
+    text <[...new Intl.Segmenter().segment($value)].length>
+  case browser
+    text <[...new Intl.Segmenter().segment($value)].length>
+  case rust
+    load <unicode_segmentation/UnicodeSegmentation>
+    text <$value.graphemes(true).count() as i64>
+  case swift
+    text <$value.count>
+  case kotlin
+    text <java.text.BreakIterator.getCharacterInstance().let { val bi = it; bi.setText($value); var n = 0L; while (bi.next() != java.text.BreakIterator.DONE) n++; n }>
+
+# Unicode normalization. The four forms each map to the platform's normalizer: canonical (NFC) / canonical-decomposed
+# (NFD) / compatibility (NFKC) / compatibility-decomposed (NFKD). rust uses the unicode-normalization crate, the rest
+# use the built-in normalizer.
+
+# canonical composition (NFC)
+bind to-nfc
+  take value, like text
+  like text
+  case node
+    text <$value.normalize("NFC")>
+  case browser
+    text <$value.normalize("NFC")>
+  case rust
+    load <unicode_normalization/UnicodeNormalization>
+    text <String::from_iter($value.nfc())>
+  case swift
+    load <Foundation>
+    text <$value.precomposedStringWithCanonicalMapping>
+  case kotlin
+    text <java.text.Normalizer.normalize($value, java.text.Normalizer.Form.NFC)>
+
+# canonical decomposition (NFD)
+bind to-nfd
+  take value, like text
+  like text
+  case node
+    text <$value.normalize("NFD")>
+  case browser
+    text <$value.normalize("NFD")>
+  case rust
+    load <unicode_normalization/UnicodeNormalization>
+    text <String::from_iter($value.nfd())>
+  case swift
+    load <Foundation>
+    text <$value.decomposedStringWithCanonicalMapping>
+  case kotlin
+    text <java.text.Normalizer.normalize($value, java.text.Normalizer.Form.NFD)>
+
+# compatibility composition (NFKC)
+bind to-nfkc
+  take value, like text
+  like text
+  case node
+    text <$value.normalize("NFKC")>
+  case browser
+    text <$value.normalize("NFKC")>
+  case rust
+    load <unicode_normalization/UnicodeNormalization>
+    text <String::from_iter($value.nfkc())>
+  case swift
+    load <Foundation>
+    text <$value.precomposedStringWithCompatibilityMapping>
+  case kotlin
+    text <java.text.Normalizer.normalize($value, java.text.Normalizer.Form.NFKC)>
+
+# compatibility decomposition (NFKD)
+bind to-nfkd
+  take value, like text
+  like text
+  case node
+    text <$value.normalize("NFKD")>
+  case browser
+    text <$value.normalize("NFKD")>
+  case rust
+    load <unicode_normalization/UnicodeNormalization>
+    text <String::from_iter($value.nfkd())>
+  case swift
+    load <Foundation>
+    text <$value.decomposedStringWithCompatibilityMapping>
+  case kotlin
+    text <java.text.Normalizer.normalize($value, java.text.Normalizer.Form.NFKD)>
+
+# the four Unicode normalization forms
+form normal-form
+  case nfc
+  case nfd
+  case nfkc
+  case nfkd
+
+# normalize `value` to the given `form`. The named to-nfc / to-nfd / to-nfkc / to-nfkd are the readable primary surface;
+# this verb is the form for a dynamic, runtime-chosen form.
+task normalize
+  take value, like text
+  take form, like normal-form
+  like text
+  fork case, read form
+    case nfc
+      send back
+        call to-nfc
+          read value
+    case nfd
+      send back
+        call to-nfd
+          read value
+    case nfkc
+      send back
+        call to-nfkc
+          read value
+    case nfkd
+      send back
+        call to-nfkd
+          read value

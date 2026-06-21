@@ -1,4 +1,15 @@
-# Rune: a single Unicode scalar value (code point), 0 through 0x10FFFF, held as a number. The ASCII predicates below are exact for their range. Full Unicode general-category predicates (letter / digit / whitespace over the whole code space) are a table-driven extension built on the Unicode data in hold/text/code/.
+# Rune: a single Unicode scalar value (code point), 0 through 0x10FFFF, held as a number. The ASCII predicates are exact for their range and need no platform support. The Unicode predicates (letter / number / whitespace / case over the whole code space) and case mapping delegate to each backend's native Unicode tables: rust / swift / kotlin via inline declarative bindings (no hand-written native), node / browser via a small runtime shim (JS property-escape regex cannot be spelled in a `.tree` literal). Either way the data lives in the platform, never shipped here.
+
+load @cluesurf/base/code/native/rune
+  find do-is-letter
+  find do-is-number
+  find do-is-whitespace
+  find do-is-uppercase
+  find do-is-lowercase
+  find do-is-alphanumeric
+  find do-is-control
+  find do-to-uppercase
+  find do-to-lowercase
 
 form rune
   link code, like number
@@ -72,9 +83,84 @@ form rune
             code 32
         wave false
 
+  # any Unicode letter (general category L)
+  task is-letter
+    take self
+    like boolean
+    send back
+      call do-is-letter
+        read self/code
+
+  # any Unicode numeric character (general category N)
+  task is-number
+    take self
+    like boolean
+    send back
+      call do-is-number
+        read self/code
+
+  # any Unicode whitespace
+  task is-whitespace
+    take self
+    like boolean
+    send back
+      call do-is-whitespace
+        read self/code
+
+  # an uppercase letter
+  task is-uppercase
+    take self
+    like boolean
+    send back
+      call do-is-uppercase
+        read self/code
+
+  # a lowercase letter
+  task is-lowercase
+    take self
+    like boolean
+    send back
+      call do-is-lowercase
+        read self/code
+
+  # a letter or numeric character
+  task is-alphanumeric
+    take self
+    like boolean
+    send back
+      call do-is-alphanumeric
+        read self/code
+
+  # a control character (general category Cc)
+  task is-control
+    take self
+    like boolean
+    send back
+      call do-is-control
+        read self/code
+
+  # the uppercase mapping of this rune (unchanged if it has none)
+  task to-uppercase
+    take self
+    like rune
+    send back
+      call make-rune
+        call do-to-uppercase
+          read self/code
+
+  # the lowercase mapping of this rune (unchanged if it has none)
+  task to-lowercase
+    take self
+    like rune
+    send back
+      call make-rune
+        call do-to-lowercase
+          read self/code
+
 task make-rune
   take code, like number
   like rune
   send back
     make rune
       bind code, read code
+

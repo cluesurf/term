@@ -188,11 +188,33 @@ function emitTone(group: GroupNode): string {
 // ::selection, @font-face) and descendant rules (e.g. `prose` typography) that are not single utility classes. The
 // selector is a text literal (verbatim CSS: commas, pseudo-elements, descendant combinators), never escaped. Always
 // kept by the JIT.
+//
+// NESTED: a `base` group whose children are themselves `base` groups (not `have` declarations) is an at-rule wrapper --
+// `base <@container (min-width: 760px)>` with nested `base <.x>` children emits `@container (min-width: 760px) { .x { ... } }`.
+// This is how container queries / media queries with descendant rules (the block-cq grid) are expressed. Recurses, so
+// at-rules can nest. Always kept by the JIT.
 function emitBase(group: GroupNode): string {
   const selector = argText(group, 0)
+
+  if (!selector) {
+    return ''
+  }
+
+  const nested = rest(group)
+    .filter(
+      (node): node is GroupNode =>
+        node.kind === 'group' && headName(node) === 'base',
+    )
+    .map(emitBase)
+    .filter(Boolean)
+
+  if (nested.length) {
+    return `${selector} {\n${nested.join('\n')}\n}`
+  }
+
   const body = declarations(group)
 
-  return selector && body ? `${selector} {\n${body}\n}` : ''
+  return body ? `${selector} {\n${body}\n}` : ''
 }
 
 // compile a `.tree` source of `face` / `tone` declarations into a CSS stylesheet. With `only`, this is the Tailwind

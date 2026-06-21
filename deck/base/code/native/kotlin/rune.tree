@@ -1,0 +1,55 @@
+# kotlin rune (Unicode code point) predicates and case mapping as declarative bindings over java.lang.Character. Each inlines to a direct call at the use site, no hand-written native file. `$code` is the code point. Internal: reached only through the public rune API.
+
+bind do-is-letter
+  take code, like number
+  like boolean
+  case kotlin
+    text <Character.isLetter($code.toInt())>
+
+bind do-is-number
+  take code, like number
+  like boolean
+  case kotlin
+    text <Character.getType($code.toInt()).let { it == Character.DECIMAL_DIGIT_NUMBER.toInt() || it == Character.LETTER_NUMBER.toInt() || it == Character.OTHER_NUMBER.toInt() }>
+
+bind do-is-whitespace
+  take code, like number
+  like boolean
+  case kotlin
+    text <Character.isWhitespace($code.toInt())>
+
+bind do-is-uppercase
+  take code, like number
+  like boolean
+  case kotlin
+    text <Character.isUpperCase($code.toInt())>
+
+bind do-is-lowercase
+  take code, like number
+  like boolean
+  case kotlin
+    text <Character.isLowerCase($code.toInt())>
+
+bind do-is-alphanumeric
+  take code, like number
+  like boolean
+  case kotlin
+    text <Character.isLetterOrDigit($code.toInt())>
+
+bind do-is-control
+  take code, like number
+  like boolean
+  case kotlin
+    text <Character.isISOControl($code.toInt())>
+
+bind do-to-uppercase
+  take code, like number
+  like number
+  case kotlin
+    text <Character.toUpperCase($code.toInt()).toLong()>
+
+bind do-to-lowercase
+  take code, like number
+  like number
+  case kotlin
+    text <Character.toLowerCase($code.toInt()).toLong()>

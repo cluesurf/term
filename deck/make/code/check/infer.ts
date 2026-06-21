@@ -70,6 +70,10 @@ export function check(
   // enum variant sets (for exhaustiveness) and variant -> enum (so `make red` is typed as its enum)
   const enums = new Map<string, Set<string>>()
   const variantEnum = new Map<string, string>()
+  // a variant's surface name -> every enum that declares it. An overloaded constructor (a name shared by two enums,
+  // e.g. `minus` on both `pole` and `spin`) is typed leniently here (a fresh variable) and resolved by the kernel,
+  // which is the authority on whether the construction matches its expected type.
+  const variantOwners = new Map<string, string[]>()
   // each variant's own fields, exposed inside a matching `case` branch (so `self/value` works after a match)
   const variantFields = new Map<string, Map<string, Type>>()
   // a form's generic parameter names, e.g. maybe -> ["t"], for parameterized named types (maybe<t>)
@@ -98,6 +102,9 @@ export function check(
         for (const variant of statement.variants) {
           set.add(variant.name)
           variantEnum.set(variant.name, statement.name)
+          const owners = variantOwners.get(variant.name) ?? []
+          owners.push(statement.name)
+          variantOwners.set(variant.name, owners)
 
           const own = new Map<string, Type>()
 
@@ -452,6 +459,16 @@ export function check(
       }
 
       case 'record': {
+        // an OVERLOADED variant constructor (a surface name shared by more than one enum) cannot be typed to a single
+        // enum here. Infer its field values for their own sake, then leave the construction's type flexible so it
+        // unifies with whatever the position expects; the kernel resolves the owning enum and verifies the fields.
+        if ((variantOwners.get(node.name)?.length ?? 0) > 1) {
+          for (const field of node.fields) {inferExpression(field.value, env)}
+
+          type = fresh()
+          break
+        }
+
         // a variant constructor is typed as its enum (`make red` : color); a struct as itself. The form's type
         // arguments are inferred by unifying the supplied field values against the declared (generic) field types.
         const enumName = variantEnum.get(node.name) ?? node.name

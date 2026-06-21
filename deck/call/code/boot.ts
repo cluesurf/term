@@ -9,6 +9,8 @@ import {
   symlinkSync,
   copyFileSync,
   rmSync,
+  readdirSync,
+  watch,
 } from 'fs'
 import { build, buildSync, version as esbuildVersion } from 'esbuild'
 import { compile } from '@cluesurf/make/code/compile/compile'
@@ -66,11 +68,13 @@ function nodeValue(group: GroupNode): string {
 // that the per-build hash does not already capture (e.g. a new prelude assembly rule).
 const BOOT_CACHE_EPOCH = '2'
 
-// the default base port: `seed boot` scans upward from here for the first free port (2400, 2401, 2402, ...), so an app
-// always starts on a good port no matter where (or how many) you boot, with no manual `--port`.
+// the default port range: `seed boot` scans 2400..2499 for the first free port, so an app always starts on a good port
+// no matter where (or how many) you boot, with no manual `--port`.
 const BASE_PORT = 2400
+const MAX_PORT = 2499
 
-// true if a TCP port is free to bind on localhost (briefly opens + closes a listener to test)
+// true if a TCP port is free to bind. The test MUST bind the same way the real server does (all interfaces, dual-stack)
+// or a stale IPv6-bound server (`:::2400`) would look free to an IPv4-only probe and the child would then EADDRINUSE.
 function portIsFree(port: number): Promise<boolean> {
   return new Promise(resolve => {
     const tester = net
@@ -79,19 +83,20 @@ function portIsFree(port: number): Promise<boolean> {
       .once('listening', () => {
         tester.close(() => resolve(true))
       })
-      .listen(port, '127.0.0.1')
+      // no host arg -> bind all interfaces (matches @hono/node-server's default), so the probe sees the real conflict
+      .listen(port)
   })
 }
 
-// the first free port at or above `start` (incrementing by 1). Bounded so a fully-saturated range fails loudly.
+// the first free port in 2400..2499 (incrementing by 1). Throws if the whole range is taken (loud, not a silent reuse).
 async function findFreePort(start: number): Promise<number> {
-  for (let port = start; port < start + 1000; port++) {
+  for (let port = start; port <= MAX_PORT; port++) {
     if (await portIsFree(port)) {
       return port
     }
   }
 
-  return start
+  throw new Error(`no free port in ${start}..${MAX_PORT} (stop apps with \`seed halt\`)`)
 }
 
 // the directory (cwd or an ancestor) that holds the `link/` package links a build resolves through; falls back to cwd
@@ -416,6 +421,85 @@ function hashAssets(buildDir: string, prod: boolean): void {
   )
 }
 
+// the dev live-reload build id: the client polls `/base/__id` and reloads when it changes. Bumped on boot and on every
+// hot style rebuild, so an edit shows in the browser with no manual refresh. A timestamp is enough (monotonic + unique).
+function writeBuildId(appDir: string): void {
+  try {
+    const buildDir = path.join(appDir, 'build')
+    mkdirSync(buildDir, { recursive: true })
+    writeFileSync(path.join(buildDir, '__id'), String(Date.now()))
+  } catch {
+    // a reload-id write failure must never fail the build
+  }
+}
+
+// recompile every look stylesheet (`site/style/*.tree`) to `build/style/*.css`, then bump the reload id. Look files are
+// self-contained (only `face` / `tone` / `base` statements), so they compile with no resolver. This is what makes
+// `seed boot` self-sufficient (no separate make step for CSS) and what the dev watcher calls on each style edit.
+function buildStyles(appDir: string): void {
+  const styleDir = path.join(appDir, 'site', 'style')
+
+  if (!existsSync(styleDir)) {
+    return
+  }
+
+  const outDir = path.join(appDir, 'build', 'style')
+  mkdirSync(outDir, { recursive: true })
+
+  for (const name of readdirSync(styleDir)) {
+    if (!name.endsWith('.tree')) {
+      continue
+    }
+
+    const file = path.join(styleDir, name)
+
+    try {
+      const result = compile({ file, text: readFileSync(file, 'utf8') })
+
+      if (result.ok && result.css !== undefined) {
+        writeFileSync(
+          path.join(outDir, name.replace(/\.tree$/, '.css')),
+          result.css,
+        )
+      }
+    } catch {
+      // a single bad stylesheet must not crash the dev loop
+    }
+  }
+}
+
+// dev hot-reload for styles: watch `site/style` and recompile + bump the reload id on each edit, debounced. The server
+// serves `build/style/*.css` + `build/__id` fresh per request, so the browser's poll picks up the new id and reloads
+// with the new CSS -- no manual refresh, no server restart. Returns a stop function.
+function watchStyles(appDir: string): () => void {
+  const styleDir = path.join(appDir, 'site', 'style')
+
+  if (!existsSync(styleDir)) {
+    return () => {}
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const watcher = watch(styleDir, { recursive: true }, () => {
+    if (timer) {
+      clearTimeout(timer)
+    }
+
+    timer = setTimeout(() => {
+      buildStyles(appDir)
+      writeBuildId(appDir)
+      logGood('Styles rebuilt (hot reload)')
+    }, 60)
+  })
+
+  return () => {
+    if (timer) {
+      clearTimeout(timer)
+    }
+
+    watcher.close()
+  }
+}
+
 export async function callBoot(input: {
   root: string
   entry?: string
@@ -523,9 +607,13 @@ export async function callBoot(input: {
     // so the server-rendered HTML becomes interactive. The app must have a deck.tree root (appDir) to hold `build/`.
     if (env === 'node' && appDir) {
       const prod = process.env.NODE_ENV === 'production'
+      // compile the app's look stylesheets to build/style/*.css (so `seed boot` needs no separate make step for CSS)
+      buildStyles(appDir)
       await buildClientBundle({ entry, appDir, projectRoot, installRoot, prod })
       // content-hash the cache-bust-critical assets (stylesheet + client bundle) and write the manifest the shell reads
       hashAssets(path.join(appDir, 'build'), prod)
+      // seed the dev live-reload id (the client polls /base/__id and reloads when it changes)
+      writeBuildId(appDir)
     }
 
     // auto-prepend the native runtime shims this program docks (`<global:X>` -> its `runtime/X` sibling), so the
@@ -612,14 +700,28 @@ export async function callBoot(input: {
 
     logGood(`Serving on http://localhost:${port}`)
     console.log(fade(`  press ctrl-c to stop`))
-    // run the server from the APP dir (where the `deck.tree` + `build/` live), so the app resolves its own assets
-    // (`build/...` static files) relative to its own root rather than the link/cache `projectRoot`.
-    await runCommand({
-      cmd: 'node',
-      args: [path.join(out, 'run.mjs')],
-      cwd: appDir ?? projectRoot,
-      shell: false,
-    })
+
+    // dev: hot-reload styles. Watch `site/style`, recompile look.css + bump the reload id on edit; the browser polls
+    // `/base/__id` and reloads with the new CSS (no manual refresh). Disabled in production.
+    const dev = process.env.NODE_ENV !== 'production'
+    const stopWatch = dev && appDir ? watchStyles(appDir) : () => {}
+
+    if (dev && appDir) {
+      console.log(fade(`  hot reload on (watching site/style)`))
+    }
+
+    try {
+      // run the server from the APP dir (where the `deck.tree` + `build/` live), so the app resolves its own assets
+      // (`build/...` static files) relative to its own root rather than the link/cache `projectRoot`.
+      await runCommand({
+        cmd: 'node',
+        args: [path.join(out, 'run.mjs')],
+        cwd: appDir ?? projectRoot,
+        shell: false,
+      })
+    } finally {
+      stopWatch()
+    }
   } catch (err) {
     logFail(formatError(err))
     process.exit(1)

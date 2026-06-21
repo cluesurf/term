@@ -1,0 +1,72 @@
+note <Unicode text measurement and normalization, native-powered through declarative bindings: rune / byte / grapheme counts, and the four normalization forms. Counts of 'café' (precomposed) versus its NFD decomposition show runes, bytes, and graphemes diverge correctly.>
+
+load @cluesurf/base/code/text/unicode
+  find rune-count
+  find byte-count
+  find grapheme-count
+  find to-nfc
+  find to-nfd
+  find normalize
+  find normal-form
+  find make-nfd
+
+test <rune-count counts code points>
+  want hold
+    call is-equal
+      call rune-count
+        text <café>
+      mark 4
+
+test <byte-count counts utf-8 bytes>
+  want hold
+    call is-equal
+      call byte-count
+        text <café>
+      mark 5
+
+test <NFD decomposition adds a code point>
+  save decomposed
+    call to-nfd
+      text <café>
+  want hold
+    call is-equal
+      call rune-count
+        read decomposed
+      mark 5
+
+test <a decomposed accent is one grapheme, two runes>
+  save decomposed
+    call to-nfd
+      text <é>
+  want hold
+    call and
+      call is-equal
+        call grapheme-count
+          read decomposed
+        mark 1
+      call is-equal
+        call rune-count
+          read decomposed
+        mark 2
+
+test <NFC recomposes back to four code points>
+  save composed
+    call to-nfc
+      call to-nfd
+        text <café>
+  want hold
+    call is-equal
+      call rune-count
+        read composed
+      mark 4
+
+test <normalize verb with a dynamic form decomposes>
+  save form
+    make nfd
+  want hold
+    call is-equal
+      call rune-count
+        call normalize
+          text <café>
+          read form
+      mark 5

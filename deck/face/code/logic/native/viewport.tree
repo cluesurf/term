@@ -1,0 +1,17 @@
+
+# Viewport access (abstract native module). Reading the window size + listening for resize is host-specific, so it is
+# env-abstracted like the dom: the build rewrites this to `native/browser/viewport` (real window) or
+# `native/node/viewport` (SSR stub: 0, no listener). This is what keeps the viewport signal browser-safe -- the SSR
+# render never touches `window`. Faithful port of @cluesurf/face's `use-viewport` getViewport + resize wiring.
+
+task current-width
+  like number
+
+task current-height
+  like number
+
+# run `handler` on every window resize; returns a remover to detach it (register with on-cleanup)
+task listen-resize
+  take handler
+    like task
+  like task

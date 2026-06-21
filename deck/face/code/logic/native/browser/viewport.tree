@@ -1,0 +1,35 @@
+
+# Browser viewport: read window.innerWidth/innerHeight and listen for resize via @cluesurf/bind. Conforms to
+# ../viewport. The handler is bridged through the gradual `any` for addEventListener's listener union (it is a real
+# function at runtime), the way the dom's `listen` does.
+
+load @cluesurf/bind/code/browser/dom/window
+  find window
+
+host frame, name <window>
+  like window
+
+task current-width
+  like number
+  send back, read frame/inner-width
+
+task current-height
+  like number
+  send back, read frame/inner-height
+
+task listen-resize
+  take handler
+    like task
+  like task
+  host go, like any
+    read handler
+  call frame/add-event-listener
+    text <resize>
+    read go
+    make none
+  send back
+    task drop
+      call frame/remove-event-listener
+        text <resize>
+        read go
+        make none

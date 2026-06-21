@@ -406,6 +406,7 @@ const cli = yargs(hideBin(process.argv))
             'Entry .tree module (defaults to deck.tree boot)',
         })
         .option('port', {
+          alias: 'p',
           type: 'number',
           description: 'Port to serve on',
         })
@@ -463,6 +464,7 @@ const cli = yargs(hideBin(process.argv))
             'Entry .tree module (defaults to deck.tree boot)',
         })
         .option('port', {
+          alias: 'p',
           type: 'number',
           description: 'Port to serve on',
         })
@@ -482,6 +484,7 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs
         .option('port', {
+          alias: 'p',
           type: 'number',
           description: 'Port to serve on',
         })

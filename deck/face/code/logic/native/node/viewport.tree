@@ -1,0 +1,20 @@
+
+# Node (SSR) viewport stub: no window, so width/height are 0 and resize is a no-op. With width 0 the layout returns its
+# hidden first-paint shape (face's width===0 branch), then the client takes over and snaps to the real size. Conforms
+# to ../../viewport.
+
+task current-width
+  like number
+  send back, code 0
+
+task current-height
+  like number
+  send back, code 0
+
+task listen-resize
+  take handler
+    like task
+  like task
+  send back
+    task drop
+      save skip, code 0

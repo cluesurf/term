@@ -631,6 +631,8 @@ chrono = "0.4"
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net", "io-util"] }
+unicode-normalization = "0.1"
+unicode-segmentation = "1"
 
 [[bin]]
 name = "run"
@@ -1695,6 +1697,87 @@ task compute
     call is-equal
       read message/data
       text <hello>
+`
+// rune Unicode predicates + case mapping via declarative bindings (rust char tables, swift Character, kotlin Character).
+// 233 is 'é' (a letter), to-uppercase of 97 'a' is 65 'A'. Both checks true.
+const RUNE_PROG = `load @cluesurf/base/code/rune
+  find make-rune
+  find is-letter
+  find to-uppercase
+
+task compute
+  like boolean
+  save accented
+    call make-rune
+      code 233
+  save lower
+    call make-rune
+      code 97
+  save upper
+    call to-uppercase
+      read lower
+  send back
+    call and
+      call is-letter
+        read accented
+      call is-equal
+        read upper/code
+        code 65
+`
+// Unicode text measurement via declarative bindings: 'café' is 4 code points and 5 UTF-8 bytes on every backend.
+const UNICODE_COUNT_PROG = `load @cluesurf/base/code/text/unicode
+  find rune-count
+  find byte-count
+
+task compute
+  like boolean
+  send back
+    call and
+      call is-equal
+        call rune-count
+          text <café>
+        code 4
+      call is-equal
+        call byte-count
+          text <café>
+        code 5
+`
+// Unicode normalization via declarative bindings: NFD decomposes 'café' so it has more than 4 code points (the accent
+// splits off). rust uses the unicode-normalization crate, the others the built-in normalizer.
+const UNICODE_NORM_PROG = `load @cluesurf/base/code/text/unicode
+  find to-nfd
+  find rune-count
+
+task compute
+  like boolean
+  send back
+    call is-above
+      call rune-count
+        call to-nfd
+          text <café>
+      code 4
+`
+// Unicode grapheme segmentation: a decomposed 'é' (e + combining accent) is two code points but one grapheme cluster.
+const UNICODE_GRAPHEME_PROG = `load @cluesurf/base/code/text/unicode
+  find grapheme-count
+  find rune-count
+  find to-nfd
+
+task compute
+  like boolean
+  save decomposed
+    call to-nfd
+      text <é>
+  send back
+    call and
+      call is-equal
+        call grapheme-count
+          read decomposed
+        code 1
+      call is-equal
+        call rune-count
+          read decomposed
+        code 2
 `
 // directory make plus metadata: make a directory then confirm is-directory reports it. Exercises the io shim's
 // dir-make and is-directory on each platform (rust std::fs, swift FileManager, kotlin java.io.File).
@@ -2916,6 +2999,74 @@ function main(): void {
     frontEnd(UDP_PROG, true, 'swift'),
     'true',
     true,
+  )
+  // rune Unicode predicates + case mapping via declarative bindings (no hand-written native on these targets)
+  runRustCargo(
+    'rust + cargo: rune is-letter + to-uppercase (char tables, declarative bind)',
+    frontEnd(RUNE_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  runKotlinText(
+    'kotlin + rune: is-letter + to-uppercase (Character, declarative bind)',
+    frontEnd(RUNE_PROG, true, 'kotlin'),
+    'true',
+  )
+  runSwiftText(
+    'swift + rune: is-letter + to-uppercase (Character, declarative bind)',
+    frontEnd(RUNE_PROG, true, 'swift'),
+    'true',
+  )
+  // Unicode text measurement (rune-count, byte-count) via declarative bindings
+  runRustCargo(
+    'rust + cargo: unicode rune-count + byte-count (declarative bind)',
+    frontEnd(UNICODE_COUNT_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  runKotlinText(
+    'kotlin + unicode: rune-count + byte-count (declarative bind)',
+    frontEnd(UNICODE_COUNT_PROG, true, 'kotlin'),
+    'true',
+  )
+  runSwiftText(
+    'swift + unicode: rune-count + byte-count (declarative bind)',
+    frontEnd(UNICODE_COUNT_PROG, true, 'swift'),
+    'true',
+  )
+  // Unicode normalization (NFD) via declarative bindings (rust unicode-normalization crate, others built-in)
+  runRustCargo(
+    'rust + cargo: unicode NFD normalize (unicode-normalization crate)',
+    frontEnd(UNICODE_NORM_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  runKotlinText(
+    'kotlin + unicode: NFD normalize (java.text.Normalizer)',
+    frontEnd(UNICODE_NORM_PROG, true, 'kotlin'),
+    'true',
+  )
+  runSwiftText(
+    'swift + unicode: NFD normalize (decomposedStringWithCanonicalMapping)',
+    frontEnd(UNICODE_NORM_PROG, true, 'swift'),
+    'true',
+  )
+  // Unicode grapheme segmentation (rust unicode-segmentation, swift Character, kotlin BreakIterator)
+  runRustCargo(
+    'rust + cargo: unicode grapheme-count (unicode-segmentation crate)',
+    frontEnd(UNICODE_GRAPHEME_PROG, true, 'rust'),
+    'true',
+    false,
+  )
+  runKotlinText(
+    'kotlin + unicode: grapheme-count (BreakIterator)',
+    frontEnd(UNICODE_GRAPHEME_PROG, true, 'kotlin'),
+    'true',
+  )
+  runSwiftText(
+    'swift + unicode: grapheme-count (Character clusters)',
+    frontEnd(UNICODE_GRAPHEME_PROG, true, 'swift'),
+    'true',
   )
   // directory make + metadata is-directory
   runSwiftText(
