@@ -1,0 +1,231 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "TreeCode",
+  "patterns": [
+    {
+      "include": "#nestedtermsexternal"
+    },
+    {
+      "include": "#nestedterms"
+    },
+    {
+      "include": "#terms"
+    },
+    {
+      "include": "#punctuations"
+    },
+    {
+      "include": "#interpolations"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#codes"
+    },
+    {
+      "include": "#comments"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.tree",
+          "match": "\\# .+"
+        },
+        {
+          "name": "comment.line.number-sign.tree",
+          "match": "\\#"
+        }
+      ]
+    },
+    "codes": {
+      "patterns": [
+        {
+          "name": "entity.name.function.tree",
+          "match": "\\#\\w+"
+        }
+      ]
+    },
+    "nestedtermsexternal": {
+      "patterns": [
+        {
+          "begin": "([a-z][a-z0-9]*(?:-+[a-z0-9]+)*-*) ",
+          "beginCaptures": {
+            "1": {
+              "name": "constant.language.tree"
+            }
+          },
+          "end": "[,\n]",
+          "endCaptures": {
+            "0": {
+              "name": "variable.other.tree"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#nestedtermsexternal"
+            },
+            {
+              "include": "#nestedterms"
+            },
+            {
+              "include": "#terms"
+            },
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#interpolations"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#codes"
+            },
+            {
+              "include": "#comments"
+            }
+          ]
+        }
+      ]
+    },
+    "nestedterms": {
+      "patterns": [
+        {
+          "name": "constant.language.tree",
+          "begin": "([a-z][a-z0-9]*(?:-+[a-z0-9]+)*-*)(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "constant.language.tree"
+            },
+            "2": {
+              "name": "punctuation.separator.parameter.tree"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.separator.parameter.tree"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#comments"
+            },
+            {
+              "include": "#terms"
+            },
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#codes"
+            }
+          ]
+        }
+      ]
+    },
+    "terms": {
+      "patterns": [
+        {
+          "match": "(/)?([a-z][a-z0-9]*(?:-+[a-z0-9]+)*-*)",
+          "captures": {
+            "1": {
+              "name": "variable.other.tree"
+            },
+            "2": {
+              "name": "string.quoted.single.tree"
+            }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "entity.name.function.tree",
+          "match": "\\d+"
+        },
+        {
+          "name": "entity.name.function.tree",
+          "match": "\\d+\\.\\d+"
+        }
+      ]
+    },
+    "punctuations": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.parameter.tree",
+          "match": "[,/\\?\\*]"
+        }
+      ]
+    },
+    "interpolations": {
+      "begin": "\\{+",
+      "beginCaptures": {
+        "0": {
+          "name": "support.type.property-name.tree.tree"
+        }
+      },
+      "end": "\\}+",
+      "endCaptures": {
+        "0": {
+          "name": "support.type.property-name.tree.tree"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#nestedterms"
+        },
+        {
+          "include": "#terms"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#codes"
+        }
+      ]
+    },
+    "strings": {
+      "begin": "\\<",
+      "beginCaptures": {
+        "0": {
+          "name": "entity.name.tag.tree"
+        }
+      },
+      "end": "\\>",
+      "endCaptures": {
+        "0": {
+          "name": "entity.name.tag.tree"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#codes"
+        },
+        {
+          "include": "#interpolations"
+        },
+        {
+          "name": "entity.name.tag.tree",
+          "match": "[^\\\\{>]+"
+        }
+      ]
+    }
+  },
+  "scopeName": "source.tree"
+}

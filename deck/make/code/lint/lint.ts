@@ -20,6 +20,9 @@ import { kebabNames } from '@cluesurf/make/code/lint/rules/kebab-names'
 import { noRedundantArithmetic } from '@cluesurf/make/code/lint/rules/no-redundant-arithmetic'
 import { preferHostForConstant } from '@cluesurf/make/code/lint/rules/prefer-host-for-constant'
 import { noEmptyBlock } from '@cluesurf/make/code/lint/rules/no-empty-block'
+import { noConstantCondition } from '@cluesurf/make/code/lint/rules/no-constant-condition'
+import { noSelfComparison } from '@cluesurf/make/code/lint/rules/no-self-comparison'
+import { noUnusedLoad } from '@cluesurf/make/code/lint/rules/no-unused-load'
 
 // the default rule set, keyed by stable code for config and suppression
 export const RULES: Rule[] = [
@@ -27,6 +30,9 @@ export const RULES: Rule[] = [
   noRedundantArithmetic,
   preferHostForConstant,
   noEmptyBlock,
+  noConstantCondition,
+  noSelfComparison,
+  noUnusedLoad,
 ]
 
 export type LintConfig = {
@@ -165,6 +171,29 @@ function reassignedNames(program: Program): Set<string> {
   return names
 }
 
+// every variable name read anywhere in the program (used by no-unused-load to spot import aliases that are never
+// referenced). The shared expression walker does not descend into closure (callback) bodies, so this collector does
+// it explicitly: a name used only inside a hook handler must still count as referenced, or the import would be
+// wrongly flagged unused.
+function referencedNames(program: Program): Set<string> {
+  const names = new Set<string>()
+
+  const onStatement = () => {}
+
+  const onExpression = (e: Expression) => {
+    if (e.form === 'variable') {names.add(e.name)}
+
+    if (e.form === 'closure') {
+      for (const s of e.body)
+        {eachStatement(s, onStatement, onExpression)}
+    }
+  }
+
+  for (const s of program) {eachStatement(s, onStatement, onExpression)}
+
+  return names
+}
+
 export function lint(
   program: Program,
   file: string,
@@ -176,6 +205,7 @@ export function lint(
 ): Finding[] {
   const findings: Finding[] = []
   const reassigned = reassignedNames(program)
+  const referenced = referencedNames(program)
   const lines = source.split('\n')
 
   const slice = (span: Span): string => {
@@ -206,6 +236,7 @@ export function lint(
       file,
       source,
       reassigned,
+      referenced,
       slice,
       report(finding) {
         // honor inline suppression (`# lint off Lxxx` on the line above the node)

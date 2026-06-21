@@ -814,6 +814,62 @@ export function mill(tree: RootNode, file: string): MillResult {
     return awaited ? { form: 'await', expr: result, span } : result
   }
 
+  // build a relation expression from a flat list of parts: the first is the relation (callee), the rest its structured
+  // arguments. Used by the `rule` DSL for a `take` hypothesis (`take h, twin, bond a b, bond e f`), where the
+  // proposition is the parts after the binder name. Mirrors callExpression but over a list, not a group.
+  function callExpressionFrom(
+    parts: Node[],
+    scope: Set<string>,
+    span: Span,
+  ): Expression {
+    const target = parts[0]
+    const calleeName =
+      target?.kind === 'group' ? headName(target) : undefined
+    const callArgs = parts
+      .slice(1)
+      .map(a => toExpression(a, scope))
+
+    if (
+      calleeName &&
+      calleeName in BINARY_BUILTIN &&
+      callArgs.length === 2
+    ) {
+      return {
+        form: 'binary',
+        op: BINARY_BUILTIN[calleeName]!,
+        left: callArgs[0]!,
+        right: callArgs[1]!,
+        span,
+      }
+    }
+
+    const callee: Expression =
+      calleeName?.includes('/')
+        ? pathExpression(calleeName, span)
+        : { form: 'variable', name: calleeName ?? '', span }
+
+    return { form: 'call', callee, args: callArgs, span }
+  }
+
+  // negate a goal for `show miss` (prove the claim FALSE): flip an order comparison to its exact negation, otherwise
+  // wrap the whole claim in a logical not. The order flips are not(a > b) = a <= b, not(a < b) = a >= b, and so on, so
+  // a refuted order comparison stays inside the decidable linear fragment the prover handles.
+  function negateGoal(claim: Expression, span: Span): Expression {
+    if (claim.form === 'binary') {
+      const flip: Partial<Record<BinaryOp, BinaryOp>> = {
+        '>': '<=',
+        '<': '>=',
+        '>=': '<',
+        '<=': '>',
+      }
+      const flipped = flip[claim.op]
+
+      if (flipped) {return { ...claim, op: flipped }}
+    }
+
+    return { form: 'unary', op: '!', operand: claim, span }
+  }
+
   // make list / make find / make <form>
   function makeExpression(
     group: GroupNode,
@@ -1084,6 +1140,252 @@ export function mill(tree: RootNode, file: string): MillResult {
 
             out.push(holdStatement)
           }
+
+          break
+        }
+
+        // a `rule` is a named theorem or axiom, the structured proof DSL (note/library/seed/proof-checking/
+        // 08-structured-rule-dsl.md). Its body is `mark` (universal binders), `take` (hypotheses), `show` (the goal as a
+        // 4-letter relation applied to structured terms), and either `base true` (an AXIOM, postulated) or a proof body
+        // (`fold` / `case` / `calm` / `melt` / `cite` / `find` / `have`). It desugars to a function whose parameters are
+        // the binders, so the goal is checked as a universal law over them by the same prover stack `hold` uses: a
+        // theorem becomes a checked `hold`, an axiom becomes a `host` binding of the (postulated) claim, keeping every
+        // detail in code with no arbitrary strings.
+        case 'rule': {
+          const ruleParts = rest(node)
+
+          let ruleName = 'rule'
+          let startIndex = 0
+          const ruleFirst = ruleParts[0]
+
+          if (ruleFirst?.kind === 'text') {
+            ruleName = slugify(textOf(ruleFirst))
+            startIndex = 1
+          } else if (
+            ruleFirst?.kind === 'group' &&
+            rest(ruleFirst).length === 0
+          ) {
+            ruleName = headName(ruleFirst) ?? 'rule'
+            startIndex = 1
+          }
+
+          const ruleBody = ruleParts
+            .slice(startIndex)
+            .filter((n): n is GroupNode => n.kind === 'group')
+
+          const PROOF_HEADS = new Set([
+            'fold',
+            'case',
+            'calm',
+            'melt',
+            'cite',
+            'find',
+            'meet',
+            'fork',
+            'hint',
+            'turn',
+          ])
+
+          const ruleParams: {
+            name: string
+            type?: Type
+            refine?: 'natural'
+          }[] = []
+          const ruleScope = new Set(scope)
+          const hypotheses: { name?: string; expr: Expression }[] = []
+          let goal: Expression | undefined
+          let isAxiom = false
+          const ruleProof: Proof[] = []
+
+          // pull a `mark x, like T` / `take h, ...` binder name and optional `like` type from a child
+          const binderOf = (
+            part: GroupNode,
+          ): {
+            name: string
+            type?: Type
+            refine?: 'natural'
+          } | undefined => {
+            const varGroup = rest(part)[0]
+            const pname =
+              varGroup?.kind === 'group'
+                ? headName(varGroup)
+                : undefined
+
+            if (!pname) {return undefined}
+
+            const likeGroup = rest(part).find(
+              (n): n is GroupNode =>
+                n.kind === 'group' && headName(n) === 'like',
+            )
+
+            if (!likeGroup) {return { name: pname }}
+
+            // detect the `natural-number` refinement from the RAW type node (parseLikeType maps it to the plain number
+            // type, losing the name), exactly as the task-param parser does, so the n >= 0 bound reaches the prover.
+            const typeNode = rest(likeGroup)[0]
+            const refine =
+              typeNode?.kind === 'group' &&
+              headName(typeNode) === 'natural-number'
+                ? ('natural' as const)
+                : undefined
+
+            return {
+              name: pname,
+              type: parseLikeType(likeGroup),
+              ...(refine ? { refine } : {}),
+            }
+          }
+
+          for (const part of ruleBody) {
+            const partHead = headName(part)
+
+            if (partHead === 'mark') {
+              const binder = binderOf(part)
+
+              if (binder) {
+                const param: {
+                  name: string
+                  type?: Type
+                  refine?: 'natural'
+                } = { name: binder.name }
+
+                if (binder.type) {param.type = binder.type}
+
+                if (binder.refine) {param.refine = binder.refine}
+
+                ruleParams.push(param)
+                ruleScope.add(binder.name)
+              }
+            } else if (partHead === 'have' || partHead === 'take') {
+              // a HYPOTHESIS (an antecedent / assumption). `have h` reads "we have h", the assumption named h; `take` is
+              // kept as an alias. The name is a label, not a universal variable (those are `mark`). The proposition is
+              // the parts after the name: a single nested child is an expression (`have h` / `call twin` / ...), several
+              // parts on one line are a relation applied to terms (`have h, twin, bond a b, bond c d`).
+              const binder = binderOf(part)
+              const propParts = rest(part)
+                .slice(1)
+                .filter((n): n is GroupNode => n.kind === 'group')
+
+              let prop: Expression | undefined
+
+              if (propParts.length === 1) {
+                prop = toExpression(propParts[0]!, ruleScope)
+              } else if (propParts.length > 1) {
+                prop = callExpressionFrom(
+                  propParts,
+                  ruleScope,
+                  spanOf(part),
+                )
+              }
+
+              if (prop) {
+                hypotheses.push(
+                  binder ? { name: binder.name, expr: prop } : { expr: prop },
+                )
+              }
+            } else if (partHead === 'show') {
+              let showKids = rest(part).filter(
+                (n): n is GroupNode => n.kind === 'group',
+              )
+
+              // `show` carries a MODE second term: `show hold` (prove the claim true) or `show miss` (prove it false),
+              // mirroring `want hold` / `want miss`. The mode is the first child; the claim is the rest. A bare `show`
+              // (no mode) defaults to `hold`.
+              const firstHead = showKids[0]
+                ? headName(showKids[0]!)
+                : undefined
+              const showMode =
+                firstHead === 'miss'
+                  ? 'miss'
+                  : firstHead === 'hold'
+                    ? 'hold'
+                    : undefined
+
+              if (showMode) {showKids = showKids.slice(1)}
+
+              // the claim itself: a single nested expression, or a relation applied to args on one line
+              const claim =
+                showKids.length === 1
+                  ? toExpression(showKids[0]!, ruleScope)
+                  : callExpressionFrom(showKids, ruleScope, spanOf(part))
+
+              // `miss` proves the claim FALSE: flip an order comparison to its negation, else logical-not it
+              goal = showMode === 'miss' ? negateGoal(claim, spanOf(part)) : claim
+            } else if (partHead === 'base') {
+              isAxiom = true
+            } else if (PROOF_HEADS.has(partHead ?? '')) {
+              ruleProof.push(parseProof(part))
+            }
+          }
+
+          const ruleStatements: Statement[] = []
+
+          if (goal) {
+            if (isAxiom) {
+              // an AXIOM: postulated, not proved. Bind each hypothesis and the claim (kept in code, type-checked
+              // against the relation layer) so the antecedents and conclusion are real and structured.
+              hypotheses.forEach((hyp, i) => {
+                ruleStatements.push({
+                  form: 'let',
+                  mutable: false,
+                  name: hyp.name ?? `claim_${i}`,
+                  init: hyp.expr,
+                  span,
+                })
+              })
+              ruleStatements.push({
+                form: 'let',
+                mutable: false,
+                name: 'claim',
+                init: goal,
+                span,
+              })
+            } else {
+              // a THEOREM: the goal is checked as a universal law over the binders. Each `have` hypothesis becomes a
+              // path assumption: the goal `hold` is wrapped in nested `if (hyp)` guards, so the prover assumes every
+              // antecedent when discharging the conclusion (this is how an implication is proved).
+              const holdStatement: Statement = {
+                form: 'hold',
+                name: ruleName,
+                expr: goal,
+                span,
+              }
+
+              if (ruleProof.length > 0)
+                {holdStatement.proof = ruleProof}
+
+              let body: Statement[] = [holdStatement]
+
+              for (let i = hypotheses.length - 1; i >= 0; i--) {
+                body = [
+                  {
+                    form: 'if',
+                    branches: [{ cond: hypotheses[i]!.expr, body }],
+                    span,
+                  },
+                ]
+              }
+
+              ruleStatements.push(...body)
+            }
+          }
+
+          ruleStatements.push({
+            form: 'return',
+            value: ruleParams[0]
+              ? pathExpression(ruleParams[0].name, span)
+              : { form: 'unit', span },
+            span,
+          })
+
+          out.push({
+            form: 'function',
+            name: ruleName,
+            params: ruleParams,
+            body: ruleStatements,
+            generics: [],
+            span,
+          })
 
           break
         }

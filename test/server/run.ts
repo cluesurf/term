@@ -130,13 +130,20 @@ const hover = await server.dispatch({
     position: literalStart!,
   },
 })
-const hoverValue = (
-  hover[0]!.result as { contents: { value: string } } | null
-)?.contents.value
+const hoverContents = (
+  hover[0]!.result as {
+    contents: { kind: string; value: string }
+  } | null
+)?.contents
+expect(
+  'hover: renders markdown',
+  hoverContents?.kind,
+  'markdown',
+)
 expect(
   'hover: the integer literal reports type number',
-  hoverValue,
-  'number',
+  hoverContents?.value.includes('number'),
+  true,
 )
 
 // close the document: diagnostics are cleared
@@ -300,6 +307,288 @@ expect(
   'unknown request: still answered',
   (await server.dispatch(unknown))[0]!.id,
   9,
+)
+
+// member completion: after `read p/`, offer the record's fields (and nothing else)
+const memberDoc =
+  'form point\n  link x, like number\n  link y, like number\n\ntask get\n  take p, like point\n  like number\n  send back\n    read p/\n'
+await server.dispatch({
+  jsonrpc: '2.0',
+  method: 'textDocument/didOpen',
+  params: {
+    textDocument: { uri: 'file:///member.tree', text: memberDoc },
+  },
+})
+const memberItems = (
+  (
+    await server.dispatch({
+      jsonrpc: '2.0',
+      id: 30,
+      method: 'textDocument/completion',
+      params: {
+        textDocument: { uri: 'file:///member.tree' },
+        position: { line: 8, character: 11 },
+      },
+    })
+  )[0]!.result as { items: { label: string }[] }
+).items
+expect(
+  'completion: members after `/` offers record fields',
+  memberItems.some(i => i.label === 'x') &&
+    memberItems.some(i => i.label === 'y'),
+  true,
+)
+expect(
+  'completion: member list is fields only (no keyword noise)',
+  memberItems.every(i => i.label === 'x' || i.label === 'y'),
+  true,
+)
+
+// keyword completion: `task` accepts as a snippet that scaffolds the construct
+const kwItems = (
+  (
+    await server.dispatch({
+      jsonrpc: '2.0',
+      id: 31,
+      method: 'textDocument/completion',
+      params: {
+        textDocument: { uri: 'file:///member.tree' },
+        position: { line: 3, character: 0 },
+      },
+    })
+  )[0]!.result as {
+    items: { label: string; insertTextFormat?: number }[]
+  }
+).items
+expect(
+  'completion: task keyword is a snippet',
+  kwItems.find(i => i.label === 'task')?.insertTextFormat,
+  2,
+)
+
+// import hints + cross-file navigation need a real project root (the seed package has `link/@cluesurf/base`). A doc uri
+// inside the package resolves the stdlib exactly as a build would.
+const { pathToFileURL } = await import('node:url')
+const { join } = await import('node:path')
+const projUri = pathToFileURL(join(process.cwd(), 'flow-probe.tree')).href
+const projServer = new LanguageServer()
+await projServer.dispatch({
+  jsonrpc: '2.0',
+  id: 40,
+  method: 'initialize',
+  params: {},
+})
+
+async function projComplete(
+  text: string,
+  line: number,
+  character: number,
+): Promise<string[]> {
+  await projServer.dispatch({
+    jsonrpc: '2.0',
+    method: 'textDocument/didOpen',
+    params: { textDocument: { uri: projUri, text } },
+  })
+  const r = (
+    await projServer.dispatch({
+      jsonrpc: '2.0',
+      id: 41,
+      method: 'textDocument/completion',
+      params: {
+        textDocument: { uri: projUri },
+        position: { line, character },
+      },
+    })
+  )[0]!.result as { items: { label: string }[] }
+  await projServer.dispatch({
+    jsonrpc: '2.0',
+    method: 'textDocument/didClose',
+    params: { textDocument: { uri: projUri } },
+  })
+  return r.items.map(i => i.label)
+}
+
+// import-path completion: `load @cluesurf/base/code/` lists the stdlib modules
+const loadLine = 'load @cluesurf/base/code/'
+const modules = await projComplete(`${loadLine}\n`, 0, loadLine.length)
+expect(
+  'completion: import path lists stdlib modules',
+  modules.includes('text') && modules.includes('list'),
+  true,
+)
+
+// export completion: `find` under a `load` lists that module's definitions
+const exports_ = await projComplete(
+  'load @cluesurf/base/code/text\n  find \n',
+  1,
+  7,
+)
+expect(
+  'completion: `find` lists the module exports',
+  exports_.includes('split') && exports_.includes('to-upper-case'),
+  true,
+)
+
+// cross-file go-to-definition: a call to an imported name jumps to its module file
+const navDoc =
+  'load @cluesurf/base/code/text\n  find to-upper-case\n\ntask shout\n  take m, like text\n  like text\n  send back\n    call to-upper-case\n      read m\n'
+await projServer.dispatch({
+  jsonrpc: '2.0',
+  method: 'textDocument/didOpen',
+  params: { textDocument: { uri: projUri, text: navDoc } },
+})
+const nav = (
+  await projServer.dispatch({
+    jsonrpc: '2.0',
+    id: 42,
+    method: 'textDocument/definition',
+    params: {
+      textDocument: { uri: projUri },
+      position: { line: 7, character: 12 },
+    },
+  })
+)[0]!.result as { uri: string } | null
+expect(
+  'definition: cross-file jump to the imported module',
+  nav?.uri.endsWith('deck/base/code/text.tree'),
+  true,
+)
+
+// document-scoped index: the outline lists only THIS document's definitions, never the imported module's
+const docSymbols = (
+  await projServer.dispatch({
+    jsonrpc: '2.0',
+    id: 43,
+    method: 'textDocument/documentSymbol',
+    params: { textDocument: { uri: projUri } },
+  })
+)[0]!.result as { name: string }[]
+expect(
+  'documentSymbol: document-scoped (no import leak)',
+  docSymbols.length === 1 && docSymbols[0]?.name === 'shout',
+  true,
+)
+
+// completion still offers imported callables (from the merged program), alongside the local definitions
+const blendComp = await projComplete(navDoc, 2, 0)
+expect(
+  'completion: offers local + imported callables',
+  blendComp.includes('shout') && blendComp.includes('to-upper-case'),
+  true,
+)
+
+// auto-import code action: an unknown name a linked package exports is offered as a `load`
+const importDoc =
+  'task shout\n  take m, like text\n  like text\n  send back\n    call to-upper-case\n      read m\n'
+await projServer.dispatch({
+  jsonrpc: '2.0',
+  method: 'textDocument/didOpen',
+  params: { textDocument: { uri: projUri, text: importDoc } },
+})
+const unknownRange = {
+  start: { line: 4, character: 9 },
+  end: { line: 4, character: 22 },
+}
+const codeActions = (
+  await projServer.dispatch({
+    jsonrpc: '2.0',
+    id: 44,
+    method: 'textDocument/codeAction',
+    params: {
+      textDocument: { uri: projUri },
+      range: unknownRange,
+      context: { diagnostics: [{ range: unknownRange }] },
+    },
+  })
+)[0]!.result as { title: string }[]
+expect(
+  'codeAction: auto-imports an unknown name from its module',
+  codeActions.some(
+    a =>
+      a.title.includes('to-upper-case') &&
+      a.title.includes('@cluesurf/base/code/text'),
+  ),
+  true,
+)
+
+// argument-type ranking: in a call, a scope value of the expected type sorts ahead of one that does not
+const rankDoc =
+  'task double\n  take value, like number\n  like number\n  send back\n    call add\n      read value\n      read value\n\ntask use\n  take amount, like number\n  take label, like text\n  like number\n  send back\n    call double\n      a\n'
+await server.dispatch({
+  jsonrpc: '2.0',
+  method: 'textDocument/didOpen',
+  params: { textDocument: { uri: 'file:///rank.tree', text: rankDoc } },
+})
+const rankItems = (
+  (
+    await server.dispatch({
+      jsonrpc: '2.0',
+      id: 50,
+      method: 'textDocument/completion',
+      params: {
+        textDocument: { uri: 'file:///rank.tree' },
+        position: { line: 14, character: 7 },
+      },
+    })
+  )[0]!.result as { items: { label: string; sortText?: string }[] }
+).items
+const amountSort =
+  rankItems.find(i => i.label === 'amount')?.sortText ?? 'z'
+const labelSort = rankItems.find(i => i.label === 'label')?.sortText ?? 'z'
+expect(
+  'completion: argument-type match ranks first',
+  amountSort < labelSort,
+  true,
+)
+
+// code lens: a reference count above each definition
+const lensDoc =
+  'task square\n  take n, like number\n  like number\n  send back\n    read n\n\ntask run\n  take n, like number\n  like number\n  send back\n    call square\n      read n\n'
+await server.dispatch({
+  jsonrpc: '2.0',
+  method: 'textDocument/didOpen',
+  params: { textDocument: { uri: 'file:///lens.tree', text: lensDoc } },
+})
+const lenses = (
+  await server.dispatch({
+    jsonrpc: '2.0',
+    id: 60,
+    method: 'textDocument/codeLens',
+    params: { textDocument: { uri: 'file:///lens.tree' } },
+  })
+)[0]!.result as { command: { title: string } }[]
+expect(
+  'codeLens: reports the reference count per definition',
+  lenses.some(l => l.command.title === '1 reference'),
+  true,
+)
+
+// inlay hints: an un-annotated binding shows its inferred type inline
+const inlayDoc =
+  'task demo\n  like number\n  save x\n    code 5\n  send back\n    read x\n'
+await server.dispatch({
+  jsonrpc: '2.0',
+  method: 'textDocument/didOpen',
+  params: { textDocument: { uri: 'file:///inlay.tree', text: inlayDoc } },
+})
+const hints = (
+  await server.dispatch({
+    jsonrpc: '2.0',
+    id: 70,
+    method: 'textDocument/inlayHint',
+    params: {
+      textDocument: { uri: 'file:///inlay.tree' },
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 20, character: 0 },
+      },
+    },
+  })
+)[0]!.result as { label: string }[]
+expect(
+  'inlayHint: inferred type of an un-annotated binding',
+  hints.some(h => h.label === ': number'),
+  true,
 )
 
 console.log(`\nserver: ${pass} pass, ${fail} fail`)

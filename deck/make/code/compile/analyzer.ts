@@ -20,10 +20,13 @@ export class IncrementalAnalyzer {
   constructor(private readonly resolve?: Resolver) {}
 
   // analyze a document: collect its module graph, set sources, return incremental diagnostics + the typed program.
-  // Async: the per-definition chains (resolve -> type-check) run concurrently under one query transaction.
+  // `program` is the whole merged graph (for full types: hover, signatures); `documentProgram` is just this document's
+  // own typed statements (for a document-scoped symbol index: definitions, references, scopes that do not leak in from
+  // imported modules). Async: the per-definition chains (resolve -> type-check) run concurrently under one transaction.
   async analyze(document: Source): Promise<{
     diagnostics: Diagnostic[]
     program?: Program
+    documentProgram?: Program
   }> {
     const sources = this.resolve
       ? collectModules(document, this.resolve).sources
@@ -97,7 +100,14 @@ export class IncrementalAnalyzer {
         typed.push(entry.statement)
       }
 
-      return { diagnostics, program: typed }
+      // the entry document is collected LAST (its dependencies come first), so its own typed statements are the tail of
+      // the merged program -- as many statements as the document itself mills to.
+      const docUnit = await this.compiler.milled(cx, document.file)
+      const documentProgram = docUnit.ok
+        ? typed.slice(typed.length - docUnit.program.length)
+        : typed
+
+      return { diagnostics, program: typed, documentProgram }
     })
   }
 }

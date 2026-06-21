@@ -179,7 +179,14 @@ async function runSeedTests(input: {
 
       if (run.failure) {
         fail++
-        logFail(`    ${run.failure.split('\n').pop()}`)
+        // show the full failure (the compile diagnostics or the unproven-hold detail), not just its last line, so a
+        // real error (an unknown name, an invalid proof) is visible rather than a bare "did not compile"
+        logFail(
+          run.failure
+            .split('\n')
+            .map(line => `    ${line}`)
+            .join('\n'),
+        )
         continue
       }
 

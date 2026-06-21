@@ -122,7 +122,10 @@ const PATTERN: Record<TokenKind, RegExp> = {
   [TokenKind.OpenAngle]: /^</,
   [TokenKind.Space]: /^ +/,
   [TokenKind.Name]: /^[@~$%^&*'":.a-z0-9A-Z_\-?/]+/,
-  [TokenKind.Integer]: /^-?\d+(?=\b)/,
+  // a bare run of digits is an Integer, BUT digits followed by a hyphen and a letter (`24-cell`) is a kebab IDENTIFIER,
+  // not a number, so the Integer matcher declines there and the Name matcher claims the whole `24-cell`. A pure number
+  // (`24`, `24-3`) is unaffected.
+  [TokenKind.Integer]: /^-?\d+(?=\b)(?!-[a-zA-Z])/,
   // a chunk runs over literal text, including a `{` that does not open an interpolation (not followed by an
   // identifier) and any `}`; it stops at `>` (close), `\` (escape), or an interpolation-opening `{`.
   [TokenKind.Chunk]: /^(?:\\[<>{}]|\{+(?![a-zA-Z_])|[^>{\\])+/,

@@ -130,7 +130,9 @@ function expr(node: Node | undefined, stateNames: Set<string>): string {
       const kw = head(node)
       const args = rest(node)
 
-      if (kw === 'mark') {return expr(args[0], stateNames)}
+      // `code <literal>` is the literal wrapper (the former `mark`,
+      // renamed in the mark->code migration). Unwrap to its value.
+      if (kw === 'code' || kw === 'mark') {return expr(args[0], stateNames)}
 
       if (kw === 'loan' || kw === 'read' || kw === 'move') {
         const target = args[0]

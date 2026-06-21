@@ -1,0 +1,73 @@
+{
+  "name": "seed-language",
+  "displayName": "Seed",
+  "description": "Seed language support: .tree syntax highlighting plus the Seed language server (diagnostics, hover, go-to-definition).",
+  "version": "0.0.1",
+  "license": "MIT",
+  "publisher": "cluesurf",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cluesurf/seed.git"
+  },
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:tree", "workspaceContains:**/*.tree"],
+  "main": "./host/extension.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "dock": "vsce login cluesurf",
+    "make": "vsce package",
+    "host": "vsce publish",
+    "vscode:prepublish": "node build.mjs"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "tree",
+        "aliases": ["Seed", "Tree", "tree"],
+        "extensions": [".tree", ".seed"],
+        "configuration": "./text/bind.json"
+      },
+      {
+        "id": "tree-markdown-injection"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tree",
+        "scopeName": "source.tree",
+        "path": "./text/tree.json"
+      },
+      {
+        "language": "tree-markdown-injection",
+        "scopeName": "markdown.tree.codeblock",
+        "path": "./text/mark.json",
+        "injectTo": ["text.html.markdown"],
+        "embeddedLanguages": {
+          "meta.embedded.block.tree": "tree"
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "[tree]": {
+        "editor.wordWrap": "on",
+        "editor.tabCompletion": "on",
+        "editor.wordSeparators": " ()<>{},?/",
+        "editor.bracketPairColorization.enabled": false
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.13",
+    "@types/vscode": "^1.84.0",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.27.0",
+    "typescript": "^5.9.3"
+  }
+}

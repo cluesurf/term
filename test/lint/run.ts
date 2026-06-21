@@ -102,6 +102,76 @@ function main(): void {
     )
   }
 
+  // L006: a fork test whose condition is a boolean literal is constant control flow
+  {
+    const text = `fork test\n  hook test, wave true\n  hook hold\n    send back, code 1\n`
+    const fs = findings(text).filter(f => f.code === 'L006')
+    ok(
+      'L006 flags a constant `wave true` condition',
+      fs.length === 1,
+      JSON.stringify(findings(text)),
+    )
+
+    const live = `fork test\n  hook test\n    read x\n  hook hold\n    send back, code 1\n`
+    ok(
+      'L006 leaves a real condition alone',
+      findings(live).filter(f => f.code === 'L006').length === 0,
+      live,
+    )
+  }
+
+  // L007: comparing an expression to itself is always constant
+  {
+    const text = `save r\n  call is-equal\n    read x\n    read x\n`
+    const fs = findings(text).filter(f => f.code === 'L007')
+    ok(
+      'L007 flags is-equal(x, x)',
+      fs.length === 1,
+      JSON.stringify(findings(text)),
+    )
+
+    const distinct = `save r\n  call is-equal\n    read x\n    read y\n`
+    ok(
+      'L007 leaves is-equal(x, y) alone',
+      findings(distinct).filter(f => f.code === 'L007').length === 0,
+      distinct,
+    )
+
+    const below = `save r\n  call is-below\n    read n\n    read n\n`
+    ok(
+      'L007 flags a self ordering comparison (n < n)',
+      findings(below).filter(f => f.code === 'L007').length === 1,
+      below,
+    )
+  }
+
+  // L008: a native import whose alias is never referenced is flagged
+  {
+    const text = `dock load\n  load <node:fs/promises>, name fs\n\ntask noop\n  send back, code 1\n`
+    const fs = findings(text).filter(f => f.code === 'L008')
+    ok(
+      'L008 flags an unused native import',
+      fs.length === 1,
+      JSON.stringify(findings(text)),
+    )
+
+    const used = `dock load\n  load <node:fs/promises>, name fs\n\ntask read-it\n  mark async\n  send back\n    call fs/read-file\n      text </tmp/x>\n`
+    ok(
+      'L008 leaves a used native import alone',
+      findings(used).filter(f => f.code === 'L008').length === 0,
+      JSON.stringify(findings(used)),
+    )
+
+    // two imports, only one used: exactly the unused one is flagged
+    const mixed = `dock load\n  load <node:fs/promises>, name fs\n  load <node:path>, name pathlib\n\ntask use-path\n  send back\n    call pathlib/join\n      text <a>\n      text <b>\n`
+    const mixedFs = findings(mixed).filter(f => f.code === 'L008')
+    ok(
+      'L008 flags only the unused import in a mixed dock',
+      mixedFs.length === 1 && mixedFs[0]!.message.includes('fs'),
+      JSON.stringify(findings(mixed)),
+    )
+  }
+
   console.log(`\nlint: ${pass} pass, ${fail} fail`)
 }
 

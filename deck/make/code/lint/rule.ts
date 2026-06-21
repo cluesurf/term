@@ -29,11 +29,15 @@ export type Finding = {
 }
 
 // what a rule sees while checking a node: the file, the raw source (for span-accurate fixes), a set of names that
-// are reassigned somewhere in the program (computed once by the driver), and the report sink.
+// are reassigned somewhere in the program, a set of every name read somewhere in the program (both computed once by
+// the driver), and the report sink.
 export type LintContext = {
   file: string
   source: string
   reassigned: Set<string>
+  // every variable name read anywhere in the program, including inside closure bodies; used to detect names that are
+  // declared (e.g. a native import alias) but never used
+  referenced: Set<string>
   slice(span: Span): string
   report(
     finding: Omit<Finding, 'rule' | 'code' | 'severity'> & {

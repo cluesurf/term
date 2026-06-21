@@ -321,6 +321,12 @@ function makeEmitter(
   hmr = false,
   binds = new Map<string, Bind>(),
   env = 'node',
+  // every zone (view component) defined across the program, by name -> its
+  // input params (after the leading `host`) and whether its body has a `slot`.
+  // A `zone <name>` element whose name is in this map is emitted as a CALL to
+  // that component (passing props by name + a children thunk), not a raw
+  // `element(name)`. This is what makes components composable.
+  components = new Map<string, { params: string[]; slotted: boolean }>(),
 ) {
   const pad = (depth: number) => '  '.repeat(depth)
 
@@ -498,7 +504,12 @@ function makeEmitter(
         {out.push(
           `const ${ref} = dynamic(() => ${expression(zone.value)})`,
         )}
-      else if (zone.form === 'element') {
+      else if (zone.form === 'element' && components.has(zone.name)) {
+        // a component used where a single node ref is required (e.g. the only
+        // child of a fragment): mount it into a container we can return.
+        out.push(`const ${ref} = element("seed-part")`)
+        out.push(componentCall(zone, ref))
+      } else if (zone.form === 'element') {
         out.push(`const ${ref} = element(${JSON.stringify(zone.name)})`)
 
         for (const attribute of zone.attributes)
@@ -568,7 +579,16 @@ function makeEmitter(
           out.push(`append(${parent}, ${part})`)
           collect.push(part)
         } else {out.push(eachCall(parent, zone))}
-      } else if (zone.form !== 'slot') {
+      } else if (zone.form === 'slot') {
+        // the children outlet: build the passed-in children under parent.
+        // `children` is the component's `() => View` thunk param (present when
+        // the body has a slot); guard so a slotless call renders nothing.
+        out.push(`if (children) append(${parent}, children())`)
+      } else if (zone.form === 'element' && components.has(zone.name)) {
+        // a component instance: it mounts itself into `parent` (its host param),
+        // so there is no separate node to append or collect.
+        out.push(componentCall(zone, parent))
+      } else {
         const ref = build(zone, out)
         out.push(`append(${parent}, ${ref})`)
 
@@ -590,9 +610,9 @@ function makeEmitter(
       if (
         body.length === 1 &&
         only &&
-        (only.form === 'element' ||
-          only.form === 'text' ||
-          only.form === 'read')
+        (only.form === 'text' ||
+          only.form === 'read' ||
+          (only.form === 'element' && !components.has(only.name)))
       ) {
         const ref = build(only, out)
         out.push(`return ${ref}`)
@@ -607,6 +627,32 @@ function makeEmitter(
       return `(${params.join(', ')}) => { ${out.join('; ')} }`
     }
 
+    // emit a component instance call: `name(parent, ...propsByParamOrder,
+    // childrenThunk?)`. Props (`bind <name>, <value>`) are matched to the
+    // component's params by name and passed in the component's declared order;
+    // a missing prop is `undefined`. A slotted component receives the element's
+    // children as a `() => View` thunk (or `undefined` when none were given).
+    const componentCall = (
+      zone: Extract<ZoneNode, { form: 'element' }>,
+      parent: string,
+    ): string => {
+      const comp = components.get(zone.name)!
+
+      const args = comp.params.map(name => {
+        const prop = zone.props.find(p => p.name === name)
+        return prop ? expression(prop.value) : 'undefined'
+      })
+
+      if (comp.slotted) {
+        args.push(
+          zone.children.length ? fragment([], zone.children) : 'undefined',
+        )
+      }
+
+      const tail = args.length ? `, ${args.join(', ')}` : ''
+      return `${toCamel(zone.name)}(${parent}${tail})`
+    }
+
     // a top-level `save` whose value creates a signal (`save count / call make-signal / ...`). Its value is preserved
     // across a hot-swap, so in HMR mode it is seeded from the snapshot kept by the dev client.
     const isSignalSave = (
@@ -616,9 +662,16 @@ function makeEmitter(
       child.value.callee.form === 'variable' &&
       child.value.callee.name === 'make-signal'
 
-    const params = node.params
-      .map(p => `${toCamel(p.name)}: ${tsType(p.type)}`)
-      .join(', ')
+    const paramList = node.params.map(
+      p => `${toCamel(p.name)}: ${tsType(p.type)}`,
+    )
+
+    // a component whose body has a `slot` takes the caller's children as a
+    // trailing `() => View` thunk; the slot outlet builds it under its parent.
+    if (components.get(node.name)?.slotted)
+      {paramList.push('children?: () => View')}
+
+    const params = paramList.join(', ')
 
     const host = node.params[0] ? toCamel(node.params[0].name) : 'host'
     // the zone's key in the hot snapshot / remount map is its exported (camelCase) name, so the accept callback can
@@ -888,11 +941,51 @@ export function emitTypeScript(
 
   const env = options?.env ?? 'node'
   const binds = collectBinds(program)
+
+  // Build the component registry: every `zone` in the program by name, with its
+  // input params (excluding the leading `host`) and whether it has a `slot`.
+  // The emitter consults this to turn `zone <name>` into a component call.
+  const components = new Map<
+    string,
+    { params: string[]; slotted: boolean }
+  >()
+
+  const zoneBodyHasSlot = (nodes: ZoneNode[]): boolean => {
+    for (const node of nodes) {
+      if (node.form === 'slot') {return true}
+
+      if (node.form === 'element' && zoneBodyHasSlot(node.children))
+        {return true}
+
+      if (node.form === 'fork') {
+        if (node.branches.some(b => zoneBodyHasSlot(b.body))) {return true}
+
+        if (node.otherwise && zoneBodyHasSlot(node.otherwise)) {return true}
+      }
+
+      if (node.form === 'walk' && zoneBodyHasSlot(node.body)) {return true}
+    }
+
+    return false
+  }
+
+  for (const node of program) {
+    if (node.form === 'zone') {
+      components.set(node.name, {
+        // params after `host` (the first one): these are the component inputs a
+        // caller fills with `bind <name>, <value>`.
+        params: node.params.slice(1).map(p => p.name),
+        slotted: zoneBodyHasSlot(node.body),
+      })
+    }
+  }
+
   const emitter = makeEmitter(
     variants,
     options?.hmr ?? false,
     binds,
     env,
+    components,
   )
 
   // native module bindings (`dock load`) become host imports at the top. A `<global:X>` binding refers to a host

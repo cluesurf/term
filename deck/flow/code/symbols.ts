@@ -281,6 +281,29 @@ export function buildIndex(program: Program): SymbolIndex {
   return { definitions, references, functions, scopes, signatures }
 }
 
+// every function's signature (name -> params + result). A signature is span-free, so this is safe to take over the
+// whole merged program: signature help and argument-type ranking then work for imported functions too, while the
+// document-scoped index keeps definitions / references local.
+export function signaturesOf(
+  program: Program,
+): SymbolIndex['signatures'] {
+  const signatures: SymbolIndex['signatures'] = new Map()
+
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      signatures.set(statement.name, {
+        params: statement.params.map(p => ({
+          name: p.name,
+          type: showType(p.type ?? { kind: 'unknown' }),
+        })),
+        result: showType(statement.result ?? { kind: 'unit' }),
+      })
+    }
+  }
+
+  return signatures
+}
+
 // the reference whose span contains the position (the narrowest, for nested calls)
 export function referenceAt(
   index: SymbolIndex,

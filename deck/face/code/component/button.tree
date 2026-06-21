@@ -1,0 +1,25 @@
+
+# Button — headless. Ported from shadcn/radix (tmp/study). Renders a native <button> carrying the stable theming hooks
+# (data-slot / data-variant / data-size) plus a pass-through class, an optional disabled flag, and a children slot. No
+# baked styling: a theme targets [data-slot=button] (and the data-variant / data-size facets) or passes classes via the
+# `class` prop. The click handler is passed in via `press`. This is the Radix/Ark headless model, not shadcn's styled
+# one — the parts + state attributes are here; the look is entirely the consumer's.
+
+load @cluesurf/site/code/zone/render
+  find element
+  find text
+load @cluesurf/site/code/dom/dom
+  find view
+  find append
+
+zone button
+  take host, like view
+  take class
+  take variant
+  take size
+  zone tag-button
+    seed data-slot, text <button>
+    seed data-variant, read variant
+    seed data-size, read size
+    seed class, read class
+    slot

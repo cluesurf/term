@@ -1,18 +1,13 @@
 import { createInterface } from 'node:readline'
-import {
-  mkdtempSync,
-  writeFileSync,
-  existsSync,
-  readFileSync,
-  realpathSync,
-} from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { pathToFileURL, fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
+import type { Resolver } from '@cluesurf/make/code/compile/load'
 import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+import { stdlibResolver } from '@cluesurf/make/code/resolve'
 import {
   logStep,
   logFail,
@@ -20,6 +15,13 @@ import {
   fade,
   bold,
 } from '@cluesurf/make/code/tint'
+
+// the module resolvers now live in the compiler (make), so the CLI, dev server, and language server share them. Kept
+// re-exported here for the CLI's existing call sites and tests.
+export {
+  stdlibResolver,
+  linkResolver,
+} from '@cluesurf/make/code/resolve'
 
 // the keywords that begin a top-level definition; anything else typed at the prompt is an expression to evaluate
 const DEFINITION =
@@ -125,65 +127,6 @@ function display(value: unknown): string {
 
 function formatDiagnostics(diagnostics: Diagnostic[]): string {
   return diagnostics.map(d => `${d.name}: ${d.message}`).join('\n')
-}
-
-// resolve `@cluesurf/base/...` imports to the stdlib that ships with this package, if it can be found on disk
-export function stdlibResolver(): Resolver | undefined {
-  const here = dirname(fileURLToPath(import.meta.url))
-  const candidates = [
-    // base is a sub-package of the seed monorepo: deck/call/code -> ../../../deck/base (the seed root, then deck/base)
-    join(here, '..', '..', '..', 'deck', 'base'),
-    // legacy sibling location, kept as a fallback during the move
-    join(here, '..', '..', '..', '..', 'base.tree'),
-  ]
-
-  const base = candidates.find(c => existsSync(c))
-
-  if (!base) {return undefined}
-
-  return (path: string): Source | undefined => {
-    const prefix = '@cluesurf/base/'
-
-    if (!path.startsWith(prefix)) {return undefined}
-
-    const file = join(base, `${path.slice(prefix.length)}.tree`)
-
-    return existsSync(file)
-      ? { file, text: readFileSync(file, 'utf8') }
-      : undefined
-  }
-}
-
-// resolve any `@scope/pkg/sub/path` import via the package manager's link dir (`<root>/link/@scope/pkg/...`), where
-// `seed link` symlinks each dependency. Follows the file-resolution rules (foo.tree, then foo/base.tree, foo/note.tree).
-// This is how a project resolves its linked packages (@cluesurf/base, @cluesurf/bind, @cluesurf/term, @cluesurf/site).
-export function linkResolver(root: string): Resolver {
-  const linkDir = join(root, 'link')
-
-  return (importPath: string): Source | undefined => {
-    const match = /^(@[^/]+\/[^/]+)\/(.+)$/.exec(importPath)
-
-    if (!match) {return undefined}
-
-    const [, pkg, rest] = match
-    const base = join(linkDir, pkg!)
-
-    for (const candidate of [
-      join(base, `${rest}.tree`),
-      join(base, rest!, 'base.tree'),
-      join(base, rest!, 'note.tree'),
-    ]) {
-      // canonicalize through the `link/` symlink so a file reached via a linked package and via its real path dedup
-      // to one module (lets a package reference itself by name, e.g. `bear @cluesurf/site/code/dom/view`)
-      if (existsSync(candidate))
-        {return {
-          file: realpathSync(candidate),
-          text: readFileSync(candidate, 'utf8'),
-        }}
-    }
-
-    return undefined
-  }
 }
 
 export async function callWalk(_input: {
