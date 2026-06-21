@@ -19,16 +19,7 @@ deck @cluesurf/seed
   deck ./deck/site
   deck ./deck/term
   deck ./deck/deck
-  link @cluesurf/term, mark <0.0.x>
   link @cluesurf/bind, mark <0.0.x>
-  link @cluesurf/moon, mark <0.0.x>
-  link @cluesurf/bead, mark <0.0.x>
-  link @cluesurf/chew, mark <0.0.x>
-  link @cluesurf/move, mark <0.0.x>
-  link @cluesurf/seal, mark <0.0.x>
-  link @cluesurf/cone, mark <0.0.x>
-  link @cluesurf/buzz, mark <0.0.x>
-  link @cluesurf/crow, mark <0.0.x>
   task ./task
   # the task loader
   book ./book
