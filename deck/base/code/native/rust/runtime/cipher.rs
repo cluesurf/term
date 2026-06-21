@@ -1,22 +1,18 @@
+// AES-256-GCM over the aes-gcm crate. Key, nonce, plaintext, and ciphertext are raw bytes; the ciphertext carries the
+// 16-byte GCM tag appended. Reached only through the public cipher API.
 mod cipher {
     use aes_gcm::{Aes256Gcm, Key, Nonce};
     use aes_gcm::aead::{Aead, KeyInit};
-    fn from_hex(hex: &str) -> Vec<u8> {
-        (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect()
-    }
-    fn to_hex(bytes: &[u8]) -> String { bytes.iter().map(|b| format!("{:02x}", b)).collect() }
-    pub fn encrypt(key_hex: String, nonce_hex: String, plain: String) -> String {
-        let key = Key::<Aes256Gcm>::clone_from_slice(&from_hex(&key_hex));
+    pub fn encrypt(key: Vec<u8>, nonce: Vec<u8>, plain: Vec<u8>) -> Vec<u8> {
+        let key = Key::<Aes256Gcm>::clone_from_slice(&key);
         let gcm = Aes256Gcm::new(&key);
-        let nonce_bytes = from_hex(&nonce_hex);
-        let nonce = Nonce::from_slice(&nonce_bytes);
-        to_hex(&gcm.encrypt(nonce, plain.as_bytes()).unwrap())
+        let nonce = Nonce::from_slice(&nonce);
+        gcm.encrypt(nonce, plain.as_ref()).unwrap()
     }
-    pub fn decrypt(key_hex: String, nonce_hex: String, cipher_hex: String) -> String {
-        let key = Key::<Aes256Gcm>::clone_from_slice(&from_hex(&key_hex));
+    pub fn decrypt(key: Vec<u8>, nonce: Vec<u8>, sealed: Vec<u8>) -> Vec<u8> {
+        let key = Key::<Aes256Gcm>::clone_from_slice(&key);
         let gcm = Aes256Gcm::new(&key);
-        let nonce_bytes = from_hex(&nonce_hex);
-        let nonce = Nonce::from_slice(&nonce_bytes);
-        String::from_utf8(gcm.decrypt(nonce, from_hex(&cipher_hex).as_ref()).unwrap()).unwrap()
+        let nonce = Nonce::from_slice(&nonce);
+        gcm.decrypt(nonce, sealed.as_ref()).unwrap()
     }
 }

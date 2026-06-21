@@ -947,12 +947,20 @@ export function elaborateReport(
 
     switch (tactic.head) {
       case 'calm':
-        // `calm` proves the goal by definitional computation: both sides reduce to one normal form. The bare `calm` and
-        // the two-word `calm hold` are the SAME tactic. The second word `hold` names the goal being settled, conforming
-        // `calm` to the verb-noun, two-words-per-line proof convention (every other tactic line is a pair: `show hold`,
-        // `cite lemma`, `fold x`, `base true`). Any other second word is reserved for future targeted forms and rejected
-        // now so a typo cannot silently fall through to a bare `calm`.
-        if (tactic.arg !== undefined && tactic.arg !== 'hold') {return 'fail'}
+        // `calm` settles the goal by definitional computation: the two sides reduce to normal forms, equal for a
+        // `show hold` goal or distinct for a `show miss` goal (the goal is already negated by the mill for `miss`). The
+        // bare `calm` and the two-word forms `calm hold` / `calm miss` are the SAME tactic. The second word names the
+        // polarity being settled and mirrors the `show` mode (`calm hold` under `show hold`, `calm miss` under
+        // `show miss`), conforming `calm` to the verb-noun, two-words-per-line proof convention (every other tactic line
+        // is a pair: `show hold`, `cite lemma`, `fold x`, `base true`). Only `hold` and `miss` are valid second words;
+        // any other is rejected now so a typo cannot silently fall through to a bare `calm`.
+        if (
+          tactic.arg !== undefined &&
+          tactic.arg !== 'hold' &&
+          tactic.arg !== 'miss'
+        ) {
+          return 'fail'
+        }
         return areConvertible(level, left, right) ? 'ok' : 'fail'
 
       case 'melt':
@@ -2265,6 +2273,45 @@ export function elaborateReport(
     assumptions: [Expression, Expression][] = [],
   ): void {
     const goal = statement.expr
+
+    // `calm miss`: a `show miss` over an equality is lowered by the mill to `! (a == b)`. Discharge it by definitional
+    // DISTINCTNESS (no confusion): if `a` and `b` reduce to different constructors of the same enum, the equality is
+    // impossible, so its negation holds by computation. This is the refutation companion of `calm hold`. Sound: it reuses
+    // `equationAbsurd`, the same constructor-disjointness check that closes impossible induction cases.
+    if (
+      goal.form === 'unary' &&
+      goal.op === '!' &&
+      goal.operand.form === 'binary' &&
+      goal.operand.op === '==' &&
+      statement.proof?.[0]?.head === 'calm'
+    ) {
+      const eq = goal.operand
+      const leftTerm = expr(eq.left, scope, context)
+      const rightTerm = expr(eq.right, scope, context)
+
+      if (leftTerm && rightTerm) {
+        try {
+          const lv = evaluate(context.env, leftTerm)
+          const rv = evaluate(context.env, rightTerm)
+
+          if (equationAbsurd(context, leftTerm, lv, rv)) {
+            discharged.push(statement.span)
+          } else {
+            errors.push(
+              error('invalid-proof', {
+                span: statement.span,
+                message:
+                  'calm miss needs the two sides to compute to distinct constructors',
+              }),
+            )
+          }
+        } catch {
+          // leave to the linear prover / unproven reporting
+        }
+      }
+
+      return
+    }
 
     if (goal.form !== 'binary') {return}
 

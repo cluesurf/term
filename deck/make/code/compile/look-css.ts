@@ -184,9 +184,10 @@ function emitTone(group: GroupNode): string {
   return out.length ? `${selector} {\n${out.join('\n')}\n}` : ''
 }
 
-// emit a raw-selector rule (`base text <html, body>` -> `html, body { ... }`). For the base layer (element resets,
-// fonts, ::selection) and descendant rules (e.g. `prose` typography) that are not single utility classes. The selector
-// is verbatim CSS (commas, pseudo-elements, descendant combinators), never escaped. Always kept by the JIT.
+// emit a raw-selector rule (`base <html, body>` -> `html, body { ... }`). For the base layer (element resets, fonts,
+// ::selection, @font-face) and descendant rules (e.g. `prose` typography) that are not single utility classes. The
+// selector is a text literal (verbatim CSS: commas, pseudo-elements, descendant combinators), never escaped. Always
+// kept by the JIT.
 function emitBase(group: GroupNode): string {
   const selector = argText(group, 0)
   const body = declarations(group)

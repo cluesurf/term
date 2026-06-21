@@ -12,6 +12,6 @@ const crypto = (() => {
     md5: (input) => { throw new Error('MD5 is not available in the Web Crypto API') },
     hmacSha256: (key, data) => mac('SHA-256', key, data),
     hmacSha512: (key, data) => mac('SHA-512', key, data),
-    randomBytes: (size) => hex(globalThis.crypto.getRandomValues(new Uint8Array(size)).buffer),
+    randomBytes: (size) => globalThis.crypto.getRandomValues(new Uint8Array(size)),
   }
 })()

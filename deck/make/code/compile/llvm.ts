@@ -21,6 +21,7 @@ import {
   collectionRead,
 } from '@cluesurf/make/code/compile/backend'
 import { monomorphize } from '@cluesurf/make/code/ir/monomorphize'
+import { dropSafeHeapLocals } from '@cluesurf/make/code/ir/drop-safe'
 
 function mangle(name: string): string {
   return name.replace(/-/g, '_')
@@ -504,6 +505,62 @@ function emitFunction(
     }
 
     return s
+  }
+
+  // drop-safe heap locals: single-owner string / list / map locals that no use consumes (every use borrows). Each is
+  // freed once at every function exit. Records / bytes are not runtime-heap pointers, so they are skipped. The slots
+  // are null-initialized at entry, so an uninitialized one (an early return before its `save`) drops as a harmless
+  // no-op (`seed_drop` ignores a null / untracked pointer). Because these locals are single-owner, dropping cannot
+  // double-free; anything the analysis does not classify stays leaked exactly as before (no regression).
+  const DROP_TAG: Record<string, number> = { string: 0, array: 1, map: 2 }
+  const heapTypeOf = new Map<string, Type>()
+
+  const collectLetTypes = (body: Statement[]): void => {
+    for (const s of body) {
+      if (s.form === 'let') {
+        const t = s.init.type ?? s.type
+        if (t) {heapTypeOf.set(s.name, t)}
+      }
+
+      if (s.form === 'if') {
+        for (const b of s.branches) {collectLetTypes(b.body)}
+        if (s.otherwise) {collectLetTypes(s.otherwise)}
+      } else if (s.form === 'while' || s.form === 'for-each') {
+        collectLetTypes(s.body)
+      } else if (s.form === 'match') {
+        for (const c of s.cases) {collectLetTypes(c.body)}
+        if (s.otherwise) {collectLetTypes(s.otherwise)}
+      }
+    }
+  }
+
+  collectLetTypes(fn.body)
+
+  const dropList = [...dropSafeHeapLocals(fn)]
+    .map(name => ({
+      name,
+      tag: DROP_TAG[heapTypeOf.get(name)?.kind ?? ''],
+    }))
+    .filter((d): d is { name: string; tag: number } => d.tag !== undefined)
+
+  const entryInits: string[] = []
+
+  for (const d of dropList) {
+    const s = ensureSlot(d.name, 'ptr')
+    entryInits.push(`store ptr null, ptr ${s.reg}`)
+  }
+
+  // free every drop-safe local; emitted just before each `ret`
+  const emitExitDrops = (): void => {
+    for (const d of dropList) {
+      const s = slot.get(d.name)
+
+      if (!s) {continue}
+
+      const v = fresh()
+      cur.lines.push(`${v} = load ptr, ptr ${s.reg}`)
+      cur.lines.push(`call void @seed_drop(ptr ${v}, i64 ${d.tag})`)
+    }
   }
 
   const expr = (node: Expression): string => {
@@ -1240,6 +1297,7 @@ function emitFunction(
 
       case 'return':
         if (!node.value) {
+          emitExitDrops()
           cur.lines.push('ret void')
         } else {
           // the returned value must match the function's DECLARED result type, not the (sometimes under-inferred)
@@ -1248,7 +1306,9 @@ function emitFunction(
           const ty = llt(fn.result)
           // evaluate the value BEFORE referencing cur.lines: a value-position conditional emits its own blocks and
           // moves `cur` to the merge block, so the `ret` must land there, not in whatever block we started in.
+          // Drop the single-owner locals AFTER computing the return value (a borrow of one may feed the value).
           const v = expr(node.value)
+          emitExitDrops()
           cur.lines.push(`ret ${ty} ${v}`)
         }
 
@@ -1442,10 +1502,14 @@ function emitFunction(
 
   fn.body.forEach(stmt)
 
-  if (!cur.done)
-    {cur.lines.push(llt(fn.result) === 'void' ? 'ret void' : 'ret i64 0')}
+  if (!cur.done) {
+    // the implicit fall-off return: free the single-owner locals before it too
+    emitExitDrops()
+    cur.lines.push(llt(fn.result) === 'void' ? 'ret void' : 'ret i64 0')
+  }
 
-  blocks[0]!.lines = [...allocas, ...blocks[0]!.lines]
+  // allocas first, then the null-init of each drop-safe slot, then the body -- so an uninitialized local reads null
+  blocks[0]!.lines = [...allocas, ...entryInits, ...blocks[0]!.lines]
 
   const params = [
     ...(isClosure ? ['ptr %env'] : []),

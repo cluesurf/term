@@ -14,11 +14,11 @@ mod crypto {
         mac.update(&data);
         mac.finalize().into_bytes().to_vec()
     }
-    pub fn random_bytes(size: i64) -> String {
+    pub fn random_bytes(size: i64) -> Vec<u8> {
         use ::rand::RngCore;
         use ::rand::rngs::OsRng;
         let mut buffer = vec![0u8; size as usize];
         OsRng.fill_bytes(&mut buffer);
-        buffer.iter().map(|byte| format!("{:02x}", byte)).collect()
+        buffer
     }
 }

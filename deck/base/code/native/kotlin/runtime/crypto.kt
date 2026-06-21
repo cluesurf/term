@@ -14,9 +14,9 @@ object crypto {
     }
     fun hmacSha256(key: ByteArray, data: ByteArray): ByteArray = mac("HmacSHA256", key, data)
     fun hmacSha512(key: ByteArray, data: ByteArray): ByteArray = mac("HmacSHA512", key, data)
-    fun randomBytes(size: Long): String {
+    fun randomBytes(size: Long): ByteArray {
         val bytes = ByteArray(size.toInt())
         java.security.SecureRandom().nextBytes(bytes)
-        return bytes.joinToString("") { "%02x".format(it) }
+        return bytes
     }
 }
