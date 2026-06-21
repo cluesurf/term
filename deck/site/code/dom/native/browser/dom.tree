@@ -29,6 +29,10 @@ load @cluesurf/base/code/maybe
 load ../../view
   find view
 
+dock load
+  load <global:resize>, name resize
+  mark native
+
 task create-element
   take tag, like text
   like view
@@ -121,6 +125,37 @@ task listen
     read event
     read listener
     make none
+
+# listen on the document (for outside-click / global keyboard shortcuts / Escape dismissal)
+task listen-document
+  take event, like text
+  take handler
+    like task
+      take event
+  host listener, like any
+    read handler
+  call page/add-event-listener
+    read event
+    read listener
+    make none
+
+# observe an element's width via ResizeObserver (calls `handler` with the content-box width on each resize + once now)
+task observe-size
+  take node, like view
+  take handler
+    like task
+      take width
+  call resize/observe-size
+    read node/handle
+    read handler
+
+# the element's current content-box width
+task measure-width
+  take node, like view
+  like number
+  host made, like element
+    read node/handle
+  send back, read made/client-width
 
 task append
   take parent, like view

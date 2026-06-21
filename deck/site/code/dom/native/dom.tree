@@ -58,6 +58,22 @@ task listen
   take handler
     like task
 
+task listen-document
+  take event, like text
+  take handler
+    like task
+      take event
+
+task observe-size
+  take node, like view
+  take handler
+    like task
+      take width
+
+task measure-width
+  take node, like view
+  like number
+
 task append
   take parent, like view
   take child, like view

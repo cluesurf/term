@@ -123,22 +123,30 @@ function reuse(
 export function perceusControl(
   params: string[],
   body: Inst[],
+  // the reference-counted names. Only these get dup / drop; copyable values (integers, booleans) carry no RC, so
+  // dup'ing one would call the runtime on a non-pointer. If omitted, every name is treated as heap (back-compat with
+  // the MIR-only unit tests, which model all bindings as owned).
+  heap?: Set<string>,
 ): Inst[] {
-  const [out, liveIn] = processBlock(body, new Set<string>())
+  const isHeap = (name: string): boolean => !heap || heap.has(name)
+  const [out, liveIn] = processBlock(body, new Set<string>(), isHeap)
   // an owned parameter never used on any path is dropped at entry
   const entryDrops: Inst[] = []
 
   for (const p of params)
-    {if (!liveIn.has(p)) {entryDrops.push({ op: 'drop', name: p })}}
+    {if (isHeap(p) && !liveIn.has(p))
+      {entryDrops.push({ op: 'drop', name: p })}}
 
   return [...entryDrops, ...out]
 }
 
-// process a block backward. `liveAfter` is the set of variables that must remain owned when the block exits.
-// Returns the rewritten block and the set live at entry.
+// process a block backward. `liveAfter` is the set of (heap) variables that must remain owned when the block exits.
+// `isHeap` selects the reference-counted names; copyable values are never dup'd / dropped. Returns the rewritten
+// block and the set live at entry.
 function processBlock(
   insts: Inst[],
   liveAfter: Set<string>,
+  isHeap: (name: string) => boolean = () => true,
 ): [Inst[], Set<string>] {
   const live = new Set(liveAfter)
   const reversed: Inst[] = []
@@ -156,6 +164,7 @@ function processBlock(
         const [, bodyIn] = processBlock(
           inst.body,
           new Set([...liveHeader, ...live]),
+          isHeap,
         )
         const grown = new Set([...liveHeader, ...bodyIn])
 
@@ -190,7 +199,9 @@ function processBlock(
     }
 
     if (inst.op === 'match') {
-      const armResults = inst.arms.map(arm => processBlock(arm, live))
+      const armResults = inst.arms.map(arm =>
+        processBlock(arm, live, isHeap),
+      )
       const armIns = armResults.map(([, inSet]) => inSet)
 
       // the union of values consumed across all arms: every arm must leave the same set owned, so an arm that does
@@ -215,8 +226,8 @@ function processBlock(
     }
 
     if (inst.op === 'if') {
-      const [thenOut, thenIn] = processBlock(inst.then, live)
-      const [elseOut, elseIn] = processBlock(inst.else, live)
+      const [thenOut, thenIn] = processBlock(inst.then, live, isHeap)
+      const [elseOut, elseIn] = processBlock(inst.else, live, isHeap)
       // a variable owned at the if but consumed in only one branch must be dropped in the other
       const dropInElse = [...thenIn]
         .filter(v => !elseIn.has(v) && !live.has(v))
@@ -241,13 +252,26 @@ function processBlock(
     }
 
     const def = inst.op === 'let' ? inst.name : undefined
-    const dups: Inst[] = []
+
+    // count heap reads: a value read k times in ONE instruction needs k references (a call that takes the value twice
+    // consumes two). Only reference-counted (heap) reads matter; a copyable value (integer, boolean) carries no RC.
+    const readCounts = new Map<string, number>()
 
     for (const v of reads(inst))
-      {if (live.has(v)) {dups.push({ op: 'dup', name: v })}} // used again later: take a reference
+      {if (isHeap(v)) {readCounts.set(v, (readCounts.get(v) ?? 0) + 1)}}
 
-    if (def && inst.op === 'let' && !live.has(def))
-      {reversed.push({ op: 'drop', name: def })} // a dead binding
+    const dups: Inst[] = []
+
+    for (const [v, count] of readCounts) {
+      // references needed here = `count` consumed + (1 to survive if the value is live after); the original supplies
+      // one, so the remainder are dup'd.
+      const need = count + (live.has(v) ? 1 : 0) - 1
+
+      for (let k = 0; k < need; k++) {dups.push({ op: 'dup', name: v })}
+    }
+
+    if (def && inst.op === 'let' && isHeap(def) && !live.has(def))
+      {reversed.push({ op: 'drop', name: def })} // a dead heap binding
 
     reversed.push(inst)
 
@@ -255,7 +279,8 @@ function processBlock(
 
     if (def) {live.delete(def)}
 
-    for (const v of reads(inst)) {live.add(v)}
+    // `live` tracks only heap names (copyable values need no liveness for RC)
+    for (const v of readCounts.keys()) {live.add(v)}
   }
 
   return [reversed.reverse(), live]

@@ -1,0 +1,164 @@
+# Duration: a span of elapsed time, held as a whole number of nanoseconds. Pure integer arithmetic, identical on every backend. The `from-*` forms build a duration from a unit count; the `to-*` forms read it back in a coarser unit (truncating); `plus` / `minus` / `negate` / `absolute` compose spans. The combiners are named `plus` / `minus` rather than `add` / `subtract` because those names are the `number` arithmetic primitives.
+
+form duration
+  link nanoseconds, like number
+
+  task to-nanoseconds
+    take self
+    like number
+    send back, read self/nanoseconds
+
+  task to-milliseconds
+    take self
+    like number
+    send back
+      call divide
+        read self/nanoseconds
+        code 1000000
+
+  task to-seconds
+    take self
+    like number
+    send back
+      call divide
+        read self/nanoseconds
+        code 1000000000
+
+  task to-minutes
+    take self
+    like number
+    send back
+      call divide
+        read self/nanoseconds
+        code 60000000000
+
+  task to-hours
+    take self
+    like number
+    send back
+      call divide
+        read self/nanoseconds
+        code 3600000000000
+
+  task to-days
+    take self
+    like number
+    send back
+      call divide
+        read self/nanoseconds
+        code 86400000000000
+
+  task plus
+    take self
+    take other, like duration
+    like duration
+    send back
+      make duration
+        bind nanoseconds
+          call add
+            read self/nanoseconds
+            read other/nanoseconds
+
+  task minus
+    take self
+    take other, like duration
+    like duration
+    send back
+      make duration
+        bind nanoseconds
+          call subtract
+            read self/nanoseconds
+            read other/nanoseconds
+
+  task negate
+    take self
+    like duration
+    send back
+      make duration
+        bind nanoseconds
+          call subtract
+            code 0
+            read self/nanoseconds
+
+  task absolute
+    take self
+    like duration
+    fork test
+      hook test
+        call is-below
+          read self/nanoseconds
+          code 0
+      hook hold
+        send back
+          make duration
+            bind nanoseconds
+              call subtract
+                code 0
+                read self/nanoseconds
+      hook miss
+        send back, read self
+
+  task is-zero
+    take self
+    like boolean
+    send back
+      call is-equal
+        read self/nanoseconds
+        code 0
+
+task from-nanoseconds
+  take value, like number
+  like duration
+  send back
+    make duration
+      bind nanoseconds, read value
+
+task from-milliseconds
+  take value, like number
+  like duration
+  send back
+    make duration
+      bind nanoseconds
+        call multiply
+          read value
+          code 1000000
+
+task from-seconds
+  take value, like number
+  like duration
+  send back
+    make duration
+      bind nanoseconds
+        call multiply
+          read value
+          code 1000000000
+
+task from-minutes
+  take value, like number
+  like duration
+  send back
+    make duration
+      bind nanoseconds
+        call multiply
+          read value
+          code 60000000000
+
+task from-hours
+  take value, like number
+  like duration
+  send back
+    make duration
+      bind nanoseconds
+        call multiply
+          read value
+          code 3600000000000
+
+task from-days
+  take value, like number
+  like duration
+  send back
+    make duration
+      bind nanoseconds
+        call multiply
+          read value
+          code 86400000000000

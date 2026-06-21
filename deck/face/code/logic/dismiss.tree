@@ -1,0 +1,39 @@
+
+# Dismiss — close an open overlay on Escape or an outside click. Built on the `listen-document` dom primitive. Call
+# `arm-dismiss` with the overlay's disclosure controller when it opens; Escape closes it, and a document click closes
+# it too (the headless contract: the panel stops propagation on its own clicks, so only OUTSIDE clicks reach the
+# document handler). Reused by popover, dialog, dropdown-menu, context-menu, hover-card, select, sheet, drawer. The
+# behavior core for dismissal.
+
+load @cluesurf/site/code/zone/reactive
+  find signal
+load @cluesurf/site/code/dom/dom
+  find listen-document
+load @cluesurf/bind/code/browser/dom/keyboard-event
+  find keyboard-event
+load ./disclosure
+  find close-disclosure
+
+# arm Escape + outside-click dismissal for a disclosure controller
+task arm-dismiss
+  take control, like signal
+  call listen-document
+    text <keydown>
+    task on-key
+      take event
+      host key-event, like keyboard-event
+        read event
+      fork test
+        hook test
+          call is-equal
+            read key-event/key
+            text <Escape>
+        hook hold
+          call close-disclosure
+            bind self, read control
+  call listen-document
+    text <click>
+    task on-click
+      take event
+      call close-disclosure
+        bind self, read control

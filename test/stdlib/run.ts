@@ -1035,7 +1035,55 @@ task blended-red
     read c/red
 `
 
+const ORDERING = `load @cluesurf/base/code/ordering
+  find ordering
+  find from-numbers
+
+task less-is-less
+  like boolean
+  send back
+    call is-less
+      call from-numbers
+        code 1
+        code 2
+
+task equal-is-equal
+  like boolean
+  send back
+    call is-equal
+      call from-numbers
+        code 5
+        code 5
+
+task greater-is-greater
+  like boolean
+  send back
+    call is-greater
+      call from-numbers
+        code 9
+        code 2
+
+task reverse-less-is-greater
+  like boolean
+  send back
+    call is-greater
+      call reverse
+        call from-numbers
+          code 1
+          code 2
+`
+
 async function main(): Promise<void> {
+  const od = await loadProgram(ORDERING)
+  expect('ordering/from-numbers less', od.lessIsLess!(), true)
+  expect('ordering/from-numbers equal', od.equalIsEqual!(), true)
+  expect('ordering/from-numbers greater', od.greaterIsGreater!(), true)
+  expect(
+    'ordering/reverse flips less to greater',
+    od.reverseLessIsGreater!(),
+    true,
+  )
+
   const cl = await loadProgram(COLOR)
   expect('color/grayscale averages the channels', cl.gray!(), 60)
   expect('color/luminance of white is 255', cl.lumWhite!(), 255)

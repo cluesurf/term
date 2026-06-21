@@ -262,6 +262,36 @@ function main(): void {
     ['match s { return x | drop x; let z = lit; return z }'],
   )
 
+  // heap-awareness: only reference-counted names get dup/drop. `x` is heap (dup'd across its two uses, `a` dropped
+  // dead); `n` is copyable (an integer) so it is never dup'd or dropped even though it is read twice.
+  expect(
+    'heap-aware: copyable value gets no dup/drop',
+    perceusControl(
+      ['x', 'n'],
+      [
+        {
+          op: 'let',
+          name: 'a',
+          value: { kind: 'call', fn: 'f', args: ['x', 'n'] },
+        },
+        {
+          op: 'let',
+          name: 'b',
+          value: { kind: 'call', fn: 'g', args: ['x', 'n'] },
+        },
+        { op: 'return', name: 'b' },
+      ],
+      new Set(['x', 'a', 'b']),
+    ),
+    [
+      'dup x',
+      'let a = f(x, n)',
+      'drop a',
+      'let b = g(x, n)',
+      'return b',
+    ],
+  )
+
   console.log(`\nperceus: ${pass} pass, ${fail} fail`)
 }
 

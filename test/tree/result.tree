@@ -1,0 +1,34 @@
+note <Tests for result conversions. to-maybe drops the error channel: okay becomes some, error becomes none.>
+
+load @cluesurf/base/code/result
+  find result
+  find to-maybe
+
+load @cluesurf/base/code/maybe
+  find maybe
+  find is-some
+  find unwrap-or
+
+test <to-maybe on okay is some of the value>
+  want hold
+    call is-equal
+      call unwrap-or
+        call to-maybe
+          make okay
+            bind value, mark 7
+        mark 0
+      mark 7
+
+test <to-maybe on okay is some>
+  want hold
+    call is-some
+      call to-maybe
+        make okay
+          bind value, mark 1
+
+test <to-maybe on error is none>
+  want miss
+    call is-some
+      call to-maybe
+        make error
+          bind value, mark 9

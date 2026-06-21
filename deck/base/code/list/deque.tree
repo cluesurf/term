@@ -1,0 +1,93 @@
+
+# Deque (double-ended queue), backed by the native array. Push and pop at either end. Pops return `maybe` so an empty deque is total, never a fault.
+
+load @cluesurf/base/code/list
+  find list
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+form deque
+  head t
+  link items, like list
+
+  task push-back
+    take self
+    take item, like t
+    like deque
+    call push
+      read self/items
+      read item
+    send back, read self
+
+  task push-front
+    take self
+    take item, like t
+    like deque
+    call self/items/unshift
+      read item
+    send back, read self
+
+  task pop-back
+    take self
+    like maybe
+    fork test
+      hook test
+        call is-above
+          read self/items/length
+          code 0
+      hook hold
+        send back
+          make some
+            bind value
+              call pop
+                read self/items
+      hook miss
+        send back
+          make none
+
+  task pop-front
+    take self
+    like maybe
+    fork test
+      hook test
+        call is-above
+          read self/items/length
+          code 0
+      hook hold
+        send back
+          make some
+            bind value
+              call self/items/shift
+      hook miss
+        send back
+          make none
+
+  task front
+    take self
+    like maybe
+    send back
+      call first
+        read self/items
+
+  task back
+    take self
+    like maybe
+    send back
+      call last
+        read self/items
+
+  task count
+    take self
+    like number
+    send back
+      call size
+        read self/items
+
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        read self/items/length
+        code 0

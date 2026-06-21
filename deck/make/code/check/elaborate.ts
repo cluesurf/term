@@ -39,6 +39,7 @@ import {
   check,
   closeOver,
   contextWithSignature,
+  convertibleModulo,
   defineConstant,
   evaluate,
   freshMeta,
@@ -46,7 +47,6 @@ import {
   litLevel,
   neutralVar,
   quote,
-  quoteDeep,
   resetDefinitions,
   resetMetas,
   showTerm,
@@ -268,6 +268,14 @@ export function elaborateReport(
   const verified: string[] = []
   const discharged: Span[] = [] // holds the kernel proved by definitional equality (the non-linear fallback)
   const lemmas = new Map<string, { left: string; right: string }>() // named, proven `a == b` holds, for `cite`
+  // named, proven UNIVERSAL equational lemmas, stored as rewrite rules: `binderCount` leading universal binders (the
+  // rule's `mark`s), and `lhs`/`rhs` quoted at that depth so their `var`s are the universal holes. Used by `fold ...`
+  // with `cite <lemma>` children: each cited lemma is instantiated by first-order matching against the goal and fed in
+  // as a ground hypothesis, so a proof can chain previously proven lemmas (e.g. commutativity over `n + 0 = n`).
+  const lemmaRules = new Map<
+    string,
+    { binderCount: number; lhs: Term; rhs: Term }
+  >()
 
   // named types we postulate as constants (record-types / enums), so they can appear in signatures
   const namedTypes = new Set<string>()
@@ -1127,156 +1135,165 @@ export function elaborateReport(
     }
   }
 
-  // shift every free variable in a term up by `amount`, with a binder cutoff (vars below `cutoff` are locally bound and
-  // left alone). Used to lift an induction hypothesis (quoted at the outer context) underneath the lambda binders that
-  // the Church-encoded constructors introduce in a normal form.
-  function shiftTerm(term: Term, amount: number, cutoff: number): Term {
-    switch (term.tag) {
-      case 'var':
-        return term.index >= cutoff
-          ? { tag: 'var', index: term.index + amount }
-          : term
-      case 'app':
-        return {
-          tag: 'app',
-          fun: shiftTerm(term.fun, amount, cutoff),
-          arg: shiftTerm(term.arg, amount, cutoff),
-        }
-      case 'lam':
-        return {
-          tag: 'lam',
-          body: shiftTerm(term.body, amount, cutoff + 1),
-        }
-      case 'pi':
-        return {
-          tag: 'pi',
-          mult: term.mult,
-          domain: shiftTerm(term.domain, amount, cutoff),
-          codomain: shiftTerm(term.codomain, amount, cutoff + 1),
-        }
-      case 'sigma':
-        return {
-          tag: 'sigma',
-          mult: term.mult,
-          domain: shiftTerm(term.domain, amount, cutoff),
-          codomain: shiftTerm(term.codomain, amount, cutoff + 1),
-        }
-      case 'ann':
-        return {
-          tag: 'ann',
-          term: shiftTerm(term.term, amount, cutoff),
-          type: shiftTerm(term.type, amount, cutoff),
-        }
-      case 'id':
-        return {
-          tag: 'id',
-          type: shiftTerm(term.type, amount, cutoff),
-          left: shiftTerm(term.left, amount, cutoff),
-          right: shiftTerm(term.right, amount, cutoff),
-        }
-      case 'refl':
-        return {
-          tag: 'refl',
-          type: shiftTerm(term.type, amount, cutoff),
-          value: shiftTerm(term.value, amount, cutoff),
-        }
-      case 'pair':
-        return {
-          tag: 'pair',
-          first: shiftTerm(term.first, amount, cutoff),
-          second: shiftTerm(term.second, amount, cutoff),
-        }
-      case 'fst':
-        return { tag: 'fst', pair: shiftTerm(term.pair, amount, cutoff) }
-      case 'snd':
-        return { tag: 'snd', pair: shiftTerm(term.pair, amount, cutoff) }
-      case 'self':
-        return {
-          tag: 'self',
-          body: shiftTerm(term.body, amount, cutoff + 1),
-        }
-      default:
-        return term
-    }
-  }
-
-  // discharge `left == right` modulo a set of induction-hypothesis equalities. Both sides are normalized (quoted) and
-  // compared in lockstep; at every node, if the two subterms match a hypothesis pair (shifted under the binders crossed
-  // so far) the node is accepted. With no hypotheses this is plain syntactic equality of normal forms (the base case of
-  // an induction). The Church-encoded constructors push the structural difference under lambda binders, so the
-  // comparison must descend through them, lifting each hypothesis by the binder depth. Sound: it only ever accepts a
-  // node by a TRUE (induction-hypothesis) equality, the exact reasoning the type's eliminator licenses.
+  // discharge `left == right` modulo a set of induction-hypothesis equalities, by the kernel. With no hypotheses this
+  // is plain definitional equality (the base case of an induction); otherwise the kernel may also equate two subterms
+  // by any hypothesis, the reasoning the type's eliminator licenses for the step.
   function dischargeModulo(
     level: number,
     left: Value,
     right: Value,
     hypotheses: [Value, Value][],
   ): boolean {
-    if (areConvertible(level, left, right)) {return true}
+    return convertibleModulo(level, left, right, hypotheses)
+  }
 
-    if (hypotheses.length === 0) {return false}
+  // structural equality of two kernel terms (for matching folded normal forms; both come from `quote`, so a syntactic
+  // comparison is exact up to the shared readback).
+  function termsEqual(a: Term, b: Term): boolean {
+    return showTerm(a) === showTerm(b)
+  }
 
-    const hyps = hypotheses.map(
-      ([a, b]) =>
-        [quoteDeep(level, a), quoteDeep(level, b)] as [Term, Term],
-    )
+  // first-order match: bind the pattern's universal holes (its `var`s, at indices below `binders`) to subterms of the
+  // subject so that the instantiated pattern equals the subject. `depth` tracks binders crossed inside the pattern (a
+  // var at or above `depth` is a hole; below it is locally bound). Returns false on any clash. Used to instantiate a
+  // cited lemma against the goal.
+  function matchPattern(
+    pattern: Term,
+    subject: Term,
+    binders: number,
+    depth: number,
+    subst: Map<number, Term>,
+  ): boolean {
+    if (pattern.tag === 'var' && pattern.index - depth >= 0 && pattern.index - depth < binders) {
+      const hole = pattern.index - depth
+      const prior = subst.get(hole)
 
-    const convEq = (a: Term, b: Term, depth: number): boolean => {
-      const ak = showTerm(a)
-      const bk = showTerm(b)
+      if (prior) {return termsEqual(prior, subject)}
 
-      if (ak === bk) {return true}
+      subst.set(hole, subject)
 
-      // a hypothesis L == R licenses replacing L by R (or R by L) under the binders crossed so far
-      for (const [ihLeft, ihRight] of hyps) {
-        const lifted = (t: Term): string =>
-          depth === 0 ? showTerm(t) : showTerm(shiftTerm(t, depth, 0))
-        const il = lifted(ihLeft)
-        const ir = lifted(ihRight)
-
-        if ((ak === il && bk === ir) || (ak === ir && bk === il))
-          {return true}
-      }
-
-      if (a.tag !== b.tag) {return false}
-
-      switch (a.tag) {
-        case 'app':
-          return (
-            convEq(a.fun, (b as typeof a).fun, depth) &&
-            convEq(a.arg, (b as typeof a).arg, depth)
-          )
-        case 'lam':
-          return convEq(a.body, (b as typeof a).body, depth + 1)
-        case 'pi':
-        case 'sigma': {
-          const bb = b as typeof a
-
-          return (
-            convEq(a.domain, bb.domain, depth) &&
-            convEq(a.codomain, bb.codomain, depth + 1)
-          )
-        }
-        case 'self':
-          return convEq(a.body, (b as typeof a).body, depth + 1)
-        case 'fst':
-          return convEq(a.pair, (b as typeof a).pair, depth)
-        case 'snd':
-          return convEq(a.pair, (b as typeof a).pair, depth)
-        case 'pair': {
-          const bb = b as typeof a
-
-          return (
-            convEq(a.first, bb.first, depth) &&
-            convEq(a.second, bb.second, depth)
-          )
-        }
-        default:
-          return false // atoms (var/const/type/meta) already settled by the string check
-      }
+      return true
     }
 
-    return convEq(quoteDeep(level, left), quoteDeep(level, right), 0)
+    if (pattern.tag !== subject.tag) {return false}
+
+    switch (pattern.tag) {
+      case 'var':
+        return subject.tag === 'var' && pattern.index === subject.index
+      case 'const':
+        return subject.tag === 'const' && pattern.name === subject.name
+      case 'app':
+        return (
+          subject.tag === 'app' &&
+          matchPattern(pattern.fun, subject.fun, binders, depth, subst) &&
+          matchPattern(pattern.arg, subject.arg, binders, depth, subst)
+        )
+      case 'lam':
+        return (
+          subject.tag === 'lam' &&
+          matchPattern(pattern.body, subject.body, binders, depth + 1, subst)
+        )
+      default:
+        // other shapes (pi, sigma, id, ...) do not occur in the first-order equational lemmas we cite
+        return termsEqual(pattern, subject)
+    }
+  }
+
+  // substitute a lemma's hole assignments into its rhs (the holes are the `var`s below `binders`), yielding a concrete
+  // term in the goal's context. No inner binders occur in these first-order lemmas, so a plain replacement is exact.
+  function instantiate(
+    rhs: Term,
+    binders: number,
+    depth: number,
+    subst: Map<number, Term>,
+  ): Term | null {
+    if (rhs.tag === 'var' && rhs.index - depth >= 0 && rhs.index - depth < binders) {
+      const value = subst.get(rhs.index - depth)
+
+      return value ?? null
+    }
+
+    switch (rhs.tag) {
+      case 'app': {
+        const fun = instantiate(rhs.fun, binders, depth, subst)
+        const arg = instantiate(rhs.arg, binders, depth, subst)
+
+        return fun && arg ? { tag: 'app', fun, arg } : null
+      }
+      case 'lam': {
+        const body = instantiate(rhs.body, binders, depth + 1, subst)
+
+        return body ? { tag: 'lam', body } : null
+      }
+      default:
+        return rhs
+    }
+  }
+
+  // rewrite a term ONCE by a lemma (left-to-right): find the leftmost-outermost subterm matching the lemma's lhs and
+  // replace it with the instantiated rhs. Returns the rewritten term, or null if the lemma does not fire anywhere.
+  function rewriteOnce(
+    target: Term,
+    rule: { binderCount: number; lhs: Term; rhs: Term },
+  ): Term | null {
+    const subst = new Map<number, Term>()
+
+    if (matchPattern(rule.lhs, target, rule.binderCount, 0, subst)) {
+      const rhs = instantiate(rule.rhs, rule.binderCount, 0, subst)
+
+      if (rhs) {return rhs}
+    }
+
+    switch (target.tag) {
+      case 'app': {
+        const fun = rewriteOnce(target.fun, rule)
+
+        if (fun) {return { tag: 'app', fun, arg: target.arg }}
+
+        const arg = rewriteOnce(target.arg, rule)
+
+        if (arg) {return { tag: 'app', fun: target.fun, arg }}
+
+        return null
+      }
+      case 'lam': {
+        const body = rewriteOnce(target.body, rule)
+
+        return body ? { tag: 'lam', body } : null
+      }
+      default:
+        return null
+    }
+  }
+
+  // rewrite a term to a fixed point by a set of lemmas (directed left-to-right), bounded by fuel so a non-terminating
+  // rewrite set cannot loop. Each rewrite replaces a subterm by a provably equal one, so the result equals the input.
+  function rewriteWithLemmas(
+    target: Term,
+    rules: { binderCount: number; lhs: Term; rhs: Term }[],
+    fuel: number,
+  ): Term {
+    let current = target
+    let budget = fuel
+
+    while (budget > 0) {
+      let progressed = false
+
+      for (const rule of rules) {
+        const next = rewriteOnce(current, rule)
+
+        if (next) {
+          current = next
+          progressed = true
+          budget--
+          break
+        }
+      }
+
+      if (!progressed) {break}
+    }
+
+    return current
   }
 
   // structural induction over an inductive self-type: the `fold <var>` tactic when <var> ranges over a record-type
@@ -1284,14 +1301,16 @@ export function elaborateReport(
   // the induction hypothesis on each recursive field as a rewrite (via dischargeModulo). This is exactly the type's
   // dependent eliminator, so it is sound. It substitutes the constructor through the evaluation environment (no surface
   // rewriting, no de Bruijn shifting), re-elaborating the goal in a context extended by the constructor's fields.
-  // Returns false (never throws) for anything outside its fragment, so the ring-level `checkFold` still gets a turn.
+  // `citedLemmas` are previously proven universal equalities, instantiated against each case and added as hypotheses,
+  // so a proof can chain lemmas (e.g. commutativity over `n + 0 = n`). Returns false (never throws) for anything outside
+  // its fragment, so the ring-level `checkFold` still gets a turn.
   function structuralInduction(
     goal: Extract<Expression, { form: 'binary' }>,
     scope: Scope,
     context: Context,
     inductVar: string,
+    citedLemmas: string[],
   ): boolean {
-    const DBG = process.env.SEED_DEBUG_INDUCT
     if (goal.op !== '==') {return false}
 
     const varLevel = scope.get(inductVar)
@@ -1305,7 +1324,6 @@ export function elaborateReport(
       if (!typeValue) {return false}
 
       const typeTerm = quote(context.level, typeValue)
-      if (DBG) {console.error('[induct] type', showTerm(typeTerm))}
 
       if (typeTerm.tag !== 'const') {return false}
 
@@ -1363,35 +1381,65 @@ export function elaborateReport(
           }
         })
 
-        if (DBG) {
-          console.error(
-            `[induct] case ${variant} k=${k} hyps=${hypotheses.length}`,
-          )
-          console.error('  L=', showTerm(quote(inner.level, caseLeft)))
-          console.error('  R=', showTerm(quote(inner.level, caseRight)))
-          for (const [a, b] of hypotheses)
-            {console.error(
-              '  IH',
-              showTerm(quote(inner.level, a)),
-              '==',
-              showTerm(quote(inner.level, b)),
-            )}
+        // cited lemmas: rewrite each side of the case goal by the lemmas (directed left-to-right), so a stuck recursive
+        // call is turned into the form the induction hypothesis can close. Each rewrite replaces a subterm by a provably
+        // equal one (the lemma is a proven universal), so the rewritten goal is equivalent to the original.
+        let leftGoal = caseLeft
+        let rightGoal = caseRight
+
+        if (citedLemmas.length > 0) {
+          const rules = citedLemmas
+            .map(name => lemmaRules.get(name))
+            .filter((r): r is NonNullable<typeof r> => r !== undefined)
+
+          if (rules.length > 0) {
+            leftGoal = evaluate(
+              inner.env,
+              rewriteWithLemmas(quote(inner.level, caseLeft), rules, 200),
+            )
+            rightGoal = evaluate(
+              inner.env,
+              rewriteWithLemmas(quote(inner.level, caseRight), rules, 200),
+            )
+          }
         }
 
         if (
-          !dischargeModulo(inner.level, caseLeft, caseRight, hypotheses)
-        ) {
-          if (DBG) {console.error(`[induct] case ${variant} FAILED`)}
-
-          return false
-        }
+          !dischargeModulo(inner.level, leftGoal, rightGoal, hypotheses)
+        )
+          {return false}
       }
 
       return true
-    } catch (error) {
-      if (DBG) {console.error('[induct] threw', error)}
-
+    } catch {
       return false
+    }
+  }
+
+  // record a discharged named equation as a citable rewrite rule (its `mark` binders are the universal holes). Stores
+  // both the structural rule (for `fold ... / cite`) and the string form (for the exact-match `cite`/`turn`/`link`).
+  function recordLemmaRule(
+    name: string | undefined,
+    goal: Extract<Statement, { form: 'hold' }>['expr'],
+    scope: Scope,
+    context: Context,
+  ): void {
+    if (!name || goal.form !== 'binary') {return}
+
+    try {
+      const left = expr(goal.left, scope, context)
+      const right = expr(goal.right, scope, context)
+
+      if (!left || !right) {return}
+
+      const leftValue = evaluate(context.env, left)
+      const rightValue = evaluate(context.env, right)
+      const lhs = quote(context.level, leftValue)
+      const rhs = quote(context.level, rightValue)
+      lemmaRules.set(name, { binderCount: context.level, lhs, rhs })
+      lemmas.set(name, { left: showTerm(lhs), right: showTerm(rhs) })
+    } catch {
+      // not elaborable: skip; the proof still stands, it just is not citable
     }
   }
 
@@ -1418,13 +1466,19 @@ export function elaborateReport(
     if (tactic?.head === 'fold' && tactic.arg) {
       // try structural induction over an inductive type first (it handles lists, trees, and the like, and proves the
       // non-definitional arithmetic laws such as n + 0 == n); fall back to ring-level Peano induction for the numeric
-      // accumulator recurrences (closed-form sums) that the symbolic ring certificate decides.
+      // accumulator recurrences (closed-form sums) that the symbolic ring certificate decides. `cite <lemma>` children
+      // name previously proven universal equalities to chain into the induction.
+      const cited = tactic.children
+        .filter(child => child.head === 'cite' && child.arg)
+        .map(child => child.arg!)
+
       if (
-        structuralInduction(goal, scope, context, tactic.arg) ||
+        structuralInduction(goal, scope, context, tactic.arg, cited) ||
         checkFold(program, goal, tactic.arg)
-      )
-        {discharged.push(statement.span)}
-      else
+      ) {
+        discharged.push(statement.span)
+        recordLemmaRule(statement.name, goal, scope, context)
+      } else
         {diagnostics.push(
           diagnose('invalid-proof', {
             file,
@@ -1500,11 +1554,17 @@ export function elaborateReport(
       if (verdict === 'ok') {
         discharged.push(statement.span)
 
-        if (statement.name)
-          {lemmas.set(statement.name, {
+        if (statement.name) {
+          lemmas.set(statement.name, {
             left: showTerm(quote(context.level, leftValue)),
             right: showTerm(quote(context.level, rightValue)),
-          })}
+          })
+          lemmaRules.set(statement.name, {
+            binderCount: context.level,
+            lhs: quote(context.level, leftValue),
+            rhs: quote(context.level, rightValue),
+          })
+        }
       } else if (verdict === 'fail') {
         diagnostics.push(
           diagnose('invalid-proof', {

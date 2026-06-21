@@ -1,0 +1,208 @@
+note <Tests for the newly completed hash and set methods: hash get-or-default/clear/merge/entries, set intersection/clear/symmetric-difference/is-subset/is-superset.>
+
+load @cluesurf/base/code/hash
+  find hash
+  find get-or-default
+  find clear
+  find merge
+  find entries
+
+load @cluesurf/base/code/set
+  find set
+  find insert
+  find size
+  find intersection
+  find symmetric-difference
+  find is-subset
+  find is-superset
+
+load @cluesurf/base/code/list
+  find list
+  find size
+
+test <get-or-default returns the fallback for a missing key>
+  save m
+    make find
+  want hold
+    call is-equal
+      call get-or-default
+        read m
+        text <nope>
+        mark 42
+      mark 42
+
+test <get-or-default returns the stored value when present>
+  save m
+    make find
+  call set
+    read m
+    text <a>
+    mark 7
+  want hold
+    call is-equal
+      call get-or-default
+        read m
+        text <a>
+        mark 0
+      mark 7
+
+test <clear empties the map>
+  save m
+    make find
+  call set
+    read m
+    text <a>
+    mark 1
+  call clear
+    read m
+  want hold
+    call is-equal
+      call size
+        read m
+      mark 0
+
+test <merge copies entries from another map>
+  save a
+    make find
+  call set
+    read a
+    text <x>
+    mark 1
+  save b
+    make find
+  call set
+    read b
+    text <y>
+    mark 2
+  call merge
+    read a
+    read b
+  want hold
+    call is-equal
+      call get-or-default
+        read a
+        text <y>
+        mark 0
+      mark 2
+
+test <entries lists every key/value pair>
+  save m
+    make find
+  call set
+    read m
+    text <a>
+    mark 1
+  call set
+    read m
+    text <b>
+    mark 2
+  want hold
+    call is-equal
+      call size
+        call entries
+          read m
+      mark 2
+
+test <intersection keeps shared items>
+  save a
+    make set
+      bind items
+        make find
+  call insert
+    read a
+    mark 1
+  call insert
+    read a
+    mark 2
+  save b
+    make set
+      bind items
+        make find
+  call insert
+    read b
+    mark 2
+  call insert
+    read b
+    mark 3
+  want hold
+    call is-equal
+      call size
+        call intersection
+          read a
+          read b
+      mark 1
+
+test <symmetric-difference keeps items in exactly one set>
+  save a
+    make set
+      bind items
+        make find
+  call insert
+    read a
+    mark 1
+  call insert
+    read a
+    mark 2
+  save b
+    make set
+      bind items
+        make find
+  call insert
+    read b
+    mark 2
+  call insert
+    read b
+    mark 3
+  want hold
+    call is-equal
+      call size
+        call symmetric-difference
+          read a
+          read b
+      mark 2
+
+test <is-subset holds when every item is contained>
+  save a
+    make set
+      bind items
+        make find
+  call insert
+    read a
+    mark 1
+  save b
+    make set
+      bind items
+        make find
+  call insert
+    read b
+    mark 1
+  call insert
+    read b
+    mark 2
+  want hold
+    call is-subset
+      read a
+      read b
+
+test <is-superset is the converse of is-subset>
+  save a
+    make set
+      bind items
+        make find
+  call insert
+    read a
+    mark 1
+  call insert
+    read a
+    mark 2
+  save b
+    make set
+      bind items
+        make find
+  call insert
+    read b
+    mark 1
+  want hold
+    call is-superset
+      read a
+      read b

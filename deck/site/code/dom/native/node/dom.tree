@@ -193,6 +193,25 @@ task listen
         bind event, read event
         bind handle, read handler
 
+# no document on the server — global listeners are a browser-only concern
+task listen-document
+  take event, like text
+  take handler
+    like task
+      take event
+
+# no ResizeObserver on the server
+task observe-size
+  take node, like view
+  take handler
+    like task
+      take width
+
+task measure-width
+  take node, like view
+  like number
+  send back, code 0
+
 task append
   take parent, like view
   take child, like view

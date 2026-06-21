@@ -3,6 +3,10 @@
 
 load @cluesurf/base/code/maybe
   find maybe
+  find unwrap-or
+
+load @cluesurf/base/code/pair
+  find pair
 
 form hash
   head k
@@ -87,3 +91,67 @@ form hash
     take self
     like number
     send back, read self/size
+
+  # read a key, falling back to a default when it is absent
+  task get-or-default
+    take self
+    take key, like k
+    take fallback, like v
+    like v
+    send back
+      call unwrap-or
+        call get
+          read self
+          read key
+        read fallback
+
+  # empty the map in place, returning it
+  task clear
+    take self
+    like hash
+      like k
+      like v
+    call self/clear
+    send back, read self
+
+  # copy every entry of `other` into `self`, overwriting on key collision, returning `self`
+  task merge
+    take self
+    take other
+      like hash
+        like k
+        like v
+    like hash
+      like k
+      like v
+    walk list
+      call keys
+        read other
+      hook next
+        take site, name key
+        call set
+          read self
+          read key
+          call other/get
+            read key
+    send back, read self
+
+  # materialize the entries as a list of key/value pairs
+  task entries
+    take self
+    like list
+      like pair
+    save out
+      make list
+    walk list
+      call keys
+        read self
+      hook next
+        take site, name key
+        call out/push
+          make pair
+            bind first, read key
+            bind second
+              call self/get
+                read key
+    send back, read out

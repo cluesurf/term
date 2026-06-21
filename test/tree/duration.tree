@@ -1,0 +1,71 @@
+note <Tests for duration. Pure integer-nanosecond spans: build from a unit, read back coarser, and compose with plus/minus/negate/absolute.>
+
+load @cluesurf/base/code/duration
+  find duration
+  find from-seconds
+  find from-milliseconds
+  find from-minutes
+
+test <one second is a thousand milliseconds>
+  want hold
+    call is-equal
+      call to-milliseconds
+        call from-seconds
+          mark 1
+      mark 1000
+
+test <two minutes is a hundred and twenty seconds>
+  want hold
+    call is-equal
+      call to-seconds
+        call from-minutes
+          mark 2
+      mark 120
+
+test <plus sums two spans>
+  want hold
+    call is-equal
+      call to-seconds
+        call plus
+          call from-seconds
+            mark 30
+          call from-seconds
+            mark 12
+      mark 42
+
+test <minus takes one span from another>
+  want hold
+    call is-equal
+      call to-seconds
+        call minus
+          call from-seconds
+            mark 50
+          call from-seconds
+            mark 8
+      mark 42
+
+test <negate of a negate is the original>
+  want hold
+    call is-equal
+      call to-seconds
+        call negate
+          call negate
+            call from-seconds
+              mark 5
+      mark 5
+
+test <absolute of a negative span is positive>
+  want hold
+    call is-equal
+      call to-seconds
+        call absolute
+          call negate
+            call from-seconds
+              mark 7
+      mark 7
+
+test <a zero span reports is-zero>
+  want hold
+    call is-zero
+      call from-milliseconds
+        mark 0

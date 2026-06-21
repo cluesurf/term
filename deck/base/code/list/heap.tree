@@ -1,0 +1,208 @@
+
+# Binary min-heap of numbers, backed by the native array. The smallest value is always at the root. `push` sifts up, `pop` removes the root and sifts down. Pops return `maybe`, so an empty heap is total. Index math wraps division in `round-down` so the parent / child indices are integers on every backend.
+
+load @cluesurf/base/code/list
+  find list
+  find get
+  find set
+
+load @cluesurf/base/code/math
+  find round-down
+
+load @cluesurf/base/code/maybe
+  find maybe
+
+form heap
+  link items, like list
+
+  task push
+    take self
+    take value, like number
+    like heap
+    call push
+      read self/items
+      read value
+    save i
+      call subtract
+        read self/items/length
+        code 1
+    walk test
+      hook test
+        call is-above
+          read i
+          code 0
+      hook step
+        save parent
+          call round-down
+            call divide
+              call subtract
+                read i
+                code 1
+              code 2
+        fork test
+          hook test
+            call is-above
+              call get
+                read self/items
+                read parent
+              call get
+                read self/items
+                read i
+          hook hold
+            save tmp
+              call get
+                read self/items
+                read i
+            call set
+              read self/items
+              read i
+              call get
+                read self/items
+                read parent
+            call set
+              read self/items
+              read parent
+              read tmp
+            save i, read parent
+          hook miss
+            halt
+    send back, read self
+
+  task peek
+    take self
+    like maybe
+    fork test
+      hook test
+        call is-above
+          read self/items/length
+          code 0
+      hook hold
+        send back
+          make some
+            bind value
+              call get
+                read self/items
+                code 0
+      hook miss
+        send back
+          make none
+
+  task pop
+    take self
+    like maybe
+    fork test
+      hook test
+        call is-equal
+          read self/items/length
+          code 0
+      hook hold
+        send back
+          make none
+      hook miss
+        save top
+          call get
+            read self/items
+            code 0
+        save last
+          call pop
+            read self/items
+        fork test
+          hook test
+            call is-above
+              read self/items/length
+              code 0
+          hook hold
+            call set
+              read self/items
+              code 0
+              read last
+            save i, code 0
+            walk test
+              hook test
+                wave true
+              hook step
+                save left
+                  call add
+                    call multiply
+                      read i
+                      code 2
+                    code 1
+                save right
+                  call add
+                    call multiply
+                      read i
+                      code 2
+                    code 2
+                save small, read i
+                fork test
+                  hook test
+                    call and
+                      call is-below
+                        read left
+                        read self/items/length
+                      call is-below
+                        call get
+                          read self/items
+                          read left
+                        call get
+                          read self/items
+                          read small
+                  hook hold
+                    save small, read left
+                fork test
+                  hook test
+                    call and
+                      call is-below
+                        read right
+                        read self/items/length
+                      call is-below
+                        call get
+                          read self/items
+                          read right
+                        call get
+                          read self/items
+                          read small
+                  hook hold
+                    save small, read right
+                fork test
+                  hook test
+                    call is-equal
+                      read small
+                      read i
+                  hook hold
+                    halt
+                  hook miss
+                    save tmp
+                      call get
+                        read self/items
+                        read i
+                    call set
+                      read self/items
+                      read i
+                      call get
+                        read self/items
+                        read small
+                    call set
+                      read self/items
+                      read small
+                      read tmp
+                    save i, read small
+        send back
+          make some
+            bind value
+              read top
+
+  task count
+    take self
+    like number
+    send back
+      call size
+        read self/items
+
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        read self/items/length
+        code 0

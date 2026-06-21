@@ -1,0 +1,106 @@
+note <Tests for the deque (double-ended queue). Push and pop at both ends; pops return maybe, unwrapped with a fallback.>
+
+load @cluesurf/base/code/list/deque
+  find deque
+
+load @cluesurf/base/code/list
+  find list
+
+load @cluesurf/base/code/maybe
+  find unwrap-or
+
+test <push-back then pop-front gives FIFO order>
+  save d
+    make deque
+      bind items
+        make list
+  call push-back
+    read d
+    mark 1
+  call push-back
+    read d
+    mark 2
+  want hold
+    call is-equal
+      call unwrap-or
+        call pop-front
+          read d
+        mark 0
+      mark 1
+
+test <push-front then pop-front gives LIFO order>
+  save d
+    make deque
+      bind items
+        make list
+  call push-front
+    read d
+    mark 1
+  call push-front
+    read d
+    mark 2
+  want hold
+    call is-equal
+      call unwrap-or
+        call pop-front
+          read d
+        mark 0
+      mark 2
+
+test <pop-back removes from the back>
+  save d
+    make deque
+      bind items
+        make list
+  call push-back
+    read d
+    mark 1
+  call push-back
+    read d
+    mark 2
+  want hold
+    call is-equal
+      call unwrap-or
+        call pop-back
+          read d
+        mark 0
+      mark 2
+
+test <count reflects the number of items>
+  save d
+    make deque
+      bind items
+        make list
+  call push-back
+    read d
+    mark 7
+  call push-front
+    read d
+    mark 8
+  want hold
+    call is-equal
+      call count
+        read d
+      mark 2
+
+test <a fresh deque is empty>
+  save d
+    make deque
+      bind items
+        make list
+  want hold
+    call is-empty
+      read d
+
+test <pop-front on an empty deque is none>
+  save d
+    make deque
+      bind items
+        make list
+  want hold
+    call is-equal
+      call unwrap-or
+        call pop-front
+          read d
+        mark 99
+      mark 99

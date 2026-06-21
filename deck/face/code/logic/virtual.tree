@@ -1,0 +1,56 @@
+
+# Virtual — fixed-size list/grid virtualization, the Seed equivalent of @tanstack/solid-virtual. `compute-range` is the
+# pure windowing core (framework-agnostic, like @tanstack/virtual's core + compute-fit): given the scroll offset,
+# viewport height, item size, count, and overscan, it returns the visible index range [start, end) plus the top
+# padding offset. The consumer renders only items[start..end] inside a spacer of total height (count * item-size) with
+# the row block translated by `offset`; scroll position comes from a scroll listener, size from observe-size. Pure
+# math — no DOM, testable in isolation.
+
+load @cluesurf/base/code/math
+  find round-down
+  find round-up
+  find minimum
+  find maximum
+
+form virtual-range
+  link start, like number
+  link end, like number
+  link offset, like number
+
+task compute-range
+  take scroll-top, like number
+  take viewport, like number
+  take item-size, like number
+  take count, like number
+  take overscan, like number
+  like virtual-range
+  # first visible row, minus overscan, clamped to 0
+  save first
+    call maximum
+      call subtract
+        call round-down
+          call divide
+            read scroll-top
+            read item-size
+        read overscan
+      code 0
+  # last visible row (exclusive), plus overscan, clamped to count
+  save last
+    call minimum
+      call add
+        call round-up
+          call divide
+            call add
+              read scroll-top
+              read viewport
+            read item-size
+        read overscan
+      read count
+  send back
+    make virtual-range
+      bind start, read first
+      bind end, read last
+      bind offset
+        call multiply
+          read first
+          read item-size

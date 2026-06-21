@@ -1,0 +1,83 @@
+# Statistics over a list of numbers. Pure folds, identical on every backend. Integer results: `mean` truncates, and `total` of an empty list is zero. `least` / `greatest` assume a non-empty list. `variance` and `standard-deviation` need floats and live in a float-stats follow-up.
+
+load @cluesurf/base/code/list
+  find list
+
+task total
+  take values, like list
+  like number
+  save out, code 0
+  walk list
+    read values
+    hook next
+      take site, name item
+      save out
+        call add
+          read out
+          read item
+  send back, read out
+
+task mean
+  take values, like list
+  like number
+  fork test
+    hook test
+      call is-equal
+        read values/length
+        code 0
+    hook hold
+      send back, code 0
+    hook miss
+      send back
+        call divide
+          call total
+            read values
+          read values/length
+
+task least
+  take values, like list
+  like number
+  save best
+    call values/at
+      code 0
+  walk list
+    read values
+    hook next
+      take site, name item
+      fork test
+        hook test
+          call is-below
+            read item
+            read best
+        hook hold
+          save best, read item
+  send back, read best
+
+task greatest
+  take values, like list
+  like number
+  save best
+    call values/at
+      code 0
+  walk list
+    read values
+    hook next
+      take site, name item
+      fork test
+        hook test
+          call is-above
+            read item
+            read best
+        hook hold
+          save best, read item
+  send back, read best
+
+task span
+  take values, like list
+  like number
+  send back
+    call subtract
+      call greatest
+        read values
+      call least
+        read values

@@ -187,4 +187,65 @@ pub extern "C" fn seed_map_values(p: *mut Map) -> *mut Vec<i64> {
     Box::into_raw(Box::new(map.values().map(|pair| pair.1).collect()))
 }
 
+// ---- reference counting (Perceus) ----
+// A side table mapping a pointer address to its reference count. Additive: the existing allocators do not yet route
+// through it (that is the codegen step, which inserts seed_rc_init at each allocation). These primitives let the
+// backend insert precise dup/drop. The AOT programs here are single-threaded, but the mutex keeps the table sound.
+fn seed_refcounts() -> &'static std::sync::Mutex<HashMap<usize, i64>> {
+    static T: std::sync::OnceLock<std::sync::Mutex<HashMap<usize, i64>>> =
+        std::sync::OnceLock::new();
+    T.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+// register a freshly-allocated pointer with refcount 1
+#[no_mangle]
+pub extern "C" fn seed_rc_init(ptr: *mut std::ffi::c_void) {
+    seed_refcounts().lock().unwrap().insert(ptr as usize, 1);
+}
+
+// a dup: a second owner takes a reference, so increment the count
+#[no_mangle]
+pub extern "C" fn seed_dup(ptr: *mut std::ffi::c_void) {
+    let mut m = seed_refcounts().lock().unwrap();
+    *m.entry(ptr as usize).or_insert(1) += 1;
+}
+
+// a drop: decrement; at zero, remove from the table and free the object by its type tag (0 = string, 1 = list,
+// 2 = map). A pointer not in the table (e.g. a static string literal) is left alone.
+#[no_mangle]
+pub extern "C" fn seed_drop(ptr: *mut std::ffi::c_void, tag: i64) {
+    let reached_zero = {
+        let mut m = seed_refcounts().lock().unwrap();
+        match m.get_mut(&(ptr as usize)) {
+            Some(c) => {
+                *c -= 1;
+                if *c <= 0 {
+                    m.remove(&(ptr as usize));
+                    true
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
+    };
+
+    if reached_zero {
+        unsafe {
+            match tag {
+                0 => {
+                    let _ = CString::from_raw(ptr as *mut c_char);
+                }
+                1 => {
+                    let _ = Box::from_raw(ptr as *mut Vec<i64>);
+                }
+                2 => {
+                    let _ = Box::from_raw(ptr as *mut Map);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 `

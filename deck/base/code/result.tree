@@ -1,4 +1,7 @@
 
+load @cluesurf/base/code/maybe
+  find maybe
+
 form result
   head t
   head e
@@ -6,6 +9,19 @@ form result
     link value, like t
   case error
     link value, like e
+
+  # drop the error and view the result as a maybe: okay becomes some, error becomes none.
+  task to-maybe
+    take self
+    like maybe
+    fork case, read self
+      case okay
+        send back
+          make some
+            bind value, read self/value
+      case error
+        send back
+          make none
 
   task is-okay
     take self

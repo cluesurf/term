@@ -153,3 +153,74 @@ form set
               read result
               read item
     send back, read result
+
+  # intersection: the canonical name (alias of intersect)
+  task intersection
+    take self
+    take other
+      like set
+        like t
+    like set
+      like t
+    send back
+      call intersect
+        read self
+        read other
+
+  # empty the set in place, returning it
+  task clear
+    take self
+    like set
+    call self/items/clear
+    send back, read self
+
+  # the symmetric difference: items in exactly one of the two sets
+  task symmetric-difference
+    take self
+    take other
+      like set
+        like t
+    like set
+      like t
+    send back
+      call union
+        call difference
+          read self
+          read other
+        call difference
+          read other
+          read self
+
+  # is-subset: every item of self is also in other
+  task is-subset
+    take self
+    take other
+      like set
+        like t
+    like boolean
+    save ok, wave true
+    walk list
+      call to-list
+        read self
+      hook next
+        take site, name item
+        fork test
+          hook test
+            call has
+              read other
+              read item
+          hook miss
+            save ok, wave false
+    send back, read ok
+
+  # is-superset: every item of other is also in self
+  task is-superset
+    take self
+    take other
+      like set
+        like t
+    like boolean
+    send back
+      call is-subset
+        read other
+        read self

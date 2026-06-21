@@ -901,125 +901,6 @@ export function quote(level: number, value: Value): Term {
   }
 }
 
-// quote to a DELTA-normal form: like `quote`, but transparent constants (those with a registered definition) are
-// unfolded during readback, charging fuel so a recursive definition stuck on a neutral terminates and a pathological
-// one cannot loop. This exposes the computational normal form (the Church-encoded constructors fully applied) that
-// plain `quote` leaves folded, which the structural-induction tactic needs to see the recurrence of a recursive
-// function. Sound for the same reason delta-unfolding is sound in conversion: a transparent constant equals its body.
-export function quoteDeep(
-  level: number,
-  value: Value,
-  fuel: { n: number } = { n: 10000 },
-): Term {
-  value = force(value)
-
-  // unfold only VALUE-level transparent constants (constructors, eliminators, recursive functions are all lambdas);
-  // never the enum TYPE self-encodings (a `self`/`pi` body that mentions the type itself and would unfold forever).
-  if (value.v === 'rigid' && fuel.n > 0) {
-    const def = definition.get(value.name)
-
-    if (def && def.v === 'lam') {
-      fuel.n--
-
-      return quoteDeep(level, unfoldRigid(value), fuel)
-    }
-  }
-
-  const spineDeep = (head: Term, spine: Elim[]): Term => {
-    let term = head
-
-    for (const elim of spine) {
-      if (elim.e === 'app')
-        {term = { tag: 'app', fun: term, arg: quoteDeep(level, elim.arg, fuel) }}
-      else if (elim.e === 'fst') {term = { tag: 'fst', pair: term }}
-      else if (elim.e === 'snd') {term = { tag: 'snd', pair: term }}
-      else
-        {term = {
-          tag: 'j',
-          proof: term,
-          motive: quoteDeep(level, elim.motive, fuel),
-          base: quoteDeep(level, elim.base, fuel),
-          level: litLevel(0),
-        }}
-    }
-
-    return term
-  }
-
-  switch (value.v) {
-    case 'type':
-      return { tag: 'type', level: value.level }
-    case 'flex':
-      return spineDeep({ tag: 'meta', id: value.id }, value.spine)
-    case 'pi':
-      return {
-        tag: 'pi',
-        mult: value.mult,
-        domain: quoteDeep(level, value.domain, fuel),
-        codomain: quoteDeep(
-          level + 1,
-          closeOver(value.codomain, neutralVar(level)),
-          fuel,
-        ),
-      }
-    case 'lam':
-      return {
-        tag: 'lam',
-        body: quoteDeep(
-          level + 1,
-          closeOver(value.body, neutralVar(level)),
-          fuel,
-        ),
-      }
-    case 'id':
-      return {
-        tag: 'id',
-        type: quoteDeep(level, value.type, fuel),
-        left: quoteDeep(level, value.left, fuel),
-        right: quoteDeep(level, value.right, fuel),
-      }
-    case 'refl':
-      return {
-        tag: 'refl',
-        type: quoteDeep(level, value.type, fuel),
-        value: quoteDeep(level, value.value, fuel),
-      }
-    case 'sigma':
-      return {
-        tag: 'sigma',
-        mult: value.mult,
-        domain: quoteDeep(level, value.domain, fuel),
-        codomain: quoteDeep(
-          level + 1,
-          closeOver(value.codomain, neutralVar(level)),
-          fuel,
-        ),
-      }
-    case 'pair':
-      return {
-        tag: 'pair',
-        first: quoteDeep(level, value.first, fuel),
-        second: quoteDeep(level, value.second, fuel),
-      }
-    case 'self':
-      return {
-        tag: 'self',
-        body: quoteDeep(
-          level + 1,
-          closeOver(value.body, neutralVar(level)),
-          fuel,
-        ),
-      }
-    case 'neutral':
-      return spineDeep(
-        { tag: 'var', index: level - value.head - 1 },
-        value.spine,
-      )
-    case 'rigid':
-      return spineDeep({ tag: 'const', name: value.name }, value.spine)
-  }
-}
-
 // compare two eliminator spines structurally (shared by neutral and rigid heads)
 function convertSpine(
   level: number,
@@ -1168,6 +1049,183 @@ export function areConvertible(
   b: Value,
 ): boolean {
   return convert(level, a, b)
+}
+
+// ---- conversion modulo a set of (induction) hypotheses ----
+// like `convert`, but at EVERY node it also accepts the two values when they match a hypothesis equation L == R (in
+// either orientation), tested by ordinary definitional equality. This is exactly the reasoning a structural-induction
+// step needs: the recurrence peels a constructor, exposing a recursive sub-call that the induction hypothesis equates
+// to the other side. Sound: a hypothesis is a TRUE equation in the step's context, so substituting equals preserves
+// equality. Terminating: it mirrors `convert`'s lazy, fuel-bounded structure (no eager full normalization).
+function matchesHypothesis(
+  level: number,
+  a: Value,
+  b: Value,
+  hyps: [Value, Value][],
+): boolean {
+  for (const [l, r] of hyps) {
+    if (
+      (convert(level, a, l) && convert(level, b, r)) ||
+      (convert(level, a, r) && convert(level, b, l))
+    )
+      {return true}
+  }
+
+  return false
+}
+
+function convertModSpine(
+  level: number,
+  a: Elim[],
+  b: Elim[],
+  hyps: [Value, Value][],
+): boolean {
+  if (a.length !== b.length) {return false}
+
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!
+    const y = b[i]!
+
+    if (x.e === 'app' && y.e === 'app') {
+      if (!convertMod(level, x.arg, y.arg, hyps)) {return false}
+    } else if (x.e === 'j' && y.e === 'j') {
+      if (
+        !convertMod(level, x.motive, y.motive, hyps) ||
+        !convertMod(level, x.base, y.base, hyps)
+      )
+        {return false}
+    } else if (x.e === 'fst' && y.e === 'fst') {
+      // a projection: nothing to compare beyond the elimination kind
+    } else if (x.e === 'snd' && y.e === 'snd') {
+      // ditto
+    } else {return false}
+  }
+
+  return true
+}
+
+function convertModUnfolding(
+  level: number,
+  a: Value,
+  b: Value,
+  hyps: [Value, Value][],
+): boolean {
+  if (unfoldFuel >= MAX_UNFOLD) {return false}
+
+  unfoldFuel++
+
+  const result = convertMod(level, a, b, hyps)
+  unfoldFuel--
+
+  return result
+}
+
+function convertMod(
+  level: number,
+  a: Value,
+  b: Value,
+  hyps: [Value, Value][],
+): boolean {
+  if (convert(level, a, b)) {return true}
+
+  if (matchesHypothesis(level, a, b, hyps)) {return true}
+
+  a = force(a)
+  b = force(b)
+
+  if (a.v === 'pi' && b.v === 'pi') {
+    return (
+      a.mult === b.mult &&
+      convertMod(level, a.domain, b.domain, hyps) &&
+      convertMod(
+        level + 1,
+        closeOver(a.codomain, neutralVar(level)),
+        closeOver(b.codomain, neutralVar(level)),
+        hyps,
+      )
+    )
+  }
+
+  if (a.v === 'lam' || b.v === 'lam') {
+    return convertMod(
+      level + 1,
+      applyValue(a, neutralVar(level)),
+      applyValue(b, neutralVar(level)),
+      hyps,
+    )
+  }
+
+  if (a.v === 'sigma' && b.v === 'sigma') {
+    return (
+      a.mult === b.mult &&
+      convertMod(level, a.domain, b.domain, hyps) &&
+      convertMod(
+        level + 1,
+        closeOver(a.codomain, neutralVar(level)),
+        closeOver(b.codomain, neutralVar(level)),
+        hyps,
+      )
+    )
+  }
+
+  if (a.v === 'pair' || b.v === 'pair') {
+    return (
+      convertMod(level, applyFst(a), applyFst(b), hyps) &&
+      convertMod(level, applySnd(a), applySnd(b), hyps)
+    )
+  }
+
+  if (a.v === 'self' && b.v === 'self') {
+    return convertMod(
+      level + 1,
+      closeOver(a.body, neutralVar(level)),
+      closeOver(b.body, neutralVar(level)),
+      hyps,
+    )
+  }
+
+  if (a.v === 'id' && b.v === 'id') {
+    return (
+      convertMod(level, a.type, b.type, hyps) &&
+      convertMod(level, a.left, b.left, hyps) &&
+      convertMod(level, a.right, b.right, hyps)
+    )
+  }
+
+  if (a.v === 'refl' && b.v === 'refl')
+    {return convertMod(level, a.value, b.value, hyps)}
+
+  if (a.v === 'neutral' && b.v === 'neutral' && a.head === b.head)
+    {return convertModSpine(level, a.spine, b.spine, hyps)}
+
+  if (
+    a.v === 'rigid' &&
+    b.v === 'rigid' &&
+    a.name === b.name &&
+    a.spine.length === b.spine.length &&
+    convertModSpine(level, a.spine, b.spine, hyps)
+  ) {
+    return true
+  }
+
+  if (a.v === 'rigid' && definition.has(a.name))
+    {return convertModUnfolding(level, unfoldRigid(a), b, hyps)}
+
+  if (b.v === 'rigid' && definition.has(b.name))
+    {return convertModUnfolding(level, a, unfoldRigid(b), hyps)}
+
+  return false
+}
+
+// public: are two values equal in the theory extended by the given (induction-) hypothesis equalities? Used by the
+// structural-induction tactic to discharge a constructor case using the hypotheses on the recursive fields.
+export function convertibleModulo(
+  level: number,
+  a: Value,
+  b: Value,
+  hypotheses: [Value, Value][],
+): boolean {
+  return convertMod(level, a, b, hypotheses)
 }
 
 // subtyping with universe cumulativity

@@ -45,6 +45,38 @@ form list
       call self/at
         read index
 
+  # write the element at an index in place, returning the list. Uses the native splice (delete one, insert one) so it replaces rather than shifts.
+  task set
+    take self
+    take index, like number
+    take item, like t
+    like list
+      like t
+    call self/splice
+      read index
+      code 1
+      read item
+    send back, read self
+
+  # empty the list in place, returning it. Splices out every element.
+  task clear
+    take self
+    like list
+      like t
+    call self/splice
+      code 0
+      read self/length
+    send back, read self
+
+  # a shallow copy: a new list with the same elements. The native slice from zero.
+  task copy
+    take self
+    like list
+      like t
+    send back
+      call self/slice
+        code 0
+
   task contains
     take self
     take item, like t
