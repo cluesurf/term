@@ -9,12 +9,14 @@ import {
 
 let pass = 0
 let fail = 0
+
 function expect(
   name: string,
-  got: Array<Inst>,
-  want: Array<string>,
+  got: Inst[],
+  want: string[],
 ): void {
   const g = got.map(showInst)
+
   if (JSON.stringify(g) === JSON.stringify(want)) {
     pass++
     console.log(`ok    ${name}`)
@@ -30,7 +32,7 @@ function expect(
 
 const make = (
   ctor: string,
-  ...args: Array<string>
+  ...args: string[]
 ): Inst['value' & keyof Inst] => ({ kind: 'make', ctor, args }) as never
 
 function main(): void {

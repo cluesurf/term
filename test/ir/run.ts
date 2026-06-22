@@ -12,13 +12,18 @@ function expectContains(
   needle: string,
 ): void {
   const result = compile({ file: 'ir.tree', text: source })
+
   if (!result.ok) {
     fail++
+
     for (const d of result.diagnostics)
-      console.log(render(d, source.split('\n'), false))
+      {console.log(render(d, source.split('\n'), false))}
+
     console.log(`FAIL  ${name}  (did not compile)`)
+
     return
   }
+
   if (result.typescript.includes(needle)) {
     pass++
     console.log(`ok    ${name}  (emitted "${needle.trim()}")`)
@@ -36,11 +41,14 @@ function expectExcludes(
   needle: string,
 ): void {
   const result = compile({ file: 'ir.tree', text: source })
+
   if (!result.ok) {
     fail++
     console.log(`FAIL  ${name}  (did not compile)`)
+
     return
   }
+
   if (!result.typescript.includes(needle)) {
     pass++
     console.log(`ok    ${name}  (no "${needle.trim()}")`)
@@ -103,6 +111,7 @@ function main(): void {
       read x
       code 2
 `
+
   expectContains(
     'constant propagates: x=5; x*2 -> 10',
     PROP,

@@ -1,0 +1,31 @@
+# swift mutex implementation. Forwards to the linked mutex runtime shim (NSLock). Internal: reached only through the public mutex API.
+
+dock type
+  load <NSLock>, name mutex-handle
+
+dock load
+  load <global:mutex>, name mutex
+
+load @cluesurf/base/code/mutex
+  find mutex
+
+task do-make
+  like mutex-handle
+  send back
+    call mutex/make
+
+task do-lock
+  note async
+  take self, like mutex
+  like void
+  call mutex/lock
+    read self/dock
+    wait true
+
+task do-unlock
+  note async
+  take self, like mutex
+  like void
+  call mutex/unlock
+    read self/dock
+    wait true

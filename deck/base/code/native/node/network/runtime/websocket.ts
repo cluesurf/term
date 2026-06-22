@@ -1,43 +1,51 @@
-// WebSocket client runtime over node's global WebSocket (the browser-style API, stable since node 22). The opaque
-// handle a seed socket holds is the raw WebSocket. connect resolves once the handshake opens; receive resolves with the
-// next message or a close frame, matching the seed `message` form. Reached only through the public WebSocket API.
+// WebSocket client runtime over node's global WebSocket (the browser-style API, stable since node 22). The opaque handle
+// a seed socket holds is a small wrapper that buffers incoming frames: a permanent listener attached at connect time
+// queues every message (and the close), and receive pulls the next one or waits. This makes the request / response
+// pattern (send then receive) race-free, since a frame arriving before receive is called is held, not dropped. Reached
+// only through the public WebSocket API.
+type WebSocketFrame = { kind: string; data: string }
+type WebSocketHandle = {
+  socket: WebSocket
+  queue: WebSocketFrame[]
+  waiters: ((frame: WebSocketFrame) => void)[]
+}
+
 const websocket = {
-  connect: (url: string): Promise<WebSocket> =>
+  connect: (url: string): Promise<WebSocketHandle> =>
     new Promise((ok, fail) => {
       const socket = new WebSocket(url)
-      socket.addEventListener('open', () => ok(socket))
+      const handle: WebSocketHandle = { socket, queue: [], waiters: [] }
+      const deliver = (frame: WebSocketFrame) => {
+        const waiter = handle.waiters.shift()
+        if (waiter) waiter(frame)
+        else handle.queue.push(frame)
+      }
+      socket.addEventListener('message', event =>
+        deliver({ kind: 'text', data: String(event.data) }),
+      )
+      socket.addEventListener('close', () =>
+        deliver({ kind: 'close', data: '' }),
+      )
+      socket.addEventListener('open', () => ok(handle))
       socket.addEventListener('error', () =>
         fail(new Error('websocket connect failed')),
       )
     }),
 
-  send: (socket: WebSocket, data: string): Promise<void> => {
-    socket.send(data)
+  send: (handle: WebSocketHandle, data: string): Promise<void> => {
+    handle.socket.send(data)
     return Promise.resolve()
   },
 
-  receive: (
-    socket: WebSocket,
-  ): Promise<{ kind: string; data: string }> =>
+  receive: (handle: WebSocketHandle): Promise<WebSocketFrame> =>
     new Promise(ok => {
-      const onMessage = (event: MessageEvent) => {
-        cleanup()
-        ok({ kind: 'text', data: String(event.data) })
-      }
-      const onClose = () => {
-        cleanup()
-        ok({ kind: 'close', data: '' })
-      }
-      const cleanup = () => {
-        socket.removeEventListener('message', onMessage)
-        socket.removeEventListener('close', onClose)
-      }
-      socket.addEventListener('message', onMessage)
-      socket.addEventListener('close', onClose)
+      const frame = handle.queue.shift()
+      if (frame) ok(frame)
+      else handle.waiters.push(ok)
     }),
 
-  close: (socket: WebSocket): Promise<void> => {
-    socket.close()
+  close: (handle: WebSocketHandle): Promise<void> => {
+    handle.socket.close()
     return Promise.resolve()
   },
 }

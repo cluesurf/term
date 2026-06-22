@@ -6,6 +6,7 @@ import type { Term } from '@cluesurf/make/code/ir/lower-net'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -22,6 +23,7 @@ const lam = (param: string, body: Term): Term => ({
   param,
   body,
 })
+
 const app = (fn: Term, arg: Term): Term => ({ t: 'app', fn, arg })
 
 function main(): void {
@@ -44,6 +46,7 @@ function main(): void {
   const survivor = [...lowered.net.nodes.keys()].find(
     id => !lowered.net.interface.has(id),
   )!
+
   const fnPeer = lowered.net.peer({ node: survivor, slot: 0 })!
   const argPeer = lowered.net.peer({ node: survivor, slot: 1 })!
   const rootPeer = lowered.net.peer(lowered.root)!

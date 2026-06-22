@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -26,6 +27,7 @@ const SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../..',
 )
+
 const PORT = 39512
 
 // a tiny 2-module app in a temp dir (the entry loads a helper)
@@ -34,6 +36,7 @@ fs.writeFileSync(
   path.join(dir, 'helper.tree'),
   `task helper-value\n  like number\n  send back\n    code 42\n`,
 )
+
 const entry = path.join(dir, 'entry.tree')
 fs.writeFileSync(
   entry,
@@ -45,14 +48,21 @@ async function readEvent(
   reader: ReadableStreamDefaultReader<Uint8Array>,
 ): Promise<HmrMessage | undefined> {
   const decoder = new TextDecoder()
+
   let buffer = ''
+
   for (let i = 0; i < 50; i++) {
     const { value, done } = await reader.read()
-    if (done) return undefined
+
+    if (done) {return undefined}
+
     buffer += decoder.decode(value, { stream: true })
-    const match = buffer.match(/data: (.+)\n\n/)
-    if (match) return JSON.parse(match[1]!) as HmrMessage
+
+    const match = /data: (.+)\n\n/.exec(buffer)
+
+    if (match) {return JSON.parse(match[1]) as HmrMessage}
   }
+
   return undefined
 }
 
@@ -63,6 +73,7 @@ async function main(): Promise<void> {
     port: PORT,
     env: 'browser',
   })
+
   await new Promise(r => setTimeout(r, 300))
 
   // 1. the app shell loads the client + the entry module
@@ -72,7 +83,8 @@ async function main(): Promise<void> {
     shell.includes('/@seed/client.mjs') && shell.includes('/@mod/'),
     shell.slice(0, 120),
   )
-  const entryUrl = shell.match(/src="(\/@mod\/[^"]+)"/)?.[1] ?? ''
+
+  const entryUrl = (/src="(\/@mod\/[^"]+)"/.exec(shell))?.[1] ?? ''
   ok('shell references the entry module url', entryUrl.length > 0)
 
   // 2. the entry module is served as native ESM
@@ -92,6 +104,7 @@ async function main(): Promise<void> {
   const client = await (
     await fetch(`http://localhost:${PORT}/@seed/client.mjs`)
   ).text()
+
   ok(
     'serves the hmr client runtime',
     client.includes('EventSource') && client.includes('applyHmr'),
@@ -113,6 +126,7 @@ async function main(): Promise<void> {
     result.type === 'full-reload',
     JSON.stringify(result),
   )
+
   const pushed = await readEvent(reader)
   ok(
     'sse pushes the hmr message to the client',

@@ -1,0 +1,36 @@
+# A mutual-exclusion lock for guarding shared state across concurrent tasks. The clean uniform interface; each backend wraps its platform lock (node an async flag lock, rust an atomic spinlock with cooperative yield, swift NSLock, kotlin ReentrantLock) behind this API, selected at build time. The platform lock lives in the opaque `dock` handle, typed per backend. lock waits until the lock is free; unlock releases it (handing it to the next waiter where the platform queues them).
+
+load @cluesurf/base/code/native/mutex
+  find do-make
+  find do-lock
+  find do-unlock
+
+# a mutual-exclusion lock
+form mutex
+  link dock, like mutex-handle
+
+  # acquire the lock, waiting until it is free
+  task lock
+    note async
+    take self
+    like void
+    call do-lock
+      read self
+      wait true
+
+  # release the lock
+  task unlock
+    note async
+    take self
+    like void
+    call do-unlock
+      read self
+      wait true
+
+# make a new unlocked mutex
+task make-mutex
+  like mutex
+  send back
+    make mutex
+      bind dock
+        call do-make

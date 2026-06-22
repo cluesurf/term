@@ -1,25 +1,49 @@
+# A text message-passing channel between concurrent tasks: the portable communication default (message passing over shared memory). The clean uniform interface; each backend wraps its platform channel (node async queue, rust tokio mpsc, swift buffered queue, kotlin BlockingQueue) behind this API, selected at build time. The platform channel lives in the opaque `dock` handle, typed per backend. send / receive are async; a buffered channel holds a value sent before receive is called, so send-then-receive never races.
 
-# Typed message-passing channel for concurrent tasks.
+load @cluesurf/base/code/native/channel
+  find do-make
+  find do-send
+  find do-receive
+  find do-close
 
+# a channel carrying text messages
 form channel
-  head item
-  case sender
-    link id, like text
-  case receiver
-    link id, like text
+  link dock, like channel-handle
 
-task make
-  head item
+  # send a message (buffered; never blocks for an unbounded channel)
+  task send
+    note async
+    take self
+    take item, like text
+    like void
+    call do-send
+      read self
+      read item
+      wait true
+
+  # receive the next message, waiting if none is buffered yet
+  task receive
+    note async
+    take self
+    like text
+    send back
+      call do-receive
+        read self
+        wait true
+
+  # close the channel
+  task close
+    note async
+    take self
+    like void
+    call do-close
+      read self
+      wait true
+
+# make a new text channel
+task make-channel
   like channel
-
-task send
-  head item
-  note async
-  take target, like channel
-  take value, like item
-
-task receive
-  head item
-  note async
-  take source, like channel
-  like item
+  send back
+    make channel
+      bind dock
+        call do-make

@@ -17,13 +17,17 @@ async function runFile(file: string): Promise<number> {
     readRuntime: p =>
       existsSync(p) ? readFileSync(p, 'utf8') : undefined,
   })
+
   if (run.failure) {
     console.log(run.failure)
     console.log(`\n${file}: ${run.failure.split('\n').pop()}`)
+
     return 1
   }
+
   let pass = 0
   let fail = 0
+
   for (const r of run.results) {
     if (r.held) {
       pass++
@@ -33,13 +37,17 @@ async function runFile(file: string): Promise<number> {
       console.log(`FAIL  ${r.label}`)
     }
   }
+
   console.log(`\n${pass} pass, ${fail} fail`)
+
   return fail > 0 ? 1 : 0
 }
 
 const target = process.argv[2]
+
 if (!target) {
   console.log('usage: npx tsx test/tree/run.ts <file.tree>')
   process.exit(2)
 }
+
 process.exit(await runFile(resolvePath(target)))

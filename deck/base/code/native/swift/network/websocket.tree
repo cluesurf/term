@@ -1,68 +1,23 @@
+# swift WebSocket implementation. Forwards to the linked websocket runtime shim (URLSessionWebSocketTask). Declares the opaque handle type a socket holds (the task). Internal: reached only through the public WebSocket API.
+
+dock type
+  load <URLSessionWebSocketTask>, name websocket-handle
 
 dock load
-  load <Foundation>, name foundation
+  load <global:websocket>, name websocket
 
 load @cluesurf/base/code/network/websocket
   find socket
 
-task connect
+task do-connect
   note async
   take url, like text
-  take headers, like hash, need false
-  take protocols, like list, need false
-
-  save url-obj
-    call url
-      text <string>
+  like socket
+  save raw
+    call websocket/connect
       read url
-      halt kink
-
-  save request
-    call url-request
-      text <url>
-      read url-obj
-
-  fork test
-    hook test
-      call is-some, read headers
-    hook hold
-      walk list, read headers
-        hook next
-          take site, name entry
-          call request/set-value
-            read entry/1
-            text <forHTTPHeaderField>
-            read entry/0
-
-  save session
-    call url-session/shared
-
-  save task
-    call session/web-socket-task
-      text <with>
-      read request
-
-  call task/resume
-
-  call make-continuation
-    note async
-    task resolve
-      take ok
-      take fail
-      call task/send-ping
-        task on-pong
-          take error
-          fork test
-            hook test
-              call is-some, read error
-            hook hold
-              call fail, read error
-            hook miss
-              call ok
-
+      wait true
   send back
     make socket
-      bind dock, read task
+      bind dock, read raw
       bind url, read url
-      bind protocol, text <>
-      bind ready, wave true

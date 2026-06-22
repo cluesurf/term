@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -22,6 +23,7 @@ const SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../..',
 )
+
 const PORT = 39631
 const FILE = path.join(SEED, 'daemon-doc.tree') // a path; text is supplied per request, no disk read needed
 
@@ -38,8 +40,10 @@ async function post(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
+
   return { status: r.status, json: await r.json() }
 }
+
 async function get(endpoint: string): Promise<any> {
   return (await fetch(`http://localhost:${PORT}${endpoint}`)).json()
 }
@@ -53,6 +57,7 @@ async function main(): Promise<void> {
     file: FILE,
     text: `${helperOk}\n${callerSrc}`,
   })
+
   ok(
     'daemon analyzes a clean document (no diagnostics)',
     clean.status === 200 && clean.json.diagnostics.length === 0,
@@ -72,13 +77,15 @@ async function main(): Promise<void> {
     file: FILE,
     text: `${helperBad}\n${callerSrc}`,
   })
+
   ok(
     'daemon reports a real type error after an edit',
     broken.json.diagnostics.some((d: { message: string }) =>
-      /expected/.test(d.message),
+      d.message.includes('expected'),
     ),
     JSON.stringify(broken.json.diagnostics),
   )
+
   const health2 = await get('/health')
   ok('still one warm document after the edit', health2.warm === 1)
 
@@ -87,6 +94,7 @@ async function main(): Promise<void> {
     file: FILE,
     text: `${helperOk}\n${callerSrc}`,
   })
+
   ok(
     'daemon clears the error when fixed',
     fixed.json.diagnostics.length === 0,
@@ -98,6 +106,7 @@ async function main(): Promise<void> {
 
   // closing the document drops its warm state
   await post('/close', { file: FILE })
+
   const health3 = await get('/health')
   ok('closing a document drops its warm state', health3.warm === 0)
 

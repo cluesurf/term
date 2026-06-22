@@ -27,19 +27,25 @@ import { render } from '@cluesurf/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
+
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
+
   return existsSync(file)
     ? { file, text: readFileSync(file, 'utf8') }
     : undefined
 }
+
 // the node target: abstract native imports resolve to native/node/*
 const resolve = withNativeEnv('node', stdlib)
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -57,35 +63,43 @@ function expect(name: string, got: unknown, want: unknown): void {
 // read a native runtime shim's raw source from base.tree (the path carries its real extension, no `.tree`)
 const readRuntime = (path: string): string | undefined => {
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, path.slice(prefix.length))
+
   return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }
 
 async function loadProgram(
   source: string,
-): Promise<Record<string, (...a: Array<unknown>) => unknown>> {
+): Promise<Record<string, (...a: unknown[]) => unknown>> {
   const result = compile(
     { file: 'main.tree', text: source },
     { resolve },
   )
+
   if (!result.ok) {
     for (const d of result.diagnostics)
-      console.log(render(d, source.split('\n'), false))
+      {console.log(render(d, source.split('\n'), false))}
+
     throw new Error('compile failed')
   }
+
   // prepend any node runtime shim the program docks (e.g. the regex shim wrapping new RegExp), same as the build does
   const prelude = nativePrelude(result.program, 'node', readRuntime)
   const js = transformSync(`${prelude}\n${result.typescript}`, {
     loader: 'ts',
     format: 'esm',
   }).code
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-io-'))
   const file = join(dir, 'module.mjs')
   writeFileSync(file, js)
+
   return (await import(pathToFileURL(file).href)) as Record<
     string,
-    (...a: Array<unknown>) => unknown
+    (...a: unknown[]) => unknown
   >
 }
 
@@ -1400,36 +1414,36 @@ task div-of
 
 async function main(): Promise<void> {
   const fl = await loadProgram(FLOAT)
-  expect('float: square-root(9.0) is 3', fl.rootOf!(), 3)
-  expect('float: round-down(3.7) is 3', fl.floorOf!(), 3)
-  expect('float: power(2.0, 3.0) is 8', fl.powOf!(), 8)
+  expect('float: square-root(9.0) is 3', fl.rootOf(), 3)
+  expect('float: round-down(3.7) is 3', fl.floorOf(), 3)
+  expect('float: power(2.0, 3.0) is 8', fl.powOf(), 8)
   expect(
     'float: 7.0 / 2.0 is 3.5 (not truncated like integer division)',
-    fl.divOf!(),
+    fl.divOf(),
     3.5,
   )
 
   const ht = await loadProgram(HTTP)
   expect(
     'network/http: get reads the body (data URL via host fetch)',
-    await ht.fetchBody!('data:text/plain,hello%20seed'),
+    await ht.fetchBody('data:text/plain,hello%20seed'),
     'hello seed',
   )
   expect(
     'network/http: get reads the status',
-    await ht.fetchStatus!('data:text/plain,x'),
+    await ht.fetchStatus('data:text/plain,x'),
     200,
   )
 
   const dns = await loadProgram(DNS)
   expect(
     'network/dns: resolve-one of a numeric IP returns it (offline)',
-    await dns.one!('127.0.0.1'),
+    await dns.one('127.0.0.1'),
     '127.0.0.1',
   )
   expect(
     'network/dns: resolve of localhost includes the loopback address',
-    ((await dns.all!('localhost')) as Array<string>).includes(
+    ((await dns.all('localhost')) as string[]).includes(
       '127.0.0.1',
     ),
     true,
@@ -1438,89 +1452,89 @@ async function main(): Promise<void> {
   const js = await loadProgram(JSON_PROG)
   expect(
     'json: parse + get-field + as-number reads a number field',
-    js.readCount!('{"count":42,"name":"seed"}'),
+    js.readCount('{"count":42,"name":"seed"}'),
     42,
   )
   expect(
     'json: get-field + as-text reads a string field',
-    js.readName!('{"count":42,"name":"seed"}'),
+    js.readName('{"count":42,"name":"seed"}'),
     'seed',
   )
   expect(
     'json: get-item + as-number indexes an array',
-    js.itemNumber!('[10,20,30]'),
+    js.itemNumber('[10,20,30]'),
     20,
   )
-  expect('json: as-boolean reads a bool', js.boolOf!('true'), true)
+  expect('json: as-boolean reads a bool', js.boolOf('true'), true)
   expect(
     'json: stringify(parse) round-trips through the host JSON',
-    js.roundTrip!('{"a":1,"b":[2,3]}'),
+    js.roundTrip('{"a":1,"b":[2,3]}'),
     '{"a":1,"b":[2,3]}',
   )
   expect(
     'json: a JSON object literal in seed source parses (brace fix)',
-    js.literalObject!(),
+    js.literalObject(),
     7,
   )
 
   const jd = await loadProgram(JSON_DECODE)
   expect(
     'json: decode a typed `form` from JSON (text field)',
-    jd.nameOf!('{"name":"seed","age":3,"active":true}'),
+    jd.nameOf('{"name":"seed","age":3,"active":true}'),
     'seed',
   )
   expect(
     'json: decode a typed `form` from JSON (number field)',
-    jd.ageOf!('{"name":"seed","age":3,"active":true}'),
+    jd.ageOf('{"name":"seed","age":3,"active":true}'),
     3,
   )
 
   const je = await loadProgram(JSON_ENCODE)
   expect(
     'json: encode a typed `form` to JSON, text field survives the round-trip',
-    je.encodedName!(),
+    je.encodedName(),
     'seed',
   )
   expect(
     'json: encode a typed `form` to JSON, number field survives the round-trip',
-    je.encodedAge!(),
+    je.encodedAge(),
     3,
   )
   expect(
     'json: encode a typed `form` to JSON, boolean field survives the round-trip',
-    je.encodedActive!(),
+    je.encodedActive(),
     true,
   )
 
   const by = await loadProgram(BYTES)
   expect(
     'bytes: from-text -> to-hex (utf8 then hex)',
-    by.hexOf!('hi'),
+    by.hexOf('hi'),
     '6869',
   )
   expect(
     'bytes: text round-trips through utf8 (multibyte)',
-    by.roundTripText!('café'),
+    by.roundTripText('café'),
     'café',
   )
   expect(
     'bytes: base64 round-trips back to the text',
-    by.roundTripBase64!('café'),
+    by.roundTripBase64('café'),
     'café',
   )
   expect(
     'bytes: utf8 length counts bytes not chars (é is 2)',
-    by.byteLength!('café'),
+    by.byteLength('café'),
     5,
   )
   expect(
     'bytes: concat two buffers then hex',
-    by.concatHex!(),
+    by.concatHex(),
     '61626364',
   )
   expect(
     'bytes: hex round-trips back to the text',
-    by.hexRoundTrip!('hello'),
+    by.hexRoundTrip('hello'),
     'hello',
   )
   // the minimal-surface verbs: encode/decode with a base parameter, and count as the canonical length
@@ -1549,7 +1563,7 @@ async function main(): Promise<void> {
   )
 
   const sr = await loadProgram(SECURE_RANDOM)
-  const draw16 = sr.draw!(16) as string
+  const draw16 = sr.draw(16) as string
   expect(
     'crypto/random: 16 bytes is a 32-char hex string',
     draw16.length === 32 && /^[0-9a-f]+$/.test(draw16),
@@ -1557,19 +1571,21 @@ async function main(): Promise<void> {
   )
   expect(
     'crypto/random: two draws differ (not a constant)',
-    sr.draw!(16) !== sr.draw!(16),
+    sr.draw(16) !== sr.draw(16),
     true,
   )
 
   const cp = await loadProgram(CIPHER)
   const cipherKey =
     '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
+
   const cipherNonce = '000102030405060708090a0b'
-  const sealed = (await cp.seal!(
+  const sealed = (await cp.seal(
     cipherKey,
     cipherNonce,
     'attack at dawn',
   )) as string
+
   expect(
     'crypto/cipher: ciphertext is non-empty hex',
     /^[0-9a-f]+$/.test(sealed) && sealed.length > 0,
@@ -1577,82 +1593,82 @@ async function main(): Promise<void> {
   )
   expect(
     'crypto/cipher: decrypt(encrypt(x)) round-trips the plaintext (AES-256-GCM)',
-    await cp.open!(cipherKey, cipherNonce, sealed),
+    await cp.open(cipherKey, cipherNonce, sealed),
     'attack at dawn',
   )
 
   const sigMod = await loadProgram(SIGNATURE)
   expect(
     'crypto/signature: verify(sign(message)) is true (Ed25519)',
-    await sigMod.roundTrip!('ship sails at noon'),
+    await sigMod.roundTrip('ship sails at noon'),
     true,
   )
   expect(
     'crypto/signature: a tampered message fails verification',
-    await sigMod.tampered!('ship sails at noon', 'ship sails at dusk'),
+    await sigMod.tampered('ship sails at noon', 'ship sails at dusk'),
     false,
   )
 
   const cal = await loadProgram(CALENDAR)
-  const stamp = cal.stamp!() as number
+  const stamp = cal.stamp() as number
   expect(
     'calendar: make-utc + format gives the ISO 8601 UTC string',
-    cal.formatted!(stamp),
+    cal.formatted(stamp),
     '2026-06-19T12:34:56.000Z',
   )
   expect(
     'calendar: parse is the inverse of format',
-    cal.parsed!('2026-06-19T12:34:56.000Z'),
+    cal.parsed('2026-06-19T12:34:56.000Z'),
     stamp,
   )
-  expect('calendar: year component (UTC)', cal.yearOf!(stamp), 2026)
+  expect('calendar: year component (UTC)', cal.yearOf(stamp), 2026)
   expect(
     'calendar: add-days crosses into the next day',
-    cal.nextDay!(stamp),
+    cal.nextDay(stamp),
     '2026-06-20T12:34:56.000Z',
   )
   expect(
     'calendar: add-months is calendar-aware (June -> July)',
-    cal.nextMonth!(stamp),
+    cal.nextMonth(stamp),
     7,
   )
   expect(
     'calendar: to-parts weekday matches the host Date (0=Sunday)',
-    cal.partsWeekday!(stamp),
+    cal.partsWeekday(stamp),
     new Date(stamp).getUTCDay(),
   )
 
   const ka = await loadProgram(KEY_AGREEMENT)
   expect(
     'crypto/key-agreement: both parties derive the same X25519 shared secret',
-    await ka.agree!(),
+    await ka.agree(),
     true,
   )
 
   const rx = await loadProgram(REGEX)
   expect(
     'regex/matches accepts a matching string',
-    rx.isDigits!('12345'),
+    rx.isDigits('12345'),
     true,
   )
   expect(
     'regex/matches rejects a non-matching string',
-    rx.isDigits!('12a45'),
+    rx.isDigits('12a45'),
     false,
   )
   expect(
     'regex/replace replaces all matches',
-    rx.stripVowels!('seedlang'),
+    rx.stripVowels('seedlang'),
     's**dl*ng',
   )
   expect(
     'regex/find returns the first match',
-    rx.firstNumber!('abc42def7'),
+    rx.firstNumber('abc42def7'),
     '42',
   )
 
   const ud = await loadProgram(UUID)
-  const id = ud.makeId!() as string
+  const id = ud.makeId() as string
   expect(
     'uuid/version4 returns a 36-char id',
     typeof id === 'string' && id.length === 36,
@@ -1667,91 +1683,92 @@ async function main(): Promise<void> {
   )
 
   const rn = await loadProgram(RANDOM)
-  const u = rn.unit!() as number
+  const u = rn.unit() as number
   expect('random/number is in [0,1)', u >= 0 && u < 1, true)
-  expect('random/integer(5,5) is deterministically 5', rn.fixed!(), 5)
-  const r = rn.ranged!() as number
+  expect('random/integer(5,5) is deterministically 5', rn.fixed(), 5)
+
+  const r = rn.ranged() as number
   expect('random/integer(1,6) is in range', r >= 1 && r <= 6, true)
 
   const sg = await loadProgram(STRING)
   expect(
     'text/string: to-upper uppercases',
-    sg.shout!('hello'),
+    sg.shout('hello'),
     'HELLO',
   )
   expect(
     'text/string: trim strips whitespace',
-    sg.trimmed!('  hi  '),
+    sg.trimmed('  hi  '),
     'hi',
   )
   expect(
     'text/string: repeat repeats n times',
-    sg.tripled!('ab'),
+    sg.tripled('ab'),
     'ababab',
   )
   expect(
     'text/string: starts-with detects the prefix',
-    sg.hasPrefix!('seedlang', 'seed'),
+    sg.hasPrefix('seedlang', 'seed'),
     true,
   )
   expect(
     'text/string: replace replaces all occurrences',
-    sg.swapped!('a-a-a'),
+    sg.swapped('a-a-a'),
     'b-b-b',
   )
 
   const hm = await loadProgram(HMAC)
   expect(
     'cryptography/hmac: sha256 matches the RFC test vector',
-    await hm.mac!('key', 'The quick brown fox jumps over the lazy dog'),
+    await hm.mac('key', 'The quick brown fox jumps over the lazy dog'),
     'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8',
   )
 
   const hv = await loadProgram(HSV)
-  expect('color/hsv: pure red has value 100', hv.redValue!(), 100)
+  expect('color/hsv: pure red has value 100', hv.redValue(), 100)
   expect(
     'color/hsv: pure red has saturation 100',
-    hv.redSaturation!(),
+    hv.redSaturation(),
     100,
   )
-  expect('color/hsv: gray has saturation 0', hv.graySaturation!(), 0)
+  expect('color/hsv: gray has saturation 0', hv.graySaturation(), 0)
 
   const hc = await loadProgram(HEXCOLOR)
   expect(
     'color/hex: rgb(255,0,128) formats as #ff0080',
-    hc.hexOf!(),
+    hc.hexOf(),
     '#ff0080',
   )
 
   const b6 = await loadProgram(ENCODE)
   expect(
     'text/base64: encodes a known vector',
-    b6.b64!('hello'),
+    b6.b64('hello'),
     'aGVsbG8=',
   )
   expect(
     'text/base64: round-trips through the host Buffer',
-    b6.unB64!(b6.b64!('seed encodings')),
+    b6.unB64(b6.b64('seed encodings')),
     'seed encodings',
   )
 
   const hx = await loadProgram(HEXCODE)
-  expect('text/hex: encodes a known vector', hx.hexed!('hi'), '6869')
+  expect('text/hex: encodes a known vector', hx.hexed('hi'), '6869')
   expect(
     'text/hex: round-trips through the host Buffer',
-    hx.unHexed!(hx.hexed!('cluesurf')),
+    hx.unHexed(hx.hexed('cluesurf')),
     'cluesurf',
   )
 
   const dg = await loadProgram(DIGEST)
   expect(
     'cryptography/digest: sha256 matches the known vector for "abc"',
-    await dg.sha!('abc'),
+    await dg.sha('abc'),
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
   )
   expect(
     'cryptography/digest: md5 matches the known vector for "abc"',
-    await dg.md!('abc'),
+    await dg.md('abc'),
     '900150983cd24fb0d6963f7d28e17f72',
   )
   expect(
@@ -1761,22 +1778,23 @@ async function main(): Promise<void> {
   )
 
   const ma = await loadProgram(MATH)
-  expect('math: absolute delegates to host Math.abs', ma.absNeg!(), 7)
-  expect('math: power delegates to host Math.pow', ma.twoToTen!(), 1024)
+  expect('math: absolute delegates to host Math.abs', ma.absNeg(), 7)
+  expect('math: power delegates to host Math.pow', ma.twoToTen(), 1024)
   expect(
     'math: square-root delegates to host Math.sqrt',
-    ma.rootOf!(),
+    ma.rootOf(),
     12,
   )
-  expect('math: clamp composes from the interface', ma.clampHigh!(), 10)
-  expect('math: greatest-common-divisor (pure)', ma.gcdOf!(), 6)
-  expect('math: factorial (pure)', ma.factOf!(), 120)
+  expect('math: clamp composes from the interface', ma.clampHigh(), 10)
+  expect('math: greatest-common-divisor (pure)', ma.gcdOf(), 6)
+  expect('math: factorial (pure)', ma.factOf(), 120)
 
   // the delegating interface is thrown away in the compiled output: the wrapper chain collapses to the native call
   const mathOut = compile(
     { file: 'main.tree', text: MATH },
     { resolve },
   )
+
   const mathTs = mathOut.ok ? mathOut.typescript : ''
   expect(
     'math: the absolute wrapper is inlined away (no function absolute)',
@@ -1805,28 +1823,28 @@ async function main(): Promise<void> {
   )
 
   const hl = await loadProgram(HSL)
-  expect('color/hsl: pure blue has hue 240', hl.blueHue!(), 240)
-  expect('color/hsl: pure green has hue 120', hl.greenHue!(), 120)
-  expect('color/hsl: white has saturation 0', hl.whiteSaturation!(), 0)
-  expect('color/hsl: pure red has lightness 50', hl.redLightness!(), 50)
+  expect('color/hsl: pure blue has hue 240', hl.blueHue(), 240)
+  expect('color/hsl: pure green has hue 120', hl.greenHue(), 120)
+  expect('color/hsl: white has saturation 0', hl.whiteSaturation(), 0)
+  expect('color/hsl: pure red has lightness 50', hl.redLightness(), 50)
   expect(
     'color/hsl: hsl(0,100,50) converts back to red (255)',
-    hl.backToRed!(),
+    hl.backToRed(),
     255,
   )
   expect(
     'color/hsl: hsl(120,100,50) converts back to green channel (255)',
-    hl.backToGreenChannel!(),
+    hl.backToGreenChannel(),
     255,
   )
   expect(
     'color/hsl: hsl(0,0,100) converts back to white (blue 255)',
-    hl.whiteBackBlue!(),
+    hl.whiteBackBlue(),
     255,
   )
 
   const en = await loadProgram(ENVIRONMENT)
-  const cwd = en.cwd!() as string
+  const cwd = en.cwd() as string
   expect(
     'environment: directory reads the working dir (non-empty)',
     typeof cwd === 'string' && cwd.length > 0,
@@ -1835,42 +1853,43 @@ async function main(): Promise<void> {
   process.env.SEED_TEST_VAR = 'present'
   expect(
     'environment: variable reads an env var',
-    en.varOf!('SEED_TEST_VAR'),
+    en.varOf('SEED_TEST_VAR'),
     'present',
   )
   expect(
     'environment: variable returns empty for an unset var',
-    en.varOf!('SEED_DEFINITELY_UNSET_VAR'),
+    en.varOf('SEED_DEFINITELY_UNSET_VAR'),
     '',
   )
 
   const metaDir = mkdtempSync(join(tmpdir(), 'seed-meta-'))
   const metaFile = join(metaDir, 'note.txt')
   writeFileSync(metaFile, 'twelve bytes')
+
   const fm = await loadProgram(FILE_META)
   expect(
     'file/metadata: size reads the byte length',
-    fm.sizeOf!(metaFile),
+    fm.sizeOf(metaFile),
     12,
   )
   expect(
     'file/metadata: is-file is true for a file',
-    fm.fileCheck!(metaFile),
+    fm.fileCheck(metaFile),
     true,
   )
   expect(
     'file/metadata: is-directory is false for a file',
-    fm.dirCheck!(metaFile),
+    fm.dirCheck(metaFile),
     false,
   )
   expect(
     'file/metadata: is-directory is true for a directory',
-    fm.dirCheck!(metaDir),
+    fm.dirCheck(metaDir),
     true,
   )
   expect(
     'file/metadata: size of a missing path is 0',
-    fm.sizeOf!(join(metaDir, 'nope')),
+    fm.sizeOf(join(metaDir, 'nope')),
     0,
   )
 
@@ -1878,15 +1897,16 @@ async function main(): Promise<void> {
   const newDir = join(metaDir, 'made', 'deep')
   expect(
     'file/directory: make creates the directory (recursive)',
-    fd.makeDir!(newDir),
+    fd.makeDir(newDir),
     true,
   )
   expect(
     'file/directory: remove deletes the directory',
-    fd.removeDir!(newDir),
+    fd.removeDir(newDir),
     false,
   )
-  const entries = fd.listDir!(metaDir) as Array<string>
+
+  const entries = fd.listDir(metaDir) as string[]
   expect(
     'file/directory: list returns the directory entries',
     Array.isArray(entries) && entries.includes('note.txt'),
@@ -1894,13 +1914,14 @@ async function main(): Promise<void> {
   )
   expect(
     'file/directory: list of a missing path is empty',
-    (fd.listDir!(join(metaDir, 'nope')) as Array<string>).length,
+    (fd.listDir(join(metaDir, 'nope')) as string[]).length,
     0,
   )
   // nested tree for walk: metaDir/branch/leaf.txt
-  fd.makeDir!(join(metaDir, 'branch'))
+  fd.makeDir(join(metaDir, 'branch'))
   writeFileSync(join(metaDir, 'branch', 'leaf.txt'), 'x')
-  const walked = fd.walkDir!(metaDir) as Array<string>
+
+  const walked = fd.walkDir(metaDir) as string[]
   expect(
     'file/directory: walk lists nested entries recursively',
     Array.isArray(walked) &&
@@ -1910,49 +1931,49 @@ async function main(): Promise<void> {
   )
   expect(
     'file/directory: walk of a missing path is empty',
-    (fd.walkDir!(join(metaDir, 'nope')) as Array<string>).length,
+    (fd.walkDir(join(metaDir, 'nope')) as string[]).length,
     0,
   )
 
   const pa = await loadProgram(PATH)
   expect(
     'path: join combines a base and a name',
-    pa.joinOf!('/a/b', 'c.txt'),
+    pa.joinOf('/a/b', 'c.txt'),
     '/a/b/c.txt',
   )
   expect(
     'path: directory is everything before the last segment',
-    pa.dirOf!('/a/b/c.txt'),
+    pa.dirOf('/a/b/c.txt'),
     '/a/b',
   )
   expect(
     'path: file-name is the last segment',
-    pa.nameOf!('/a/b/c.txt'),
+    pa.nameOf('/a/b/c.txt'),
     'c.txt',
   )
   expect(
     'path: file-extension carries its dot',
-    pa.extOf!('/a/b/c.txt'),
+    pa.extOf('/a/b/c.txt'),
     '.txt',
   )
   expect(
     'path: file-extension is empty when there is none',
-    pa.extOf!('/a/b/c'),
+    pa.extOf('/a/b/c'),
     '',
   )
   expect(
     'path: is-absolute is true for a rooted path',
-    pa.absoluteOf!('/a/b'),
+    pa.absoluteOf('/a/b'),
     true,
   )
   expect(
     'path: is-absolute is false for a relative path',
-    pa.absoluteOf!('a/b'),
+    pa.absoluteOf('a/b'),
     false,
   )
 
   const ti = await loadProgram(TIME)
-  const epoch = ti.epoch!() as number
+  const epoch = ti.epoch() as number
   expect(
     'time: now returns a positive epoch',
     typeof epoch === 'number' && epoch > 0,
@@ -1960,7 +1981,7 @@ async function main(): Promise<void> {
   )
 
   const pr = await loadProgram(PROCESS)
-  const plat = pr.plat!() as string
+  const plat = pr.plat() as string
   expect(
     'process: platform reads the host global (non-empty string)',
     typeof plat === 'string' && plat.length > 0,
@@ -1970,30 +1991,31 @@ async function main(): Promise<void> {
   const co = await loadProgram(CONSOLE)
   expect(
     'console: log forwards to the host console and returns unit',
-    co.say!('') === undefined,
+    co.say('') === undefined,
     true,
   )
 
   const lg = await loadProgram(LOG)
   expect(
     'log: info forwards to the host console and returns unit',
-    lg.noteInfo!('') === undefined,
+    lg.noteInfo('') === undefined,
     true,
   )
   expect(
     'log: warn forwards to the host console and returns unit',
-    lg.noteWarn!('') === undefined,
+    lg.noteWarn('') === undefined,
     true,
   )
 
   const c = await loadProgram(CLOCK)
-  const t0 = c.getNow!() as number
+  const t0 = c.getNow() as number
   expect(
     'clock: now returns a positive number (node perf_hooks)',
     typeof t0 === 'number' && t0 > 0,
     true,
   )
-  const t1 = (await c.sleepThenNow!(5)) as number
+
+  const t1 = (await c.sleepThenNow(5)) as number
   expect('clock: sleep then now advances time', t1 >= t0, true)
 
   const m = await loadProgram(PROGRAM)
@@ -2001,7 +2023,7 @@ async function main(): Promise<void> {
   const path = join(dir, 'note.txt')
   const missing = join(dir, 'nope.txt')
 
-  const content = await m.roundTrip!(path)
+  const content = await m.roundTrip(path)
   expect(
     'file: write then read round-trips through node fs',
     content,
@@ -2014,12 +2036,12 @@ async function main(): Promise<void> {
   )
   expect(
     'file: test reports an existing file',
-    await m.exists!(path),
+    await m.exists(path),
     true,
   )
   expect(
     'file: test reports a missing file',
-    await m.exists!(missing),
+    await m.exists(missing),
     false,
   )
 
@@ -2027,12 +2049,12 @@ async function main(): Promise<void> {
   const bytesPath = join(dir, 'raw.bin')
   expect(
     'file: write-bytes then read-bytes round-trips as a native buffer (no utf8 hop)',
-    await bf.roundTripFile!(bytesPath, 'raw bytes ☃'),
+    await bf.roundTripFile(bytesPath, 'raw bytes ☃'),
     'raw bytes ☃',
   )
   expect(
     'file: the bytes on disk count utf8 octets (snowman is 3 bytes)',
-    await bf.byteSizeOnDisk!(bytesPath, 'ab☃'),
+    await bf.byteSizeOnDisk(bytesPath, 'ab☃'),
     5,
   )
 
@@ -2051,24 +2073,28 @@ async function main(): Promise<void> {
     nodeR.ok && nodeR.typescript.includes('fs.readFile'),
     true,
   )
+
   const rustR = compileFor('rust')
   expect(
     'file compiles for the rust target (io runtime)',
     rustR.ok && emitRust(rustR.program).includes('io::file_read'),
     true,
   )
+
   const swiftR = compileFor('swift')
   expect(
     'file compiles for the swift target (io runtime)',
     swiftR.ok && emitSwift(swiftR.program).includes('io.fileRead'),
     true,
   )
+
   const kotlinR = compileFor('kotlin')
   expect(
     'file compiles for the kotlin target (io runtime)',
     kotlinR.ok && emitKotlin(kotlinR.program).includes('io.fileRead'),
     true,
   )
+
   // browser: the same file module compiles to TypeScript that drives the OPFS shim (io.fileRead), and the OPFS
   // runtime (navigator.storage.getDirectory) is pulled into the prelude. Browser has no host here, so this is a
   // compile + shim-wiring check, not a run.
@@ -2076,6 +2102,7 @@ async function main(): Promise<void> {
     { file: 'file.tree', text: fileSrc },
     { resolve: withNativeEnv('browser', stdlib) },
   )
+
   expect(
     'file compiles for the browser target (OPFS io shim)',
     browserR.ok && browserR.typescript.includes('io.fileRead'),
@@ -2095,17 +2122,20 @@ async function main(): Promise<void> {
   const digestSrc = stdlib(
     '@cluesurf/base/code/cryptography/digest',
   )!.text
+
   const digestFor = (env: 'node' | 'rust' | 'swift' | 'kotlin') =>
     compile(
       { file: 'd.tree', text: digestSrc },
       { resolve: withNativeEnv(env, stdlib) },
     )
+
   const dNode = digestFor('node')
   expect(
     'digest compiles for node (node:crypto createHash, inlined)',
     dNode.ok && dNode.typescript.includes('createHash'),
     true,
   )
+
   const dRust = digestFor('rust')
   expect(
     'digest compiles for rust, sha2 crate pulled into the prelude',
@@ -2115,6 +2145,7 @@ async function main(): Promise<void> {
       ),
     true,
   )
+
   const dSwift = digestFor('swift')
   expect(
     'digest compiles for swift, CryptoKit pulled into the prelude',
@@ -2124,6 +2155,7 @@ async function main(): Promise<void> {
       ),
     true,
   )
+
   const dKotlin = digestFor('kotlin')
   expect(
     'digest compiles for kotlin, java.security pulled into the prelude',
@@ -2133,6 +2165,7 @@ async function main(): Promise<void> {
       ),
     true,
   )
+
   const dBrowser = digestFor('browser')
   expect(
     'digest compiles for browser, Web Crypto pulled into the prelude',
@@ -2152,10 +2185,12 @@ async function main(): Promise<void> {
       { file: 's.tree', text: stringSrc },
       { resolve: withNativeEnv(env, stdlib) },
     )
+
   expect(
     'string compiles for node (host toUpperCase)',
     (() => {
       const r = stringFor('node')
+
       return r.ok && r.typescript.includes('toUpperCase')
     })(),
     true,
@@ -2164,6 +2199,7 @@ async function main(): Promise<void> {
     'string compiles for browser (host toUpperCase)',
     (() => {
       const r = stringFor('browser')
+
       return r.ok && r.typescript.includes('toUpperCase')
     })(),
     true,
@@ -2172,6 +2208,7 @@ async function main(): Promise<void> {
     'string compiles for rust (text shim)',
     (() => {
       const r = stringFor('rust')
+
       return r.ok && emitRust(r.program).includes('text::upper')
     })(),
     true,
@@ -2180,6 +2217,7 @@ async function main(): Promise<void> {
     'string compiles for swift (text shim)',
     (() => {
       const r = stringFor('swift')
+
       return r.ok && emitSwift(r.program).includes('text.upper')
     })(),
     true,
@@ -2188,6 +2226,7 @@ async function main(): Promise<void> {
     'string compiles for kotlin (text shim)',
     (() => {
       const r = stringFor('kotlin')
+
       return r.ok && emitKotlin(r.program).includes('text.upper')
     })(),
     true,
@@ -2202,10 +2241,12 @@ async function main(): Promise<void> {
       { file: 'r.tree', text: regexSrc },
       { resolve: withNativeEnv(env, stdlib) },
     )
+
   expect(
     'regex compiles for node (regex shim)',
     (() => {
       const r = regexFor('node')
+
       return r.ok && r.typescript.includes('regex.matches')
     })(),
     true,
@@ -2214,6 +2255,7 @@ async function main(): Promise<void> {
     'regex compiles for rust (regex shim)',
     (() => {
       const r = regexFor('rust')
+
       return r.ok && emitRust(r.program).includes('regex::matches')
     })(),
     true,
@@ -2222,6 +2264,7 @@ async function main(): Promise<void> {
     'regex compiles for swift (regex shim)',
     (() => {
       const r = regexFor('swift')
+
       return r.ok && emitSwift(r.program).includes('regex.matches')
     })(),
     true,
@@ -2230,6 +2273,7 @@ async function main(): Promise<void> {
     'regex compiles for kotlin (regex shim)',
     (() => {
       const r = regexFor('kotlin')
+
       return r.ok && emitKotlin(r.program).includes('regex.matches')
     })(),
     true,
@@ -2244,10 +2288,12 @@ async function main(): Promise<void> {
       { file: 'h.tree', text: httpSrc },
       { resolve: withNativeEnv(env, stdlib) },
     )
+
   expect(
     'http compiles for node (fetch shim)',
     (() => {
       const r = httpFor('node')
+
       return r.ok && r.typescript.includes('http.request')
     })(),
     true,
@@ -2256,6 +2302,7 @@ async function main(): Promise<void> {
     'http compiles for rust (http shim)',
     (() => {
       const r = httpFor('rust')
+
       return r.ok && emitRust(r.program).includes('http::request')
     })(),
     true,
@@ -2264,6 +2311,7 @@ async function main(): Promise<void> {
     'http compiles for swift (http shim)',
     (() => {
       const r = httpFor('swift')
+
       return r.ok && emitSwift(r.program).includes('http.request')
     })(),
     true,
@@ -2272,6 +2320,7 @@ async function main(): Promise<void> {
     'http compiles for kotlin (http shim)',
     (() => {
       const r = httpFor('kotlin')
+
       return r.ok && emitKotlin(r.program).includes('http.request')
     })(),
     true,
@@ -2280,7 +2329,8 @@ async function main(): Promise<void> {
   console.log(
     `\nio: ${pass} pass, ${fail} fail  (public file API -> hidden node native -> real fs; + cross-target compile)`,
   )
-  if (fail > 0) process.exit(1)
+
+  if (fail > 0) {process.exit(1)}
 }
 
 main()

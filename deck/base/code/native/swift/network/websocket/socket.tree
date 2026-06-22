@@ -1,53 +1,35 @@
+# swift WebSocket socket operations. Forwards to the linked websocket runtime shim, operating on the socket's task. receive returns the message form. Internal: reached only through the public WebSocket API.
+
+dock load
+  load <global:websocket>, name websocket
 
 load @cluesurf/base/code/network/websocket
   find socket
-
-load @cluesurf/base/code/network/websocket/socket
   find message
 
-task send
+task do-send
   note async
   take socket, like socket
   take data, like text
+  like void
+  call websocket/send
+    read socket/dock
+    read data
+    wait true
 
-  save raw, read socket/dock
-
-  call raw/send
-    note async
-    call url-session-web-socket-task/message/string
-      read data
-    halt kink
-
-task close
+task do-receive
   note async
   take socket, like socket
-  take code, like size, fall 1000
-  take reason, like text, need false
+  like message
+  send back
+    call websocket/receive
+      read socket/dock
+      wait true
 
-  save raw, read socket/dock
-
-  save reason-data
-    fork test
-      hook test
-        call is-some, read reason
-      hook hold
-        call reason/data
-          text <using>
-          text <.utf8>
-      hook miss
-        wave false
-
-  call raw/cancel
-    text <with>
-    call url-session-web-socket-task/close-code
-      text <rawValue>
-      read code
-    text <reason>
-    read reason-data
-
-task stream
+task do-close
   note async
   take socket, like socket
-
-  save raw, read socket/dock
-  send back, read raw
+  like void
+  call websocket/close
+    read socket/dock
+    wait true

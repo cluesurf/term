@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -27,6 +28,7 @@ const SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../..',
 )
+
 const DECK = path.resolve(SEED, '..')
 const resolve = projectResolver(SEED, 'node')
 const PORT = 38561
@@ -37,11 +39,13 @@ async function main(): Promise<void> {
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },
   )
+
   ok(
     'serve app compiles',
     result.ok,
     result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)),
   )
+
   if (!result.ok) {
     console.log(`\nserve: ${pass} pass, ${fail} fail`)
     process.exit(1)
@@ -57,14 +61,17 @@ async function main(): Promise<void> {
   // shim next to the module that docks it. Then bundle with hono left external (from node_modules).
   const readRuntime = (p: string): string | undefined =>
     fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
+
   const prelude = nativePrelude(result.program, 'node', readRuntime)
   const tmp = path.join(SEED, 'test', 'tmp')
   fs.mkdirSync(tmp, { recursive: true })
+
   const dir = fs.mkdtempSync(path.join(tmp, 'serve-'))
   fs.writeFileSync(
     path.join(dir, 'app.ts'),
     `${prelude}\n${result.typescript}`,
   )
+
   const bundled = await build({
     entryPoints: [path.join(dir, 'app.ts')],
     bundle: true,
@@ -73,14 +80,14 @@ async function main(): Promise<void> {
     external: ['hono', '@hono/node-server'],
     write: false,
   })
+
   const file = path.join(dir, 'app.mjs')
-  fs.writeFileSync(file, bundled.outputFiles[0]!.text)
+  fs.writeFileSync(file, bundled.outputFiles[0].text)
 
   let M: { start: (port: number) => void }
+
   try {
-    M = (await import(file)) as unknown as {
-      start: (port: number) => void
-    }
+    M = await import(file)
     M.start(PORT)
     await new Promise(r => setTimeout(r, 250)) // let the socket bind
     ok('hono server starts', true)
@@ -97,6 +104,7 @@ async function main(): Promise<void> {
     p: string,
   ): Promise<{ status: number; body: string }> => {
     const r = await fetch(`http://localhost:${PORT}${p}`)
+
     return { status: r.status, body: await r.text() }
   }
 

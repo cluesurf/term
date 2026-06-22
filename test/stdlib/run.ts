@@ -17,14 +17,19 @@ const baseTree = join(here, '..', '..', 'deck', 'base') // deck/seed/deck/base.t
 // resolve `@cluesurf/base/code/<path>` to the stdlib .tree file on disk
 function resolveStdlib(importPath: string): Source | undefined {
   const prefix = '@cluesurf/base/'
-  if (!importPath.startsWith(prefix)) return undefined
+
+  if (!importPath.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, `${importPath.slice(prefix.length)}.tree`)
-  if (!existsSync(file)) return undefined
+
+  if (!existsSync(file)) {return undefined}
+
   return { file, text: readFileSync(file, 'utf8') }
 }
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -41,22 +46,26 @@ function expect(name: string, got: unknown, want: unknown): void {
 
 async function loadProgram(
   source: string,
-): Promise<Record<string, (...a: Array<unknown>) => unknown>> {
+): Promise<Record<string, (...a: unknown[]) => unknown>> {
   const result = compile(
     { file: 'main.tree', text: source },
     { resolve: resolveStdlib },
   )
+
   if (!result.ok) {
     for (const d of result.diagnostics)
-      console.log(render(d, source.split('\n'), false))
+      {console.log(render(d, source.split('\n'), false))}
+
     throw new Error('compile failed')
   }
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-stdlib-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
+
   return (await import(pathToFileURL(file).href)) as Record<
     string,
-    (...a: Array<unknown>) => unknown
+    (...a: unknown[]) => unknown
   >
 }
 
@@ -1075,42 +1084,42 @@ task reverse-less-is-greater
 
 async function main(): Promise<void> {
   const od = await loadProgram(ORDERING)
-  expect('ordering/from-numbers less', od.lessIsLess!(), true)
-  expect('ordering/from-numbers equal', od.equalIsEqual!(), true)
-  expect('ordering/from-numbers greater', od.greaterIsGreater!(), true)
+  expect('ordering/from-numbers less', od.lessIsLess(), true)
+  expect('ordering/from-numbers equal', od.equalIsEqual(), true)
+  expect('ordering/from-numbers greater', od.greaterIsGreater(), true)
   expect(
     'ordering/reverse flips less to greater',
-    od.reverseLessIsGreater!(),
+    od.reverseLessIsGreater(),
     true,
   )
 
   const cl = await loadProgram(COLOR)
-  expect('color/grayscale averages the channels', cl.gray!(), 60)
-  expect('color/luminance of white is 255', cl.lumWhite!(), 255)
-  expect('color/invert of black gives 255 red', cl.invertedRed!(), 255)
+  expect('color/grayscale averages the channels', cl.gray(), 60)
+  expect('color/luminance of white is 255', cl.lumWhite(), 255)
+  expect('color/invert of black gives 255 red', cl.invertedRed(), 255)
   expect(
     'color/is-dark on a near-black color is true',
-    cl.darkCheck!(),
+    cl.darkCheck(),
     true,
   )
-  expect('color/blend averages each channel', cl.blendedRed!(), 150)
+  expect('color/blend averages each channel', cl.blendedRed(), 150)
 
   const pb = await loadProgram(PAIR_BOTH)
   expect(
     'pair/map-both applies the first function to first',
-    pb.bothFirst!(),
+    pb.bothFirst(),
     6,
   )
   expect(
     'pair/map-both applies the second function to second',
-    pb.bothSecond!(),
+    pb.bothSecond(),
     14,
   )
 
   const le = await loadProgram(LIST_EXTRAS)
-  expect('list/sum totals the elements', le.sumOf!(), 10)
-  expect('list/index-of finds the position', le.indexOfTwenty!(), 1)
-  expect('list/take-first keeps the leading n', le.takeTwoSize!(), 2)
+  expect('list/sum totals the elements', le.sumOf(), 10)
+  expect('list/index-of finds the position', le.indexOfTwenty(), 1)
+  expect('list/take-first keeps the leading n', le.takeTwoSize(), 2)
   expect(
     'list/count returns the length',
     (le.countOfFour as () => number)(),
@@ -1131,42 +1140,42 @@ async function main(): Promise<void> {
     (le.lastIndexOfOne as () => number)(),
     2,
   )
-  expect('list/drop-first removes the leading n', le.dropTwoSize!(), 2)
-  expect('list/flatten merges one level', le.flattenSize!(), 3)
-  expect('list/product multiplies the elements', le.productOf!(), 24)
-  expect('list/unique removes duplicates', le.uniqueSize!(), 3)
+  expect('list/drop-first removes the leading n', le.dropTwoSize(), 2)
+  expect('list/flatten merges one level', le.flattenSize(), 3)
+  expect('list/product multiplies the elements', le.productOf(), 24)
+  expect('list/unique removes duplicates', le.uniqueSize(), 3)
 
   const bg = await loadProgram(BAG)
   expect(
     'bag/insert keeps duplicates (multiset size)',
-    bg.bagSize!(),
+    bg.bagSize(),
     2,
   )
 
   const os = await loadProgram(ORDERED_SET)
   expect(
     'ordered-set/insert dedups (size counts uniques)',
-    os.osetSize!(),
+    os.osetSize(),
     2,
   )
 
   const ll = await loadProgram(LINKED_LIST)
   expect(
     'linked-list/length counts the nodes (recursive)',
-    ll.llLength!(),
+    ll.llLength(),
     2,
   )
   expect(
     'linked-list/head returns some of the first value',
-    ll.llHead!(),
+    ll.llHead(),
     5,
   )
-  expect('linked-list/is-empty on empty is true', ll.llEmpty!(), true)
+  expect('linked-list/is-empty on empty is true', ll.llEmpty(), true)
 
   const se = await loadProgram(SET)
-  expect('set/add then has finds the value', se.addHas!(), true)
-  expect('set/has on a missing value is false', se.missing!(), false)
-  expect('set/size counts unique values', se.uniqueSize!(), 2)
+  expect('set/add then has finds the value', se.addHas(), true)
+  expect('set/has on a missing value is false', se.missing(), false)
+  expect('set/size counts unique values', se.uniqueSize(), 2)
   expect(
     'set/count is the canonical alias of size',
     (se.uniqueCount as () => number)(),
@@ -1174,20 +1183,20 @@ async function main(): Promise<void> {
   )
 
   const st = await loadProgram(STACK)
-  expect('stack/push then pop is LIFO', st.pushPop!(), 20)
+  expect('stack/push then pop is LIFO', st.pushPop(), 20)
 
   const qu = await loadProgram(QUEUE)
-  expect('queue/enqueue then dequeue is FIFO', qu.fifo!(), 10)
+  expect('queue/enqueue then dequeue is FIFO', qu.fifo(), 10)
 
   const h = await loadProgram(HASH)
   expect(
     'hash/set then get returns some of the value',
-    h.setAndGet!(),
+    h.setAndGet(),
     10,
   )
-  expect('hash/get on a missing key returns none', h.getMissing!(), 99)
-  expect('hash/has finds a set key', h.hasKey!(), true)
-  expect('hash/size counts entries', h.entryCount!(), 2)
+  expect('hash/get on a missing key returns none', h.getMissing(), 99)
+  expect('hash/has finds a set key', h.hasKey(), true)
+  expect('hash/size counts entries', h.entryCount(), 2)
   expect(
     'hash/count is the canonical alias of size',
     (h.entryCountVerb as () => number)(),
@@ -1195,122 +1204,122 @@ async function main(): Promise<void> {
   )
 
   const rg = await loadProgram(RANGE)
-  expect('range/length is (end-start)/step', rg.measureRange!(), 5)
+  expect('range/length is (end-start)/step', rg.measureRange(), 5)
   expect(
     'range/to-list produces the right count',
-    rg.rangeListSize!(),
+    rg.rangeListSize(),
     5,
   )
-  expect('range/to-list starts at start', rg.rangeListFirst!(), 3)
-  expect('range/contains a value in bounds', rg.rangeHas!(), true)
+  expect('range/to-list starts at start', rg.rangeListFirst(), 3)
+  expect('range/contains a value in bounds', rg.rangeHas(), true)
   expect(
     'range/contains excludes the end',
-    rg.rangeExcludesEnd!(),
+    rg.rangeExcludesEnd(),
     false,
   )
 
   const x = await loadProgram(COMBINATORS)
   expect(
     'maybe/and-then chains a maybe-returning call',
-    x.andThenSome!(),
+    x.andThenSome(),
     10,
   )
   expect(
     'maybe/or-else falls back to the alternative maybe',
-    x.orElseNone!(),
+    x.orElseNone(),
     7,
   )
-  expect('maybe/filter keeps a passing value', x.filterKeep!(), 4)
-  expect('maybe/filter drops a failing value', x.filterDrop!(), 99)
+  expect('maybe/filter keeps a passing value', x.filterKeep(), 4)
+  expect('maybe/filter drops a failing value', x.filterDrop(), 99)
   expect(
     'maybe/get-or-else calls the thunk on none',
-    x.getOrElseNone!(),
+    x.getOrElseNone(),
     9,
   )
-  expect('maybe/unwrap returns the some value', x.unwrapSome!(), 8)
+  expect('maybe/unwrap returns the some value', x.unwrapSome(), 8)
   expect(
     'result/and-then chains a result-returning call',
-    x.andThenOkay!(),
+    x.andThenOkay(),
     12,
   )
   expect(
     'pair/map-second maps the second element',
-    x.mapSecondPair!(),
+    x.mapSecondPair(),
     9,
   )
 
   const l = await loadProgram(LIST)
-  expect('list/first returns some of the head', l.firstOf!(), 10)
-  expect('list/last returns some of the tail', l.lastOf!(), 30)
-  expect('list/first on empty returns none', l.firstEmpty!(), 99)
-  expect('list/size counts elements', l.sizeOf!(), 3)
-  expect('list/contains finds a member', l.hasIt!(), true)
-  expect('list/get reads by index', l.getSecond!(), 8)
-  expect('list/join joins with a separator', l.joinThem!(), '1-2-3')
+  expect('list/first returns some of the head', l.firstOf(), 10)
+  expect('list/last returns some of the tail', l.lastOf(), 30)
+  expect('list/first on empty returns none', l.firstEmpty(), 99)
+  expect('list/size counts elements', l.sizeOf(), 3)
+  expect('list/contains finds a member', l.hasIt(), true)
+  expect('list/get reads by index', l.getSecond(), 8)
+  expect('list/join joins with a separator', l.joinThem(), '1-2-3')
   expect(
     'list/reverse then size is unchanged',
-    l.sizeAfterReverse!(),
+    l.sizeAfterReverse(),
     2,
   )
-  expect('list/map then size is unchanged', l.sizeAfterMap!(), 4)
-  expect('list/reduce sums the elements', l.sumOf!(), 6)
+  expect('list/map then size is unchanged', l.sizeAfterMap(), 4)
+  expect('list/reduce sums the elements', l.sumOf(), 6)
 
   const c = await loadProgram(COMBINED)
   expect(
     'combined: maybe.unwrap-or dispatches to the maybe method',
-    c.fromMaybe!(),
+    c.fromMaybe(),
     11,
   )
   expect(
     'combined: result.unwrap-or dispatches to the result method',
-    c.fromResult!(),
+    c.fromResult(),
     22,
   )
 
   const d = await loadProgram(DOCK)
   expect(
     'dock: a native module call runs (path.basename)',
-    d.baseName!(),
+    d.baseName(),
     'file.txt',
   )
 
   const b = await loadProgram(BOOLEAN)
-  expect('boolean/not on true is false', b.negateTrue!(), false)
-  expect('boolean/not on false is true', b.negateFalse!(), true)
+  expect('boolean/not on true is false', b.negateTrue(), false)
+  expect('boolean/not on false is true', b.negateFalse(), true)
 
   const m = await loadProgram(MAYBE)
   expect(
     'maybe/unwrap-or on some returns the value',
-    m.unwrapPresent!(),
+    m.unwrapPresent(),
     42,
   )
   expect(
     'maybe/unwrap-or on none returns the fallback',
-    m.unwrapAbsent!(),
+    m.unwrapAbsent(),
     7,
   )
-  expect('maybe/is-some on some is true', m.present!(), true)
-  expect('maybe/is-some on none is false', m.absent!(), false)
+  expect('maybe/is-some on some is true', m.present(), true)
+  expect('maybe/is-some on none is false', m.absent(), false)
   expect(
     'maybe/map applies the function under some',
-    m.mapAddOne!(),
+    m.mapAddOne(),
     42,
   )
 
   const r = await loadProgram(RESULT)
-  expect('result/unwrap-or on okay returns the value', r.okValue!(), 5)
+  expect('result/unwrap-or on okay returns the value', r.okValue(), 5)
   expect(
     'result/unwrap-or on error returns the fallback',
-    r.errDefault!(),
+    r.errDefault(),
     0,
   )
-  expect('result/is-okay on okay is true', r.okayCheck!(), true)
+  expect('result/is-okay on okay is true', r.okayCheck(), true)
 
   const p = await loadProgram(PAIR)
-  expect('pair/get-first reads the first', p.firstOf!(), 3)
+  expect('pair/get-first reads the first', p.firstOf(), 3)
   expect(
     'pair/swap then get-second reads the original first',
-    p.secondAfterSwap!(),
+    p.secondAfterSwap(),
     3,
   )
 

@@ -6,6 +6,7 @@ import { parse } from '@cluesurf/make/code/parser/tree'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -19,23 +20,27 @@ function ok(name: string, cond: boolean, info = ''): void {
 // a structural fingerprint, ignoring layout and comments, to prove the formatter never changes meaning
 function shape(node: {
   kind: string
-  nodes?: Array<unknown>
-  parts?: Array<{ kind: string; text?: string }>
+  nodes?: unknown[]
+  parts?: { kind: string; text?: string }[]
   value?: unknown
   token?: { text: string }
 }): string {
   if (node.kind === 'group' || node.kind === 'root')
-    return `${node.kind}(${(node.nodes ?? [])
+    {return `${node.kind}(${(node.nodes ?? [])
       .map(n => shape(n as never))
-      .join(',')})`
+      .join(',')})`}
+
   if (node.kind === 'name' || node.kind === 'text')
-    return `${node.kind}:${(node.parts ?? [])
+    {return `${node.kind}:${(node.parts ?? [])
       .map(p => p.text ?? '{}')
-      .join('')}`
+      .join('')}`}
+
   return `lit:${node.token?.text ?? node.value}`
 }
+
 function shapeOf(text: string): string {
   const r = parse({ file: 's.tree', text })
+
   return r.ok ? shape(r.tree as never) : 'unparsed'
 }
 
@@ -106,11 +111,15 @@ function main(): void {
       file: 'b.tree',
       text: `task work\n  take xs\n  like number\n  save n, code 0\n  walk list\n    read xs\n    hook next\n      take site, name item\n      save n, code 1\n  send back, read n\n`,
     })
+
     const lines = spaced.split('\n')
+
     const blankBefore = (needle: string): boolean => {
       const i = lines.findIndex(l => l.trim().startsWith(needle))
+
       return i > 0 && lines[i - 1] === ''
     }
+
     ok(
       'blank before the result type (signature head change)',
       blankBefore('like number'),
@@ -143,6 +152,7 @@ function main(): void {
       file: 'd.tree',
       text: `task one\n  send back, code 1\n`,
     })
+
     ok(
       'a single-statement task stays stacked',
       t.split('\n')[0] === 'task one' &&
@@ -155,10 +165,12 @@ function main(): void {
   {
     const long =
       '# this is a very long leading comment that definitely goes well beyond the eighty character limit and keeps going'
+
     const wrapped = format({
       file: 'c.tree',
       text: `${long}\ntask f\n  # lint off L003\n  send back, code 1\n`,
     })
+
     ok(
       'a long comment wraps to <= 84 chars',
       wrapped.split('\n').every(l => l.length <= 84),

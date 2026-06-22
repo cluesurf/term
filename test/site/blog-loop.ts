@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -27,11 +28,13 @@ const SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../..',
 )
+
 const DECK = path.resolve(SEED, '..')
 const resolve = projectResolver(SEED, 'node')
 const CONN =
   process.env.DATABASE_URL ??
   'postgresql://lancepollard@localhost:5432/postgres'
+
 const PORT = 38571
 
 async function main(): Promise<void> {
@@ -39,15 +42,18 @@ async function main(): Promise<void> {
     DECK,
     'seed/deck/site/test/site/hook/blog.tree',
   )
+
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },
   )
+
   ok(
     'blog API compiles against the abstract db + http',
     result.ok,
     result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)),
   )
+
   if (!result.ok) {
     console.log(`\nblog-loop: ${pass} pass, ${fail} fail`)
     process.exit(1)
@@ -63,14 +69,17 @@ async function main(): Promise<void> {
   // to the module that docks it. Then bundle with the drivers left external.
   const readRuntime = (p: string): string | undefined =>
     fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
+
   const prelude = nativePrelude(result.program, 'node', readRuntime)
   const tmp = path.join(SEED, 'test', 'tmp')
   fs.mkdirSync(tmp, { recursive: true })
+
   const dir = fs.mkdtempSync(path.join(tmp, 'blogloop-'))
   fs.writeFileSync(
     path.join(dir, 'app.ts'),
     `${prelude}\n${result.typescript}`,
   )
+
   const bundled = await build({
     entryPoints: [path.join(dir, 'app.ts')],
     bundle: true,
@@ -79,8 +88,9 @@ async function main(): Promise<void> {
     external: ['pg', 'hono', '@hono/node-server'],
     write: false,
   })
+
   const file = path.join(dir, 'app.mjs')
-  fs.writeFileSync(file, bundled.outputFiles[0]!.text)
+  fs.writeFileSync(file, bundled.outputFiles[0].text)
 
   type Api = {
     start: (url: string, port: number) => Promise<void>
@@ -88,8 +98,9 @@ async function main(): Promise<void> {
     seedPost: (id: string, title: string, body: string) => Promise<void>
   }
   let M: Api
+
   try {
-    M = (await import(file)) as unknown as Api
+    M = await import(file)
     await M.start(CONN, PORT)
     await new Promise(r => setTimeout(r, 250))
     ok('connects to Postgres + starts hono', true)
@@ -114,15 +125,17 @@ async function main(): Promise<void> {
     p: string,
   ): Promise<{ status: number; json: unknown }> => {
     const r = await fetch(`http://localhost:${PORT}${p}`)
+
     return { status: r.status, json: JSON.parse(await r.text()) }
   }
 
   const list = await get('/posts')
-  const posts = list.json as Array<{
+  const posts = list.json as {
     id: string
     title: string
     body: string
-  }>
+  }[]
+
   ok(
     'GET /posts returns the two posts as JSON',
     list.status === 200 && posts.length === 2,

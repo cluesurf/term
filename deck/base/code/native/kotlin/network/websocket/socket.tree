@@ -1,0 +1,35 @@
+# kotlin WebSocket socket operations. Forwards to the linked websocket runtime shim, operating on the socket's holder. receive returns the message form. Internal: reached only through the public WebSocket API.
+
+dock load
+  load <global:websocket>, name websocket
+
+load @cluesurf/base/code/network/websocket
+  find socket
+  find message
+
+task do-send
+  note async
+  take socket, like socket
+  take data, like text
+  like void
+  call websocket/send
+    read socket/dock
+    read data
+    wait true
+
+task do-receive
+  note async
+  take socket, like socket
+  like message
+  send back
+    call websocket/receive
+      read socket/dock
+      wait true
+
+task do-close
+  note async
+  take socket, like socket
+  like void
+  call websocket/close
+    read socket/dock
+    wait true

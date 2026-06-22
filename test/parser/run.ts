@@ -9,15 +9,21 @@ let fail = 0
 
 function check(name: string, source: string, expected: string): void {
   const result = parse({ file: 'test.tree', text: source })
+
   if (!result.ok) {
     fail++
+
     const lines = source.split('\n')
     console.log(`FAIL  ${name}  (unexpected diagnostics)`)
+
     for (const d of result.diagnostics)
-      console.log(render(d, lines, false))
+      {console.log(render(d, lines, false))}
+
     return
   }
+
   const got = printTree(result.tree)
+
   if (got.trim() === expected.trim()) {
     pass++
     console.log(`ok    ${name}`)
@@ -34,12 +40,16 @@ function checkError(
   expectedName: string,
 ): void {
   const result = parse({ file: 'test.tree', text: source })
+
   if (result.ok) {
     fail++
     console.log(`FAIL  ${name}  (expected an error, parsed cleanly)`)
+
     return
   }
+
   const got = result.diagnostics[0]?.name
+
   if (got === expectedName) {
     pass++
     console.log(`ok    ${name}`)

@@ -1,0 +1,38 @@
+note <Atomic integer cell: make, increase (atomic add returning the new value), load, store.>
+
+load @cluesurf/base/code/atomic
+  find make-atomic
+  find load
+  find store
+  find increase
+
+test <increase adds and returns the new value>
+  save cell
+    call make-atomic
+      mark 10
+  save after
+    call increase
+      read cell
+      mark 5
+  want hold
+    call and
+      call is-equal
+        read after
+        mark 15
+      call is-equal
+        call load
+          read cell
+        mark 15
+
+test <store overwrites the value>
+  save cell
+    call make-atomic
+      mark 0
+  call store
+    read cell
+    mark 42
+  want hold
+    call is-equal
+      call load
+        read cell
+      mark 42

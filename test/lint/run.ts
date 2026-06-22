@@ -7,6 +7,7 @@ import { mill } from '@cluesurf/make/code/compile/mill'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -19,13 +20,17 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 function program(text: string) {
   const parsed = parse({ file: 't.tree', text })
+
   if (!parsed.ok)
-    throw new Error(
+    {throw new Error(
       'parse failed: ' + JSON.stringify(parsed.diagnostics),
-    )
+    )}
+
   const built = mill(parsed.tree, 't.tree')
+
   if (!built.ok)
-    throw new Error('mill failed: ' + JSON.stringify(built.diagnostics))
+    {throw new Error('mill failed: ' + JSON.stringify(built.diagnostics))}
+
   return built.program
 }
 
@@ -176,6 +181,7 @@ function main(): void {
   {
     const cond = (n: number) =>
       `  hook test\n    call is-above\n      read x\n      code 5\n  hook hold\n    send back\n      code ${n}\n`
+
     const dup = `fork test\n${cond(1)}${cond(2)}`
     ok(
       'L009 flags a duplicated branch condition',
@@ -301,6 +307,7 @@ function main(): void {
       findings(dn).filter(f => f.code === 'L016').length === 1,
       JSON.stringify(findings(dn)),
     )
+
     const single = `task f\n  take x, like boolean\n  like boolean\n  send back\n    fork lack\n      read x\n`
     ok(
       'L016 leaves a single negation alone',
@@ -327,6 +334,7 @@ function main(): void {
       findings(direct).filter(f => f.code === 'L018').length === 1,
       JSON.stringify(findings(direct)),
     )
+
     const used = `task f\n  like number\n  save x\n    code 5\n  send back\n    call add\n      read x\n      read x\n`
     ok(
       'L018 leaves a used binding alone',
@@ -397,6 +405,7 @@ function main(): void {
         fixed.includes('read x'),
       JSON.stringify(fixed),
     )
+
     // applying fixes to already-clean source is a no-op
     const clean = `task f\n  send back, code 1\n`
     ok(

@@ -1,0 +1,50 @@
+note <Text message-passing channel: a value sent is buffered and returned by the next receive, so send-then-receive in one task works.>
+
+load @cluesurf/base/code/channel
+  find make-channel
+  find send
+  find receive
+
+test <channel buffers a sent message for receive>
+  save gate
+    call make-channel
+  call send
+    read gate
+    text <hello-channel>
+    wait true
+  save got
+    call receive
+      read gate
+      wait true
+  want hold
+    call is-equal
+      read got
+      text <hello-channel>
+
+test <channel preserves FIFO order across two sends>
+  save gate
+    call make-channel
+  call send
+    read gate
+    text <first>
+    wait true
+  call send
+    read gate
+    text <second>
+    wait true
+  save a
+    call receive
+      read gate
+      wait true
+  save b
+    call receive
+      read gate
+      wait true
+  want hold
+    call and
+      call is-equal
+        read a
+        text <first>
+      call is-equal
+        read b
+        text <second>

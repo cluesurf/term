@@ -14,8 +14,10 @@ const op = (o: string, left: Expr, right: Expr): Expr => ({
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: Expr, want: string): void {
   const g = showExpr(got)
+
   if (g === want) {
     pass++
     console.log(`ok    ${name}  (${g})`)

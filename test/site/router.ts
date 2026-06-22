@@ -18,6 +18,7 @@ const resolve = projectResolver(SEED, 'node')
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -34,26 +35,31 @@ function expect(name: string, got: unknown, want: unknown): void {
 
 async function loadProgram(
   source: string,
-): Promise<Record<string, (...a: Array<unknown>) => unknown>> {
+): Promise<Record<string, (...a: unknown[]) => unknown>> {
   const result = compile(
     { file: 'main.tree', text: source },
     { resolve },
   )
+
   if (!result.ok) {
     for (const d of result.diagnostics)
-      console.log(render(d, source.split('\n'), false))
+      {console.log(render(d, source.split('\n'), false))}
+
     throw new Error('compile failed')
   }
+
   const js = transformSync(result.typescript, {
     loader: 'ts',
     format: 'esm',
   }).code
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-site-'))
   const file = join(dir, 'module.mjs')
   writeFileSync(file, js)
+
   return (await import(pathToFileURL(file).href)) as Record<
     string,
-    (...a: Array<unknown>) => unknown
+    (...a: unknown[]) => unknown
   >
 }
 
@@ -130,39 +136,40 @@ async function main(): Promise<void> {
   const r = await loadProgram(ROUTER)
   expect(
     'site/router: GET /users/42 matches the :id route (200)',
-    r.routeStatus!('GET', '/users/42'),
+    r.routeStatus('GET', '/users/42'),
     200,
   )
   expect(
     'site/router: GET /users/7 also matches the param route (200)',
-    r.routeStatus!('GET', '/users/7'),
+    r.routeStatus('GET', '/users/7'),
     200,
   )
   expect(
     'site/router: a non-matching path falls through to 404',
-    r.routeStatus!('GET', '/posts/1'),
+    r.routeStatus('GET', '/posts/1'),
     404,
   )
   expect(
     'site/router: a wrong method does not match (404)',
-    r.routeStatus!('POST', '/users/42'),
+    r.routeStatus('POST', '/users/42'),
     404,
   )
   expect(
     'site/router: the :id param is bound and reaches the handler',
-    r.routeParam!('GET', '/users/42'),
+    r.routeParam('GET', '/users/42'),
     '42',
   )
   expect(
     'site/router: a different :id value binds correctly',
-    r.routeParam!('GET', '/users/7'),
+    r.routeParam('GET', '/users/7'),
     '7',
   )
 
   console.log(
     `\nsite/router: ${pass} pass, ${fail} fail  (the real site.tree trie router over the base stdlib)`,
   )
-  if (fail > 0) process.exit(1)
+
+  if (fail > 0) {process.exit(1)}
 }
 
 main()

@@ -17,23 +17,27 @@ const bin = (
   left: Expression,
   right: Expression,
 ): Expression => ({ form: 'binary', op, left, right })
+
 const call = (name: string, ...args: Expression[]): Expression => ({
   form: 'call',
   callee: vbl(name),
   args,
 })
+
 const lett = (name: string, e: Expression): Statement => ({
   form: 'let',
   name,
   init: e,
   mutable: true,
 })
+
 const set = (name: string, e: Expression): Statement => ({
   form: 'assign',
   target: vbl(name),
   op: '=',
   value: e,
 })
+
 const ret = (e: Expression): Statement => ({ form: 'return', value: e })
 const fn = (
   name: string,
@@ -44,6 +48,7 @@ const fn = (
 
 let pass = 0,
   fail = 0
+
 async function check(
   name: string,
   got: Promise<Value> | Value,
@@ -51,6 +56,7 @@ async function check(
 ): Promise<void> {
   const v = await got
   const g = display(v)
+
   if (g === want) {
     pass++
     console.log(`ok    ${name}`)
@@ -84,6 +90,7 @@ async function main(): Promise<void> {
       ],
     ),
   ]
+
   await check(
     'while loop: fib(10)',
     callFunction(fibProg, 'fib', [
@@ -116,6 +123,7 @@ async function main(): Promise<void> {
       ],
     ),
   ]
+
   await check(
     'recursion + if/else: fact(5)',
     callFunction(factProg, 'fact', [
@@ -156,6 +164,7 @@ async function main(): Promise<void> {
       ],
     ),
   ]
+
   await check(
     'switch: classify(-7)',
     callFunction(classifyProg, 'classify', [
@@ -201,6 +210,7 @@ async function main(): Promise<void> {
     },
     { form: 'expression', expr: vbl('sum') },
   ]
+
   await check('arrays: push + sum', run(arrProg), '28')
 
   // maps: set fields, read back
@@ -227,6 +237,7 @@ async function main(): Promise<void> {
       ),
     },
   ]
+
   await check('maps: set + get fields', run(mapProg), '3')
 
   // strings: concat + length
@@ -237,6 +248,7 @@ async function main(): Promise<void> {
       expr: { form: 'member', target: vbl('s'), name: 'length' },
     },
   ]
+
   await check('strings: concat length', run(strProg), '10')
 
   // async / await: an async function awaiting two async calls
@@ -253,6 +265,7 @@ async function main(): Promise<void> {
       true,
     ),
   ]
+
   await check(
     'async/await: outer()',
     callFunction(asyncProg, 'outer', []),
@@ -273,6 +286,7 @@ async function main(): Promise<void> {
     },
     { form: 'expression', expr: vbl('sum') },
   ]
+
   await check('for-each: sum 1..4', run(forProg), '10')
 
   // for-each with break
@@ -297,6 +311,7 @@ async function main(): Promise<void> {
     },
     { form: 'expression', expr: vbl('sum') },
   ]
+
   await check('for-each + break over range', run(forBreakProg), '15')
 
   // try / catch / throw: catch a thrown value
@@ -313,6 +328,7 @@ async function main(): Promise<void> {
     },
     { form: 'expression', expr: vbl('out') },
   ]
+
   await check('try/catch: catches throw', run(tryProg), 'boom')
 
   // throw from inside a called function, caught by the caller
@@ -334,6 +350,7 @@ async function main(): Promise<void> {
       ],
     ),
   ]
+
   await check(
     'try/catch: across a call',
     callFunction(tryCallProg, 'safe', []),
@@ -352,6 +369,7 @@ async function main(): Promise<void> {
     },
     { form: 'expression', expr: vbl('log') },
   ]
+
   await check('try: finally runs after catch', run(finallyProg), 'cf')
 
   // stdlib: range + map + filter + reduce
@@ -360,6 +378,7 @@ async function main(): Promise<void> {
     params,
     body,
   })
+
   const pipelineProg: Statement[] = [
     lett('xs', call('range', int(1), int(6))), // [1,2,3,4,5]
     lett(
@@ -391,6 +410,7 @@ async function main(): Promise<void> {
       ),
     },
   ]
+
   await check(
     'stdlib: range/map/filter/reduce',
     run(pipelineProg),

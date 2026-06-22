@@ -1,0 +1,48 @@
+# An atomic integer cell for lock-free shared-memory counters across concurrent tasks. The clean uniform interface; each backend wraps its platform atomic (node Atomics over a SharedArrayBuffer, rust AtomicI64, swift a lock-guarded cell, kotlin AtomicLong) behind this API, selected at build time. The platform cell lives in the opaque `dock` handle, typed per backend. Operations are synchronous and atomic.
+
+load @cluesurf/base/code/native/atomic
+  find do-make
+  find do-load
+  find do-store
+  find do-increase
+
+# an atomic integer cell
+form atomic
+  link dock, like atomic-handle
+
+  # read the current value
+  task load
+    take self
+    like number
+    send back
+      call do-load
+        read self
+
+  # set the value
+  task store
+    take self
+    take value, like number
+    like void
+    call do-store
+      read self
+      read value
+
+  # atomically add `delta` and return the new value
+  task increase
+    take self
+    take delta, like number
+    like number
+    send back
+      call do-increase
+        read self
+        read delta
+
+# make an atomic cell holding `initial`
+task make-atomic
+  take initial, like number
+  like atomic
+  send back
+    make atomic
+      bind dock
+        call do-make
+          read initial

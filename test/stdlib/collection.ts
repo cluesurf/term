@@ -19,20 +19,27 @@ import { render } from '@cluesurf/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
+
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
+
   return existsSync(file)
     ? { file, text: readFileSync(file, 'utf8') }
     : undefined
 }
+
 const resolve = withNativeEnv('node', stdlib)
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   const same = JSON.stringify(got) === JSON.stringify(want)
+
   if (same) {
     pass++
     console.log(`ok    ${name}`)
@@ -46,26 +53,31 @@ function expect(name: string, got: unknown, want: unknown): void {
 
 async function load(
   source: string,
-): Promise<Record<string, (...a: Array<unknown>) => unknown>> {
+): Promise<Record<string, (...a: unknown[]) => unknown>> {
   const result = compile(
     { file: 'main.tree', text: source },
     { resolve },
   )
+
   if (!result.ok) {
     for (const d of result.diagnostics)
-      console.log(render(d, source.split('\n'), false))
+      {console.log(render(d, source.split('\n'), false))}
+
     throw new Error('compile failed')
   }
+
   const js = transformSync(result.typescript, {
     loader: 'ts',
     format: 'esm',
   }).code
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-coll-'))
   const file = join(dir, 'module.mjs')
   writeFileSync(file, js)
+
   return (await import(pathToFileURL(file).href)) as Record<
     string,
-    (...a: Array<unknown>) => unknown
+    (...a: unknown[]) => unknown
   >
 }
 
@@ -186,31 +198,32 @@ task list-of
 
 async function main(): Promise<void> {
   const h = await load(HASH)
-  expect('hash: keys lists every key', h.keysOf!(), ['a', 'b'])
-  expect('hash: values lists every value', h.valuesOf!(), [1, 2])
+  expect('hash: keys lists every key', h.keysOf(), ['a', 'b'])
+  expect('hash: values lists every value', h.valuesOf(), [1, 2])
 
   const s = await load(SET)
-  expect('set: union merges both sides', s.unionList!(), [1, 2, 3, 4])
+  expect('set: union merges both sides', s.unionList(), [1, 2, 3, 4])
   expect(
     'set: intersect keeps shared items',
-    s.intersectList!(),
+    s.intersectList(),
     [2, 3],
   )
   expect(
     'set: difference keeps only the left-only items',
-    s.differenceList!(),
+    s.differenceList(),
     [1],
   )
 
   const r = await load(RANGE)
   expect(
     'range: to-list expands the range (end exclusive)',
-    r.listOf!(),
+    r.listOf(),
     [0, 1, 2, 3, 4],
   )
 
   console.log(`\ncollection: ${pass} pass, ${fail} fail`)
-  if (fail > 0) process.exit(1)
+
+  if (fail > 0) {process.exit(1)}
 }
 
 main()

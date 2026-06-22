@@ -1,0 +1,23 @@
+# kotlin WebSocket implementation. Forwards to the linked websocket runtime shim (java.net.http.WebSocket). Declares the opaque handle type a socket holds (a holder pairing the WebSocket with its frame queue). Internal: reached only through the public WebSocket API.
+
+dock type
+  load <SeedWebSocketHolder>, name websocket-handle
+
+dock load
+  load <global:websocket>, name websocket
+
+load @cluesurf/base/code/network/websocket
+  find socket
+
+task do-connect
+  note async
+  take url, like text
+  like socket
+  save raw
+    call websocket/connect
+      read url
+      wait true
+  send back
+    make socket
+      bind dock, read raw
+      bind url, read url

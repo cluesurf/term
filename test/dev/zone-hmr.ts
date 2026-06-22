@@ -15,6 +15,7 @@ import { pathToFileURL } from 'node:url'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -63,13 +64,17 @@ function installHot(): Map<
   }
 > {
   const registry = new Map<string, any>()
+
   ;(globalThis as any).__seedHot = (url: string) => {
     const key = url.split('?')[0]
+
     let entry = registry.get(key)
+
     if (!entry) {
       entry = { data: {} }
       registry.set(key, entry)
     }
+
     return {
       get data() {
         return entry.data
@@ -83,6 +88,7 @@ function installHot(): Map<
       invalidate() {},
     }
   }
+
   return registry
 }
 
@@ -94,6 +100,7 @@ async function main(): Promise<void> {
   const dir = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), 'seed-zone-hmr-')),
   )
+
   const ENTRY = 'face/counter.tree'
   const url = (file: string): string => './' + safe(file)
 
@@ -102,11 +109,13 @@ async function main(): Promise<void> {
     { file: ENTRY, text: app('v1') },
     { resolve, modules: url },
   )
+
   ok(
     'v1 compiles in per-module mode',
     v1.ok && !!v1.modules,
     v1.ok ? '' : JSON.stringify((v1 as any).diagnostics?.slice(0, 3)),
   )
+
   if (!v1.ok || !v1.modules) {
     console.log(`\nzone-hmr: ${pass} pass, ${fail} fail`)
     process.exit(1)
@@ -128,6 +137,7 @@ async function main(): Promise<void> {
     const js = (
       await transform(emit.code, { loader: 'ts', format: 'esm' })
     ).code
+
     fs.writeFileSync(path.join(dir, safe(file)), js)
   }
 
@@ -139,15 +149,18 @@ async function main(): Promise<void> {
   const reactiveFile = [...v1.modules.keys()].find(f =>
     f.includes('reactive'),
   )!
+
   const renderFile = [...v1.modules.keys()].find(f =>
     f.includes('render'),
   )!
+
   const reactive = (await import(
     pathToFileURL(path.join(dir, safe(reactiveFile))).href
   )) as {
     readSignal: (s: any) => unknown
     writeSignal: (s: any, v: unknown) => unknown
   }
+
   const render = (await import(
     pathToFileURL(path.join(dir, safe(renderFile))).href
   )) as { element: (t: string) => any }
@@ -156,17 +169,22 @@ async function main(): Promise<void> {
   const moduleV1 = (await import(entryUrl)) as {
     counter: (h: any) => void
   }
+
   moduleV1.counter(host)
 
-  const texts = (): Array<string> => {
-    const out: Array<string> = []
+  const texts = (): string[] => {
+    const out: string[] = []
+
     const walk = (n: any): void => {
       // text nodes hold either a static string or a signal value (a number); compare as strings
       if (n?.handle?.text !== undefined && n.handle.text !== '')
-        out.push(String(n.handle.text))
-      for (const c of n?.handle?.children ?? []) walk(c)
+        {out.push(String(n.handle.text))}
+
+      for (const c of n?.handle?.children ?? []) {walk(c)}
     }
+
     walk(host)
+
     return out
   }
 
@@ -191,18 +209,22 @@ async function main(): Promise<void> {
     { file: ENTRY, text: app('v2') },
     { resolve, modules: url },
   )
-  if (!v2.ok || !v2.modules) throw new Error('v2 compile failed')
+
+  if (!v2.ok || !v2.modules) {throw new Error('v2 compile failed')}
+
   const v2js = (
     await transform(v2.modules.get(ENTRY)!.code, {
       loader: 'ts',
       format: 'esm',
     })
   ).code
+
   fs.writeFileSync(entryPath, v2js)
 
   // drive the real client: dispose (snapshot + tear down) -> reimport fresh -> accept (re-mount from snapshot)
   let reloaded = false
   let stamp = 1
+
   const environment: HmrEnvironment = {
     reload: () => {
       reloaded = true
@@ -211,10 +233,12 @@ async function main(): Promise<void> {
     acceptOf: b => registry.get(b.split('?')[0])?.accept,
     disposeOf: b => {
       const e = registry.get(b.split('?')[0])
-      return e && e.dispose ? () => e.dispose!(e.data) : undefined
+
+      return e?.dispose ? () => e.dispose!(e.data) : undefined
     },
     log: () => {},
   }
+
   await applyHmr(
     {
       type: 'update',
@@ -236,6 +260,7 @@ async function main(): Promise<void> {
     texts().includes('7'),
     texts().join(','),
   )
+
   const newInstance = registry.get(entryUrl)!.data.instances[0]
   ok(
     'the re-mounted instance restored the signal',
@@ -245,7 +270,8 @@ async function main(): Promise<void> {
 
   fs.rmSync(dir, { recursive: true, force: true })
   console.log(`\nzone-hmr: ${pass} pass, ${fail} fail`)
-  if (fail > 0) process.exit(1)
+
+  if (fail > 0) {process.exit(1)}
 }
 
 void main()

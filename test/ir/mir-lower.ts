@@ -10,6 +10,7 @@ import {
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -25,15 +26,19 @@ function fnOf(
   name: string,
 ): { body: unknown; params: unknown } {
   const r = compile({ file: 't.tree', text: src })
+
   if (!r.ok) {
     throw new Error('compile failed: ' + JSON.stringify(r.diagnostics))
   }
+
   const fn = r.program.find(
     s => s.form === 'function' && s.name === name,
   )
-  if (!fn || fn.form !== 'function') {
+
+  if (fn?.form !== 'function') {
     throw new Error(`no function ${name}`)
   }
+
   return { body: fn.body, params: fn.params }
 }
 
@@ -45,7 +50,8 @@ function main(): void {
       `form box\n  link n, like number\n\ntask build\n  like box\n  send back\n    make box\n      bind n, code 5\n`,
       'build',
     )
-    const { insts, heap } = lowerToMir(body as never, params as never)
+
+    const { insts, heap } = lowerToMir(body, params)
     const mir = insts.map(showInst)
 
     ok(
@@ -64,6 +70,7 @@ function main(): void {
       insts,
       heap,
     )
+
     ok(
       'record build: returned value is not dropped',
       !rc.map(showInst).some(l => l.startsWith('drop')),
@@ -77,7 +84,8 @@ function main(): void {
       `form box\n  link n, like number\n\ntask pick\n  take a, like box\n  take b, like box\n  like box\n  send back, read a\n\ntask twice\n  take b, like box\n  like box\n  send back\n    call pick\n      read b\n      read b\n`,
       'twice',
     )
-    const { insts, heap } = lowerToMir(body as never, params as never)
+
+    const { insts, heap } = lowerToMir(body, params)
     ok(
       'heap param `b` is in the RC set',
       heap.has('b'),
@@ -89,6 +97,7 @@ function main(): void {
       insts,
       heap,
     )
+
     ok(
       'heap param used twice gets a dup',
       rc.map(showInst).some(l => l === 'dup b'),

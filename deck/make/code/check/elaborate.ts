@@ -51,6 +51,7 @@ import {
   resetDefinitions,
   resetMetas,
   showTerm,
+  whnf,
 } from '@cluesurf/make/code/check/judge'
 import { terminatingFunctions } from '@cluesurf/make/code/check/totality'
 import { isLinearGoal } from '@cluesurf/make/code/check/holds'
@@ -250,6 +251,67 @@ export type ElaborationReport = {
 }
 
 // the pipeline entry point: just the diagnostics
+// every distinct numeric literal becomes its OWN postulated kernel constant, named `numberValue#<value>`. Collapsing all
+// numbers to a single `numberValue` made any two literals definitionally equal, so a false equality like `24 == 999`
+// would slip through whenever the closed-arithmetic linear prover did not also cover the goal (e.g. when one side is a
+// task call that the kernel reduces to a literal). Distinct constants close that soundness hole, while equal literals
+// still share a name, so `24 == 24` and a function returning `24` both still discharge by convertibility.
+const numberLiteralConstant = (value: string | number): string =>
+  `numberValue#${value}`
+
+// the name of a numeric-literal constant a value computes to, or undefined if it is not a closed numeric literal. Two
+// distinct such names denote two different numbers, so an equality between them is refutable (the numeric companion of
+// constructor-disjointness). Used to turn a provably-false numeric equality into a hard error rather than a soft warning.
+// `whnf` first unfolds any transparent task call (e.g. `order(tee)` reducing to `24`) so the literal it computes to is
+// seen, not its un-forced neutral application.
+function numericLiteralName(value: Value): string | undefined {
+  const head = whnf(value)
+
+  return head.v === 'rigid' &&
+    head.spine.length === 0 &&
+    head.name.startsWith('numberValue#')
+    ? head.name
+    : undefined
+}
+
+// deep-walk the program collecting every integer / float literal value, so each can be postulated in the signature
+// before checking (an unregistered constant is a type error in the kernel). A generic walk avoids hard-coding the
+// expression AST shape; a seen-set guards against any shared / cyclic references introduced by resolution.
+function collectNumberLiteralValues(program: Program): Set<string> {
+  const values = new Set<string>()
+  const seen = new Set<unknown>()
+
+  const visit = (node: unknown): void => {
+    if (node === null || typeof node !== 'object' || seen.has(node)) {
+      return
+    }
+
+    seen.add(node)
+
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visit(item)
+      }
+
+      return
+    }
+
+    const form = (node as { form?: unknown }).form
+
+    if (form === 'integer' || form === 'float') {
+      values.add(String((node as { value?: unknown }).value))
+    }
+
+    for (const key of Object.keys(node)) {
+      visit((node as Record<string, unknown>)[key])
+    }
+  }
+
+  visit(program)
+
+  return values
+}
+
 export function elaborate(
   program: Program,
   file: string,
@@ -495,6 +557,11 @@ export function elaborateReport(
   // the quantitative kernel and its type witnesses are erased at run time.
   const signature: { name: string; type: Term }[] = [
     ...BASE_SIGNATURE,
+    // one postulated constant per distinct numeric literal, so the kernel can distinguish `24` from `999`
+    ...[...collectNumberLiteralValues(program)].map(value => ({
+      name: numberLiteralConstant(value),
+      type: number,
+    })),
     ...(namedTypes.size
       ? [...namedTypes].map(name => ({ name, type: TYPE0 }))
       : []),
@@ -594,7 +661,7 @@ export function elaborateReport(
     switch (node.form) {
       case 'integer':
       case 'float':
-        return constant('numberValue')
+        return constant(numberLiteralConstant(String(node.value)))
       case 'string':
         return constant('stringValue')
       case 'boolean':
@@ -3160,6 +3227,32 @@ export function elaborateReport(
 
             return
           }
+        }
+      }
+
+      // definitional DISPROOF: with no explicit proof, if both sides compute to distinct numeric-literal constants the
+      // equality is provably false (each literal is its own constant), so reject it outright instead of leaving it as a
+      // soft unproven warning. This makes a false numeric claim the linear prover cannot reach -- e.g. one side is a task
+      // call the kernel reduces to a literal -- fail compilation like every other false claim.
+      if (!hasProof) {
+        const leftLiteral = numericLiteralName(leftValue)
+        const rightLiteral = numericLiteralName(rightValue)
+
+        if (
+          leftLiteral !== undefined &&
+          rightLiteral !== undefined &&
+          leftLiteral !== rightLiteral
+        ) {
+          diagnostics.push(
+            diagnose('invalid-proof', {
+              file,
+              span: statement.span,
+              message:
+                'this equality is false: the two sides compute to different numbers',
+            }),
+          )
+
+          return
         }
       }
 

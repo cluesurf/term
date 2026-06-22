@@ -1,0 +1,41 @@
+# rust atomic implementation. Forwards to the linked atomic runtime shim (std AtomicI64). Internal: reached only through the public atomic API.
+
+dock type
+  load <std::sync::Arc<std::sync::atomic::AtomicI64>>, name atomic-handle
+
+dock load
+  load <global:atomic>, name atomic
+
+load @cluesurf/base/code/atomic
+  find atomic
+
+task do-make
+  take initial, like number
+  like atomic-handle
+  send back
+    call atomic/make
+      read initial
+
+task do-load
+  take self, like atomic
+  like number
+  send back
+    call atomic/load
+      read self/dock
+
+task do-store
+  take self, like atomic
+  take value, like number
+  like void
+  call atomic/store
+    read self/dock
+    read value
+
+task do-increase
+  take self, like atomic
+  take delta, like number
+  like number
+  send back
+    call atomic/increase
+      read self/dock
+      read delta

@@ -6,6 +6,7 @@ import { dropSafeHeapLocals } from '@cluesurf/make/code/ir/drop-safe'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -20,12 +21,14 @@ const sp = {
   start: { line: 0, column: 0 },
   end: { line: 0, column: 0 },
 }
+
 const strType = { kind: 'string' as const }
 
 const str = (): Statement extends never
   ? never
   : Record<string, unknown> =>
-  ({ form: 'string', value: 'x', span: sp, type: strType }) as never
+  ({ form: 'string', value: 'x', span: sp, type: strType })
+
 const intLit = (): unknown => ({ form: 'integer', value: 0, span: sp })
 const v = (name: string): unknown => ({
   form: 'variable',
@@ -33,6 +36,7 @@ const v = (name: string): unknown => ({
   span: sp,
   type: strType,
 })
+
 const letHeap = (name: string): unknown => ({
   form: 'let',
   name,
@@ -41,6 +45,7 @@ const letHeap = (name: string): unknown => ({
   span: sp,
   type: strType,
 })
+
 const fn = (
   body: unknown[],
 ): Extract<Statement, { form: 'function' }> =>

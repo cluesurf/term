@@ -16,6 +16,7 @@ import * as M from '@cluesurf/make/code/engine/data/map'
 
 let pass = 0
 let fail = 0
+
 function check(name: string, ok: boolean, detail = ''): void {
   if (ok) {
     pass++
@@ -29,8 +30,10 @@ function check(name: string, ok: boolean, detail = ''): void {
 // trit
 {
   let roundtrip = true
+
   for (let v = -200; v <= 200; v++)
-    if (fromTrits(toTrits(BigInt(v))) !== BigInt(v)) roundtrip = false
+    {if (fromTrits(toTrits(BigInt(v))) !== BigInt(v)) {roundtrip = false}}
+
   check('trit: balanced-ternary roundtrip -200..200', roundtrip)
   check(
     'trit: tritString(5) = "+--"',
@@ -51,6 +54,7 @@ function check(name: string, ok: boolean, detail = ''): void {
 {
   const a = I.integer(123),
     b = I.integer(-45)
+
   check('integer: add', I.toNumber(I.add(a, b)) === 78)
   check('integer: multiply', I.toNumber(I.multiply(a, b)) === -5535)
   check(
@@ -75,6 +79,7 @@ function check(name: string, ok: boolean, detail = ''): void {
     (() => {
       try {
         I.integer(10n ** 10n, 'tri8')
+
         return false
       } catch {
         return true
@@ -102,6 +107,7 @@ function check(name: string, ok: boolean, detail = ''): void {
 {
   const x = F.fromNumber(3.5),
     y = F.fromNumber(1.25)
+
   check(
     'float: add ~ 4.75',
     Math.abs(F.toNumber(F.add(x, y)) - 4.75) < 1e-6,
@@ -137,7 +143,9 @@ function check(name: string, ok: boolean, detail = ''): void {
 // array (persistent tree vector)
 {
   let v = A.empty<number>()
-  for (let i = 0; i < 100; i++) v = A.push(v, i * i)
+
+  for (let i = 0; i < 100; i++) {v = A.push(v, i * i)}
+
   check('array: push + get', A.get(v, 12) === 144 && A.size(v) === 100)
   v = A.set(v, 12, -1)
   check('array: set', A.get(v, 12) === -1)
@@ -154,7 +162,9 @@ function check(name: string, ok: boolean, detail = ''): void {
     ) ===
       (() => {
         let s = 0
-        for (let i = 0; i < 100; i++) if (i !== 12) s += i * i
+
+        for (let i = 0; i < 100; i++) {if (i !== 12) {s += i * i}}
+
         return s
       })(),
   )
@@ -174,6 +184,7 @@ function check(name: string, ok: boolean, detail = ''): void {
     'map: overwrite keeps size',
     (() => {
       M.set(m, 'beta', 20)
+
       return M.size(m) === 3 && M.get(m, 'beta') === 20
     })(),
   )

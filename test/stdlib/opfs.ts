@@ -23,23 +23,32 @@ import type { Source } from '@cluesurf/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
+
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
+
   return existsSync(file)
     ? { file, text: readFileSync(file, 'utf8') }
     : undefined
 }
+
 const readRuntime = (path: string): string | undefined => {
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, path.slice(prefix.length))
+
   return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -56,6 +65,7 @@ function expect(name: string, got: unknown, want: unknown): void {
 class MemoryFile {
   data = ''
 }
+
 class MemoryDirectory {
   files = new Map<string, MemoryFile>()
   directories = new Map<string, MemoryDirectory>()
@@ -64,17 +74,23 @@ class MemoryDirectory {
     options?: { create?: boolean },
   ): Promise<MemoryDirectory> {
     if (!this.directories.has(name)) {
-      if (!options?.create) throw new Error('NotFoundError')
+      if (!options?.create) {throw new Error('NotFoundError')}
+
       this.directories.set(name, new MemoryDirectory())
     }
+
     return this.directories.get(name)!
   }
+
   async getFileHandle(name: string, options?: { create?: boolean }) {
     if (!this.files.has(name)) {
-      if (!options?.create) throw new Error('NotFoundError')
+      if (!options?.create) {throw new Error('NotFoundError')}
+
       this.files.set(name, new MemoryFile())
     }
+
     const file = this.files.get(name)!
+
     return {
       getFile: async () => ({ text: async () => file.data }),
       createWritable: async () => ({
@@ -85,14 +101,15 @@ class MemoryDirectory {
       }),
     }
   }
+
   async removeEntry(name: string): Promise<void> {
     if (!this.files.delete(name) && !this.directories.delete(name))
-      throw new Error('NotFoundError')
+      {throw new Error('NotFoundError')}
   }
 }
 
 async function loadBrowserFile(): Promise<
-  Record<string, (...a: Array<unknown>) => Promise<unknown>>
+  Record<string, (...a: unknown[]) => Promise<unknown>>
 > {
   const source = `load @cluesurf/base/code/file
   find file
@@ -158,22 +175,27 @@ task relocate
     read to
     wait true
 `
+
   const result = compile(
     { file: 'main.tree', text: source },
     { resolve: withNativeEnv('browser', stdlib) },
   )
-  if (!result.ok) throw new Error('compile failed')
+
+  if (!result.ok) {throw new Error('compile failed')}
+
   const prelude = nativePrelude(result.program, 'browser', readRuntime)
   const js = transformSync(`${prelude}\n${result.typescript}`, {
     loader: 'ts',
     format: 'esm',
   }).code
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-opfs-'))
   const file = join(dir, 'module.mjs')
   writeFileSync(file, js)
+
   return (await import(pathToFileURL(file).href)) as Record<
     string,
-    (...a: Array<unknown>) => Promise<unknown>
+    (...a: unknown[]) => Promise<unknown>
   >
 }
 
@@ -187,73 +209,74 @@ async function main(): Promise<void> {
 
   const fs = await loadBrowserFile()
 
-  await fs.put!('note.txt', 'hello opfs')
+  await fs.put('note.txt', 'hello opfs')
   expect(
     'opfs: write then read round-trips',
-    await fs.get!('note.txt'),
+    await fs.get('note.txt'),
     'hello opfs',
   )
   expect(
     'opfs: exists is true for a written file',
-    await fs.here!('note.txt'),
+    await fs.here('note.txt'),
     true,
   )
   expect(
     'opfs: exists is false for a missing file',
-    await fs.here!('ghost.txt'),
+    await fs.here('ghost.txt'),
     false,
   )
 
-  await fs.add!('note.txt', ' and more')
+  await fs.add('note.txt', ' and more')
   expect(
     'opfs: append concatenates',
-    await fs.get!('note.txt'),
+    await fs.get('note.txt'),
     'hello opfs and more',
   )
 
-  await fs.duplicate!('note.txt', 'copy.txt')
+  await fs.duplicate('note.txt', 'copy.txt')
   expect(
     'opfs: copy duplicates the contents',
-    await fs.get!('copy.txt'),
+    await fs.get('copy.txt'),
     'hello opfs and more',
   )
   expect(
     'opfs: copy leaves the original',
-    await fs.here!('note.txt'),
+    await fs.here('note.txt'),
     true,
   )
 
-  await fs.relocate!('copy.txt', 'moved.txt')
+  await fs.relocate('copy.txt', 'moved.txt')
   expect(
     'opfs: move writes the destination',
-    await fs.get!('moved.txt'),
+    await fs.get('moved.txt'),
     'hello opfs and more',
   )
   expect(
     'opfs: move removes the source',
-    await fs.here!('copy.txt'),
+    await fs.here('copy.txt'),
     false,
   )
 
-  await fs.drop!('note.txt')
+  await fs.drop('note.txt')
   expect(
     'opfs: remove deletes the file',
-    await fs.here!('note.txt'),
+    await fs.here('note.txt'),
     false,
   )
 
   // nested directories: the path splits into directory handles plus a final name
-  await fs.put!('deep/nested/file.txt', 'buried')
+  await fs.put('deep/nested/file.txt', 'buried')
   expect(
     'opfs: write + read through nested directories',
-    await fs.get!('deep/nested/file.txt'),
+    await fs.get('deep/nested/file.txt'),
     'buried',
   )
 
   console.log(
     `\nopfs: ${pass} pass, ${fail} fail  (compiled browser file module over an in-memory OPFS)`,
   )
-  if (fail > 0) process.exit(1)
+
+  if (fail > 0) {process.exit(1)}
 }
 
 main()

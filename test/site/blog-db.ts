@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -28,6 +29,7 @@ const SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../..',
 )
+
 const DECK = path.resolve(SEED, '..')
 const resolve = projectResolver(SEED, 'node')
 const CONN =
@@ -37,9 +39,9 @@ const CONN =
 type Post = { id: string; title: string; body: string }
 type Repo = {
   setup: (url: string) => Promise<void>
-  run: (sql: string, params: Array<unknown>) => Promise<void>
+  run: (sql: string, params: unknown[]) => Promise<void>
   createPost: (id: string, title: string, body: string) => Promise<void>
-  listPosts: () => Promise<Array<Post>>
+  listPosts: () => Promise<Post[]>
   getPost: (id: string) => Promise<Post>
   close?: () => Promise<void>
 }
@@ -49,17 +51,21 @@ async function main(): Promise<void> {
     DECK,
     'seed/deck/site/test/site/back/post.tree',
   )
+
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },
   )
+
   ok(
     'repository compiles against the abstract db',
     result.ok,
     result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)),
   )
+
   if (!result.ok) {
     console.log(`\nblog-db: ${pass} pass, ${fail} fail`)
+
     return
   }
 
@@ -74,15 +80,18 @@ async function main(): Promise<void> {
   // next to the module that docks it. Then bundle with pg left external (resolved from node_modules).
   const readRuntime = (p: string): string | undefined =>
     fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
+
   const prelude = nativePrelude(result.program, 'node', readRuntime)
   // run the bundle inside the seed package so node resolves the external `pg` from its node_modules
   const tmp = path.join(SEED, 'test', 'tmp')
   fs.mkdirSync(tmp, { recursive: true })
+
   const dir = fs.mkdtempSync(path.join(tmp, 'blogdb-'))
   fs.writeFileSync(
     path.join(dir, 'app.ts'),
     `${prelude}\n${result.typescript}`,
   )
+
   const bundled = await build({
     entryPoints: [path.join(dir, 'app.ts')],
     bundle: true,
@@ -91,14 +100,17 @@ async function main(): Promise<void> {
     external: ['pg'],
     write: false,
   })
-  const code = bundled.outputFiles[0]!.text
+
+  const code = bundled.outputFiles[0].text
   ok('bundles to a single node module', code.length > 0)
+
   const file = path.join(dir, 'app.mjs')
   fs.writeFileSync(file, code)
 
   let M: Repo
+
   try {
-    M = (await import(file)) as unknown as Repo
+    M = await import(file)
     await M.setup(CONN)
     ok('connects to Postgres + ensures schema', true)
   } catch (e) {
@@ -111,6 +123,7 @@ async function main(): Promise<void> {
       `\nblog-db: ${pass} pass, ${fail} fail  (is Postgres running? set DATABASE_URL)`,
     )
     fs.rmSync(dir, { recursive: true, force: true })
+
     return
   }
 
@@ -142,7 +155,8 @@ async function main(): Promise<void> {
     JSON.stringify(one),
   )
 
-  if (M.close) await M.close()
+  if (M.close) {await M.close()}
+
   fs.rmSync(dir, { recursive: true, force: true })
   console.log(`\nblog-db: ${pass} pass, ${fail} fail`)
   process.exit(fail === 0 ? 0 : 1)

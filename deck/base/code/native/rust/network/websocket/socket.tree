@@ -1,52 +1,35 @@
+# rust WebSocket socket operations. Forwards to the linked websocket runtime shim, operating on the socket's tokio-tungstenite stream. receive returns the message form. Internal: reached only through the public WebSocket API.
+
+dock load
+  load <global:websocket>, name websocket
 
 load @cluesurf/base/code/network/websocket
   find socket
-
-load @cluesurf/base/code/network/websocket/socket
   find message
 
-task send
+task do-send
   note async
   take socket, like socket
   take data, like text
+  like void
+  call websocket/send
+    read socket/dock
+    read data
+    wait true
 
-  save raw, read socket/dock
-
-  call raw/send
-    note async
-    call tungstenite/message/text
-      read data
-    halt kink
-
-task close
+task do-receive
   note async
   take socket, like socket
-  take code, like size, fall 1000
-  take reason, like text, need false
+  like message
+  send back
+    call websocket/receive
+      read socket/dock
+      wait true
 
-  save raw, read socket/dock
-
-  call raw/close
-    note async
-    call some
-      call tungstenite/protocol/close-frame
-        make close-frame
-          bind code
-            call tungstenite/protocol/close-code/from
-              read code
-          bind reason
-            fork test
-              hook test
-                call is-some, read reason
-              hook hold
-                read reason
-              hook miss
-                text <>
-    halt kink
-
-task stream
+task do-close
   note async
   take socket, like socket
-
-  save raw, read socket/dock
-  send back, read raw
+  like void
+  call websocket/close
+    read socket/dock
+    wait true

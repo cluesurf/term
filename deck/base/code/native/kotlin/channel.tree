@@ -1,0 +1,42 @@
+# kotlin channel implementation. Forwards to the linked channel runtime shim (java.util.concurrent BlockingQueue). Declares the opaque handle type a channel holds (the queue). Internal: reached only through the public channel API.
+
+dock type
+  load <java.util.concurrent.BlockingQueue<String>>, name channel-handle
+
+dock load
+  load <global:channel>, name channel
+
+load @cluesurf/base/code/channel
+  find channel
+
+task do-make
+  like channel-handle
+  send back
+    call channel/make
+
+task do-send
+  note async
+  take self, like channel
+  take item, like text
+  like void
+  call channel/send
+    read self/dock
+    read item
+    wait true
+
+task do-receive
+  note async
+  take self, like channel
+  like text
+  send back
+    call channel/receive
+      read self/dock
+      wait true
+
+task do-close
+  note async
+  take self, like channel
+  like void
+  call channel/close
+    read self/dock
+    wait true

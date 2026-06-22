@@ -6,6 +6,7 @@ import type { Label } from '@cluesurf/make/code/ir/net'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -30,7 +31,9 @@ function closeAux(net: Net, binary: number): void {
 
 function count(net: Net, label: Label): number {
   let n = 0
-  for (const l of net.nodes.values()) if (l === label) n++
+
+  for (const l of net.nodes.values()) {if (l === label) {n++}}
+
   return n
 }
 

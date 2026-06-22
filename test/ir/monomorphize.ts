@@ -10,6 +10,7 @@ import type { Program } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -22,11 +23,16 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 function frontEnd(text: string): Program {
   const parsed = parse({ file: 'm.tree', text })
-  if (!parsed.ok) throw new Error('parse failed')
+
+  if (!parsed.ok) {throw new Error('parse failed')}
+
   const built = mill(parsed.tree, 'm.tree')
-  if (!built.ok) throw new Error('mill failed')
+
+  if (!built.ok) {throw new Error('mill failed')}
+
   resolve(built.program, 'm.tree')
   check(built.program, 'm.tree')
+
   return built.program
 }
 
@@ -49,7 +55,7 @@ task run-string
       text <hi>
 `
 
-function functionNames(program: Program): Array<string> {
+function functionNames(program: Program): string[] {
   return program
     .filter(s => s.form === 'function')
     .map(s => (s as { name: string }).name)
@@ -79,6 +85,7 @@ function main(): void {
   const spec = result.find(
     s => s.form === 'function' && s.name === 'identity__number',
   )
+
   ok(
     'specialization has a concrete param type',
     spec !== undefined &&
@@ -96,18 +103,21 @@ function main(): void {
   const runNumber = result.find(
     s => s.form === 'function' && s.name === 'run-number',
   )
+
   let rewritten = false
-  if (runNumber && runNumber.form === 'function') {
+
+  if (runNumber?.form === 'function') {
     const ret = runNumber.body.find(b => b.form === 'return')
+
     if (
-      ret &&
-      ret.form === 'return' &&
+      ret?.form === 'return' &&
       ret.value?.form === 'call' &&
       ret.value.callee.form === 'variable'
     ) {
       rewritten = ret.value.callee.name === 'identity__number'
     }
   }
+
   ok('the call site is rewritten to the specialization', rewritten)
 
   console.log(`\nmonomorphize: ${pass} pass, ${fail} fail`)

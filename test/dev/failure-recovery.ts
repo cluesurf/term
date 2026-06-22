@@ -6,6 +6,7 @@ import type { HmrEnvironment } from '@cluesurf/make/code/dev/client'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++

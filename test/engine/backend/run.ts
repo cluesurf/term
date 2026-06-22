@@ -21,23 +21,27 @@ const bin = (
   left: Expression,
   right: Expression,
 ): Expression => ({ form: 'binary', op, left, right })
+
 const call = (name: string, ...args: Expression[]): Expression => ({
   form: 'call',
   callee: vbl(name),
   args,
 })
+
 const lett = (name: string, e: Expression): Statement => ({
   form: 'let',
   name,
   init: e,
   mutable: true,
 })
+
 const set = (name: string, e: Expression): Statement => ({
   form: 'assign',
   target: vbl(name),
   op: '=',
   value: e,
 })
+
 const ret = (e: Expression): Statement => ({ form: 'return', value: e })
 const fn = (
   name: string,
@@ -45,6 +49,7 @@ const fn = (
   body: Statement[],
   isAsync = false,
 ): Statement => ({ form: 'function', name, params, body, isAsync })
+
 const arg = (v: bigint): Value => ({
   form: 'integer',
   value: { value: v, resolution: 'big' },
@@ -52,6 +57,7 @@ const arg = (v: bigint): Value => ({
 
 let pass = 0,
   fail = 0
+
 async function same(
   name: string,
   interp: Promise<Value>,
@@ -59,6 +65,7 @@ async function same(
 ): Promise<void> {
   const a = display(await interp),
     b = display(await compiled)
+
   if (a === b) {
     pass++
     console.log(`ok    ${name}  (= ${a})`)
@@ -91,6 +98,7 @@ async function main(): Promise<void> {
       ],
     ),
   ]
+
   await same(
     'fib(10) while loop',
     callFunction(fibProg, 'fib', [arg(10n)]),
@@ -120,6 +128,7 @@ async function main(): Promise<void> {
       ],
     ),
   ]
+
   await same(
     'fact(6) recursion',
     callFunction(factProg, 'fact', [arg(6n)]),
@@ -157,6 +166,7 @@ async function main(): Promise<void> {
       ],
     ),
   ]
+
   await same(
     'switch classify(-3)',
     callFunction(classifyProg, 'classify', [arg(-3n)]),
@@ -197,6 +207,7 @@ async function main(): Promise<void> {
     },
     { form: 'expression', expr: vbl('sum') },
   ]
+
   await same('arrays push + sum', run(arrProg), runCompiled(arrProg))
 
   const mapProg: Statement[] = [
@@ -222,6 +233,7 @@ async function main(): Promise<void> {
       ),
     },
   ]
+
   await same('maps fields', run(mapProg), runCompiled(mapProg))
 
   const strProg: Statement[] = [
@@ -231,6 +243,7 @@ async function main(): Promise<void> {
       expr: { form: 'member', target: vbl('s'), name: 'length' },
     },
   ]
+
   await same(
     'strings concat length',
     run(strProg),
@@ -250,6 +263,7 @@ async function main(): Promise<void> {
       true,
     ),
   ]
+
   await same(
     'async/await outer()',
     callFunction(asyncProg, 'outer', []),
@@ -282,6 +296,7 @@ async function main(): Promise<void> {
       ],
     ),
   ]
+
   await same(
     'try/catch recovers a thrown value (n=-5)',
     callFunction(tryProg, 'safe', [arg(-5n)]),
@@ -313,6 +328,7 @@ async function main(): Promise<void> {
       ],
     ),
   ]
+
   await same(
     'for-of array sum',
     callFunction(forProg, 'total', []),

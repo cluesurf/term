@@ -1,0 +1,24 @@
+note <Mutual-exclusion lock: lock waits until free, unlock releases it, so lock-unlock-lock-unlock in one task succeeds.>
+
+load @cluesurf/base/code/mutex
+  find make-mutex
+  find lock
+  find unlock
+
+test <lock then unlock then lock again succeeds>
+  save guard
+    call make-mutex
+  call lock
+    read guard
+    wait true
+  call unlock
+    read guard
+    wait true
+  call lock
+    read guard
+    wait true
+  call unlock
+    read guard
+    wait true
+  want hold
+    wave true

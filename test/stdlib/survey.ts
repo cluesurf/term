@@ -13,20 +13,26 @@ import type { Source } from '@cluesurf/make/code/compile/load'
 const here = dirname(fileURLToPath(import.meta.url))
 const base = join(here, '..', '..', 'deck', 'base')
 const codeDir = join(base, 'code')
+
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(base, `${path.slice(prefix.length)}.tree`)
+
   return existsSync(file)
     ? { file, text: readFileSync(file, 'utf8') }
     : undefined
 }
+
 // the survey compiles against the node target, so a public module's abstract `native/<x>` import resolves to the
 // node implementation (native/node/<x>); modules that do not use native imports are unaffected
 const resolver = withNativeEnv('node', stdlib)
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -43,7 +49,9 @@ function expect(name: string, got: unknown, want: unknown): void {
 
 function compiles(file: string): boolean {
   const text = readFileSync(join(codeDir, file), 'utf8')
-  if (!text.trim()) return true // an empty placeholder is not a failure
+
+  if (!text.trim()) {return true} // an empty placeholder is not a failure
+
   try {
     return compile({ file, text }, { resolve: resolver }).ok
   } catch {
@@ -82,18 +90,23 @@ const CORE = [
 
 // no module may crash the compiler (parser robustness)
 const all = readdirSync(codeDir).filter(f => f.endsWith('.tree'))
+
 let crashed = 0
 let ok = 0
+
 for (const file of all) {
   const text = readFileSync(join(codeDir, file), 'utf8')
-  if (!text.trim()) continue
+
+  if (!text.trim()) {continue}
+
   try {
-    if (compile({ file, text }, { resolve: resolver }).ok) ok++
+    if (compile({ file, text }, { resolve: resolver }).ok) {ok++}
   } catch {
     crashed++
     console.log(`  crash: ${file}`)
   }
 }
+
 expect('no module crashes the compiler', crashed, 0)
 expect('every non-empty core module compiles', ok >= 58, true)
 
@@ -109,4 +122,5 @@ for (const file of CORE) {
 console.log(
   `\nstdlib survey: ${pass} pass, ${fail} fail  (${ok}/${all.length} modules compile)`,
 )
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}

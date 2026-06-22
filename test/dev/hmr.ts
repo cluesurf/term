@@ -10,6 +10,7 @@ import {
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -31,8 +32,10 @@ function node(
     `/${name}.tree`,
     `/${name}.tree`,
   )
+
   n.loaded = true
   n.isSelfAccepting = zone
+
   return n
 }
 
@@ -44,6 +47,7 @@ function node(
     'graph: ensure is idempotent',
     g.ensure('/a.tree', '/a.tree', '/a.tree') === a,
   )
+
   const helper = node(g, 'helper')
   g.setImports(a, [helper])
   ok(
@@ -54,6 +58,7 @@ function node(
     'graph: setImports records imported modules',
     a.importedModules.has(helper),
   )
+
   const pruned = g.setImports(a, [])
   ok(
     'graph: dropping the last importer prunes the dep',
@@ -80,6 +85,7 @@ function appGraph(): {
   const helper = node(g, 'helper')
   g.setImports(root, [zone])
   g.setImports(zone, [helper])
+
   return { g, root, zone, helper }
 }
 
@@ -115,6 +121,7 @@ function appGraph(): {
   const root = node(g, 'root')
   const orphan = node(g, 'orphan')
   g.setImports(root, [orphan])
+
   const r = propagateUpdate(g, orphan.id)
   ok(
     'hmr: a change with no accepting ancestor is a full reload',
@@ -130,6 +137,7 @@ function appGraph(): {
   const dep = node(g, 'dep')
   g.setImports(root, [dep])
   root.acceptedHmrDeps.add(dep.url)
+
   const r = propagateUpdate(g, dep.id)
   ok(
     'hmr: dep-accept makes the accepting importer the boundary',
@@ -148,6 +156,7 @@ function appGraph(): {
   const b = node(g, 'b')
   g.setImports(a, [b])
   g.setImports(b, [a])
+
   const r = propagateUpdate(g, a.id)
   ok(
     'hmr: a non-accepting cycle is a full reload',
@@ -179,4 +188,5 @@ function appGraph(): {
 }
 
 console.log(`\ndev/hmr: ${pass} pass, ${fail} fail`)
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}

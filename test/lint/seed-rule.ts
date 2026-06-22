@@ -18,21 +18,29 @@ const baseTree = resolvePath(seedRoot, 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
+
   return existsSync(file)
     ? { file, text: readFileSync(file, 'utf8') }
     : undefined
 }
+
 const readRuntime = (path: string): string | undefined => {
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, path.slice(prefix.length))
+
   return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -49,6 +57,7 @@ const rules = await loadSeedRules(
   resolve,
   readRuntime,
 )
+
 ok('a Seed rule directory loads as plugins', rules.length >= 1)
 ok(
   'the loaded rule keeps its name and code',
@@ -66,12 +75,14 @@ const offending = `task compute
       read x
       code 0
 `
+
 const parsed = parse({ file: 'main.tree', text: offending })
 const built = parsed.ok ? mill(parsed.tree, 'main.tree') : undefined
 const findings =
-  built && built.ok
+  built?.ok
     ? lint(built.program, 'main.tree', offending, {}, rules)
     : []
+
 ok(
   'the Seed rule fires L003 on redundant arithmetic',
   findings.some(f => f.code === 'L003'),
@@ -87,14 +98,17 @@ const clean = `task compute
       read x
       code 2
 `
+
 const cleanParsed = parse({ file: 'main.tree', text: clean })
 const cleanBuilt = cleanParsed.ok
   ? mill(cleanParsed.tree, 'main.tree')
   : undefined
+
 const cleanFindings =
-  cleanBuilt && cleanBuilt.ok
+  cleanBuilt?.ok
     ? lint(cleanBuilt.program, 'main.tree', clean, {}, rules)
     : []
+
 ok(
   'the Seed rule stays quiet on a non-neutral operand',
   cleanFindings.every(f => f.code !== 'L003'),
@@ -102,4 +116,5 @@ ok(
 )
 
 console.log(`\nseed-rule: ${pass} pass, ${fail} fail`)
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}

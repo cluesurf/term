@@ -7,6 +7,7 @@ import { analyze } from '@cluesurf/flow/code/analyze'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -31,6 +32,7 @@ async function main(): Promise<void> {
       file: 'm.tree',
       text: withHelper(helperOk),
     })
+
     ok(
       'clean program: no diagnostics',
       result.diagnostics.length === 0,
@@ -48,6 +50,7 @@ async function main(): Promise<void> {
     const broken = withHelper(
       `task helper\n  take n, like number\n  like number\n  send back\n    text <oops>\n`,
     )
+
     for (const [label, text] of [
       ['clean', clean],
       ['type error', broken],
@@ -57,11 +60,13 @@ async function main(): Promise<void> {
         file: 'm.tree',
         text,
       })
-      const codes = (ds: Array<{ code: number }>) =>
+
+      const codes = (ds: { code: number }[]) =>
         ds
           .map(d => d.code)
           .sort()
           .join(',')
+
       ok(
         `incremental diagnostics match whole-program (${label})`,
         codes(incr.diagnostics) === codes(whole.diagnostics),
@@ -77,6 +82,7 @@ async function main(): Promise<void> {
       file: 'm.tree',
       text: withHelper(helperOk),
     })
+
     const db = analyzer.compiler.db
     const callerTyped = db.runs('typed:caller')
     const otherTyped = db.runs('typed:other')
@@ -117,7 +123,8 @@ async function main(): Promise<void> {
   }
 
   console.log(`\nserver/incremental: ${pass} pass, ${fail} fail`)
-  if (fail > 0) process.exit(1)
+
+  if (fail > 0) {process.exit(1)}
 }
 
 void main()

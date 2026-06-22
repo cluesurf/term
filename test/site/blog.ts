@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -28,6 +29,7 @@ const SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../..',
 )
+
 const DECK = path.resolve(SEED, '..')
 // resolve through the seed package manager: @cluesurf/site, /bind, /base via the linked packages, and the abstract
 // dom API rewritten to the browser native impl by the `browser` env. No hand-written resolver.
@@ -41,7 +43,7 @@ function makeStubElement(tag: string): any {
     parent: null as any,
     children: [] as any[],
     attributes: {} as Record<string, string>,
-    listeners: {} as Record<string, Array<() => void>>,
+    listeners: {} as Record<string, (() => void)[]>,
     textContent: '',
     value: '',
     setAttribute(n: string, v: string) {
@@ -50,6 +52,7 @@ function makeStubElement(tag: string): any {
     appendChild(c: any) {
       c.parent = this
       this.children.push(c)
+
       return c
     },
     addEventListener(e: string, h: () => void) {
@@ -61,14 +64,17 @@ function makeStubElement(tag: string): any {
     // ChildNode.remove(): detach from the parent. The reactive `each` uses it to reconcile the list on every change.
     remove() {
       const siblings = this.parent?.children
+
       if (siblings) {
         const i = siblings.indexOf(this)
-        if (i >= 0) siblings.splice(i, 1)
+
+        if (i >= 0) {siblings.splice(i, 1)}
       }
+
       this.parent = null
     },
     fire(e: string) {
-      for (const h of this.listeners[e] ?? []) h()
+      for (const h of this.listeners[e] ?? []) {h()}
     },
   }
 }
@@ -83,17 +89,21 @@ async function main(): Promise<void> {
     DECK,
     'seed/deck/site/test/site/face/blog.tree',
   )
+
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },
   )
+
   ok(
     'blog compiles against the browser DOM (bind)',
     result.ok,
     result.ok ? '' : JSON.stringify(result.diagnostics.slice(0, 4)),
   )
+
   if (!result.ok) {
     console.log(`\nblog: ${pass} pass, ${fail} fail`)
+
     return
   }
 
@@ -113,25 +123,30 @@ async function main(): Promise<void> {
     path.join(dir, 'entry.ts'),
     `import { blog } from './app'\nblog({ handle: document.body })\n`,
   )
+
   const bundled = await build({
     entryPoints: [path.join(dir, 'entry.ts')],
     bundle: true,
     format: 'esm',
     write: false,
   })
-  const code = bundled.outputFiles[0]!.text
+
+  const code = bundled.outputFiles[0].text
   ok('bundles to a single browser module', code.length > 0)
 
   const body = makeStubElement('body')
+
   ;(globalThis as any).document = {
     createElement: (tag: string) => makeStubElement(tag),
     createTextNode: (v: string) => {
       const n = makeStubElement('')
       n.textContent = v
+
       return n
     },
     body,
   }
+
   const file = path.join(dir, 'bundle.mjs')
   fs.writeFileSync(file, code)
   await import(file)
@@ -139,6 +154,7 @@ async function main(): Promise<void> {
   // the mounted page: <div><input><textarea><button>Add post</button><div posts/></div>
   const root = body.children[0]
   ok('mounts a root element', root?.tagName === 'div')
+
   const [titleInput, bodyInput, addButton, posts] = root?.children ?? []
   ok('renders a title input', titleInput?.tagName === 'input')
   ok('renders a body textarea', bodyInput?.tagName === 'textarea')
@@ -156,6 +172,7 @@ async function main(): Promise<void> {
   bodyInput.value = 'Hello world'
   addButton.fire('click')
   ok('one post after adding', posts.children.length === 1)
+
   const post1 = posts.children[0]
   ok(
     'post renders heading + body',

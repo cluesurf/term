@@ -269,6 +269,24 @@ function unfoldRigid(value: Extract<Value, { v: 'rigid' }>): Value {
   return result
 }
 
+// reduce a value to weak head normal form, unfolding transparent definitions at the head (the same delta step the
+// converter takes at lines 1116/1120) and following metavariable solutions. Bounded by the unfold fuel so a
+// self-referential definition cannot loop. Lets the elaborator see the literal a closed numeric expression computes to.
+export function whnf(value: Value): Value {
+  let current = force(value)
+  let fuel = MAX_UNFOLD
+
+  while (
+    current.v === 'rigid' &&
+    definition.has(current.name) &&
+    fuel-- > 0
+  ) {
+    current = force(unfoldRigid(current))
+  }
+
+  return current
+}
+
 // create a fresh metavariable of the given type, returned as a term ready to splice into elaboration
 export function freshMeta(type: Value): Term {
   const id = nextMeta++

@@ -11,6 +11,7 @@ import {
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -32,7 +33,9 @@ function main(): void {
       read b
   send back, read total
 `
+
   const { program } = analyze({ file: 't.tree', text })
+
   if (!program) {
     console.log('FAIL  program did not compile')
     process.exit(1)
@@ -62,6 +65,7 @@ function main(): void {
     start: { line: 0 },
     end: { line: 100 },
   })
+
   ok(
     'inlayHints suggests a type for an untyped binding',
     hints.length > 0,
@@ -106,18 +110,21 @@ async function backdating(): Promise<void> {
     method,
     params,
   })
+
   const publishes = (out: { method?: string }[]): boolean =>
     out.some(m => m.method === 'textDocument/publishDiagnostics')
 
   const opened = await server.dispatch(
     msg('textDocument/didOpen', { textDocument: { uri, text: bad } }),
   )
+
   const reSame = await server.dispatch(
     msg('textDocument/didChange', {
       textDocument: { uri },
       contentChanges: [{ text: bad }],
     }),
   )
+
   const reChanged = await server.dispatch(
     msg('textDocument/didChange', {
       textDocument: { uri },

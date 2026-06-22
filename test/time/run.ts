@@ -18,6 +18,7 @@ import * as os from 'node:os'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
       computeStats('flat', [100, 100, 100]), // was 100 -> same
       computeStats('fresh', [10, 10, 10]), // not in baseline -> new
     ]
+
     const baseline = {
       results: [
         { name: 'slow', mean_ns: 100 },
@@ -66,6 +68,7 @@ async function main(): Promise<void> {
         { name: 'flat', mean_ns: 100 },
       ],
     }
+
     const cmp = compareResults({ current, baseline })
     const byName = new Map(cmp.entries.map(e => [e.name, e.status]))
     ok('compare marks regression', byName.get('slow') === 'slower')
@@ -100,11 +103,13 @@ async function main(): Promise<void> {
         names[1] === 'time-mul',
       JSON.stringify(names),
     )
+
     const filtered = compileBenchmarks({
       text: src,
       file: 't.tree',
       filter: 'add',
     })
+
     ok(
       'filter narrows to one benchmark',
       filtered.benchmarks.length === 1 &&
@@ -124,6 +129,7 @@ async function main(): Promise<void> {
       iterations: 5,
       baseline: { results: [{ name: 'time-noop', mean_ns: 1e9 }] },
     })
+
     ok('driver produced one result', run.suite.results.length === 1)
     ok(
       'driver result is the named benchmark',
