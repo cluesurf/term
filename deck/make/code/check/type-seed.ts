@@ -55,13 +55,16 @@ export function makeSeedType(
       }
 
       if (records.has(type.name)) {
-        // a form: give it a fresh type argument per generic parameter (maybe -> maybe<?a>), inferred from usage
+        // a form: give it a fresh type argument per generic parameter (maybe -> maybe<?a>), inferred from usage. An
+        // indexed family's VALUE-INDEX arguments (`vec a n`) are carried verbatim -- they are expressions, not
+        // inference types, so they pass through untouched and keep the type value-dependent through inference.
         const params = formGenerics.get(type.name) ?? []
 
         return {
           kind: 'named',
           name: type.name,
           args: params.map((_, i) => seed(type.args?.[i], generics)),
+          ...(type.valueArgs ? { valueArgs: type.valueArgs } : {}),
         }
       }
 

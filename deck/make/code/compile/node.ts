@@ -23,7 +23,10 @@ export type Type =
   | { kind: 'bytes' }
   | { kind: 'array'; element: Type }
   | { kind: 'map'; key: Type; value: Type }
-  | { kind: 'named'; name: string; args?: Type[] }
+  // a named type, optionally applied to TYPE arguments (`args`, e.g. `stack natural`) and/or VALUE-INDEX arguments
+  // (`valueArgs`, e.g. the `n` in a length-indexed `vec a n`). Value arguments make the type language value-dependent:
+  // `vec a zero` and `vec a (succ n)` are DISTINCT types, which is what gives an indexed family its type safety.
+  | { kind: 'named'; name: string; args?: Type[]; valueArgs?: Expression[] }
   | {
       kind: 'function'
       params: Type[]
@@ -253,10 +256,17 @@ export type Statement =
       form: 'record-type'
       name: string
       params: string[]
+      // VALUE indices: relevant value parameters of the type former (`head n, like natural-number`), making this an
+      // indexed family `T <params> <indices>`. Each variant supplies its output index in `indexValues`.
+      indices?: { name: string; type: Type }[]
       fields: { name: string; type: Type; nick?: string }[]
       variants: {
         name: string
         fields: { name: string; type: Type; nick?: string }[]
+        // the output index expressions of this constructor (one per declared index, in order): `vnil` outputs `zero`,
+        // `vcons` outputs `succ count`. Present only on an indexed family; the constructor's result type is
+        // `T <params> <indexValues>`.
+        indexValues?: Expression[]
       }[]
       // the `like <type>` base of a transparent alias form (`form g-luint, like native-number`): a form with this base
       // and no fields/variants is an alias that unifies with its base. Undefined for ordinary forms.

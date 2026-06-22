@@ -385,6 +385,20 @@ function headName(group: GroupNode): string | undefined {
   return first?.kind === 'name' ? nameText(first) : undefined
 }
 
+// does this head introduce a VALUE expression (rather than a type)? Used to tell a value-index argument (`head / read
+// count`, `head / make zero`) from a type argument (`head a`) under a parameterized type's `head` children.
+const VALUE_EXPRESSION_HEADS = new Set([
+  'read',
+  'make',
+  'call',
+  'mark',
+  'wave',
+])
+
+function isValueExpressionHead(name: string | undefined): boolean {
+  return name !== undefined && VALUE_EXPRESSION_HEADS.has(name)
+}
+
 // the literal text inside a `<...>` node
 function textOf(node: {
   parts: { kind: string; text?: string }[]
@@ -2022,18 +2036,38 @@ export function mill(tree: RootNode, file: string): MillResult {
         // group): `take s, like stack / head natural` makes `s` a `stack natural`. `parseLikeType` only sees the `like`
         // group, so these take-level siblings are attached here, mirroring the `form x / head a` declaration.
         if (type && type.kind === 'named') {
-          const headArgs = rest(statement)
-            .filter(
-              (n): n is GroupNode =>
-                n.kind === 'group' &&
-                n !== likeGroup &&
-                headName(n) === 'head' &&
-                rest(n)[0]?.kind === 'group',
-            )
-            .map(n => parseType(rest(n)[0]!))
+          const headChildren = rest(statement).filter(
+            (n): n is GroupNode =>
+              n.kind === 'group' &&
+              n !== likeGroup &&
+              headName(n) === 'head' &&
+              rest(n)[0]?.kind === 'group',
+          )
 
-          if (headArgs.length > 0) {
-            type = { ...type, args: [...(type.args ?? []), ...headArgs] }
+          const headTypeArgs: Type[] = []
+          const headValueArgs: Expression[] = []
+
+          for (const n of headChildren) {
+            const arg = rest(n)[0] as GroupNode
+
+            // a value expression (`head / make succ ..`, `head / read n`) is a VALUE-INDEX argument (`take v, like vec /
+            // head a / head / make succ ..` makes `v : vec a (succ ..)`); a bare type name is a type argument.
+            if (isValueExpressionHead(headName(arg))) {
+              headValueArgs.push(toExpression(arg, new Set<string>()))
+            } else {
+              headTypeArgs.push(parseType(arg))
+            }
+          }
+
+          if (headTypeArgs.length > 0) {
+            type = { ...type, args: [...(type.args ?? []), ...headTypeArgs] }
+          }
+
+          if (headValueArgs.length > 0) {
+            type = {
+              ...type,
+              valueArgs: [...(type.valueArgs ?? []), ...headValueArgs],
+            }
           }
         }
 
@@ -2542,6 +2576,27 @@ export function mill(tree: RootNode, file: string): MillResult {
     ): { name: string; type: Type; nick?: string }[] => {
       const out: { name: string; type: Type; nick?: string }[] = []
 
+      // the field names in scope, so a value-index argument in one field's type can reference a sibling field (the
+      // recursive `link rest, like vec / head a / head / read count` refers to the field `count`).
+      const fieldScope = new Set<string>()
+
+      for (const child of rest(g)) {
+        if (
+          child.kind === 'group' &&
+          (headName(child) === 'link' || headName(child) === 'free')
+        ) {
+          const fieldNode = rest(child)[0]
+
+          if (fieldNode?.kind === 'group') {
+            const fieldName = headName(fieldNode)
+
+            if (fieldName) {
+              fieldScope.add(fieldName)
+            }
+          }
+        }
+      }
+
       for (const child of rest(g)) {
         if (
           child.kind !== 'group' ||
@@ -2568,21 +2623,41 @@ export function mill(tree: RootNode, file: string): MillResult {
           type = parseLikeType(likeGroup)
         }
 
-        // `head <type>` siblings of the `like` group supply type arguments to a polymorphic field type, e.g. a
-        // recursive field `link rest, like stack / head a` makes `rest` a `stack a`. Mirrors `take s, like stack /
-        // head natural`. Without this the recursive occurrence parses as the bare type former and mis-types.
+        // `head <arg>` siblings of the `like` group supply arguments to a parameterized field type. A bare type name
+        // (`head a`) is a TYPE argument; a value expression (`head / read count`, `head / make zero`, recognised by a
+        // value head) is a VALUE-INDEX argument, making a recursive `link rest, like vec / head a / head / read count`
+        // mean `rest : vec a count`. Mirrors `take s, like vec / head a / head / read count`.
         if (type.kind === 'named') {
-          const headArgs = inner
-            .filter(
-              (c): c is GroupNode =>
-                c.kind === 'group' &&
-                headName(c) === 'head' &&
-                rest(c)[0]?.kind === 'group',
-            )
-            .map(c => parseType(rest(c)[0]!))
+          const typeArgs: Type[] = []
+          const valueArgs: Expression[] = []
 
-          if (headArgs.length > 0) {
-            type = { ...type, args: [...(type.args ?? []), ...headArgs] }
+          for (const c of inner) {
+            if (
+              c.kind !== 'group' ||
+              headName(c) !== 'head' ||
+              rest(c)[0]?.kind !== 'group'
+            ) {
+              continue
+            }
+
+            const arg = rest(c)[0] as GroupNode
+
+            if (isValueExpressionHead(headName(arg))) {
+              valueArgs.push(toExpression(arg, fieldScope))
+            } else {
+              typeArgs.push(parseType(arg))
+            }
+          }
+
+          if (typeArgs.length > 0) {
+            type = { ...type, args: [...(type.args ?? []), ...typeArgs] }
+          }
+
+          if (valueArgs.length > 0) {
+            type = {
+              ...type,
+              valueArgs: [...(type.valueArgs ?? []), ...valueArgs],
+            }
           }
         }
 
@@ -2614,10 +2689,45 @@ export function mill(tree: RootNode, file: string): MillResult {
     }
 
     const fields = linkFields(group)
-    // enum variants: `case <name>` children, each with its own fields
+
+    // `head <name>` children are the form's generic TYPE parameters (`form maybe / head t`); a `head <name>, like
+    // <type>` (carrying a `like`) is instead a relevant VALUE INDEX (`form vec / head n, like natural-number`), making
+    // this an indexed family. Type params stay erased; value indices appear in constructor result types.
+    const params: string[] = []
+    const indices: { name: string; type: Type }[] = []
+
+    for (const child of parts.slice(1)) {
+      if (child.kind !== 'group' || headName(child) !== 'head') {
+        continue
+      }
+
+      const gNameGroup = rest(child)[0]
+      const gName =
+        gNameGroup?.kind === 'group' ? headName(gNameGroup) : undefined
+
+      if (!gName) {
+        continue
+      }
+
+      const likeGroup = rest(child).find(
+        (n): n is GroupNode =>
+          n.kind === 'group' && headName(n) === 'like',
+      )
+
+      if (likeGroup) {
+        indices.push({ name: gName, type: parseLikeType(likeGroup) })
+      } else {
+        params.push(gName)
+      }
+    }
+
+    // enum variants: `case <name>` children, each with its own fields and, for an indexed family, its output index
+    // expressions (the `head <value>` children of the case, in declared-index order). The index expressions are scoped
+    // over the variant's own field names (`succ count` references the field `count`).
     const variants: {
       name: string
       fields: { name: string; type: Type }[]
+      indexValues?: Expression[]
     }[] = []
 
     for (const child of parts.slice(1)) {
@@ -2629,26 +2739,34 @@ export function mill(tree: RootNode, file: string): MillResult {
       const vName =
         vNameGroup?.kind === 'group' ? headName(vNameGroup) : undefined
 
-      if (vName) {
-        variants.push({ name: vName, fields: linkFields(child) })
-      }
-    }
-
-    // `head <name>` children are the form's generic parameters (e.g. `form maybe / head t`)
-    const params: string[] = []
-
-    for (const child of parts.slice(1)) {
-      if (child.kind !== 'group' || headName(child) !== 'head') {
+      if (!vName) {
         continue
       }
 
-      const gNameGroup = rest(child)[0]
-      const gName =
-        gNameGroup?.kind === 'group' ? headName(gNameGroup) : undefined
+      const variantFields = linkFields(child)
+      const variant: {
+        name: string
+        fields: { name: string; type: Type }[]
+        indexValues?: Expression[]
+      } = { name: vName, fields: variantFields }
 
-      if (gName) {
-        params.push(gName)
+      if (indices.length > 0) {
+        const fieldScope = new Set(variantFields.map(f => f.name))
+        const indexValues = rest(child)
+          .filter(
+            (n): n is GroupNode =>
+              n.kind === 'group' && headName(n) === 'head',
+          )
+          .map(n => rest(n)[0])
+          .filter((n): n is Node => n !== undefined)
+          .map(n => toExpression(n, fieldScope))
+
+        if (indexValues.length > 0) {
+          variant.indexValues = indexValues
+        }
       }
+
+      variants.push(variant)
     }
 
     // a transparent alias: `form X, like <type>` carries its base so the checker can unify X with that base. The bind
@@ -2678,6 +2796,7 @@ export function mill(tree: RootNode, file: string): MillResult {
       form: 'record-type',
       name,
       params,
+      indices: indices.length > 0 ? indices : undefined,
       fields,
       variants,
       alias,

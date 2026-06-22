@@ -32,11 +32,14 @@ export function zonk(type: Type, sub: Substitution): Type {
     }
   }
 
-  if (t.kind === 'named' && t.args) {
+  if (t.kind === 'named' && (t.args || t.valueArgs)) {
     return {
       kind: 'named',
       name: t.name,
-      args: t.args.map(a => zonk(a, sub)),
+      ...(t.args ? { args: t.args.map(a => zonk(a, sub)) } : {}),
+      // value-index arguments (an indexed family `vec a n`) are kept verbatim: they are expressions, not types, so the
+      // type substitution does not touch them.
+      ...(t.valueArgs ? { valueArgs: t.valueArgs } : {}),
     }
   }
 
@@ -81,11 +84,14 @@ export function zonkGeneric(
     }
   }
 
-  if (r.kind === 'named' && r.args) {
+  if (r.kind === 'named' && (r.args || r.valueArgs)) {
     return {
       kind: 'named',
       name: r.name,
-      args: r.args.map(t => zonkGeneric(t, names, sub)),
+      ...(r.args
+        ? { args: r.args.map(t => zonkGeneric(t, names, sub)) }
+        : {}),
+      ...(r.valueArgs ? { valueArgs: r.valueArgs } : {}),
     }
   }
 

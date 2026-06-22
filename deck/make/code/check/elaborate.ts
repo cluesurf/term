@@ -241,11 +241,66 @@ const OPERATOR: Record<string, string> = {
 // translate a surface type to a kernel type term at a given context depth. A named generic resolves to the de
 // Bruijn variable of its binder (generics are bound first, as erased type parameters); a base or known named type
 // resolves to its constant. Returns null if the type has no kernel encoding yet.
+// elaborate a VALUE-INDEX expression (a variable bound by an enclosing telescope, or a constructor application like
+// `make zero` / `make succ count`) to a kernel term at binder `depth`. `valueScope` maps an in-scope value binder name
+// to its absolute binder level (de Bruijn index = depth - level - 1, as for type generics). Returns null for anything
+// outside this small index language, so the indexed encoding then falls back to an opaque postulate (never unsound).
+function indexTermAt(
+  expr: Expression,
+  depth: number,
+  valueScope: Map<string, number>,
+  known: Set<string>,
+  resolveCtor: (variant: string) => string | null = () => null,
+): Term | null {
+  switch (expr.form) {
+    case 'variable': {
+      const level = valueScope.get(expr.name)
+
+      return level !== undefined ? variable(depth - level - 1) : null
+    }
+
+    case 'integer':
+      return constant(numberLiteralConstant(String(expr.value)))
+
+    case 'record': {
+      // a constructor application `make <ctor> / bind <field> <value>` -> the constructor constant applied to its field
+      // values. An enum variant resolves to its `enum__variant` key (`nat__zero`) via `resolveCtor`; a struct falls back
+      // to `make__r`. A witness-carrying (polymorphic) index constructor is not resolved here, so the family stays an
+      // opaque postulate rather than mis-typing.
+      const resolved = resolveCtor(expr.name)
+      let term: Term = constant(resolved ?? `make__${expr.name}`)
+
+      for (const field of expr.fields) {
+        const argument = indexTermAt(
+          field.value,
+          depth,
+          valueScope,
+          known,
+          resolveCtor,
+        )
+
+        if (!argument) {
+          return null
+        }
+
+        term = apply(term, argument)
+      }
+
+      return term
+    }
+
+    default:
+      return null
+  }
+}
+
 function kernelTypeAt(
   type: Type | undefined,
   depth: number,
   generics: Map<string, number>,
   known: Set<string>,
+  valueScope: Map<string, number> = new Map(),
+  resolveCtor: (variant: string) => string | null = () => null,
 ): Term | null {
   if (!type) {
     return null
@@ -277,7 +332,32 @@ function kernelTypeAt(
       let base: Term = constant(type.name)
 
       for (const arg of type.args ?? []) {
-        const argTerm = kernelTypeAt(arg, depth, generics, known)
+        const argTerm = kernelTypeAt(
+          arg,
+          depth,
+          generics,
+          known,
+          valueScope,
+          resolveCtor,
+        )
+
+        if (!argTerm) {
+          return null
+        }
+
+        base = apply(base, argTerm)
+      }
+
+      // VALUE-INDEX arguments (`vec a count` -> apply the former to the kernel term for `count`): these make the type
+      // value-dependent, so `vec a zero` and `vec a (succ n)` are distinct and an indexed family is type-safe.
+      for (const valueArg of type.valueArgs ?? []) {
+        const argTerm = indexTermAt(
+          valueArg,
+          depth,
+          valueScope,
+          known,
+          resolveCtor,
+        )
 
         if (!argTerm) {
           return null
@@ -290,7 +370,14 @@ function kernelTypeAt(
     }
 
     case 'array': {
-      const element = kernelTypeAt(type.element, depth, generics, known)
+      const element = kernelTypeAt(
+        type.element,
+        depth,
+        generics,
+        known,
+        valueScope,
+        resolveCtor,
+      )
 
       return element ? apply(constant('Array'), element) : null
     }
@@ -300,7 +387,14 @@ function kernelTypeAt(
       // constructor carry a FUNCTION-typed field (`sup : (B -> W) -> W`), the shape of a general / infinitely-branching
       // W-type. Each parameter sits one binder deeper than the previous; the result is below all of them.
       const n = type.params.length
-      const result = kernelTypeAt(type.result, depth + n, generics, known)
+      const result = kernelTypeAt(
+        type.result,
+        depth + n,
+        generics,
+        known,
+        valueScope,
+        resolveCtor,
+      )
 
       if (!result) {
         return null
@@ -309,7 +403,14 @@ function kernelTypeAt(
       let out: Term = result
 
       for (let i = n - 1; i >= 0; i--) {
-        const param = kernelTypeAt(type.params[i]!, depth + i, generics, known)
+        const param = kernelTypeAt(
+          type.params[i]!,
+          depth + i,
+          generics,
+          known,
+          valueScope,
+          resolveCtor,
+        )
 
         if (!param) {
           return null
@@ -490,6 +591,20 @@ export function elaborateReport(
   // a polymorphic datatype's type-parameter count, so the type former is registered as `Type -> .. -> Type` and use
   // sites (constructor application, match) supply that many erased type witnesses. 0 (absent) for a monomorphic type.
   const typeFormerArity = new Map<string, number>()
+  // an indexed family's VALUE-INDEX kernel types (e.g. `[number]` for a length index), so the type former is registered
+  // as `Type0 -> .. -> nat -> .. -> Type0` and `vec a n` type-checks. Absent for a non-indexed type.
+  const typeFormerIndices = new Map<string, Term[]>()
+
+  // resolve an enum variant used inside an index expression (`zero`, `succ`) to its `enum__variant` kernel key, so an
+  // indexed family's constructor / field types name the SAME constant the value elaboration does. Single-owner only;
+  // an overloaded index constructor declines (the family then stays an opaque postulate, never mis-typed).
+  const resolveIndexCtor = (variant: string): string | null => {
+    const owners = variantToEnum.get(variant)
+
+    return owners && owners.length === 1
+      ? ctorKey(owners[0]!, variant)
+      : null
+  }
 
   for (const statement of program) {
     if (statement.form !== 'record-type') {
@@ -505,28 +620,57 @@ export function elaborateReport(
         params.map((p, i) => [p, i]),
       )
 
-      // an enum: a constructor per variant + a match eliminator, optionally with m leading ERASED type parameters. Field
-      // types are computed with the parameter generics in scope, so a `like a` field resolves to its parameter variable.
-      const ok = statement.variants.every(variant =>
-        variant.fields.every(f =>
-          kernelTypeAt(f.type, m, dataGenerics, namedTypes),
-        ),
+      // VALUE indices of an indexed family. Their kernel types (e.g. `nat`) are needed for the type former's kind; the
+      // value scope of a variant's own fields lets a field type / output index reference a sibling field (`vec a count`,
+      // output `succ count`). A field f_j is bound at level m + j.
+      const declaredIndices = statement.indices ?? []
+      const l = declaredIndices.length
+      const indexTypes = declaredIndices.map(ix =>
+        kernelTypeAt(ix.type, 0, dataGenerics, namedTypes),
       )
+      const fieldLevels = (variant: { fields: { name: string }[] }) =>
+        new Map(variant.fields.map((f, j) => [f.name, m + j]))
+
+      // an enum: a constructor per variant + a match eliminator, optionally with m leading ERASED type parameters. Field
+      // types are computed with the parameter generics (and, for an indexed family, the variant's field scope) in
+      // scope, so a `like a` field resolves to its parameter variable and a `vec a count` field resolves `count`.
+      const ok =
+        indexTypes.every(t => t !== null) &&
+        statement.variants.every(variant =>
+          variant.fields.every(f =>
+            kernelTypeAt(
+              f.type,
+              m,
+              dataGenerics,
+              namedTypes,
+              fieldLevels(variant),
+              resolveIndexCtor,
+            ),
+          ),
+        )
 
       if (!ok) {
         continue
       }
 
+      if (l > 0) {
+        typeFormerIndices.set(statement.name, indexTypes as Term[])
+      }
+
       const n = statement.variants.length
 
-      // the type former applied to its m parameter VARIABLES at total binder depth `depth` (param p is the outermost
-      // erased binder, at de Bruijn `depth - p - 1`). For m = 0 this is the bare type constant, so all of the below
-      // reduces to the original monomorphic encoding exactly.
-      const appliedSelf = (depth: number): Term => {
+      // the type former applied to its m parameter VARIABLES (and, for a constructor result, the output index value
+      // terms appended) at total binder depth `depth`. For m = 0 and no indices this is the bare type constant, so all
+      // of the below reduces to the original monomorphic encoding exactly.
+      const appliedSelf = (depth: number, indexTerms: Term[] = []): Term => {
         let out: Term = constant(statement.name)
 
         for (let p = 0; p < m; p++) {
           out = apply(out, variable(depth - p - 1))
+        }
+
+        for (const indexTerm of indexTerms) {
+          out = apply(out, indexTerm)
         }
 
         return out
@@ -550,15 +694,53 @@ export function elaborateReport(
 
       for (const variant of statement.variants) {
         const k = variant.fields.length
-        let ctorType: Term = appliedSelf(m + k)
+
+        // an indexed family: the constructor's RESULT is `T <params> <output index values>` (`vnil : vec a zero`,
+        // `vcons : .. -> vec a (succ count)`). The index value terms are elaborated at the result depth with the
+        // variant's full field scope, so `succ count` resolves the field `count`.
+        const indexTerms: Term[] = []
+
+        if (l > 0) {
+          const values = variant.indexValues ?? []
+
+          for (let i = 0; i < l; i++) {
+            const value = values[i]
+            const term = value
+              ? indexTermAt(
+                  value,
+                  m + k,
+                  fieldLevels(variant),
+                  namedTypes,
+                  resolveIndexCtor,
+                )
+              : null
+
+            if (!term) {
+              sound = false
+              break
+            }
+
+            indexTerms.push(term)
+          }
+        }
+
+        let ctorType: Term = appliedSelf(m + k, indexTerms)
 
         for (let j = k - 1; j >= 0; j--) {
+          // field j's type sees the PRECEDING fields (0..j-1), each bound at level m + i, so a later field can be
+          // indexed by an earlier one (`rest : vec a count`).
+          const precedingFields = new Map(
+            variant.fields.slice(0, j).map((f, i) => [f.name, m + i]),
+          )
+
           ctorType = arrow(
             kernelTypeAt(
               variant.fields[j]!.type,
               m + j,
               dataGenerics,
               namedTypes,
+              precedingFields,
+              resolveIndexCtor,
             )!,
             ctorType,
           )
@@ -574,6 +756,130 @@ export function elaborateReport(
           name: ctorKey(statement.name, variant.name),
           type: ctorType,
         })
+      }
+
+      // an INDEXED FAMILY (value indices present): register the index-carrying constructor types (which already give
+      // the type-safety win -- `vec a zero` and `vec a (succ n)` are distinct, so a `vec a (succ n)` function rejects an
+      // empty vector) plus the constructors' computing definitions. The fully DEPENDENT eliminator (a motive that
+      // refines the index per branch) is the next step; until then `fork case` on an indexed family is not yet
+      // reducible, but construction and application are sound. A de Bruijn slip falls back to the opaque postulate.
+      if (l > 0) {
+        if (!sound) {
+          continue
+        }
+
+        for (const ctor of ctorTypes) {
+          dataSignature.push(ctor)
+        }
+
+        for (const variant of statement.variants) {
+          const owners = variantToEnum.get(variant.name) ?? []
+          owners.push(statement.name)
+          variantToEnum.set(variant.name, owners)
+          variantFieldInfo.set(
+            ctorKey(statement.name, variant.name),
+            variant.fields.map(f => ({
+              name: f.name,
+              type: kernelTypeAt(
+                f.type,
+                m,
+                dataGenerics,
+                namedTypes,
+                fieldLevels(variant),
+                resolveIndexCtor,
+              )!,
+            })),
+          )
+        }
+
+        variantNames.set(
+          statement.name,
+          statement.variants.map(v => v.name),
+        )
+        typeFormerArity.set(statement.name, m)
+
+        statement.variants.forEach((variant, i) => {
+          enumDefs.push({
+            name: ctorKey(statement.name, variant.name),
+            term: constructorEncoding(i, variant.fields.length, n, m),
+          })
+        })
+
+        // a (non-dependent) eliminator so `fork case` REDUCES on an indexed value:
+        //   match__T : (0 p..)(0 i_0..i_{l-1} : Index)(0 A : Type0) -> T p.. i.. -> branch_0 -> .. -> A
+        // The l index binders sit OUTSIDE the motive A, so every inner de Bruijn (A = var(n+1), A-in-branch =
+        // var(i+k), the computing-def body) is unchanged from the monomorphic case; only the branch-field depth and
+        // the subject gain the l index binders. The motive does NOT yet refine the index per branch -- that is the
+        // fully dependent eliminator -- but this makes pattern matching on an indexed family compute. A de Bruijn slip
+        // leaves the eliminator unregistered (so `fork case` declines), never unsound.
+        let indexed: Term = variable(n + 1) // result A
+        let eliminatorSound = true
+
+        for (let i = n; i >= 1 && eliminatorSound; i--) {
+          const fields = statement.variants[i - 1]!.fields
+          const k = fields.length
+          let branch: Term = variable(i + k) // A inside branch i
+
+          for (let j = k - 1; j >= 0; j--) {
+            const branchFieldLevels = new Map(
+              fields.slice(0, j).map((f, t) => [f.name, m + l + i + 1 + t]),
+            )
+            const fieldType = kernelTypeAt(
+              fields[j]!.type,
+              m + l + i + 1 + j,
+              dataGenerics,
+              namedTypes,
+              branchFieldLevels,
+              resolveIndexCtor,
+            )
+
+            if (!fieldType) {
+              eliminatorSound = false
+              break
+            }
+
+            branch = arrow(fieldType, branch)
+          }
+
+          indexed = arrow(branch, indexed)
+        }
+
+        // the subject T p.. i.. at the subject binder's depth (m params + l indices + A above it)
+        const subjectIndexVars: Term[] = []
+
+        for (let t = 0; t < l; t++) {
+          subjectIndexVars.push(variable(l - t))
+        }
+
+        indexed = arrow(appliedSelf(m + l + 1, subjectIndexVars), indexed)
+        indexed = erasedPi(TYPE0, indexed) // (0 A : Type0)
+
+        for (let t = l - 1; t >= 0; t--) {
+          indexed = erasedPi(indexTypes[t]!, indexed) // (0 i_t : Index)
+        }
+
+        indexed = withParams(indexed) // (0 p.. : Type0)
+
+        if (eliminatorSound && !hasFreeVar(indexed)) {
+          dataSignature.push({
+            name: `match__${statement.name}`,
+            type: indexed,
+          })
+
+          const indexedMotive: Term = { tag: 'lam', body: variable(n + 2) } // \_. A
+          let indexedBody: Term = apply(variable(n), indexedMotive) // x (\_. A)
+
+          for (let j = 0; j < n; j++) {
+            indexedBody = apply(indexedBody, variable(n - 1 - j)) // b_0 .. b_{n-1}
+          }
+
+          enumDefs.push({
+            name: `match__${statement.name}`,
+            term: lambdas(m + l + n + 2, indexedBody),
+          })
+        }
+
+        continue
       }
 
       // match__e : (0 p_0..p_{m-1} : Type0) -> (0 A : Type0) -> (T p..) -> (F_0 -> .. -> A) -> ... -> A. The A and
@@ -788,9 +1094,16 @@ export function elaborateReport(
     ...(namedTypes.size
       ? [...namedTypes].map(name => {
           // a polymorphic datatype's former is `Type0 -> .. -> Type0` (one arrow per type parameter), so it can be
-          // applied to its argument types; a monomorphic type stays a plain `Type0`.
+          // applied to its argument types; a monomorphic type stays a plain `Type0`. An INDEXED family additionally
+          // takes a value argument per index (`vec : Type0 -> nat -> Type0`), appended after the type parameters, so
+          // `vec a n` is well-kinded and `vec a zero` / `vec a (succ n)` are distinct types.
           const arity = typeFormerArity.get(name) ?? 0
+          const indexKinds = typeFormerIndices.get(name) ?? []
           let type: Term = TYPE0
+
+          for (let i = indexKinds.length - 1; i >= 0; i--) {
+            type = arrow(indexKinds[i]!, type)
+          }
 
           for (let p = 0; p < arity; p++) {
             type = arrow(TYPE0, type)
@@ -821,6 +1134,8 @@ export function elaborateReport(
       arity,
       generics,
       namedTypes,
+      new Map(),
+      resolveIndexCtor,
     )
 
     const paramTypes = statement.params.map((p, i) =>
@@ -829,6 +1144,8 @@ export function elaborateReport(
         statement.generics.length + i,
         generics,
         namedTypes,
+        new Map(),
+        resolveIndexCtor,
       ),
     )
 

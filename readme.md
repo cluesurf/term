@@ -11,7 +11,8 @@
 </p>
 
 <h3 align='center'>
-  seed
+  seed<br/>
+  (WIP)
 </h3>
 <p align='center'>
   A Reactive Language Φ
@@ -21,23 +22,64 @@
 <br/>
 <br/>
 
-## Why
+## Introduction
 
 Every platform has its own language, its own build tools, its own
 ecosystem. Writing an app that runs on servers, browsers, iOS, and
 Android means learning four toolchains, maintaining four codebases, and
 watching them drift apart. The logic is the same. The plumbing is not.
 
-Seed is a programming framework built on top of the
-[tree](https://github.com/cluesurf/tree) syntax. It compiles `.tree`
-source code into native, idiomatic output for multiple platforms. You
-write your logic once in a clean, indentation-based syntax. The compiler
-produces Rust, TypeScript, Kotlin, Swift, or HVM, each looking like it
-was written by hand for that target.
+Seed is a programming framework built on a simple, indentation-based
+syntax (the [tree](https://github.com/cluesurf/tree) format). You write
+the logic once, and one source compiles to idiomatic Rust, TypeScript,
+Kotlin, and Swift, so the same program runs in the browser, on Node, on
+native servers, and on iOS and Android. It is dependently typed with a
+rich type system, ships with a full toolchain (compiler, package
+manager, and language server), and is designed so the compiler can reach
+near-optimal native code on each target without the author giving up a
+clean, readable surface.
 
-Seed is not a runtime or a virtual machine. It generates real native
-code that integrates with each platform's existing tools, libraries, and
-package managers.
+Dart, through Flutter, has a comparable multi-platform reach but
+different goals: Seed emits each platform's
+native idioms rather than shipping one runtime, and puts a formal type
+system and proof checker at the center. Kind is the closer relative on
+that side, a dependently typed language with a small core, while Seed
+aims more squarely at building real cross-platform applications.
+
+You write the usual types, classes, functions, and data models. Beyond
+that, templates can parse the tree AST directly, so the boilerplate of
+building a structure of any shape is generated rather than written by
+hand.
+
+The kernel underneath is a small dependent type theory: quantitative
+type theory (each value tracks how many times it is used), observational
+equality, a cumulative universe hierarchy, and self types. On top of it,
+a `.tree` file can state a theorem and prove it by structural induction,
+rewriting, and a fixed set of proof steps, and the kernel checks the
+proof. The same checker verifies ordinary code, discharging assertions
+through decision procedures for linear arithmetic, ring identities,
+congruence closure, and nonlinear non-negativity.
+
+Most types are inferred, and a language server gives live diagnostics,
+hovers,
+completion, and go-to-definition, with a parser that recovers from
+errors instead of stopping at the first one. Compilation is incremental,
+rebuilding only the modules that changed, and the package manager
+follows the pnpm model, with a content-addressed store and linked
+dependencies.
+
+Doing this optimally is the hard part. Because meaning is fixed by the
+type system rather than by how the code is phrased, the backend is free
+to specialize, monomorphize, and lower aggressively per target, so speed
+comes from the compiler rather than from the author writing awkward
+code.
+
+On the application side, the standard library is written in `.tree` and
+covers the usual primitives, collections, IO, text, time, and
+cryptography, each mapped to its native counterpart. The web stack is
+reactive in the fine-grained style, updating the DOM directly through
+signals rather than diffing a virtual DOM, with server-side rendering,
+client takeover, and hot module reload.
 
 ## Packages
 
@@ -45,15 +87,15 @@ This repository is a monorepo. Each part of the ecosystem is a deck (a
 package) under `deck/`, and the decks reference each other by name
 (`@cluesurf/<deck>/code/...`), linked locally through `seed link`.
 
-| Deck                            | Purpose                                                   |
-| ------------------------------- | --------------------------------------------------------- |
-| [`@cluesurf/make`](./deck/make) | The compiler: parse, mill, resolve, check, emit           |
-| [`@cluesurf/call`](./deck/call) | The CLI: `seed make`, `seed test`, `seed serve`, and more |
-| [`@cluesurf/flow`](./deck/flow) | The language server (LSP over stdio)                      |
-| [`@cluesurf/deck`](./deck/deck) | The package manager: install, link, lockfile, store       |
-| [`@cluesurf/base`](./deck/base) | The standard library, written in `.tree`                  |
-| [`@cluesurf/site`](./deck/site) | App framework: reactive zones, DOM, render runtime        |
-| [`@cluesurf/term`](./deck/term) | The 4-letter term vocabulary that backs the DSLs          |
+| Deck                                                      | Purpose                                                                                   |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [`@cluesurf/make`](./deck/make)                           | The compiler: parse, mill, resolve, check, emit                                           |
+| [`@cluesurf/call`](./deck/call)                           | The CLI: `seed make`, `seed test`, `seed serve`, and more                                 |
+| [`@cluesurf/flow`](./deck/flow)                           | The language server (LSP over stdio)                                                      |
+| [`@cluesurf/deck`](./deck/deck)                           | The package manager: install, link, lockfile, store                                       |
+| [`@cluesurf/base`](./deck/base)                           | The standard library, written in `.tree`                                                  |
+| [`@cluesurf/site`](./deck/site)                           | App framework: reactive zones, DOM, render runtime                                        |
+| [`@cluesurf/term`](./deck/term)                           | The 4-letter term vocabulary that backs the DSLs                                          |
 | [`@cluesurf/form`](https://github.com/cluesurf/form.tree) | Math and physics as kernel-proven `.tree` proofs (algebra, quantum, geometry, relativity) |
 
 The compiler, CLI, and language server are written in TypeScript (under
