@@ -218,7 +218,24 @@ function parseType(node: Node): Type {
     }
   }
 
-  return TYPE_NAME[name] ?? { kind: 'named', name }
+  // `head <type>` children supply type arguments to a polymorphic named type, mirroring how `form x / head a` DECLARES
+  // a type parameter: `like stack / head natural` is a stack of naturals. Order matches the declared parameters.
+  const headArgs = rest(node)
+    .filter(
+      (n): n is GroupNode =>
+        n.kind === 'group' &&
+        headName(n) === 'head' &&
+        rest(n)[0]?.kind === 'group',
+    )
+    .map(h => parseType(rest(h)[0]!))
+
+  const base = TYPE_NAME[name] ?? { kind: 'named', name }
+
+  if (base.kind === 'named' && headArgs.length > 0) {
+    return { ...base, args: headArgs }
+  }
+
+  return base
 }
 
 // the type written by a `like` group. Usually `like <name>`, but for a first-class function it is `like task` with
@@ -2492,6 +2509,24 @@ export function mill(tree: RootNode, file: string): MillResult {
           headName(likeGroup) === 'like'
         ) {
           type = parseLikeType(likeGroup)
+        }
+
+        // `head <type>` siblings of the `like` group supply type arguments to a polymorphic field type, e.g. a
+        // recursive field `link rest, like stack / head a` makes `rest` a `stack a`. Mirrors `take s, like stack /
+        // head natural`. Without this the recursive occurrence parses as the bare type former and mis-types.
+        if (type.kind === 'named') {
+          const headArgs = inner
+            .filter(
+              (c): c is GroupNode =>
+                c.kind === 'group' &&
+                headName(c) === 'head' &&
+                rest(c)[0]?.kind === 'group',
+            )
+            .map(c => parseType(rest(c)[0]!))
+
+          if (headArgs.length > 0) {
+            type = { ...type, args: [...(type.args ?? []), ...headArgs] }
+          }
         }
 
         // a field's foreign `name <X>` (binding fields carry the exact native name, e.g. COLOR_BUFFER_BIT), so the

@@ -45,15 +45,16 @@ This repository is a monorepo. Each part of the ecosystem is a deck (a
 package) under `deck/`, and the decks reference each other by name
 (`@cluesurf/<deck>/code/...`), linked locally through `seed link`.
 
-| Deck                  | Purpose                                                   |
-| --------------------- | --------------------------------------------------------- |
-| [`make`](./deck/make) | The compiler: parse, mill, resolve, check, emit           |
-| [`call`](./deck/call) | The CLI: `seed make`, `seed test`, `seed serve`, and more |
-| [`flow`](./deck/flow) | The language server (LSP over stdio)                      |
-| [`deck`](./deck/deck) | The package manager: install, link, lockfile, store       |
-| [`base`](./deck/base) | The standard library, written in `.tree`                  |
-| [`site`](./deck/site) | App framework: reactive zones, DOM, render runtime        |
-| [`term`](./deck/term) | The 4-letter term vocabulary that backs the DSLs          |
+| Deck                            | Purpose                                                   |
+| ------------------------------- | --------------------------------------------------------- |
+| [`@cluesurf/make`](./deck/make) | The compiler: parse, mill, resolve, check, emit           |
+| [`@cluesurf/call`](./deck/call) | The CLI: `seed make`, `seed test`, `seed serve`, and more |
+| [`@cluesurf/flow`](./deck/flow) | The language server (LSP over stdio)                      |
+| [`@cluesurf/deck`](./deck/deck) | The package manager: install, link, lockfile, store       |
+| [`@cluesurf/base`](./deck/base) | The standard library, written in `.tree`                  |
+| [`@cluesurf/site`](./deck/site) | App framework: reactive zones, DOM, render runtime        |
+| [`@cluesurf/term`](./deck/term) | The 4-letter term vocabulary that backs the DSLs          |
+| [`@cluesurf/form`](https://github.com/cluesurf/form.tree) | Math and physics as kernel-proven `.tree` proofs (algebra, quantum, geometry, relativity) |
 
 The compiler, CLI, and language server are written in TypeScript (under
 each deck's `code/`). The standard library, site framework, and terms

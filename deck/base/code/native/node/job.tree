@@ -1,0 +1,43 @@
+# node structured-concurrency implementation. Forwards to the linked job runtime shim (an eagerly started promise).
+# Declares the opaque handle type a job holds (the runtime job object). Internal: reached only through the public task
+# API.
+
+dock type
+  load <any>, name job-handle
+
+dock load
+  load <global:job>, name job
+
+load @cluesurf/base/code/task
+  find handle
+
+task do-spawn
+  take work
+    like task
+      like text
+  like job-handle
+  send back
+    call job/spawn
+      read work
+
+task do-wait
+  note async
+  take self, like handle
+  like text
+  send back
+    call job/wait
+      read self/dock
+      wait true
+
+task do-cancel
+  take self, like handle
+  like void
+  call job/cancel
+    read self/dock
+
+task do-alive
+  take self, like handle
+  like boolean
+  send back
+    call job/alive
+      read self/dock

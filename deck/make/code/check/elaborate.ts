@@ -98,6 +98,31 @@ function lambdas(count: number, body: Term): Term {
   return term
 }
 
+// does a term have a FREE de Bruijn variable below `depth` (an index that escapes all its binders)? Used as a safety
+// gate on the polymorphic datatype encoding: if a generated constructor / eliminator type is not closed (a mis-shifted
+// param index), skip the polymorphic encoding for that type and fall back to the opaque postulate, so a de Bruijn slip
+// degrades gracefully (the law just stays unproven) rather than crashing elaboration or unsoundly mis-typing.
+function hasFreeVar(term: Term, depth = 0): boolean {
+  switch (term.tag) {
+    case 'var':
+      return term.index >= depth
+    case 'app':
+      return hasFreeVar(term.fun, depth) || hasFreeVar(term.arg, depth)
+    case 'lam':
+      return hasFreeVar(term.body, depth + 1)
+    case 'pi':
+      return (
+        hasFreeVar(term.domain, depth) || hasFreeVar(term.codomain, depth + 1)
+      )
+    case 'self':
+      return hasFreeVar(term.body, depth + 1)
+    case 'annotate':
+      return hasFreeVar(term.value, depth) || hasFreeVar(term.type, depth)
+    default:
+      return false
+  }
+}
+
 // the Church / self-encoding of constructor `variantIndex` of a datatype with `variantCount` variants, this one carrying
 // `fieldCount` fields: `\f_0..f_{k-1}. \P. \b_0..b_{n-1}. b_i f_0 .. f_{k-1}`. Shared by enums (n variants) and structs
 // (a single variant, n = 1), so the constructor that drives `match` / projection reduction is defined in exactly one
@@ -106,6 +131,7 @@ function constructorEncoding(
   variantIndex: number,
   fieldCount: number,
   variantCount: number,
+  paramCount = 0,
 ): Term {
   let body: Term = variable(variantCount - 1 - variantIndex) // b_i
 
@@ -113,7 +139,10 @@ function constructorEncoding(
     body = apply(body, variable(variantCount + fieldCount - j)) // f_0 .. f_{k-1}
   }
 
-  return lambdas(fieldCount + 1 + variantCount, body)
+  // `paramCount` leading lambdas absorb the constructor's ERASED type parameters (a polymorphic datatype). They wrap
+  // the body OUTERMOST and are ignored by it, so the field / branch de Bruijn indices (counted from the innermost) are
+  // unchanged. At a use site `make c @ty f..`, the erased `@ty` is applied and discarded, leaving the same reduct.
+  return lambdas(paramCount + fieldCount + 1 + variantCount, body)
 }
 
 // ---- the base signature: base types and primitive operations as postulated kernel constants ----
@@ -226,7 +255,25 @@ function kernelTypeAt(
         return variable(depth - position - 1)
       } // a generic type parameter, by de Bruijn index
 
-      return known.has(type.name) ? constant(type.name) : null
+      if (!known.has(type.name)) {
+        return null
+      }
+
+      // a polymorphic named type applied to type arguments: `stack` of `natural` lowers to `(stack natural)`. The
+      // arguments are erased at run time but present for typing, so the type former is a function `Type -> .. -> Type`.
+      let base: Term = constant(type.name)
+
+      for (const arg of type.args ?? []) {
+        const argTerm = kernelTypeAt(arg, depth, generics, known)
+
+        if (!argTerm) {
+          return null
+        }
+
+        base = apply(base, argTerm)
+      }
+
+      return base
     }
 
     case 'array': {
@@ -401,6 +448,9 @@ export function elaborateReport(
 
   const enumEncodings: { name: string; encoding: Term }[] = [] // each enum's derived self-type encoding
   const enumDefs: { name: string; term: Term }[] = [] // computing definitions for constructors + eliminators
+  // a polymorphic datatype's type-parameter count, so the type former is registered as `Type -> .. -> Type` and use
+  // sites (constructor application, match) supply that many erased type witnesses. 0 (absent) for a monomorphic type.
+  const typeFormerArity = new Map<string, number>()
 
   for (const statement of program) {
     if (statement.form !== 'record-type') {
@@ -410,36 +460,135 @@ export function elaborateReport(
     const self = constant(statement.name)
 
     if (statement.variants.length > 0) {
-      // an enum: a constructor per variant (carrying its field types) and a match eliminator
+      const params = statement.params
+      const m = params.length
+      const dataGenerics = new Map<string, number>(
+        params.map((p, i) => [p, i]),
+      )
+
+      // an enum: a constructor per variant + a match eliminator, optionally with m leading ERASED type parameters. Field
+      // types are computed with the parameter generics in scope, so a `like a` field resolves to its parameter variable.
       const ok = statement.variants.every(variant =>
-        variant.fields.every(f => kernelType(f.type, namedTypes)),
+        variant.fields.every(f =>
+          kernelTypeAt(f.type, m, dataGenerics, namedTypes),
+        ),
       )
 
       if (!ok) {
         continue
       }
 
+      const n = statement.variants.length
+
+      // the type former applied to its m parameter VARIABLES at total binder depth `depth` (param p is the outermost
+      // erased binder, at de Bruijn `depth - p - 1`). For m = 0 this is the bare type constant, so all of the below
+      // reduces to the original monomorphic encoding exactly.
+      const appliedSelf = (depth: number): Term => {
+        let out: Term = constant(statement.name)
+
+        for (let p = 0; p < m; p++) {
+          out = apply(out, variable(depth - p - 1))
+        }
+
+        return out
+      }
+
+      const withParams = (inner: Term): Term => {
+        let out = inner
+
+        for (let p = 0; p < m; p++) {
+          out = erasedPi(TYPE0, out)
+        }
+
+        return out
+      }
+
+      // constructor types (closed-checked). For a k-field variant:
+      //   (0 p_0..p_{m-1} : Type0) -> F_0 -> .. -> F_{k-1} -> (T p_0 .. p_{m-1})
+      // field j sits at depth m + j (under the params + j preceding field arrows); the result at depth m + k.
+      const ctorTypes: { name: string; type: Term }[] = []
+      let sound = true
+
       for (const variant of statement.variants) {
-        const fieldTypes = variant.fields.map(
-          f => kernelType(f.type, namedTypes)!,
-        )
+        const k = variant.fields.length
+        let ctorType: Term = appliedSelf(m + k)
 
-        dataSignature.push({
+        for (let j = k - 1; j >= 0; j--) {
+          ctorType = arrow(
+            kernelTypeAt(
+              variant.fields[j]!.type,
+              m + j,
+              dataGenerics,
+              namedTypes,
+            )!,
+            ctorType,
+          )
+        }
+
+        ctorType = withParams(ctorType)
+
+        if (hasFreeVar(ctorType)) {
+          sound = false
+        }
+
+        ctorTypes.push({
           name: ctorKey(statement.name, variant.name),
-          type: fieldTypes.reduceRight<Term>(
-            (codomain, domain) => arrow(domain, codomain),
-            self,
-          ),
+          type: ctorType,
         })
+      }
 
+      // match__e : (0 p_0..p_{m-1} : Type0) -> (0 A : Type0) -> (T p..) -> (F_0 -> .. -> A) -> ... -> A. The A and
+      // branch indices are unchanged from the monomorphic case (params sit OUTSIDE the A binder); only the subject
+      // becomes the applied type and a branch field type carries its param references at depth m + i + 1 + j.
+      let eliminator: Term = variable(n + 1) // result A, deepest
+
+      for (let i = n; i >= 1; i--) {
+        const fields = statement.variants[i - 1]!.fields
+        const k = fields.length
+        let branch: Term = variable(i + k) // A inside branch i
+
+        for (let j = k - 1; j >= 0; j--) {
+          branch = arrow(
+            kernelTypeAt(
+              fields[j]!.type,
+              m + i + 1 + j,
+              dataGenerics,
+              namedTypes,
+            )!,
+            branch,
+          )
+        }
+
+        eliminator = arrow(branch, eliminator)
+      }
+
+      eliminator = withParams(
+        erasedPi(TYPE0, arrow(appliedSelf(m + 1), eliminator)),
+      )
+
+      if (hasFreeVar(eliminator)) {
+        sound = false
+      }
+
+      // a de Bruijn slip in the polymorphic encoding (m > 0) falls back to the opaque postulate: no crash, no
+      // unsoundness, the law simply stays unproven. For m = 0 the types are always closed, so this never trips.
+      if (!sound) {
+        continue
+      }
+
+      for (const ctor of ctorTypes) {
+        dataSignature.push(ctor)
+      }
+
+      for (const variant of statement.variants) {
         const owners = variantToEnum.get(variant.name) ?? []
         owners.push(statement.name)
         variantToEnum.set(variant.name, owners)
         variantFieldInfo.set(
           ctorKey(statement.name, variant.name),
-          variant.fields.map((f, fi) => ({
+          variant.fields.map(f => ({
             name: f.name,
-            type: fieldTypes[fi]!,
+            type: kernelTypeAt(f.type, m, dataGenerics, namedTypes)!,
           })),
         )
       }
@@ -449,59 +598,37 @@ export function elaborateReport(
         statement.variants.map(v => v.name),
       )
 
-      // match__e : (0 A : Type0) -> e -> (F_0 -> A) -> ... -> (F_{k} -> A) -> A. Each branch carries its variant's
-      // FIELD types, so a match on a constructor passes the fields to the branch (succ's branch is `Pred -> A`, not
-      // `A`). This is what makes a field-carrying recursive function (plus) compute through the eliminator. The result A
-      // sits under (subject + n branch) binders; inside branch i, under its own k field binders, A is at index i + k.
-      const n = statement.variants.length
+      typeFormerArity.set(statement.name, m)
 
-      let eliminator: Term = variable(n + 1) // result A, deepest
-
-      for (let i = n; i >= 1; i--) {
-        const fieldTs = statement.variants[i - 1]!.fields.map(
-          f => kernelType(f.type, namedTypes)!,
-        )
-
-        const k = fieldTs.length
-
-        // branch i's type: F_0 -> F_1 -> .. -> F_{k-1} -> A, with A at index i + k from the deepest point
-        let branch: Term = variable(i + k)
-
-        for (let j = k - 1; j >= 0; j--) {
-          branch = arrow(fieldTs[j]!, branch)
-        }
-
-        eliminator = arrow(branch, eliminator)
-      }
-
-      eliminator = erasedPi(TYPE0, arrow(self, eliminator))
       dataSignature.push({
         name: `match__${statement.name}`,
         type: eliminator,
       })
 
-      // derive the enum's self-type encoding: e = Self x. (P : e -> Type0) -> P v0 -> .. -> P vn -> P x. The enum
-      // type then *is* its self-encoding (a transparent definition), not merely an opaque postulate. Constructors
-      // and the eliminator above are exactly its introduction and elimination forms.
-      const variants = statement.variants.map(v => v.name)
+      // the self-type encoding (transparent type) is well-formed only for a field-LESS, param-LESS enum: a
+      // field-carrying or polymorphic constructor makes `P v_i` ill-typed, so it is skipped (the computing defs below
+      // still drive reduction). Kept exactly as before for the monomorphic, field-less case.
+      if (m === 0) {
+        const variants = statement.variants.map(v => v.name)
 
-      let body: Term = apply(variable(n), variable(n + 1)) // P x
+        let body: Term = apply(variable(n), variable(n + 1)) // P x
 
-      for (let i = n - 1; i >= 0; i--) {
-        body = arrow(
-          apply(
-            variable(i),
-            constant(ctorKey(statement.name, variants[i]!)),
-          ),
-          body,
-        )
-      } // P v_i -> ..
+        for (let i = n - 1; i >= 0; i--) {
+          body = arrow(
+            apply(
+              variable(i),
+              constant(ctorKey(statement.name, variants[i]!)),
+            ),
+            body,
+          )
+        } // P v_i -> ..
 
-      body = arrow(arrow(self, TYPE0), body) // (P : e -> Type0) -> ..
-      enumEncodings.push({
-        name: statement.name,
-        encoding: { tag: 'self', body },
-      })
+        body = arrow(arrow(self, TYPE0), body) // (P : e -> Type0) -> ..
+        enumEncodings.push({
+          name: statement.name,
+          encoding: { tag: 'self', body },
+        })
+      }
 
       // COMPUTING definitions for the constructors and eliminator (the Church / self-encoding lambdas), so the kernel
       // actually REDUCES `match (v_i) ... -> branch_i` rather than treating them as opaque postulates. With these,
@@ -510,10 +637,13 @@ export function elaborateReport(
       //   eliminator match__e        = \A. \x. \b_0..b_{n-1}. x (\_. A) b_0 .. b_{n-1}
       // de Bruijn (innermost = 0): for a constructor, branches b_{n-1}..b_0 are 0..n-1, P is n, fields f_{k-1}..f_0
       // are n+1..n+k; for the eliminator, branches are 0..n-1, x is n, A is n+1.
+      // m leading lambdas absorb the erased type parameters at both the constructor and the eliminator (ignored by the
+      // body, whose indices count from the innermost, so they are unchanged). At a use site the erased witnesses are
+      // applied and discarded, leaving the same reduct as the monomorphic case.
       statement.variants.forEach((variant, i) => {
         enumDefs.push({
           name: ctorKey(statement.name, variant.name),
-          term: constructorEncoding(i, variant.fields.length, n),
+          term: constructorEncoding(i, variant.fields.length, n, m),
         })
       })
 
@@ -527,7 +657,7 @@ export function elaborateReport(
 
       enumDefs.push({
         name: `match__${statement.name}`,
-        term: lambdas(n + 2, ebody),
+        term: lambdas(m + n + 2, ebody),
       })
     } else {
       // a struct: a constructor and one projection per field
@@ -608,7 +738,18 @@ export function elaborateReport(
       type: number,
     })),
     ...(namedTypes.size
-      ? [...namedTypes].map(name => ({ name, type: TYPE0 }))
+      ? [...namedTypes].map(name => {
+          // a polymorphic datatype's former is `Type0 -> .. -> Type0` (one arrow per type parameter), so it can be
+          // applied to its argument types; a monomorphic type stays a plain `Type0`.
+          const arity = typeFormerArity.get(name) ?? 0
+          let type: Term = TYPE0
+
+          for (let p = 0; p < arity; p++) {
+            type = arrow(TYPE0, type)
+          }
+
+          return { name, type }
+        })
       : []),
     ...dataSignature,
   ]
@@ -937,7 +1078,9 @@ export function elaborateReport(
           const fieldValues: Term[] = []
 
           for (const field of node.fields) {
-            // give a nested constructor its expected type, so an overloaded one resolves against this field's type
+            // give a nested constructor its expected type, so an overloaded one resolves against this field's type.
+            // A polymorphic field type (referencing a parameter) is not closed, so it cannot be evaluated in the empty
+            // environment here, and is left unguided (the value's own type drives inference of the erased parameter).
             const fieldType = declared.find(
               d => d.name === field.name,
             )?.type
@@ -946,7 +1089,9 @@ export function elaborateReport(
               field.value,
               scope,
               context,
-              fieldType ? evaluate([], fieldType) : undefined,
+              fieldType && !hasFreeVar(fieldType)
+                ? evaluate([], fieldType)
+                : undefined,
             )
 
             if (!value) {
@@ -956,8 +1101,36 @@ export function elaborateReport(
             fieldValues.push(value)
           }
 
+          // a polymorphic constructor takes its m erased type parameters first (multiplicity 0, gone at run time). When
+          // the EXPECTED type is the parameterised type former applied to concrete arguments (e.g. a field-less `empty`
+          // checked at `stack natural`), use those actual arguments as the witnesses so the element type resolves even
+          // with no field to infer it from; otherwise a fresh meta solved by unification from the field values.
+          const arity = typeFormerArity.get(enumName) ?? 0
+          let typeWitnesses: Term[] = Array.from({ length: arity }, () =>
+            freshMeta(TYPE0_VALUE),
+          )
+
+          if (arity > 0 && expected) {
+            const expectedArgs: Term[] = []
+            let expectedHead: Term = quote(context.level, expected)
+
+            while (expectedHead.tag === 'app') {
+              expectedArgs.unshift(expectedHead.arg)
+              expectedHead = expectedHead.fun
+            }
+
+            if (
+              expectedHead.tag === 'const' &&
+              expectedHead.name === enumName &&
+              expectedArgs.length === arity
+            ) {
+              typeWitnesses = expectedArgs
+            }
+          }
+
           return apply(
             constant(ctorKey(enumName, node.name)),
+            ...typeWitnesses,
             ...fieldValues,
           )
         }
@@ -1175,6 +1348,10 @@ export function elaborateReport(
         }
 
         let enumName: string | null = null
+        // the subject type's polymorphic arguments (e.g. `natural` for a `stack natural`), passed as the eliminator's
+        // erased type witnesses so the branch field types instantiate concretely (a recursive field `stack a` becomes
+        // `stack natural`). Using the ACTUAL arguments, not fresh metas, propagates the element type into the branches.
+        const subjectTypeArgs: Term[] = []
 
         try {
           const type = quote(
@@ -1182,8 +1359,17 @@ export function elaborateReport(
             infer(context, subject).type,
           )
 
-          if (type.tag === 'const') {
-            enumName = type.name
+          // the subject's type is the enum constant, OR a polymorphic type former applied to its arguments
+          // (`apply(.. apply(constant(T), a) ..)`); peel the application spine to its head constant, collecting args.
+          let typeHead: Term = type
+
+          while (typeHead.tag === 'app') {
+            subjectTypeArgs.unshift(typeHead.arg)
+            typeHead = typeHead.fun
+          }
+
+          if (typeHead.tag === 'const') {
+            enumName = typeHead.name
           }
         } catch {
           return null
@@ -1249,6 +1435,7 @@ export function elaborateReport(
 
         return apply(
           constant(`match__${enumName}`),
+          ...subjectTypeArgs,
           quote(context.level, resultValue),
           subject,
           ...branches,
@@ -1400,6 +1587,17 @@ export function elaborateReport(
           const type = infer(ctx, term).type
           sc = new Map(sc).set(statement.name, ctx.level)
           ctx = bind(ctx, 'many', type)
+          // a `let x = e` (this is also how an existential witness `find x / e` is bound) genuinely makes `x` equal to
+          // `e`, so record `x == e` as a path assumption. A later `hold` referencing `x` then discharges through the
+          // hypothesis congruence closure (e.g. the existential goal `x == a` witnessed by `a`). Sound: the equation is
+          // definitionally true, so it only adds discharge power, never a false one.
+          assumptions = [
+            ...assumptions,
+            [
+              { form: 'variable', name: statement.name, span: statement.span },
+              statement.init,
+            ],
+          ]
           break
         }
 
@@ -2138,6 +2336,12 @@ export function elaborateReport(
       idEnv,
       apply(
         constant(`match__${enumName}`),
+        // a polymorphic eliminator takes its erased type parameters first; they are ignored by the reduction, so any
+        // closed type (TYPE0) serves as the dummy witness here (this is pure constructor discrimination)
+        ...Array.from(
+          { length: typeFormerArity.get(enumName) ?? 0 },
+          () => TYPE0,
+        ),
         TYPE0,
         quote(level, value),
         ...branches,
@@ -2229,6 +2433,10 @@ export function elaborateReport(
           idEnv,
           apply(
             constant(`match__${enumName}`),
+            ...Array.from(
+              { length: typeFormerArity.get(enumName) ?? 0 },
+              () => TYPE0,
+            ),
             TYPE0,
             quote(level, value),
             ...branches,
@@ -3206,6 +3414,66 @@ export function elaborateReport(
     }
 
     if (goal.form !== 'binary') {
+      return
+    }
+
+    // boolean-connective goals: `meet and` lowers to `&&`, `meet or` to `||`. Discharge a conjunction by proving BOTH
+    // operands and a disjunction by proving ONE, recursively, with each equality leaf settled by convertibility or the
+    // ring normalizer (modulo the path hypotheses). Sound: a connective is discharged only when its leaves genuinely
+    // hold. On failure, fall through to the linear prover (unchanged behavior), so nothing true is newly rejected.
+    if (goal.op === '&&' || goal.op === '||') {
+      const proveConnective = (claim: Expression): boolean => {
+        if (
+          claim.form === 'binary' &&
+          (claim.op === '&&' || claim.op === '||')
+        ) {
+          const leftHolds = proveConnective(claim.left)
+          const rightHolds = proveConnective(claim.right)
+
+          return claim.op === '&&'
+            ? leftHolds && rightHolds
+            : leftHolds || rightHolds
+        }
+
+        if (claim.form === 'binary' && claim.op === '==') {
+          if (ringEqual(claim.left, claim.right)) {
+            return true
+          }
+
+          if (
+            assumptions.length > 0 &&
+            ringEqualModulo(claim.left, claim.right, assumptions)
+          ) {
+            return true
+          }
+
+          const [l, r] = elaborateGoalSides(
+            claim.left,
+            claim.right,
+            scope,
+            context,
+          )
+
+          if (l && r) {
+            try {
+              return areConvertible(
+                context.level,
+                evaluate(context.env, l),
+                evaluate(context.env, r),
+              )
+            } catch {
+              return false
+            }
+          }
+        }
+
+        return false
+      }
+
+      if (proveConnective(goal)) {
+        discharged.push(statement.span)
+      }
+
       return
     }
 

@@ -1,20 +1,82 @@
+# Structured concurrency: spawn a task, wait for its result, cancel it, or gather a group of tasks so they all finish
+# before control returns. A task carries a text result (the portable payload, matching the channel default). Each
+# backend wraps its platform runtime (node promise, rust tokio task, swift Task, kotlin coroutine) behind this one
+# interface, selected at build time. The platform job lives in the opaque `dock` handle, typed per backend.
 
-# Concurrency: spawn and manage tasks.
+load @cluesurf/base/code/native/job
+  find do-spawn
+  find do-wait
+  find do-cancel
+  find do-alive
 
+# a running concurrent task carrying a text result. The platform job object lives in the opaque `dock` handle.
 form handle
-  link name, like text
-  link alive, like boolean
+  link dock, like job-handle
 
+  # wait for the task to finish and return its result
+  task wait
+    note async
+    take self
+    like text
+    send back
+      call do-wait
+        read self
+        wait true
+
+  # request cancellation (cooperative: the task stops being awaited and is marked finished)
+  task cancel
+    take self
+    like void
+    call do-cancel
+      read self
+
+  # whether the task is still running
+  task alive
+    take self
+    like boolean
+    send back
+      call do-alive
+        read self
+
+# spawn `work` as a concurrent task and return its handle. `work` is started immediately; its result is collected with
+# `wait`. Use this when a task should outlive the current scope; use `gather` for structured fan-out / join.
 task spawn
-  note async
-  take work, like task
-  take name, like text, need false
+  take work
+    like task
+      like text
   like handle
+  send back
+    make handle
+      bind dock
+        call do-spawn
+          read work
 
-task wait
+# run several tasks concurrently and wait for all of them, returning their results in source order. This is the
+# structured-concurrency join: every spawned task has finished by the time gather returns, so no task outlives the call.
+task gather
   note async
-  take handle, like handle
-
-task cancel
-  note async
-  take handle, like handle
+  take works
+    like list
+      like task
+        like text
+  like list
+    like text
+  save jobs
+    make list
+  walk list, read works
+    hook next
+      take site, name work
+      call jobs/push
+        call spawn
+          read work
+  save results
+    make list
+  walk list, read jobs
+    hook next
+      take site, name job
+      call results/push
+        call wait
+          read job
+          wait true
+  send back
+    read results
