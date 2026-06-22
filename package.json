@@ -2,7 +2,7 @@
   "name": "@cluesurf/seed",
   "main": "./host/index.js",
   "type": "module",
-  "version": "0.5.0",
+  "version": "0.8.0",
   "bin": {
     "seed": "./host/line.js"
   },
