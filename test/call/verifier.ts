@@ -17,11 +17,13 @@ const SEED_ROOT = join(
   '..',
   '..',
 )
+
 const LINE = join(SEED_ROOT, 'deck', 'call', 'code', 'line.ts')
 const TSCONFIG = join(SEED_ROOT, 'tsconfig.json')
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, cond: boolean): void {
   if (cond) {
     pass++
@@ -46,9 +48,11 @@ function seed(
       stdio: ['ignore', 'pipe', 'ignore'],
       env: { ...process.env, TSX_TSCONFIG_PATH: TSCONFIG },
     })
+
     return { stdout, status: 0 }
   } catch (e: unknown) {
     const err = e as { stdout?: string; status?: number }
+
     return { stdout: err.stdout ?? '', status: err.status ?? 1 }
   }
 }
@@ -61,6 +65,7 @@ function main(): void {
     join(dir, 'good.tree'),
     'task double\n  take value, like number\n  like number\n  send back\n    call add\n      read value\n      read value\n',
   )
+
   const good = seed(['scan', 'good.tree', '--back', 'json'], dir)
   const goodJson = JSON.parse(good.stdout.trim())
   expect(
@@ -75,6 +80,7 @@ function main(): void {
     join(dir, 'bad.tree'),
     'task wrong\n  take b, like boolean\n  like number\n  send back\n    call add\n      read b\n      code 1\n',
   )
+
   const bad = seed(['scan', 'bad.tree', '--back', 'json'], dir)
   const badJson = JSON.parse(bad.stdout.trim())
   expect(
@@ -91,10 +97,12 @@ function main(): void {
     ['mind', 'The kernel is the type authority.', '--kind', 'decision'],
     dir,
   )
+
   const recall = seed(
     ['mind', '--find', 'kernel', '--back', 'json'],
     dir,
   )
+
   const recallJson = JSON.parse(recall.stdout.trim())
   expect(
     'mind: remembers a fact and recalls it by query',
@@ -112,7 +120,8 @@ function main(): void {
   )
 
   console.log(`\nverifier: ${pass} pass, ${fail} fail`)
-  if (fail) process.exit(1)
+
+  if (fail) {process.exit(1)}
 }
 
 main()

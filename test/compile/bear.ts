@@ -7,6 +7,7 @@ import type { Source } from '@cluesurf/make/code/compile/load'
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -29,6 +30,7 @@ const modules = new Map<string, string>([
   // `c` bears from `a` (transitive re-export)
   ['@app/c', 'bear @app/a\n'],
 ])
+
 const resolve = (path: string): Source | undefined =>
   modules.has(path)
     ? { file: path, text: modules.get(path)! }
@@ -42,6 +44,7 @@ const direct = compile(
   },
   { resolve },
 )
+
 expect('a re-exports widget from b', direct.ok, true)
 expect(
   'the re-exported form is usable (field read type-checks)',
@@ -57,7 +60,9 @@ const transitive = compile(
   },
   { resolve },
 )
+
 expect('bear is transitive (c -> a -> b)', transitive.ok, true)
 
 console.log(`\nbear: ${pass} pass, ${fail} fail`)
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}

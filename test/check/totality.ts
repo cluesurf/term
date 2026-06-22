@@ -14,6 +14,7 @@ import type { Span } from '@cluesurf/make/code/parser/diagnostic'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -38,20 +39,26 @@ function record(name: string, fieldType: Type): Program {
     variants: [],
     span: SPAN,
   }
+
   return [statement]
 }
 
 function frontEnd(text: string): Program {
   const parsed = parse({ file: 't.tree', text })
-  if (!parsed.ok) throw new Error('parse failed')
+
+  if (!parsed.ok) {throw new Error('parse failed')}
+
   const built = mill(parsed.tree, 't.tree')
+
   if (!built.ok)
-    throw new Error(
+    {throw new Error(
       'mill failed: ' +
         built.diagnostics.map(d => d.message).join('; '),
-    )
+    )}
+
   resolve(built.program, 't.tree')
   check(built.program, 't.tree')
+
   return built.program
 }
 
@@ -123,10 +130,12 @@ function main(): void {
     params: [{ kind: 'named', name: 'bad' }],
     result: { kind: 'number' },
   }
+
   const negativeReport = checkTotality(
     record('bad', negative),
     't.tree',
   )
+
   ok(
     'strict positivity rejects a negative self-occurrence',
     negativeReport.errors.some(d => d.name === 'non-positive'),
@@ -139,10 +148,12 @@ function main(): void {
     params: [{ kind: 'number' }],
     result: { kind: 'named', name: 'good' },
   }
+
   const positiveReport = checkTotality(
     record('good', positive),
     't.tree',
   )
+
   ok(
     'strict positivity accepts a positive self-occurrence',
     positiveReport.errors.length === 0,
@@ -154,6 +165,7 @@ function main(): void {
     record('point', { kind: 'number' }),
     't.tree',
   )
+
   ok(
     'strict positivity accepts a first-order field',
     plainRecord.errors.length === 0,

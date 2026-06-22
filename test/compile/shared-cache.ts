@@ -12,6 +12,7 @@ import * as path from 'node:path'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -27,8 +28,10 @@ const lib: Source = {
   file: '/shared/lib.tree',
   text: `task lib-value\n  like number\n  send back\n    code 7\n`,
 }
+
 const resolve = (p: string): Source | undefined =>
   p === '@shared/lib' ? lib : undefined
+
 const entry = (n: number): string =>
   `load @shared/lib\n  find lib-value\n\ntask run\n  like number\n  send back\n    call add\n      call lib-value\n      mark ${n}\n`
 
@@ -43,6 +46,7 @@ const a = compile(
   { file: 'a.tree', text: entry(1) },
   { resolve, cache: cacheA },
 )
+
 ok('project A compiles', a.ok)
 ok(
   'the shared store now holds the mill entries',
@@ -60,6 +64,7 @@ const b = compile(
   { file: 'b.tree', text: entry(2) },
   { resolve, cache: cacheB },
 )
+
 ok('project B compiles', b.ok)
 ok(
   'project B reuses the shared lib mill (cross-project)',
@@ -73,4 +78,5 @@ ok(
 
 fs.rmSync(root, { recursive: true, force: true })
 console.log(`\nshared-cache: ${pass} pass, ${fail} fail`)
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}

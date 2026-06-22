@@ -17,6 +17,7 @@ const k = (c: number) => linear({}, c)
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: boolean, want: boolean): void {
   if (got === want) {
     pass++

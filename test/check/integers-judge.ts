@@ -22,6 +22,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const ann = (term: Term, type: Term): Term => ({
@@ -29,6 +30,7 @@ const ann = (term: Term, type: Term): Term => ({
   term,
   type,
 })
+
 const self = (body: Term): Term => ({ tag: 'self', body })
 const idt = (type: Term, left: Term, right: Term): Term => ({
   tag: 'id',
@@ -36,12 +38,14 @@ const idt = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
-const aps = (f: Term, ...a: Array<Term>): Term =>
+
+const aps = (f: Term, ...a: Term[]): Term =>
   a.reduce((g, x) => app(g, x), f)
 
 // Int = Self i. (P : Int -> Type0) -> ((n:Nat) -> P (pos n)) -> ((n:Nat) -> P (negSucc n)) -> P i
@@ -58,6 +62,7 @@ const intBody = pi(
     ),
   ),
 )
+
 const intTerm = self(intBody)
 
 // the unfolded type of (pos nn): Int body with the self value replaced by (pos nn).
@@ -113,6 +118,7 @@ const signature = [
   { name: 'tru', type: kc('Bool') },
   { name: 'fls', type: kc('Bool') },
 ]
+
 const context = contextWithSignature(signature)
 defineConstant('Int', evaluate([], intTerm))
 defineConstant('pos', evaluate([], posValue))
@@ -120,6 +126,7 @@ defineConstant('negSucc', evaluate([], negSuccValue))
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()
@@ -161,6 +168,7 @@ ok(
       kc('pcase'),
       kc('qcase'),
     )
+
     const T = app(kc('M'), app(kc('pos'), kc('nn')))
     check(
       context,
@@ -187,6 +195,7 @@ ok(
       signPos,
       signNeg,
     )
+
     check(
       context,
       refl(kc('Bool'), kc('tru')),
@@ -204,6 +213,7 @@ ok(
       signPos,
       signNeg,
     )
+
     check(
       context,
       refl(kc('Bool'), kc('fls')),

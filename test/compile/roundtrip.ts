@@ -33,11 +33,14 @@ import { readFileSync, existsSync } from 'node:fs'
 let pass = 0
 let fail = 0
 let skip = 0
+
 // optional substring filter so a single domain can be re-verified fast: RT_ONLY=process/run npx tsx ...
 const RT_ONLY = process.env.RT_ONLY ?? ''
+
 function skip_filtered(name: string): boolean {
   return RT_ONLY !== '' && !name.includes(RT_ONLY)
 }
+
 function ok(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -51,6 +54,7 @@ function ok(name: string, got: unknown, want: unknown): void {
     )
   }
 }
+
 function skipped(name: string, why: string): void {
   skip++
   console.log(`skip  ${name}  (${why})`)
@@ -59,6 +63,7 @@ function skipped(name: string, why: string): void {
 function have(tool: string): boolean {
   try {
     execFileSync('which', [tool], { stdio: 'ignore' })
+
     return true
   } catch {
     return false
@@ -67,10 +72,14 @@ function have(tool: string): boolean {
 
 const dir = mkdtempSync(join(tmpdir(), 'seed-roundtrip-'))
 const baseTree = join(process.cwd(), 'deck', 'base')
+
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
+
   return existsSync(file)
     ? { file, text: readFileSync(file, 'utf8') }
     : undefined
@@ -80,10 +89,14 @@ const stdlib = (path: string): Source | undefined => {
 // now resolves shims next to the module that docks them (an absolute path), so try that directly first; fall back to
 // the `@cluesurf/base/...` import-path form for any dock whose origin file was not recorded.
 const readRuntime = (path: string): string | undefined => {
-  if (existsSync(path)) return readFileSync(path, 'utf8')
+  if (existsSync(path)) {return readFileSync(path, 'utf8')}
+
   const prefix = '@cluesurf/base/'
-  if (!path.startsWith(prefix)) return undefined
+
+  if (!path.startsWith(prefix)) {return undefined}
+
   const file = join(baseTree, path.slice(prefix.length))
+
   return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }
 
@@ -98,26 +111,35 @@ function frontEnd(
   const sources = withStdlib
     ? collectModules({ file: 'main.tree', text }, resolver).sources
     : [{ file: 'main.tree', text }]
+
   const program: Program = []
   // the entry module's own functions are the public roots: kept through simplification even when nothing internal
   // calls them. Stdlib wrappers are internal and may be inlined or specialized away.
   const roots = new Set<string>()
+
   for (const unit of sources) {
     const parsed = parse(unit)
-    if (!parsed.ok) throw new Error('parse failed')
+
+    if (!parsed.ok) {throw new Error('parse failed')}
+
     const built = mill(parsed.tree, unit.file)
+
     if (!built.ok)
-      throw new Error(
+      {throw new Error(
         'mill failed: ' +
           built.diagnostics.map(d => d.message).join(', '),
-      )
+      )}
+
     if (unit.file === 'main.tree')
-      for (const node of built.program)
-        if (node.form === 'function') roots.add(node.name)
+      {for (const node of built.program)
+        {if (node.form === 'function') {roots.add(node.name)}}}
+
     program.push(...built.program)
   }
+
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
+
   // the same IR pass the compile() driver runs before emit: forwarder inlining, constant folding, and (added here)
   // constant-selector specialization, so every backend consumes the specialized AST.
   return simplify(program, roots)
@@ -129,11 +151,15 @@ function runSwift(
   callExpr: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('swiftc')) return skipped(name, 'swiftc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(file, `${emitSwift(program)}\nprint(${callExpr})\n`)
+
   const exe = file.replace(/\.swift$/, '')
+
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
   } catch (e) {
@@ -143,8 +169,10 @@ function runSwift(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, Number(execFileSync(exe).toString().trim()), want)
 }
 
@@ -154,9 +182,11 @@ function runKotlin(
   callExpr: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) return
+  if (skip_filtered(name)) {return}
+
   if (!have('kotlinc') || !have('java'))
-    return skipped(name, 'kotlinc/java not installed')
+    {return skipped(name, 'kotlinc/java not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
@@ -164,7 +194,9 @@ function runKotlin(
       `${emitKotlin(program)}\nfun main() { println(${callExpr}) }\n`,
     ),
   )
+
   const jar = file.replace(/\.kt$/, '.jar')
+
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
       stdio: 'pipe',
@@ -176,8 +208,10 @@ function runKotlin(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(
     name,
     Number(execFileSync('java', ['-jar', jar]).toString().trim()),
@@ -192,12 +226,16 @@ function runLlvm(
   mangledCall: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('clang')) return skipped(name, 'clang not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('clang')) {return skipped(name, 'clang not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.ll`)
   const main = `\ndefine i32 @main() {\n  %r = call i64 ${mangledCall}\n  %t = trunc i64 %r to i32\n  ret i32 %t\n}\n`
   writeFileSync(file, emitLlvm(program) + main)
+
   const exe = file.replace(/\.ll$/, '')
+
   try {
     execFileSync(
       'clang',
@@ -211,8 +249,10 @@ function runLlvm(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, spawnSync(exe).status, want)
 }
 
@@ -223,8 +263,10 @@ function runRust(
   callExpr: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('rustc')) return skipped(name, 'rustc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
     file,
@@ -232,7 +274,9 @@ function runRust(
       program,
     )}\nfn main() { std::process::exit((${callExpr}) as i32); }\n`,
   )
+
   const exe = file.replace(/\.rs$/, '')
+
   try {
     execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
       stdio: 'pipe',
@@ -244,8 +288,10 @@ function runRust(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, spawnSync(exe).status, want)
 }
 
@@ -254,14 +300,17 @@ function runRust(
 // back, run with rustc, and assert stdout. Proves native file IO actually RUNS on a real compiled toolchain, not just
 // that it emits the right shape. main owns the path and clones it across the two calls (each emitted call moves its arg).
 function runRustIo(name: string, program: Program, want: string): void {
-  if (skip_filtered(name)) return
-  if (!have('rustc')) return skipped(name, 'rustc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+
   const path = join(dir, 'seed_rust_io_roundtrip.txt')
   const main = `\nfn main() {\n  let p = ${JSON.stringify(
     path,
   )}.to_string();\n  write_demo(p.clone(), ${JSON.stringify(
     want,
   )}.to_string());\n  print!("{}", read_demo(p));\n}\n`
+
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
     file,
@@ -269,7 +318,9 @@ function runRustIo(name: string, program: Program, want: string): void {
       program,
     )}${main}`,
   )
+
   const exe = file.replace(/\.rs$/, '')
+
   try {
     execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
       stdio: 'pipe',
@@ -281,8 +332,10 @@ function runRustIo(name: string, program: Program, want: string): void {
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -292,20 +345,25 @@ function runSwiftIo(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('swiftc')) return skipped(name, 'swiftc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+
   const path = join(dir, 'seed_swift_io.txt')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   const main = `\nwriteDemo(${JSON.stringify(path)}, ${JSON.stringify(
     want,
   )})\nprint(readDemo(${JSON.stringify(path)}), terminator: "")\n`
+
   writeFileSync(
     file,
     `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(
       program,
     )}${main}`,
   )
+
   const exe = file.replace(/\.swift$/, '')
+
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
   } catch (e) {
@@ -315,8 +373,10 @@ function runSwiftIo(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -326,9 +386,11 @@ function runKotlinIo(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
+  if (skip_filtered(name)) {return}
+
   if (!have('kotlinc') || !have('java'))
-    return skipped(name, 'kotlinc/java not installed')
+    {return skipped(name, 'kotlinc/java not installed')}
+
   const path = join(dir, 'seed_kotlin_io.txt')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   const main = `\nfun main() {\n  writeDemo(${JSON.stringify(
@@ -336,6 +398,7 @@ function runKotlinIo(
   )}, ${JSON.stringify(want)})\n  print(readDemo(${JSON.stringify(
     path,
   )}))\n}\n`
+
   writeFileSync(
     file,
     hoistKotlinImports(
@@ -344,7 +407,9 @@ function runKotlinIo(
       )}${main}`,
     ),
   )
+
   const jar = file.replace(/\.kt$/, '.jar')
+
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
       stdio: 'pipe',
@@ -356,8 +421,10 @@ function runKotlinIo(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
 }
 
@@ -368,8 +435,10 @@ function runRustMath(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('rustc')) return skipped(name, 'rustc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
     file,
@@ -377,7 +446,9 @@ function runRustMath(
       program,
     )}\nfn main() { print!("{}", compute()); }\n`,
   )
+
   const exe = file.replace(/\.rs$/, '')
+
   try {
     execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
       stdio: 'pipe',
@@ -389,8 +460,10 @@ function runRustMath(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -399,8 +472,10 @@ function runSwiftMath(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('swiftc')) return skipped(name, 'swiftc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(
     file,
@@ -408,7 +483,9 @@ function runSwiftMath(
       program,
     )}\nprint(compute(), terminator: "")\n`,
   )
+
   const exe = file.replace(/\.swift$/, '')
+
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
   } catch (e) {
@@ -418,8 +495,10 @@ function runSwiftMath(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -428,9 +507,11 @@ function runKotlinMath(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
+  if (skip_filtered(name)) {return}
+
   if (!have('kotlinc') || !have('java'))
-    return skipped(name, 'kotlinc/java not installed')
+    {return skipped(name, 'kotlinc/java not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
@@ -440,7 +521,9 @@ function runKotlinMath(
       )}\nfun main() { print(compute()) }\n`,
     ),
   )
+
   const jar = file.replace(/\.kt$/, '.jar')
+
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
       stdio: 'pipe',
@@ -452,8 +535,10 @@ function runKotlinMath(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
 }
 
@@ -465,8 +550,10 @@ function runSwiftCrypto(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('swiftc')) return skipped(name, 'swiftc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(
     file,
@@ -474,7 +561,9 @@ function runSwiftCrypto(
       program,
     )}\nprint(await compute(), terminator: "")\n`,
   )
+
   const exe = file.replace(/\.swift$/, '')
+
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
   } catch (e) {
@@ -485,6 +574,7 @@ function runSwiftCrypto(
       ).slice(0, 120)}`,
     )
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -493,9 +583,11 @@ function runKotlinCrypto(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
+  if (skip_filtered(name)) {return}
+
   if (!have('kotlinc') || !have('java'))
-    return skipped(name, 'kotlinc/java not installed')
+    {return skipped(name, 'kotlinc/java not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
@@ -505,7 +597,9 @@ function runKotlinCrypto(
       )}\nsuspend fun main() { print(compute()) }\n`,
     ),
   )
+
   const jar = file.replace(/\.kt$/, '.jar')
+
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
       stdio: 'pipe',
@@ -518,6 +612,7 @@ function runKotlinCrypto(
       ).slice(0, 120)}`,
     )
   }
+
   ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
 }
 
@@ -527,8 +622,10 @@ function runRustText(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('rustc')) return skipped(name, 'rustc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
     file,
@@ -536,7 +633,9 @@ function runRustText(
       program,
     )}\nfn main() { print!("{}", compute()); }\n`,
   )
+
   const exe = file.replace(/\.rs$/, '')
+
   try {
     execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
       stdio: 'pipe',
@@ -548,8 +647,10 @@ function runRustText(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -559,8 +660,10 @@ function runSwiftText(
   want: string,
   isAsync = false,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('swiftc')) return skipped(name, 'swiftc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   const callCompute = isAsync ? 'await compute()' : 'compute()'
   writeFileSync(
@@ -569,7 +672,9 @@ function runSwiftText(
       program,
     )}\nprint(${callCompute}, terminator: "")\n`,
   )
+
   const exe = file.replace(/\.swift$/, '')
+
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
   } catch (e) {
@@ -579,8 +684,10 @@ function runSwiftText(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -590,9 +697,11 @@ function runKotlinText(
   want: string,
   isAsync = false,
 ): void {
-  if (skip_filtered(name)) return
+  if (skip_filtered(name)) {return}
+
   if (!have('kotlinc') || !have('java'))
-    return skipped(name, 'kotlinc/java not installed')
+    {return skipped(name, 'kotlinc/java not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   const mainSig = isAsync ? 'suspend fun main()' : 'fun main()'
   writeFileSync(
@@ -603,7 +712,9 @@ function runKotlinText(
       )}\n${mainSig} { print(compute()) }\n`,
     ),
   )
+
   const jar = file.replace(/\.kt$/, '.jar')
+
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
       stdio: 'pipe',
@@ -615,8 +726,10 @@ function runKotlinText(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
 }
 
@@ -651,26 +764,33 @@ unicode-segmentation = "1"
 name = "run"
 path = "src/main.rs"
 `
+
 function runRustCargo(
   name: string,
   program: Program,
   want: string,
   isAsync: boolean,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('cargo')) return skipped(name, 'cargo not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('cargo')) {return skipped(name, 'cargo not installed')}
+
   const proj = join(tmpdir(), 'seed-rust-runtime')
   mkdirSync(join(proj, 'src'), { recursive: true })
   writeFileSync(join(proj, 'Cargo.toml'), RUST_CARGO_TOML)
+
   const prelude = nativePrelude(program, 'rust', readRuntime)
   const main = isAsync
     ? `\n#[tokio::main]\nasync fn main() { print!("{}", compute().await); }\n`
     : `\nfn main() { print!("{}", compute()); }\n`
+
   writeFileSync(
     join(proj, 'src', 'main.rs'),
     `${prelude}\n${emitRust(program)}${main}`,
   )
+
   let out: string
+
   try {
     out = execFileSync('cargo', ['run', '--quiet'], {
       cwd: proj,
@@ -683,8 +803,10 @@ function runRustCargo(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, out.trim(), want)
 }
 
@@ -694,8 +816,10 @@ function runRustConsole(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('rustc')) return skipped(name, 'rustc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
     file,
@@ -703,7 +827,9 @@ function runRustConsole(
       program,
     )}\nfn main() { compute(); }\n`,
   )
+
   const exe = file.replace(/\.rs$/, '')
+
   try {
     execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
       stdio: 'pipe',
@@ -715,8 +841,10 @@ function runRustConsole(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -726,8 +854,10 @@ function runSwiftConsole(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('swiftc')) return skipped(name, 'swiftc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(
     file,
@@ -735,7 +865,9 @@ function runSwiftConsole(
       program,
     )}\ncompute()\n`,
   )
+
   const exe = file.replace(/\.swift$/, '')
+
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
   } catch (e) {
@@ -745,8 +877,10 @@ function runSwiftConsole(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -755,9 +889,11 @@ function runKotlinConsole(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
+  if (skip_filtered(name)) {return}
+
   if (!have('kotlinc') || !have('java'))
-    return skipped(name, 'kotlinc/java not installed')
+    {return skipped(name, 'kotlinc/java not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
@@ -767,7 +903,9 @@ function runKotlinConsole(
       )}\nfun main() { compute() }\n`,
     ),
   )
+
   const jar = file.replace(/\.kt$/, '.jar')
+
   try {
     execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
       stdio: 'pipe',
@@ -779,8 +917,10 @@ function runKotlinConsole(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
 }
 
@@ -791,12 +931,15 @@ function rustcArch(): string | undefined {
       /host:\s*(\S+)/.exec(
         execFileSync('rustc', ['-vV']).toString(),
       )?.[1] ?? ''
-    if (host.startsWith('x86_64')) return 'x86_64'
+
+    if (host.startsWith('x86_64')) {return 'x86_64'}
+
     if (host.startsWith('aarch64') || host.startsWith('arm64'))
-      return 'arm64'
+      {return 'arm64'}
   } catch {
     // fall through
   }
+
   return undefined
 }
 
@@ -808,15 +951,20 @@ function runLlvmRust(
   mangledCall: string,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
+  if (skip_filtered(name)) {return}
+
   if (!have('clang') || !have('rustc'))
-    return skipped(name, 'clang/rustc not installed')
+    {return skipped(name, 'clang/rustc not installed')}
+
   const arch = rustcArch()
+
   if (!arch)
-    return skipped(name, 'could not determine the rust host arch')
+    {return skipped(name, 'could not determine the rust host arch')}
+
   const rs = join(dir, `${name.replace(/\W/g, '')}.rs`)
   const lib = join(dir, `lib${name.replace(/\W/g, '')}.a`)
   writeFileSync(rs, LLVM_RUNTIME_RUST)
+
   try {
     execFileSync(
       'rustc',
@@ -839,12 +987,16 @@ function runLlvmRust(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   const file = join(dir, `${name.replace(/\W/g, '')}.ll`)
   const main = `\ndefine i32 @main() {\n  %r = call ptr ${mangledCall}\n  call void @seed_print_str(ptr %r)\n  ret i32 0\n}\n`
   writeFileSync(file, emitLlvm(program) + main)
+
   const exe = file.replace(/\.ll$/, '')
+
   try {
     execFileSync(
       'clang',
@@ -870,8 +1022,10 @@ function runLlvmRust(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -883,15 +1037,20 @@ function runLlvmRustExit(
   mangledCall: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) return
+  if (skip_filtered(name)) {return}
+
   if (!have('clang') || !have('rustc'))
-    return skipped(name, 'clang/rustc not installed')
+    {return skipped(name, 'clang/rustc not installed')}
+
   const arch = rustcArch()
+
   if (!arch)
-    return skipped(name, 'could not determine the rust host arch')
+    {return skipped(name, 'could not determine the rust host arch')}
+
   const rs = join(dir, `${name.replace(/\W/g, '')}.rs`)
   const lib = join(dir, `lib${name.replace(/\W/g, '')}.a`)
   writeFileSync(rs, LLVM_RUNTIME_RUST)
+
   try {
     execFileSync(
       'rustc',
@@ -914,12 +1073,16 @@ function runLlvmRustExit(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   const file = join(dir, `${name.replace(/\W/g, '')}.ll`)
   const main = `\ndefine i32 @main() {\n  %r = call i64 ${mangledCall}\n  %t = trunc i64 %r to i32\n  ret i32 %t\n}\n`
   writeFileSync(file, emitLlvm(program) + main)
+
   const exe = file.replace(/\.ll$/, '')
+
   try {
     execFileSync(
       'clang',
@@ -945,8 +1108,10 @@ function runLlvmRustExit(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, spawnSync(exe).status, want)
 }
 
@@ -1084,6 +1249,7 @@ task compute
             code 2
       read seed
 `
+
 // a closure stored in a struct field (the router handler case) and invoked through the field: route.handle(6) = 18.
 const HANDLER = `form route
   link handle
@@ -1115,6 +1281,7 @@ task compute
                 code 3
       read seed
 `
+
 // a closure that CAPTURES an outer variable (`seed`) and is invoked through a higher-order task: the `move` closure
 // owns its capture, so it is `'static` and storable as a `Box<dyn Fn>`. apply(adder, 10) with seed = 7 -> 17.
 const CAPTURE = `task apply
@@ -1400,6 +1567,7 @@ task compute
           text <abc>
         wait true
 `
+
 const SHA256_ABC =
   'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 
@@ -1413,6 +1581,7 @@ task compute
     call encode
       text <hello>
 `
+
 const HEX_PROG = `load @cluesurf/base/code/text/hex
   find encode
 
@@ -1422,6 +1591,7 @@ task compute
     call encode
       text <hi>
 `
+
 const HMAC_PROG = `load @cluesurf/base/code/cryptography/hmac
   find sha256
 
@@ -1441,6 +1611,7 @@ task compute
           text <The quick brown fox jumps over the lazy dog>
         wait true
 `
+
 const HMAC_VECTOR =
   'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8'
 
@@ -1460,6 +1631,7 @@ task compute
       text <^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$>
       read id
 `
+
 // random: integer(low, high) with low == high is deterministic
 const RANDOM_PROG = `load @cluesurf/base/code/random
   find integer
@@ -1471,6 +1643,7 @@ task compute
       code 5
       code 5
 `
+
 // secure random: two 16-byte draws differ (the OS-backed generator is not a constant). The draws are raw bytes (the
 // crypto currency); hex-encode each at the edge so the comparison is by value on every platform (a raw-buffer != would
 // be a reference compare on node / kotlin). Asserted as a boolean to stay print-format agnostic. Exercises the inlined
@@ -1492,6 +1665,7 @@ task compute
         call bytes
           code 16
 `
+
 // the bytes currency type as a native buffer: text "ab" + "cd" concatenated, hex-encoded, equals "61626364". The data
 // is a byte vector / Data / ByteArray the whole way through, hex only at the edge. Boolean so it is print-agnostic.
 const BYTES_PROG = `load @cluesurf/base/code/bytes
@@ -1511,6 +1685,7 @@ task compute
             text <cd>
       text <61626364>
 `
+
 // AES-256-GCM: encrypt a plaintext then decrypt it, asserting the round-trip recovers the original (boolean, so it is
 // print-format agnostic). Key is 32 bytes / 64 hex, nonce is 12 bytes / 24 hex. Exercises each platform's AEAD
 // library (rust aes-gcm, swift CryptoKit AES.GCM, kotlin javax.crypto), all agreeing on the ciphertext || tag layout.
@@ -1549,6 +1724,7 @@ task compute
         read opened
       text <attack at dawn>
 `
+
 // Ed25519 signatures: generate a key pair, sign a message, verify it (boolean round-trip, print-format agnostic).
 // Exercises each platform's Ed25519 (rust ed25519-dalek, swift CryptoKit Curve25519, kotlin java.security).
 const SIGNATURE_PROG = `load @cluesurf/base/code/cryptography/signature
@@ -1579,6 +1755,7 @@ task compute
       read proof
       wait true
 `
+
 // environment variable: PATH is always set in a spawned process, so reading it yields a non-empty string. Asserts as
 // a boolean via the host environment (rust std::env, swift ProcessInfo, kotlin System.getenv).
 const ENV_VAR_PROG = `load @cluesurf/base/code/environment
@@ -1592,6 +1769,7 @@ task compute
         text <PATH>
       text <>
 `
+
 // subprocess: run `echo ok` to completion and confirm exit code 0 (std::process::Command / Foundation.Process /
 // ProcessBuilder). Boolean result keeps the output uniform across backends.
 const RUN_PROG = `load @cluesurf/base/code/process/run
@@ -1625,6 +1803,7 @@ task compute
       read result/code
       code 0
 `
+
 // TCP loopback: listen, connect, accept, then exchange ping / pong over the live connection. Exercises the whole
 // sockets stack — opaque per-backend handle (the platform socket) stored in the connection / listener forms, plus
 // connect / listen / accept / read / write. The accept picks up the connection the OS backlogs from connect, so the
@@ -1678,6 +1857,7 @@ task compute
       read reply
       text <pong>
 `
+
 // UDP loopback: open two datagram sockets, send a message from one to the other, receive it. Exercises the datagram
 // stack — opaque per-backend socket handle, plus open / send / receive returning the datagram form with sender address.
 const UDP_PROG = `load @cluesurf/base/code/network/udp
@@ -1713,6 +1893,7 @@ task compute
       read message/data
       text <hello>
 `
+
 // rune Unicode predicates + case mapping via declarative bindings (rust char tables, swift Character, kotlin Character).
 // 233 is 'é' (a letter), to-uppercase of 97 'a' is 65 'A'. Both checks true.
 const RUNE_PROG = `load @cluesurf/base/code/rune
@@ -1739,6 +1920,7 @@ task compute
         read upper/code
         code 65
 `
+
 // Unicode text measurement via declarative bindings: 'café' is 4 code points and 5 UTF-8 bytes on every backend.
 const UNICODE_COUNT_PROG = `load @cluesurf/base/code/text/unicode
   find rune-count
@@ -1757,6 +1939,7 @@ task compute
           text <café>
         code 5
 `
+
 // Unicode normalization via declarative bindings: NFD decomposes 'café' so it has more than 4 code points (the accent
 // splits off). rust uses the unicode-normalization crate, the others the built-in normalizer.
 const UNICODE_NORM_PROG = `load @cluesurf/base/code/text/unicode
@@ -1772,6 +1955,7 @@ task compute
           text <café>
       code 4
 `
+
 // Unicode grapheme segmentation: a decomposed 'é' (e + combining accent) is two code points but one grapheme cluster.
 const UNICODE_GRAPHEME_PROG = `load @cluesurf/base/code/text/unicode
   find grapheme-count
@@ -1794,6 +1978,7 @@ task compute
           read decomposed
         code 2
 `
+
 // directory make plus metadata: make a directory then confirm is-directory reports it. Exercises the io shim's
 // dir-make and is-directory on each platform (rust std::fs, swift FileManager, kotlin java.io.File).
 const DIR_MAKE_PROG = `load @cluesurf/base/code/file/directory
@@ -1809,6 +1994,7 @@ task compute
     call is-directory
       text </tmp/seed-roundtrip-fsdir>
 `
+
 // directory remove: make then remove a directory, then confirm it no longer exists (returns false).
 const DIR_REMOVE_PROG = `load @cluesurf/base/code/file/directory
   find make
@@ -1825,6 +2011,7 @@ task compute
     call exists
       text </tmp/seed-roundtrip-fsdir-two>
 `
+
 // directory list: make a directory with one child, list it, and count the entries by walking the result. Exercises
 // the list-typed native return (Vec<String> / [String] / MutableList<String>) plus native list iteration on each
 // backend. The walk avoids reducing through the list form, which does not yet apply to a raw native array.
@@ -1855,6 +2042,7 @@ task compute
       read count
       code 1
 `
+
 // directory walk: make a nested directory tree, walk it recursively, and count the entries. Exercises each platform's
 // recursive enumerator (rust std::fs recursion, swift FileManager.enumerator, kotlin walkTopDown) returning a list.
 const DIR_WALK_PROG = `load @cluesurf/base/code/file/directory
@@ -1884,6 +2072,7 @@ task compute
       read count
       code 2
 `
+
 // path: join a base and a name, then read the last segment back. Exercises the path shim (node path, rust std::path,
 // swift Foundation, kotlin java.io.File). Asserted as a boolean over the exact cross-platform result.
 const PATH_JOIN_PROG = `load @cluesurf/base/code/path
@@ -1900,6 +2089,7 @@ task compute
           text <c.json>
       text <c.json>
 `
+
 // path: a file extension carries its leading dot, the same on every platform.
 const PATH_EXTENSION_PROG = `load @cluesurf/base/code/path
   find file-extension
@@ -1912,6 +2102,7 @@ task compute
         text </a/b/report.txt>
       text <.txt>
 `
+
 // calendar: build a UTC timestamp, format it to ISO 8601, parse it back, and shift it a month. Asserts three
 // invariants at once (format matches the exact cross-platform string, parse inverts format, add-months is
 // calendar-aware) as a single boolean. Exercises each platform's date library (rust chrono, swift Foundation,
@@ -1951,6 +2142,7 @@ task compute
             code 1
         code 7
 `
+
 // X25519 ECDH: two key pairs derive the same shared secret from opposite sides (the agreement property), asserted as
 // a boolean. Exercises each platform's X25519 (rust x25519-dalek, swift CryptoKit, kotlin java.security).
 const KEY_AGREEMENT_PROG = `load @cluesurf/base/code/cryptography/key-agreement
@@ -1986,6 +2178,7 @@ task compute
       call to-hex
         read ba
 `
+
 // dns: resolving a numeric IP returns it, through each platform's resolver (rust std::net, swift getaddrinfo, kotlin
 // InetAddress). Offline and deterministic, asserted as a boolean.
 const DNS_PROG = `load @cluesurf/base/code/network/dns
@@ -2003,6 +2196,7 @@ task compute
       read ip
       text <127.0.0.1>
 `
+
 // collection: build two sets, intersect them, check the size. Exercises the native map runtime (set / has / size /
 // keys) plus mutable-collection construction and walk on each platform's reference-typed map. Asserted as a boolean.
 const COLLECTION_PROG = `load @cluesurf/base/code/set
@@ -2044,6 +2238,7 @@ task compute
           read b
       code 2
 `
+
 // list: build a list with push (in-place mutation persists), map it through a closure, then reduce. Exercises the
 // native list runtime -- mutation, the closure-taking ops (map / reduce), and `Box<dyn Fn>` / lambda closures.
 // [1,2,3] -> map(*2) -> [2,4,6] -> reduce(+, 0) -> 12.
@@ -2086,6 +2281,7 @@ task compute
             read item
       code 0
 `
+
 // list set: in-place index write through the native splice op (rust Vec::splice, swift replaceSubrange, kotlin subList)
 const LIST_SET_PROG = `load @cluesurf/base/code/list
   find list
@@ -2114,6 +2310,7 @@ task compute
       read xs
       code 1
 `
+
 // json: parse a JSON array (no braces -- seed text literals interpolate single { ), index it, read the number.
 // as-number(get-item(parse("[10,20,30]"), 1)) == 20.0, through each platform's host JSON.
 const JSON_RT_PROG = `load @cluesurf/base/code/json
@@ -2132,6 +2329,7 @@ task compute
           code 1
       20.0
 `
+
 // json encode: assemble a typed value (make-object + set-field + from-*), stringify it through the host JSON, then
 // parse the text back and read the name field. Proves typed encode round-trips on each platform's native JSON value
 // (serde_json Map, JSONSerialization dictionary) with no derive macros. Asserted as a boolean (text equality).
@@ -2172,6 +2370,7 @@ task compute
         text <name>
       text <seed>
 `
+
 // float: real floating-point math. square-root(9.0) == 3.0 exactly (asserted as a boolean to avoid print-format
 // differences: rust prints "3", swift/kotlin print "3.0").
 const FLOAT_PROG = `load @cluesurf/base/code/float
@@ -2185,6 +2384,7 @@ task compute
         9.0
       3.0
 `
+
 // arc-trig: arc-cosine(1.0) == 0.0 through each platform's float library (Math.acos / f64.acos / Foundation / kotlin.math)
 const TRIG_PROG = `load @cluesurf/base/code/float
   find arc-cosine
@@ -2197,6 +2397,7 @@ task compute
         1.0
       0.0
 `
+
 // vector-3: length(3,4,0) == 5 through the concrete float vector form
 const VECTOR3_PROG = `load @cluesurf/base/code/line/float/32/vector-3
   find make-vector-3
@@ -2213,6 +2414,7 @@ task compute
           0.0
       5.0
 `
+
 // quaternion: length(1,2,2,0) == 3 through the concrete float quaternion form
 const QUATERNION_PROG = `load @cluesurf/base/code/line/float/32/quaternion
   find make-quaternion
@@ -2230,6 +2432,7 @@ task compute
           0.0
       3.0
 `
+
 // time: now() is non-deterministic, so assert it is a positive epoch (boolean -> "true")
 const TIME_PROG = `load @cluesurf/base/code/time
   find now
@@ -2241,6 +2444,7 @@ task compute
       call now
       code 0
 `
+
 // console: compute() prints to stdout (it returns unit), so the runner just calls it and captures stdout
 const CONSOLE_PROG = `load @cluesurf/base/code/console
   find log
@@ -2250,6 +2454,7 @@ task compute
   call log
     text <hello console>
 `
+
 // clock: monotonic now() is positive
 const CLOCK_PROG = `load @cluesurf/base/code/clock
   find now
@@ -2261,6 +2466,7 @@ task compute
       call now
       code 0
 `
+
 // process / environment: return non-empty platform info, verified with regex (no member access)
 const PROCESS_PROG = `load @cluesurf/base/code/process
   find platform
@@ -2275,6 +2481,7 @@ task compute
       text <^.+$>
       call platform
 `
+
 const ENVIRONMENT_PROG = `load @cluesurf/base/code/environment
   find directory
 
@@ -2288,6 +2495,7 @@ task compute
       text <^.+$>
       call directory
 `
+
 // log: info() prints to stdout
 const LOG_PROG = `load @cluesurf/base/code/log
   find info
@@ -2437,7 +2645,8 @@ function runNodeExpr(
   call: string,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
+  if (skip_filtered(name)) {return}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.ts`)
   writeFileSync(
     file,
@@ -2459,14 +2668,18 @@ function runRustExpr(
   call: string,
   want: string,
 ): void {
-  if (skip_filtered(name)) return
-  if (!have('rustc')) return skipped(name, 'rustc not installed')
+  if (skip_filtered(name)) {return}
+
+  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
     file,
     `${emitRust(program)}\nfn main() { print!("{}", ${call}); }\n`,
   )
+
   const exe = file.replace(/\.rs$/, '')
+
   try {
     execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
       stdio: 'pipe',
@@ -2478,8 +2691,10 @@ function runRustExpr(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 300)})`,
     )
+
     return
   }
+
   ok(name, execFileSync(exe).toString().trim(), want)
 }
 
@@ -2633,6 +2848,7 @@ function main(): void {
     'compute(10)',
     40,
   )
+
   const handler = frontEnd(HANDLER)
   runSwift(
     'swift: a closure stored in a struct field',
@@ -2721,6 +2937,7 @@ function main(): void {
     !/function logarithmBase2Native/.test(logTs),
     true,
   )
+
   const logRust = emitRust(logProgram)
   ok(
     'specialize: rust logarithm-base-2 folds the verb to native .log2()',
@@ -3546,13 +3763,17 @@ function main(): void {
   const server = spawn(process.execPath, ['-e', serverCode, portFile], {
     stdio: 'ignore',
   })
+
   let port = ''
+
   const waiter = new Int32Array(new SharedArrayBuffer(4))
+
   for (let i = 0; i < 100 && !port; i++) {
     if (existsSync(portFile))
-      port = readFileSync(portFile, 'utf8').trim()
-    else Atomics.wait(waiter, 0, 0, 50)
+      {port = readFileSync(portFile, 'utf8').trim()}
+    else {Atomics.wait(waiter, 0, 0, 50)}
   }
+
   if (port) {
     const httpProg = `load @cluesurf/base/code/network/http\n  find get\n\ntask compute\n  mark async\n  like text\n  save r\n    call get\n      text <http://127.0.0.1:${port}/>\n      wait true\n  send back\n    read r/body\n`
     runSwiftCrypto(
@@ -3574,12 +3795,14 @@ function main(): void {
   } else {
     skipped('http round-trips', 'could not start the local test server')
   }
+
   server.kill()
 
   console.log(
     `\nroundtrip: ${pass} pass, ${fail} fail, ${skip} skipped  (compiled + ran on the real toolchain)`,
   )
-  if (fail > 0) process.exit(1)
+
+  if (fail > 0) {process.exit(1)}
 }
 
 main()

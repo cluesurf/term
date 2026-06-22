@@ -16,10 +16,12 @@ const SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../..',
 )
+
 const DECK = path.resolve(SEED, '..')
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -77,11 +79,13 @@ const result = compile(
   { file: 'entry.tree', text: entry },
   { resolve, modules: urlForFile },
 )
+
 ok(
   'compiles in per-module mode',
   result.ok,
   result.ok ? '' : JSON.stringify(result.diagnostics?.slice(0, 3)),
 )
+
 if (!result.ok) {
   console.log(`\nmodules: ${pass} pass, ${fail} fail`)
   process.exit(1)
@@ -137,18 +141,22 @@ ok(
 // integration: transpile each module (TS -> JS, the dev server's per-module transform), write, and run the entry
 // through real ESM resolution. This proves the cross-module imports actually resolve and execute.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-modules-'))
+
 for (const [file, emit] of modules) {
   const js = (
     await transform(emit.code, { loader: 'ts', format: 'esm' })
   ).code
+
   fs.writeFileSync(path.join(dir, `${safe(file)}.mjs`), js)
 }
+
 const M = (await import(
   pathToFileURL(path.join(dir, `${safe('entry.tree')}.mjs`)).href
 )) as {
   run: () => string
   startPoint: () => { x: number; y: number }
 }
+
 ok(
   'the wired ESM modules run: run() returns the helper value',
   M.run() === 'hi',
@@ -166,6 +174,7 @@ const blogEntry = path.join(
   DECK,
   'seed/deck/site/test/site/hook/blog.tree',
 )
+
 const blog = compile(
   { file: blogEntry, text: fs.readFileSync(blogEntry, 'utf8') },
   {
@@ -173,11 +182,13 @@ const blog = compile(
     modules: f => `/${hashText(f)}.mjs`,
   },
 )
+
 ok(
   'blog compiles in per-module mode',
   blog.ok,
   blog.ok ? '' : JSON.stringify(blog.diagnostics?.slice(0, 3)),
 )
+
 if (blog.ok && blog.modules) {
   const blogModules = blog.modules
   ok(
@@ -188,6 +199,7 @@ if (blog.ok && blog.modules) {
 
   // every emitted module must transpile to valid JS (no malformed import / emit)
   let bad = ''
+
   for (const [file, emit] of blogModules) {
     try {
       await transform(emit.code, { loader: 'ts', format: 'esm' })
@@ -196,12 +208,14 @@ if (blog.ok && blog.modules) {
       break
     }
   }
+
   ok('every blog module transpiles to valid JS', bad === '', bad)
 
   // the post repository (native-delegated db) imports the db functions from another module (the impl, via last-wins)
   const postEntry = [...blogModules].find(([f]) =>
     f.endsWith('back/post.tree'),
   )
+
   const postCode = postEntry?.[1]?.code ?? ''
   ok(
     'post repository imports db functions across modules',
@@ -213,6 +227,7 @@ if (blog.ok && blog.modules) {
   const apiEntry = [...blogModules].find(([f]) =>
     f.endsWith('hook/blog.tree'),
   )
+
   const apiCode = apiEntry?.[1]?.code ?? ''
   ok(
     'api module imports the repository across modules',
@@ -224,4 +239,5 @@ if (blog.ok && blog.modules) {
 }
 
 console.log(`\nmodules: ${pass} pass, ${fail} fail`)
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}

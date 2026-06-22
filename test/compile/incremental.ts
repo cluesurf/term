@@ -8,6 +8,7 @@ import type { Cx } from '@cluesurf/make/code/compile/query'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
     first.ok && first.program.length === 2,
     first.ok ? '' : 'failed',
   )
+
   const afterFirst = qc.db.recomputes
 
   // re-running with no edits recomputes nothing (everything verified at the current revision)
@@ -55,11 +57,13 @@ async function main(): Promise<void> {
   // rebuilt. parse + mill of A re-run (2), but the `program` query stays green.
   const before = qc.db.recomputes
   qc.setSource(A, `# just a comment\n${aV1}`)
+
   const afterComment = await run(qc, cx => qc.program(cx, [A, B]))
   ok(
     'comment-only edit keeps the program correct',
     afterComment.ok && afterComment.program.length === 2,
   )
+
   const commentDelta = qc.db.recomputes - before
   ok(
     'comment-only edit re-runs only parse + mill of A, not the merged program',
@@ -73,8 +77,10 @@ async function main(): Promise<void> {
     A,
     `task a-value\n  like number\n  send back\n    code 99\n`,
   )
+
   const afterReal = await run(qc, cx => qc.program(cx, [A, B]))
   ok('real edit rebuilds the program', afterReal.ok)
+
   const realDelta = qc.db.recomputes - before2
   ok(
     'real edit re-runs parse + mill + the merged program',
@@ -89,6 +95,7 @@ async function main(): Promise<void> {
     `task a-value\n  like number\n  send back\n    code 7\n`,
   )
   await run(qc, cx => qc.program(cx, [A, B]))
+
   const onlyADelta = qc.db.recomputes - before3
   ok(
     'editing A never re-mills the unchanged B',
@@ -103,15 +110,17 @@ async function main(): Promise<void> {
     const otherSrc = `task other\n  like number\n  send back\n    code 0\n`
     const withHelper = (helper: string): string =>
       `${helper}\n${callerSrc}\n${otherSrc}`
+
     const helperV1 = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
 
     const fw = new QueryCompiler()
     const files = [X]
     fw.setSource(X, withHelper(helperV1))
+
     const checkAll = (): Promise<void> =>
       run(fw, async cx => {
         for (const n of await fw.defNames(cx, files))
-          await fw.checkDef(cx, files, n)
+          {await fw.checkDef(cx, files, n)}
       })
 
     ok(
@@ -125,6 +134,7 @@ async function main(): Promise<void> {
       (await run(fw, cx => fw.checkDef(cx, files, 'caller'))).unresolved
         .length === 0,
     )
+
     const callerRuns = fw.db.runs('checkDef:caller')
     const helperRuns = fw.db.runs('checkDef:helper')
 
@@ -180,20 +190,23 @@ async function main(): Promise<void> {
     const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      code 5\n`
     const withHelper = (helper: string): string =>
       `${helper}\n${callerSrc}\n${otherSrc}`
+
     const helperV1 = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
 
     const rc = new QueryCompiler()
     const files = [X]
     rc.setSource(X, withHelper(helperV1))
+
     const resolveAll = (): Promise<void> =>
       run(rc, async cx => {
         for (const n of await rc.defNames(cx, files))
-          await rc.resolvedDef(cx, files, n)
+          {await rc.resolvedDef(cx, files, n)}
       })
 
     const caller = await run(rc, cx =>
       rc.resolvedDef(cx, files, 'caller'),
     )
+
     ok(
       'resolvedDef: a valid call resolves with no diagnostics',
       caller.diagnostics.length === 0,
@@ -204,6 +217,7 @@ async function main(): Promise<void> {
       caller.def?.name === 'caller',
     )
     await resolveAll()
+
     const callerRuns = rc.db.runs('resolved:caller')
 
     rc.setSource(
@@ -228,9 +242,11 @@ async function main(): Promise<void> {
         `task helper\n  take n, like number\n  like number\n  send back\n    call missing-fn\n      read n\n`,
       ),
     )
+
     const broken = await run(rc, cx =>
       rc.resolvedDef(cx, files, 'helper'),
     )
+
     ok(
       'resolvedDef: an undefined call is reported (real resolver diagnostic)',
       broken.diagnostics.length > 0,
@@ -250,6 +266,7 @@ async function main(): Promise<void> {
     const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      code 5\n`
     const withHelper = (helper: string): string =>
       `${helper}\n${callerSrc}\n${otherSrc}`
+
     const helperOk = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
 
     const tc = new QueryCompiler()
@@ -262,6 +279,7 @@ async function main(): Promise<void> {
       caller.diagnostics.length === 0,
       JSON.stringify(caller.diagnostics.map(d => d.name)),
     )
+
     const callerType = structureKeyOf(caller.def)
 
     tc.setSource(
@@ -270,9 +288,11 @@ async function main(): Promise<void> {
         `task helper\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n`,
       ),
     )
+
     const caller2 = await run(tc, cx =>
       tc.typedDef(cx, files, 'caller'),
     )
+
     ok(
       'typedDef: a callee body edit leaves the caller typed-result unchanged (firewall via backdating)',
       structureKeyOf(caller2.def) === callerType,
@@ -284,6 +304,7 @@ async function main(): Promise<void> {
         `task helper\n  take n, like number\n  like number\n  send back\n    text <oops>\n`,
       ),
     )
+
     const broken = await run(tc, cx => tc.typedDef(cx, files, 'helper'))
     ok(
       'typedDef: a real type mismatch is reported (real inference, per definition)',
@@ -304,6 +325,7 @@ async function main(): Promise<void> {
     const callerSrc = `task caller\n  like number\n  send back\n    call helper\n      code 5\n`
     const withHelper = (helper: string): string =>
       `${helper}\n${callerSrc}\n${otherSrc}`
+
     const helperV1 = `task helper\n  take n, like number\n  like number\n  send back\n    read n\n`
 
     const ec = new QueryCompiler()
@@ -318,9 +340,11 @@ async function main(): Promise<void> {
         /function other/.test(emitted),
       emitted.slice(0, 120),
     )
+
     const callerEmit = await run(ec, cx =>
       ec.emitDef(cx, files, 'caller'),
     )
+
     const callerEmitRuns = ec.db.runs('emit:caller')
 
     ec.setSource(
@@ -346,7 +370,8 @@ async function main(): Promise<void> {
   }
 
   console.log(`\nincremental: ${pass} pass, ${fail} fail`)
-  if (fail > 0) process.exit(1)
+
+  if (fail > 0) {process.exit(1)}
 }
 
 // span-free structural key, mirroring the compiler's backdating equality (for test assertions)

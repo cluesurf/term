@@ -16,6 +16,7 @@ import * as path from 'node:path'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
     port: PORT,
     token: TOKEN,
   })
+
   const endpoint = `http://localhost:${PORT}`
   await new Promise(r => setTimeout(r, 200))
 
@@ -52,6 +54,7 @@ async function main(): Promise<void> {
     { file: 'a.tree', text: SOURCE },
     { cache: cacheA },
   )
+
   ok(
     'project A compiles + writes its local cache',
     built.ok && fs.readdirSync(path.join(projectA, 'mill')).length > 0,
@@ -82,6 +85,7 @@ async function main(): Promise<void> {
     { file: 'a.tree', text: SOURCE },
     { cache: cacheB },
   )
+
   ok(
     'B cold compile hits the warmed remote cache',
     cacheB.misses === 0 && cacheB.diskHits > 0,
@@ -96,6 +100,7 @@ async function main(): Promise<void> {
   const unauthorized = await fetch(`${endpoint}/index`, {
     headers: { authorization: 'Bearer wrong' },
   })
+
   ok(
     'the remote rejects a bad token',
     unauthorized.status === 401,

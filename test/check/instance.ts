@@ -5,8 +5,10 @@ import { compile } from '@cluesurf/make/code/compile/compile'
 
 let pass = 0
 let fail = 0
+
 function expectOk(name: string, source: string): void {
   const result = compile({ file: 's.tree', text: source })
+
   if (result.ok) {
     pass++
     console.log(`ok    ${name}`)
@@ -19,8 +21,10 @@ function expectOk(name: string, source: string): void {
     )
   }
 }
+
 function expectError(name: string, source: string, code: string): void {
   const result = compile({ file: 's.tree', text: source })
+
   if (!result.ok && result.diagnostics.some(d => d.name === code)) {
     pass++
     console.log(

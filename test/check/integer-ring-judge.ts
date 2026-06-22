@@ -24,6 +24,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const self = (body: Term): Term => ({ tag: 'self', body })
@@ -33,12 +34,14 @@ const idt = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
-const aps = (f: Term, ...a: Array<Term>): Term =>
+
+const aps = (f: Term, ...a: Term[]): Term =>
   a.reduce((g, x) => app(g, x), f)
 
 // ===== naturals: zero, succ, plus, times =====
@@ -47,6 +50,7 @@ const natStep = pi(
   kc('Nat'),
   pi('many', app(v(2), v(0)), app(v(3), app(kc('succ'), v(1)))),
 )
+
 const natBody = pi(
   0,
   pi('many', kc('Nat'), ty(0)),
@@ -56,14 +60,17 @@ const natBody = pi(
     pi('many', natStep, app(v(2), v(3))),
   ),
 )
+
 const natTerm = self(natBody)
 const zeroValue = lam(lam(lam(v(1))))
 const succValue = lam(
   lam(lam(lam(app(app(v(0), v(3)), aps(v(3), v(2), v(1), v(0)))))),
 )
+
 const plusValue = lam(
   lam(aps(v(1), lam(kc('Nat')), v(0), lam(lam(app(kc('succ'), v(0)))))),
 )
+
 // times a b = a (\_. Nat) zero (\ _ r. plus b r)
 const timesValue = lam(
   lam(
@@ -90,6 +97,7 @@ const intBody = pi(
     ),
   ),
 )
+
 const intTerm = self(intBody)
 const posValue = lam(lam(lam(lam(app(v(1), v(3))))))
 const negSuccValue = lam(lam(lam(lam(app(v(0), v(3))))))
@@ -111,6 +119,7 @@ const negPosCase = lam(
     lam(lam(app(kc('negSucc'), v(1)))),
   ),
 )
+
 const negNegCase = lam(app(kc('pos'), app(kc('succ'), v(0))))
 const negValue = lam(
   aps(v(0), intMotive, kc('negPosCase'), kc('negNegCase')),
@@ -133,6 +142,7 @@ const mulPos = lam(
     ),
   ),
 )
+
 // mult (negSucc a) = \ y. y (\_.Int) (\ b. neg (pos ((a+1)*b))) (\ b. pos ((a+1)*(b+1)))
 const mulNeg = lam(
   lam(
@@ -158,6 +168,7 @@ const mulNeg = lam(
     ),
   ),
 )
+
 const multValue = lam(
   aps(v(0), lam(intToInt), kc('mulPos'), kc('mulNeg')),
 )
@@ -170,9 +181,11 @@ const lebNatStep = lam(
     lam(aps(v(0), boolMotive, kc('false'), lam(lam(app(v(3), v(1)))))),
   ),
 )
+
 const lebNatValue = lam(
   aps(v(0), lam(natToBool), kc('lebNatBase'), kc('lebNatStep')),
 )
+
 // lebInt (pos x) = \ b. b (\_.Bool) (\ y. lebNat x y) (\ y. false)        -- pos x <= pos y ; pos x <= neg = false
 // lebInt (negSucc x) = \ b. b (\_.Bool) (\ y. true) (\ y. lebNat y x)     -- neg <= pos = true ; -(x+1) <= -(y+1) iff y<=x
 const lebIntPos = lam(
@@ -185,6 +198,7 @@ const lebIntPos = lam(
     ),
   ),
 )
+
 const lebIntNeg = lam(
   lam(
     aps(
@@ -195,6 +209,7 @@ const lebIntNeg = lam(
     ),
   ),
 )
+
 const lebIntValue = lam(
   aps(v(0), lam(intToBool), kc('lebIntPos'), kc('lebIntNeg')),
 )
@@ -225,8 +240,10 @@ const context = contextWithSignature([
   { name: 'lebIntPos', type: pi('many', natTerm, intToBool) },
   { name: 'lebIntNeg', type: pi('many', natTerm, intToBool) },
 ])
+
 const def = (n: string, t: Term): void =>
   defineConstant(n, evaluate([], t))
+
 def('Nat', natTerm)
 def('zero', zeroValue)
 def('succ', succValue)
@@ -250,11 +267,13 @@ def('lebInt', lebIntValue)
 
 const nat = (k: number): Term =>
   k === 0 ? kc('zero') : app(kc('succ'), nat(k - 1))
+
 const posN = (k: number): Term => app(kc('pos'), nat(k))
 const negN = (k: number): Term => app(kc('negSucc'), nat(k - 1)) // -(k)
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()
@@ -267,6 +286,7 @@ function ok(name: string, run: () => void): void {
     )
   }
 }
+
 function computesInt(name: string, lhs: Term, rhs: Term): void {
   ok(name, () => {
     check(
@@ -276,6 +296,7 @@ function computesInt(name: string, lhs: Term, rhs: Term): void {
     )
   })
 }
+
 function order(name: string, lhs: Term, rhs: Term): void {
   ok(name, () => {
     check(

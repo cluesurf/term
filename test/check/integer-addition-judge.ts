@@ -23,6 +23,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const self = (body: Term): Term => ({ tag: 'self', body })
@@ -32,12 +33,14 @@ const idt = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
-const aps = (f: Term, ...a: Array<Term>): Term =>
+
+const aps = (f: Term, ...a: Term[]): Term =>
   a.reduce((g, x) => app(g, x), f)
 
 // ===== naturals, with plus =====
@@ -46,6 +49,7 @@ const natStep = pi(
   kc('Nat'),
   pi('many', app(v(2), v(0)), app(v(3), app(kc('succ'), v(1)))),
 )
+
 const natBody = pi(
   0,
   pi('many', kc('Nat'), ty(0)),
@@ -55,11 +59,13 @@ const natBody = pi(
     pi('many', natStep, app(v(2), v(3))),
   ),
 )
+
 const natTerm = self(natBody)
 const zeroValue = lam(lam(lam(v(1))))
 const succValue = lam(
   lam(lam(lam(app(app(v(0), v(3)), aps(v(3), v(2), v(1), v(0)))))),
 )
+
 const plusValue = lam(
   lam(aps(v(1), lam(kc('Nat')), v(0), lam(lam(app(kc('succ'), v(0)))))),
 )
@@ -78,6 +84,7 @@ const intBody = pi(
     ),
   ),
 )
+
 const intTerm = self(intBody)
 const posValue = lam(lam(lam(lam(app(v(1), v(3))))))
 const negSuccValue = lam(lam(lam(lam(app(v(0), v(3))))))
@@ -103,6 +110,7 @@ const intSubBase = lam(
     lam(lam(app(kc('negSucc'), v(1)))),
   ),
 )
+
 // step (m = succ m'): \ m' rec n. n (\_.Int) (pos (succ m')) (\ k _. rec k)
 //   (succ m') - 0 = pos (succ m') ; (succ m') - (succ k) = m' - k = rec k
 const intSubStep = lam(
@@ -117,6 +125,7 @@ const intSubStep = lam(
     ),
   ),
 )
+
 // intSub = \ m. m (\ _. Nat -> Int) base step
 const intSubValue = lam(
   aps(v(0), lam(natToInt), kc('intSubBase'), kc('intSubStep')),
@@ -134,6 +143,7 @@ const addPosCase = lam(
     ),
   ),
 )
+
 // add (negSucc a) = \ y. y (\_.Int) (\ b. intSub b (succ a)) (\ b. negSucc (succ (a + b)))
 //   negSucc a + pos b = b - (a+1) = intSub b (succ a) ; negSucc a + negSucc b = -(a+b+2) = negSucc (succ (a+b))
 const addNegCase = lam(
@@ -151,6 +161,7 @@ const addNegCase = lam(
     ),
   ),
 )
+
 // add = \ x. x (\ _. Int -> Int) addPosCase addNegCase
 const addValue = lam(
   aps(v(0), lam(intToInt), kc('addPosCase'), kc('addNegCase')),
@@ -173,6 +184,7 @@ const context = contextWithSignature([
   { name: 'addPosCase', type: pi('many', natTerm_, intToInt) },
   { name: 'addNegCase', type: pi('many', natTerm_, intToInt) },
 ])
+
 defineConstant('Nat', evaluate([], natTerm))
 defineConstant('zero', evaluate([], zeroValue))
 defineConstant('succ', evaluate([], succValue))
@@ -190,11 +202,13 @@ defineConstant('add', evaluate([], addValue))
 // numerals
 const nat = (k: number): Term =>
   k === 0 ? kc('zero') : app(kc('succ'), nat(k - 1))
+
 const posN = (k: number): Term => app(kc('pos'), nat(k))
 const negN = (k: number): Term => app(kc('negSucc'), nat(k - 1)) // negN(k) = -(k), i.e. negSucc (k-1)
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()
@@ -207,6 +221,7 @@ function ok(name: string, run: () => void): void {
     )
   }
 }
+
 function computes(name: string, lhs: Term, rhs: Term): void {
   ok(name, () => {
     check(

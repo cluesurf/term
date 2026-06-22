@@ -19,9 +19,11 @@ link <@termsurf/wolf:0.0.1>
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   const g = JSON.stringify(got)
   const w = JSON.stringify(want)
+
   if (g === w) {
     pass++
     console.log(`ok    ${name}`)
@@ -62,6 +64,7 @@ function main(): void {
     ],
     links: [],
   }
+
   const sorted = {
     base: '0.0.1',
     requests: [
@@ -70,6 +73,7 @@ function main(): void {
     ],
     links: [],
   }
+
   expect(
     'ordering is deterministic',
     serializeLockfile(shuffled),

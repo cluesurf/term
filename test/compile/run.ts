@@ -91,17 +91,23 @@ async function loadModule(
   source: string,
 ): Promise<Record<string, (n: number) => number>> {
   const result = compile({ file: 'fibonacci.tree', text: source })
+
   if (!result.ok) {
     const lines = source.split('\n')
+
     for (const d of result.diagnostics)
-      console.log(render(d, lines, false))
+      {console.log(render(d, lines, false))}
+
     throw new Error('compile failed')
   }
+
   console.log('--- emitted TypeScript ---')
   console.log(result.typescript)
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-compile-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
+
   return (await import(pathToFileURL(file).href)) as Record<
     string,
     (n: number) => number
@@ -110,22 +116,22 @@ async function loadModule(
 
 async function main(): Promise<void> {
   const loop = await loadModule(FIB_LOOP)
-  expect('loop fib(0)', loop.findFibonacciViaLoop!(0), 0)
-  expect('loop fib(1)', loop.findFibonacciViaLoop!(1), 1)
-  expect('loop fib(10)', loop.findFibonacciViaLoop!(10), 55)
-  expect('loop fib(20)', loop.findFibonacciViaLoop!(20), 6765)
+  expect('loop fib(0)', loop.findFibonacciViaLoop(0), 0)
+  expect('loop fib(1)', loop.findFibonacciViaLoop(1), 1)
+  expect('loop fib(10)', loop.findFibonacciViaLoop(10), 55)
+  expect('loop fib(20)', loop.findFibonacciViaLoop(20), 6765)
 
   const recursion = await loadModule(FIB_RECURSION)
-  expect('recursion fib(0)', recursion.findFibonacciViaRecursion!(0), 0)
-  expect('recursion fib(1)', recursion.findFibonacciViaRecursion!(1), 1)
+  expect('recursion fib(0)', recursion.findFibonacciViaRecursion(0), 0)
+  expect('recursion fib(1)', recursion.findFibonacciViaRecursion(1), 1)
   expect(
     'recursion fib(10)',
-    recursion.findFibonacciViaRecursion!(10),
+    recursion.findFibonacciViaRecursion(10),
     55,
   )
   expect(
     'recursion fib(15)',
-    recursion.findFibonacciViaRecursion!(15),
+    recursion.findFibonacciViaRecursion(15),
     610,
   )
 
@@ -134,23 +140,30 @@ async function main(): Promise<void> {
     file: 'classify.tree',
     text: CONDITIONAL_EXPRESSION,
   })
+
   if (!conditional.ok) {
     const lines = CONDITIONAL_EXPRESSION.split('\n')
+
     for (const d of conditional.diagnostics)
-      console.log(render(d, lines, false))
+      {console.log(render(d, lines, false))}
+
     throw new Error('conditional compile failed')
   }
+
   expect(
     'conditional expression emits a ternary',
     / \? .* : /.test(conditional.typescript),
     true,
   )
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-conditional-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, conditional.typescript)
+
   const mod = (await import(pathToFileURL(file).href)) as {
     classify: (n: number) => string
   }
+
   expect('classify(5)', mod.classify(5), 'positive')
   expect('classify(-3)', mod.classify(-3), 'non-positive')
   expect('classify(0)', mod.classify(0), 'non-positive')

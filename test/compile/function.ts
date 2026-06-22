@@ -54,6 +54,7 @@ task double
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -70,17 +71,23 @@ function expect(name: string, got: unknown, want: unknown): void {
 
 async function main(): Promise<void> {
   const result = compile({ file: 'function.tree', text: SOURCE })
+
   if (!result.ok) {
     for (const d of result.diagnostics)
-      console.log(render(d, SOURCE.split('\n'), false))
+      {console.log(render(d, SOURCE.split('\n'), false))}
+
     console.log('\nfunction: 0 pass, 1 fail')
+
     return
   }
+
   console.log('--- emitted TypeScript ---')
   console.log(result.typescript)
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-function-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
+
   const mod = (await import(pathToFileURL(file).href)) as {
     runTwice: () => number
     runDirect: () => number

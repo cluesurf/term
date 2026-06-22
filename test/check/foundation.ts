@@ -22,7 +22,7 @@ import {
 const ref = reference
 const eq = (x: Term, y: Term): Term => apply(apply(ref('Equal'), x), y)
 // convenience: apply a function to several arguments in order
-const at = (fun: Term, ...args: Array<Term>): Term =>
+const at = (fun: Term, ...args: Term[]): Term =>
   args.reduce((f, a) => apply(f, a), fun)
 
 const book: Book = {
@@ -204,10 +204,12 @@ function main(): void {
     book,
     annotate(onePlusOne, ref('Natural')),
   )
+
   const normalizedTwo = normal(
     book,
     annotate(ref('two'), ref('Natural')),
   )
+
   if (showTermSafe(normalizedSum) === showTermSafe(normalizedTwo)) {
     pass++
     console.log('ok    one plus one computes to two')
@@ -218,6 +220,7 @@ function main(): void {
 
   // a deliberate type mismatch must be caught.
   let caught = false
+
   try {
     normal(
       book,
@@ -226,6 +229,7 @@ function main(): void {
   } catch (error) {
     caught = error instanceof TypeMismatch || error instanceof Error
   }
+
   if (caught) {
     pass++
     console.log('ok    rejects a bad annotation')

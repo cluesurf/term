@@ -22,6 +22,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const id = (type: Term, left: Term, right: Term): Term => ({
@@ -30,13 +31,16 @@ const id = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
-const aps = (fun: Term, ...args: Array<Term>): Term =>
+
+const aps = (fun: Term, ...args: Term[]): Term =>
   args.reduce((f, a) => app(f, a), fun)
+
 const arrow = (a: Term, b: Term): Term => pi('many', a, b)
 
 // compose : (0 X Y Z : Type) -> (Y -> Z) -> (X -> Y) -> (X -> Z)
@@ -61,6 +65,7 @@ const composeType = pi(
     ),
   ),
 )
+
 // compose = \ X Y Z g f x. g (f x)
 const composeValue = lam(
   lam(lam(lam(lam(lam(app(v(2), app(v(1), v(0)))))))),
@@ -81,6 +86,7 @@ const signature = [
   { name: 'compose', type: composeType },
   { name: 'identity', type: identityType },
 ]
+
 const context = contextWithSignature(signature)
 defineConstant('compose', evaluate([], composeValue))
 defineConstant('identity', evaluate([], identityValue))
@@ -88,10 +94,12 @@ defineConstant('identity', evaluate([], identityValue))
 // composition shorthands.
 const comp = (X: Term, Y: Term, Z: Term, g: Term, f: Term): Term =>
   aps(kc('compose'), X, Y, Z, g, f)
+
 const idAt = (X: Term): Term => app(kc('identity'), X)
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()

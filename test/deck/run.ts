@@ -11,9 +11,11 @@ import {
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   const g = JSON.stringify(got)
   const w = JSON.stringify(want)
+
   if (g === w) {
     pass++
     console.log(`ok    ${name}`)
@@ -38,6 +40,7 @@ function main(): void {
     '/proj/code/helper.tree',
     '/proj/code/widget/base.tree',
   ])
+
   const exists = (p: string): boolean => files.has(p)
 
   // file resolution with extension fallback

@@ -10,6 +10,7 @@ import {
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -30,10 +31,13 @@ const BAD = `task wrong
 
 function main(): void {
   const result = compile({ file: 'bad.tree', text: BAD })
+
   if (result.ok) {
     console.log('FAIL  expected an error\n\nerrors: 0 pass, 1 fail')
+
     return
   }
+
   const d = result.diagnostics[0]!
   ok('every diagnostic has a fix hint', !!d.hint, `hint=${d.hint}`)
 
@@ -50,6 +54,7 @@ function main(): void {
     file: 'bad.tree',
     text: `task t\n  take items\n  back\n    loan itemz\n`,
   })
+
   ok(
     'unknown name suggests a correction',
     !typo.ok &&
@@ -69,12 +74,14 @@ function main(): void {
     file: 'w.tree',
     text: `task f\n  take n\n  save unused, code 1\n  back n\n`,
   })
+
   if (warned.ok) {
     const summary = report(
       warned.warnings,
       'task f\n  take n\n  save unused, code 1\n  back n'.split('\n'),
       false,
     )
+
     ok(
       'report summarizes warnings',
       summary.includes('1 warning'),
@@ -100,14 +107,16 @@ function main(): void {
     file: 'b.tree',
     text: `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, code 0\n  back n\n`,
   })
+
   if (!blame.ok) {
     const k = renderKink(
-      blame.diagnostics[0]!,
+      blame.diagnostics[0],
       `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, code 0\n  back n`.split(
         '\n',
       ),
       false,
     )
+
     ok('kink: multi-span shows a call frame', k.includes('call <'), k)
   } else {
     ok('kink: multi-span shows a call frame', false, 'compiled')

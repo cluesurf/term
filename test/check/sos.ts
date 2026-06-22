@@ -3,19 +3,24 @@
 
 import { nonNegativeDifference } from '@cluesurf/make/code/check/ring'
 import type { Expression } from '@cluesurf/make/code/compile/node'
+
 const S = {
   start: { line: 0, column: 0 },
   end: { line: 0, column: 0 },
 } as any
+
 const i = (value: number): Expression =>
   ({ form: 'integer', value, span: S }) as any
+
 const v = (name: string): Expression =>
   ({ form: 'variable', name, span: S }) as any
+
 const bin = (
   op: string,
   left: Expression,
   right: Expression,
 ): Expression => ({ form: 'binary', op, left, right, span: S }) as any
+
 const mul = (a: Expression, b: Expression) => bin('*', a, b)
 const add = (a: Expression, b: Expression) => bin('+', a, b)
 const sub = (a: Expression, b: Expression) => bin('-', a, b)
@@ -23,8 +28,10 @@ const a = v('a'),
   b = v('b'),
   c = v('c'),
   n = v('n')
+
 let pass = 0,
   fail = 0
+
 function ok(name: string, cond: boolean) {
   if (cond) {
     pass++
@@ -34,6 +41,7 @@ function ok(name: string, cond: boolean) {
     console.log('FAIL ', name)
   }
 }
+
 // POSITIVE (must be provable >= 0)
 ok('a^2 >= 0', nonNegativeDifference(mul(a, a), i(0)))
 ok(

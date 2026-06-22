@@ -10,19 +10,23 @@ let fail = 0
 // confirm a type error blames more than one location (multi-span)
 function expectBlame(name: string, source: string): void {
   const result = compile({ file: 'bad.tree', text: source })
+
   if (result.ok) {
     fail++
     console.log(
       `FAIL  ${name}  (compiled cleanly, expected a blamed type error)`,
     )
+
     return
   }
+
   const markers = result.diagnostics[0]?.markers ?? []
+
   if (markers.length >= 2) {
     pass++
     console.log(`ok    ${name}  (${markers.length} spans)`)
     console.log(
-      render(result.diagnostics[0]!, source.split('\n'), false)
+      render(result.diagnostics[0], source.split('\n'), false)
         .split('\n')
         .map(l => `      ${l}`)
         .join('\n'),
@@ -37,12 +41,16 @@ function expectBlame(name: string, source: string): void {
 
 function expectError(name: string, source: string, code: string): void {
   const result = compile({ file: 'bad.tree', text: source })
+
   if (result.ok) {
     fail++
     console.log(`FAIL  ${name}  (compiled cleanly, expected ${code})`)
+
     return
   }
+
   const got = result.diagnostics[0]?.name
+
   if (got === code) {
     pass++
     console.log(`ok    ${name}  (${result.diagnostics[0]!.message})`)
@@ -54,6 +62,7 @@ function expectError(name: string, source: string, code: string): void {
 
 function expectOk(name: string, source: string): void {
   const result = compile({ file: 'good.tree', text: source })
+
   if (result.ok) {
     pass++
     console.log(`ok    ${name}`)

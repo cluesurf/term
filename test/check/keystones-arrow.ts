@@ -18,6 +18,7 @@ const isquared = linear({ isquared: 1 }) // the square of the new unit i, a free
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: boolean, want: boolean): void {
   if (got === want) {
     pass++

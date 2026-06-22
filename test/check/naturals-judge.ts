@@ -22,6 +22,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const self = (body: Term): Term => ({ tag: 'self', body })
@@ -31,12 +32,14 @@ const idt = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
-const aps = (fun: Term, ...args: Array<Term>): Term =>
+
+const aps = (fun: Term, ...args: Term[]): Term =>
   args.reduce((f, a) => app(f, a), fun)
 
 // inside `self n. body`, the self value n is v(0). Then P binds (v0=P, v1=n), the zero-case binds
@@ -64,6 +67,7 @@ const natBody = pi(
     ),
   ),
 )
+
 const natTerm = self(natBody)
 
 // zero = \ P. \ z. \ s. z
@@ -72,10 +76,12 @@ const zeroTerm = lam(lam(lam(v(1))))
 const succTerm = lam(
   lam(lam(lam(aps(v(0), v(3), aps(v(3), v(2), v(1), v(0)))))),
 )
+
 // plus = \ a. \ b. a (\_. Nat) b (\_. \ r. succ r)   -- recurse on a, base b, step succ
 const plusTerm = lam(
   lam(aps(v(1), lam(kc('Nat')), v(0), lam(lam(app(kc('succ'), v(0)))))),
 )
+
 // times = \ a. \ b. a (\_. Nat) zero (\_. \ r. plus b r)   -- recurse on a, base zero, step (add b)
 const timesTerm = lam(
   lam(
@@ -103,6 +109,7 @@ const signature = [
   { name: 'plus', type: natToNatToNat },
   { name: 'times', type: natToNatToNat },
 ]
+
 const context = contextWithSignature(signature)
 
 defineConstant('Nat', natValue)
@@ -119,6 +126,7 @@ const four = app(kc('succ'), three)
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()
@@ -131,6 +139,7 @@ function ok(name: string, run: () => void): void {
     )
   }
 }
+
 // a definitional-equality check: the named term reduces to the expected value, witnessed by refl.
 function computes(
   name: string,

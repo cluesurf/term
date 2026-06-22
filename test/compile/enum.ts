@@ -10,6 +10,7 @@ import { render } from '@cluesurf/make/code/parser/diagnostic'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -61,12 +62,16 @@ task name-of
 
 async function main(): Promise<void> {
   const result = compile({ file: 'enum.tree', text: EXHAUSTIVE })
+
   if (!result.ok) {
     for (const d of result.diagnostics)
-      console.log(render(d, EXHAUSTIVE.split('\n'), false))
+      {console.log(render(d, EXHAUSTIVE.split('\n'), false))}
+
     console.log('\nenum: 0 pass, 1 fail')
+
     return
   }
+
   console.log('--- emitted TypeScript ---')
   console.log(result.typescript)
   ok(
@@ -83,9 +88,11 @@ async function main(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'seed-enum-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
+
   const mod = (await import(pathToFileURL(file).href)) as {
     run: () => string
   }
+
   ok('run() returns "green"', mod.run() === 'green', `got ${mod.run()}`)
 
   // exhaustiveness: the missing-case version is a compile error
@@ -97,9 +104,11 @@ async function main(): Promise<void> {
       ? 'compiled cleanly'
       : bad.diagnostics.map(d => d.name).join(','),
   )
+
   if (!bad.ok) {
     const d = bad.diagnostics.find(x => x.name === 'non-exhaustive')
-    if (d) console.log(`      (${d.message})`)
+
+    if (d) {console.log(`      (${d.message})`)}
   }
 
   console.log(`\nenum: ${pass} pass, ${fail} fail`)

@@ -1,13 +1,59 @@
+# WebSocket client. The clean uniform interface; each backend wraps its platform WebSocket (node global WebSocket, rust tokio-tungstenite, swift URLSessionWebSocketTask, kotlin java.net.http.WebSocket) behind this API, selected at build time. `socket` is a live connection to a peer, with send / receive / close methods; `message` is one received frame. The platform connection lives in the opaque `dock` handle, typed per backend. Every operation is async.
 
+load @cluesurf/base/code/native/network/websocket
+  find do-connect
+
+load @cluesurf/base/code/native/network/websocket/socket
+  find do-send
+  find do-receive
+  find do-close
+
+# one received WebSocket frame: `kind` is "text" or "close", `data` is the payload (empty on close)
+form message
+  link kind, like text
+  link data, like text
+
+# a live WebSocket connection
 form socket
-  link dock, mark private
+  link dock, like websocket-handle
   link url, like text
-  link protocol, like text
-  link ready, like bool
 
+  # send a text message to the peer
+  task send
+    note async
+    take self
+    take data, like text
+    like void
+    call do-send
+      read self
+      read data
+      wait true
+
+  # wait for and return the next message from the peer
+  task receive
+    note async
+    take self
+    like message
+    send back
+      call do-receive
+        read self
+        wait true
+
+  # close the connection
+  task close
+    note async
+    take self
+    like void
+    call do-close
+      read self
+      wait true
+
+# open a WebSocket connection to `url` (ws:// or wss://)
 task connect
   note async
   take url, like text
-  take headers, like hash, need false
-  take protocols, like list, need false
   like socket
+  send back
+    call do-connect
+      read url
+      wait true

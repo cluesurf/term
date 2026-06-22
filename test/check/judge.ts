@@ -30,17 +30,20 @@ const ann = (term: Term, type: Term): Term => ({
   term,
   type,
 })
+
 const sigma = (mult: Mult, domain: Term, codomain: Term): Term => ({
   tag: 'sigma',
   mult,
   domain,
   codomain,
 })
+
 const pair = (first: Term, second: Term): Term => ({
   tag: 'pair',
   first,
   second,
 })
+
 const fst = (p: Term): Term => ({ tag: 'fst', pair: p })
 const snd = (p: Term): Term => ({ tag: 'snd', pair: p })
 const self = (body: Term): Term => ({ tag: 'self', body })
@@ -49,12 +52,14 @@ const tyVar = (name: string): Term => ({
   tag: 'type',
   level: varLevel(name),
 })
+
 const pi = (mult: Mult, domain: Term, codomain: Term): Term => ({
   tag: 'pi',
   mult,
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const id = (type: Term, left: Term, right: Term): Term => ({
@@ -63,11 +68,13 @@ const id = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
+
 const typeValue = (n: number) => ({
   v: 'type' as const,
   level: litLevel(n),
@@ -75,6 +82,7 @@ const typeValue = (n: number) => ({
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()
@@ -91,6 +99,7 @@ function ok(name: string, run: () => void): void {
     )
   }
 }
+
 function rejects(name: string, run: () => void): void {
   try {
     run()
@@ -113,8 +122,9 @@ function main(): void {
   // ---- universe hierarchy ----
   ok('Type 0 : Type 1', () => {
     const t = infer(emptyContext, ty(0)).type
+
     if (!(t.v === 'type' && eqLevel(t.level, litLevel(1))))
-      throw new CoreTypeError('expected Type 1')
+      {throw new CoreTypeError('expected Type 1')}
   })
   ok(
     'Type 0 checks against Type 1',
@@ -138,13 +148,15 @@ function main(): void {
   )
   ok('instantiate u := 0 and it still checks', () => {
     const idType0 = instantiateLevel(idTypePoly, 'u', litLevel(0))
+
     if (!checks(idTerm, idType0))
-      throw new CoreTypeError('instantiated identity did not check')
+      {throw new CoreTypeError('instantiated identity did not check')}
   })
   ok('instantiate u := 5 and it still checks', () => {
     const idType5 = instantiateLevel(idTypePoly, 'u', litLevel(5))
+
     if (!checks(idTerm, idType5))
-      throw new CoreTypeError('instantiated identity did not check')
+      {throw new CoreTypeError('instantiated identity did not check')}
   })
 
   // ---- quantities / linearity ----
@@ -168,7 +180,7 @@ function main(): void {
   // ---- identity type ----
   ok('refl of a type', () => {
     if (!checks(refl(ty(1), ty(0)), id(ty(1), ty(0), ty(0))))
-      throw new CoreTypeError('refl did not check')
+      {throw new CoreTypeError('refl did not check')}
   })
   rejects(
     'refl with unequal sides',
@@ -193,6 +205,7 @@ function main(): void {
       base,
       level: litLevel(2),
     }
+
     void check(emptyContext, jTerm, {
       v: 'id',
       type: typeValue(1),
@@ -230,10 +243,12 @@ function main(): void {
         ),
       ),
     )
+
     // the proof is just: lambda A. lambda B. lambda f. lambda g. lambda h. h
     const funextTerm = lam(lam(lam(lam(lam(v(0))))))
+
     if (!checks(funextTerm, funextType))
-      throw new CoreTypeError('funext-as-identity did not check')
+      {throw new CoreTypeError('funext-as-identity did not check')}
   })
 
   // ---- metavariables: unification solves a type argument from a value argument ----
@@ -246,10 +261,12 @@ function main(): void {
     { name: 'value', type: kconst('Nat') },
     { name: 'identity', type: idType },
   ]
+
   ok(
     'metavariable solved by unification (polymorphic identity at a concrete type)',
     () => {
       resetMetas()
+
       const context = contextWithSignature(signature)
       const meta = freshMeta(typeValue(0))
       const term = app(app(kconst('identity'), meta), kconst('value'))
@@ -260,6 +277,7 @@ function main(): void {
     'metavariable solving rejects an inconsistent result type',
     () => {
       resetMetas()
+
       const context = contextWithSignature(signature)
       const meta = freshMeta(typeValue(0))
       const term = app(app(kconst('identity'), meta), kconst('value'))
@@ -268,6 +286,7 @@ function main(): void {
   )
   rejects('occurs check blocks a cyclic solution', () => {
     resetMetas()
+
     const context = contextWithSignature(signature)
     const a = freshMeta(typeValue(0)) // ?a : Type0
     const x = freshMeta(evaluate([], a)) // ?x : ?a
@@ -311,6 +330,7 @@ function main(): void {
         { name: 'unit', type: ty(0) },
         { name: 'nothing', type: kconst('unit') },
       ])
+
       // \ r. nothing  :  (1 r : Region) -> unit  -- never uses the region, violating linearity
       check(
         context,
@@ -325,16 +345,19 @@ function main(): void {
     { name: 'Nat', type: ty(0) },
     { name: 'value', type: kconst('Nat') },
   ]
+
   const NatToNat = pi('many', kconst('Nat'), kconst('Nat'))
   ok(
     'Miller pattern: ?m x = x solves ?m to the identity, then computes',
     () => {
       resetMetas()
+
       const context = bind(
         contextWithSignature(millerSig),
         'many',
         evaluate([], kconst('Nat')),
       ) // x : Nat at level 0
+
       const m = freshMeta(evaluate([], NatToNat))
       // checking refl against Id Nat (?m x) x forces (?m x) == x, solving ?m := \x. x
       const goal = id(kconst('Nat'), app(m, v(0)), v(0))
@@ -343,12 +366,14 @@ function main(): void {
         refl(kconst('Nat'), v(0)),
         evaluate(context.env, goal),
       )
+
       // the solution must compute: (?m value) reduces to value
       const computed = id(
         kconst('Nat'),
         app(m, kconst('value')),
         kconst('value'),
       )
+
       check(
         context,
         refl(kconst('Nat'), kconst('value')),
@@ -360,6 +385,7 @@ function main(): void {
     'a non-pattern spine (argument is not a distinct variable) does not solve',
     () => {
       resetMetas()
+
       const context = contextWithSignature(millerSig)
       const m = freshMeta(evaluate([], NatToNat))
       // ?m value -- the argument is a constant, not a bound variable, so this is not a Miller pattern
@@ -368,6 +394,7 @@ function main(): void {
         app(m, kconst('value')),
         kconst('value'),
       )
+
       check(
         context,
         refl(kconst('Nat'), kconst('value')),
@@ -385,19 +412,23 @@ function main(): void {
     },
     { name: 'value', type: kconst('Nat') },
   ]
+
   ok(
     'a transparent definition unfolds during conversion (delta)',
     () => {
       resetMetas()
       resetDefinitions()
+
       const context = contextWithSignature(deltaSig)
       defineConstant('identityFn', evaluate([], lam(v(0)))) // identityFn := \ x. x
+
       // refl proves Id Nat (identityFn value) value only if identityFn delta-unfolds to the identity
       const goal = id(
         kconst('Nat'),
         app(kconst('identityFn'), kconst('value')),
         kconst('value'),
       )
+
       check(
         context,
         refl(kconst('Nat'), kconst('value')),
@@ -408,12 +439,14 @@ function main(): void {
   rejects('an opaque constant does not unfold', () => {
     resetMetas()
     resetDefinitions()
+
     const context = contextWithSignature(deltaSig) // identityFn is left undefined: a postulate
     const goal = id(
       kconst('Nat'),
       app(kconst('identityFn'), kconst('value')),
       kconst('value'),
     )
+
     check(
       context,
       refl(kconst('Nat'), kconst('value')),
@@ -425,12 +458,15 @@ function main(): void {
     () => {
       resetMetas()
       resetDefinitions()
+
       const context = contextWithSignature([
         { name: 'Nat', type: ty(0) },
         { name: 'loopy', type: kconst('Nat') },
         { name: 'other', type: kconst('Nat') },
       ])
+
       defineConstant('loopy', evaluate([], kconst('loopy'))) // loopy := loopy (degenerate recursion)
+
       // converting loopy with other would unfold forever; fuel makes it terminate (and correctly fail) rather than hang
       const goal = id(kconst('Nat'), kconst('loopy'), kconst('other'))
       check(
@@ -447,6 +483,7 @@ function main(): void {
     { name: 'Bool', type: ty(0) },
     { name: 'value', type: kconst('Nat') },
   ]
+
   const NatPair = sigma('many', kconst('Nat'), kconst('Nat')) // (Nat) * Nat
   ok('a pair checks against its sigma type', () => {
     const context = contextWithSignature(data)
@@ -462,6 +499,7 @@ function main(): void {
       pair(kconst('value'), kconst('value')),
       NatPair,
     )
+
     check(context, fst(annotated), evaluate([], kconst('Nat')))
     check(context, snd(annotated), evaluate([], kconst('Nat')))
   })
@@ -470,6 +508,7 @@ function main(): void {
       ...data,
       { name: 'flag', type: kconst('Bool') },
     ])
+
     check(
       context,
       pair(kconst('value'), kconst('flag')),
@@ -488,6 +527,7 @@ function main(): void {
         refl(kconst('Nat'), kconst('value')),
         refl(kconst('Nat'), kconst('value')),
       )
+
       check(context, proof, evaluate([], identity)) // a pair of refls inhabits it, because Id computed structurally
     },
   )
@@ -502,12 +542,14 @@ function main(): void {
         { name: 'n', type: kconst('Nat') },
         { name: 'vn', type: app(kconst('Vec'), kconst('n')) },
       ]
+
       const context = contextWithSignature(signature)
       const dependent = sigma(
         'many',
         kconst('Nat'),
         app(kconst('Vec'), v(0)),
       ) // Sigma (x : Nat) Vec x
+
       const point = pair(kconst('n'), kconst('vn'))
       const identity = id(dependent, point, point)
       // a pair of refls inhabits it: the second's type Id (Vec n) (transport refl vn) vn reduces to Id (Vec n) vn vn
@@ -515,6 +557,7 @@ function main(): void {
         refl(kconst('Nat'), kconst('n')),
         refl(app(kconst('Vec'), kconst('n')), kconst('vn')),
       )
+
       check(context, proof, evaluate([], identity))
     },
   )
@@ -535,6 +578,7 @@ function main(): void {
         'many',
         evaluate([], self(kconst('Nat'))),
       )
+
       check(context, v(0), evaluate(context.env, kconst('Nat'))) // s : Self x. Nat  used at  Nat
     },
   )
@@ -549,11 +593,13 @@ function main(): void {
   ok('an inductive (Bool) is derivable as a self-type encoding', () => {
     resetMetas()
     resetDefinitions()
+
     const context = contextWithSignature([
       { name: 'Bool', type: ty(0) },
       { name: 'true', type: kconst('Bool') },
       { name: 'false', type: kconst('Bool') },
     ])
+
     const boolEncoding = self(
       pi(
         'many',
@@ -569,11 +615,14 @@ function main(): void {
         ),
       ), // P x
     )
+
     defineConstant('Bool', evaluate([], boolEncoding)) // Bool := the self-encoding (recursive reference)
+
     // the encoding is a well-formed type (its dependent eliminator is exactly application of a Bool)
     const inferred = infer(context, boolEncoding)
+
     if (inferred.type.v !== 'type')
-      throw new CoreTypeError('the Bool self-encoding is not a type')
+      {throw new CoreTypeError('the Bool self-encoding is not a type')}
   })
 
   console.log(`\njudge: ${pass} pass, ${fail} fail`)

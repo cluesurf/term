@@ -39,15 +39,18 @@ task flip
 // a hold/rule with a working proof emits no unchecked-hold warning and compiles
 function proves(source: string): boolean {
   const result = compile({ file: 'p.tree', text: source })
+
   if (!result.ok) {
     return false
   }
+
   return (result.warnings ?? []).every(d => d.name !== 'unchecked-hold')
 }
 
 // the compiled TypeScript body of the lone task in a source, for comparing two lowerings
 function loweringOf(source: string): string | undefined {
   const result = compile({ file: 'p.tree', text: source })
+
   return result.ok ? result.typescript : undefined
 }
 
@@ -60,6 +63,7 @@ task apply-twice
     call flip, read b
       link flip
 `
+
 const NESTED_TASK = `${PRELUDE}
 task apply-twice
   take b, like bit
@@ -69,6 +73,7 @@ task apply-twice
       call flip
         read b
 `
+
 const chainedTs = loweringOf(CHAINED_TASK)
 const nestedTs = loweringOf(NESTED_TASK)
 ok(
@@ -87,6 +92,7 @@ task apply-thrice
       link flip
       link flip
 `
+
 const NESTED_THRICE = `${PRELUDE}
 task apply-thrice
   take b, like bit
@@ -97,6 +103,7 @@ task apply-thrice
         call flip
           read b
 `
+
 ok(
   'three-deep chain lowers identically to nested',
   loweringOf(CHAINED_THRICE) !== undefined &&
@@ -114,6 +121,7 @@ rule flip-involution
       read b
   fold b
 `
+
 ok('chained involution proof discharges', proves(CHAINED_PROOF))
 
 // 4. A base with no inline argument still chains: read b / link flip / link flip = flip(flip(b)).
@@ -128,6 +136,7 @@ rule flip-twice-from-read
       read b
   fold b
 `
+
 ok('chain onto a bare read discharges', proves(CHAINED_FROM_READ))
 
 // 5. GENUINELY COMPUTED: a single link is NOT the identity, so this false claim must NOT prove.
@@ -141,6 +150,7 @@ rule one-flip-is-identity
       read b
   fold b
 `
+
 ok('single-link false claim is rejected', !proves(FALSE_SINGLE_LINK))
 
 // 6. REGRESSION: a constructor literally named `link` (`make link ...`) coexists with chaining, the head argument of
@@ -173,6 +183,7 @@ task one
       bind rest
         make stop
 `
+
 ok(
   'constructor named link coexists with chaining',
   loweringOf(LINK_CONSTRUCTOR) !== undefined,

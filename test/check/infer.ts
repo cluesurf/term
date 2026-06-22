@@ -5,8 +5,10 @@ import { compile } from '@cluesurf/make/code/compile/compile'
 
 let pass = 0
 let fail = 0
+
 function expectOk(name: string, source: string): void {
   const result = compile({ file: 'i.tree', text: source })
+
   if (result.ok) {
     pass++
     console.log(`ok    ${name}`)
@@ -19,8 +21,10 @@ function expectOk(name: string, source: string): void {
     )
   }
 }
+
 function expectError(name: string, source: string, code: string): void {
   const result = compile({ file: 'i.tree', text: source })
+
   if (!result.ok && result.diagnostics.some(d => d.name === code)) {
     pass++
     console.log(
@@ -114,6 +118,7 @@ task good
   send back n
 `,
     })
+
     if (
       result.ok &&
       result.warnings.some(
@@ -142,6 +147,7 @@ task good
   {
     const deadPrivate = (text: string): boolean => {
       const result = compile({ file: 'i.tree', text })
+
       return (
         result.ok &&
         result.warnings.some(
@@ -170,6 +176,7 @@ task good
         deadPrivate(publicUnused) === false,
       ],
     ]
+
     for (const [label, cond] of cases) {
       if (cond) {
         pass++
@@ -187,6 +194,7 @@ task good
       file: 'i.tree',
       text: `task clean\n  take n\n  save m, loan n\n  back m\n`,
     })
+
     if (result.ok && result.warnings.length === 0) {
       pass++
       console.log('ok    no warnings when all used')

@@ -57,19 +57,25 @@ function expect(name: string, got: unknown, want: unknown): void {
 
 async function main(): Promise<void> {
   const result = compile({ file: 'data.tree', text: SOURCE })
+
   if (!result.ok) {
     const lines = SOURCE.split('\n')
+
     for (const d of result.diagnostics)
-      console.log(render(d, lines, false))
+      {console.log(render(d, lines, false))}
+
     console.log('\ncompile/data: 0 pass, 1 fail')
+
     return
   }
+
   console.log('--- emitted TypeScript ---')
   console.log(result.typescript)
 
   const dir = mkdtempSync(join(tmpdir(), 'seed-data-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, result.typescript)
+
   const mod = (await import(pathToFileURL(file).href)) as {
     run: () => number
   }

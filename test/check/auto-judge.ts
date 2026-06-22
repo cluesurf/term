@@ -27,6 +27,7 @@ const pi = (
   domain,
   codomain,
 })
+
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const id = (type: Term, left: Term, right: Term): Term => ({
   tag: 'id',
@@ -34,6 +35,7 @@ const id = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
@@ -48,6 +50,7 @@ function holds(
 ): boolean {
   try {
     check(context, term, evaluate([], goal))
+
     return true
   } catch {
     return false
@@ -55,25 +58,27 @@ function holds(
 }
 
 // the tactic: search for a proof term for `goal` from the hypotheses.
-function auto(hyps: Array<Hyp>, goal: Term): Term | null {
+function auto(hyps: Hyp[], goal: Term): Term | null {
   const context = contextWithSignature(hyps)
 
   // 1. assumption: a hypothesis whose type is the goal.
   for (const h of hyps) {
-    if (holds(context, kc(h.name), goal)) return kc(h.name)
+    if (holds(context, kc(h.name), goal)) {return kc(h.name)}
   }
 
   // 2. reflexivity: an Id goal whose two sides are convertible.
   if (goal.tag === 'id') {
     const candidate = refl(goal.type, goal.left)
-    if (holds(context, candidate, goal)) return candidate
+
+    if (holds(context, candidate, goal)) {return candidate}
   }
 
   // 3. one-step application: a function hypothesis applied to another hypothesis.
   for (const f of hyps) {
     for (const x of hyps) {
       const candidate = app(kc(f.name), kc(x.name))
-      if (holds(context, candidate, goal)) return candidate
+
+      if (holds(context, candidate, goal)) {return candidate}
     }
   }
 
@@ -82,6 +87,7 @@ function auto(hyps: Array<Hyp>, goal: Term): Term | null {
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, found: Term | null): void {
   if (found) {
     pass++
@@ -91,6 +97,7 @@ function ok(name: string, found: Term | null): void {
     console.log(`FAIL  ${name}  (no proof found)`)
   }
 }
+
 function none(name: string, found: Term | null): void {
   if (!found) {
     pass++

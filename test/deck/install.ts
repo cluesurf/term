@@ -17,6 +17,7 @@ import { storePath } from '@cluesurf/make/code/deck/resolve'
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -75,8 +76,10 @@ function main(): void {
 
   const result = install(project, registry, storeHome)
   expect('install succeeds', result.ok, true)
+
   if (!result.ok) {
     console.log(`\ninstall: ${pass} pass, ${fail + 1} fail`)
+
     return
   }
 
@@ -119,9 +122,11 @@ function main(): void {
     true,
   )
   expect('lockfile links a and b', result.lockfile.links.length, 2)
+
   const aLink = result.lockfile.links.find(l =>
     l.ref.startsWith('@termsurf/a'),
   )
+
   expect(
     'a depends on b in lockfile',
     aLink?.deps.some(d => d.name === '@termsurf/b'),

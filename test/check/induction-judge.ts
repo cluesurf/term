@@ -24,8 +24,9 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
-const aps = (fun: Term, ...args: Array<Term>): Term =>
+const aps = (fun: Term, ...args: Term[]): Term =>
   args.reduce((f, a) => app(f, a), fun)
 
 // stepType (inside natInd, context [P, base]): forall (k:Nat). P k -> P (succ k)
@@ -76,10 +77,12 @@ const signature = [
     ),
   },
 ]
+
 const context = contextWithSignature(signature)
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()
@@ -110,25 +113,34 @@ ok('forall n. Q n, proved by induction (natInd Q qbase qstep)', () => {
 // forward-chaining search auto-discovers the induction proof.
 function search(goalTerm: Term, depth: number): Term | null {
   const goalValue = evaluate([], goalTerm)
+
   const proves = (t: Term): boolean => {
     try {
       check(context, t, goalValue)
+
       return true
     } catch {
       return false
     }
   }
+
   const seen = new Set<string>()
-  let facts: Array<Term> = signature.map(s => kc(s.name))
+
+  let facts: Term[] = signature.map(s => kc(s.name))
   facts.forEach(t => seen.add(showTerm(t)))
+
   for (let round = 0; round <= depth; round++) {
-    for (const t of facts) if (proves(t)) return t
+    for (const t of facts) {if (proves(t)) {return t}}
+
     const next = [...facts]
+
     for (const f of facts) {
       for (const x of facts) {
         const c = app(f, x)
         const k = showTerm(c)
-        if (seen.has(k)) continue
+
+        if (seen.has(k)) {continue}
+
         try {
           infer(context, c)
           seen.add(k)
@@ -138,18 +150,22 @@ function search(goalTerm: Term, depth: number): Term | null {
         }
       }
     }
+
     facts = next
   }
+
   return null
 }
 
 ok('the search auto-discovers the induction proof', () => {
   const found = search(goal, 4)
+
   if (!found || !showTerm(found).includes('natInd')) {
     throw new Error(
       `search did not find the induction proof (got ${found ? showTerm(found) : 'nothing'})`,
     )
   }
+
   console.log(`        found: ${showTerm(found)}`)
 })
 

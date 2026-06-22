@@ -13,6 +13,7 @@ import type { Program } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -27,19 +28,24 @@ function ok(name: string, cond: boolean, info = ''): void {
 // infer's own diagnostics are ignored here on purpose: we want to observe the KERNEL's independent verdict.
 function frontEnd(text: string): Program {
   const parsed = parse({ file: 't.tree', text })
+
   if (!parsed.ok)
-    throw new Error(
+    {throw new Error(
       'parse failed: ' +
         parsed.diagnostics.map(d => d.message).join('; '),
-    )
+    )}
+
   const built = mill(expandTemplates(parsed.tree), 't.tree')
+
   if (!built.ok)
-    throw new Error(
+    {throw new Error(
       'mill failed: ' +
         built.diagnostics.map(d => d.message).join('; '),
-    )
+    )}
+
   resolve(built.program, 't.tree')
   check(built.program, 't.tree')
+
   return built.program
 }
 
@@ -290,6 +296,7 @@ function main(): void {
     frontEnd(WRONG_ARGUMENT),
     't.tree',
   )
+
   ok(
     'kernel catches a wrong argument type',
     wrongArgument.diagnostics.some(d =>
@@ -319,6 +326,7 @@ function main(): void {
     frontEnd(GENERIC_MISMATCH),
     't.tree',
   )
+
   ok(
     'generic function over a shared type variable verifies',
     genericMismatch.verified.includes('pair-equal'),

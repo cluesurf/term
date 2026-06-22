@@ -10,6 +10,7 @@ let fail = 0
 
 function expectOk(name: string, source: string): void {
   const result = compile({ file: 'e.tree', text: source })
+
   if (result.ok) {
     pass++
     console.log(`ok    ${name}`)
@@ -25,6 +26,7 @@ function expectOk(name: string, source: string): void {
 
 function expectEffectError(name: string, source: string): void {
   const result = compile({ file: 'e.tree', text: source })
+
   if (
     !result.ok &&
     result.diagnostics.some(d => d.name === 'effect-error')
@@ -131,6 +133,7 @@ task kick
     call f
       loan n${await_ ? '\n      wait true' : ''}
 `
+
   expectOk(
     'async callback awaited inside an async task',
     ASYNC_CB(true, true),
@@ -174,12 +177,15 @@ task quiet
       loan n
       code 1
 `
+
   const parsed = parse({ file: 'e.tree', text: THROW })
   const built = parsed.ok
     ? mill(parsed.tree, 'e.tree')
     : { ok: false as const, diagnostics: [] }
+
   if (built.ok) {
     const rows = effectRows(built.program)
+
     const ok2 = (name: string, cond: boolean): void => {
       if (cond) {
         pass++
@@ -189,6 +195,7 @@ task quiet
         console.log(`FAIL  ${name}`)
       }
     }
+
     ok2(
       'a function that busts has the throw effect',
       rows.get('boom')?.has('throw') === true,
@@ -220,12 +227,15 @@ task quiet
     call f
       loan n
 `
+
     const parsed2 = parse({ file: 'e.tree', text: src })
     const built2 = parsed2.ok
       ? mill(parsed2.tree, 'e.tree')
       : { ok: false as const, diagnostics: [] }
+
     if (built2.ok) {
       const rows = effectRows(built2.program)
+
       const ok2 = (name: string, cond: boolean): void => {
         if (cond) {
           pass++
@@ -235,6 +245,7 @@ task quiet
           console.log(`FAIL  ${name}`)
         }
       }
+
       ok2(
         'a function calling a throwing callback inherits throw',
         rows.get('apply-it')?.has('throw') === true,

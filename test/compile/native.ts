@@ -11,6 +11,7 @@ import type { Source } from '@cluesurf/make/code/compile/load'
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -63,6 +64,7 @@ const modules = new Map<string, string>([
     'task platform-name\n  like text\n  send back, text <browser>\n',
   ],
 ])
+
 const base = (path: string): Source | undefined =>
   modules.has(path)
     ? { file: path, text: modules.get(path)! }
@@ -75,6 +77,7 @@ const node = compile(
   { file: 'public.tree', text: PUBLIC },
   { resolve: withNativeEnv('node', base) },
 )
+
 expect('compiles for the node target', node.ok, true)
 expect(
   'node target resolves the node impl',
@@ -91,6 +94,7 @@ const browser = compile(
   { file: 'public.tree', text: PUBLIC },
   { resolve: withNativeEnv('browser', base) },
 )
+
 expect('compiles for the browser target', browser.ok, true)
 expect(
   'browser target resolves the browser impl',
@@ -99,4 +103,5 @@ expect(
 )
 
 console.log(`\nnative: ${pass} pass, ${fail} fail`)
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}

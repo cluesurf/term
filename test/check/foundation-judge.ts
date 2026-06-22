@@ -24,12 +24,14 @@ const tyVar = (name: string): Term => ({
   tag: 'type',
   level: { constant: 0, vars: new Map([[name, 0]]) },
 })
+
 const pi = (mult: Mult, domain: Term, codomain: Term): Term => ({
   tag: 'pi',
   mult,
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const id = (type: Term, left: Term, right: Term): Term => ({
@@ -38,28 +40,34 @@ const id = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
+
 const sigma = (mult: Mult, domain: Term, codomain: Term): Term => ({
   tag: 'sigma',
   mult,
   domain,
   codomain,
 })
+
 const pair = (first: Term, second: Term): Term => ({
   tag: 'pair',
   first,
   second,
 })
+
 const self = (body: Term): Term => ({ tag: 'self', body })
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => boolean): void {
   let result = false
+
   try {
     result = run()
   } catch (error) {
@@ -67,8 +75,10 @@ function ok(name: string, run: () => boolean): void {
       `FAIL  ${name}\n  ${error instanceof Error ? error.message : String(error)}`,
     )
     fail++
+
     return
   }
+
   if (result) {
     pass++
     console.log(`ok    ${name}`)
@@ -77,14 +87,17 @@ function ok(name: string, run: () => boolean): void {
     console.log(`FAIL  ${name}`)
   }
 }
+
 function rejects(name: string, run: () => void): void {
   try {
     run()
   } catch {
     pass++
     console.log(`ok    ${name} (correctly rejected)`)
+
     return
   }
+
   fail++
   console.log(`FAIL  ${name} (should have been rejected)`)
 }
@@ -112,12 +125,14 @@ const regionSig = [
   { name: 'unit', type: ty(0) },
   { name: 'nothing', type: kconst('unit') },
 ]
+
 ok('a linear value is used exactly once', () => {
   check(
     contextWithSignature(regionSig),
     lam(v(0)),
     evaluate([], pi(1, kconst('R'), kconst('R'))),
   )
+
   return true
 })
 rejects('using a linear value twice is rejected', () => {
@@ -168,7 +183,9 @@ const funextType = pi(
     ),
   ),
 )
+
 void arrow
+
 const funextTerm = lam(lam(lam(lam(lam(v(0))))))
 ok('function extensionality is derivable (Id at Pi computes)', () =>
   checks(funextTerm, funextType),
@@ -180,11 +197,13 @@ ok('a dependent pair checks against its sigma type', () => {
     { name: 'Nat', type: ty(0) },
     { name: 'value', type: kconst('Nat') },
   ])
+
   check(
     context,
     pair(kconst('value'), kconst('value')),
     evaluate([], sigma('many', kconst('Nat'), kconst('Nat'))),
   )
+
   return true
 })
 
@@ -193,6 +212,7 @@ ok('a self type is a well-formed type', () => {
   const context = contextWithSignature([{ name: 'Nat', type: ty(0) }])
   // Self x. Nat  :  Type0   (a trivial self type, formation only)
   check(context, self(kconst('Nat')), evaluate([], ty(0)))
+
   return true
 })
 
@@ -213,6 +233,7 @@ ok('equality is symmetric (Id A x y -> Id A y x), proved by J', () => {
     { name: 'y', type: kconst('A') },
     { name: 'p', type: id(kconst('A'), kconst('x'), kconst('y')) },
   ])
+
   const motive = lam(lam(id(kconst('A'), v(1), kconst('x'))))
   const base = refl(kconst('A'), kconst('x'))
   const proofTerm = jay(kconst('p'), motive, base, 0)
@@ -221,6 +242,7 @@ ok('equality is symmetric (Id A x y -> Id A y x), proved by J', () => {
     proofTerm,
     evaluate([], id(kconst('A'), kconst('y'), kconst('x'))),
   )
+
   return true
 })
 
@@ -235,10 +257,12 @@ ok('transport along equality (P x -> P y), proved by J', () => {
     { name: 'p', type: id(kconst('A'), kconst('x'), kconst('y')) },
     { name: 'px', type: app(kconst('P'), kconst('x')) },
   ])
+
   const motive = lam(lam(app(kconst('P'), v(1))))
   const base = kconst('px')
   const proofTerm = jay(kconst('p'), motive, base, 0)
   check(context, proofTerm, evaluate([], app(kconst('P'), kconst('y'))))
+
   return true
 })
 
@@ -255,6 +279,7 @@ ok(
       { name: 'p', type: id(kconst('A'), kconst('x'), kconst('y')) },
       { name: 'q', type: id(kconst('A'), kconst('y'), kconst('z')) },
     ])
+
     const motive = lam(lam(id(kconst('A'), kconst('x'), v(1))))
     const base = kconst('p')
     const proofTerm = jay(kconst('q'), motive, base, 0)
@@ -263,6 +288,7 @@ ok(
       proofTerm,
       evaluate([], id(kconst('A'), kconst('x'), kconst('z'))),
     )
+
     return true
   },
 )
@@ -278,6 +304,7 @@ ok('equality is a congruence (f respects =), proved by J', () => {
     { name: 'y', type: kconst('A') },
     { name: 'p', type: id(kconst('A'), kconst('x'), kconst('y')) },
   ])
+
   const motive = lam(
     lam(
       id(
@@ -287,6 +314,7 @@ ok('equality is a congruence (f respects =), proved by J', () => {
       ),
     ),
   )
+
   const base = refl(kconst('B'), app(kconst('f'), kconst('x')))
   const proofTerm = jay(kconst('p'), motive, base, 0)
   check(
@@ -301,6 +329,7 @@ ok('equality is a congruence (f respects =), proved by J', () => {
       ),
     ),
   )
+
   return true
 })
 
@@ -316,6 +345,7 @@ ok(
       { name: 'n', type: kconst('Nat') },
       { name: 'p', type: id(kconst('Nat'), kconst('m'), kconst('n')) },
     ])
+
     const motive = lam(
       lam(
         id(
@@ -325,6 +355,7 @@ ok(
         ),
       ),
     )
+
     const base = refl(kconst('Nat'), app(kconst('succ'), kconst('m')))
     const proofTerm = jay(kconst('p'), motive, base, 0)
     check(
@@ -339,6 +370,7 @@ ok(
         ),
       ),
     )
+
     return true
   },
 )
@@ -351,12 +383,14 @@ ok(
       { name: 'P', type: ty(0) },
       { name: 'A', type: ty(0) },
     ])
+
     // \ (0 p : P). \ (1 x : A). x   :   (0 _ : P) -> (1 x : A) -> A
     check(
       context,
       lam(lam(v(0))),
       evaluate([], pi(0, kconst('P'), pi(1, kconst('A'), kconst('A')))),
     )
+
     return true
   },
 )
@@ -369,4 +403,5 @@ function main(): void {
   void bind
   void emptyContext
 }
+
 main()

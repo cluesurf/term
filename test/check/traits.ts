@@ -8,6 +8,7 @@ let fail = 0
 
 function expectOk(name: string, source: string, needle?: string): void {
   const result = compile({ file: 't.tree', text: source })
+
   if (result.ok && (!needle || result.typescript.includes(needle))) {
     pass++
     console.log(`ok    ${name}`)
@@ -25,6 +26,7 @@ function expectOk(name: string, source: string, needle?: string): void {
 
 function expectError(name: string, source: string, code: string): void {
   const result = compile({ file: 't.tree', text: source })
+
   if (!result.ok && result.diagnostics.some(d => d.name === code)) {
     pass++
     console.log(

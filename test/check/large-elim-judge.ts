@@ -25,6 +25,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const sigma = (m: Mult, domain: Term, codomain: Term): Term => ({
   tag: 'sigma',
   mult: m,
@@ -42,9 +43,11 @@ const context = contextWithSignature([
 
 let pass = 0
 let fail = 0
+
 function expectLevel(name: string, typeTerm: Term, want: number): void {
   try {
     const universe = infer(context, typeTerm).type
+
     if (
       universe.v === 'type' &&
       universe.level.constant === want &&
@@ -54,10 +57,12 @@ function expectLevel(name: string, typeTerm: Term, want: number): void {
       console.log(`ok    ${name} (Type ${want})`)
     } else {
       fail++
+
       const got =
         universe.v === 'type'
           ? `Type ${universe.level.constant}`
           : universe.v
+
       console.log(`FAIL  ${name} (wanted Type ${want}, got ${got})`)
     }
   } catch (error) {
@@ -67,6 +72,7 @@ function expectLevel(name: string, typeTerm: Term, want: number): void {
     )
   }
 }
+
 function rejects(name: string, run: () => void): void {
   try {
     run()
@@ -115,8 +121,9 @@ rejects(
     // a value of type Type0 whose own type is Type0 would be Type : Type. Type0 has type Type1, so checking it AT
     // Type0 must fail.
     const universe = infer(context, ty(0)).type
+
     if (!(universe.v === 'type' && universe.level.constant === 0))
-      throw new Error('Type 0 is not in Type 0')
+      {throw new Error('Type 0 is not in Type 0')}
   },
 )
 

@@ -13,6 +13,7 @@ import type { Program } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -25,11 +26,16 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 function frontEnd(text: string): Program {
   const parsed = parse({ file: 'b.tree', text })
-  if (!parsed.ok) throw new Error('parse failed')
+
+  if (!parsed.ok) {throw new Error('parse failed')}
+
   const built = mill(parsed.tree, 'b.tree')
-  if (!built.ok) throw new Error('mill failed')
+
+  if (!built.ok) {throw new Error('mill failed')}
+
   resolve(built.program, 'b.tree')
   check(built.program, 'b.tree')
+
   return built.program
 }
 
@@ -224,6 +230,7 @@ task danger
   const strings = frontEnd(
     'task greeting\n  like text\n  send back\n    call add\n      text <hi >\n      text <there>\n',
   )
+
   const llvmStr = emitLlvm(strings)
   ok(
     'llvm: declares the string runtime',

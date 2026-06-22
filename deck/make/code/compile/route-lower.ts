@@ -38,7 +38,7 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     return program
   }
 
-  const span: Span = routes[0].span
+  const span: Span = routes[0]!.span
 
   const variable = (name: string): Expression => ({
     form: 'variable',
@@ -194,7 +194,7 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
   }
 
   // drop the route statements; append the dispatcher and the boot
-  const out = program.filter(node => !isWebRoute(node))
+  const out: Program = program.filter(node => !isWebRoute(node))
   out.push(router, boot)
 
   // the browser build auto-runs the app on load (`boot("", 0)`); the node build leaves `boot` exported for `seed boot`

@@ -13,6 +13,7 @@ import type { Program } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -30,10 +31,15 @@ function manyFunctions(count: number): Program {
     (_, i) =>
       `task f${i}\n  take n, like number\n  like number\n  send back\n    read n\n`,
   ).join('\n')
+
   const parsed = parse({ file: 'many.tree', text: source })
-  if (!parsed.ok) throw new Error('parse failed')
+
+  if (!parsed.ok) {throw new Error('parse failed')}
+
   const milled = mill(parsed.tree, 'many.tree')
-  if (!milled.ok) throw new Error('mill failed')
+
+  if (!milled.ok) {throw new Error('mill failed')}
+
   return milled.program
 }
 
@@ -56,6 +62,7 @@ async function main(): Promise<void> {
 
   // pooled: real worker threads
   const pool = new WorkerPool(3)
+
   try {
     const pooled = await emitProgramParallel(
       program,
@@ -85,10 +92,12 @@ async function main(): Promise<void> {
       buildGlobalScope,
       pool,
     )
+
     const inline2 = await emitProgramParallel(
       program2,
       buildGlobalScope,
     )
+
     ok(
       'a second pooled build (warm workers, new revision) matches inline',
       pooled2.ts === inline2.ts,
@@ -98,7 +107,8 @@ async function main(): Promise<void> {
   }
 
   console.log(`\nworker-pool: ${pass} pass, ${fail} fail`)
-  if (fail > 0) process.exit(1)
+
+  if (fail > 0) {process.exit(1)}
 }
 
 void main()

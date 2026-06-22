@@ -517,10 +517,11 @@ export function mill(tree: RootNode, file: string): MillResult {
   ): Expression {
     const parts = rest(linkGroup)
     const fnNode = parts[0]
-    const fnName = fnNode?.kind === 'group' ? headName(fnNode) : ''
+    const fnName =
+      fnNode?.kind === 'group' ? headName(fnNode) ?? '' : ''
     const span = spanOf(linkGroup)
 
-    const extra = parts.slice(1).map(part => {
+    const extra = parts.slice(1).map((part): Expression => {
       if (part.kind === 'group' && headName(part) === 'bind') {
         const bound = rest(part)[1]
 
@@ -2131,14 +2132,17 @@ export function mill(tree: RootNode, file: string): MillResult {
       result = { kind: 'named', name: 'boolean' }
     }
 
+    // a named constant binds the term `name` directly to the value `value` (a number, string, list, record, function
+    // value -- anything). It is an immutable top-level `let` (`const name = value`), NOT a nullary function: `read name`
+    // then yields the value itself, and a `make list` / `make <record>` constant is a single shared singleton evaluated
+    // once (so a module-level stack / cell is one cell, not a fresh one per read).
     return {
-      form: 'function',
+      form: 'let',
       name,
-      params: [],
-      body: [{ form: 'return', value, span: spanOf(valueNode) }],
-      result,
-      generics: [],
+      init: value,
+      mutable: false,
       span: spanOf(group),
+      ...(result ? { type: result } : {}),
     }
   }
 
@@ -3490,8 +3494,8 @@ export function mill(tree: RootNode, file: string): MillResult {
         program.push(fn)
       }
     } else if (keyword === 'host') {
-      // `host <name>, <value>` at the top level is a named constant (a nullary function). A value-less foreign global
-      // falls through to the body builder, which records it as an ambient binding.
+      // `host <name>, <value>` at the top level is a named constant: an immutable binding to the value (any type). A
+      // value-less foreign global falls through to the body builder, which records it as an ambient binding.
       const constant = buildHostConstant(group)
 
       if (constant) {

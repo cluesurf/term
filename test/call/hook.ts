@@ -9,9 +9,11 @@ import {
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   const g = JSON.stringify(got)
   const w = JSON.stringify(want)
+
   if (g === w) {
     pass++
     console.log(`ok    ${name}`)
@@ -58,6 +60,7 @@ hook lock
 
 function main(): void {
   const r = compile({ file: 'cli.tree', text: SRC }, {})
+
   if (!r.ok) {
     console.log(
       'FAIL compile',
@@ -65,6 +68,7 @@ function main(): void {
     )
     process.exit(1)
   }
+
   const routes = commandRoutes(r.program)
   expect('top-level commands', routes.map(c => c.path).sort(), [
     'load',
@@ -105,12 +109,14 @@ function main(): void {
     make.takes.find(t => t.name === 'title')?.short,
     't',
   )
+
   const g = dispatch(routes, ['make', '-t', 'Hello'])
   expect(
     'short flag dispatches to full name',
     g.ok && g.args.title,
     'Hello',
   )
+
   const g2 = dispatch(routes, ['make', '-t=Hi'])
   expect('short flag = value', g2.ok && g2.args.title, 'Hi')
 
@@ -127,7 +133,8 @@ function main(): void {
   expect('unknown command rejected', f.ok, false)
 
   console.log(`\nhook: ${pass} pass, ${fail} fail`)
-  if (fail) process.exit(1)
+
+  if (fail) {process.exit(1)}
 }
 
 main()

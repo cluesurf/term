@@ -24,6 +24,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const self = (body: Term): Term => ({ tag: 'self', body })
@@ -33,12 +34,14 @@ const idt = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
-const aps = (f: Term, ...a: Array<Term>): Term =>
+
+const aps = (f: Term, ...a: Term[]): Term =>
   a.reduce((g, x) => app(g, x), f)
 
 // ===== the naturals: Nat = Self n. (P:Nat->Type0) -> P zero -> ((k:Nat) -> P k -> P (succ k)) -> P n =====
@@ -47,6 +50,7 @@ const natStep = pi(
   kc('Nat'),
   pi('many', app(v(2), v(0)), app(v(3), app(kc('succ'), v(1)))),
 )
+
 const natBody = pi(
   0,
   pi('many', kc('Nat'), ty(0)),
@@ -56,6 +60,7 @@ const natBody = pi(
     pi('many', natStep, app(v(2), v(3))),
   ),
 )
+
 const natTerm = self(natBody)
 const zeroValue = lam(lam(lam(v(1))))
 const succValue = lam(
@@ -76,6 +81,7 @@ const intBody = pi(
     ),
   ),
 )
+
 const intTerm = self(intBody)
 const posValue = lam(lam(lam(lam(app(v(1), v(3)))))) // \ n P p q. p n
 const negSuccValue = lam(lam(lam(lam(app(v(0), v(3)))))) // \ n P p q. q n
@@ -94,6 +100,7 @@ const negPosCase = lam(
     lam(lam(app(kc('negSucc'), v(1)))),
   ),
 )
+
 const negNegCase = lam(app(kc('pos'), app(kc('succ'), v(0))))
 const negValue = lam(
   aps(v(0), intMotive, kc('negPosCase'), kc('negNegCase')),
@@ -111,6 +118,7 @@ const isuccNegCase = lam(
     lam(lam(app(kc('negSucc'), v(1)))),
   ),
 )
+
 const isuccValue = lam(
   aps(v(0), intMotive, kc('isuccPosCase'), kc('isuccNegCase')),
 )
@@ -130,6 +138,7 @@ const context = contextWithSignature([
   { name: 'isuccPosCase', type: natToInt },
   { name: 'isuccNegCase', type: natToInt },
 ])
+
 defineConstant('Nat', evaluate([], natTerm))
 defineConstant('zero', evaluate([], zeroValue))
 defineConstant('succ', evaluate([], succValue))
@@ -151,6 +160,7 @@ const negOne = app(kc('negSucc'), kc('zero')) // -(0+1) = -1
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()
@@ -163,6 +173,7 @@ function ok(name: string, run: () => void): void {
     )
   }
 }
+
 function computes(name: string, lhs: Term, rhs: Term): void {
   ok(name, () => {
     check(

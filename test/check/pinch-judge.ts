@@ -20,6 +20,7 @@ const pi = (m: 0 | 1 | 'many', domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const id = (type: Term, left: Term, right: Term): Term => ({
   tag: 'id',
@@ -27,7 +28,8 @@ const id = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
-const aps = (fun: Term, ...args: Array<Term>): Term =>
+
+const aps = (fun: Term, ...args: Term[]): Term =>
   args.reduce((f, a) => app(f, a), fun)
 
 // Le a b  =  the order relation "a is at most b" on dimensions.
@@ -67,10 +69,12 @@ const signature = [
   // the one-substance floor: 8 <= dimension
   { name: 'floor', type: le(kc('eight'), kc('dimension')) },
 ]
+
 const context = contextWithSignature(signature)
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()
@@ -83,6 +87,7 @@ function ok(name: string, run: () => void): void {
     )
   }
 }
+
 function rejects(name: string, run: () => void): void {
   try {
     run()
@@ -102,6 +107,7 @@ const pinchProof = aps(
   kc('ceiling'),
   kc('floor'),
 )
+
 const pinchGoal = id(kc('Dim'), kc('dimension'), kc('eight'))
 
 ok(

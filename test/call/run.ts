@@ -14,6 +14,7 @@ import { compileProject } from '@cluesurf/call/code/make'
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -38,6 +39,7 @@ writeFileSync(
 const good = compileProject(root)
 expect('compiles the project file', good.compiled, 1)
 expect('reports no failures', good.failed, 0)
+
 const out = join(root, 'host', 'code', 'double.ts')
 expect('writes emitted TypeScript under host/', existsSync(out), true)
 expect(
@@ -52,6 +54,7 @@ writeFileSync(
   join(root, 'code', 'broken.tree'),
   'task broken\n  send back\n    read missing-name\n',
 )
+
 const mixed = compileProject(root)
 expect('reports the broken file as a failure', mixed.failed, 1)
 expect('still compiles the good file', mixed.compiled, 1)
@@ -62,4 +65,5 @@ expect(
 )
 
 console.log(`\ncall: ${pass} pass, ${fail} fail`)
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}

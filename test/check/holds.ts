@@ -8,6 +8,7 @@ let fail = 0
 
 function expectOk(name: string, source: string): void {
   const result = compile({ file: 'h.tree', text: source })
+
   if (result.ok) {
     pass++
     console.log(`ok    ${name}`)
@@ -23,6 +24,7 @@ function expectOk(name: string, source: string): void {
 
 function expectUnproven(name: string, source: string): void {
   const result = compile({ file: 'h.tree', text: source })
+
   if (
     !result.ok &&
     result.diagnostics.some(d => d.name === 'unproven')
@@ -46,6 +48,7 @@ function expectWarning(
 ): void {
   const result = compile({ file: 'h.tree', text: source })
   const warnings = result.ok ? result.warnings : []
+
   if (result.ok && warnings.some(d => d.name === code)) {
     pass++
     console.log(
@@ -66,6 +69,7 @@ function expectWarning(
 function expectDischarged(name: string, source: string): void {
   const result = compile({ file: 'h.tree', text: source })
   const warnings = result.ok ? result.warnings : []
+
   if (result.ok && !warnings.some(d => d.name === 'unchecked-hold')) {
     pass++
     console.log(`ok    ${name}`)

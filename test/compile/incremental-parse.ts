@@ -9,6 +9,7 @@ import {
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -55,6 +56,7 @@ function main(): void {
   // editing one definition re-parses only that one; the others are reused (re-positioned by a span shift)
   const cache = new Map()
   incrementalParse('f.tree', src, cache)
+
   const edited = src.replace('code 2', 'code 99')
   const re = incrementalParse('f.tree', edited, cache)
   ok(

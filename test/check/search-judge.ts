@@ -25,6 +25,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const id = (type: Term, left: Term, right: Term): Term => ({
   tag: 'id',
@@ -32,17 +33,19 @@ const id = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
-const aps = (fun: Term, ...args: Array<Term>): Term =>
+
+const aps = (fun: Term, ...args: Term[]): Term =>
   args.reduce((f, a) => app(f, a), fun)
 
 // the forward-chaining search.
 function search(
-  hyps: Array<Hyp>,
+  hyps: Hyp[],
   goal: Term,
   depth: number,
 ): Term | null {
@@ -52,6 +55,7 @@ function search(
   const proves = (term: Term): boolean => {
     try {
       check(context, term, goalValue)
+
       return true
     } catch {
       return false
@@ -61,12 +65,15 @@ function search(
   // reflexivity closes a reflexive Id goal outright.
   if (goal.tag === 'id') {
     const r = refl(goal.type, goal.left)
-    if (proves(r)) return r
+
+    if (proves(r)) {return r}
   }
 
   // the working set of kernel-typed terms, deduped by printed form.
   const seen = new Set<string>()
-  let facts: Array<Term> = []
+
+  let facts: Term[] = []
+
   for (const h of hyps) {
     const t = kc(h.name)
     facts.push(t)
@@ -74,13 +81,17 @@ function search(
   }
 
   for (let round = 0; round <= depth; round++) {
-    for (const t of facts) if (proves(t)) return t
-    const next: Array<Term> = [...facts]
+    for (const t of facts) {if (proves(t)) {return t}}
+
+    const next: Term[] = [...facts]
+
     for (const f of facts) {
       for (const x of facts) {
         const candidate = app(f, x)
         const key = showTerm(candidate)
-        if (seen.has(key)) continue
+
+        if (seen.has(key)) {continue}
+
         try {
           infer(context, candidate) // only keep well-typed applications
           seen.add(key)
@@ -90,14 +101,18 @@ function search(
         }
       }
     }
+
     facts = next
   }
-  for (const t of facts) if (proves(t)) return t
+
+  for (const t of facts) {if (proves(t)) {return t}}
+
   return null
 }
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, found: Term | null, expect?: string): void {
   if (found && (!expect || showTerm(found).includes(expect))) {
     pass++
@@ -156,6 +171,7 @@ const antisymType = pi(
     ),
   ),
 )
+
 ok(
   'search auto-discovers the pinch-point proof (antisym applied to ceiling and floor)',
   search(

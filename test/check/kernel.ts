@@ -148,6 +148,7 @@ let fail = 0
 
 function main(): void {
   const results = checkBook(book)
+
   for (const result of results) {
     if (result.ok) {
       pass++
@@ -160,6 +161,7 @@ function main(): void {
 
   // a deliberate type mismatch must be caught: a value annotated as `true` re-annotated as `false`
   let caught = false
+
   try {
     normal(
       book,
@@ -171,6 +173,7 @@ function main(): void {
   } catch (error) {
     caught = error instanceof TypeMismatch
   }
+
   if (caught) {
     pass++
     console.log('ok    rejects a bad annotation')

@@ -9,8 +9,10 @@ import {
   above,
   proves,
 } from '@cluesurf/make/code/check/refine'
+
 let pass = 0,
   fail = 0
+
 const ok = (n: string, c: boolean) => {
   if (c) {
     pass++
@@ -20,6 +22,7 @@ const ok = (n: string, c: boolean) => {
     console.log('FAIL ', n)
   }
 }
+
 const V = (v: string) => linear({ [v]: 1 })
 const N = (k: number) => linear({}, k)
 ok(
@@ -80,6 +83,7 @@ ok(
   'NOT: a<=5 => a<=4',
   !proves([atMost(V('a'), N(5))], atMost(V('a'), N(4))),
 )
+
 const t0 = Date.now()
 ok(
   'stress: 20-var chain x0<=x20',

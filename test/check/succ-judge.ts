@@ -23,6 +23,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const self = (body: Term): Term => ({ tag: 'self', body })
@@ -32,12 +33,14 @@ const idt = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
-const aps = (f: Term, ...a: Array<Term>): Term =>
+
+const aps = (f: Term, ...a: Term[]): Term =>
   a.reduce((g, x) => app(g, x), f)
 
 // the step case inside the Nat body: (k : Nat) -> P k -> P (succ k)
@@ -46,6 +49,7 @@ const stepInBody = pi(
   kc('Nat'),
   pi('many', app(v(2), v(0)), app(v(3), app(kc('succ'), v(1)))),
 )
+
 // Nat = Self n. (P : Nat -> Type0) -> P zero -> ((k:Nat) -> P k -> P (succ k)) -> P n
 const natBody = pi(
   0,
@@ -56,6 +60,7 @@ const natBody = pi(
     pi('many', stepInBody, app(v(2), v(3))),
   ),
 )
+
 const natTerm = self(natBody)
 
 // zero = \ P z s. z      and the REAL successor   succ = \ m P z s. s m (m P z s)
@@ -83,6 +88,7 @@ const signature = [
     ),
   },
 ]
+
 const context = contextWithSignature(signature)
 defineConstant('Nat', evaluate([], natTerm))
 defineConstant('zero', evaluate([], zeroTerm))
@@ -90,6 +96,7 @@ defineConstant('succ', evaluate([], succTerm))
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()

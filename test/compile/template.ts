@@ -6,19 +6,24 @@ import { compile } from '@cluesurf/make/code/compile/compile'
 
 let pass = 0
 let fail = 0
+
 function expectContains(
   name: string,
   source: string,
   needle: string,
 ): void {
   const parsed = parse({ file: 't.tree', text: source })
+
   if (!parsed.ok) {
     fail++
     console.log(`FAIL  ${name}  (did not parse)`)
+
     return
   }
+
   const expanded = expandTemplates(parsed.tree)
   const text = printTree(expanded)
+
   if (text.includes(needle)) {
     pass++
     console.log(`ok    ${name}  (has "${needle}")`)
@@ -37,7 +42,9 @@ function expectAbsent(
   const expanded = parsed.ok
     ? expandTemplates(parsed.tree)
     : { kind: 'root' as const, nodes: [] }
+
   const text = printTree(expanded)
+
   if (!text.includes(needle)) {
     pass++
     console.log(`ok    ${name}  (no "${needle}", as expected)`)
@@ -122,7 +129,9 @@ function main(): void {
 fuse make-adder
   bind suffix, one
 `
+
   const cleanResult = compile({ file: 'tmpl.tree', text: cleanFuse })
+
   if (cleanResult.ok && cleanResult.typescript.includes('addOne')) {
     pass++
     console.log(
@@ -164,7 +173,9 @@ tree each
 fuse each, read suit
   read make-flag
 `
+
   const metaResult = compile({ file: 'meta.tree', text: metaLoop })
+
   if (
     metaResult.ok &&
     metaResult.typescript.includes('isHearts') &&
@@ -200,7 +211,9 @@ fuse each, read suit
 fuse bad-tmpl
   bind x, one
 `
+
   const badResult = compile({ file: 'tmpl.tree', text: badFuse })
+
   if (
     !badResult.ok &&
     badResult.diagnostics.some(d => d.name === 'type-mismatch')

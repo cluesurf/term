@@ -6,6 +6,7 @@ import type { Type } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, cond: boolean, info = ''): void {
   if (cond) {
     pass++
@@ -65,6 +66,7 @@ const STRING: Type = { kind: 'string' }
     ) && s.resolve(v).kind === 'number',
   )
 }
+
 {
   const s = new Substitution()
   const v = s.fresh()
@@ -74,6 +76,7 @@ const STRING: Type = { kind: 'string' }
     params: [NUMBER],
     result: STRING,
   }
+
   ok(
     'functions unify param + result',
     s.unify(f1, f2) && s.resolve(v).kind === 'number',
@@ -102,6 +105,7 @@ const STRING: Type = { kind: 'string' }
     start: { line: 1, column: 0 },
     end: { line: 1, column: 1 },
   }
+
   s.unify(v, NUMBER, span)
   ok(
     'origin records the solving span',
@@ -110,4 +114,5 @@ const STRING: Type = { kind: 'string' }
 }
 
 console.log(`\nsubstitution: ${pass} pass, ${fail} fail`)
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}

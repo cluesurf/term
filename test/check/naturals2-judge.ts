@@ -22,6 +22,7 @@ const pi = (m: Mult, domain: Term, codomain: Term): Term => ({
   domain,
   codomain,
 })
+
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const ann = (term: Term, type: Term): Term => ({
@@ -29,6 +30,7 @@ const ann = (term: Term, type: Term): Term => ({
   term,
   type,
 })
+
 const self = (body: Term): Term => ({ tag: 'self', body })
 const idt = (type: Term, left: Term, right: Term): Term => ({
   tag: 'id',
@@ -36,12 +38,14 @@ const idt = (type: Term, left: Term, right: Term): Term => ({
   left,
   right,
 })
+
 const refl = (type: Term, value: Term): Term => ({
   tag: 'refl',
   type,
   value,
 })
-const aps = (f: Term, ...a: Array<Term>): Term =>
+
+const aps = (f: Term, ...a: Term[]): Term =>
   a.reduce((g, x) => app(g, x), f)
 
 // inside `self n. body`, the self value n is v(0); after binding P, the zero-case, and the step, indices shift.
@@ -66,6 +70,7 @@ const natBody = pi(
     pi('many', stepInBody, app(v(2), v(3))), // P n   (P = v2, n = v3)
   ),
 )
+
 const natTerm = self(natBody)
 
 // Nat body with the self value replaced by zero (the unfolded type of zero), used as the coercion target.
@@ -101,6 +106,7 @@ const signature = [
     ),
   },
 ]
+
 const context = contextWithSignature(signature)
 // alias the constant Nat to the self type itself, so the self value and the constant Nat are convertible.
 defineConstant('Nat', evaluate([], natTerm))
@@ -108,6 +114,7 @@ defineConstant('zero', evaluate([], zeroTerm))
 
 let pass = 0
 let fail = 0
+
 function ok(name: string, run: () => void): void {
   try {
     run()
@@ -141,6 +148,7 @@ ok("zero's eliminator computes to the base case", () => {
     kc('base'),
     kc('step'),
   )
+
   const T = app(kc('M'), kc('zero'))
   check(
     context,

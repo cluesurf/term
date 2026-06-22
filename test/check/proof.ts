@@ -13,6 +13,7 @@ function expectProved(name: string, source: string): void {
   const bad = result.ok
     ? result.warnings.filter(d => d.name === 'unchecked-hold')
     : result.diagnostics
+
   if (result.ok && bad.length === 0) {
     pass++
     console.log(`ok    ${name}`)
@@ -31,6 +32,7 @@ function expectProved(name: string, source: string): void {
 
 function expectInvalidProof(name: string, source: string): void {
   const result = compile({ file: 'p.tree', text: source })
+
   if (
     !result.ok &&
     result.diagnostics.some(d => d.name === 'invalid-proof')

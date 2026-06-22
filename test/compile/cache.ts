@@ -17,6 +17,7 @@ import * as nodePath from 'node:path'
 
 let pass = 0
 let fail = 0
+
 function expect(name: string, got: unknown, want: unknown): void {
   if (got === want) {
     pass++
@@ -45,9 +46,11 @@ const helper: Source = {
   file: 'helper.tree',
   text: `task triple\n  take n, like number\n  like number\n  back\n    call multiply\n      read n\n      code 3\n`,
 }
+
 function entryText(constant: number): string {
   return `load @app/helper\n  find triple\n\ntask run\n  like number\n  back\n    call triple\n      mark ${constant}\n`
 }
+
 const resolve = (path: string): Source | undefined =>
   path === '@app/helper' ? helper : undefined
 
@@ -81,16 +84,19 @@ const first = compile(
   { file: 'entry.tree', text: entryText(5) },
   { resolve, cache: graph },
 )
+
 expect(
   'graph: first compile of the loaded program succeeds',
   first.ok,
   true,
 )
+
 const millMissesAfterFirst = graph.misses
 const second = compile(
   { file: 'entry.tree', text: entryText(9) },
   { resolve, cache: graph },
 )
+
 expect('graph: editing the entry still compiles', second.ok, true)
 // the entry changed (new graph key, new entry mill) but the helper text is identical: exactly one new mill miss for
 // the entry, plus one output miss for the new graph key. The helper mill is a hit, not a miss.
@@ -124,6 +130,7 @@ expect(
 // an in-memory CacheStore standing in for `.seed/cache`, so a second cache simulates a cold process sharing the store
 function memStore(): CacheStore {
   const map = new Map<string, string>()
+
   return {
     load: (kind, key) => map.get(`${kind}/${key}`),
     save: (kind, key, value) => {
@@ -139,11 +146,13 @@ const warmResult = compile(
   { file: 'p.tree', text: DOUBLE },
   { cache: warm },
 )
+
 const cold = new CompileCache(store, 'v1')
 const coldResult = compile(
   { file: 'p.tree', text: DOUBLE },
   { cache: cold },
 )
+
 expect('persist: cold cache rebuilds nothing', cold.misses, 0)
 expect('persist: cold cache hits the store', cold.diskHits > 0, true)
 expect(
@@ -175,6 +184,7 @@ compile(
   { file: 'd.tree', text: DOUBLE },
   { cache: new CompileCache(disk, 'v1') },
 )
+
 const diskCold = new CompileCache(disk, 'v1')
 compile({ file: 'd.tree', text: DOUBLE }, { cache: diskCold })
 expect(
@@ -185,4 +195,5 @@ expect(
 fs.rmSync(dir, { recursive: true, force: true })
 
 console.log(`\ncache: ${pass} pass, ${fail} fail`)
-if (fail > 0) process.exit(1)
+
+if (fail > 0) {process.exit(1)}
