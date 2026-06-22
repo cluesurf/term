@@ -69,6 +69,9 @@ export function check(
   const fieldNick = new Map<string, Map<string, string>>()
   // enum variant sets (for exhaustiveness) and variant -> enum (so `make red` is typed as its enum)
   const enums = new Map<string, Set<string>>()
+  // for an indexed family: enum name -> (variant -> the head name of its first output index, e.g. `vnil -> zero`,
+  // `vcons -> succ`). Lets a match on a constructor-headed index omit the variants that cannot occur there.
+  const familyVariantIndexHead = new Map<string, Map<string, string>>()
   const variantEnum = new Map<string, string>()
   // a variant's surface name -> every enum that declares it. An overloaded constructor (a name shared by two enums,
   // e.g. `minus` on both `pole` and `spin`) is typed leniently here (a fresh variable) and resolved by the kernel,
@@ -102,10 +105,18 @@ export function check(
 
       if (statement.variants.length > 0) {
         const set = new Set<string>()
+        const indexHeads = new Map<string, string>()
 
         for (const variant of statement.variants) {
           set.add(variant.name)
           variantEnum.set(variant.name, statement.name)
+
+          // record this variant's output-index head (for inversion's exhaustiveness relaxation)
+          const indexValue = variant.indexValues?.[0]
+
+          if (indexValue?.form === 'record') {
+            indexHeads.set(variant.name, indexValue.name)
+          }
 
           const owners = variantOwners.get(variant.name) ?? []
           owners.push(statement.name)
@@ -121,6 +132,10 @@ export function check(
         }
 
         enums.set(statement.name, set)
+
+        if (indexHeads.size > 0) {
+          familyVariantIndexHead.set(statement.name, indexHeads)
+        }
       }
     }
   }
@@ -1007,7 +1022,27 @@ export function check(
           }
 
           if (!node.otherwise) {
-            const missing = [...variants].filter(v => !covered.has(v))
+            // INVERSION: when the subject is an indexed family at a CONSTRUCTOR-headed index (`vec (succ n)`), the
+            // variants whose output-index head differs are IMPOSSIBLE there and may be omitted (the kernel fills them).
+            const indexHeads = familyVariantIndexHead.get(subjectType.name)
+            const subjectIndexHead =
+              subjectType.valueArgs?.[0]?.form === 'record'
+                ? subjectType.valueArgs[0].name
+                : undefined
+
+            const reachable = (v: string): boolean => {
+              if (!indexHeads || !subjectIndexHead) {
+                return true // not an inverted match: every variant is required
+              }
+
+              const head = indexHeads.get(v)
+
+              return head === undefined || head === subjectIndexHead
+            }
+
+            const missing = [...variants].filter(
+              v => !covered.has(v) && reachable(v),
+            )
 
             if (missing.length > 0) {
               diagnostics.push(

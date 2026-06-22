@@ -16,20 +16,20 @@
   },
   "prettier": "@cluesurf/wash/flow.json",
   "devDependencies": {
-    "@cluesurf/wash": "0.8.0",
+    "@cluesurf/wash": "0.9.0",
     "@types/lodash": "4.17.23",
     "@types/node": "25.2.3",
-    "concurrently": "9.2.1",
-    "lodash": "4.17.23",
-    "playwright": "^1.58.2",
-    "prettier": "3.8.1",
+    "concurrently": "10.0.3",
+    "lodash": "4.18.1",
+    "playwright": "^1.61.0",
+    "prettier": "3.8.4",
     "ts-node": "^10.9.2",
-    "tsc-alias": "1.8.16",
-    "tsx": "4.21.0",
+    "tsc-alias": "1.8.17",
+    "tsx": "4.22.4",
     "typescript": "5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.9"
   },
   "dependencies": {
-    "ws": "^8.19.0"
+    "ws": "^8.21.0"
   }
 }

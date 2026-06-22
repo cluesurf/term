@@ -295,5 +295,87 @@ ${ONE}
 `),
 )
 
+// INVERSION: a total `head : (n) -> vecnat (succ n) -> nat` that handles ONLY the `vcons` case. At a `succ`-headed
+// index the `vnil` case is impossible, so it may be omitted -- the match auto-discharges it via a discriminator motive
+// (impossible index -> Unit) built on the large eliminator. This is the convoy/inversion that makes a total head/tail
+// expressible.
+const HEAD = `${MATCH_PRELUDE}
+task head
+  take n, like nat
+  take v, like vecnat
+    head
+      make succ
+        bind prior
+          read n
+  like nat
+  fork case, read v
+    case vcons
+      link count
+      link item
+      link rest
+      send back
+        read item
+`
+
+const HEAD_CALL = `call head
+        make zero
+        make vcons
+          bind count
+            make zero
+          bind item
+            make succ
+              bind prior
+                make zero
+          bind rest
+            make vnil`
+
+// 10. total head: head of the length-1 vector [1] reduces to 1, with the empty case omitted.
+ok(
+  'inversion: total head (vnil omitted) reduces, head [1] = 1',
+  compiles(`${HEAD}
+rule head-one
+  show hold
+    call is-equal
+      ${HEAD_CALL}
+      make succ
+        bind prior
+          make zero
+  calm hold
+`),
+)
+
+// 11. SOUNDNESS: head [1] is 1, not 0 -- must be rejected.
+ok(
+  'inversion: head reduces to the right value (not zero)',
+  !compiles(`${HEAD}
+rule head-wrong
+  show hold
+    call is-equal
+      ${HEAD_CALL}
+      make zero
+  calm hold
+`),
+)
+
+// 12. SOUNDNESS: omitting a REACHABLE branch (only vnil, while the subject is succ-headed so vcons is reachable) is
+// still non-exhaustive and must be rejected -- the relaxation only forgives IMPOSSIBLE omissions.
+ok(
+  'inversion does not forgive omitting a reachable branch',
+  !compiles(`${MATCH_PRELUDE}
+task bad-head
+  take n, like nat
+  take v, like vecnat
+    head
+      make succ
+        bind prior
+          read n
+  like nat
+  fork case, read v
+    case vnil
+      send back
+        make zero
+`),
+)
+
 console.log(`\nindexed families: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

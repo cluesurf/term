@@ -594,6 +594,13 @@ export function elaborateReport(
   // an indexed family's VALUE-INDEX kernel types (e.g. `[number]` for a length index), so the type former is registered
   // as `Type0 -> .. -> nat -> .. -> Type0` and `vec a n` type-checks. Absent for a non-indexed type.
   const typeFormerIndices = new Map<string, Term[]>()
+  // an indexed family's single value-index TYPE NAME (e.g. `nat`), when it is an enum -- used to build the discriminator
+  // motive for inversion (matching on the index to send an impossible branch's index to `Unit`). Only set for a
+  // single, enum-typed index.
+  const familyIndexType = new Map<string, string>()
+  // a variant's `enum__variant` key -> the head constructor key of its FIRST output index (`vnil -> nat__zero`,
+  // `vcons -> nat__succ`). Lets a match tell which constructors are reachable at a constructor-headed subject index.
+  const variantIndexHead = new Map<string, string>()
 
   // resolve an enum variant used inside an index expression (`zero`, `succ`) to its `enum__variant` kernel key, so an
   // indexed family's constructor / field types name the SAME constant the value elaboration does. Single-owner only;
@@ -803,6 +810,30 @@ export function elaborateReport(
           statement.variants.map(v => v.name),
         )
         typeFormerArity.set(statement.name, m)
+
+        // record the (single) index type name and each variant's output-index head, for inversion. Only when there is
+        // exactly one index and it is a named (enum) type, and each variant's first output index is a constructor.
+        if (l === 1 && declaredIndices[0]!.type.kind === 'named') {
+          familyIndexType.set(
+            statement.name,
+            (declaredIndices[0]!.type as { name: string }).name,
+          )
+
+          for (const variant of statement.variants) {
+            const head = variant.indexValues?.[0]
+
+            if (head?.form === 'record') {
+              const resolved = resolveIndexCtor(head.name)
+
+              if (resolved) {
+                variantIndexHead.set(
+                  ctorKey(statement.name, variant.name),
+                  resolved,
+                )
+              }
+            }
+          }
+        }
 
         statement.variants.forEach((variant, i) => {
           enumDefs.push({
@@ -1056,6 +1087,89 @@ export function elaborateReport(
         name: `match__${statement.name}`,
         type: eliminator,
       })
+
+      // a LARGE dependent eliminator `matchType__T` whose motive lands in Type1, so this enum can be eliminated INTO
+      // the universe (a type-level recursion / discriminator). Inversion uses it on the index type to send an
+      // impossible branch's index to `Unit`. Same self-encoding computing rule as `match__T`; additive (a new
+      // constant), so existing matches are untouched.
+      //   matchType__T : (0 p..) -> (Q : T p.. -> Type1) -> (b_v : (fields) -> Q (T_v p.. fields)) -> (x : T p..) -> Q x
+      {
+        const TYPE1: Term = { tag: 'type', level: litLevel(1) }
+        let largeSound = true
+        const largeMotive = arrow(appliedSelf(m), TYPE1) // Q : T p.. -> Type1, at depth m
+        const largeBranches: Term[] = []
+
+        for (let v = 0; v < n && largeSound; v++) {
+          const fields = statement.variants[v]!.fields
+          const k = fields.length
+          const depthB = m + 1 + v // binders above b_v: p.., Q, b_0..b_{v-1}
+          const resultDepth = depthB + k
+
+          let ctorTerm: Term = constant(
+            ctorKey(statement.name, statement.variants[v]!.name),
+          )
+
+          for (let p = 0; p < m; p++) {
+            ctorTerm = apply(ctorTerm, variable(resultDepth - p - 1))
+          }
+
+          for (let j = 0; j < k; j++) {
+            ctorTerm = apply(
+              ctorTerm,
+              variable(resultDepth - (depthB + j) - 1),
+            )
+          }
+
+          let branch: Term = apply(variable(resultDepth - m - 1), ctorTerm) // Q (T_v ..)
+
+          for (let j = k - 1; j >= 0; j--) {
+            const fieldType = kernelTypeAt(
+              fields[j]!.type,
+              depthB + j,
+              dataGenerics,
+              namedTypes,
+            )
+
+            if (!fieldType) {
+              largeSound = false
+              break
+            }
+
+            branch = arrow(fieldType, branch)
+          }
+
+          largeBranches.push(branch)
+        }
+
+        let largeElim: Term = apply(variable(n + 1), variable(0)) // Q x, at depth m+n+2
+        largeElim = arrow(appliedSelf(m + n + 1), largeElim) // (x : T p..)
+
+        for (let v = n - 1; v >= 0; v--) {
+          largeElim = arrow(largeBranches[v]!, largeElim) // b_v
+        }
+
+        largeElim = arrow(largeMotive, largeElim) // (Q : T p.. -> Type1)
+        largeElim = withParams(largeElim) // (0 p.. : Type0)
+
+        if (largeSound && !hasFreeVar(largeElim)) {
+          dataSignature.push({
+            name: `matchType__${statement.name}`,
+            type: largeElim,
+          })
+
+          // computing rule: matchType Q b.. x = x Q b.. From innermost: x=0, b_v=n-v, Q=n+1.
+          let largeBody: Term = apply(variable(0), variable(n + 1)) // x Q
+
+          for (let v = 0; v < n; v++) {
+            largeBody = apply(largeBody, variable(n - v)) // b_v
+          }
+
+          enumDefs.push({
+            name: `matchType__${statement.name}`,
+            term: lambdas(m + n + 2, largeBody),
+          })
+        }
+      }
 
       // the self-type encoding (transparent type) is well-formed only for a field-LESS, param-LESS enum: a
       // field-carrying or polymorphic constructor makes `P v_i` ill-typed, so it is skipped (the computing defs below
@@ -1898,20 +2012,72 @@ export function elaborateReport(
           return null
         }
 
+        const indexCount = typeFormerIndices.get(enumName!)?.length ?? 0
+
+        // INVERSION setup: for a single-index family whose subject index is CONSTRUCTOR-headed (`vec (succ n)`), the
+        // variants whose output-index head differs (`vnil` at head `zero`) are IMPOSSIBLE. They are auto-discharged --
+        // the user may omit them, and they are filled with `unitValue` under a DISCRIMINATOR motive that sends an
+        // impossible index to `Unit` and the reachable one to the result type A. So a total `head` needs no empty case.
+        const impossible = new Set<string>()
+        let subjectIndexHead: string | undefined
+
+        if (indexCount === 1) {
+          const indexArgument =
+            subjectTypeArgs[subjectTypeArgs.length - 1]
+          let peeled: Term | undefined = indexArgument
+
+          while (peeled && peeled.tag === 'app') {
+            peeled = peeled.fun
+          }
+
+          if (peeled && peeled.tag === 'const') {
+            subjectIndexHead = peeled.name
+
+            for (const variant of order) {
+              const head2 = variantIndexHead.get(
+                ctorKey(enumName!, variant),
+              )
+
+              if (head2 && head2 !== subjectIndexHead) {
+                impossible.add(variant)
+              }
+            }
+          }
+        }
+
+        // only invert when an impossible branch is actually OMITTED by the user (the discriminator motive is for
+        // filling those). If the user wrote every branch, the ordinary constant-motive path types them all as A.
+        const useInversion = [...impossible].some(
+          v => !head.cases.find(c => c.label === v),
+        )
+
         const branches: Term[] = []
 
         for (const variant of order) {
+          const fieldInfo =
+            variantFieldInfo.get(ctorKey(enumName!, variant)) ?? []
+
+          // an IMPOSSIBLE variant (its index can't equal the subject's) is auto-filled with `unit`: under the
+          // discriminator motive its branch type reduces to `Unit`. The user need not write it.
+          if (useInversion && impossible.has(variant)) {
+            let filled: Term = constant('unitValue')
+
+            for (let w = 0; w < fieldInfo.length; w++) {
+              filled = { tag: 'lam', body: filled }
+            }
+
+            branches.push(filled)
+            continue
+          }
+
           const branch = head.cases.find(c => c.label === variant)
 
           if (!branch) {
             return null
-          } // non-exhaustive against the eliminator: decline
+          } // a REACHABLE variant with no branch: non-exhaustive, decline
 
           // bind the variant's fields: each branch is a lambda over its fields (the eliminator passes them in), with
           // the fields in scope in the branch body. `succ p`'s branch becomes `\p. <body using p>`.
-          const fieldInfo =
-            variantFieldInfo.get(ctorKey(enumName!, variant)) ?? []
-
           let branchScope = scope
           let branchContext = context
 
@@ -1951,20 +2117,70 @@ export function elaborateReport(
         }
 
         // an INDEXED family uses the DEPENDENT eliminator, whose shape is `(0 p..) (P) (branches) (i..) (x)`: the type
-        // witnesses lead, then the motive, the branches, the index arguments, and the subject last. The motive here is
-        // CONSTANT (`\i.. x. A`) -- a non-index-refining match -- built by re-quoting the result at the deeper level so
-        // its free variables stay correct under the l+1 new binders. (A future index-refining / convoy match would
-        // build a non-constant motive.) A non-indexed enum keeps the simpler `(0 p..) A x branches` eliminator.
-        const indexCount = typeFormerIndices.get(enumName!)?.length ?? 0
-
+        // witnesses lead, then the motive, the branches, the index arguments, and the subject last.
         if (indexCount > 0) {
           const typeWitnessCount = subjectTypeArgs.length - indexCount
           const typeWitnesses = subjectTypeArgs.slice(0, typeWitnessCount)
           const indexArguments = subjectTypeArgs.slice(typeWitnessCount)
-          const motive = lambdas(
+
+          // the motive. Without inversion it is CONSTANT (`\i.. x. A`). With inversion it is the DISCRIMINATOR
+          // `\i x. (match i: reachable head -> A, else -> Unit)`, built from the index type's eliminator so an
+          // impossible branch's type reduces to `Unit` and the result type reduces to A at the subject's index.
+          let motive: Term | null = lambdas(
             indexCount + 1,
             quote(context.level + indexCount + 1, resultValue),
           )
+
+          if (useInversion) {
+            const indexType = familyIndexType.get(enumName!)
+            const indexVariants = indexType
+              ? variantNames.get(indexType)
+              : undefined
+
+            motive = null
+
+            if (indexType && indexVariants) {
+              const indexBranches: Term[] = []
+
+              for (const indexVariant of indexVariants) {
+                const indexCtor = ctorKey(indexType, indexVariant)
+                const fieldCount = (
+                  variantFieldInfo.get(indexCtor) ?? []
+                ).length
+                // under the motive's `\i \x` (2 binders) and this index-branch's `fieldCount` field lambdas
+                let leaf: Term =
+                  indexCtor === subjectIndexHead
+                    ? quote(context.level + 2 + fieldCount, resultValue)
+                    : constant('Unit')
+
+                for (let w = 0; w < fieldCount; w++) {
+                  leaf = { tag: 'lam', body: leaf }
+                }
+
+                indexBranches.push(leaf)
+              }
+
+              // P = \i. \x. matchType__<indexType> (\_.Type0) <indexBranches> i. The LARGE eliminator lands in Type1,
+              // so this discriminator returns a Type0; its argument order is (motive, branches, subject), and i is
+              // variable(1) under the \i \x binders.
+              motive = {
+                tag: 'lam',
+                body: {
+                  tag: 'lam',
+                  body: apply(
+                    constant(`matchType__${indexType}`),
+                    { tag: 'lam', body: TYPE0 },
+                    ...indexBranches,
+                    variable(1),
+                  ),
+                },
+              }
+            }
+          }
+
+          if (!motive) {
+            return null
+          }
 
           return apply(
             constant(`match__${enumName}`),

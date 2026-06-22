@@ -14,7 +14,7 @@
   seed
 </h3>
 <p align='center'>
-  A Paradigm Compiler Φ<br/>
+  A Keystone Artifact Φ<br/>
   (WIP)
 </p>
 

@@ -19,23 +19,23 @@
     "@cluesurf/deck.tree": "file:./deck/deck",
     "@hono/node-server": "^1.13.7",
     "chalk": "^5.4.1",
-    "esbuild": "^0.27.0",
+    "esbuild": "^0.28.1",
     "hono": "^4.6.14",
     "pg": "^8.13.1",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
-    "@cluesurf/wash": "^0.6.10",
+    "@cluesurf/wash": "^0.9.0",
     "@types/node": "^22.19.13",
     "@types/pg": "^8.11.10",
     "@types/yargs": "^17.0.33",
-    "concurrently": "^9.2.1",
-    "eslint": "^9.26.0",
-    "jiti": "^2.4.2",
-    "prettier": "^3.6.2",
-    "tsc-alias": "^1.8.16",
+    "concurrently": "^10.0.3",
+    "eslint": "^9.39.4",
+    "jiti": "^2.7.0",
+    "prettier": "^3.8.4",
+    "tsc-alias": "^1.8.17",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18",
-    "z3-solver": "^4.13.0"
+    "vitest": "^4.1.9",
+    "z3-solver": "^4.16.0"
   }
 }
