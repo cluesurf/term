@@ -191,6 +191,16 @@ task set-title
   take title, like text
   save page/title, read title
 
+# a resource route's redirect: navigate the browser there (window.location.href = url). On the client this happens
+# immediately, so redirect-target reports nothing for the host to act on.
+task set-redirect
+  take url, like text
+  save place/href, read url
+
+task redirect-target
+  like text
+  send back, text <>
+
 # upsert a SEO meta tag live (SPA navigation): reuse the existing element for this key if present, else create one and
 # append it to <head>. og:* / article:* use `property`, the rest use `name` (matching the SSR shell). String pieces are
 # joined with `add` (the `+` builtin concatenates text).

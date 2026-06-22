@@ -14,6 +14,7 @@ load @cluesurf/site/code/dom/dom
   find create-element
   find serialize
   find page-shell
+  find redirect-target
 load @cluesurf/site/code/http/http
   find request
   find response
@@ -44,13 +45,27 @@ task host
       call route
         read root
         read request/path
-      send back
-        make response
-          bind status, mark 200
-          bind body
-            call page-shell
-              call serialize
-                read root
+      # a resource route may have stashed a redirect target during dispatch (e.g. /vibe.pdf); return a 302 to it
+      save target
+        call redirect-target
+      fork test
+        hook test
+          call is-unequal
+            read target
+            text <>
+        hook hold
+          send back
+            make response
+              bind status, mark 302
+              bind body, read target
+        hook miss
+          send back
+            make response
+              bind status, mark 200
+              bind body
+                call page-shell
+                  call serialize
+                    read root
   # the static-asset handler: serve files from the build output for /base/<path> (css, js, images). The transport sets
   # the content-type by extension. A 404 for a missing asset.
   save serve-asset

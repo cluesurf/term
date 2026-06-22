@@ -100,6 +100,15 @@ task set-meta
   take name, like text
   take content, like text
 
+# a resource route's redirect target (e.g. /vibe.pdf). On the server it is stashed for the host to turn into a 302; in
+# the browser it navigates (window.location).
+task set-redirect
+  take url, like text
+
+# the redirect target stashed during this render, or empty (server only; the browser navigates immediately).
+task redirect-target
+  like text
+
 # the app mount host (document body). The boot mounts the matched route's component here.
 task page-body
   like view

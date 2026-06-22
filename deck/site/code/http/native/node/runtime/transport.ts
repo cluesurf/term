@@ -90,6 +90,11 @@ const transport = {
       const response = await handle({ method: context.req.method, path: url.pathname, body })
       const out = response.body ?? ''
       const status = (response.status ?? 200) as never
+      // a redirect resource route (e.g. /vibe.pdf) returns a 3xx with the target URL as the body -> issue a real redirect
+      const code = response.status ?? 200
+      if (code >= 300 && code < 400 && out) {
+        return context.redirect(out, code as never)
+      }
       // static assets (served from /base/...) get a content-type by file extension, so a browser accepts a `.js` module
       // script (strict MIME) and applies `.css`. Required for external stylesheets / scripts to load.
       const ext = url.pathname.includes('.')

@@ -21,9 +21,14 @@ import type { Span } from '@cluesurf/make/code/parser/diagnostic'
 
 type RouteStatement = Extract<Statement, { form: 'dock' }>
 
-// a web route is a `dock`/`hook` statement that renders a component (vs a CLI command, which has no component)
+// a web route is a `dock`/`hook` statement that renders a component, OR a resource route that redirects (a `redirect`
+// directive, no component -- e.g. `hook </vibe.pdf> / seed redirect, text <url>`). Both dispatch through `route`.
 function isWebRoute(node: Statement): node is RouteStatement {
-  return node.form === 'dock' && !!node.route.component
+  return (
+    node.form === 'dock' &&
+    (!!node.route.component ||
+      node.route.directives.some(d => d.name === 'redirect' && !!d.value))
+  )
 }
 
 export function lowerRoutes(program: Program, env = 'node'): Program {
@@ -60,9 +65,34 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     span,
   })
 
+  const cond = (path: string) => ({
+    form: 'binary' as const,
+    op: '==' as const,
+    left: variable('path'),
+    right: string(path),
+    span,
+  })
+
   // one `if (path == "<path>") { [set-title;] component(host, ...props); return }` per route
   const branches = routes.map(node => {
     const route = node.route
+
+    // a resource route: `seed redirect, text <url>` and no component. Emit `set-redirect(url); return` -- on the server
+    // the host turns the stashed target into a 302; in the browser `set-redirect` navigates (window.location).
+    const redirect = route.directives.find(
+      d => d.name === 'redirect' && d.value,
+    )
+
+    if (redirect && !route.component) {
+      return {
+        cond: cond(route.path),
+        body: [
+          exprStatement(call('set-redirect', [redirect.value!])),
+          { form: 'return' as const, span },
+        ],
+      }
+    }
+
     const component = route.component!
     const body: Statement[] = []
 
@@ -126,13 +156,7 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     body.push({ form: 'return', span })
 
     return {
-      cond: {
-        form: 'binary' as const,
-        op: '==' as const,
-        left: variable('path'),
-        right: string(route.path),
-        span,
-      },
+      cond: cond(route.path),
       body,
     }
   })

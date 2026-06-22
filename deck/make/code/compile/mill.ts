@@ -2013,6 +2013,65 @@ export function mill(tree: RootNode, file: string): MillResult {
     return resultType
   }
 
+  // a TOP-LEVEL `host <name>, <value>` is a named constant, sugar for a nullary function that returns the value. It is
+  // far terser than the `task <name> / like <T> / send back / <value>` it expands to, and unlike a top-level `let` it is
+  // a real definition that computes in proofs and reads as a value. The result type comes from an optional `like <T>`,
+  // else it is inferred from a literal value. Returns undefined for a value-less foreign host global (`host x, name <Y>`),
+  // which stays an ambient binding handled by the body builder.
+  function buildHostConstant(group: GroupNode): Statement | undefined {
+    const args = rest(group)
+    const target = args[0]
+    const name =
+      target?.kind === 'group' ? headName(target) : undefined
+
+    if (!name) {return undefined}
+
+    const valueNode = args
+      .slice(1)
+      .find(
+        a =>
+          !(
+            a.kind === 'group' &&
+            HOST_ANNOTATION.has(headName(a) ?? '')
+          ),
+      )
+
+    // no value: a foreign host global, not a constant. Let the body builder handle it as an ambient binding.
+    if (!valueNode) {return undefined}
+
+    const value = toExpression(valueNode, new Set<string>())
+
+    const likeNode = args
+      .slice(1)
+      .find(
+        (a): a is GroupNode =>
+          a.kind === 'group' && headName(a) === 'like',
+      )
+
+    let result: Type | undefined
+    if (likeNode) {
+      result = parseLikeType(likeNode)
+    } else if (value.form === 'integer') {
+      result = { kind: 'named', name: 'integer' }
+    } else if (value.form === 'float') {
+      result = { kind: 'named', name: 'number' }
+    } else if (value.form === 'string') {
+      result = { kind: 'named', name: 'text' }
+    } else if (value.form === 'boolean') {
+      result = { kind: 'named', name: 'boolean' }
+    }
+
+    return {
+      form: 'function',
+      name,
+      params: [],
+      body: [{ form: 'return', value, span: spanOf(valueNode) }],
+      result,
+      generics: [],
+      span: spanOf(group),
+    }
+  }
+
   function buildFunction(group: GroupNode): Statement | undefined {
     const parts = rest(group)
     const nameGroup = parts[0]
@@ -3286,6 +3345,13 @@ export function mill(tree: RootNode, file: string): MillResult {
       const fn = buildFunction(group)
 
       if (fn) {program.push(fn)}
+    } else if (keyword === 'host') {
+      // `host <name>, <value>` at the top level is a named constant (a nullary function). A value-less foreign global
+      // falls through to the body builder, which records it as an ambient binding.
+      const constant = buildHostConstant(group)
+
+      if (constant) {program.push(constant)}
+      else {program.push(...toStatements([group], new Set<string>()))}
     } else if (keyword === 'bind') {
       const bind = buildBind(group)
 
@@ -3356,7 +3422,13 @@ export function mill(tree: RootNode, file: string): MillResult {
       // Both lower to a route statement (shared structure), but a route carries a component and a command does not, so
       // downstream passes treat them apart. (`dock` is reserved for native FFI bindings -- `dock load`.)
       const isRoute = rest(group).some(
-        n => n.kind === 'group' && headName(n) === 'zone',
+        n =>
+          n.kind === 'group' &&
+          (headName(n) === 'zone' ||
+            // a resource route: `hook </vibe.pdf> / seed redirect, text <url>` has no zone but redirects on the server
+            (headName(n) === 'seed' &&
+              rest(n)[0]?.kind === 'group' &&
+              headName(rest(n)[0] as GroupNode) === 'redirect')),
       )
 
       program.push({
