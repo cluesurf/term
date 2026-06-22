@@ -19,19 +19,24 @@ export type DepGraph = Map<string, Set<string>>
 /** Invert a dependency graph: node -> the nodes that depend ON it (its dependents). */
 export function reverseDeps(graph: DepGraph): DepGraph {
   const reverse: DepGraph = new Map()
+
   for (const node of graph.keys()) {
-    if (!reverse.has(node)) reverse.set(node, new Set())
+    if (!reverse.has(node)) {reverse.set(node, new Set())}
   }
+
   for (const [node, deps] of graph) {
     for (const dep of deps) {
       let set = reverse.get(dep)
+
       if (!set) {
         set = new Set()
         reverse.set(dep, set)
       }
+
       set.add(node)
     }
   }
+
   return reverse
 }
 
@@ -65,10 +70,12 @@ export function affectedSet(input: {
 
   while (queue.length > 0) {
     const node = queue.pop()!
+
     // propagate to dependents ONLY if this node's interface changed (early
     // cutoff). A changed node always rebuilds; its dependents rebuild only if
     // the change is observable across the boundary.
-    if (!interfaceChanged(node)) continue
+    if (!interfaceChanged(node)) {continue}
+
     for (const dependent of reverse.get(node) ?? []) {
       if (!affected.has(dependent)) {
         affected.add(dependent)
@@ -81,11 +88,16 @@ export function affectedSet(input: {
 }
 
 /** The nodes that can be REUSED from cache (everything not affected). */
-export function reusableSet(graph: DepGraph, affected: Set<string>): Set<string> {
+export function reusableSet(
+  graph: DepGraph,
+  affected: Set<string>,
+): Set<string> {
   const reuse = new Set<string>()
+
   for (const node of graph.keys()) {
-    if (!affected.has(node)) reuse.add(node)
+    if (!affected.has(node)) {reuse.add(node)}
   }
+
   return reuse
 }
 
@@ -100,17 +112,26 @@ export function topoOrder(graph: DepGraph): string[] {
 
   const visit = (node: string, trail: string[]): void => {
     const s = state.get(node)
-    if (s === 'done') return
+
+    if (s === 'done') {return}
+
     if (s === 'visiting') {
-      throw new Error(`dependency cycle: ${[...trail, node].join(' -> ')}`)
+      throw new Error(
+        `dependency cycle: ${[...trail, node].join(' -> ')}`,
+      )
     }
+
     state.set(node, 'visiting')
-    for (const dep of graph.get(node) ?? []) visit(dep, [...trail, node])
+
+    for (const dep of graph.get(node) ?? [])
+      {visit(dep, [...trail, node])}
+
     state.set(node, 'done')
     order.push(node)
   }
 
-  for (const node of graph.keys()) visit(node, [])
+  for (const node of graph.keys()) {visit(node, [])}
+
   return order
 }
 
@@ -118,6 +139,7 @@ export function topoOrder(graph: DepGraph): string[] {
 export function isAcyclic(graph: DepGraph): boolean {
   try {
     topoOrder(graph)
+
     return true
   } catch {
     return false

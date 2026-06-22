@@ -16,7 +16,9 @@ import type {
 } from '@cluesurf/make/code/compile/node'
 
 function isHeapType(type?: { kind: string }): boolean {
-  if (!type) {return false}
+  if (!type) {
+    return false
+  }
 
   return (
     type.kind === 'string' ||
@@ -28,14 +30,20 @@ function isHeapType(type?: { kind: string }): boolean {
 }
 
 // collect the names of variables read in a CONSUMING position anywhere in the body
-function collectConsuming(body: Statement[], consumed: Set<string>): void {
+function collectConsuming(
+  body: Statement[],
+  consumed: Set<string>,
+): void {
   const named = (node: Expression): string | undefined =>
     node.form === 'variable' ? node.name : undefined
 
   // an expression in a consuming position: if it is a bare variable, that variable is consumed
   const consume = (node: Expression): void => {
     const name = named(node)
-    if (name) {consumed.add(name)}
+
+    if (name) {
+      consumed.add(name)
+    }
   }
 
   const walkExpr = (node: Expression): void => {
@@ -44,6 +52,7 @@ function collectConsuming(body: Statement[], consumed: Set<string>): void {
         if (node.callee.form === 'member') {
           // a method call: the receiver (member target) is borrowed; the other args are consuming
           walkExpr(node.callee.target)
+
           for (const arg of node.args) {
             consume(arg)
             walkExpr(arg)
@@ -51,24 +60,29 @@ function collectConsuming(body: Statement[], consumed: Set<string>): void {
         } else {
           // a Seed-function call: every argument is consumed
           walkExpr(node.callee)
+
           for (const arg of node.args) {
             consume(arg)
             walkExpr(arg)
           }
         }
+
         break
       }
+
       case 'array':
         for (const item of node.items) {
           consume(item)
           walkExpr(item)
         }
+
         break
       case 'record':
         for (const field of node.fields) {
           consume(field.value)
           walkExpr(field.value)
         }
+
         break
       case 'map':
         for (const entry of node.entries) {
@@ -77,6 +91,7 @@ function collectConsuming(body: Statement[], consumed: Set<string>): void {
           walkExpr(entry.key)
           walkExpr(entry.value)
         }
+
         break
       case 'binary':
         // operands are borrowed (concat / comparison read but do not free)
@@ -98,7 +113,11 @@ function collectConsuming(body: Statement[], consumed: Set<string>): void {
           walkExpr(branch.cond)
           walkExpr(branch.value)
         }
-        if (node.otherwise) {walkExpr(node.otherwise)}
+
+        if (node.otherwise) {
+          walkExpr(node.otherwise)
+        }
+
         break
       default:
         break
@@ -125,6 +144,7 @@ function collectConsuming(body: Statement[], consumed: Set<string>): void {
           consume(s.value) // a returned binding is moved out
           walkExpr(s.value)
         }
+
         break
       case 'throw':
         consume(s.value)
@@ -135,7 +155,11 @@ function collectConsuming(body: Statement[], consumed: Set<string>): void {
           walkExpr(branch.cond)
           collectConsuming(branch.body, consumed)
         }
-        if (s.otherwise) {collectConsuming(s.otherwise, consumed)}
+
+        if (s.otherwise) {
+          collectConsuming(s.otherwise, consumed)
+        }
+
         break
       case 'while':
         walkExpr(s.cond)
@@ -148,15 +172,24 @@ function collectConsuming(body: Statement[], consumed: Set<string>): void {
         break
       case 'match':
         walkExpr(s.subject)
-        for (const c of s.cases) {collectConsuming(c.body, consumed)}
-        if (s.otherwise) {collectConsuming(s.otherwise, consumed)}
+
+        for (const c of s.cases) {
+          collectConsuming(c.body, consumed)
+        }
+
+        if (s.otherwise) {
+          collectConsuming(s.otherwise, consumed)
+        }
+
         break
       default:
         break
     }
   }
 
-  for (const s of body) {walkStmt(s)}
+  for (const s of body) {
+    walkStmt(s)
+  }
 }
 
 // the heap-owned local bindings (`save`) that no use consumes -- safe to drop once at function exit.
@@ -180,13 +213,23 @@ export function dropSafeHeapLocals(
 
       // descend into nested blocks so a binding declared inside a branch is found too
       if (s.form === 'if') {
-        for (const b of s.branches) {scan(b.body)}
-        if (s.otherwise) {scan(s.otherwise)}
+        for (const b of s.branches) {
+          scan(b.body)
+        }
+
+        if (s.otherwise) {
+          scan(s.otherwise)
+        }
       } else if (s.form === 'while' || s.form === 'for-each') {
         scan(s.body)
       } else if (s.form === 'match') {
-        for (const c of s.cases) {scan(c.body)}
-        if (s.otherwise) {scan(s.otherwise)}
+        for (const c of s.cases) {
+          scan(c.body)
+        }
+
+        if (s.otherwise) {
+          scan(s.otherwise)
+        }
       }
     }
   }

@@ -8,7 +8,7 @@ const runner = {
     command: string,
     argumentList: string[],
   ): Promise<{ code: number; output: string; error: string }> =>
-    new Promise((resolve) => {
+    new Promise(resolve => {
       let output = ''
       let error = ''
       try {

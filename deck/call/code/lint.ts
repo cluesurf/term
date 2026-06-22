@@ -32,8 +32,11 @@ function toDiagnostic(finding: Finding, file: string): Diagnostic {
 function applyEdits(text: string, edits: TextEdit[]): string {
   const lineStarts = [0]
 
-  for (let i = 0; i < text.length; i++)
-    {if (text[i] === '\n') {lineStarts.push(i + 1)}}
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\n') {
+      lineStarts.push(i + 1)
+    }
+  }
 
   const offset = (pos: { line: number; column: number }) =>
     (lineStarts[pos.line] ?? text.length) + pos.column
@@ -50,7 +53,9 @@ function applyEdits(text: string, edits: TextEdit[]): string {
   let lastStart = Infinity
 
   for (const range of ranges) {
-    if (range.end > lastStart) {continue} // overlaps an already-applied edit; skip
+    if (range.end > lastStart) {
+      continue
+    } // overlaps an already-applied edit; skip
 
     result =
       result.slice(0, range.start) +
@@ -87,7 +92,9 @@ export async function callLint(input: {
     const relative = path.relative(input.root, file)
     const findings = analyze({ file: relative, text }).lint()
 
-    if (findings.length === 0) {continue}
+    if (findings.length === 0) {
+      continue
+    }
 
     if (input.fix) {
       const fixes = findings
@@ -111,7 +118,9 @@ export async function callLint(input: {
       const lines = fixedText.split('\n')
 
       for (const finding of remaining) {
-        if (finding.severity === 'error') {totalErrors++}
+        if (finding.severity === 'error') {
+          totalErrors++
+        }
 
         totalFindings++
         console.error(render(toDiagnostic(finding, relative), lines))
@@ -120,7 +129,9 @@ export async function callLint(input: {
       const lines = text.split('\n')
 
       for (const finding of findings) {
-        if (finding.severity === 'error') {totalErrors++}
+        if (finding.severity === 'error') {
+          totalErrors++
+        }
 
         totalFindings++
         console.error(render(toDiagnostic(finding, relative), lines))
@@ -128,29 +139,40 @@ export async function callLint(input: {
     }
   }
 
-  if (totalFixed > 0)
-    {console.log(
+  if (totalFixed > 0) {
+    console.log(
       fade(
         `  applied ${totalFixed} fix${totalFixed === 1 ? '' : 'es'}`,
       ),
-    )}
+    )
+  }
 
-  if (totalFindings === 0) {logGood('No lint findings')}
-  else {logWarnSummary(totalFindings, totalErrors)}
+  if (totalFindings === 0) {
+    logGood('No lint findings')
+  } else {
+    logWarnSummary(totalFindings, totalErrors)
+  }
 
-  if (totalErrors > 0) {process.exit(1)}
+  if (totalErrors > 0) {
+    process.exit(1)
+  }
 }
 
 function logWarnSummary(findings: number, errors: number): void {
   const warnings = findings - errors
   const parts: string[] = []
 
-  if (errors > 0)
-    {parts.push(`${errors} error${errors === 1 ? '' : 's'}`)}
+  if (errors > 0) {
+    parts.push(`${errors} error${errors === 1 ? '' : 's'}`)
+  }
 
-  if (warnings > 0)
-    {parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`)}
+  if (warnings > 0) {
+    parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`)
+  }
 
-  if (errors > 0) {logFail(parts.join(', '))}
-  else {console.log(fade(`  ${parts.join(', ')}`))}
+  if (errors > 0) {
+    logFail(parts.join(', '))
+  } else {
+    console.log(fade(`  ${parts.join(', ')}`))
+  }
 }

@@ -69,8 +69,9 @@ async function profileCpu(input: {
     if (err instanceof CompileFailure) {
       logFail(`${err.diagnostics.length} compilation error(s)`)
 
-      for (const diagnostic of err.diagnostics)
-        {console.error(render(diagnostic, text.split('\n')))}
+      for (const diagnostic of err.diagnostics) {
+        console.error(render(diagnostic, text.split('\n')))
+      }
 
       process.exit(1)
     }
@@ -90,10 +91,11 @@ async function profileMemory(input: {
 }): Promise<void> {
   logStep('Memory profiling...')
 
-  if (input.track)
-    {logWarn(
+  if (input.track) {
+    logWarn(
       'Timeline tracking is not available yet; reporting a single before/after measurement.',
-    )}
+    )
+  }
 
   const text = await fs.readFile(input.filePath, 'utf-8')
 
@@ -113,8 +115,9 @@ async function profileMemory(input: {
     if (err instanceof CompileFailure) {
       logFail(`${err.diagnostics.length} compilation error(s)`)
 
-      for (const diagnostic of err.diagnostics)
-        {console.error(render(diagnostic, text.split('\n')))}
+      for (const diagnostic of err.diagnostics) {
+        console.error(render(diagnostic, text.split('\n')))
+      }
 
       process.exit(1)
     }

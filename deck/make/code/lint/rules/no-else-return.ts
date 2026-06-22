@@ -14,6 +14,7 @@ const TERMINATORS = new Set<Statement['form']>([
 
 function endsInExit(body: Statement[]): boolean {
   const last = body[body.length - 1]
+
   return !!last && TERMINATORS.has(last.form)
 }
 
@@ -24,12 +25,21 @@ export const noElseReturn: Rule = {
   docs: 'an else is unnecessary when every branch above it already exits',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
-    const node = target.node
-    if (node.form !== 'if' || !node.otherwise || node.otherwise.length === 0)
-      return
+    if (target.kind !== 'statement') {return}
 
-    if (node.branches.length > 0 && node.branches.every(b => endsInExit(b.body))) {
+    const node = target.node
+
+    if (
+      node.form !== 'if' ||
+      !node.otherwise ||
+      node.otherwise.length === 0
+    )
+      {return}
+
+    if (
+      node.branches.length > 0 &&
+      node.branches.every(b => endsInExit(b.body))
+    ) {
       context.report({
         message: `every branch already exits, so this else is unnecessary; unindent its body`,
         span: node.span,

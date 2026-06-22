@@ -10,8 +10,10 @@ export const noUselessConcat: Rule = {
   docs: 'two string literals concatenated; write them as a single literal',
   fixable: true,
   check(target, context) {
-    if (target.kind !== 'expression') return
+    if (target.kind !== 'expression') {return}
+
     const node = target.node
+
     if (
       node.form === 'binary' &&
       node.op === '+' &&
@@ -25,7 +27,9 @@ export const noUselessConcat: Rule = {
       context.report({
         message: `these two string literals can be written as one`,
         span: node.span,
-        fix: fixable ? { span: node.span, text: `text <${merged}>` } : undefined,
+        fix: fixable
+          ? { span: node.span, text: `text <${merged}>` }
+          : undefined,
       })
     }
   },

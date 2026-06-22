@@ -32,12 +32,19 @@ function joinPath(base: string, rest: string): string {
   const out: string[] = []
 
   for (const part of parts) {
-    if (part === '' || part === '.') {continue}
+    if (part === '' || part === '.') {
+      continue
+    }
 
     if (part === '..') {
-      if (out.length && out[out.length - 1] !== '..') {out.pop()}
-      else {out.push('..')}
-    } else {out.push(part)}
+      if (out.length && out[out.length - 1] !== '..') {
+        out.pop()
+      } else {
+        out.push('..')
+      }
+    } else {
+      out.push(part)
+    }
   }
 
   const prefix = base.startsWith('/') ? '/' : ''
@@ -47,21 +54,30 @@ function joinPath(base: string, rest: string): string {
 
 // ---- classification ----
 export function classifyLoad(target: string, native = false): LoadKind {
-  if (native) {return 'native'}
+  if (native) {
+    return 'native'
+  }
 
-  if (target.includes('*')) {return 'glob'}
+  if (target.includes('*')) {
+    return 'glob'
+  }
 
-  if (target.startsWith('./') || target.startsWith('../'))
-    {return 'relative'}
+  if (target.startsWith('./') || target.startsWith('../')) {
+    return 'relative'
+  }
 
-  if (target.startsWith('/')) {return 'absolute'}
+  if (target.startsWith('/')) {
+    return 'absolute'
+  }
 
   return 'package' // @host/deck or a bare name
 }
 
 // the candidate files to try for a path with no extension, in order
 export function fileCandidates(path: string): string[] {
-  if (path.endsWith('.tree')) {return [path]}
+  if (path.endsWith('.tree')) {
+    return [path]
+  }
 
   return [`${path}.tree`, `${path}/base.tree`, `${path}/note.tree`]
 }
@@ -77,7 +93,9 @@ export function resolveFile(
     : joinPath(dirname(fromFile), target)
 
   for (const candidate of fileCandidates(base)) {
-    if (exists(candidate)) {return { kind: 'file', path: candidate }}
+    if (exists(candidate)) {
+      return { kind: 'file', path: candidate }
+    }
   }
 
   return { kind: 'missing', target }
@@ -116,11 +134,15 @@ export function findDeckRoot(
   let dir = dirname(fromFile)
 
   while (true) {
-    if (exists(`${dir}/deck.tree`)) {return dir}
+    if (exists(`${dir}/deck.tree`)) {
+      return dir
+    }
 
     const parent = dirname(dir)
 
-    if (parent === dir || parent === '.') {break}
+    if (parent === dir || parent === '.') {
+      break
+    }
 
     dir = parent
   }

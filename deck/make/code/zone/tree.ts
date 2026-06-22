@@ -46,10 +46,13 @@ function typeName(type: Type | undefined): string {
 
 // a member chain back to a slash path: member(member(var a, b), c) -> a/b/c
 function memberPath(expr: Expression): string {
-  if (expr.form === 'variable') {return expr.name}
+  if (expr.form === 'variable') {
+    return expr.name
+  }
 
-  if (expr.form === 'member')
-    {return `${memberPath(expr.target)}/${expr.name}`}
+  if (expr.form === 'member') {
+    return `${memberPath(expr.target)}/${expr.name}`
+  }
 
   return 'self'
 }
@@ -143,8 +146,9 @@ function zoneNode(
         }
       }
 
-      for (const child of node.children)
-        {out.push(...zoneNode(child, self, depth, ctx))}
+      for (const child of node.children) {
+        out.push(...zoneNode(child, self, depth, ctx))
+      }
 
       out.push(
         `${p}call append`,
@@ -265,7 +269,9 @@ function fragment(
     `${pad(depth + 2)}bind tag, text <span>`,
   ]
 
-  for (const node of nodes) {out.push(...zoneNode(node, box, depth, ctx))}
+  for (const node of nodes) {
+    out.push(...zoneNode(node, box, depth, ctx))
+  }
 
   out.push(`${pad(depth)}send back, read ${box}`)
 
@@ -277,16 +283,15 @@ export function emitZoneTree(
   zone: Extract<Statement, { form: 'zone' }>,
 ): string {
   const ctx: Context = { count: 0 }
-  const out: string[] = [
-    `task ${zone.name}`,
-    `  take host, like node`,
-  ]
+  const out: string[] = [`task ${zone.name}`, `  take host, like node`]
 
-  for (const param of zone.params)
-    {out.push(`  take ${param.name}, like ${typeName(param.type)}`)}
+  for (const param of zone.params) {
+    out.push(`  take ${param.name}, like ${typeName(param.type)}`)
+  }
 
-  for (const node of zone.body)
-    {out.push(...zoneNode(node, 'host', 1, ctx))}
+  for (const node of zone.body) {
+    out.push(...zoneNode(node, 'host', 1, ctx))
+  }
 
   return out.join('\n') + '\n'
 }
@@ -312,17 +317,20 @@ function route(node: DockRoute, depth: number): string[] {
       `${pad(depth + 3)}bind verb, text <${method.name}>`,
     )
 
-    for (const call of method.calls)
-      {out.push(`${pad(depth + 3)}bind call, text <${call.name}>`)}
+    for (const call of method.calls) {
+      out.push(`${pad(depth + 3)}bind call, text <${call.name}>`)
+    }
   }
 
-  for (const call of node.calls)
-    {out.push(`${pad(depth + 1)}bind call, text <${call.name}>`)}
+  for (const call of node.calls) {
+    out.push(`${pad(depth + 1)}bind call, text <${call.name}>`)
+  }
 
-  if (node.component)
-    {out.push(
+  if (node.component) {
+    out.push(
       `${pad(depth + 1)}bind zone, text <${node.component.name}>`,
-    )}
+    )
+  }
 
   for (const child of node.children) {
     out.push(`${pad(depth + 1)}bind child`)

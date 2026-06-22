@@ -7,7 +7,12 @@
 // from anywhere with no shared state to go stale. `seed halt <port>` instead asks the OS who is listening on the port.
 
 import { execSync } from 'child_process'
-import { logStep, logGood, logFail, fade } from '@cluesurf/make/code/tint'
+import {
+  logStep,
+  logGood,
+  logFail,
+  fade,
+} from '@cluesurf/make/code/tint'
 
 // the marker that identifies a seed boot server process in the process table
 const BOOT_MARKER = '.seed/boot/'
@@ -59,10 +64,13 @@ function stop(pid: number): boolean {
   }
 }
 
-export async function callHalt(input: { ports?: number[] }): Promise<void> {
+export async function callHalt(input: {
+  ports?: number[]
+}): Promise<void> {
   // `seed halt -p 2400,2401` stops the apps on those ports; bare `seed halt` stops every seed boot instance
-  if (input.ports && input.ports.length) {
+  if (input.ports?.length) {
     logStep(`Halting app(s) on port ${input.ports.join(', ')}...`)
+
     let stopped = 0
 
     for (const port of input.ports) {
@@ -88,6 +96,7 @@ export async function callHalt(input: { ports?: number[] }): Promise<void> {
   }
 
   logStep('Halting all seed boot instances...')
+
   const pids = bootPids()
 
   if (!pids.length) {

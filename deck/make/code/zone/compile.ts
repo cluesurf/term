@@ -59,16 +59,19 @@ export function compileZone(source: {
 }): ZoneResult {
   const parsed = parse(source)
 
-  if (!parsed.ok) {return { ok: false, diagnostics: parsed.diagnostics }}
+  if (!parsed.ok) {
+    return { ok: false, diagnostics: parsed.diagnostics }
+  }
 
   const zoneGroup = parsed.tree.nodes.find(g => head(g) === 'zone')
 
-  if (!zoneGroup) {return { ok: false, diagnostics: [] }}
+  if (!zoneGroup) {
+    return { ok: false, diagnostics: [] }
+  }
 
   const parts = rest(zoneGroup)
   const nameGroup = parts[0]
-  const name =
-    nameGroup?.kind === 'group' ? head(nameGroup) : 'zone'
+  const name = nameGroup?.kind === 'group' ? head(nameGroup) : 'zone'
 
   // collect state declarations and the set of state names (so reads append `()`)
   const state: { name: string; init: string }[] = []
@@ -78,9 +81,7 @@ export function compileZone(source: {
     if (node.kind === 'group' && head(node) === 'state') {
       const inner = rest(node)
       const sName =
-        inner[0]?.kind === 'group'
-          ? head(inner[0])
-          : undefined
+        inner[0]?.kind === 'group' ? head(inner[0]) : undefined
 
       if (sName) {
         stateNames.add(sName)
@@ -96,15 +97,14 @@ export function compileZone(source: {
     if (node.kind === 'group' && head(node) === 'hook') {
       const inner = rest(node)
       const event =
-        inner[0]?.kind === 'group'
-          ? head(inner[0])
-          : undefined
+        inner[0]?.kind === 'group' ? head(inner[0]) : undefined
 
-      if (event)
-        {handlers.push({
+      if (event) {
+        handlers.push({
           event,
           body: inner.slice(1).map(s => statement(s, stateNames)),
-        })}
+        })
+      }
     }
   }
 
@@ -112,7 +112,9 @@ export function compileZone(source: {
 }
 
 function expr(node: Node | undefined, stateNames: Set<string>): string {
-  if (!node) {return 'undefined'}
+  if (!node) {
+    return 'undefined'
+  }
 
   switch (node.kind) {
     case 'integer':
@@ -132,7 +134,9 @@ function expr(node: Node | undefined, stateNames: Set<string>): string {
 
       // `code <literal>` is the literal wrapper (the former `mark`,
       // renamed in the mark->code migration). Unwrap to its value.
-      if (kw === 'code' || kw === 'mark') {return expr(args[0], stateNames)}
+      if (kw === 'code' || kw === 'mark') {
+        return expr(args[0], stateNames)
+      }
 
       if (kw === 'loan' || kw === 'read' || kw === 'move') {
         const target = args[0]
@@ -144,28 +148,29 @@ function expr(node: Node | undefined, stateNames: Set<string>): string {
       }
 
       if (kw === 'call') {
-        const fn =
-          args[0]?.kind === 'group'
-            ? head(args[0])
-            : undefined
+        const fn = args[0]?.kind === 'group' ? head(args[0]) : undefined
 
         const callArgs = args.slice(1).map(a => expr(a, stateNames))
 
-        if (fn && fn in BINARY && callArgs.length === 2)
-          {return `${callArgs[0]} ${BINARY[fn]} ${callArgs[1]}`}
+        if (fn && fn in BINARY && callArgs.length === 2) {
+          return `${callArgs[0]} ${BINARY[fn]} ${callArgs[1]}`
+        }
 
-        if (fn === 'decrement' && callArgs.length === 1)
-          {return `${callArgs[0]} - 1`}
+        if (fn === 'decrement' && callArgs.length === 1) {
+          return `${callArgs[0]} - 1`
+        }
 
-        if (fn === 'increment' && callArgs.length === 1)
-          {return `${callArgs[0]} + 1`}
+        if (fn === 'increment' && callArgs.length === 1) {
+          return `${callArgs[0]} + 1`
+        }
 
         return `${toCamel(fn ?? '')}(${callArgs.join(', ')})`
       }
 
       // a bare name: a variable or state read
-      if (kw && args.length === 0)
-        {return stateNames.has(kw) ? `${toCamel(kw)}()` : toCamel(kw)}
+      if (kw && args.length === 0) {
+        return stateNames.has(kw) ? `${toCamel(kw)}()` : toCamel(kw)
+      }
 
       return 'undefined'
     }
@@ -176,14 +181,15 @@ function expr(node: Node | undefined, stateNames: Set<string>): string {
 }
 
 function statement(node: Node, stateNames: Set<string>): string {
-  if (node.kind !== 'group') {return `${expr(node, stateNames)}`}
+  if (node.kind !== 'group') {
+    return `${expr(node, stateNames)}`
+  }
 
   const kw = head(node)
 
   if (kw === 'save') {
     const args = rest(node)
-    const target =
-      args[0]?.kind === 'group' ? head(args[0]) : undefined
+    const target = args[0]?.kind === 'group' ? head(args[0]) : undefined
 
     if (target && stateNames.has(target)) {
       return `set${toPascal(target)}(${expr(args[1], stateNames)})`
@@ -221,7 +227,9 @@ function emit(
   for (const h of handlers) {
     lines.push(`  function on${toPascal(h.event)}() {`)
 
-    for (const b of h.body) {lines.push(`    ${b}`)}
+    for (const b of h.body) {
+      lines.push(`    ${b}`)
+    }
 
     lines.push(`  }`)
   }

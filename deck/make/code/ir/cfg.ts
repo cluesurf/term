@@ -75,12 +75,18 @@ export function buildCfg(body: Statement[]): Cfg {
     next: number,
     loop: Loop | undefined,
   ): number {
-    if (statements.length === 0) {return next}
+    if (statements.length === 0) {
+      return next
+    }
 
     let split = 0
 
-    while (split < statements.length && !isControl(statements[split]!))
-      {split++}
+    while (
+      split < statements.length &&
+      !isControl(statements[split]!)
+    ) {
+      split++
+    }
 
     if (split === statements.length) {
       // an all-straight-line run: one block that jumps onward
@@ -95,7 +101,9 @@ export function buildCfg(body: Statement[]): Cfg {
     const restEntry = sequence(statements.slice(split + 1), next, loop)
     const controlEntry = control(statements[split]!, restEntry, loop)
 
-    if (prefix.length === 0) {return controlEntry}
+    if (prefix.length === 0) {
+      return controlEntry
+    }
 
     const block = create()
     block.body = prefix

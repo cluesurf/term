@@ -33,8 +33,9 @@ export function checkTotality(
   const warnings: Diagnostic[] = []
 
   for (const statement of program) {
-    if (statement.form === 'record-type')
-      {checkPositivity(statement, file, errors)}
+    if (statement.form === 'record-type') {
+      checkPositivity(statement, file, errors)
+    }
   }
 
   // Termination analysis is best-effort and warnings-only: it must never crash
@@ -116,20 +117,24 @@ function strictlyDecreases(
   // `succ (succ k)` and recursing on the inner `k`) is recognized as descending. A visited set guards against cycles.
   if (arg.form === 'variable') {
     const seen = new Set<string>()
+
     let current: string | undefined = arg.name
 
     while (current !== undefined && !seen.has(current)) {
       seen.add(current)
       current = memberOf?.get(current)
 
-      if (current === paramName) {return true}
+      if (current === paramName) {
+        return true
+      }
     }
   }
 
-  if (arg.form === 'member')
-    {return (
+  if (arg.form === 'member') {
+    return (
       arg.target.form === 'variable' && arg.target.name === paramName
-    )}
+    )
+  }
 
   if (
     arg.form === 'binary' &&
@@ -140,17 +145,21 @@ function strictlyDecreases(
       arg.op === '-' &&
       arg.right.form === 'integer' &&
       Number(arg.right.value) > 0
-    )
-      {return true}
+    ) {
+      return true
+    }
 
     if (
       arg.op === '/' &&
       arg.right.form === 'integer' &&
       Number(arg.right.value) > 1
-    )
-      {return true}
+    ) {
+      return true
+    }
 
-    if (arg.op === '%') {return true}
+    if (arg.op === '%') {
+      return true
+    }
   }
 
   return false
@@ -165,30 +174,36 @@ function terminationVerdict(program: Program): Map<string, boolean> {
     Extract<Statement, { form: 'function' }>
   >()
 
-  for (const statement of program)
-    {if (statement.form === 'function')
-      {functions.set(statement.name, statement)}}
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      functions.set(statement.name, statement)
+    }
+  }
 
   const names = new Set(functions.keys())
 
   // variant name -> its field names, so a recursion on a destructured field counts as structural descent
   const variantFields = new Map<string, string[]>()
 
-  for (const statement of program)
-    {if (statement.form === 'record-type')
-      {for (const variant of statement.variants)
-        {variantFields.set(
+  for (const statement of program) {
+    if (statement.form === 'record-type') {
+      for (const variant of statement.variants) {
+        variantFields.set(
           variant.name,
           variant.fields.map(f => f.name),
-        )}}}
+        )
+      }
+    }
+  }
 
   const edges = new Map<string, Set<string>>()
 
-  for (const [name, statement] of functions)
-    {edges.set(
+  for (const [name, statement] of functions) {
+    edges.set(
       name,
       collectCalledNames(statement.body, names, variantFields),
-    )}
+    )
+  }
 
   const reaches = (from: string): Set<string> => {
     const seen = new Set<string>()
@@ -197,11 +212,15 @@ function terminationVerdict(program: Program): Map<string, boolean> {
     while (stack.length > 0) {
       const next = stack.pop()!
 
-      if (seen.has(next)) {continue}
+      if (seen.has(next)) {
+        continue
+      }
 
       seen.add(next)
 
-      for (const further of edges.get(next) ?? []) {stack.push(further)}
+      for (const further of edges.get(next) ?? []) {
+        stack.push(further)
+      }
     }
 
     return seen
@@ -225,8 +244,9 @@ function terminationVerdict(program: Program): Map<string, boolean> {
       const decreasing = new Set<number>()
 
       for (let i = 0; i < paramNames.length && i < args.length; i++) {
-        if (strictlyDecreases(args[i]!, paramNames[i]!, memberOf))
-          {decreasing.add(i)}
+        if (strictlyDecreases(args[i]!, paramNames[i]!, memberOf)) {
+          decreasing.add(i)
+        }
       }
 
       positions = new Set([...positions].filter(i => decreasing.has(i)))
@@ -258,12 +278,16 @@ function checkTermination(
     Extract<Statement, { form: 'function' }>
   >()
 
-  for (const statement of program)
-    {if (statement.form === 'function')
-      {byName.set(statement.name, statement)}}
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      byName.set(statement.name, statement)
+    }
+  }
 
   for (const [name, ok] of verdict) {
-    if (ok) {continue}
+    if (ok) {
+      continue
+    }
 
     const statement = byName.get(name)!
     const calls: SelfCall[] = []
@@ -294,7 +318,9 @@ function collectCalledNames(
   collectAllCalls(
     body,
     callee => {
-      if (names.has(callee)) {found.add(callee)}
+      if (names.has(callee)) {
+        found.add(callee)
+      }
     },
     variantFields,
   )
@@ -315,7 +341,9 @@ function collectSelfCalls(
   walkCalls(
     body,
     (callee, args, memberOf) => {
-      if (callee === name) {out.push({ args, memberOf })}
+      if (callee === name) {
+        out.push({ args, memberOf })
+      }
     },
     variantFields,
   )
@@ -343,14 +371,15 @@ function walkCalls(
   // both maps default so a malformed / partially-built AST can never deref an
   // undefined map here (a missing map degrades to "no structural info", at worst
   // a spurious non-fatal termination warning, never a compiler crash).
-  variantFields: Map<string, string[]> = new Map(),
-  memberOf: Map<string, string> = new Map(),
+  variantFields = new Map<string, string[]>(),
+  memberOf = new Map<string, string>(),
 ): void {
   const visitExpression = (node: Expression): void => {
     switch (node.form) {
       case 'call':
-        if (node.callee.form === 'variable')
-          {visit(node.callee.name, node.args, memberOf)}
+        if (node.callee.form === 'variable') {
+          visit(node.callee.name, node.args, memberOf)
+        }
 
         visitExpression(node.callee)
         node.args.forEach(visitExpression)
@@ -386,7 +415,9 @@ function walkCalls(
           visitExpression(branch.value)
         })
 
-        if (node.otherwise) {visitExpression(node.otherwise)}
+        if (node.otherwise) {
+          visitExpression(node.otherwise)
+        }
 
         break
       default:
@@ -407,7 +438,9 @@ function walkCalls(
         visitExpression(node.expr)
         break
       case 'return':
-        if (node.value) {visitExpression(node.value)}
+        if (node.value) {
+          visitExpression(node.value)
+        }
 
         break
       case 'throw':
@@ -430,10 +463,12 @@ function walkCalls(
           walkCalls(branch.body, visit, variantFields, memberOf)
         }
 
-        if (node.otherwise)
-          {walkCalls(node.otherwise, visit, variantFields, memberOf)}
+        if (node.otherwise) {
+          walkCalls(node.otherwise, visit, variantFields, memberOf)
+        }
 
         break
+
       case 'match': {
         visitExpression(node.subject)
 
@@ -452,18 +487,21 @@ function walkCalls(
             // honor a `binds` field-rename so a recursion on the renamed field is still seen as structural descent
             for (const fieldName of branch.binds ??
               variantFields?.get(branch.label) ??
-              [])
-              {branchMembers.set(fieldName, subjectVar)}
+              []) {
+              branchMembers.set(fieldName, subjectVar)
+            }
           }
 
           walkCalls(branch.body, visit, variantFields, branchMembers)
         }
 
-        if (node.otherwise)
-          {walkCalls(node.otherwise, visit, variantFields, memberOf)}
+        if (node.otherwise) {
+          walkCalls(node.otherwise, visit, variantFields, memberOf)
+        }
 
         break
       }
+
       default:
         break
     }

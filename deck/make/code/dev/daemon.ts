@@ -48,10 +48,14 @@ export function startDaemon(options: {
   )
 
   app.post('/analyze', async context => {
-    const body = (await context.req.json())
+    const body = await context.req.json()
 
-    if (typeof body.file !== 'string' || typeof body.text !== 'string')
-      {return context.json({ error: 'file and text required' }, 400)}
+    if (
+      typeof body.file !== 'string' ||
+      typeof body.text !== 'string'
+    ) {
+      return context.json({ error: 'file and text required' }, 400)
+    }
 
     const result = await analyzerFor(body.file).analyze({
       file: body.file,
@@ -63,9 +67,11 @@ export function startDaemon(options: {
 
   // drop a document's warm state (the editor closed it)
   app.post('/close', async context => {
-    const body = (await context.req.json())
+    const body = await context.req.json()
 
-    if (typeof body.file === 'string') {analyzers.delete(body.file)}
+    if (typeof body.file === 'string') {
+      analyzers.delete(body.file)
+    }
 
     return context.json({ ok: true })
   })

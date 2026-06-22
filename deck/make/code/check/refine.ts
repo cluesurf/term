@@ -23,7 +23,9 @@ export function linear(
 function scale(a: Linear, k: number): Linear {
   const terms = new Map<string, number>()
 
-  for (const [v, c] of a.terms) {terms.set(v, c * k)}
+  for (const [v, c] of a.terms) {
+    terms.set(v, c * k)
+  }
 
   return { terms, constant: a.constant * k }
 }
@@ -31,7 +33,9 @@ function scale(a: Linear, k: number): Linear {
 function plus(a: Linear, b: Linear): Linear {
   const terms = new Map(a.terms)
 
-  for (const [v, c] of b.terms) {terms.set(v, (terms.get(v) ?? 0) + c)}
+  for (const [v, c] of b.terms) {
+    terms.set(v, (terms.get(v) ?? 0) + c)
+  }
 
   return { terms, constant: a.constant + b.constant }
 }
@@ -61,9 +65,13 @@ function negate(ineq: Inequality): Inequality {
 function variables(ineqs: Inequality[]): string[] {
   const set = new Set<string>()
 
-  for (const ineq of ineqs)
-    {for (const v of ineq.linear.terms.keys())
-      {if (Math.abs(ineq.linear.terms.get(v)!) > 1e-12) {set.add(v)}}}
+  for (const ineq of ineqs) {
+    for (const v of ineq.linear.terms.keys()) {
+      if (Math.abs(ineq.linear.terms.get(v)!) > 1e-12) {
+        set.add(v)
+      }
+    }
+  }
 
   return [...set]
 }
@@ -99,7 +107,9 @@ function normalize(ineq: Inequality): Norm {
   for (const [v, c] of ineq.linear.terms) {
     const r = Math.round(c)
 
-    if (r !== 0) {terms.set(v, r)}
+    if (r !== 0) {
+      terms.set(v, r)
+    }
   }
 
   let k = Math.round(ineq.linear.constant)
@@ -107,17 +117,22 @@ function normalize(ineq: Inequality): Norm {
   if (terms.size === 0) {
     // a pure constant constraint: `k <= 0` (or `k < 0` if strict) is decidable immediately
     const holds = ineq.strict ? k < 0 : k <= 0
+
     return holds ? { kind: 'true' } : { kind: 'false' }
   }
 
   let g = 0
 
-  for (const c of terms.values()) {g = wholeGcd(g, c)}
+  for (const c of terms.values()) {
+    g = wholeGcd(g, c)
+  }
 
   g = wholeGcd(g, k)
 
   if (g > 1) {
-    for (const [v, c] of terms) {terms.set(v, c / g)}
+    for (const [v, c] of terms) {
+      terms.set(v, c / g)
+    }
 
     k = k / g
   }
@@ -143,9 +158,13 @@ function reduce(ineqs: Inequality[]): Inequality[] | null {
   for (const ineq of ineqs) {
     const norm = normalize(ineq)
 
-    if (norm.kind === 'false') {return null}
+    if (norm.kind === 'false') {
+      return null
+    }
 
-    if (norm.kind === 'true') {continue}
+    if (norm.kind === 'true') {
+      continue
+    }
 
     seen.set(norm.key, norm.ineq)
   }
@@ -163,9 +182,13 @@ function eliminate(ineqs: Inequality[], v: string): Inequality[] {
   for (const ineq of ineqs) {
     const c = coeff(ineq, v)
 
-    if (c > 1e-12) {positive.push(ineq)}
-    else if (c < -1e-12) {negative.push(ineq)}
-    else {free.push(ineq)}
+    if (c > 1e-12) {
+      positive.push(ineq)
+    } else if (c < -1e-12) {
+      negative.push(ineq)
+    } else {
+      free.push(ineq)
+    }
   }
 
   const out = [...free]
@@ -219,19 +242,21 @@ function unsatisfiable(ineqs: Inequality[]): boolean {
 
   let system = reduce(tightened)
 
-  if (system === null) {return true} // a contradiction was already manifest
+  if (system === null) {
+    return true
+  } // a contradiction was already manifest
 
   // memo lookup on the reduced (canonical) system
-  const cacheKey = system
-    .map(canonKey)
-    .sort()
-    .join(';')
+  const cacheKey = system.map(canonKey).sort().join(';')
   const cached = satCache.get(cacheKey)
 
-  if (cached !== undefined) {return cached}
+  if (cached !== undefined) {
+    return cached
+  }
 
   const remember = (verdict: boolean): boolean => {
     satCache.set(cacheKey, verdict)
+
     return verdict
   }
 
@@ -251,8 +276,11 @@ function unsatisfiable(ineqs: Inequality[]): boolean {
       for (const ineq of system) {
         const c = coeff(ineq, v)
 
-        if (c > 1e-12) {pos++}
-        else if (c < -1e-12) {neg++}
+        if (c > 1e-12) {
+          pos++
+        } else if (c < -1e-12) {
+          neg++
+        }
       }
 
       const cost = pos * neg
@@ -265,7 +293,9 @@ function unsatisfiable(ineqs: Inequality[]): boolean {
 
     const next = reduce(eliminate(system, best))
 
-    if (next === null) {return remember(true)} // elimination exposed a contradiction
+    if (next === null) {
+      return remember(true)
+    } // elimination exposed a contradiction
 
     system = next
     vars = variables(system)
@@ -273,7 +303,9 @@ function unsatisfiable(ineqs: Inequality[]): boolean {
 
   // every remaining constraint is pure-constant; a positive constant is a contradiction
   for (const ineq of system) {
-    if (ineq.linear.constant > 1e-9) {return remember(true)}
+    if (ineq.linear.constant > 1e-9) {
+      return remember(true)
+    }
   }
 
   return remember(false)

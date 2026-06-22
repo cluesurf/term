@@ -31,11 +31,15 @@ export type TestRun = {
 function discoverTests(text: string, file: string): string[] {
   const parsed = parse({ file, text })
 
-  if (!parsed.ok) {return []}
+  if (!parsed.ok) {
+    return []
+  }
 
   const built = mill(parsed.tree, file)
 
-  if (!built.ok) {return []}
+  if (!built.ok) {
+    return []
+  }
 
   return built.program
     .filter(

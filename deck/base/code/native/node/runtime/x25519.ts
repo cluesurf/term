@@ -5,7 +5,8 @@
 // key-agreement API.
 const x25519 = (() => {
   const PKCS8_PREFIX = new Uint8Array([
-    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x04, 0x22, 0x04, 0x20,
+    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65,
+    0x6e, 0x04, 0x22, 0x04, 0x20,
   ])
   const subtle = (): SubtleCrypto => globalThis.crypto.subtle
   const concat = (a: Uint8Array, b: Uint8Array): Uint8Array => {
@@ -16,16 +17,49 @@ const x25519 = (() => {
   }
   return {
     makeKeyPair: async (): Promise<Uint8Array> => {
-      const pair = await subtle().generateKey({ name: 'X25519' }, true, ['deriveBits'])
-      const pkcs8 = new Uint8Array(await subtle().exportKey('pkcs8', (pair as CryptoKeyPair).privateKey))
-      const raw = new Uint8Array(await subtle().exportKey('raw', (pair as CryptoKeyPair).publicKey))
+      const pair = await subtle().generateKey(
+        { name: 'X25519' },
+        true,
+        ['deriveBits'],
+      )
+      const pkcs8 = new Uint8Array(
+        await subtle().exportKey(
+          'pkcs8',
+          (pair as CryptoKeyPair).privateKey,
+        ),
+      )
+      const raw = new Uint8Array(
+        await subtle().exportKey(
+          'raw',
+          (pair as CryptoKeyPair).publicKey,
+        ),
+      )
       const seed = pkcs8.slice(pkcs8.length - 32)
       return concat(seed, raw)
     },
-    sharedSecret: async (privateKey: Uint8Array, publicKey: Uint8Array): Promise<Uint8Array> => {
-      const priv = await subtle().importKey('pkcs8', concat(PKCS8_PREFIX, privateKey), { name: 'X25519' }, false, ['deriveBits'])
-      const pub = await subtle().importKey('raw', publicKey, { name: 'X25519' }, false, [])
-      const bits = await subtle().deriveBits({ name: 'X25519', public: pub }, priv, 256)
+    sharedSecret: async (
+      privateKey: Uint8Array,
+      publicKey: Uint8Array,
+    ): Promise<Uint8Array> => {
+      const priv = await subtle().importKey(
+        'pkcs8',
+        concat(PKCS8_PREFIX, privateKey),
+        { name: 'X25519' },
+        false,
+        ['deriveBits'],
+      )
+      const pub = await subtle().importKey(
+        'raw',
+        publicKey,
+        { name: 'X25519' },
+        false,
+        [],
+      )
+      const bits = await subtle().deriveBits(
+        { name: 'X25519', public: pub },
+        priv,
+        256,
+      )
       return new Uint8Array(bits)
     },
   }

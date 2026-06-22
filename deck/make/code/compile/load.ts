@@ -20,25 +20,32 @@ type ImportScan = { paths: string[]; hasZone: boolean }
 
 function scanImports(text: string): ImportScan {
   const paths: string[] = []
+
   let hasZone = false
   let angleDepth = 0 // open `<` minus `>` across lines: inside a text literal
 
   for (const line of text.split('\n')) {
     // only column-0 (top-level) lines are statements; skip body / indented lines
-    const topLevel = line.length > 0 && line[0] !== ' ' && line[0] !== '\t'
+    const topLevel =
+      line.length > 0 && !line.startsWith(' ') && !line.startsWith('\t')
 
-    if (topLevel && angleDepth === 0 && line[0] !== '#') {
-      const head = line.match(/^(load|bear|zone)\b/)
+    if (topLevel && angleDepth === 0 && !line.startsWith('#')) {
+      const head = /^(load|bear|zone)\b/.exec(line)
+
       if (head) {
         const kw = head[1]
+
         if (kw === 'zone') {
           hasZone = true
         } else {
           // the path is the first token after the keyword, up to a comma or space.
           // a `<...>` text / template path (e.g. `bear <./{{x}}>`) is NOT a plain
           // import path - the parser reads it as a text node and skips it, so we do too.
-          const m = line.slice(kw!.length).match(/^\s+([^\s,]+)/)
-          if (m && !m[1]!.startsWith('<')) {paths.push(m[1]!)}
+          const m = /^\s+([^\s,]+)/.exec(line.slice(kw!.length))
+
+          if (m && !m[1]!.startsWith('<')) {
+            paths.push(m[1]!)
+          }
         }
       }
     }
@@ -46,13 +53,14 @@ function scanImports(text: string): ImportScan {
     // track text-literal balance so a `<...>` spanning lines does not let its
     // content be read as statements (only `<`/`>` not preceded by a backslash)
     for (const ch of line.replace(/\\[<>]/g, '')) {
-      if (ch === '<') angleDepth++
-      else if (ch === '>' && angleDepth > 0) angleDepth--
+      if (ch === '<') {angleDepth++}
+      else if (ch === '>' && angleDepth > 0) {angleDepth--}
     }
   }
 
   return { paths, hasZone }
 }
+
 // resolve an import path (e.g. `@cluesurf/base/code/maybe`) from the importing file to its source, or undefined
 export type Resolver = (
   importPath: string,
@@ -76,7 +84,9 @@ export function collectModules(
   const active = new Set<string>()
 
   function visit(source: Source): void {
-    if (done.has(source.file) || active.has(source.file)) {return} // already included, or a cycle: stop
+    if (done.has(source.file) || active.has(source.file)) {
+      return
+    } // already included, or a cycle: stop
 
     active.add(source.file)
 
@@ -93,13 +103,16 @@ export function collectModules(
       scan.hasZone &&
       !paths.some(p => p.endsWith('zone/render')) &&
       !source.file.endsWith('zone/render.tree')
-    )
-      {paths.push(ZONE_RUNTIME_MODULE)}
+    ) {
+      paths.push(ZONE_RUNTIME_MODULE)
+    }
 
     for (const path of paths) {
       const dependency = resolve(path, source.file)
 
-      if (dependency) {visit(dependency)} // unresolved imports are left to the checker's unknown-name diagnostics
+      if (dependency) {
+        visit(dependency)
+      } // unresolved imports are left to the checker's unknown-name diagnostics
     }
 
     active.delete(source.file)

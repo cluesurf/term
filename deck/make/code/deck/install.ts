@@ -48,16 +48,23 @@ function rest(group: GroupNode): Node[] {
 function value(group: GroupNode): string {
   const arg = rest(group)[0]
 
-  if (!arg) {return ''}
+  if (!arg) {
+    return ''
+  }
 
-  if (arg.kind === 'text')
-    {return arg.parts
+  if (arg.kind === 'text') {
+    return arg.parts
       .map(p => (p.kind === 'chunk' ? p.text : ''))
-      .join('')}
+      .join('')
+  }
 
-  if (arg.kind === 'name') {return nameText(arg)}
+  if (arg.kind === 'name') {
+    return nameText(arg)
+  }
 
-  if (arg.kind === 'group') {return headName(arg) ?? ''}
+  if (arg.kind === 'group') {
+    return headName(arg) ?? ''
+  }
 
   return ''
 }
@@ -66,8 +73,11 @@ function child(
   group: GroupNode,
   keyword: string,
 ): GroupNode | undefined {
-  for (const node of rest(group))
-    {if (node.kind === 'group' && headName(node) === keyword) {return node}}
+  for (const node of rest(group)) {
+    if (node.kind === 'group' && headName(node) === keyword) {
+      return node
+    }
+  }
 
   return undefined
 }
@@ -82,18 +92,24 @@ export function parseDeck(text: string): Manifest {
   const manifest: Manifest = { name: '', version: '', deps: [] }
   const result = parse({ file: 'deck.tree', text })
 
-  if (!result.ok) {return manifest}
+  if (!result.ok) {
+    return manifest
+  }
 
   const tree: RootNode = result.tree
   const deckGroup = tree.nodes.find(g => headName(g) === 'deck')
 
-  if (!deckGroup) {return manifest}
+  if (!deckGroup) {
+    return manifest
+  }
 
   manifest.name = value(deckGroup)
 
   const markGroup = child(deckGroup, 'mark')
 
-  if (markGroup) {manifest.version = value(markGroup)}
+  if (markGroup) {
+    manifest.version = value(markGroup)
+  }
 
   for (const node of rest(deckGroup)) {
     if (node.kind === 'group' && headName(node) === 'link') {
@@ -124,18 +140,23 @@ function pickVersion(
 ): string | undefined {
   const dir = join(registryDir, host, deck)
 
-  if (!existsSync(dir)) {return undefined}
+  if (!existsSync(dir)) {
+    return undefined
+  }
 
   const versions = readdirSync(dir).filter(v =>
     existsSync(join(dir, v, 'deck.tree')),
   )
 
-  if (versions.length === 0) {return undefined}
+  if (versions.length === 0) {
+    return undefined
+  }
 
   const cleaned = range.replace(/[<>]/g, '').trim()
 
-  if (cleaned !== '*' && cleaned !== '' && versions.includes(cleaned))
-    {return cleaned}
+  if (cleaned !== '*' && cleaned !== '' && versions.includes(cleaned)) {
+    return cleaned
+  }
 
   // highest version (lexical sort is fine for the test's simple versions)
   return versions.sort().reverse()[0]
@@ -173,11 +194,15 @@ export function install(
     const { host, name } = parsePackage(depName)
     const version = pickVersion(registryDir, host, name, range)
 
-    if (!version) {return undefined}
+    if (!version) {
+      return undefined
+    }
 
     const ref = `${depName}:${version}`
 
-    if (visited.has(depName)) {return visited.get(depName)}
+    if (visited.has(depName)) {
+      return visited.get(depName)
+    }
 
     visited.set(depName, version)
 
@@ -202,7 +227,9 @@ export function install(
     for (const d of depManifest.deps) {
       const v = resolveDep(d.name, d.range)
 
-      if (v) {deps.push({ name: d.name, version: v })}
+      if (v) {
+        deps.push({ name: d.name, version: v })
+      }
     }
 
     lockfile.links.push({ ref, hash, deps })
@@ -211,8 +238,9 @@ export function install(
     const linkDir = join(projectDir, 'link', host, name)
     mkdirSync(dirname(linkDir), { recursive: true })
 
-    if (existsSync(linkDir))
-      {rmSync(linkDir, { recursive: true, force: true })}
+    if (existsSync(linkDir)) {
+      rmSync(linkDir, { recursive: true, force: true })
+    }
 
     symlinkSync(target, linkDir)
 
@@ -222,8 +250,9 @@ export function install(
   for (const dep of manifest.deps) {
     const version = resolveDep(dep.name, dep.range)
 
-    if (!version)
-      {return { ok: false, error: `cannot resolve ${dep.name}` }}
+    if (!version) {
+      return { ok: false, error: `cannot resolve ${dep.name}` }
+    }
 
     lockfile.requests.push({
       name: dep.name,

@@ -39,7 +39,9 @@ task flip
 // a hold/rule with a working proof emits no unchecked-hold warning and compiles
 function proves(source: string): boolean {
   const result = compile({ file: 'p.tree', text: source })
-  if (!result.ok) {return false}
+  if (!result.ok) {
+    return false
+  }
   return (result.warnings ?? []).every(d => d.name !== 'unchecked-hold')
 }
 

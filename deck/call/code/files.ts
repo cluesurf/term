@@ -17,10 +17,14 @@ export async function collectTreeFiles(
   async function walk(target: string): Promise<void> {
     const stat = await fs.stat(target).catch(() => undefined)
 
-    if (!stat) {return}
+    if (!stat) {
+      return
+    }
 
     if (stat.isFile()) {
-      if (target.endsWith('.tree')) {found.push(target)}
+      if (target.endsWith('.tree')) {
+        found.push(target)
+      }
 
       return
     }
@@ -29,14 +33,18 @@ export async function collectTreeFiles(
       const entries = await fs.readdir(target, { withFileTypes: true })
 
       for (const entry of entries) {
-        if (entry.isDirectory() && SKIP.has(entry.name)) {continue}
+        if (entry.isDirectory() && SKIP.has(entry.name)) {
+          continue
+        }
 
         await walk(path.join(target, entry.name))
       }
     }
   }
 
-  for (const target of targets) {await walk(target)}
+  for (const target of targets) {
+    await walk(target)
+  }
 
   return found.sort()
 }

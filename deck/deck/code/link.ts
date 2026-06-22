@@ -25,7 +25,7 @@ export async function linkPackages(input: {
   await initStore()
 
   // install each resolved package to the flat store
-  const tasks: Array<Promise<void>> = []
+  const tasks: Promise<void>[] = []
   const chunks = chunkArray(
     Array.from(input.resolution.decks.values()),
     input.config.concurrency,
@@ -39,6 +39,7 @@ export async function linkPackages(input: {
         config: input.config,
       }),
     )
+
     await Promise.all(chunkTasks)
   }
 
@@ -73,13 +74,14 @@ async function installResolved(input: {
   // skip if already installed
   try {
     await fsp.access(deckDir)
+
     return
   } catch {
     // not installed yet
   }
 
   // skip workspace packages (no tarball)
-  if (!resolved.site) return
+  if (!resolved.site) {return}
 
   // fetch tarball
   const tarball = await fetchTarball({
@@ -100,6 +102,7 @@ async function installResolved(input: {
             .update(tarball)
             .digest('base64')
         : ''
+
     if (actual !== expected && actualBase64 !== expected) {
       throw new Error(
         `Integrity check failed for ${resolved.name}@${showMark(resolved.mark)}. ` +
@@ -194,6 +197,7 @@ async function createTopLink(input: {
 
   // parse scope from name
   const parts = resolved.name.split('/')
+
   let targetLink: string
 
   if (parts.length === 2) {
@@ -223,7 +227,7 @@ async function createDepLinks(input: {
   const deckDir = path.join(seedDir, `${resolved.name}@${markStr}`)
   const depsLinkDir = path.join(deckDir, LINK_DIR)
 
-  if (resolved.link.size === 0) return
+  if (resolved.link.size === 0) {return}
 
   await fsp.mkdir(depsLinkDir, { recursive: true })
 
@@ -233,13 +237,15 @@ async function createDepLinks(input: {
       name: depName,
       resolution,
     })
-    if (!depResolved) continue
+
+    if (!depResolved) {continue}
 
     const depMarkStr = showMark(depResolved.mark)
     const depDeckDir = path.join(seedDir, `${depName}@${depMarkStr}`)
 
     // parse scope
     const parts = depName.split('/')
+
     let targetLink: string
 
     if (parts.length === 2) {
@@ -266,14 +272,17 @@ function findResolvedDep(input: {
       return resolved
     }
   }
+
   return undefined
 }
 
-function chunkArray<T>(arr: Array<T>, size: number): Array<Array<T>> {
-  const chunks: Array<Array<T>> = []
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = []
+
   for (let i = 0; i < arr.length; i += size) {
     chunks.push(arr.slice(i, i + size))
   }
+
   return chunks
 }
 
@@ -296,6 +305,7 @@ export async function devLink(input: {
 
   const linkDir = path.join(input.root, LINK_DIR)
   const parts = fullName.split('/')
+
   let targetLink: string
 
   if (parts.length === 2) {
@@ -317,6 +327,7 @@ export async function devUnlink(input: {
 }): Promise<void> {
   const linkDir = path.join(input.root, LINK_DIR)
   const parts = input.name.split('/')
+
   let targetLink: string
 
   if (parts.length === 2) {

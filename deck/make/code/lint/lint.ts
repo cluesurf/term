@@ -123,7 +123,9 @@ function eachExpression(
         eachExpression(b.value, visit)
       })
 
-      if (expr.otherwise) {eachExpression(expr.otherwise, visit)}
+      if (expr.otherwise) {
+        eachExpression(expr.otherwise, visit)
+      }
 
       break
     default:
@@ -158,7 +160,9 @@ function eachStatement(
         block(b.body)
       })
 
-      if (stmt.otherwise) {block(stmt.otherwise)}
+      if (stmt.otherwise) {
+        block(stmt.otherwise)
+      }
 
       break
     case 'while':
@@ -169,7 +173,9 @@ function eachStatement(
       eachExpression(stmt.subject, onExpression)
       stmt.cases.forEach(c => block(c.body))
 
-      if (stmt.otherwise) {block(stmt.otherwise)}
+      if (stmt.otherwise) {
+        block(stmt.otherwise)
+      }
 
       break
     case 'for-each':
@@ -177,7 +183,9 @@ function eachStatement(
       block(stmt.body)
       break
     case 'return':
-      if (stmt.value) {eachExpression(stmt.value, onExpression)}
+      if (stmt.value) {
+        eachExpression(stmt.value, onExpression)
+      }
 
       break
     case 'throw':
@@ -201,11 +209,14 @@ function reassignedNames(program: Program): Set<string> {
   const onExpression = () => {}
 
   const onStatement = (s: Statement) => {
-    if (s.form === 'assign' && s.target.form === 'variable')
-      {names.add(s.target.name)}
+    if (s.form === 'assign' && s.target.form === 'variable') {
+      names.add(s.target.name)
+    }
   }
 
-  for (const s of program) {eachStatement(s, onStatement, onExpression)}
+  for (const s of program) {
+    eachStatement(s, onStatement, onExpression)
+  }
 
   return names
 }
@@ -220,15 +231,20 @@ function referencedNames(program: Program): Set<string> {
   const onStatement = () => {}
 
   const onExpression = (e: Expression) => {
-    if (e.form === 'variable') {names.add(e.name)}
+    if (e.form === 'variable') {
+      names.add(e.name)
+    }
 
     if (e.form === 'closure') {
-      for (const s of e.body)
-        {eachStatement(s, onStatement, onExpression)}
+      for (const s of e.body) {
+        eachStatement(s, onStatement, onExpression)
+      }
     }
   }
 
-  for (const s of program) {eachStatement(s, onStatement, onExpression)}
+  for (const s of program) {
+    eachStatement(s, onStatement, onExpression)
+  }
 
   return names
 }
@@ -249,8 +265,9 @@ export function lint(
   // native-import modules loaded more than once (used by no-duplicate-load)
   const loadCounts = new Map<string, number>()
   for (const s of program) {
-    if (s.form === 'native')
-      {loadCounts.set(s.module, (loadCounts.get(s.module) ?? 0) + 1)}
+    if (s.form === 'native') {
+      loadCounts.set(s.module, (loadCounts.get(s.module) ?? 0) + 1)
+    }
   }
   const duplicateLoads = new Set(
     [...loadCounts]
@@ -261,11 +278,12 @@ export function lint(
   const lines = source.split('\n')
 
   const slice = (span: Span): string => {
-    if (span.start.line === span.end.line)
-      {return (lines[span.start.line] ?? '').slice(
+    if (span.start.line === span.end.line) {
+      return (lines[span.start.line] ?? '').slice(
         span.start.column,
         span.end.column,
-      )}
+      )
+    }
 
     const first = (lines[span.start.line] ?? '').slice(
       span.start.column,
@@ -295,7 +313,9 @@ export function lint(
       slice,
       report(finding) {
         // honor inline suppression (`# lint off Lxxx` on the line above the node)
-        if (config.suppress?.get(finding.span.start.line)?.has(rule.code)) {
+        if (
+          config.suppress?.get(finding.span.start.line)?.has(rule.code)
+        ) {
           return
         }
 
@@ -353,15 +373,21 @@ export function lint(
   ] as const
 
   for (const lr of LINE_RULES) {
-    if (config.severity?.[lr.code] === 'off') {continue}
+    if (config.severity?.[lr.code] === 'off') {
+      continue
+    }
 
     const severity =
       (config.severity?.[lr.code] as Severity | undefined) ?? 'warning'
 
     lines.forEach((line, i) => {
-      if (!lr.hit(line)) {return}
+      if (!lr.hit(line)) {
+        return
+      }
 
-      if (config.suppress?.get(i)?.has(lr.code)) {return}
+      if (config.suppress?.get(i)?.has(lr.code)) {
+        return
+      }
 
       findings.push({
         rule: lr.name,
@@ -408,7 +434,10 @@ export function lint(
 // apply the fixes carried by `findings` to the source, returning the fixed text. Edits are applied back-to-front so an
 // earlier edit never shifts a later span; overlapping edits are skipped (the outer one wins) so the result is always
 // well-defined. Run the formatter afterward to normalize layout. Idempotent on already-fixed source.
-export function applyFixes(source: string, findings: Finding[]): string {
+export function applyFixes(
+  source: string,
+  findings: Finding[],
+): string {
   const lines = source.split('\n')
 
   const offsetOf = (pos: { line: number; column: number }): number => {
@@ -432,7 +461,9 @@ export function applyFixes(source: string, findings: Finding[]): string {
   let appliedStart = source.length
 
   for (const edit of edits) {
-    if (edit.end > appliedStart) {continue} // overlaps an already-applied edit; skip
+    if (edit.end > appliedStart) {
+      continue
+    } // overlaps an already-applied edit; skip
 
     out = out.slice(0, edit.start) + edit.text + out.slice(edit.end)
     appliedStart = edit.start

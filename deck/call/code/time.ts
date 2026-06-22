@@ -72,8 +72,9 @@ export async function callTime(input: {
             `${relative}: ${err.diagnostics.length} compilation error(s)`,
           )
 
-          for (const diagnostic of err.diagnostics)
-            {console.error(render(diagnostic, text.split('\n')))}
+          for (const diagnostic of err.diagnostics) {
+            console.error(render(diagnostic, text.split('\n')))
+          }
 
           continue
         }
@@ -81,7 +82,9 @@ export async function callTime(input: {
         throw err
       }
 
-      if (module.benchmarks.length === 0) {continue}
+      if (module.benchmarks.length === 0) {
+        continue
+      }
 
       allResults.push(
         ...(await runBenchmarks({ module, root: input.root })),
@@ -152,8 +155,9 @@ export async function callTime(input: {
           console.log(formatComparison(comparison))
         }
 
-        if (comparison.regressions > 0)
-          {logWarn(`${comparison.regressions} regression(s) detected`)}
+        if (comparison.regressions > 0) {
+          logWarn(`${comparison.regressions} regression(s) detected`)
+        }
 
         if (
           input.failOnRegression != null &&
@@ -206,11 +210,12 @@ async function showHistory(input: {
         (b: { name: string }) => b.name === input.name,
       )
 
-      if (bench)
-        {entries.push({
+      if (bench) {
+        entries.push({
           timestamp: data.timestamp ?? file,
           mean_ns: bench.mean_ns,
-        })}
+        })
+      }
     }
 
     if (entries.length === 0) {

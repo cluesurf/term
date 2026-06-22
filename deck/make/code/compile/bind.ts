@@ -12,13 +12,14 @@ import type {
 export type Bind = Extract<Statement, { form: 'bind' }>
 
 // index every declarative binding by name, for call-site rendering across a program
-export function collectBinds(
-  program: Statement[],
-): Map<string, Bind> {
+export function collectBinds(program: Statement[]): Map<string, Bind> {
   const binds = new Map<string, Bind>()
 
-  for (const statement of program)
-    {if (statement.form === 'bind') {binds.set(statement.name, statement)}}
+  for (const statement of program) {
+    if (statement.form === 'bind') {
+      binds.set(statement.name, statement)
+    }
+  }
 
   return binds
 }
@@ -32,15 +33,18 @@ export function referencedBinds(
   const used = new Set<string>()
 
   const expr = (node: Expression | undefined): void => {
-    if (!node) {return}
+    if (!node) {
+      return
+    }
 
     switch (node.form) {
       case 'call':
         if (
           node.callee.form === 'variable' &&
           binds.has(node.callee.name)
-        )
-          {used.add(node.callee.name)}
+        ) {
+          used.add(node.callee.name)
+        }
 
         expr(node.callee)
         node.args.forEach(expr)
@@ -103,7 +107,9 @@ export function referencedBinds(
           body(b.body)
         })
 
-        if (statement.otherwise) {body(statement.otherwise)}
+        if (statement.otherwise) {
+          body(statement.otherwise)
+        }
 
         break
       case 'while':
@@ -114,7 +120,9 @@ export function referencedBinds(
         expr(statement.subject)
         statement.cases.forEach(c => body(c.body))
 
-        if (statement.otherwise) {body(statement.otherwise)}
+        if (statement.otherwise) {
+          body(statement.otherwise)
+        }
 
         break
       case 'for-each':
@@ -148,7 +156,9 @@ export function referencedBinds(
   for (const name of used) {
     const bind = binds.get(name)
 
-    if (bind) {out.set(name, bind)}
+    if (bind) {
+      out.set(name, bind)
+    }
   }
 
   return out
@@ -163,7 +173,9 @@ export function renderBind(
 ): string | undefined {
   const target = bind.targets.find(candidate => candidate.env === env)
 
-  if (!target) {return undefined}
+  if (!target) {
+    return undefined
+  }
 
   let out = target.expression
   bind.params.forEach((param, index) => {
@@ -188,7 +200,9 @@ export function bindImports(
     for (const need of target?.imports ?? []) {
       const key = `${need.module}|${need.alias ?? ''}`
 
-      if (seen.has(key)) {continue}
+      if (seen.has(key)) {
+        continue
+      }
 
       seen.add(key)
       out.push(need)

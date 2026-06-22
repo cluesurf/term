@@ -24,13 +24,17 @@ function track(source: Source): void {
 
 function trigger(source: Source): void {
   // snapshot, because running observers may re-link sources
-  for (const observer of [...source.observers]) {schedule(observer)}
+  for (const observer of [...source.observers]) {
+    schedule(observer)
+  }
 }
 
 function schedule(observer: Observer): void {
   pending.add(observer)
 
-  if (batchDepth === 0) {flush()}
+  if (batchDepth === 0) {
+    flush()
+  }
 }
 
 function flush(): void {
@@ -43,8 +47,9 @@ function flush(): void {
 }
 
 function detach(observer: Observer): void {
-  for (const source of observer.sources)
-    {source.observers.delete(observer)}
+  for (const source of observer.sources) {
+    source.observers.delete(observer)
+  }
 
   observer.sources.clear()
 }
@@ -64,7 +69,9 @@ export function signal<T>(
   }
 
   const write = (next: T): void => {
-    if (Object.is(next, value)) {return}
+    if (Object.is(next, value)) {
+      return
+    }
 
     value = next
     batchDepth++
@@ -74,7 +81,9 @@ export function signal<T>(
     } finally {
       batchDepth--
 
-      if (batchDepth === 0) {flush()}
+      if (batchDepth === 0) {
+        flush()
+      }
     }
   }
 
@@ -153,7 +162,9 @@ export function createRoot<T>(fn: (dispose: () => void) => T): T {
   const scope: Scope = { disposers: new Set() }
 
   const dispose = (): void => {
-    for (const disposer of scope.disposers) {disposer()}
+    for (const disposer of scope.disposers) {
+      disposer()
+    }
 
     scope.disposers.clear()
   }
@@ -177,6 +188,8 @@ export function batch(run: () => void): void {
   } finally {
     batchDepth--
 
-    if (batchDepth === 0) {flush()}
+    if (batchDepth === 0) {
+      flush()
+    }
   }
 }

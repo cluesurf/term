@@ -26,9 +26,11 @@ export function effectRows(program: Program): Map<string, Set<string>> {
     Extract<Statement, { form: 'function' }>
   >()
 
-  for (const statement of program)
-    {if (statement.form === 'function')
-      {functions.set(statement.name, statement)}}
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      functions.set(statement.name, statement)
+    }
+  }
 
   const names = new Set(functions.keys())
 
@@ -38,9 +40,13 @@ export function effectRows(program: Program): Map<string, Set<string>> {
   for (const [name, statement] of functions) {
     const row = new Set<string>()
 
-    if (statement.async) {row.add('async')}
+    if (statement.async) {
+      row.add('async')
+    }
 
-    if (bodyThrows(statement.body)) {row.add('throw')}
+    if (bodyThrows(statement.body)) {
+      row.add('throw')
+    }
 
     // effect-row polymorphism through callbacks: a function that calls an effectful callback parameter inherits
     // that callback's declared effects (its row depends on the callback it is given)
@@ -53,7 +59,9 @@ export function effectRows(program: Program): Map<string, Set<string>> {
         param.type?.kind === 'function' &&
         param.type.effects
       ) {
-        for (const effect of param.type.effects) {row.add(effect)}
+        for (const effect of param.type.effects) {
+          row.add(effect)
+        }
       }
     }
 
@@ -90,23 +98,27 @@ function bodyThrows(body: Statement[]): boolean {
         return true
       case 'while':
       case 'for-each':
-        if (bodyThrows(node.body)) {return true}
+        if (bodyThrows(node.body)) {
+          return true
+        }
 
         break
       case 'if':
         if (
           node.branches.some(b => bodyThrows(b.body)) ||
           (node.otherwise && bodyThrows(node.otherwise))
-        )
-          {return true}
+        ) {
+          return true
+        }
 
         break
       case 'match':
         if (
           node.cases.some(c => bodyThrows(c.body)) ||
           (node.otherwise && bodyThrows(node.otherwise))
-        )
-          {return true}
+        ) {
+          return true
+        }
 
         break
       default:
@@ -130,8 +142,9 @@ function calledNames(
         if (
           node.callee.form === 'variable' &&
           known.has(node.callee.name)
-        )
-          {found.add(node.callee.name)}
+        ) {
+          found.add(node.callee.name)
+        }
 
         expr(node.callee)
         node.args.forEach(expr)
@@ -167,7 +180,9 @@ function calledNames(
           expr(b.value)
         })
 
-        if (node.otherwise) {expr(node.otherwise)}
+        if (node.otherwise) {
+          expr(node.otherwise)
+        }
 
         break
       default:
@@ -188,7 +203,9 @@ function calledNames(
         expr(node.expr)
         break
       case 'return':
-        if (node.value) {expr(node.value)}
+        if (node.value) {
+          expr(node.value)
+        }
 
         break
       case 'throw':
@@ -237,15 +254,21 @@ export function checkEffects(
   const allFunctions = new Set<string>()
 
   for (const statement of program) {
-    if (statement.form !== 'function') {continue}
+    if (statement.form !== 'function') {
+      continue
+    }
 
     allFunctions.add(statement.name)
 
-    if (statement.async) {asyncFunctions.add(statement.name)}
+    if (statement.async) {
+      asyncFunctions.add(statement.name)
+    }
   }
 
   for (const statement of program) {
-    if (statement.form !== 'function') {continue}
+    if (statement.form !== 'function') {
+      continue
+    }
 
     const inAsync = statement.async === true
 
@@ -361,7 +384,9 @@ export function checkEffects(
             visitExpression(branch.value, false)
           })
 
-          if (node.otherwise) {visitExpression(node.otherwise, false)}
+          if (node.otherwise) {
+            visitExpression(node.otherwise, false)
+          }
 
           break
         default:
@@ -383,7 +408,9 @@ export function checkEffects(
             visitExpression(node.expr, false)
             break
           case 'return':
-            if (node.value) {visitExpression(node.value, false)}
+            if (node.value) {
+              visitExpression(node.value, false)
+            }
 
             break
           case 'throw':
@@ -406,15 +433,21 @@ export function checkEffects(
               visitBody(branch.body)
             }
 
-            if (node.otherwise) {visitBody(node.otherwise)}
+            if (node.otherwise) {
+              visitBody(node.otherwise)
+            }
 
             break
           case 'match':
             visitExpression(node.subject, false)
 
-            for (const branch of node.cases) {visitBody(branch.body)}
+            for (const branch of node.cases) {
+              visitBody(branch.body)
+            }
 
-            if (node.otherwise) {visitBody(node.otherwise)}
+            if (node.otherwise) {
+              visitBody(node.otherwise)
+            }
 
             break
           default:

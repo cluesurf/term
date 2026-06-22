@@ -25,7 +25,9 @@ const ENTRY = '<entry>'
 
 // collect the named-type references inside a type (for `import type`)
 function walkType(type: Type | undefined, types: Set<string>): void {
-  if (!type) {return}
+  if (!type) {
+    return
+  }
 
   switch (type.kind) {
     case 'named':
@@ -57,7 +59,9 @@ function walkExpr(
   switch (expr.form) {
     case 'variable':
       // only a reference to a top-level function needs a value import (locals / params / builtins do not)
-      if (expr.binding?.kind === 'function') {values.add(expr.name)}
+      if (expr.binding?.kind === 'function') {
+        values.add(expr.name)
+      }
 
       break
     case 'call':
@@ -101,7 +105,9 @@ function walkExpr(
         walkExpr(b.value, values, types)
       })
 
-      if (expr.otherwise) {walkExpr(expr.otherwise, values, types)}
+      if (expr.otherwise) {
+        walkExpr(expr.otherwise, values, types)
+      }
 
       break
     default:
@@ -114,8 +120,9 @@ function walkStatements(
   values: Set<string>,
   types: Set<string>,
 ): void {
-  for (const statement of statements)
-    {walkStatement(statement, values, types)}
+  for (const statement of statements) {
+    walkStatement(statement, values, types)
+  }
 }
 
 // collect cross-module references in a statement (its expressions and its type annotations)
@@ -142,8 +149,9 @@ function walkStatement(
         walkStatements(b.body, values, types)
       })
 
-      if (statement.otherwise)
-        {walkStatements(statement.otherwise, values, types)}
+      if (statement.otherwise) {
+        walkStatements(statement.otherwise, values, types)
+      }
 
       break
     case 'while':
@@ -156,8 +164,9 @@ function walkStatement(
         walkStatements(c.body, values, types),
       )
 
-      if (statement.otherwise)
-        {walkStatements(statement.otherwise, values, types)}
+      if (statement.otherwise) {
+        walkStatements(statement.otherwise, values, types)
+      }
 
       break
     case 'for-each':
@@ -165,7 +174,9 @@ function walkStatement(
       walkStatements(statement.body, values, types)
       break
     case 'return':
-      if (statement.value) {walkExpr(statement.value, values, types)}
+      if (statement.value) {
+        walkExpr(statement.value, values, types)
+      }
 
       break
     case 'throw':
@@ -207,13 +218,14 @@ function definedNames(
   for (const statement of program) {
     const file = origin?.get(statement) ?? ENTRY
 
-    if (statement.form === 'function' || statement.form === 'zone')
-      {values.set(statement.name, file)}
-    else if (
+    if (statement.form === 'function' || statement.form === 'zone') {
+      values.set(statement.name, file)
+    } else if (
       statement.form === 'record-type' ||
       statement.form === 'mask'
-    )
-      {types.set(statement.name, file)}
+    ) {
+      types.set(statement.name, file)
+    }
   }
 
   return { values, types }
@@ -292,8 +304,11 @@ export function emitModules(
     const file = origin?.get(statement) ?? ENTRY
     const bucket = byFile.get(file)
 
-    if (bucket) {bucket.push(statement)}
-    else {byFile.set(file, [statement])}
+    if (bucket) {
+      bucket.push(statement)
+    } else {
+      byFile.set(file, [statement])
+    }
   }
 
   const defined = definedNames(program, origin)
@@ -301,9 +316,13 @@ export function emitModules(
   // when the enum (`maybe`) is defined in another module
   const variants = new Set<string>()
 
-  for (const statement of program)
-    {if (statement.form === 'record-type')
-      {for (const v of statement.variants) {variants.add(v.name)}}}
+  for (const statement of program) {
+    if (statement.form === 'record-type') {
+      for (const v of statement.variants) {
+        variants.add(v.name)
+      }
+    }
+  }
 
   const out = new Map<string, ModuleEmit>()
 
@@ -316,8 +335,11 @@ export function emitModules(
     // few render-runtime helpers that are not otherwise in the module's AST. Add them so they get imported.
     const isZone = statements.some(s => s.form === 'zone')
 
-    if (isZone)
-      {for (const helper of ZONE_MODULE_RUNTIME) {values.add(helper)}}
+    if (isZone) {
+      for (const helper of ZONE_MODULE_RUNTIME) {
+        values.add(helper)
+      }
+    }
 
     // group cross-module references by their defining file
     const valueImports = new Map<string, Set<string>>()
@@ -326,30 +348,34 @@ export function emitModules(
     for (const name of values) {
       const from = defined.values.get(name)
 
-      if (from && from !== file)
-        {groupAdd(valueImports, from, toCamel(name))}
+      if (from && from !== file) {
+        groupAdd(valueImports, from, toCamel(name))
+      }
     }
 
     for (const name of types) {
       const from = defined.types.get(name)
 
-      if (from && from !== file)
-        {groupAdd(typeImports, from, toPascal(name))}
+      if (from && from !== file) {
+        groupAdd(typeImports, from, toPascal(name))
+      }
     }
 
     const lines: string[] = []
 
-    for (const [dep, names] of valueImports)
-      {lines.push(
+    for (const [dep, names] of valueImports) {
+      lines.push(
         `import { ${[...names].sort().join(', ')} } from "${urlForFile(dep)}"`,
-      )}
+      )
+    }
 
-    for (const [dep, names] of typeImports)
-      {lines.push(
+    for (const [dep, names] of typeImports) {
+      lines.push(
         `import type { ${[...names]
           .sort()
           .join(', ')} } from "${urlForFile(dep)}"`,
-      )}
+      )
+    }
 
     // zone modules emit HMR-aware component bodies (signals seeded from the kept snapshot, instances registered)
     const body = emitTypeScript(statements, { hmr: isZone, variants })
@@ -382,6 +408,9 @@ function groupAdd(
 ): void {
   const set = map.get(key)
 
-  if (set) {set.add(value)}
-  else {map.set(key, new Set([value]))}
+  if (set) {
+    set.add(value)
+  } else {
+    map.set(key, new Set([value]))
+  }
 }

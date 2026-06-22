@@ -43,8 +43,9 @@ export class Net {
   private remove(id: number): void {
     const n = arity[this.nodes.get(id)!]
 
-    for (let slot = 0; slot <= n; slot++)
-      {this.link.delete(`${id}:${slot}`)}
+    for (let slot = 0; slot <= n; slot++) {
+      this.link.delete(`${id}:${slot}`)
+    }
 
     this.nodes.delete(id)
   }
@@ -52,7 +53,9 @@ export class Net {
   // the active pairs: nodes whose principal ports are wired to each other's principal port
   private activePair(): [number, number] | undefined {
     for (const id of this.nodes.keys()) {
-      if (this.interface.has(id)) {continue} // the boundary is inert
+      if (this.interface.has(id)) {
+        continue
+      } // the boundary is inert
 
       const peer = this.peer({ node: id, slot: 0 })
 
@@ -62,8 +65,9 @@ export class Net {
         this.nodes.has(peer.node) &&
         !this.interface.has(peer.node) &&
         peer.node > id
-      )
-        {return [id, peer.node]}
+      ) {
+        return [id, peer.node]
+      }
     }
 
     return undefined
@@ -73,7 +77,9 @@ export class Net {
   step(): boolean {
     const pair = this.activePair()
 
-    if (!pair) {return false}
+    if (!pair) {
+      return false
+    }
 
     const [a, b] = pair
     const la = this.nodes.get(a)!
@@ -139,7 +145,11 @@ export class Net {
   normalize(limit = 100000): void {
     let n = 0
 
-    while (this.step()) {if (++n >= limit) {break}}
+    while (this.step()) {
+      if (++n >= limit) {
+        break
+      }
+    }
   }
 
   size(): number {

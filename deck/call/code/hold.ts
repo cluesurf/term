@@ -42,6 +42,7 @@ export async function callHold(input: {
   const useCache = input.cache ?? true
 
   const files = await collectTreeFiles(input.paths, root)
+
   if (files.length === 0) {
     logFail('No .tree files found')
     process.exit(1)
@@ -68,10 +69,14 @@ export async function callHold(input: {
 
   for (const outcome of result.outcomes) {
     const rel = path.relative(root, outcome.file)
+
     if (outcome.source === 'cached') {
-      console.log(fade(`  cached  ${rel}  ${outcome.ok ? 'holds' : 'FAILED'}`))
+      console.log(
+        fade(`  cached  ${rel}  ${outcome.ok ? 'holds' : 'FAILED'}`),
+      )
       continue
     }
+
     // a freshly-checked failure prints the full gap report
     if (!outcome.ok && outcome.report) {
       console.log(renderReport(outcome.report))

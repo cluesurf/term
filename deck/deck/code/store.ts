@@ -19,6 +19,7 @@ export function getDeckDir(): string {
 
 export function getFilePath(input: { hash: string }): string {
   const prefix = input.hash.slice(0, 2)
+
   return path.join(getTreeDir(), prefix, input.hash)
 }
 
@@ -31,8 +32,10 @@ export async function hasFile(input: {
   hash: string
 }): Promise<boolean> {
   const filePath = getFilePath({ hash: input.hash })
+
   try {
     await fsp.access(filePath)
+
     return true
   } catch {
     return false
@@ -48,6 +51,7 @@ export async function storeFile(input: {
   await fsp.mkdir(dir, { recursive: true })
 
   const exists = await hasFile({ hash: input.hash })
+
   if (!exists) {
     await fsp.writeFile(filePath, input.data)
   }
@@ -68,6 +72,7 @@ export async function storeDeckMeta(input: {
     input.name,
     input.mark,
   )
+
   await fsp.mkdir(dir, { recursive: true })
   await fsp.writeFile(path.join(dir, 'deck.tree'), input.data, 'utf-8')
 }
@@ -85,6 +90,7 @@ export async function loadDeckMeta(input: {
     input.mark,
     'deck.tree',
   )
+
   try {
     return await fsp.readFile(file, 'utf-8')
   } catch {
@@ -96,17 +102,21 @@ export async function pruneStore(input: {
   usedHashes: Set<string>
 }): Promise<{ removed: number; bytes: number }> {
   const treeDir = getTreeDir()
+
   let removed = 0
   let bytes = 0
 
   try {
     const prefixes = await fsp.readdir(treeDir)
+
     for (const prefix of prefixes) {
       const prefixDir = path.join(treeDir, prefix)
       const stat = await fsp.stat(prefixDir)
-      if (!stat.isDirectory()) continue
+
+      if (!stat.isDirectory()) {continue}
 
       const files = await fsp.readdir(prefixDir)
+
       for (const file of files) {
         if (!input.usedHashes.has(file)) {
           const filePath = path.join(prefixDir, file)

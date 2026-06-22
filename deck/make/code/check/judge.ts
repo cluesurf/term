@@ -25,7 +25,9 @@ export const varLevel = (name: string): Level => ({
 export function succLevel(level: Level): Level {
   const vars = new Map<string, number>()
 
-  for (const [v, o] of level.vars) {vars.set(v, o + 1)}
+  for (const [v, o] of level.vars) {
+    vars.set(v, o + 1)
+  }
 
   return { constant: level.constant + 1, vars }
 }
@@ -33,7 +35,9 @@ export function succLevel(level: Level): Level {
 function shiftLevel(level: Level, by: number): Level {
   const vars = new Map<string, number>()
 
-  for (const [v, o] of level.vars) {vars.set(v, o + by)}
+  for (const [v, o] of level.vars) {
+    vars.set(v, o + by)
+  }
 
   return { constant: level.constant + by, vars }
 }
@@ -41,8 +45,9 @@ function shiftLevel(level: Level, by: number): Level {
 export function maxLevel(a: Level, b: Level): Level {
   const vars = new Map(a.vars)
 
-  for (const [v, o] of b.vars)
-    {vars.set(v, Math.max(vars.get(v) ?? -Infinity, o))}
+  for (const [v, o] of b.vars) {
+    vars.set(v, Math.max(vars.get(v) ?? -Infinity, o))
+  }
 
   return { constant: Math.max(a.constant, b.constant), vars }
 }
@@ -67,12 +72,16 @@ export function piLevel(
 
 // a <= b for ALL instantiations of the level variables
 function leqLevel(a: Level, b: Level): boolean {
-  if (a.constant > b.constant) {return false}
+  if (a.constant > b.constant) {
+    return false
+  }
 
   for (const [v, o] of a.vars) {
     const ob = b.vars.get(v)
 
-    if (ob === undefined || ob < o) {return false}
+    if (ob === undefined || ob < o) {
+      return false
+    }
   }
 
   return true
@@ -86,9 +95,13 @@ function showLevel(level: Level): string {
     o === 0 ? v : `${v}+${o}`,
   )
 
-  if (atoms.length === 0) {return String(level.constant)}
+  if (atoms.length === 0) {
+    return String(level.constant)
+  }
 
-  if (level.constant > 0) {atoms.unshift(String(level.constant))}
+  if (level.constant > 0) {
+    atoms.unshift(String(level.constant))
+  }
 
   return atoms.length === 1 ? atoms[0]! : `max(${atoms.join(', ')})`
 }
@@ -102,13 +115,14 @@ function substLevel(
   let result: Level = { constant: level.constant, vars: new Map() }
 
   for (const [v, o] of level.vars) {
-    if (v === name)
-      {result = maxLevel(result, shiftLevel(replacement, o))}
-    else
-      {result = maxLevel(result, {
+    if (v === name) {
+      result = maxLevel(result, shiftLevel(replacement, o))
+    } else {
+      result = maxLevel(result, {
         constant: 0,
         vars: new Map([[v, o]]),
-      })}
+      })
+    }
   }
 
   return result
@@ -118,25 +132,37 @@ function substLevel(
 export type Mult = 0 | 1 | 'many'
 
 function addMult(a: Mult, b: Mult): Mult {
-  if (a === 0) {return b}
+  if (a === 0) {
+    return b
+  }
 
-  if (b === 0) {return a}
+  if (b === 0) {
+    return a
+  }
 
   return 'many'
 }
 
 function mulMult(a: Mult, b: Mult): Mult {
-  if (a === 0 || b === 0) {return 0}
+  if (a === 0 || b === 0) {
+    return 0
+  }
 
-  if (a === 1) {return b}
+  if (a === 1) {
+    return b
+  }
 
-  if (b === 1) {return a}
+  if (b === 1) {
+    return a
+  }
 
   return 'many'
 }
 
 function fitsMult(use: Mult, need: Mult): boolean {
-  if (need === 'many') {return true}
+  if (need === 'many') {
+    return true
+  }
 
   return use === need
 }
@@ -229,10 +255,15 @@ function unfoldRigid(value: Extract<Value, { v: 'rigid' }>): Value {
   let result = definition.get(value.name)!
 
   for (const elim of value.spine) {
-    if (elim.e === 'app') {result = applyValue(result, elim.arg)}
-    else if (elim.e === 'fst') {result = applyFst(result)}
-    else if (elim.e === 'snd') {result = applySnd(result)}
-    else {result = applyJ(result, elim.motive, elim.base)}
+    if (elim.e === 'app') {
+      result = applyValue(result, elim.arg)
+    } else if (elim.e === 'fst') {
+      result = applyFst(result)
+    } else if (elim.e === 'snd') {
+      result = applySnd(result)
+    } else {
+      result = applyJ(result, elim.motive, elim.base)
+    }
   }
 
   return result
@@ -255,19 +286,28 @@ export function resetMetas(): void {
 
 // follow a flexible value to its solution (applying the recorded spine), as far as it resolves
 function force(value: Value): Value {
-  if (value.v !== 'flex') {return value}
+  if (value.v !== 'flex') {
+    return value
+  }
 
   const solution = metaSolution.get(value.id)
 
-  if (!solution) {return value}
+  if (!solution) {
+    return value
+  }
 
   let result = solution
 
   for (const elim of value.spine) {
-    if (elim.e === 'app') {result = applyValue(result, elim.arg)}
-    else if (elim.e === 'fst') {result = applyFst(result)}
-    else if (elim.e === 'snd') {result = applySnd(result)}
-    else {result = applyJ(result, elim.motive, elim.base)}
+    if (elim.e === 'app') {
+      result = applyValue(result, elim.arg)
+    } else if (elim.e === 'fst') {
+      result = applyFst(result)
+    } else if (elim.e === 'snd') {
+      result = applySnd(result)
+    } else {
+      result = applyJ(result, elim.motive, elim.base)
+    }
   }
 
   return force(result)
@@ -288,13 +328,19 @@ function invertSpine(spine: Elim[]): Renaming | null {
   let codomain = 0
 
   for (const elim of spine) {
-    if (elim.e !== 'app') {return null}
+    if (elim.e !== 'app') {
+      return null
+    }
 
     const arg = force(elim.arg)
 
-    if (arg.v !== 'neutral' || arg.spine.length !== 0) {return null} // not a bare variable
+    if (arg.v !== 'neutral' || arg.spine.length !== 0) {
+      return null
+    } // not a bare variable
 
-    if (map.has(arg.head)) {return null} // not distinct
+    if (map.has(arg.head)) {
+      return null
+    } // not distinct
 
     map.set(arg.head, codomain)
     codomain++
@@ -329,10 +375,11 @@ function renameValue(
       return { tag: 'type', level: value.level }
 
     case 'flex': {
-      if (value.id === metaId)
-        {throw new TypeError(
+      if (value.id === metaId) {
+        throw new TypeError(
           'occurs check: a metavariable appears in its own solution',
-        )}
+        )
+      }
 
       return renameSpine(
         metaId,
@@ -346,10 +393,11 @@ function renameValue(
     case 'neutral': {
       const local = renaming.map.get(value.head)
 
-      if (local === undefined)
-        {throw new TypeError(
+      if (local === undefined) {
+        throw new TypeError(
           'a variable escapes the scope of the metavariable solution',
-        )}
+        )
+      }
 
       return renameSpine(
         metaId,
@@ -438,22 +486,25 @@ function renameSpine(
   let term = head
 
   for (const elim of spine) {
-    if (elim.e === 'app')
-      {term = {
+    if (elim.e === 'app') {
+      term = {
         tag: 'app',
         fun: term,
         arg: renameValue(metaId, renaming, level, elim.arg),
-      }}
-    else if (elim.e === 'fst') {term = { tag: 'fst', pair: term }}
-    else if (elim.e === 'snd') {term = { tag: 'snd', pair: term }}
-    else
-      {term = {
+      }
+    } else if (elim.e === 'fst') {
+      term = { tag: 'fst', pair: term }
+    } else if (elim.e === 'snd') {
+      term = { tag: 'snd', pair: term }
+    } else {
+      term = {
         tag: 'j',
         proof: term,
         motive: renameValue(metaId, renaming, level, elim.motive),
         base: renameValue(metaId, renaming, level, elim.base),
         level: litLevel(0),
-      }}
+      }
+    }
   }
 
   return term
@@ -469,7 +520,9 @@ function solveMeta(
 ): boolean {
   const renaming = invertSpine(spine)
 
-  if (!renaming) {return false}
+  if (!renaming) {
+    return false
+  }
 
   let body: Term
 
@@ -481,8 +534,9 @@ function solveMeta(
 
   let solution = body
 
-  for (let i = 0; i < renaming.codomain; i++)
-    {solution = { tag: 'lam', body: solution }}
+  for (let i = 0; i < renaming.codomain; i++) {
+    solution = { tag: 'lam', body: solution }
+  }
 
   metaSolution.set(id, evaluate([], solution))
 
@@ -558,28 +612,33 @@ export function evaluate(env: Value[], term: Term): Value {
 function applyFst(value: Value): Value {
   value = force(value)
 
-  if (value.v === 'pair') {return value.first}
+  if (value.v === 'pair') {
+    return value.first
+  }
 
-  if (value.v === 'neutral')
-    {return {
+  if (value.v === 'neutral') {
+    return {
       v: 'neutral',
       head: value.head,
       spine: [...value.spine, { e: 'fst' }],
-    }}
+    }
+  }
 
-  if (value.v === 'rigid')
-    {return {
+  if (value.v === 'rigid') {
+    return {
       v: 'rigid',
       name: value.name,
       spine: [...value.spine, { e: 'fst' }],
-    }}
+    }
+  }
 
-  if (value.v === 'flex')
-    {return {
+  if (value.v === 'flex') {
+    return {
       v: 'flex',
       id: value.id,
       spine: [...value.spine, { e: 'fst' }],
-    }}
+    }
+  }
 
   throw new Error('fst of a non-pair')
 }
@@ -587,28 +646,33 @@ function applyFst(value: Value): Value {
 function applySnd(value: Value): Value {
   value = force(value)
 
-  if (value.v === 'pair') {return value.second}
+  if (value.v === 'pair') {
+    return value.second
+  }
 
-  if (value.v === 'neutral')
-    {return {
+  if (value.v === 'neutral') {
+    return {
       v: 'neutral',
       head: value.head,
       spine: [...value.spine, { e: 'snd' }],
-    }}
+    }
+  }
 
-  if (value.v === 'rigid')
-    {return {
+  if (value.v === 'rigid') {
+    return {
       v: 'rigid',
       name: value.name,
       spine: [...value.spine, { e: 'snd' }],
-    }}
+    }
+  }
 
-  if (value.v === 'flex')
-    {return {
+  if (value.v === 'flex') {
+    return {
       v: 'flex',
       id: value.id,
       spine: [...value.spine, { e: 'snd' }],
-    }}
+    }
+  }
 
   throw new Error('snd of a non-pair')
 }
@@ -744,28 +808,33 @@ export function closeOver(closure: Closure, value: Value): Value {
 export function applyValue(fun: Value, arg: Value): Value {
   fun = force(fun)
 
-  if (fun.v === 'lam') {return closeOver(fun.body, arg)}
+  if (fun.v === 'lam') {
+    return closeOver(fun.body, arg)
+  }
 
-  if (fun.v === 'neutral')
-    {return {
+  if (fun.v === 'neutral') {
+    return {
       v: 'neutral',
       head: fun.head,
       spine: [...fun.spine, { e: 'app', arg }],
-    }}
+    }
+  }
 
-  if (fun.v === 'rigid')
-    {return {
+  if (fun.v === 'rigid') {
+    return {
       v: 'rigid',
       name: fun.name,
       spine: [...fun.spine, { e: 'app', arg }],
-    }}
+    }
+  }
 
-  if (fun.v === 'flex')
-    {return {
+  if (fun.v === 'flex') {
+    return {
       v: 'flex',
       id: fun.id,
       spine: [...fun.spine, { e: 'app', arg }],
-    }}
+    }
+  }
 
   throw new Error('applied a non-function')
 }
@@ -773,53 +842,57 @@ export function applyValue(fun: Value, arg: Value): Value {
 function applyJ(proof: Value, motive: Value, base: Value): Value {
   proof = force(proof)
 
-  if (proof.v === 'refl') {return base}
+  if (proof.v === 'refl') {
+    return base
+  }
 
-  if (proof.v === 'neutral')
-    {return {
+  if (proof.v === 'neutral') {
+    return {
       v: 'neutral',
       head: proof.head,
       spine: [...proof.spine, { e: 'j', motive, base }],
-    }}
+    }
+  }
 
-  if (proof.v === 'rigid')
-    {return {
+  if (proof.v === 'rigid') {
+    return {
       v: 'rigid',
       name: proof.name,
       spine: [...proof.spine, { e: 'j', motive, base }],
-    }}
+    }
+  }
 
-  if (proof.v === 'flex')
-    {return {
+  if (proof.v === 'flex') {
+    return {
       v: 'flex',
       id: proof.id,
       spine: [...proof.spine, { e: 'j', motive, base }],
-    }}
+    }
+  }
 
   throw new Error('J on a non-identity')
 }
 
 // quote a spine of eliminators onto a head term (shared by metavariable, neutral, and rigid heads)
-function quoteSpine(
-  level: number,
-  head: Term,
-  spine: Elim[],
-): Term {
+function quoteSpine(level: number, head: Term, spine: Elim[]): Term {
   let term = head
 
   for (const elim of spine) {
-    if (elim.e === 'app')
-      {term = { tag: 'app', fun: term, arg: quote(level, elim.arg) }}
-    else if (elim.e === 'fst') {term = { tag: 'fst', pair: term }}
-    else if (elim.e === 'snd') {term = { tag: 'snd', pair: term }}
-    else
-      {term = {
+    if (elim.e === 'app') {
+      term = { tag: 'app', fun: term, arg: quote(level, elim.arg) }
+    } else if (elim.e === 'fst') {
+      term = { tag: 'fst', pair: term }
+    } else if (elim.e === 'snd') {
+      term = { tag: 'snd', pair: term }
+    } else {
+      term = {
         tag: 'j',
         proof: term,
         motive: quote(level, elim.motive),
         base: quote(level, elim.base),
         level: litLevel(0),
-      }}
+      }
+    }
   }
 
   return term
@@ -908,30 +981,33 @@ export function quote(level: number, value: Value): Term {
 }
 
 // compare two eliminator spines structurally (shared by neutral and rigid heads)
-function convertSpine(
-  level: number,
-  a: Elim[],
-  b: Elim[],
-): boolean {
-  if (a.length !== b.length) {return false}
+function convertSpine(level: number, a: Elim[], b: Elim[]): boolean {
+  if (a.length !== b.length) {
+    return false
+  }
 
   for (let i = 0; i < a.length; i++) {
     const x = a[i]!
     const y = b[i]!
 
     if (x.e === 'app' && y.e === 'app') {
-      if (!convert(level, x.arg, y.arg)) {return false}
+      if (!convert(level, x.arg, y.arg)) {
+        return false
+      }
     } else if (x.e === 'j' && y.e === 'j') {
       if (
         !convert(level, x.motive, y.motive) ||
         !convert(level, x.base, y.base)
-      )
-        {return false}
+      ) {
+        return false
+      }
     } else if (x.e === 'fst' && y.e === 'fst') {
       // a projection: nothing to compare beyond the elimination kind
     } else if (x.e === 'snd' && y.e === 'snd') {
       // ditto
-    } else {return false}
+    } else {
+      return false
+    }
   }
 
   return true
@@ -942,14 +1018,21 @@ function convert(level: number, a: Value, b: Value): boolean {
   b = force(b)
 
   // metavariable solving by Miller pattern unification
-  if (a.v === 'flex' && b.v === 'flex' && a.id === b.id)
-    {return convertSpine(level, a.spine, b.spine)}
+  if (a.v === 'flex' && b.v === 'flex' && a.id === b.id) {
+    return convertSpine(level, a.spine, b.spine)
+  }
 
-  if (a.v === 'flex') {return solveMeta(level, a.id, a.spine, b)}
+  if (a.v === 'flex') {
+    return solveMeta(level, a.id, a.spine, b)
+  }
 
-  if (b.v === 'flex') {return solveMeta(level, b.id, b.spine, a)}
+  if (b.v === 'flex') {
+    return solveMeta(level, b.id, b.spine, a)
+  }
 
-  if (a.v === 'type' && b.v === 'type') {return eqLevel(a.level, b.level)}
+  if (a.v === 'type' && b.v === 'type') {
+    return eqLevel(a.level, b.level)
+  }
 
   if (a.v === 'pi' && b.v === 'pi') {
     return (
@@ -999,18 +1082,22 @@ function convert(level: number, a: Value, b: Value): boolean {
     )
   }
 
-  if (a.v === 'id' && b.v === 'id')
-    {return (
+  if (a.v === 'id' && b.v === 'id') {
+    return (
       convert(level, a.type, b.type) &&
       convert(level, a.left, b.left) &&
       convert(level, a.right, b.right)
-    )}
+    )
+  }
 
-  if (a.v === 'refl' && b.v === 'refl')
-    {return convert(level, a.value, b.value)}
+  if (a.v === 'refl' && b.v === 'refl') {
+    return convert(level, a.value, b.value)
+  }
 
   if (a.v === 'neutral' && b.v === 'neutral') {
-    if (a.head !== b.head) {return false}
+    if (a.head !== b.head) {
+      return false
+    }
 
     return convertSpine(level, a.spine, b.spine)
   }
@@ -1026,18 +1113,22 @@ function convert(level: number, a: Value, b: Value): boolean {
     return true
   }
 
-  if (a.v === 'rigid' && definition.has(a.name))
-    {return convertUnfolding(level, unfoldRigid(a), b)}
+  if (a.v === 'rigid' && definition.has(a.name)) {
+    return convertUnfolding(level, unfoldRigid(a), b)
+  }
 
-  if (b.v === 'rigid' && definition.has(b.name))
-    {return convertUnfolding(level, a, unfoldRigid(b))}
+  if (b.v === 'rigid' && definition.has(b.name)) {
+    return convertUnfolding(level, a, unfoldRigid(b))
+  }
 
   return false
 }
 
 // convert after a delta unfold, charging fuel so recursive / self-referential definitions cannot loop the checker
 function convertUnfolding(level: number, a: Value, b: Value): boolean {
-  if (unfoldFuel >= MAX_UNFOLD) {return false}
+  if (unfoldFuel >= MAX_UNFOLD) {
+    return false
+  }
 
   unfoldFuel++
 
@@ -1073,8 +1164,9 @@ function matchesHypothesis(
     if (
       (convert(level, a, l) && convert(level, b, r)) ||
       (convert(level, a, r) && convert(level, b, l))
-    )
-      {return true}
+    ) {
+      return true
+    }
   }
 
   return false
@@ -1086,25 +1178,32 @@ function convertModSpine(
   b: Elim[],
   hyps: [Value, Value][],
 ): boolean {
-  if (a.length !== b.length) {return false}
+  if (a.length !== b.length) {
+    return false
+  }
 
   for (let i = 0; i < a.length; i++) {
     const x = a[i]!
     const y = b[i]!
 
     if (x.e === 'app' && y.e === 'app') {
-      if (!convertMod(level, x.arg, y.arg, hyps)) {return false}
+      if (!convertMod(level, x.arg, y.arg, hyps)) {
+        return false
+      }
     } else if (x.e === 'j' && y.e === 'j') {
       if (
         !convertMod(level, x.motive, y.motive, hyps) ||
         !convertMod(level, x.base, y.base, hyps)
-      )
-        {return false}
+      ) {
+        return false
+      }
     } else if (x.e === 'fst' && y.e === 'fst') {
       // a projection: nothing to compare beyond the elimination kind
     } else if (x.e === 'snd' && y.e === 'snd') {
       // ditto
-    } else {return false}
+    } else {
+      return false
+    }
   }
 
   return true
@@ -1116,7 +1215,9 @@ function convertModUnfolding(
   b: Value,
   hyps: [Value, Value][],
 ): boolean {
-  if (unfoldFuel >= MAX_UNFOLD) {return false}
+  if (unfoldFuel >= MAX_UNFOLD) {
+    return false
+  }
 
   unfoldFuel++
 
@@ -1132,9 +1233,13 @@ function convertMod(
   b: Value,
   hyps: [Value, Value][],
 ): boolean {
-  if (convert(level, a, b)) {return true}
+  if (convert(level, a, b)) {
+    return true
+  }
 
-  if (matchesHypothesis(level, a, b, hyps)) {return true}
+  if (matchesHypothesis(level, a, b, hyps)) {
+    return true
+  }
 
   a = force(a)
   b = force(b)
@@ -1198,11 +1303,13 @@ function convertMod(
     )
   }
 
-  if (a.v === 'refl' && b.v === 'refl')
-    {return convertMod(level, a.value, b.value, hyps)}
+  if (a.v === 'refl' && b.v === 'refl') {
+    return convertMod(level, a.value, b.value, hyps)
+  }
 
-  if (a.v === 'neutral' && b.v === 'neutral' && a.head === b.head)
-    {return convertModSpine(level, a.spine, b.spine, hyps)}
+  if (a.v === 'neutral' && b.v === 'neutral' && a.head === b.head) {
+    return convertModSpine(level, a.spine, b.spine, hyps)
+  }
 
   if (
     a.v === 'rigid' &&
@@ -1214,11 +1321,13 @@ function convertMod(
     return true
   }
 
-  if (a.v === 'rigid' && definition.has(a.name))
-    {return convertModUnfolding(level, unfoldRigid(a), b, hyps)}
+  if (a.v === 'rigid' && definition.has(a.name)) {
+    return convertModUnfolding(level, unfoldRigid(a), b, hyps)
+  }
 
-  if (b.v === 'rigid' && definition.has(b.name))
-    {return convertModUnfolding(level, a, unfoldRigid(b), hyps)}
+  if (b.v === 'rigid' && definition.has(b.name)) {
+    return convertModUnfolding(level, a, unfoldRigid(b), hyps)
+  }
 
   return false
 }
@@ -1239,10 +1348,13 @@ function subtype(level: number, a: Value, b: Value): boolean {
   a = force(a)
   b = force(b)
 
-  if (a.v === 'flex' || b.v === 'flex') {return convert(level, a, b)} // let the meta solver handle either side
+  if (a.v === 'flex' || b.v === 'flex') {
+    return convert(level, a, b)
+  } // let the meta solver handle either side
 
-  if (a.v === 'type' && b.v === 'type')
-    {return leqLevel(a.level, b.level)}
+  if (a.v === 'type' && b.v === 'type') {
+    return leqLevel(a.level, b.level)
+  }
 
   if (a.v === 'pi' && b.v === 'pi') {
     return (
@@ -1294,8 +1406,9 @@ export function contextWithSignature(
 ): Context {
   const globals = new Map<string, Value>()
 
-  for (const entry of signature)
-    {globals.set(entry.name, evaluate([], entry.type))}
+  for (const entry of signature) {
+    globals.set(entry.name, evaluate([], entry.type))
+  }
 
   return { ...emptyContext, globals }
 }
@@ -1338,7 +1451,9 @@ export function infer(context: Context, term: Term): Inferred {
     case 'var': {
       const type = context.types[term.index]
 
-      if (!type) {throw new TypeError(`unbound variable ${term.index}`)}
+      if (!type) {
+        throw new TypeError(`unbound variable ${term.index}`)
+      }
 
       return { type, usage: singletonUsage(context.level, term.index) }
     }
@@ -1346,7 +1461,9 @@ export function infer(context: Context, term: Term): Inferred {
     case 'const': {
       const type = context.globals.get(term.name)
 
-      if (!type) {throw new TypeError(`unknown constant ${term.name}`)}
+      if (!type) {
+        throw new TypeError(`unknown constant ${term.name}`)
+      }
 
       return { type, usage: zeroUsage(context.level) }
     }
@@ -1354,7 +1471,9 @@ export function infer(context: Context, term: Term): Inferred {
     case 'meta': {
       const type = metaType.get(term.id)
 
-      if (!type) {throw new TypeError(`unknown metavariable ${term.id}`)}
+      if (!type) {
+        throw new TypeError(`unknown metavariable ${term.id}`)
+      }
 
       return { type, usage: zeroUsage(context.level) }
     }
@@ -1398,8 +1517,9 @@ export function infer(context: Context, term: Term): Inferred {
         )
       }
 
-      if (funType.v !== 'pi')
-        {throw new TypeError('applied a non-function')}
+      if (funType.v !== 'pi') {
+        throw new TypeError('applied a non-function')
+      }
 
       const argUsage = check(context, term.arg, funType.domain)
       const result = closeOver(
@@ -1450,8 +1570,9 @@ export function infer(context: Context, term: Term): Inferred {
     case 'j': {
       const proof = infer(context, term.proof)
 
-      if (proof.type.v !== 'id')
-        {throw new TypeError('J needs an identity proof')}
+      if (proof.type.v !== 'id') {
+        throw new TypeError('J needs an identity proof')
+      }
 
       const { type: aType, left: a, right: b } = proof.type
       check(
@@ -1494,8 +1615,9 @@ export function infer(context: Context, term: Term): Inferred {
       const pair = infer(context, term.pair)
       const pairType = force(pair.type)
 
-      if (pairType.v !== 'sigma')
-        {throw new TypeError('fst of a non-pair')}
+      if (pairType.v !== 'sigma') {
+        throw new TypeError('fst of a non-pair')
+      }
 
       return { type: pairType.domain, usage: pair.usage }
     }
@@ -1504,8 +1626,9 @@ export function infer(context: Context, term: Term): Inferred {
       const pair = infer(context, term.pair)
       const pairType = force(pair.type)
 
-      if (pairType.v !== 'sigma')
-        {throw new TypeError('snd of a non-pair')}
+      if (pairType.v !== 'sigma') {
+        throw new TypeError('snd of a non-pair')
+      }
 
       const first = applyFst(evaluate(context.env, term.pair))
 
@@ -1594,17 +1717,19 @@ export function check(
 
     const actual = infer(context, term)
 
-    if (subtype(context.level, actual.type, expected))
-      {return actual.usage}
+    if (subtype(context.level, actual.type, expected)) {
+      return actual.usage
+    }
 
     return check(context, term, unfolded())
   }
 
   if (term.tag === 'lam') {
-    if (expected.v !== 'pi')
-      {throw new TypeError(
+    if (expected.v !== 'pi') {
+      throw new TypeError(
         'a function must be checked against a pi type',
-      )}
+      )
+    }
 
     const inner = bind(context, expected.mult, expected.domain)
     const bodyType = closeOver(
@@ -1626,10 +1751,11 @@ export function check(
   }
 
   if (term.tag === 'refl') {
-    if (expected.v !== 'id')
-      {throw new TypeError(
+    if (expected.v !== 'id') {
+      throw new TypeError(
         'refl must be checked against an identity type',
-      )}
+      )
+    }
 
     if (!convert(context.level, expected.left, expected.right)) {
       throw new TypeError(
@@ -1643,8 +1769,9 @@ export function check(
   }
 
   if (term.tag === 'pair') {
-    if (expected.v !== 'sigma')
-      {throw new TypeError('a pair must be checked against a sigma type')}
+    if (expected.v !== 'sigma') {
+      throw new TypeError('a pair must be checked against a sigma type')
+    }
 
     const firstUsage = check(context, term.first, expected.domain)
     const secondType = closeOver(
@@ -1670,7 +1797,9 @@ export function check(
       evaluate(context.env, term),
     )
 
-    if (subtype(context.level, unfolded, expected)) {return actual.usage}
+    if (subtype(context.level, unfolded, expected)) {
+      return actual.usage
+    }
   }
 
   if (!subtype(context.level, actual.type, expected)) {
@@ -1688,7 +1817,9 @@ export function check(
 function inferUniverse(context: Context, term: Term): Level {
   const inferred = infer(context, term)
 
-  if (inferred.type.v !== 'type') {throw new TypeError('expected a type')}
+  if (inferred.type.v !== 'type') {
+    throw new TypeError('expected a type')
+  }
 
   return inferred.type.level
 }

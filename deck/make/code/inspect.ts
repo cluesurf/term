@@ -52,11 +52,15 @@ export function inspectModule(
   for (const source of sources) {
     const parsed = parse(source)
 
-    if (!parsed.ok) {continue}
+    if (!parsed.ok) {
+      continue
+    }
 
     const milled = mill(expandTemplates(parsed.tree), source.file)
 
-    if (!milled.ok) {continue}
+    if (!milled.ok) {
+      continue
+    }
 
     const module = moduleLabel(source.file)
 

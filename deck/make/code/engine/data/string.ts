@@ -28,12 +28,13 @@ export function fromString(text: string): Rope {
 }
 
 function build(points: string[]): Rope {
-  if (points.length <= MAX_LEAF)
-    {return {
+  if (points.length <= MAX_LEAF) {
+    return {
       form: 'leaf',
       text: points.join(''),
       length: points.length,
-    }}
+    }
+  }
 
   const mid = points.length >> 1
 
@@ -59,9 +60,13 @@ export function length(r: Rope): number {
 }
 
 export function concat(a: Rope, b: Rope): Rope {
-  if (a.length === 0) {return b}
+  if (a.length === 0) {
+    return b
+  }
 
-  if (b.length === 0) {return a}
+  if (b.length === 0) {
+    return a
+  }
 
   const joined = branch(a, b)
 
@@ -72,15 +77,17 @@ export function concat(a: Rope, b: Rope): Rope {
 
 // the codepoint (as a string) at an index, O(log n)
 export function charAt(r: Rope, index: number): string {
-  if (index < 0 || index >= r.length)
-    {throw new Error(`index ${index} out of range (length ${r.length})`)}
+  if (index < 0 || index >= r.length) {
+    throw new Error(`index ${index} out of range (length ${r.length})`)
+  }
 
   let node = r
   let i = index
 
   while (node.form === 'branch') {
-    if (i < node.left.length) {node = node.left}
-    else {
+    if (i < node.left.length) {
+      node = node.left
+    } else {
       i -= node.left.length
       node = node.right
     }
@@ -107,7 +114,9 @@ export function slice(
   const s = Math.max(0, start)
   const e = Math.min(r.length, end)
 
-  if (s >= e) {return { form: 'leaf', text: '', length: 0 }}
+  if (s >= e) {
+    return { form: 'leaf', text: '', length: 0 }
+  }
 
   if (r.form === 'leaf') {
     const points = Array.from(r.text).slice(s, e)
@@ -121,9 +130,13 @@ export function slice(
 
   const leftLen = r.left.length
 
-  if (e <= leftLen) {return slice(r.left, s, e)}
+  if (e <= leftLen) {
+    return slice(r.left, s, e)
+  }
 
-  if (s >= leftLen) {return slice(r.right, s - leftLen, e - leftLen)}
+  if (s >= leftLen) {
+    return slice(r.right, s - leftLen, e - leftLen)
+  }
 
   return concat(
     slice(r.left, s, leftLen),
@@ -132,7 +145,9 @@ export function slice(
 }
 
 export function toString(r: Rope): string {
-  if (r.form === 'leaf') {return r.text}
+  if (r.form === 'leaf') {
+    return r.text
+  }
 
   return toString(r.left) + toString(r.right)
 }

@@ -7,7 +7,10 @@
 // program backdates while the class set is unchanged, so editing a component recomputes the stylesheet only when its
 // classes actually change -- no reparse of anything else. See note/library/face/tailwind-jit.md.
 
-import type { Program, ZoneNode } from '@cluesurf/make/code/compile/node'
+import type {
+  Program,
+  ZoneNode,
+} from '@cluesurf/make/code/compile/node'
 
 export type UsedClasses = {
   // the sorted set of statically-known class tokens (the JIT keep-list)

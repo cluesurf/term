@@ -157,8 +157,14 @@ task good
     const publicUnused = `task helper\n  send back, code 1\n\ntask main\n  send back, code 2\n`
 
     const cases: [string, boolean][] = [
-      ['an unused private function is warned', deadPrivate(unused) === true],
-      ['a used private function is not warned', deadPrivate(used) === false],
+      [
+        'an unused private function is warned',
+        deadPrivate(unused) === true,
+      ],
+      [
+        'a used private function is not warned',
+        deadPrivate(used) === false,
+      ],
       [
         'an unused PUBLIC function is not warned',
         deadPrivate(publicUnused) === false,

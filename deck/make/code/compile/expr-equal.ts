@@ -7,10 +7,18 @@
 // that rewrites a "duplicate" pattern fires only on stable (or, in the simplifier, pure) expressions, so an
 // intentional pair of effectful calls is never miscollapsed.
 
-import type { Expression, Statement } from '@cluesurf/make/code/compile/node'
+import type {
+  Expression,
+  Statement,
+} from '@cluesurf/make/code/compile/node'
 
-export function expressionsEqual(a: Expression, b: Expression): boolean {
-  if (a.form !== b.form) {return false}
+export function expressionsEqual(
+  a: Expression,
+  b: Expression,
+): boolean {
+  if (a.form !== b.form) {
+    return false
+  }
 
   switch (a.form) {
     case 'integer':
@@ -27,37 +35,48 @@ export function expressionsEqual(a: Expression, b: Expression): boolean {
       return true
     case 'variable':
       return a.name === (b as typeof a).name
+
     case 'member': {
       const o = b as typeof a
+
       return a.name === o.name && expressionsEqual(a.target, o.target)
     }
+
     case 'binary': {
       const o = b as typeof a
+
       return (
         a.op === o.op &&
         expressionsEqual(a.left, o.left) &&
         expressionsEqual(a.right, o.right)
       )
     }
+
     case 'unary': {
       const o = b as typeof a
+
       return a.op === o.op && expressionsEqual(a.operand, o.operand)
     }
+
     case 'call': {
       const o = b as typeof a
+
       return (
         expressionsEqual(a.callee, o.callee) &&
         a.args.length === o.args.length &&
         a.args.every((arg, i) => expressionsEqual(arg, o.args[i]!))
       )
     }
+
     case 'array': {
       const o = b as typeof a
+
       return (
         a.items.length === o.items.length &&
         a.items.every((item, i) => expressionsEqual(item, o.items[i]!))
       )
     }
+
     default:
       // records, maps, closures, conditionals, etc. are treated as not-equal: too rarely duplicated to be worth the
       // surface, and defaulting to false keeps every dependent caller from over-collapsing
@@ -81,7 +100,9 @@ function optionalListsEqual(
   a: Statement[] | undefined,
   b: Statement[] | undefined,
 ): boolean {
-  if (!a || !b) {return !a && !b}
+  if (!a || !b) {
+    return !a && !b
+  }
 
   return statementListsEqual(a, b)
 }
@@ -89,48 +110,64 @@ function optionalListsEqual(
 // structural equality for two statements. Handles the common branch-body forms and recurses into nested blocks;
 // any form not covered returns false, so the dependent caller only ever fires on a fully-recognized exact match.
 export function statementsEqual(a: Statement, b: Statement): boolean {
-  if (a.form !== b.form) {return false}
+  if (a.form !== b.form) {
+    return false
+  }
 
   switch (a.form) {
     case 'expression':
       return expressionsEqual(a.expr, (b as typeof a).expr)
+
     case 'return': {
       const o = b as typeof a
-      if (!a.value || !o.value) {return !a.value && !o.value}
+
+      if (!a.value || !o.value) {
+        return !a.value && !o.value
+      }
 
       return expressionsEqual(a.value, o.value)
     }
+
     case 'throw':
       return expressionsEqual(a.value, (b as typeof a).value)
+
     case 'assign': {
       const o = b as typeof a
+
       return (
         a.op === o.op &&
         expressionsEqual(a.target, o.target) &&
         expressionsEqual(a.value, o.value)
       )
     }
+
     case 'let': {
       const o = b as typeof a
+
       return (
         a.name === o.name &&
         !!a.mutable === !!o.mutable &&
         expressionsEqual(a.init, o.init)
       )
     }
+
     case 'break':
     case 'continue':
     case 'exit':
       return true
+
     case 'while': {
       const o = b as typeof a
+
       return (
         expressionsEqual(a.cond, o.cond) &&
         statementListsEqual(a.body, o.body)
       )
     }
+
     case 'if': {
       const o = b as typeof a
+
       return (
         a.branches.length === o.branches.length &&
         a.branches.every(
@@ -141,6 +178,7 @@ export function statementsEqual(a: Statement, b: Statement): boolean {
         optionalListsEqual(a.otherwise, o.otherwise)
       )
     }
+
     default:
       // for-each, match, hold, debug, function, ... : conservatively not-equal
       return false

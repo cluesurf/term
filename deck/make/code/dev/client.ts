@@ -65,7 +65,9 @@ export async function applyHmr(
     // snapshot + tear down the OLD module before it is replaced, so its state survives into the fresh one
     const dispose = environment.disposeOf?.(update.boundary)
 
-    if (dispose) {dispose()}
+    if (dispose) {
+      dispose()
+    }
 
     const fresh = await environment.reimport(
       update.accepted,
@@ -74,8 +76,11 @@ export async function applyHmr(
 
     const accept = environment.acceptOf(update.boundary)
 
-    if (accept) {accept(fresh)}
-    else {environment.reload()} // no boundary callback: fall back to a reload
+    if (accept) {
+      accept(fresh)
+    } else {
+      environment.reload()
+    } // no boundary callback: fall back to a reload
   }
 }
 

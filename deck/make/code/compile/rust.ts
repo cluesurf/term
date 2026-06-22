@@ -73,15 +73,19 @@ function rustType(type: Type | undefined): string {
       return `std::rc::Rc<std::cell::RefCell<std::collections::HashMap<${rustType(
         type.key,
       )}, ${rustType(type.value)}>>>`
+
     case 'named': {
       const opaque = rustOpaqueTypes.get(type.name)
 
-      if (opaque) {return opaque}
+      if (opaque) {
+        return opaque
+      }
 
       return type.args && type.args.length > 0
         ? `${pascal(type.name)}<${type.args.map(rustType).join(', ')}>`
         : pascal(type.name)
     }
+
     case 'function':
       // a boxed trait object, not `impl Fn`: this is the one function type that works in every position -- a
       // parameter, a return, a struct field, AND a collection element (`Vec<Box<dyn Fn>>`, `HashMap<_, Box<dyn Fn>>`).
@@ -158,6 +162,7 @@ export function emitRust(program: Program): string {
       )
       .map(n => [n.alias, n.module]),
   )
+
   const variantOwner = new Map<string, string>()
   // a variant's field names, for binding them in a `match` arm (`Maybe::Some { value } => ...`) so the branch body can
   // read them; a `subject/field` read inside the branch then resolves to that bound local.
@@ -167,7 +172,9 @@ export function emitRust(program: Program): string {
   const closureFields = new Set<string>()
 
   for (const node of program) {
-    if (node.form !== 'record-type') {continue}
+    if (node.form !== 'record-type') {
+      continue
+    }
 
     for (const v of node.variants) {
       variantOwner.set(v.name, node.name)
@@ -176,12 +183,18 @@ export function emitRust(program: Program): string {
         v.fields.map(f => f.name),
       )
 
-      for (const f of v.fields)
-        {if (f.type.kind === 'function') {closureFields.add(f.name)}}
+      for (const f of v.fields) {
+        if (f.type.kind === 'function') {
+          closureFields.add(f.name)
+        }
+      }
     }
 
-    for (const f of node.fields)
-      {if (f.type.kind === 'function') {closureFields.add(f.name)}}
+    for (const f of node.fields) {
+      if (f.type.kind === 'function') {
+        closureFields.add(f.name)
+      }
+    }
   }
 
   // traits (masks) emit as native Rust traits, instances as `impl` blocks, and a trait-bounded generic gains a trait
@@ -190,59 +203,72 @@ export function emitRust(program: Program): string {
   // with the receiver type replaced by `Self`. See note/seed/compiler/trait-dictionary-passing.md.
   const maskMethods = new Set<string>()
 
-  for (const node of program)
-    {if (node.form === 'mask')
-      {for (const m of node.methods) {maskMethods.add(m)}}}
+  for (const node of program) {
+    if (node.form === 'mask') {
+      for (const m of node.methods) {
+        maskMethods.add(m)
+      }
+    }
+  }
 
   // a trait's implementing targets, in program order, so a trait body can borrow one target's signatures
   const instanceTargets = new Map<string, string[]>()
 
-  for (const node of program)
-    {if (node.form === 'instance') {
+  for (const node of program) {
+    if (node.form === 'instance') {
       const list = instanceTargets.get(node.mask) ?? []
       list.push(node.target)
       instanceTargets.set(node.mask, list)
-    }}
+    }
+  }
 
   // the free function implementing a given form's method (`box` + `measure` -> the `box_measure` function node)
   type Fn = Extract<Statement, { form: 'function' }>
   const implFn = new Map<string, Fn>()
 
-  for (const node of program)
-    {if (node.form === 'function' && node.method)
-      {implFn.set(`${node.method.form}:${node.method.name}`, node)}}
+  for (const node of program) {
+    if (node.form === 'function' && node.method) {
+      implFn.set(`${node.method.form}:${node.method.name}`, node)
+    }
+  }
 
   // a named type rendered inside a trait declaration: the receiver type becomes `Self`
   const subSelf = (
     t: Type | undefined,
     target: string,
   ): Type | undefined => {
-    if (!t) {return t}
+    if (!t) {
+      return t
+    }
 
-    if (t.kind === 'named')
-      {return t.name === target
+    if (t.kind === 'named') {
+      return t.name === target
         ? { kind: 'named', name: 'Self' }
         : t.args
           ? { ...t, args: t.args.map(a => subSelf(a, target)!) }
-          : t}
+          : t
+    }
 
-    if (t.kind === 'array')
-      {return { kind: 'array', element: subSelf(t.element, target)! }}
+    if (t.kind === 'array') {
+      return { kind: 'array', element: subSelf(t.element, target)! }
+    }
 
-    if (t.kind === 'map')
-      {return {
+    if (t.kind === 'map') {
+      return {
         kind: 'map',
         key: subSelf(t.key, target)!,
         value: subSelf(t.value, target)!,
-      }}
+      }
+    }
 
-    if (t.kind === 'function')
-      {return {
+    if (t.kind === 'function') {
+      return {
         kind: 'function',
         params: t.params.map(p => subSelf(p, target)!),
         result: subSelf(t.result, target)!,
         effects: t.effects,
-      }}
+      }
+    }
 
     return t
   }
@@ -253,7 +279,9 @@ export function emitRust(program: Program): string {
     fn: Fn | undefined,
     target: string,
   ): string => {
-    if (!fn) {return ''}
+    if (!fn) {
+      return ''
+    }
 
     const rest = fn.params
       .slice(1)
@@ -272,7 +300,9 @@ export function emitRust(program: Program): string {
 
   // an `impl` method that delegates to the free implementation function: `fn measure(self) -> i64 { box_measure(self) }`
   const implMethod = (fn: Fn | undefined, target: string): string => {
-    if (!fn) {return ''}
+    if (!fn) {
+      return ''
+    }
 
     const restNames = fn.params.slice(1).map(p => snake(p.name))
     const rest = fn.params
@@ -300,8 +330,9 @@ export function emitRust(program: Program): string {
   let fnReturnsArray = false
 
   const isNativeCall = (node: Expression): boolean => {
-    if (node.form !== 'call' || node.callee.form !== 'member')
-      {return false}
+    if (node.form !== 'call' || node.callee.form !== 'member') {
+      return false
+    }
 
     const root = rootVariable(node.callee)
 
@@ -313,21 +344,29 @@ export function emitRust(program: Program): string {
   const formKeyIndices = new Map<string, Set<number>>()
 
   for (const node of program) {
-    if (node.form !== 'record-type' || node.params.length === 0)
-      {continue}
+    if (node.form !== 'record-type' || node.params.length === 0) {
+      continue
+    }
 
     const keyParams = new Set<string>()
 
     const findKeys = (t: Type | undefined): void => {
-      if (!t) {return}
+      if (!t) {
+        return
+      }
 
       if (t.kind === 'map') {
-        if (t.key.kind === 'named') {keyParams.add(t.key.name)}
+        if (t.key.kind === 'named') {
+          keyParams.add(t.key.name)
+        }
 
         findKeys(t.key)
         findKeys(t.value)
-      } else if (t.kind === 'array') {findKeys(t.element)}
-      else if (t.kind === 'named') {t.args?.forEach(findKeys)}
+      } else if (t.kind === 'array') {
+        findKeys(t.element)
+      } else if (t.kind === 'named') {
+        t.args?.forEach(findKeys)
+      }
     }
 
     const fields =
@@ -339,18 +378,25 @@ export function emitRust(program: Program): string {
 
     const indices = new Set<number>()
     node.params.forEach((p, i) => {
-      if (keyParams.has(p)) {indices.add(i)}
+      if (keyParams.has(p)) {
+        indices.add(i)
+      }
     })
 
-    if (indices.size > 0) {formKeyIndices.set(node.name, indices)}
+    if (indices.size > 0) {
+      formKeyIndices.set(node.name, indices)
+    }
   }
 
   // native dock aliases: `fs/read-to-string` is a module path (`fs::read_to_string`), but `r/body` (r a value) is a
   // field access (`r.body`). Only a member chain rooted at a dock alias uses `::`; everything else uses `.`.
   const aliases = new Set<string>()
 
-  for (const node of program)
-    {if (node.form === 'native') {aliases.add(node.alias)}}
+  for (const node of program) {
+    if (node.form === 'native') {
+      aliases.add(node.alias)
+    }
+  }
 
   // declarative native bindings render their `case rust` template at call sites
   const binds = collectBinds(program)
@@ -626,11 +672,14 @@ export function emitRust(program: Program): string {
       case 'shift':
         // remove and return the front element (JS `shift`); callers guard against empty
         return `${target}.borrow_mut().remove(0)`
+
       case 'splice': {
         // JS `splice(start, deleteCount, ...items)`: remove `deleteCount` at `start`, insert the items, in place
         const items = arg.slice(2).join(', ')
+
         return `{ let mut __b = ${target}.borrow_mut(); let __s = (${arg[0]}) as usize; let __d = (${arg[1]}) as usize; let _: Vec<_> = __b.splice(__s..__s + __d, vec![${items}]).collect(); 0i64 }`
       }
+
       default:
         return ''
     }
@@ -677,7 +726,9 @@ export function emitRust(program: Program): string {
       case 'expression':
         return `${expr(node.expr)};`
       case 'return':
-        if (!node.value) {return 'return;'}
+        if (!node.value) {
+          return 'return;'
+        }
 
         // a list-returning function that returns a native dock call directly wraps the shim's plain `Vec`
         return fnReturnsArray && isNativeCall(node.value)
@@ -733,13 +784,18 @@ export function emitRust(program: Program): string {
             ? narrowing.get(subjectVar)
             : undefined
 
-          if (subjectVar) {narrowing.set(subjectVar, b.label)}
+          if (subjectVar) {
+            narrowing.set(subjectVar, b.label)
+          }
 
           const body = block(b.body, d + 2)
 
           if (subjectVar) {
-            if (previous === undefined) {narrowing.delete(subjectVar)}
-            else {narrowing.set(subjectVar, previous)}
+            if (previous === undefined) {
+              narrowing.delete(subjectVar)
+            } else {
+              narrowing.set(subjectVar, previous)
+            }
           }
 
           return `${pad(d + 1)}${pascal(owner)}::${pascal(
@@ -747,13 +803,14 @@ export function emitRust(program: Program): string {
           )}${pattern} => {\n${body}\n${pad(d + 1)}}`
         })
 
-        if (node.otherwise)
-          {arms.push(
+        if (node.otherwise) {
+          arms.push(
             `${pad(d + 1)}_ => {\n${block(
               node.otherwise,
               d + 2,
             )}\n${pad(d + 1)}}`,
-          )}
+          )
+        }
 
         return `match ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
       }
@@ -767,8 +824,9 @@ export function emitRust(program: Program): string {
           )}\n${pad(d)}}`
         })
 
-        if (node.otherwise)
-          {out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`}
+        if (node.otherwise) {
+          out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`
+        }
 
         return out
       }
@@ -801,19 +859,26 @@ export function emitRust(program: Program): string {
           t: Type | undefined,
           isKey: boolean,
         ): void => {
-          if (!t) {return}
+          if (!t) {
+            return
+          }
 
           if (t.kind === 'variable') {
-            if (isKey) {keyIds.add(t.id)}
+            if (isKey) {
+              keyIds.add(t.id)
+            }
           } else if (t.kind === 'map') {
             markKeys(t.key, true)
             markKeys(t.value, false)
-          } else if (t.kind === 'array') {markKeys(t.element, false)}
-          else if (t.kind === 'function') {
+          } else if (t.kind === 'array') {
+            markKeys(t.element, false)
+          } else if (t.kind === 'function') {
             t.params.forEach(p => markKeys(p, false))
             markKeys(t.result, false)
           } else if (t.kind === 'named') {
-            if (isKey) {keyNames.add(t.name.toUpperCase())}
+            if (isKey) {
+              keyNames.add(t.name.toUpperCase())
+            }
 
             const keyArgs = formKeyIndices.get(t.name)
             t.args?.forEach((a, i) =>
@@ -829,13 +894,16 @@ export function emitRust(program: Program): string {
         const namedInSig = new Set<string>()
 
         const scanNamed = (t: Type | undefined): void => {
-          if (!t) {return}
+          if (!t) {
+            return
+          }
 
           if (t.kind === 'named') {
             namedInSig.add(t.name.toUpperCase())
             t.args?.forEach(scanNamed)
-          } else if (t.kind === 'array') {scanNamed(t.element)}
-          else if (t.kind === 'map') {
+          } else if (t.kind === 'array') {
+            scanNamed(t.element)
+          } else if (t.kind === 'map') {
             scanNamed(t.key)
             scanNamed(t.value)
           } else if (t.kind === 'function') {
@@ -860,10 +928,15 @@ export function emitRust(program: Program): string {
         ): string => {
           const traits = ['Clone']
 
-          if (isKey) {traits.push('Eq', 'std::hash::Hash')}
-          else if (isEq) {traits.push('PartialEq')}
+          if (isKey) {
+            traits.push('Eq', 'std::hash::Hash')
+          } else if (isEq) {
+            traits.push('PartialEq')
+          }
 
-          if (isDisplay) {traits.push('std::fmt::Display')}
+          if (isDisplay) {
+            traits.push('std::fmt::Display')
+          }
 
           return `${name}: ${traits.join(' + ')}`
         }
@@ -895,9 +968,11 @@ export function emitRust(program: Program): string {
         // resolves through it. Keyed by uppercase generic name to match `kept`.
         const needTrait = new Map<string, string>()
 
-        for (const g of node.generics)
-          {if (g.need)
-            {needTrait.set(g.name.toUpperCase(), pascal(g.need))}}
+        for (const g of node.generics) {
+          if (g.need) {
+            needTrait.set(g.name.toUpperCase(), pascal(g.need))
+          }
+        }
 
         const kept = node.generics
           .map(g => g.name.toUpperCase())
@@ -1068,7 +1143,9 @@ export function emitRust(program: Program): string {
     const m = /use .*?(\w+)(?: as (\w+))?;$/.exec(u)
     const name = m?.[2] ?? m?.[1]
 
-    if (name) {bound.add(name)}
+    if (name) {
+      bound.add(name)
+    }
   }
 
   for (const need of bindImports(
@@ -1085,7 +1162,9 @@ export function emitRust(program: Program): string {
 
     bound.add(name)
 
-    if (!uses.includes(line)) {uses.push(line)}
+    if (!uses.includes(line)) {
+      uses.push(line)
+    }
   }
 
   const body = program
@@ -1101,19 +1180,25 @@ function reassigned(body: Statement[], into: Set<string>): void {
   for (const s of body) {
     switch (s.form) {
       case 'assign':
-        if (s.target.form === 'variable') {into.add(s.target.name)}
+        if (s.target.form === 'variable') {
+          into.add(s.target.name)
+        }
 
         break
       case 'if':
         s.branches.forEach(b => reassigned(b.body, into))
 
-        if (s.otherwise) {reassigned(s.otherwise, into)}
+        if (s.otherwise) {
+          reassigned(s.otherwise, into)
+        }
 
         break
       case 'match':
         s.cases.forEach(c => reassigned(c.body, into))
 
-        if (s.otherwise) {reassigned(s.otherwise, into)}
+        if (s.otherwise) {
+          reassigned(s.otherwise, into)
+        }
 
         break
       case 'while':
@@ -1145,33 +1230,41 @@ function collectArrayBounds(body: Statement[]): {
   const record = (callee: Expression): void => {
     const op = collectionCall(callee)
 
-    if (op?.kind !== 'array') {return}
+    if (op?.kind !== 'array') {
+      return
+    }
 
     if (
       (op.op === 'push' || op.op === 'pop') &&
       op.target.form === 'variable'
-    )
-      {mutated.add(op.target.name)}
+    ) {
+      mutated.add(op.target.name)
+    }
 
     const need = ARRAY_OP_BOUND[op.op]
 
-    if (!need) {return}
+    if (!need) {
+      return
+    }
 
     const element =
       op.target.type?.kind === 'array'
         ? op.target.type.element
         : undefined
 
-    if (element?.kind === 'variable')
-      {(need === 'eq' ? eqIds : displayIds).add(element.id)}
-    else if (element?.kind === 'named')
-      {(need === 'eq' ? eqNames : displayNames).add(
+    if (element?.kind === 'variable') {
+      ;(need === 'eq' ? eqIds : displayIds).add(element.id)
+    } else if (element?.kind === 'named') {
+      ;(need === 'eq' ? eqNames : displayNames).add(
         element.name.toUpperCase(),
-      )}
+      )
+    }
   }
 
   const visitExpr = (e: Expression | undefined): void => {
-    if (!e) {return}
+    if (!e) {
+      return
+    }
 
     switch (e.form) {
       case 'call':
@@ -1248,14 +1341,18 @@ function collectArrayBounds(body: Statement[]): {
             visitStmts(b.body)
           })
 
-          if (s.otherwise) {visitStmts(s.otherwise)}
+          if (s.otherwise) {
+            visitStmts(s.otherwise)
+          }
 
           break
         case 'match':
           visitExpr(s.subject)
           s.cases.forEach(c => visitStmts(c.body))
 
-          if (s.otherwise) {visitStmts(s.otherwise)}
+          if (s.otherwise) {
+            visitStmts(s.otherwise)
+          }
 
           break
         default:

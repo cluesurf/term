@@ -46,7 +46,9 @@ const SEED_ROOT = path.resolve(HERE, '..', '..', '..', '..')
 let workerBundle: string | undefined
 
 function ensureWorkerBundle(): string {
-  if (workerBundle) {return workerBundle}
+  if (workerBundle) {
+    return workerBundle
+  }
 
   const out = path.join(tmpdir(), `seed-def-worker-${process.pid}.mjs`)
   // bundle node_modules in (the worker's graph is the pure compiler passes plus chalk), so the output is fully
@@ -125,11 +127,15 @@ export class WorkerPool {
 
   private drain(): void {
     for (const entry of this.workers) {
-      if (entry.busy) {continue}
+      if (entry.busy) {
+        continue
+      }
 
       const next = this.queue.shift()
 
-      if (!next) {return}
+      if (!next) {
+        return
+      }
 
       entry.busy = true
 
@@ -251,7 +257,9 @@ export async function emitProgramParallel(
 ): Promise<ParallelEmit> {
   const context = buildDefContext(program, buildScope)
 
-  if (pool) {pool.setContext(context)}
+  if (pool) {
+    pool.setContext(context)
+  }
 
   const functions = program.filter(
     (s): s is FunctionDef => s.form === 'function',
@@ -273,17 +281,23 @@ export async function emitProgramParallel(
 
   const parts: string[] = []
 
-  if (others.length) {parts.push(emitTypeScript(others))}
+  if (others.length) {
+    parts.push(emitTypeScript(others))
+  }
 
   const diagnostics: Diagnostic[] = []
   const threads = new Set<number>()
 
   for (const result of results) {
-    if (result.ts) {parts.push(result.ts)}
+    if (result.ts) {
+      parts.push(result.ts)
+    }
 
     diagnostics.push(...result.diagnostics)
 
-    if (result.threadId) {threads.add(result.threadId)}
+    if (result.threadId) {
+      threads.add(result.threadId)
+    }
   }
 
   return {

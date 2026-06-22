@@ -10,11 +10,14 @@ export const noDuplicateKeys: Rule = {
   docs: 'a record literal sets the same field twice; the later value wins',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'expression') return
+    if (target.kind !== 'expression') {return}
+
     const node = target.node
-    if (node.form !== 'record') return
+
+    if (node.form !== 'record') {return}
 
     const seen = new Set<string>()
+
     for (const field of node.fields) {
       if (seen.has(field.name)) {
         context.report({

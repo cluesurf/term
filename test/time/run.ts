@@ -4,7 +4,10 @@
 // (compile -> spawn node -> collect samples -> stat). It uses a small iteration count on purpose: it verifies the
 // pipeline runs, it does not measure anything, so timing noise is irrelevant.
 
-import { computeStats, formatDuration } from '@cluesurf/make/code/time/stats'
+import {
+  computeStats,
+  formatDuration,
+} from '@cluesurf/make/code/time/stats'
 import { compileBenchmarks } from '@cluesurf/make/code/time/runner'
 import {
   compareResults,
@@ -30,7 +33,11 @@ async function main(): Promise<void> {
   {
     const r = computeStats('s', [10, 20, 30, 40])
     ok('stats mean', r.mean_ns === 25, String(r.mean_ns))
-    ok('stats median (even count)', r.median_ns === 25, String(r.median_ns))
+    ok(
+      'stats median (even count)',
+      r.median_ns === 25,
+      String(r.median_ns),
+    )
     ok('stats min/max', r.min_ns === 10 && r.max_ns === 40)
     ok('stats iterations', r.iterations === 4)
     ok('stats ops_per_sec', r.ops_per_sec === 1e9 / 25)
@@ -65,7 +72,10 @@ async function main(): Promise<void> {
     ok('compare marks improvement', byName.get('fast') === 'faster')
     ok('compare marks unchanged', byName.get('flat') === 'same')
     ok('compare marks new benchmark', byName.get('fresh') === 'new')
-    ok('compare counts', cmp.regressions === 1 && cmp.improvements === 1)
+    ok(
+      'compare counts',
+      cmp.regressions === 1 && cmp.improvements === 1,
+    )
 
     // the CI gate fires only when a regression exceeds the threshold
     ok(
@@ -85,7 +95,9 @@ async function main(): Promise<void> {
     const names = all.benchmarks.map(b => b.name).sort()
     ok(
       'discovers both time-* tasks, skips the helper',
-      names.length === 2 && names[0] === 'time-add' && names[1] === 'time-mul',
+      names.length === 2 &&
+        names[0] === 'time-add' &&
+        names[1] === 'time-mul',
       JSON.stringify(names),
     )
     const filtered = compileBenchmarks({

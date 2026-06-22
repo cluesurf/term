@@ -17,7 +17,13 @@ import {
 import path from 'node:path'
 import { logGood, fade, logStep } from '@cluesurf/make/code/tint'
 
-const KINDS = ['decision', 'convention', 'constraint', 'reference', 'note']
+const KINDS = [
+  'decision',
+  'convention',
+  'constraint',
+  'reference',
+  'note',
+]
 
 function slug(text: string): string {
   return (
@@ -95,14 +101,19 @@ function remember(
   const existing = existsSync(indexPath)
     ? readFileSync(indexPath, 'utf8')
     : head
+
   const kept = existing
     .split('\n')
-    .filter(l => l.trim() && !l.startsWith(`- [${name}]`) && l !== '# Memory')
+    .filter(
+      l => l.trim() && !l.startsWith(`- [${name}]`) && l !== '# Memory',
+    )
+
   writeFileSync(
     indexPath,
-    `${head}${[...kept, `- [${name}](${name}.md) — ${description}`].join(
-      '\n',
-    )}\n`,
+    `${head}${[
+      ...kept,
+      `- [${name}](${name}.md) — ${description}`,
+    ].join('\n')}\n`,
   )
 
   return { name, kind, file: path.relative(root, file) }
@@ -128,7 +139,9 @@ export async function callMind(input: {
     )
 
     if (json) {
-      process.stdout.write(`${JSON.stringify({ ok: true, ...saved })}\n`)
+      process.stdout.write(
+        `${JSON.stringify({ ok: true, ...saved })}\n`,
+      )
     } else {
       logGood(`remembered ${saved.name} (${saved.kind})`)
     }
@@ -166,7 +179,9 @@ export async function callMind(input: {
   if (!facts.length) {
     console.log(
       fade(
-        query ? `  no memories match "${input.find}"` : '  no memories yet',
+        query
+          ? `  no memories match "${input.find}"`
+          : '  no memories yet',
       ),
     )
 

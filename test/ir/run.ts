@@ -103,7 +103,11 @@ function main(): void {
       read x
       code 2
 `
-  expectContains('constant propagates: x=5; x*2 -> 10', PROP, 'return 10')
+  expectContains(
+    'constant propagates: x=5; x*2 -> 10',
+    PROP,
+    'return 10',
+  )
   expectExcludes('the dead const binding is dropped', PROP, 'const x')
 
   // a reassigned variable is NOT propagated to a stale value (soundness)

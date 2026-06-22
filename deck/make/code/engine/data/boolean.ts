@@ -39,7 +39,9 @@ export function implies(a: Bool3, b: Bool3): Bool3 {
 
 // exclusive or, true when exactly one side is true and neither is unknown, unknown if either is unknown
 export function xor(a: Bool3, b: Bool3): Bool3 {
-  if (a === UNKNOWN || b === UNKNOWN) {return UNKNOWN}
+  if (a === UNKNOWN || b === UNKNOWN) {
+    return UNKNOWN
+  }
 
   return a === b ? FALSE : TRUE
 }

@@ -32,7 +32,7 @@ export const preferDirectReturn: Rule = {
   docs: 'a binding used only to be returned on the next line should be returned directly',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
 
     for (const body of bodiesOf(target.node)) {
       for (let i = 0; i + 1 < body.length; i++) {

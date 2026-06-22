@@ -144,7 +144,9 @@ export class QueryCompiler {
       async c => {
         const merged = await this.program(c, files)
 
-        return merged.ok ? collectUsedClasses(merged.program).classes : []
+        return merged.ok
+          ? collectUsedClasses(merged.program).classes
+          : []
       },
       (a, b) => a.join(',') === b.join(','),
     )
@@ -385,7 +387,7 @@ export class QueryCompiler {
       // per-definition emit runs concurrently: each `emitDef` is independent (its own resolve -> infer -> emit chain)
       const functionNames = program
         .filter(s => s.form === 'function')
-        .map(s => (s).name)
+        .map(s => s.name)
 
       const emitted = await Promise.all(
         functionNames.map(name => this.emitDef(c, files, name)),

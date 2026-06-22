@@ -41,8 +41,11 @@ function makeEmitter() {
     `${kind === 'loop' ? 'L' : 'S'}${counter++}`
 
   const nearest = (kinds: ('loop' | 'switch')[]): string => {
-    for (let i = stack.length - 1; i >= 0; i--)
-      {if (kinds.includes(stack[i]!.kind)) {return stack[i]!.label}}
+    for (let i = stack.length - 1; i >= 0; i--) {
+      if (kinds.includes(stack[i]!.kind)) {
+        return stack[i]!.label
+      }
+    }
 
     throw new Error(
       `no enclosing ${kinds.join('/')} for break/continue`,
@@ -78,11 +81,13 @@ function makeEmitter() {
           ? `RT.notTruthy(${expr(e.operand)})`
           : `RT.neg(${expr(e.operand)})`
       case 'binary':
-        if (e.op === '&&')
-          {return `RT.and(${expr(e.left)}, () => ${expr(e.right)})`}
+        if (e.op === '&&') {
+          return `RT.and(${expr(e.left)}, () => ${expr(e.right)})`
+        }
 
-        if (e.op === '||')
-          {return `RT.or(${expr(e.left)}, () => ${expr(e.right)})`}
+        if (e.op === '||') {
+          return `RT.or(${expr(e.left)}, () => ${expr(e.right)})`
+        }
 
         return `RT.${BINOP[e.op]}(${expr(e.left)}, ${expr(e.right)})`
       case 'call':
@@ -107,11 +112,14 @@ function makeEmitter() {
     const compound = (current: string): string =>
       op === '=' ? rhs : `RT.${BINOP[op[0]!]}(${current}, ${rhs})`
 
-    if (t.form === 'variable') {return `${t.name} = ${compound(t.name)};`}
+    if (t.form === 'variable') {
+      return `${t.name} = ${compound(t.name)};`
+    }
 
     if (t.form === 'index') {
-      if (t.target.form !== 'variable')
-        {throw new Error('index assignment target must be a variable')}
+      if (t.target.form !== 'variable') {
+        throw new Error('index assignment target must be a variable')
+      }
 
       const c = t.target.name,
         i = expr(t.index)
@@ -122,8 +130,9 @@ function makeEmitter() {
     }
 
     if (t.form === 'member') {
-      if (t.target.form !== 'variable')
-        {throw new Error('member assignment target must be a variable')}
+      if (t.target.form !== 'variable') {
+        throw new Error('member assignment target must be a variable')
+      }
 
       const c = t.target.name,
         n = JSON.stringify(t.name)
@@ -201,15 +210,17 @@ function makeEmitter() {
           s.subject,
         )}; let ${matched} = false; `
 
-        for (const c of s.cases)
-          {out += `if (${matched} || RT.truthy(RT.eq(${subj}, ${expr(
+        for (const c of s.cases) {
+          out += `if (${matched} || RT.truthy(RT.eq(${subj}, ${expr(
             c.match,
-          )}))) { ${matched} = true; ${c.body.map(stmt).join(' ')} } `}
+          )}))) { ${matched} = true; ${c.body.map(stmt).join(' ')} } `
+        }
 
-        if (s.otherwise)
-          {out += `if (!${matched}) { ${s.otherwise
+        if (s.otherwise) {
+          out += `if (!${matched}) { ${s.otherwise
             .map(stmt)
-            .join(' ')} } `}
+            .join(' ')} } `
+        }
 
         out += '}'
         stack.pop()
@@ -235,7 +246,9 @@ function makeEmitter() {
             .join(' ')} }`
         }
 
-        if (s.finallyBody) {out += ` finally ${block(s.finallyBody)}`}
+        if (s.finallyBody) {
+          out += ` finally ${block(s.finallyBody)}`
+        }
 
         return out
       }

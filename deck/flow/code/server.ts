@@ -6,7 +6,11 @@
 // (main.ts) pumps stdin/stdout into it.
 
 import type { Message } from '@cluesurf/flow/code/protocol'
-import { hoverAt, toRange, toLspDiagnostic } from '@cluesurf/flow/code/analyze'
+import {
+  hoverAt,
+  toRange,
+  toLspDiagnostic,
+} from '@cluesurf/flow/code/analyze'
 import type {
   LspDiagnostic,
   LspPosition,
@@ -117,11 +121,14 @@ function hoverMarkdown(
       def.kind === 'local' || def.kind === 'parameter'
         ? `${def.name}: ${def.detail}`
         : `${def.name}${def.detail}`
+
     return '```seed\n' + value + '\n```'
   }
+
   if (type) {
     return '```seed\n' + type + '\n```'
   }
+
   return undefined
 }
 
@@ -168,7 +175,10 @@ function loadedModules(text: string): string[] {
 }
 
 // the `load @scope/pkg/...` whose block contains the given line (a `find` is indented under its `load`), or undefined
-function enclosingLoad(text: string, lineNumber: number): string | undefined {
+function enclosingLoad(
+  text: string,
+  lineNumber: number,
+): string | undefined {
   const lines = text.split('\n')
 
   for (let i = lineNumber - 1; i >= 0; i--) {
@@ -191,10 +201,14 @@ function enclosingLoad(text: string, lineNumber: number): string | undefined {
 // the identifier inside an LSP range (a diagnostic's range), or undefined
 function nameInRange(
   text: string,
-  range: { start: { line: number; character: number }; end: { line: number; character: number } },
+  range: {
+    start: { line: number; character: number }
+    end: { line: number; character: number }
+  },
 ): string | undefined {
   const line = text.split('\n')[range.start.line] ?? ''
   const slice = line.slice(range.start.character, range.end.character)
+
   return /^[a-z][A-Za-z0-9-]*/.exec(slice.trim())?.[0]
 }
 
@@ -236,6 +250,7 @@ const SEMANTIC_TOKEN_TYPES = [
   'parameter',
   'variable',
 ]
+
 // a scanned top-level declaration's kind -> token type index
 const DECL_TOKEN: Record<string, number> = {
   task: 0,
@@ -243,6 +258,7 @@ const DECL_TOKEN: Record<string, number> = {
   mask: 2,
   bind: 0,
 }
+
 // a reference's resolved definition kind -> token type index
 const REF_TOKEN: Record<SymbolKind, number> = {
   function: 0,
@@ -297,6 +313,7 @@ export function semanticTokens(
 
   // delta-encode (LSP), skipping a token that repeats a position already emitted (a declaration the index also lists)
   const data: number[] = []
+
   let prevLine = 0
   let prevChar = 0
   let lastKey = ''
@@ -309,6 +326,7 @@ export function semanticTokens(
     }
 
     lastKey = key
+
     const deltaLine = t.line - prevLine
     const deltaChar = deltaLine === 0 ? t.char - prevChar : t.char
 
@@ -332,6 +350,7 @@ type InlayHint = {
   kind: number
   paddingLeft: boolean
 }
+
 export function inlayHints(
   program: Program,
   text: string,
@@ -352,7 +371,9 @@ export function inlayHints(
     const src = lines[line] ?? ''
 
     // an explicitly annotated binding (`save x, like number`) needs no hint
-    if (/^\s*(?:save|host)\s+[a-z][A-Za-z0-9-]*\s*,\s*like\b/.test(src)) {
+    if (
+      /^\s*(?:save|host)\s+[a-z][A-Za-z0-9-]*\s*,\s*like\b/.test(src)
+    ) {
       return
     }
 
@@ -387,11 +408,19 @@ export function inlayHints(
           break
         case 'if':
           node.branches.forEach(b => walk(b.body))
-          if (node.otherwise) walk(node.otherwise)
+
+          if (node.otherwise) {
+            walk(node.otherwise)
+          }
+
           break
         case 'match':
           node.cases.forEach(c => walk(c.body))
-          if (node.otherwise) walk(node.otherwise)
+
+          if (node.otherwise) {
+            walk(node.otherwise)
+          }
+
           break
         default:
           break
@@ -400,6 +429,7 @@ export function inlayHints(
   }
 
   walk(program)
+
   return hints
 }
 
@@ -441,9 +471,10 @@ const KEYWORD_SNIPPETS: Record<string, string> = {
   walk: 'walk list, read ${1:items}\n  hook next\n  take ${2:item}, name ${2:item}\n    $0',
 }
 
-function keywordItems(): Array<Record<string, unknown>> {
+function keywordItems(): Record<string, unknown>[] {
   return KEYWORDS.map(label => {
     const snippet = KEYWORD_SNIPPETS[label]
+
     // keywords sort last (prefix `3`), after scope symbols and imported names
     return snippet
       ? {
@@ -476,6 +507,7 @@ function signatureOf(
   const params = fn.params
     .map(p => `${p.name}: ${showType(p.type ?? { kind: 'unknown' })}`)
     .join(', ')
+
   return `(${params}) -> ${showType(fn.result ?? { kind: 'unit' })}`
 }
 
@@ -483,8 +515,9 @@ function signatureOf(
 // names in completion, since the document-scoped index only knows this file's own definitions.
 function mergedTopLevel(
   program: Program,
-): Array<{ name: string; kind: number; detail: string }> {
-  const out: Array<{ name: string; kind: number; detail: string }> = []
+): { name: string; kind: number; detail: string }[] {
+  const out: { name: string; kind: number; detail: string }[] = []
+
   for (const statement of program) {
     if (statement.form === 'function' && !statement.method) {
       out.push({
@@ -502,19 +535,18 @@ function mergedTopLevel(
       out.push({ name: statement.name, kind: 8, detail: 'mask' }) // Interface
     }
   }
+
   return out
 }
 
 // from the typed program: each record's fields and each form's methods, for member completion after `<receiver>/`
 function memberMaps(program: Program): {
-  fields: Map<string, Array<{ name: string; type: string }>>
-  methods: Map<string, Array<{ name: string; detail: string }>>
+  fields: Map<string, { name: string; type: string }[]>
+  methods: Map<string, { name: string; detail: string }[]>
 } {
-  const fields = new Map<string, Array<{ name: string; type: string }>>()
-  const methods = new Map<
-    string,
-    Array<{ name: string; detail: string }>
-  >()
+  const fields = new Map<string, { name: string; type: string }[]>()
+  const methods = new Map<string, { name: string; detail: string }[]>()
+
   for (const statement of program) {
     if (statement.form === 'record-type') {
       fields.set(
@@ -533,6 +565,7 @@ function memberMaps(program: Program): {
       methods.set(statement.method.form, list)
     }
   }
+
   return { fields, methods }
 }
 
@@ -651,18 +684,18 @@ export class LanguageServer {
         const ref = index
           ? referenceAt(index, params.position)
           : undefined
+
         const def = ref ? index!.definitions.get(ref.name) : undefined
         const type = program
           ? hoverAt(program, params.position)
           : undefined
+
         const value = hoverMarkdown(def, type)
 
         return [
           respond(
             message,
-            value
-              ? { contents: { kind: 'markdown', value } }
-              : null,
+            value ? { contents: { kind: 'markdown', value } } : null,
           ),
         ]
       }
@@ -686,7 +719,9 @@ export class LanguageServer {
           : undefined
 
         if (here) {
-          return [respond(message, { uri, range: defRange(here, ref.name) })]
+          return [
+            respond(message, { uri, range: defRange(here, ref.name) }),
+          ]
         }
 
         // 2. cross-file: the name may be imported. Search each `load`ed module for a top-level definition (task / form /
@@ -789,10 +824,11 @@ export class LanguageServer {
         const text = this.documents.get(uri)
         const scope = index ? scopeAt(index, params.position) : []
         const line =
-          text?.split('\n')[params.position.line]?.slice(
-            0,
-            params.position.character,
-          ) ?? ''
+          text
+            ?.split('\n')
+            [
+              params.position.line
+            ]?.slice(0, params.position.character) ?? ''
 
         // import-path completion: `load @scope/pkg/...` offers the modules available under that prefix
         const loadPath = /^\s*load\s+(@\S*)$/.exec(line)?.[1]
@@ -820,6 +856,7 @@ export class LanguageServer {
             importPath && resolve
               ? moduleExports(importPath, resolve)
               : undefined
+
           const items = (exp?.defs ?? []).map(d => ({
             label: d.name,
             kind: EXPORT_KIND[d.kind] ?? KIND_MODULE,
@@ -835,7 +872,9 @@ export class LanguageServer {
         if (text && program) {
           const receiver = memberReceiver(line)
           const typeName = receiver
-            ? leadingName(scope.find(d => d.name === receiver)?.detail ?? '')
+            ? leadingName(
+                scope.find(d => d.name === receiver)?.detail ?? '',
+              )
             : undefined
 
           if (typeName) {
@@ -869,7 +908,10 @@ export class LanguageServer {
 
         // argument-type ranking: inside a call, the type the current argument expects. A scope value of that exact type
         // ranks to the very top.
-        const call = program ? callAt(program, params.position) : undefined
+        const call = program
+          ? callAt(program, params.position)
+          : undefined
+
         const sig = call ? index?.signatures.get(call.name) : undefined
         const expected = sig?.params[call!.activeParam]?.type
 
@@ -881,8 +923,11 @@ export class LanguageServer {
           detail: d.detail,
           // a value matching the expected argument type sorts to `0`, ahead of the rest of the scope at `1`
           sortText:
-            expected && d.detail === expected ? `0${d.name}` : `1${d.name}`,
+            expected && d.detail === expected
+              ? `0${d.name}`
+              : `1${d.name}`,
         }))
+
         const scopeNames = new Set(scope.map(d => d.name))
         const fromImports = program
           ? mergedTopLevel(program)
@@ -940,6 +985,7 @@ export class LanguageServer {
       case 'textDocument/semanticTokens/full': {
         const uri = (message.params as TextDocumentParams).textDocument
           .uri
+
         const index = this.indexes.get(uri)
         const text = this.documents.get(uri)
 
@@ -955,20 +1001,27 @@ export class LanguageServer {
           textDocument: { uri: string }
           range: { start: { line: number }; end: { line: number } }
         }
-        const program = this.documentPrograms.get(params.textDocument.uri)
+
+        const program = this.documentPrograms.get(
+          params.textDocument.uri,
+        )
+
         const text = this.documents.get(params.textDocument.uri)
 
         if (!program || !text) {
           return [respond(message, [])]
         }
 
-        return [respond(message, inlayHints(program, text, params.range))]
+        return [
+          respond(message, inlayHints(program, text, params.range)),
+        ]
       }
 
       case 'textDocument/codeLens': {
         // a reference count above each top-level definition, from the document-scoped index
         const uri = (message.params as TextDocumentParams).textDocument
           .uri
+
         const index = this.indexes.get(uri)
 
         if (!index) {
@@ -988,6 +1041,7 @@ export class LanguageServer {
               0,
               occurrencesOf(index, d.name).length - 1,
             )
+
             return {
               range: toRange(d.span),
               command: {
@@ -1014,6 +1068,7 @@ export class LanguageServer {
             }[]
           }
         }
+
         const uri = params.textDocument.uri
         const text = this.documents.get(uri)
         const filePath = pathFor(uri)
@@ -1034,6 +1089,7 @@ export class LanguageServer {
           }
 
           seen.add(name)
+
           const found = findModuleExporting(root, name)
 
           if (!found) {
@@ -1084,7 +1140,9 @@ export class LanguageServer {
         uri,
         result.documentProgram ?? result.program,
       )
+
       const index = buildIndex(result.documentProgram ?? result.program)
+
       // overlay whole-program signatures (span-free), so signature help and argument-type ranking also work for
       // imported functions, which the document-scoped index does not carry.
       for (const [name, sig] of signaturesOf(result.program)) {
@@ -1092,6 +1150,7 @@ export class LanguageServer {
           index.signatures.set(name, sig)
         }
       }
+
       this.indexes.set(uri, index)
     } else {
       this.programs.delete(uri)
@@ -1105,12 +1164,17 @@ export class LanguageServer {
 
     // backdate: skip the publish when the diagnostic set is unchanged from the last one sent for this document
     const key = JSON.stringify(diagnostics)
+
     if (this.lastDiagnostics.get(uri) === key) {
       return null
     }
+
     this.lastDiagnostics.set(uri, key)
 
-    return notify('textDocument/publishDiagnostics', { uri, diagnostics })
+    return notify('textDocument/publishDiagnostics', {
+      uri,
+      diagnostics,
+    })
   }
 }
 

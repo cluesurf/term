@@ -90,7 +90,9 @@ function compilerCodeHash(): string {
 }
 
 export function compilerVersion(): string {
-  if (cachedVersion !== undefined) {return cachedVersion}
+  if (cachedVersion !== undefined) {
+    return cachedVersion
+  }
 
   let version = '0'
   let dir = path.dirname(fileURLToPath(import.meta.url))
@@ -116,7 +118,9 @@ export function compilerVersion(): string {
 
     const up = path.dirname(dir)
 
-    if (up === dir) {break}
+    if (up === dir) {
+      break
+    }
 
     dir = up
   }

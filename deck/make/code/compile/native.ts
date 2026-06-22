@@ -45,11 +45,12 @@ export function globalDocks(
   const docks: { name: string; file?: string }[] = []
 
   for (const node of program) {
-    if (node.form === 'native' && node.module.startsWith('global:'))
-      {docks.push({
+    if (node.form === 'native' && node.module.startsWith('global:')) {
+      docks.push({
         name: node.module.slice('global:'.length),
         file: node.file,
-      })}
+      })
+    }
   }
 
   return docks
@@ -101,7 +102,9 @@ export function nativePrelude(
     // skip a dock whose global is unreferenced in the emitted code (keeps unused native deps out of the bundle)
     if (
       usedIn !== undefined &&
-      !new RegExp(`\\b${name.replace(/[^\w]/g, '\\$&')}\\b`).test(usedIn)
+      !new RegExp(`\\b${name.replace(/[^\w]/g, '\\$&')}\\b`).test(
+        usedIn,
+      )
     ) {
       continue
     }
@@ -111,7 +114,9 @@ export function nativePrelude(
       : [runtimePath(env, name)]
 
     for (const candidate of candidates) {
-      if (added.has(candidate)) {break}
+      if (added.has(candidate)) {
+        break
+      }
 
       const source = readRuntime(candidate)
 
@@ -133,12 +138,15 @@ export function nativeImportFor(
 ): string | undefined {
   const match = /^(.*\/native)\/([^/]+)(\/.*)?$/.exec(importPath)
 
-  if (!match) {return undefined}
+  if (!match) {
+    return undefined
+  }
 
   const segment = match[2]!
 
-  if ((NATIVE_ENVS as readonly string[]).includes(segment))
-    {return undefined} // already concrete (e.g. native/node/...)
+  if ((NATIVE_ENVS as readonly string[]).includes(segment)) {
+    return undefined
+  } // already concrete (e.g. native/node/...)
 
   return `${match[1]}/${env}/${segment}${match[3] ?? ''}`
 }
@@ -155,7 +163,9 @@ export function withNativeEnv(
     if (rewritten) {
       const resolved = base(rewritten, fromFile)
 
-      if (resolved) {return resolved}
+      if (resolved) {
+        return resolved
+      }
     }
 
     return base(importPath, fromFile)

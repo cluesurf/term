@@ -196,22 +196,25 @@ export function equal(
   b: Term,
   depth: number,
 ): boolean {
-  if (a.tag === 'variable' && b.tag === 'variable')
-    {return a.level === b.level}
+  if (a.tag === 'variable' && b.tag === 'variable') {
+    return a.level === b.level
+  }
 
-  if (a.tag === 'lambda' && b.tag === 'lambda')
-    {return equal(
+  if (a.tag === 'lambda' && b.tag === 'lambda') {
+    return equal(
       book,
       a.body(variable(depth)),
       b.body(variable(depth)),
       depth + 1,
-    )}
+    )
+  }
 
-  if (a.tag === 'apply' && b.tag === 'apply')
-    {return (
+  if (a.tag === 'apply' && b.tag === 'apply') {
+    return (
       equal(book, a.fun, b.fun, depth) &&
       equal(book, a.arg, b.arg, depth)
-    )}
+    )
+  }
 
   if (a.tag === 'pi' && b.tag === 'pi') {
     return (
@@ -225,49 +228,58 @@ export function equal(
     )
   }
 
-  if (a.tag === 'self' && b.tag === 'self')
-    {return equal(
+  if (a.tag === 'self' && b.tag === 'self') {
+    return equal(
       book,
       a.body(variable(depth)),
       b.body(variable(depth)),
       depth + 1,
-    )}
+    )
+  }
 
-  if (a.tag === 'reference' && book[a.name])
-    {return equal(
+  if (a.tag === 'reference' && book[a.name]) {
+    return equal(
       book,
       normal(book, book[a.name]!.value, depth),
       b,
       depth,
-    )}
+    )
+  }
 
-  if (b.tag === 'reference' && book[b.name])
-    {return equal(
+  if (b.tag === 'reference' && book[b.name]) {
+    return equal(
       book,
       a,
       normal(book, book[b.name]!.value, depth),
       depth,
-    )}
+    )
+  }
 
-  if (a.tag === 'annotate') {return equal(book, a.value, b, depth)}
+  if (a.tag === 'annotate') {
+    return equal(book, a.value, b, depth)
+  }
 
-  if (b.tag === 'annotate') {return equal(book, a, b.value, depth)}
+  if (b.tag === 'annotate') {
+    return equal(book, a, b.value, depth)
+  }
 
-  if (a.tag === 'lambda')
-    {return equal(
+  if (a.tag === 'lambda') {
+    return equal(
       book,
       a,
       lambda(x => apply(b, x)),
       depth,
-    )}
+    )
+  }
 
-  if (b.tag === 'lambda')
-    {return equal(
+  if (b.tag === 'lambda') {
+    return equal(
       book,
       lambda(x => apply(a, x)),
       b,
       depth,
-    )}
+    )
+  }
 
   return false
 }

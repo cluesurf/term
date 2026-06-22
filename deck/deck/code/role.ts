@@ -19,9 +19,10 @@ export function parseRoleFile(input: {
 }): RoleConfig {
   const { text, root } = input
   const lines = text.split('\n')
-  const rules: Array<RoleRule> = []
+  const rules: RoleRule[] = []
 
   let i = 0
+
   while (i < lines.length) {
     const raw = lines[i]!
     const indent = raw.length - raw.trimStart().length
@@ -38,38 +39,45 @@ export function parseRoleFile(input: {
           const nextRaw = lines[i]!
           const nextIndent = nextRaw.length - nextRaw.trimStart().length
           const nextLine = nextRaw.trim()
+
           if (!nextLine || nextLine.startsWith('#')) {
             i++
             continue
           }
-          if (nextIndent <= indent) break
+
+          if (nextIndent <= indent) {break}
+
           i++
         }
       }
+
       continue
     }
 
     if (line.startsWith('role ')) {
       const name = line.slice(5).trim()
-      const take: Array<{ pattern: string; miss: Array<string> }> = []
+      const take: { pattern: string; miss: string[] }[] = []
 
       // Parse children (take/miss lines)
       while (i < lines.length) {
         const nextRaw = lines[i]!
         const nextIndent = nextRaw.length - nextRaw.trimStart().length
         const nextLine = nextRaw.trim()
+
         if (!nextLine || nextLine.startsWith('#')) {
           i++
           continue
         }
-        if (nextIndent <= indent) break
+
+        if (nextIndent <= indent) {break}
 
         if (nextLine.startsWith('take ')) {
           const pattern = expandTilde({
             pattern: nextLine.slice(5).trim(),
             root,
           })
-          const missPatterns: Array<string> = []
+
+          const missPatterns: string[] = []
           const takeIndent = nextIndent
           i++
 
@@ -78,12 +86,16 @@ export function parseRoleFile(input: {
             const missRaw = lines[i]!
             const missIndent =
               missRaw.length - missRaw.trimStart().length
+
             const missLine = missRaw.trim()
+
             if (!missLine || missLine.startsWith('#')) {
               i++
               continue
             }
-            if (missIndent <= takeIndent) break
+
+            if (missIndent <= takeIndent) {break}
+
             if (missLine.startsWith('miss ')) {
               missPatterns.push(
                 expandTilde({
@@ -92,6 +104,7 @@ export function parseRoleFile(input: {
                 }),
               )
             }
+
             i++
           }
 
@@ -125,12 +138,14 @@ export function matchRole(input: {
       if (globMatch({ pattern: entry.pattern, path: filePath })) {
         // Check miss exclusions
         let excluded = false
+
         for (const miss of entry.miss) {
           if (globMatch({ pattern: miss, path: filePath })) {
             excluded = true
             break
           }
         }
+
         if (!excluded) {
           return rule.name
         }
@@ -148,9 +163,11 @@ function expandTilde(input: { pattern: string; root: string }): string {
   if (input.pattern.startsWith('~/')) {
     return input.root + input.pattern.slice(1)
   }
+
   if (input.pattern === '~') {
     return input.root
   }
+
   return input.pattern
 }
 
@@ -163,12 +180,14 @@ export function globMatch(input: {
   path: string
 }): boolean {
   const regex = globToRegex({ pattern: input.pattern })
+
   return regex.test(input.path)
 }
 
 function globToRegex(input: { pattern: string }): RegExp {
   let result = ''
   let i = 0
+
   const pat = input.pattern
 
   while (i < pat.length) {
@@ -196,6 +215,7 @@ function globToRegex(input: { pattern: string }): RegExp {
     } else if (ch === '{') {
       // {a,b,c} alternation
       const end = pat.indexOf('}', i)
+
       if (end === -1) {
         result += '\\{'
         i++
@@ -207,6 +227,7 @@ function globToRegex(input: { pattern: string }): RegExp {
       }
     } else if (ch === '[') {
       const end = pat.indexOf(']', i)
+
       if (end === -1) {
         result += '\\['
         i++

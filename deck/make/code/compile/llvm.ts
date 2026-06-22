@@ -91,23 +91,37 @@ function llty(
   records?: Map<string, RecordLayout>,
   variants?: Set<string>,
 ): LlvmType {
-  if (type?.kind === 'string') {return 'ptr'}
+  if (type?.kind === 'string') {
+    return 'ptr'
+  }
 
-  if (type?.kind === 'unit') {return 'void'}
+  if (type?.kind === 'unit') {
+    return 'void'
+  }
 
-  if (type?.kind === 'float') {return 'double'}
+  if (type?.kind === 'float') {
+    return 'double'
+  }
 
-  if (type?.kind === 'array') {return 'ptr'} // a list is an opaque handle to the heap buffer
+  if (type?.kind === 'array') {
+    return 'ptr'
+  } // a list is an opaque handle to the heap buffer
 
-  if (type?.kind === 'map') {return 'ptr'} // a map is an opaque handle to the heap hash
+  if (type?.kind === 'map') {
+    return 'ptr'
+  } // a map is an opaque handle to the heap hash
 
-  if (type?.kind === 'function') {return CLOSURE_TYPE} // a first-class function value: { code, env }
+  if (type?.kind === 'function') {
+    return CLOSURE_TYPE
+  } // a first-class function value: { code, env }
 
-  if (type?.kind === 'named' && variants?.has(type.name))
-    {return VARIANT_TYPE}
+  if (type?.kind === 'named' && variants?.has(type.name)) {
+    return VARIANT_TYPE
+  }
 
-  if (type?.kind === 'named' && records?.has(type.name))
-    {return `%struct.${mangle(type.name)}`}
+  if (type?.kind === 'named' && records?.has(type.name)) {
+    return `%struct.${mangle(type.name)}`
+  }
 
   return 'i64'
 }
@@ -121,8 +135,8 @@ function variantLayouts(program: Program): {
   const owners = new Set<string>()
   const of: VariantOf = new Map()
 
-  for (const s of program)
-    {if (s.form === 'record-type' && s.variants.length > 0) {
+  for (const s of program) {
+    if (s.form === 'record-type' && s.variants.length > 0) {
       owners.add(s.name)
       s.variants.forEach((variant, tag) => {
         of.set(variant.name, {
@@ -131,7 +145,8 @@ function variantLayouts(program: Program): {
           field: variant.fields[0],
         })
       })
-    }}
+    }
+  }
 
   return { owners, of }
 }
@@ -141,13 +156,15 @@ function variantLayouts(program: Program): {
 function recordLayouts(program: Program): Map<string, RecordLayout> {
   const records = new Map<string, RecordLayout>()
 
-  for (const s of program)
-    {if (
+  for (const s of program) {
+    if (
       s.form === 'record-type' &&
       s.variants.length === 0 &&
       s.fields.length > 0
-    )
-      {records.set(s.name, { fields: s.fields })}}
+    ) {
+      records.set(s.name, { fields: s.fields })
+    }
+  }
 
   return records
 }
@@ -170,8 +187,9 @@ function freeVars(closure: Closure): Capture[] {
           (node.binding?.kind === 'parameter' ||
             node.binding?.kind === 'local') &&
           !captures.has(node.name)
-        )
-          {captures.set(node.name, node.type)}
+        ) {
+          captures.set(node.name, node.type)
+        }
 
         break
       case 'call':
@@ -209,14 +227,18 @@ function freeVars(closure: Closure): Capture[] {
           expr(b.value)
         })
 
-        if (node.otherwise) {expr(node.otherwise)}
+        if (node.otherwise) {
+          expr(node.otherwise)
+        }
 
         break
       case 'closure':
         // a nested closure's own free variables, if still unbound here, are captured by this closure too
-        for (const inner of freeVars(node))
-          {if (!bound.has(inner.name) && !captures.has(inner.name))
-            {captures.set(inner.name, inner.type)}}
+        for (const inner of freeVars(node)) {
+          if (!bound.has(inner.name) && !captures.has(inner.name)) {
+            captures.set(inner.name, inner.type)
+          }
+        }
 
         break
       default:
@@ -238,7 +260,9 @@ function freeVars(closure: Closure): Capture[] {
         expr(s.expr)
         break
       case 'return':
-        if (s.value) {expr(s.value)}
+        if (s.value) {
+          expr(s.value)
+        }
 
         break
       case 'throw':
@@ -261,14 +285,18 @@ function freeVars(closure: Closure): Capture[] {
           b.body.forEach(one)
         })
 
-        if (s.otherwise) {s.otherwise.forEach(one)}
+        if (s.otherwise) {
+          s.otherwise.forEach(one)
+        }
 
         break
       case 'match':
         expr(s.subject)
         s.cases.forEach(c => c.body.forEach(one))
 
-        if (s.otherwise) {s.otherwise.forEach(one)}
+        if (s.otherwise) {
+          s.otherwise.forEach(one)
+        }
 
         break
       default:
@@ -324,7 +352,9 @@ export function emitLlvm(input: Program): string {
   const internString = (value: string): string => {
     const existing = interned.get(value)
 
-    if (existing) {return existing}
+    if (existing) {
+      return existing
+    }
 
     const name = `@.str.${interned.size}`
     const bytes = [...Buffer.from(value, 'utf8')]
@@ -351,12 +381,13 @@ export function emitLlvm(input: Program): string {
   const variants = variantLayouts(program)
   const structDecls: string[] = []
 
-  for (const [name, layout] of records)
-    {structDecls.push(
+  for (const [name, layout] of records) {
+    structDecls.push(
       `%struct.${mangle(name)} = type { ${layout.fields
         .map(f => llty(f.type, records, variants.owners))
         .join(', ')} }`,
-    )}
+    )
+  }
 
   // lifted closure functions accumulate here as they are encountered inside any function body; closureId keeps their
   // names unique module-wide. They are appended after the user's functions.
@@ -365,7 +396,9 @@ export function emitLlvm(input: Program): string {
   const functions: string[] = []
 
   for (const s of program) {
-    if (s.form !== 'function' || s.generics.length > 0) {continue} // generic functions are removed by monomorphization
+    if (s.form !== 'function' || s.generics.length > 0) {
+      continue
+    } // generic functions are removed by monomorphization
 
     functions.push(
       emitFunction(
@@ -512,24 +545,42 @@ function emitFunction(
   // are null-initialized at entry, so an uninitialized one (an early return before its `save`) drops as a harmless
   // no-op (`seed_drop` ignores a null / untracked pointer). Because these locals are single-owner, dropping cannot
   // double-free; anything the analysis does not classify stays leaked exactly as before (no regression).
-  const DROP_TAG: Record<string, number> = { string: 0, array: 1, map: 2 }
+  const DROP_TAG: Record<string, number> = {
+    string: 0,
+    array: 1,
+    map: 2,
+  }
+
   const heapTypeOf = new Map<string, Type>()
 
   const collectLetTypes = (body: Statement[]): void => {
     for (const s of body) {
       if (s.form === 'let') {
         const t = s.init.type ?? s.type
-        if (t) {heapTypeOf.set(s.name, t)}
+
+        if (t) {
+          heapTypeOf.set(s.name, t)
+        }
       }
 
       if (s.form === 'if') {
-        for (const b of s.branches) {collectLetTypes(b.body)}
-        if (s.otherwise) {collectLetTypes(s.otherwise)}
+        for (const b of s.branches) {
+          collectLetTypes(b.body)
+        }
+
+        if (s.otherwise) {
+          collectLetTypes(s.otherwise)
+        }
       } else if (s.form === 'while' || s.form === 'for-each') {
         collectLetTypes(s.body)
       } else if (s.form === 'match') {
-        for (const c of s.cases) {collectLetTypes(c.body)}
-        if (s.otherwise) {collectLetTypes(s.otherwise)}
+        for (const c of s.cases) {
+          collectLetTypes(c.body)
+        }
+
+        if (s.otherwise) {
+          collectLetTypes(s.otherwise)
+        }
       }
     }
   }
@@ -541,7 +592,9 @@ function emitFunction(
       name,
       tag: DROP_TAG[heapTypeOf.get(name)?.kind ?? ''],
     }))
-    .filter((d): d is { name: string; tag: number } => d.tag !== undefined)
+    .filter(
+      (d): d is { name: string; tag: number } => d.tag !== undefined,
+    )
 
   const entryInits: string[] = []
 
@@ -555,7 +608,9 @@ function emitFunction(
     for (const d of dropList) {
       const s = slot.get(d.name)
 
-      if (!s) {continue}
+      if (!s) {
+        continue
+      }
 
       const v = fresh()
       cur.lines.push(`${v} = load ptr, ptr ${s.reg}`)
@@ -583,7 +638,9 @@ function emitFunction(
       case 'hole': {
         const s = slot.get(node.name)
 
-        if (!s) {return '0'}
+        if (!s) {
+          return '0'
+        }
 
         const t = fresh()
         cur.lines.push(`${t} = load ${s.ty}, ptr ${s.reg}`)
@@ -633,7 +690,9 @@ function emitFunction(
               `${e} = call i64 @seed_str_equal(ptr ${l}, ptr ${r})`,
             )
 
-            if (node.op === '==') {return e}
+            if (node.op === '==') {
+              return e
+            }
 
             const t = fresh()
             cur.lines.push(`${t} = xor i64 ${e}, 1`)
@@ -699,10 +758,7 @@ function emitFunction(
           const handle = expr(collection.target)
           const element = elementOf(collection.target)
 
-          const listCall = (
-            fn: string,
-            extra: string[],
-          ): string => {
+          const listCall = (fn: string, extra: string[]): string => {
             const out = fresh()
             cur.lines.push(
               `${out} = call i64 @${fn}(ptr ${handle}${extra
@@ -958,8 +1014,9 @@ function emitFunction(
           const v = expr(value)
 
           if (!cur.done) {
-            if (ty !== 'void')
-              {cur.lines.push(`store ${ty} ${v}, ptr ${resultSlot}`)}
+            if (ty !== 'void') {
+              cur.lines.push(`store ${ty} ${v}, ptr ${resultSlot}`)
+            }
 
             cur.lines.push(`br label %${merge}`)
             cur.done = true
@@ -978,10 +1035,12 @@ function emitFunction(
         }
 
         // a value conditional always has an else (it must yield a value on every path); fall back to a zero store
-        if (node.otherwise) {storeArm(node.otherwise)}
-        else if (!cur.done) {
-          if (ty !== 'void')
-            {cur.lines.push(`store ${ty} 0, ptr ${resultSlot}`)}
+        if (node.otherwise) {
+          storeArm(node.otherwise)
+        } else if (!cur.done) {
+          if (ty !== 'void') {
+            cur.lines.push(`store ${ty} 0, ptr ${resultSlot}`)
+          }
 
           cur.lines.push(`br label %${merge}`)
           cur.done = true
@@ -989,7 +1048,9 @@ function emitFunction(
 
         cur = block(merge)
 
-        if (ty === 'void') {return '0'}
+        if (ty === 'void') {
+          return '0'
+        }
 
         const out = fresh()
         cur.lines.push(`${out} = load ${ty}, ptr ${resultSlot}`)
@@ -1011,8 +1072,9 @@ function emitFunction(
               f => f.name === variant.field!.name,
             )
 
-            if (written)
-              {payload = toWord(expr(written.value), variant.field.type)}
+            if (written) {
+              payload = toWord(expr(written.value), variant.field.type)
+            }
           }
 
           const v0 = fresh()
@@ -1064,7 +1126,9 @@ function emitFunction(
             `${node.target.name}/${node.name}`,
           )
 
-          if (bound !== undefined) {return bound}
+          if (bound !== undefined) {
+            return bound
+          }
         }
 
         // `xs.length` on a list / `m.size` on a map reads the runtime count
@@ -1241,7 +1305,9 @@ function emitFunction(
   }
 
   const stmt = (node: Statement): void => {
-    if (cur.done) {cur = block(freshLabel('dead'))}
+    if (cur.done) {
+      cur = block(freshLabel('dead'))
+    }
 
     switch (node.form) {
       case 'let': {
@@ -1325,7 +1391,9 @@ function emitFunction(
 
         const chain = (i: number): void => {
           if (i >= node.branches.length) {
-            if (node.otherwise) {node.otherwise.forEach(stmt)}
+            if (node.otherwise) {
+              node.otherwise.forEach(stmt)
+            }
 
             if (!cur.done) {
               cur.lines.push(`br label %${merge}`)
@@ -1356,7 +1424,9 @@ function emitFunction(
 
         chain(0)
 
-        if (fellThrough) {cur = block(merge)}
+        if (fellThrough) {
+          cur = block(merge)
+        }
 
         break
       }
@@ -1375,7 +1445,9 @@ function emitFunction(
         cur = block(bodyL)
         node.body.forEach(stmt)
 
-        if (!cur.done) {cur.lines.push(`br label %${condL}`)}
+        if (!cur.done) {
+          cur.lines.push(`br label %${condL}`)
+        }
 
         cur.done = true
         cur = block(endL)
@@ -1434,9 +1506,11 @@ function emitFunction(
           arm.body.forEach(s => stmt(s))
 
           if (restore) {
-            if (restore[1] === undefined)
-              {variantBindings.delete(restore[0])}
-            else {variantBindings.set(restore[0], restore[1])}
+            if (restore[1] === undefined) {
+              variantBindings.delete(restore[0])
+            } else {
+              variantBindings.set(restore[0], restore[1])
+            }
           }
 
           if (!cur.done) {
@@ -1447,7 +1521,9 @@ function emitFunction(
           cur = block(nextL)
         }
 
-        if (node.otherwise) {node.otherwise.forEach(s => stmt(s))}
+        if (node.otherwise) {
+          node.otherwise.forEach(s => stmt(s))
+        }
 
         if (!cur.done) {
           cur.lines.push(`br label %${merge}`)

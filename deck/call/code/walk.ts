@@ -44,7 +44,9 @@ export class Repl {
   async feed(block: string): Promise<FeedResult> {
     const trimmed = block.replace(/\s+$/, '')
 
-    if (!trimmed.trim()) {return { kind: 'empty' }}
+    if (!trimmed.trim()) {
+      return { kind: 'empty' }
+    }
 
     if (DEFINITION.test(trimmed.trimStart())) {
       // a definition: accept it only if the program still compiles with it added
@@ -54,11 +56,12 @@ export class Repl {
         { resolve: this.resolve },
       )
 
-      if (!result.ok)
-        {return {
+      if (!result.ok) {
+        return {
           kind: 'error',
           text: formatDiagnostics(result.diagnostics),
-        }}
+        }
+      }
 
       this.definitions.push(trimmed)
 
@@ -79,11 +82,12 @@ export class Repl {
       { resolve: this.resolve },
     )
 
-    if (!result.ok)
-      {return {
+    if (!result.ok) {
+      return {
         kind: 'error',
         text: formatDiagnostics(result.diagnostics),
-      }}
+      }
+    }
 
     try {
       const value = await run(result.typescript)
@@ -118,9 +122,13 @@ async function run(typescript: string): Promise<unknown> {
 
 // a runtime value to a readable line
 function display(value: unknown): string {
-  if (typeof value === 'string') {return JSON.stringify(value)}
+  if (typeof value === 'string') {
+    return JSON.stringify(value)
+  }
 
-  if (value && typeof value === 'object') {return JSON.stringify(value)}
+  if (value && typeof value === 'object') {
+    return JSON.stringify(value)
+  }
 
   return String(value)
 }
@@ -153,19 +161,26 @@ export async function callWalk(_input: {
     const block = buffer.join('\n')
     buffer = []
 
-    if (!block.trim()) {return}
+    if (!block.trim()) {
+      return
+    }
 
     const result = await repl.feed(block)
 
-    if (result.kind === 'value') {console.log(result.text)}
-    else if (result.kind === 'definition')
-      {console.log(fade(`  added ${result.text}`))}
-    else if (result.kind === 'error') {logFail(result.text)}
+    if (result.kind === 'value') {
+      console.log(result.text)
+    } else if (result.kind === 'definition') {
+      console.log(fade(`  added ${result.text}`))
+    } else if (result.kind === 'error') {
+      logFail(result.text)
+    }
   }
 
   rl.prompt()
   rl.on('line', async line => {
-    if (line.trim() === 'exit') {return rl.close()}
+    if (line.trim() === 'exit') {
+      return rl.close()
+    }
 
     if (line.trim() === '') {
       await flush()
@@ -177,8 +192,9 @@ export async function callWalk(_input: {
     buffer.push(line)
 
     // a single-line expression evaluates immediately; an indented block waits for a blank line
-    if (buffer.length === 1 && !DEFINITION.test(line.trimStart()))
-      {await flush()}
+    if (buffer.length === 1 && !DEFINITION.test(line.trimStart())) {
+      await flush()
+    }
 
     rl.prompt()
   })

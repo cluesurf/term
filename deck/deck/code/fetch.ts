@@ -27,6 +27,7 @@ export async function fetchPackageMeta(input: {
   }
 
   const cached = metaCache.get(input.name)
+
   if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
     return cached.data
   }
@@ -69,12 +70,13 @@ export async function fetchTarball(input: {
   }
 
   const arrayBuffer = await response.arrayBuffer()
+
   return Buffer.from(arrayBuffer)
 }
 
 export function getVersionList(input: {
   meta: RegistryPackageMeta
-}): Array<Mark> {
+}): Mark[] {
   return Object.keys(input.meta.versions).map(v => parseMark(v))
 }
 
@@ -90,7 +92,8 @@ export function getVersionMeta(input: {
     }
   | undefined {
   const entry = input.meta.versions[input.mark]
-  if (!entry) return undefined
+
+  if (!entry) {return undefined}
 
   return {
     tarball: entry.dist.tarball,

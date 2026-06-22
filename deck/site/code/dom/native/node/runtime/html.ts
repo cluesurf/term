@@ -119,7 +119,10 @@ function assetMap(): Record<string, string> | null {
 
   try {
     const file = join(process.cwd(), 'build', 'asset-manifest.json')
-    manifest = JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>
+    manifest = JSON.parse(readFileSync(file, 'utf8')) as Record<
+      string,
+      string
+    >
   } catch {
     manifest = null
   }
@@ -131,7 +134,10 @@ function assetMap(): Record<string, string> | null {
 // rebuild changes the URL and the browser cannot serve a stale css/js even if it ignored Cache-Control.
 function buildVersion(): string {
   try {
-    return readFileSync(join(process.cwd(), 'build', '__id'), 'utf8').trim()
+    return readFileSync(
+      join(process.cwd(), 'build', '__id'),
+      'utf8',
+    ).trim()
   } catch {
     return ''
   }
@@ -196,7 +202,9 @@ function devReloadScript(): string {
 }
 
 function elementOf(node: { handle?: Element } | Element): Element {
-  return ('handle' in node && node.handle ? node.handle : node) as Element
+  return (
+    'handle' in node && node.handle ? node.handle : node
+  ) as Element
 }
 
 function openTag(el: Element): string {
@@ -287,7 +295,10 @@ function metaTag(name: string, content: string): string {
 // page interactive: on load it takes over the body and the reactive runtime keeps it live. Prod uses content-hashed
 // names (via the asset manifest); dev uses the stable paths. The per-route SEO meta (title + tags) set during render
 // is drained into the <head> here, then the slot is cleared for the next request.
-function documentShell(body: string, fallbackTitle = 'ClueSurf'): string {
+function documentShell(
+  body: string,
+  fallbackTitle = 'ClueSurf',
+): string {
   const styleHref = assetUrl('style/look.css')
   const scriptSrc = assetUrl('boot.js')
   const importMap = importMapScript()
@@ -348,4 +359,3 @@ export const html = {
   setProxy: stashProxy,
   takeProxy,
 }
-

@@ -58,11 +58,17 @@ export async function callMove(input: {
 }
 
 function parseLevel(level?: string): 1 | 2 | 3 {
-  if (!level || level === '3') {return 3}
+  if (!level || level === '3') {
+    return 3
+  }
 
-  if (level === '2') {return 2}
+  if (level === '2') {
+    return 2
+  }
 
-  if (level === '1') {return 1}
+  if (level === '1') {
+    return 1
+  }
 
   return 3
 }

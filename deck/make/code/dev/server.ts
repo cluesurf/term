@@ -77,9 +77,13 @@ export function startDevServer(options: DevOptions): DevServer {
       { resolve, cache, modules: urlForFile },
     )
 
-    if (!result.ok) {return result.diagnostics.map(d => d.message)}
+    if (!result.ok) {
+      return result.diagnostics.map(d => d.message)
+    }
 
-    if (!result.modules) {return ['the build produced no modules']}
+    if (!result.modules) {
+      return ['the build produced no modules']
+    }
 
     for (const [file, emit] of result.modules) {
       const node = graph.ensure(file, urlForFile(file), file)
@@ -106,7 +110,9 @@ export function startDevServer(options: DevOptions): DevServer {
   const broadcast = (message: unknown): void => {
     const data = JSON.stringify(message)
 
-    for (const client of clients) {void client.writeSSE({ data })}
+    for (const client of clients) {
+      void client.writeSSE({ data })
+    }
   }
 
   // recompile and decide the HMR action for a changed source file
@@ -117,10 +123,13 @@ export function startDevServer(options: DevOptions): DevServer {
     for (const id of affectedModules(graph, file)) {
       const node = graph.getById(id)
 
-      if (node) {graph.invalidate(node, clock)}
+      if (node) {
+        graph.invalidate(node, clock)
+      }
     }
 
     const errors = build()
+
     if (errors.length) {
       // recovery: keep the running app on its last-good code and state, push an error overlay instead of reloading
       broadcast({ type: 'error', errors })
@@ -158,8 +167,9 @@ export function startDevServer(options: DevOptions): DevServer {
     const file = fileByHash.get(name)
     const node = file ? graph.getById(file) : undefined
 
-    if (node?.compiled === undefined)
-      {return context.text('module not found', 404)}
+    if (node?.compiled === undefined) {
+      return context.text('module not found', 404)
+    }
 
     return context.body(node.compiled, 200, {
       'content-type': 'text/javascript',
@@ -185,7 +195,9 @@ export function startDevServer(options: DevOptions): DevServer {
       })
 
       // keep the stream open until the client disconnects
-      while (!stream.aborted) {await stream.sleep(10_000)}
+      while (!stream.aborted) {
+        await stream.sleep(10_000)
+      }
     }),
   )
 
@@ -202,7 +214,9 @@ export function startDevServer(options: DevOptions): DevServer {
     port,
     update,
     close: () => {
-      for (const client of clients) {void client.close()}
+      for (const client of clients) {
+        void client.close()
+      }
 
       clients.clear()
       server.close()

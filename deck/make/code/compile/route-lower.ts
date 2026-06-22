@@ -103,6 +103,7 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     const layout = route.directives.find(
       d => d.name === 'layout' && d.value?.form === 'string',
     )
+
     const layoutName =
       layout?.value?.form === 'string' ? layout.value.value : undefined
 
@@ -139,7 +140,9 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
         form: 'closure',
         params: [{ name: 'slot' }],
         body: [
-          exprStatement(call(component.name, [variable('slot'), ...props])),
+          exprStatement(
+            call(component.name, [variable('slot'), ...props]),
+          ),
         ],
         span,
       }
@@ -149,7 +152,9 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
       )
     } else {
       body.push(
-        exprStatement(call(component.name, [variable('host'), ...props])),
+        exprStatement(
+          call(component.name, [variable('host'), ...props]),
+        ),
       )
     }
 
@@ -180,7 +185,9 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     name: 'boot',
     params: [{ name: 'url' }, { name: 'port' }],
     body: [
-      exprStatement(call('host', [variable('route'), variable('port')])),
+      exprStatement(
+        call('host', [variable('route'), variable('port')]),
+      ),
     ],
     generics: [],
     span,
@@ -193,7 +200,11 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
   // the browser build auto-runs the app on load (`boot("", 0)`); the node build leaves `boot` exported for `seed boot`
   // to invoke with the real (url, port).
   if (env === 'browser') {
-    out.push(exprStatement(call('boot', [string(''), { form: 'integer', value: 0, span }])))
+    out.push(
+      exprStatement(
+        call('boot', [string(''), { form: 'integer', value: 0, span }]),
+      ),
+    )
   }
 
   return out

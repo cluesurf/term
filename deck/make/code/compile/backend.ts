@@ -72,7 +72,9 @@ export const ARRAY_OP_BOUND: Record<string, 'eq' | 'display'> = {
 export function collectionCall(
   callee: Expression,
 ): CollectionOp | undefined {
-  if (callee.form !== 'member') {return undefined}
+  if (callee.form !== 'member') {
+    return undefined
+  }
 
   const kind = callee.target.type?.kind
 
@@ -91,7 +93,9 @@ export function collectionCall(
 export function collectionRead(
   node: Expression,
 ): CollectionOp | undefined {
-  if (node.form !== 'member') {return undefined}
+  if (node.form !== 'member') {
+    return undefined
+  }
 
   const kind = node.target.type?.kind
 

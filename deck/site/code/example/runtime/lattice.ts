@@ -28,7 +28,8 @@ function buildVertices(): number[][] {
   return verts
 }
 
-const dot = (p: number[], q: number[]) => p.reduce((s, x, i) => s + x * q[i], 0)
+const dot = (p: number[], q: number[]) =>
+  p.reduce((s, x, i) => s + x * q[i], 0)
 const norm = (p: number[]) => Math.sqrt(dot(p, p))
 
 // reflect a vector through the hyperplane perpendicular to a root
@@ -53,7 +54,10 @@ function projectionBasis(): { u: number[]; w: number[] } {
   ]
   // Coxeter element c = s0 . s1 . s2 . s3 (apply s3 first)
   const coxeter = (v: number[]): number[] =>
-    reflect(reflect(reflect(reflect(v, roots[3]), roots[2]), roots[1]), roots[0])
+    reflect(
+      reflect(reflect(reflect(v, roots[3]), roots[2]), roots[1]),
+      roots[0],
+    )
 
   // a generic seed vector, off every symmetry axis
   let p = [1, 0.3, -0.7, 0.2]
@@ -104,7 +108,10 @@ function build(): { vertices: Float32Array; count: number } {
     }
   }
 
-  return { vertices: new Float32Array(points), count: points.length / 2 }
+  return {
+    vertices: new Float32Array(points),
+    count: points.length / 2,
+  }
 }
 
 const geometry = build()

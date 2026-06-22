@@ -22,7 +22,9 @@ export function compileToModule(input: {
 }): { code: string; program: Program } {
   const result = compile({ file: input.file, text: input.text })
 
-  if (!result.ok) {throw new CompileFailure(result.diagnostics)}
+  if (!result.ok) {
+    throw new CompileFailure(result.diagnostics)
+  }
 
   return { code: result.typescript, program: result.program }
 }

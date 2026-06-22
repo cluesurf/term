@@ -8,7 +8,10 @@ const postgres = {
   connect(url: string): void {
     postgres.pool = new pg.Pool(url ? { connectionString: url } : {})
   },
-  async query(sql: string, params: Array<unknown>): Promise<Array<Record<string, unknown>>> {
+  async query(
+    sql: string,
+    params: Array<unknown>,
+  ): Promise<Array<Record<string, unknown>>> {
     const result = await postgres.pool!.query(sql, params)
     return result.rows
   },

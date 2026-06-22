@@ -3,7 +3,10 @@
 
 import { compile } from '@cluesurf/make/code/compile/compile'
 import { lowerToMir } from '@cluesurf/make/code/ir/mir-lower'
-import { perceusControl, showInst } from '@cluesurf/make/code/ir/perceus'
+import {
+  perceusControl,
+  showInst,
+} from '@cluesurf/make/code/ir/perceus'
 
 let pass = 0
 let fail = 0
@@ -17,7 +20,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-function fnOf(src: string, name: string): { body: unknown; params: unknown } {
+function fnOf(
+  src: string,
+  name: string,
+): { body: unknown; params: unknown } {
   const r = compile({ file: 't.tree', text: src })
   if (!r.ok) {
     throw new Error('compile failed: ' + JSON.stringify(r.diagnostics))

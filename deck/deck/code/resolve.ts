@@ -55,12 +55,13 @@ export async function resolve(input: {
 }
 
 async function resolveLinks(input: {
-  links: Array<DeckLink>
+  links: DeckLink[]
   ctx: ResolveContext
 }): Promise<void> {
   const tasks = input.links.map(link =>
     resolveLink({ link, ctx: input.ctx }),
   )
+
   await Promise.all(tasks)
 }
 
@@ -70,13 +71,16 @@ async function resolveLink(input: {
 }): Promise<void> {
   const { link, ctx } = input
 
-  if (ctx.seen.has(link.name)) return
+  if (ctx.seen.has(link.name)) {return}
+
   ctx.seen.add(link.name)
 
   // check workspace first
   const workspace = ctx.workspaces.get(link.name)
+
   if (workspace) {
     const wsVersion = workspace.mark
+
     if (markMatch(wsVersion, link.mark)) {
       const key = `${link.name}@${showMark(wsVersion)}`
       ctx.resolved.set(key, {
@@ -87,6 +91,7 @@ async function resolveLink(input: {
         link: new Map(workspace.link.map(l => [l.name, '*'])),
       })
       await resolveLinks({ links: workspace.link, ctx })
+
       return
     }
   }
@@ -100,6 +105,7 @@ async function resolveLink(input: {
 
   if (locked) {
     const key = `${link.name}@${showMark(locked.mark)}`
+
     if (!ctx.resolved.has(key)) {
       ctx.resolved.set(key, {
         name: locked.name,
@@ -110,12 +116,14 @@ async function resolveLink(input: {
       })
 
       // resolve transitive deps from lockfile
-      const transLinks: Array<DeckLink> = locked.link.map(l => ({
+      const transLinks: DeckLink[] = locked.link.map(l => ({
         name: l.name,
         mark: { form: 'exact' as const, mark: parseMark(l.mark) },
       }))
+
       await resolveLinks({ links: transLinks, ctx })
     }
+
     return
   }
 
@@ -142,10 +150,11 @@ async function resolveLink(input: {
   }
 
   const key = `${link.name}@${markStr}`
-  if (ctx.resolved.has(key)) return
+
+  if (ctx.resolved.has(key)) {return}
 
   const depLinks = new Map<string, string>()
-  const transLinks: Array<DeckLink> = []
+  const transLinks: DeckLink[] = []
 
   for (const [depName, depConstraint] of Object.entries(
     versionMeta.dependencies,
@@ -173,7 +182,7 @@ function findLockedVersion(input: {
   hold: MarkHold
   lockfile?: Lockfile
 }): LockEntry | undefined {
-  if (!input.lockfile) return undefined
+  if (!input.lockfile) {return undefined}
 
   for (const entry of input.lockfile.decks) {
     if (
@@ -190,7 +199,7 @@ function findLockedVersion(input: {
 export function buildLockfile(input: {
   resolution: ResolutionMap
 }): Lockfile {
-  const decks: Array<LockEntry> = []
+  const decks: LockEntry[] = []
 
   for (const resolved of input.resolution.decks.values()) {
     decks.push({

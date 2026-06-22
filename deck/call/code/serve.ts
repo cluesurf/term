@@ -53,17 +53,25 @@ export async function callServe(input: {
       (_event, name) => {
         const file = typeof name === 'string' ? name : ''
 
-        if (!file.endsWith('.tree')) {return}
+        if (!file.endsWith('.tree')) {
+          return
+        }
 
-        if (file.includes('/.seed/') || file.includes('/host/')) {return}
+        if (file.includes('/.seed/') || file.includes('/host/')) {
+          return
+        }
 
         const full = path.join(input.root, file)
 
-        if (!existsSync(full)) {return}
+        if (!existsSync(full)) {
+          return
+        }
 
         pending.add(realpathSync(full))
 
-        if (timer) {clearTimeout(timer)}
+        if (timer) {
+          clearTimeout(timer)
+        }
 
         timer = setTimeout(() => {
           for (const changed of pending) {

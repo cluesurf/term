@@ -7,7 +7,8 @@ const path = {
     const cut = target.lastIndexOf('/')
     return cut < 0 ? '' : cut === 0 ? '/' : target.slice(0, cut)
   },
-  fileName: (target: string): string => target.slice(target.lastIndexOf('/') + 1),
+  fileName: (target: string): string =>
+    target.slice(target.lastIndexOf('/') + 1),
   fileExtension: (target: string): string => {
     const base = target.slice(target.lastIndexOf('/') + 1)
     const dot = base.lastIndexOf('.')

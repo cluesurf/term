@@ -84,10 +84,17 @@ const transport = {
   // (which runs the trie router), and writes the returned `response` back. Sync or async handles both work.
   createServer(handle: Handle): Listener {
     const app = new Hono()
-    app.all('*', async (context) => {
+    app.all('*', async context => {
       const url = new URL(context.req.url)
-      const body = context.req.method === 'GET' || context.req.method === 'HEAD' ? '' : await context.req.text()
-      const response = await handle({ method: context.req.method, path: url.pathname, body })
+      const body =
+        context.req.method === 'GET' || context.req.method === 'HEAD'
+          ? ''
+          : await context.req.text()
+      const response = await handle({
+        method: context.req.method,
+        path: url.pathname,
+        body,
+      })
       const out = response.body ?? ''
       const status = (response.status ?? 200) as never
       const code = response.status ?? 200
@@ -97,7 +104,8 @@ const transport = {
         const upstream = await fetch(out)
         const buffer = Buffer.from(await upstream.arrayBuffer())
         const type =
-          upstream.headers.get('content-type') ?? 'application/octet-stream'
+          upstream.headers.get('content-type') ??
+          'application/octet-stream'
         return context.body(buffer as never, 200 as never, {
           'Content-Type': type,
           ...NO_STORE,
@@ -110,17 +118,26 @@ const transport = {
       // static assets (served from /base/...) get a content-type by file extension, so a browser accepts a `.js` module
       // script (strict MIME) and applies `.css`. Required for external stylesheets / scripts to load.
       const ext = url.pathname.includes('.')
-        ? url.pathname.slice(url.pathname.lastIndexOf('.') + 1).toLowerCase()
+        ? url.pathname
+            .slice(url.pathname.lastIndexOf('.') + 1)
+            .toLowerCase()
         : ''
       const assetType = ASSET_TYPES[ext]
       if (assetType) {
         // a binary asset was carried as base64 text; decode it back to bytes so images / fonts / media serve intact
         if (BINARY_TYPES.has(ext))
-          return context.body(Buffer.from(out, 'base64') as never, status, {
-            'Content-Type': assetType,
-            ...NO_STORE,
-          })
-        return context.body(out, status, { 'Content-Type': assetType, ...NO_STORE })
+          return context.body(
+            Buffer.from(out, 'base64') as never,
+            status,
+            {
+              'Content-Type': assetType,
+              ...NO_STORE,
+            },
+          )
+        return context.body(out, status, {
+          'Content-Type': assetType,
+          ...NO_STORE,
+        })
       }
       // serve an HTML body with the right content-type so a browser renders it (the response carries no headers, so the
       // shape of the body is the signal); JSON / plain text fall through to hono's default text/plain

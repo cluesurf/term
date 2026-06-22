@@ -11,12 +11,15 @@ export const noRedundantContinue: Rule = {
   docs: 'a continue as the last statement of a loop is redundant',
   fixable: true,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
-    if (node.form !== 'while' && node.form !== 'for-each') return
+
+    if (node.form !== 'while' && node.form !== 'for-each') {return}
 
     const last: Statement | undefined = node.body[node.body.length - 1]
-    if (last && last.form === 'continue') {
+
+    if (last?.form === 'continue') {
       context.report({
         message: `this \`turn next\` is the last statement in the loop, so it does nothing`,
         span: last.span,

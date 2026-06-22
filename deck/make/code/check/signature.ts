@@ -31,39 +31,48 @@ export function instantiate(
   signature: Signature,
   sub: Substitution,
 ): Instantiated {
-  if (signature.generics.size === 0)
-    {return {
+  if (signature.generics.size === 0) {
+    return {
       params: signature.params,
       result: signature.result,
       bounds: [],
       minArgs: signature.minArgs,
-    }}
+    }
+  }
 
   const map = new Map<number, Type>()
 
-  for (const id of signature.generics) {map.set(id, sub.fresh())}
+  for (const id of signature.generics) {
+    map.set(id, sub.fresh())
+  }
 
   const subst = (type: Type): Type => {
     const r = sub.resolve(type)
 
-    if (r.kind === 'variable') {return map.get(r.id) ?? r}
+    if (r.kind === 'variable') {
+      return map.get(r.id) ?? r
+    }
 
-    if (r.kind === 'array')
-      {return { kind: 'array', element: subst(r.element) }}
+    if (r.kind === 'array') {
+      return { kind: 'array', element: subst(r.element) }
+    }
 
-    if (r.kind === 'map')
-      {return { kind: 'map', key: subst(r.key), value: subst(r.value) }}
+    if (r.kind === 'map') {
+      return { kind: 'map', key: subst(r.key), value: subst(r.value) }
+    }
 
-    if (r.kind === 'function')
-      {return {
+    if (r.kind === 'function') {
+      return {
         kind: 'function',
         params: r.params.map(subst),
         result: subst(r.result),
         effects: r.effects,
-      }}
+      }
+    }
 
-    if (r.kind === 'named' && r.args)
-      {return { kind: 'named', name: r.name, args: r.args.map(subst) }}
+    if (r.kind === 'named' && r.args) {
+      return { kind: 'named', name: r.name, args: r.args.map(subst) }
+    }
 
     return r
   }

@@ -30,7 +30,9 @@ function slugify(phrase: string): string {
 function parseName(rest: string): { slug: string; label: string } {
   const phrase = /^<(.+)>$/.exec(rest)
 
-  if (phrase) {return { slug: slugify(phrase[1]!), label: phrase[1]! }}
+  if (phrase) {
+    return { slug: slugify(phrase[1]!), label: phrase[1]! }
+  }
 
   const bare = rest.trim()
 
@@ -39,15 +41,15 @@ function parseName(rest: string): { slug: string; label: string } {
 
 // split a block body into its top-level statement groups: each starts at the body's base indent and includes the
 // deeper lines under it (and trailing blank lines stay with the preceding group)
-function statements(
-  body: string[],
-  base: number,
-): string[][] {
+function statements(body: string[], base: number): string[][] {
   const groups: string[][] = []
 
   for (const line of body) {
-    if (!blank(line) && indentOf(line) === base) {groups.push([line])}
-    else if (groups.length > 0) {groups[groups.length - 1]!.push(line)}
+    if (!blank(line) && indentOf(line) === base) {
+      groups.push([line])
+    } else if (groups.length > 0) {
+      groups[groups.length - 1]!.push(line)
+    }
   }
 
   return groups
@@ -116,8 +118,11 @@ export function preprocessTests(source: string): Preprocessed {
     for (const group of statements(body, 2)) {
       const head = group[0]!.trim().split(/[\s,]/)[0]!
 
-      if (head === ASSERTION) {out.push(...guard(group))}
-      else {out.push(...group)}
+      if (head === ASSERTION) {
+        out.push(...guard(group))
+      } else {
+        out.push(...group)
+      }
     }
 
     out.push('  send back', '    wave true')

@@ -20,28 +20,37 @@ export const noRedundantArithmetic: Rule = {
   docs: 'arithmetic against a neutral element (+0, -0, *1, /1) has no effect and should be removed',
   fixable: true,
   check(target, context) {
-    if (target.kind !== 'expression') {return}
+    if (target.kind !== 'expression') {
+      return
+    }
 
     const e = target.node
 
-    if (e.form !== 'binary') {return}
+    if (e.form !== 'binary') {
+      return
+    }
 
     let survivor: Expression | undefined
 
     if (
       (e.op === '+' && isLiteral(e.right, 0)) ||
       (e.op === '-' && isLiteral(e.right, 0))
-    )
-      {survivor = e.left}
-    else if (e.op === '+' && isLiteral(e.left, 0)) {survivor = e.right}
-    else if (
+    ) {
+      survivor = e.left
+    } else if (e.op === '+' && isLiteral(e.left, 0)) {
+      survivor = e.right
+    } else if (
       (e.op === '*' && isLiteral(e.right, 1)) ||
       (e.op === '/' && isLiteral(e.right, 1))
-    )
-      {survivor = e.left}
-    else if (e.op === '*' && isLiteral(e.left, 1)) {survivor = e.right}
+    ) {
+      survivor = e.left
+    } else if (e.op === '*' && isLiteral(e.left, 1)) {
+      survivor = e.right
+    }
 
-    if (!survivor) {return}
+    if (!survivor) {
+      return
+    }
 
     context.report({
       message: `this \`${e.op}\` has no effect; the result is just the other operand`,

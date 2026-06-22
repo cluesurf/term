@@ -20,7 +20,7 @@ export type MarkWild = {
 
 export type MarkTest = {
   form: 'test'
-  list: Array<MarkWild>
+  list: MarkWild[]
 }
 
 export type MarkHold =
@@ -37,19 +37,19 @@ export type DeckMind = {
 
 export type DeckHostGroup = {
   registry: string
-  link: Array<DeckLink>
+  link: DeckLink[]
 }
 
 export type RoleRule = {
   name: string
-  take: Array<{
+  take: {
     pattern: string
-    miss: Array<string>
-  }>
+    miss: string[]
+  }[]
 }
 
 export type RoleConfig = {
-  rules: Array<RoleRule>
+  rules: RoleRule[]
 }
 
 export type DeckLink = {
@@ -63,11 +63,11 @@ export type DeckManifest = {
   name: string
   mark: Mark
   head?: string
-  mind?: Array<DeckMind>
+  mind?: DeckMind[]
   lock?: string
   sort?: string
-  term?: Array<string>
-  link: Array<DeckLink>
+  term?: string[]
+  link: DeckLink[]
   hook?: Record<string, string>
   role?: string
   test?: string
@@ -78,9 +78,9 @@ export type DeckManifest = {
   hide?: boolean
   site?: string
   view?: string
-  deck?: Array<string>
-  devLink?: Array<DeckLink>
-  hostLink?: Array<DeckHostGroup>
+  deck?: string[]
+  devLink?: DeckLink[]
+  hostLink?: DeckHostGroup[]
 }
 
 export type ResolvedDeck = {
@@ -100,12 +100,12 @@ export type LockEntry = {
   mark: Mark
   hash: string
   site: string
-  link: Array<{ name: string; mark: string }>
+  link: { name: string; mark: string }[]
 }
 
 export type Lockfile = {
   version: number
-  decks: Array<LockEntry>
+  decks: LockEntry[]
 }
 
 export type StoreConfig = {

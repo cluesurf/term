@@ -22,9 +22,7 @@ function grow(
   branch: number,
   shells: number,
 ): { cells: Cell[]; perShell: number[] } {
-  const cells: Cell[] = [
-    { id: 0, shell: 0, parent: -1, children: [] },
-  ]
+  const cells: Cell[] = [{ id: 0, shell: 0, parent: -1, children: [] }]
 
   const perShell = [1]
 
@@ -58,10 +56,13 @@ export function lattice(
   q: number,
   shells: number,
 ): { cells: Cell[]; perShell: number[] } {
-  if (q !== 3) {throw new Error('lattice: only q = 3 is modeled')}
+  if (q !== 3) {
+    throw new Error('lattice: only q = 3 is modeled')
+  }
 
-  if (p < 5)
-    {throw new Error('lattice: {p,3} is hyperbolic only for p >= 5')}
+  if (p < 5) {
+    throw new Error('lattice: {p,3} is hyperbolic only for p >= 5')
+  }
 
   return grow(p, p - 3, shells)
 }
@@ -82,12 +83,13 @@ export function honeycomb(
 ): { cells: Cell[]; perShell: number[] } {
   const spec = HONEYCOMB[schlafli]
 
-  if (!spec)
-    {throw new Error(
+  if (!spec) {
+    throw new Error(
       `honeycomb: ${schlafli} is not one of ${Object.keys(
         HONEYCOMB,
       ).join(', ')}`,
-    )}
+    )
+  }
 
   return grow(spec.centre, spec.branch, shells)
 }
@@ -108,8 +110,9 @@ export function place(
   let cell = 0
 
   for (const node of net.nodes.keys()) {
-    if (cell >= cells.length)
-      {throw new Error('lattice too small for the net')}
+    if (cell >= cells.length) {
+      throw new Error('lattice too small for the net')
+    }
 
     placement.set(node, cell++)
   }
@@ -124,22 +127,27 @@ export function place(
     for (let slot = 0; slot <= 2; slot++) {
       const peer = net.peer({ node, slot })
 
-      if (!peer || !placement.has(peer.node)) {continue}
+      if (!peer || !placement.has(peer.node)) {
+        continue
+      }
 
       const key =
         node < peer.node
           ? `${node}-${peer.node}`
           : `${peer.node}-${node}`
 
-      if (seen.has(key)) {continue}
+      if (seen.has(key)) {
+        continue
+      }
 
       seen.add(key)
       wires++
 
       if (
         adjacent(cells, placement.get(node)!, placement.get(peer.node)!)
-      )
-        {local++}
+      ) {
+        local++
+      }
     }
   }
 

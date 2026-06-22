@@ -16,7 +16,9 @@ const DEFAULT_PRECISION = 24 // trits of mantissa kept (about 11 decimal digits)
 
 // drop trailing zero-trits (factors of 3) from the mantissa, raising the exponent, the normal form
 function normalize(mantissa: bigint, exponent: number): TernaryFloat {
-  if (mantissa === 0n) {return { mantissa: 0n, exponent: 0 }}
+  if (mantissa === 0n) {
+    return { mantissa: 0n, exponent: 0 }
+  }
 
   let m = mantissa
   let e = exponent
@@ -33,7 +35,9 @@ function normalize(mantissa: bigint, exponent: number): TernaryFloat {
 function round(value: TernaryFloat, precision: number): TernaryFloat {
   const len = tritLength(value.mantissa)
 
-  if (len <= precision) {return value}
+  if (len <= precision) {
+    return value
+  }
 
   const drop = len - precision
   const scale = 3n ** BigInt(drop)
@@ -54,8 +58,9 @@ export function fromNumber(
   value: number,
   precision = DEFAULT_PRECISION,
 ): TernaryFloat {
-  if (value === 0 || !Number.isFinite(value))
-    {return { mantissa: 0n, exponent: 0 }}
+  if (value === 0 || !Number.isFinite(value)) {
+    return { mantissa: 0n, exponent: 0 }
+  }
 
   // scale up by 3^precision, round to an integer mantissa, exponent = -precision, then normalize
   const scale = 3 ** precision
@@ -77,9 +82,13 @@ export function add(
   b: TernaryFloat,
   precision = DEFAULT_PRECISION,
 ): TernaryFloat {
-  if (a.mantissa === 0n) {return round(b, precision)}
+  if (a.mantissa === 0n) {
+    return round(b, precision)
+  }
 
-  if (b.mantissa === 0n) {return round(a, precision)}
+  if (b.mantissa === 0n) {
+    return round(a, precision)
+  }
 
   // align to the lower exponent, then add the integer mantissas exactly
   const e = Math.min(a.exponent, b.exponent)
@@ -116,7 +125,9 @@ export function compare(a: TernaryFloat, b: TernaryFloat): -1 | 0 | 1 {
 
 // the balanced-ternary mantissa glyphs with the exponent, e.g. "+0- x3^-2"
 export function toString(a: TernaryFloat): string {
-  if (a.mantissa === 0n) {return '0'}
+  if (a.mantissa === 0n) {
+    return '0'
+  }
 
   return `${tritString(a.mantissa)} x3^${a.exponent}`
 }

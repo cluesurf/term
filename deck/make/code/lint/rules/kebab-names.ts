@@ -17,17 +17,23 @@ export const kebabNames: Rule = {
   docs: 'declared names should be kebab-case (e.g. find-fibonacci, not findFibonacci or find_fibonacci)',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') {return}
+    if (target.kind !== 'statement') {
+      return
+    }
 
     const s = target.node
 
     let names: string[] = []
 
-    if (s.form === 'let') {names = [s.name]}
-    else if (s.form === 'function')
-      {names = [s.name, ...s.params.map(p => p.name)]}
-    else if (s.form === 'record-type') {names = [s.name]}
-    else {return}
+    if (s.form === 'let') {
+      names = [s.name]
+    } else if (s.form === 'function') {
+      names = [s.name, ...s.params.map(p => p.name)]
+    } else if (s.form === 'record-type') {
+      names = [s.name]
+    } else {
+      return
+    }
 
     for (const name of offenders(names)) {
       context.report({

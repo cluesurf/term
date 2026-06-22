@@ -38,19 +38,29 @@ function toLinear(
       const left = toLinear(expr.left, side)
       const right = toLinear(expr.right, side)
 
-      if (!left || !right) {return undefined}
+      if (!left || !right) {
+        return undefined
+      }
 
-      if (expr.op === '+') {return add(left, right)}
+      if (expr.op === '+') {
+        return add(left, right)
+      }
 
-      if (expr.op === '-') {return add(left, scale(right, -1))}
+      if (expr.op === '-') {
+        return add(left, scale(right, -1))
+      }
 
       if (expr.op === '*') {
         const lc = constantOf(left)
         const rc = constantOf(right)
 
-        if (rc !== undefined) {return scale(left, rc)}
+        if (rc !== undefined) {
+          return scale(left, rc)
+        }
 
-        if (lc !== undefined) {return scale(right, lc)}
+        if (lc !== undefined) {
+          return scale(right, lc)
+        }
 
         return undefined // non-linear (variable * variable)
       }
@@ -81,7 +91,9 @@ function toLinear(
 function add(a: Linear, b: Linear): Linear {
   const terms = new Map(a.terms)
 
-  for (const [v, c] of b.terms) {terms.set(v, (terms.get(v) ?? 0) + c)}
+  for (const [v, c] of b.terms) {
+    terms.set(v, (terms.get(v) ?? 0) + c)
+  }
 
   return { terms, constant: a.constant + b.constant }
 }
@@ -89,15 +101,20 @@ function add(a: Linear, b: Linear): Linear {
 function scale(a: Linear, k: number): Linear {
   const terms = new Map<string, number>()
 
-  for (const [v, c] of a.terms) {terms.set(v, c * k)}
+  for (const [v, c] of a.terms) {
+    terms.set(v, c * k)
+  }
 
   return { terms, constant: a.constant * k }
 }
 
 // if a linear form is a pure constant (no variables), return it
 function constantOf(a: Linear): number | undefined {
-  for (const c of a.terms.values())
-    {if (Math.abs(c) > 1e-12) {return undefined}}
+  for (const c of a.terms.values()) {
+    if (Math.abs(c) > 1e-12) {
+      return undefined
+    }
+  }
 
   return a.constant
 }
@@ -118,7 +135,9 @@ function goalInequalities(
   expr: Expression,
   side: Inequality[],
 ): Inequality[] | null {
-  if (expr.form !== 'binary') {return null}
+  if (expr.form !== 'binary') {
+    return null
+  }
 
   // a CONJUNCTION goal (`meet and` -> `P && Q`, ∧) holds when both conjuncts hold: gather every inequality from each
   // side, so the prover must discharge them all. Null if either side falls outside the linear fragment.
@@ -126,7 +145,9 @@ function goalInequalities(
     const leftGoal = goalInequalities(expr.left, side)
     const rightGoal = goalInequalities(expr.right, side)
 
-    if (leftGoal === null || rightGoal === null) {return null}
+    if (leftGoal === null || rightGoal === null) {
+      return null
+    }
 
     return [...leftGoal, ...rightGoal]
   }
@@ -134,7 +155,9 @@ function goalInequalities(
   const left = toLinear(expr.left, side)
   const right = toLinear(expr.right, side)
 
-  if (!left || !right) {return null}
+  if (!left || !right) {
+    return null
+  }
 
   switch (expr.op) {
     case '<':
@@ -163,17 +186,22 @@ function goalProvable(
   if (expr.form === 'binary' && expr.op === '||') {
     const left = goalProvable(expr.left, available)
 
-    if (left === true) {return true}
+    if (left === true) {
+      return true
+    }
 
     const right = goalProvable(expr.right, available)
 
-    if (right === true) {return true}
+    if (right === true) {
+      return true
+    }
 
     // a disjunctive TAUTOLOGY (excluded middle / trichotomy): P || Q holds whenever assuming NOT P proves Q (or
     // assuming NOT Q proves P), since then one side must hold for every value. This is the sound case-split, done by
     // the linear prover: negate one disjunct, add it as an assumption, and try the other. So `n < 0 or n >= 0` proves
     // because not(n < 0) is n >= 0, which is exactly the right disjunct.
     const notLeft = assumptionInequalities(expr.left, true, [])
+
     if (
       notLeft.length > 0 &&
       goalProvable(expr.right, [...available, ...notLeft]) === true
@@ -182,6 +210,7 @@ function goalProvable(
     }
 
     const notRight = assumptionInequalities(expr.right, true, [])
+
     if (
       notRight.length > 0 &&
       goalProvable(expr.left, [...available, ...notRight]) === true
@@ -196,7 +225,9 @@ function goalProvable(
   const side: Inequality[] = []
   const goals = goalInequalities(expr, side)
 
-  if (!goals) {return null}
+  if (!goals) {
+    return null
+  }
 
   const all = [...available, ...side]
 
@@ -210,7 +241,9 @@ function assumptionInequalities(
   negated: boolean,
   side: Inequality[],
 ): Inequality[] {
-  if (expr.form !== 'binary') {return []}
+  if (expr.form !== 'binary') {
+    return []
+  }
 
   if (expr.op === '&&' && !negated) {
     return [
@@ -222,7 +255,9 @@ function assumptionInequalities(
   const left = toLinear(expr.left, side)
   const right = toLinear(expr.right, side)
 
-  if (!left || !right) {return []}
+  if (!left || !right) {
+    return []
+  }
 
   // op, then its negation in parentheses
   switch (expr.op) {
@@ -249,7 +284,9 @@ function bindingEqualities(
 ): Inequality[] {
   const rhs = toLinear(value, side)
 
-  if (!rhs) {return []}
+  if (!rhs) {
+    return []
+  }
 
   const lhs = linear({ [name]: 1 })
 
@@ -358,13 +395,14 @@ function walkHolds(
           )
         }
 
-        if (statement.otherwise)
-          {walkHolds(
+        if (statement.otherwise) {
+          walkHolds(
             statement.otherwise,
             [...current, ...negations],
             diagnostics,
             file,
-          )}
+          )
+        }
 
         break
       }
@@ -391,11 +429,13 @@ function walkHolds(
         walkHolds(statement.body, current, diagnostics, file)
         break
       case 'match':
-        for (const branch of statement.cases)
-          {walkHolds(branch.body, current, diagnostics, file)}
+        for (const branch of statement.cases) {
+          walkHolds(branch.body, current, diagnostics, file)
+        }
 
-        if (statement.otherwise)
-          {walkHolds(statement.otherwise, current, diagnostics, file)}
+        if (statement.otherwise) {
+          walkHolds(statement.otherwise, current, diagnostics, file)
+        }
 
         break
       default:

@@ -87,7 +87,9 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   // never pop the root frame (depth 0): an over-dedent on malformed input must degrade to a diagnostic, not crash
   const popIndent = () => {
-    if (indents.length > 1) {indents.pop()}
+    if (indents.length > 1) {
+      indents.pop()
+    }
   }
 
   function fail(
@@ -172,7 +174,9 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   closeLine()
 
-  if (diagnostics.length) {return { ok: false, diagnostics }}
+  if (diagnostics.length) {
+    return { ok: false, diagnostics }
+  }
 
   return { ok: true, stream: { ...tokens, events } }
 
@@ -183,7 +187,9 @@ export function buildEvents(tokens: TokenList): EventResult {
     if (atLineStart) {
       atLineStart = false
 
-      if (frame.ownLine !== false) {frame.ownLine = true}
+      if (frame.ownLine !== false) {
+        frame.ownLine = true
+      }
     } else if (!frame.used) {
       frame.ownLine = false
     }
@@ -212,12 +218,13 @@ export function buildEvents(tokens: TokenList): EventResult {
         )
         depth = frame.depth + 1
       } else if (depth > lastDepth + 1) {
-        if (indents.length === 1)
-          {fail(
+        if (indents.length === 1) {
+          fail(
             'invalid-indentation',
             token,
             'indent one level deeper than the parent, not more',
-          )}
+          )
+        }
 
         depth = lastDepth + 1
       } else if (depth < frame.depth) {

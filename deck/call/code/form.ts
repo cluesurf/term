@@ -44,15 +44,18 @@ export async function callForm(input: {
       broken++
       logFail(`${relative} could not be parsed`)
 
-      for (const error of errors)
-        {console.error(render(error, text.split('\n')))}
+      for (const error of errors) {
+        console.error(render(error, text.split('\n')))
+      }
 
       continue
     }
 
     const formatted = analysis.format()
 
-    if (formatted === text) {continue}
+    if (formatted === text) {
+      continue
+    }
 
     changed++
 
@@ -66,7 +69,9 @@ export async function callForm(input: {
     }
   }
 
-  if (broken > 0) {process.exit(1)}
+  if (broken > 0) {
+    process.exit(1)
+  }
 
   if (input.check && changed > 0) {
     logFail(
@@ -75,6 +80,9 @@ export async function callForm(input: {
     process.exit(1)
   }
 
-  if (changed === 0) {logGood('All files already formatted')}
-  else {logGood(`Formatted ${changed} file${changed === 1 ? '' : 's'}`)}
+  if (changed === 0) {
+    logGood('All files already formatted')
+  } else {
+    logGood(`Formatted ${changed} file${changed === 1 ? '' : 's'}`)
+  }
 }

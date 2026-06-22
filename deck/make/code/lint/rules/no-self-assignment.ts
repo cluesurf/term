@@ -15,10 +15,13 @@ export const noSelfAssignment: Rule = {
   docs: 'assigning a value to itself has no effect',
   fixable: true,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
-    if (node.form !== 'assign' || node.op !== '=') return
-    if (!isStable(node.target) || !isStable(node.value)) return
+
+    if (node.form !== 'assign' || node.op !== '=') {return}
+
+    if (!isStable(node.target) || !isStable(node.value)) {return}
 
     if (expressionsEqual(node.target, node.value)) {
       context.report({

@@ -21,8 +21,9 @@ export function checkTraits(
   const masks = new Map<string, string[]>()
 
   for (const statement of program) {
-    if (statement.form === 'mask')
-      {masks.set(statement.name, statement.methods)}
+    if (statement.form === 'mask') {
+      masks.set(statement.name, statement.methods)
+    }
   }
 
   const maskNames = [...masks.keys()]
@@ -31,7 +32,9 @@ export function checkTraits(
   const seenInstances = new Set<string>()
 
   for (const statement of program) {
-    if (statement.form !== 'instance') {continue}
+    if (statement.form !== 'instance') {
+      continue
+    }
 
     const key = `${statement.mask}:${statement.target}`
 
@@ -50,7 +53,9 @@ export function checkTraits(
 
   // each instance must implement every method of its mask, and its mask must exist
   for (const statement of program) {
-    if (statement.form !== 'instance') {continue}
+    if (statement.form !== 'instance') {
+      continue
+    }
 
     const required = masks.get(statement.mask)
 
@@ -85,7 +90,9 @@ export function checkTraits(
 
   // every `need` bound on a generic must refer to a mask that exists
   for (const statement of program) {
-    if (statement.form !== 'function') {continue}
+    if (statement.form !== 'function') {
+      continue
+    }
 
     for (const generic of statement.generics) {
       if (generic.need && !masks.has(generic.need)) {

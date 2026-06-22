@@ -10,11 +10,14 @@ export const noDuplicateCase: Rule = {
   docs: 'two arms of a fork case share a label; the later one is unreachable',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
-    if (node.form !== 'match') return
+
+    if (node.form !== 'match') {return}
 
     const seen = new Set<string>()
+
     for (const arm of node.cases) {
       if (seen.has(arm.label)) {
         context.report({

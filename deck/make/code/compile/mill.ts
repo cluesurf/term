@@ -106,8 +106,9 @@ function pathExpression(raw: string, span: Span): Expression {
     span,
   }
 
-  for (let i = 1; i < parts.length; i++)
-    {expr = { form: 'member', target: expr, name: parts[i]!, span }}
+  for (let i = 1; i < parts.length; i++) {
+    expr = { form: 'member', target: expr, name: parts[i]!, span }
+  }
 
   return expr
 }
@@ -125,27 +126,31 @@ function parseProof(node: GroupNode): Proof {
   const children: Proof[] = []
 
   for (const part of parts) {
-    if (arg === undefined && rest(part).length === 0)
-      {arg = headName(part)}
-    else {children.push(parseProof(part))}
+    if (arg === undefined && rest(part).length === 0) {
+      arg = headName(part)
+    } else {
+      children.push(parseProof(part))
+    }
   }
 
   const proof: Proof = { head, children, span: spanOf(node) }
 
-  if (arg) {proof.arg = arg}
+  if (arg) {
+    proof.arg = arg
+  }
 
   return proof
 }
 
 // is this node `wait true` (force await) or `wait false` (fire-and-forget, never await)?
 function isWaitWith(node: Node, value: 'true' | 'false'): boolean {
-  if (node.kind !== 'group' || headName(node) !== 'wait') {return false}
+  if (node.kind !== 'group' || headName(node) !== 'wait') {
+    return false
+  }
 
   const arg = node.nodes[1]
 
-  return (
-    arg?.kind === 'group' && headName(arg) === value
-  )
+  return arg?.kind === 'group' && headName(arg) === value
 }
 
 function isWaitTrue(node: Node): boolean {
@@ -159,11 +164,15 @@ function isWaitFalse(node: Node): boolean {
 // is this node an annotation `note <name>` (or the retired `mark <name>`)? Tags / markers like `note async`,
 // `note private`, `note stable` are written under `note`; `mark` is the old spelling kept working during migration.
 function isAnnotation(node: Node, name: string): boolean {
-  if (node.kind !== 'group') {return false}
+  if (node.kind !== 'group') {
+    return false
+  }
 
   const head = headName(node)
 
-  if (head !== 'note' && head !== 'mark') {return false}
+  if (head !== 'note' && head !== 'mark') {
+    return false
+  }
 
   const arg = rest(node)[0]
 
@@ -172,11 +181,15 @@ function isAnnotation(node: Node, name: string): boolean {
 
 // a `like <type>` node to a surface type
 function parseType(node: Node): Type {
-  if (node.kind !== 'group') {return UNKNOWN}
+  if (node.kind !== 'group') {
+    return UNKNOWN
+  }
 
   const name = headName(node)
 
-  if (!name) {return UNKNOWN}
+  if (!name) {
+    return UNKNOWN
+  }
 
   // `list` is the native array; an inner `like <t>` gives the element type, else it is unconstrained
   if (name === 'list') {
@@ -238,16 +251,21 @@ function parseLikeType(likeGroup: GroupNode): Type {
     // effect annotations on the callback: `wait true` marks it async, `bust` marks it throwing
     const effects: string[] = []
 
-    if (children.some(isWaitTrue)) {effects.push('async')}
+    if (children.some(isWaitTrue)) {
+      effects.push('async')
+    }
 
     if (
       children.some(c => c.kind === 'group' && headName(c) === 'bust')
-    )
-      {effects.push('throw')}
+    ) {
+      effects.push('throw')
+    }
 
     const type: Type = { kind: 'function', params, result }
 
-    if (effects.length > 0) {type.effects = effects}
+    if (effects.length > 0) {
+      type.effects = effects
+    }
 
     return type
   }
@@ -302,8 +320,9 @@ function parseLikeType(likeGroup: GroupNode): Type {
         )
         .map(parseLikeType)
 
-      if (args.length > 0)
-        {return { kind: 'named', name: base.name, args }}
+      if (args.length > 0) {
+        return { kind: 'named', name: base.name, args }
+      }
     }
 
     return base
@@ -385,9 +404,7 @@ function spanOf(node: Node): Span {
     case 'text': {
       const chunk = node.parts.find(p => p.kind === 'chunk')
 
-      return chunk?.kind === 'chunk'
-        ? chunk.token.span
-        : ZERO_SPAN
+      return chunk?.kind === 'chunk' ? chunk.token.span : ZERO_SPAN
     }
 
     case 'chunk':
@@ -396,7 +413,9 @@ function spanOf(node: Node): Span {
     case 'group': {
       const head = node.nodes[0]
 
-      if (!head) {return ZERO_SPAN}
+      if (!head) {
+        return ZERO_SPAN
+      }
 
       // span the whole construct, head through the last child, so diagnostics underline the full term and
       // source-slice autofixes (the linter) capture the exact surface syntax, not just the head keyword.
@@ -471,7 +490,9 @@ export function mill(tree: RootNode, file: string): MillResult {
           n.kind === 'group' && headName(n) === 'link',
       )
 
-    if (links.length === 0) {return groupExpressionCore(group, scope)}
+    if (links.length === 0) {
+      return groupExpressionCore(group, scope)
+    }
 
     const baseGroup: GroupNode = {
       ...group,
@@ -480,8 +501,9 @@ export function mill(tree: RootNode, file: string): MillResult {
 
     let value = groupExpressionCore(baseGroup, scope)
 
-    for (const linkGroup of links)
-      {value = applyLink(value, linkGroup, scope)}
+    for (const linkGroup of links) {
+      value = applyLink(value, linkGroup, scope)
+    }
 
     return value
   }
@@ -495,8 +517,7 @@ export function mill(tree: RootNode, file: string): MillResult {
   ): Expression {
     const parts = rest(linkGroup)
     const fnNode = parts[0]
-    const fnName =
-      fnNode?.kind === 'group' ? headName(fnNode) : ''
+    const fnName = fnNode?.kind === 'group' ? headName(fnNode) : ''
     const span = spanOf(linkGroup)
 
     const extra = parts.slice(1).map(part => {
@@ -505,7 +526,7 @@ export function mill(tree: RootNode, file: string): MillResult {
 
         return bound
           ? toExpression(bound, scope)
-          : ({ form: 'unit', span: spanOf(part) } as Expression)
+          : ({ form: 'unit', span: spanOf(part) })
       }
 
       return toExpression(part, scope)
@@ -546,11 +567,13 @@ export function mill(tree: RootNode, file: string): MillResult {
       case 'text': {
         const value = args[0]
 
-        if (value?.kind === 'text')
-          {return toExpression(value, scope)}
+        if (value?.kind === 'text') {
+          return toExpression(value, scope)
+        }
 
-        if (value?.kind === 'integer')
-          {return { form: 'string', value: String(value.value), span }}
+        if (value?.kind === 'integer') {
+          return { form: 'string', value: String(value.value), span }
+        }
 
         return { form: 'string', value: '', span }
       }
@@ -558,9 +581,7 @@ export function mill(tree: RootNode, file: string): MillResult {
       case 'term': {
         // an atom / symbol literal: `term infinity` is the symbol "infinity" (represented as a string)
         const atom =
-          args[0]?.kind === 'group'
-            ? headName(args[0])
-            : undefined
+          args[0]?.kind === 'group' ? headName(args[0]) : undefined
 
         return { form: 'string', value: atom ?? '', span }
       }
@@ -571,9 +592,7 @@ export function mill(tree: RootNode, file: string): MillResult {
       case 'read': {
         const target = args[0]
         const name =
-          target?.kind === 'group'
-            ? headName(target)
-            : undefined
+          target?.kind === 'group' ? headName(target) : undefined
 
         return pathExpression(name ?? '', span)
       }
@@ -591,17 +610,16 @@ export function mill(tree: RootNode, file: string): MillResult {
       // still work; `meet` is the clean keyword surface.)
       case 'meet': {
         const variant =
-          args[0]?.kind === 'group'
-            ? headName(args[0])
-            : undefined
+          args[0]?.kind === 'group' ? headName(args[0]) : undefined
 
         const op: BinaryOp = variant === 'or' ? '||' : '&&'
         const operands = args
           .slice(1)
           .map(node => toExpression(node, scope))
 
-        if (operands.length === 0)
-          {return { form: 'boolean', value: variant !== 'or', span }}
+        if (operands.length === 0) {
+          return { form: 'boolean', value: variant !== 'or', span }
+        }
 
         return operands.reduce((left, right) => ({
           form: 'binary',
@@ -622,16 +640,17 @@ export function mill(tree: RootNode, file: string): MillResult {
         const params: { name: string; type?: Type }[] = []
 
         for (const child of decl) {
-          if (child.kind !== 'group' || headName(child) !== 'take')
-            {continue}
+          if (child.kind !== 'group' || headName(child) !== 'take') {
+            continue
+          }
 
           const varGroup = rest(child)[0]
           const paramName =
-            varGroup?.kind === 'group'
-              ? headName(varGroup)
-              : undefined
+            varGroup?.kind === 'group' ? headName(varGroup) : undefined
 
-          if (!paramName) {continue}
+          if (!paramName) {
+            continue
+          }
 
           const likeGroup = rest(child).find(
             (n): n is GroupNode =>
@@ -647,7 +666,9 @@ export function mill(tree: RootNode, file: string): MillResult {
 
         const inner = new Set(scope)
 
-        for (const p of params) {inner.add(p.name)}
+        for (const p of params) {
+          inner.add(p.name)
+        }
 
         const SIGNATURE = new Set([
           'take',
@@ -675,15 +696,18 @@ export function mill(tree: RootNode, file: string): MillResult {
           span,
         }
 
-        if (resultLike) {closure.result = parseLikeType(resultLike)}
+        if (resultLike) {
+          closure.result = parseLikeType(resultLike)
+        }
 
         // async is marked by `note async` (or retired `mark async`) or a direct `wait true` (mirrors the task rule)
         const closureMarkedAsync = decl.some(n =>
           isAnnotation(n, 'async'),
         )
 
-        if (closureMarkedAsync || decl.some(isWaitTrue))
-          {closure.async = true}
+        if (closureMarkedAsync || decl.some(isWaitTrue)) {
+          closure.async = true
+        }
 
         return closure
       }
@@ -692,9 +716,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         // a conditional in value position: `fork test / hook test <cond> / hook hold <value> / hook miss <else>`.
         // `fork case` (a match) is not yet supported as a value, so it falls through to the generic call path below.
         const variant =
-          args[0]?.kind === 'group'
-            ? headName(args[0])
-            : undefined
+          args[0]?.kind === 'group' ? headName(args[0]) : undefined
 
         // `fork lack / <bool>` is boolean negation: it sits in the fork family next to `fork test` and `fork case`,
         // and lowers to a unary `!` of its operand. The operand is the expression after the `lack` marker.
@@ -721,8 +743,9 @@ export function mill(tree: RootNode, file: string): MillResult {
               : { form: 'unit', span }
 
           for (const child of args) {
-            if (child.kind !== 'group' || headName(child) !== 'hook')
-              {continue}
+            if (child.kind !== 'group' || headName(child) !== 'hook') {
+              continue
+            }
 
             const inner = rest(child)
             const variantName =
@@ -733,11 +756,12 @@ export function mill(tree: RootNode, file: string): MillResult {
             const bodyNodes = inner.slice(1)
 
             if (variantName === 'test') {
-              if (pendingCond)
-                {branches.push({
+              if (pendingCond) {
+                branches.push({
                   cond: pendingCond,
                   value: { form: 'unit', span },
-                })}
+                })
+              }
 
               pendingCond = bodyNodes[0]
                 ? toExpression(bodyNodes[0], scope)
@@ -765,11 +789,12 @@ export function mill(tree: RootNode, file: string): MillResult {
             }
           }
 
-          if (pendingCond)
-            {branches.push({
+          if (pendingCond) {
+            branches.push({
               cond: pendingCond,
               value: { form: 'unit', span },
-            })}
+            })
+          }
 
           return { form: 'conditional', branches, otherwise, span }
         }
@@ -795,8 +820,9 @@ export function mill(tree: RootNode, file: string): MillResult {
       }
 
       default: {
-        if (keyword !== undefined && args.length === 0)
-          {return { form: 'variable', name: keyword, span }}
+        if (keyword !== undefined && args.length === 0) {
+          return { form: 'variable', name: keyword, span }
+        }
 
         if (keyword !== undefined) {
           return {
@@ -865,10 +891,9 @@ export function mill(tree: RootNode, file: string): MillResult {
       }
     } else {
       // a slashed callee (`fs/read-file`) is a member path: the native-module FFI or a qualified function
-      const callee: Expression =
-        calleeName?.includes('/')
-          ? pathExpression(calleeName, span)
-          : { form: 'variable', name: calleeName ?? '', span }
+      const callee: Expression = calleeName?.includes('/')
+        ? pathExpression(calleeName, span)
+        : { form: 'variable', name: calleeName ?? '', span }
 
       result = {
         form: 'call',
@@ -893,9 +918,8 @@ export function mill(tree: RootNode, file: string): MillResult {
     const target = parts[0]
     const calleeName =
       target?.kind === 'group' ? headName(target) : undefined
-    const callArgs = parts
-      .slice(1)
-      .map(a => toExpression(a, scope))
+
+    const callArgs = parts.slice(1).map(a => toExpression(a, scope))
 
     if (
       calleeName &&
@@ -911,10 +935,9 @@ export function mill(tree: RootNode, file: string): MillResult {
       }
     }
 
-    const callee: Expression =
-      calleeName?.includes('/')
-        ? pathExpression(calleeName, span)
-        : { form: 'variable', name: calleeName ?? '', span }
+    const callee: Expression = calleeName?.includes('/')
+      ? pathExpression(calleeName, span)
+      : { form: 'variable', name: calleeName ?? '', span }
 
     return { form: 'call', callee, args: callArgs, span }
   }
@@ -930,9 +953,12 @@ export function mill(tree: RootNode, file: string): MillResult {
         '>=': '<',
         '<=': '>',
       }
+
       const flipped = flip[claim.op]
 
-      if (flipped) {return { ...claim, op: flipped }}
+      if (flipped) {
+        return { ...claim, op: flipped }
+      }
     }
 
     return { form: 'unary', op: '!', operand: claim, span }
@@ -946,9 +972,7 @@ export function mill(tree: RootNode, file: string): MillResult {
     const parts = rest(group)
     const kindNode = parts[0]
     const kind =
-      kindNode?.kind === 'group'
-        ? headName(kindNode)
-        : undefined
+      kindNode?.kind === 'group' ? headName(kindNode) : undefined
 
     const span = spanOf(group)
     const items = parts.slice(1)
@@ -970,8 +994,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         .map(it => {
           const inner = rest(it)
           const keyNode = inner[0]
-          const key =
-            keyNode?.kind === 'group' ? headName(keyNode) : ''
+          const key = keyNode?.kind === 'group' ? headName(keyNode) : ''
 
           const valueNode = inner[1]
 
@@ -983,7 +1006,7 @@ export function mill(tree: RootNode, file: string): MillResult {
             },
             value: valueNode
               ? toExpression(valueNode, scope)
-              : ({ form: 'unit' as const, span }),
+              : { form: 'unit' as const, span },
           }
         })
 
@@ -1000,9 +1023,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         const inner = rest(it)
         const fieldNode = inner[0]
         const fieldName =
-          fieldNode?.kind === 'group'
-            ? headName(fieldNode)
-            : ''
+          fieldNode?.kind === 'group' ? headName(fieldNode) : ''
 
         const valueNode = inner[1]
 
@@ -1010,7 +1031,7 @@ export function mill(tree: RootNode, file: string): MillResult {
           name: fieldName ?? '',
           value: valueNode
             ? toExpression(valueNode, scope)
-            : ({ form: 'unit' as const, span }),
+            : { form: 'unit' as const, span },
         }
       })
 
@@ -1036,16 +1057,18 @@ export function mill(tree: RootNode, file: string): MillResult {
     const map = new Map<string, Node[]>()
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'hook') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'hook') {
+        continue
+      }
 
       const inner = rest(child)
       const variant = inner[0]
       const hookName =
-        variant?.kind === 'group'
-          ? headName(variant)
-          : undefined
+        variant?.kind === 'group' ? headName(variant) : undefined
 
-      if (hookName) {map.set(hookName, inner.slice(1))}
+      if (hookName) {
+        map.set(hookName, inner.slice(1))
+      }
     }
 
     return map
@@ -1089,9 +1112,7 @@ export function mill(tree: RootNode, file: string): MillResult {
           const args = rest(node)
           const target = args[0]
           const name =
-            target?.kind === 'group'
-              ? headName(target)
-              : undefined
+            target?.kind === 'group' ? headName(target) : undefined
 
           if (!name) {
             fail(node, 'save needs a name')
@@ -1148,7 +1169,9 @@ export function mill(tree: RootNode, file: string): MillResult {
               span,
             }
 
-            if (saveLike) {saveLet.type = parseLikeType(saveLike)}
+            if (saveLike) {
+              saveLet.type = parseLikeType(saveLike)
+            }
 
             out.push(saveLet)
           }
@@ -1202,9 +1225,13 @@ export function mill(tree: RootNode, file: string): MillResult {
               span,
             }
 
-            if (nameValue) {holdStatement.name = nameValue}
+            if (nameValue) {
+              holdStatement.name = nameValue
+            }
 
-            if (proof.length > 0) {holdStatement.proof = proof}
+            if (proof.length > 0) {
+              holdStatement.proof = proof
+            }
 
             out.push(holdStatement)
           }
@@ -1224,6 +1251,7 @@ export function mill(tree: RootNode, file: string): MillResult {
 
           let ruleName = 'rule'
           let startIndex = 0
+
           const ruleFirst = ruleParts[0]
 
           if (ruleFirst?.kind === 'text') {
@@ -1258,37 +1286,46 @@ export function mill(tree: RootNode, file: string): MillResult {
             type?: Type
             refine?: 'natural'
           }[] = []
+
           const ruleScope = new Set(scope)
           const hypotheses: { name?: string; expr: Expression }[] = []
           // existential witnesses: `find x, like T` / <witness> binds x to the supplied witness, so the goal P(x) is
           // checked at that concrete value. This is the backwards-E (there exists) to `mark`'s upside-down-A (for all).
           const witnesses: { name: string; value: Expression }[] = []
+
           let goal: Expression | undefined
           let isAxiom = false
+
           const ruleProof: Proof[] = []
 
           // pull a `mark x, like T` / `take h, ...` binder name and optional `like` type from a child
           const binderOf = (
             part: GroupNode,
-          ): {
-            name: string
-            type?: Type
-            refine?: 'natural'
-          } | undefined => {
+          ):
+            | {
+                name: string
+                type?: Type
+                refine?: 'natural'
+              }
+            | undefined => {
             const varGroup = rest(part)[0]
             const pname =
               varGroup?.kind === 'group'
                 ? headName(varGroup)
                 : undefined
 
-            if (!pname) {return undefined}
+            if (!pname) {
+              return undefined
+            }
 
             const likeGroup = rest(part).find(
               (n): n is GroupNode =>
                 n.kind === 'group' && headName(n) === 'like',
             )
 
-            if (!likeGroup) {return { name: pname }}
+            if (!likeGroup) {
+              return { name: pname }
+            }
 
             // detect the `natural-number` refinement from the RAW type node (parseLikeType maps it to the plain number
             // type, losing the name), exactly as the task-param parser does, so the n >= 0 bound reaches the prover.
@@ -1319,9 +1356,13 @@ export function mill(tree: RootNode, file: string): MillResult {
                   refine?: 'natural'
                 } = { name: binder.name }
 
-                if (binder.type) {param.type = binder.type}
+                if (binder.type) {
+                  param.type = binder.type
+                }
 
-                if (binder.refine) {param.refine = binder.refine}
+                if (binder.refine) {
+                  param.refine = binder.refine
+                }
 
                 ruleParams.push(param)
                 ruleScope.add(binder.name)
@@ -1350,7 +1391,9 @@ export function mill(tree: RootNode, file: string): MillResult {
 
               if (prop) {
                 hypotheses.push(
-                  binder ? { name: binder.name, expr: prop } : { expr: prop },
+                  binder
+                    ? { name: binder.name, expr: prop }
+                    : { expr: prop },
                 )
               }
             } else if (partHead === 'show') {
@@ -1362,8 +1405,9 @@ export function mill(tree: RootNode, file: string): MillResult {
               // mirroring `want hold` / `want miss`. The mode is the first child; the claim is the rest. A bare `show`
               // (no mode) defaults to `hold`.
               const firstHead = showKids[0]
-                ? headName(showKids[0]!)
+                ? headName(showKids[0])
                 : undefined
+
               const showMode =
                 firstHead === 'miss'
                   ? 'miss'
@@ -1371,16 +1415,25 @@ export function mill(tree: RootNode, file: string): MillResult {
                     ? 'hold'
                     : undefined
 
-              if (showMode) {showKids = showKids.slice(1)}
+              if (showMode) {
+                showKids = showKids.slice(1)
+              }
 
               // the claim itself: a single nested expression, or a relation applied to args on one line
               const claim =
                 showKids.length === 1
                   ? toExpression(showKids[0]!, ruleScope)
-                  : callExpressionFrom(showKids, ruleScope, spanOf(part))
+                  : callExpressionFrom(
+                      showKids,
+                      ruleScope,
+                      spanOf(part),
+                    )
 
               // `miss` proves the claim FALSE: flip an order comparison to its negation, else logical-not it
-              goal = showMode === 'miss' ? negateGoal(claim, spanOf(part)) : claim
+              goal =
+                showMode === 'miss'
+                  ? negateGoal(claim, spanOf(part))
+                  : claim
             } else if (partHead === 'find') {
               // an EXISTENTIAL witness: `find x, like T` plus a witness expression. Binds x to the witness, so the goal
               // P(x) is checked at that concrete value (proving "there exists x such that P").
@@ -1391,6 +1444,7 @@ export function mill(tree: RootNode, file: string): MillResult {
                   (n): n is GroupNode =>
                     n.kind === 'group' && headName(n) === 'like',
                 )
+
                 const witnessNode = rest(part)
                   .slice(1)
                   .find(
@@ -1455,8 +1509,9 @@ export function mill(tree: RootNode, file: string): MillResult {
                 span,
               }
 
-              if (ruleProof.length > 0)
-                {holdStatement.proof = ruleProof}
+              if (ruleProof.length > 0) {
+                holdStatement.proof = ruleProof
+              }
 
               let body: Statement[] = [holdStatement]
 
@@ -1559,9 +1614,7 @@ export function mill(tree: RootNode, file: string): MillResult {
           const hostArgs = rest(node)
           const target = hostArgs[0]
           const name =
-            target?.kind === 'group'
-              ? headName(target)
-              : undefined
+            target?.kind === 'group' ? headName(target) : undefined
 
           if (!name) {
             fail(node, 'host needs a name')
@@ -1605,7 +1658,9 @@ export function mill(tree: RootNode, file: string): MillResult {
             span,
           }
 
-          if (hostLike) {hostLet.type = parseLikeType(hostLike)}
+          if (hostLike) {
+            hostLet.type = parseLikeType(hostLike)
+          }
 
           // a value-less `host x, name <Y>` is a host global (`host document, name <document>`): record the foreign
           // name Y so the emitter aliases it to the host global instead of binding it to `undefined`.
@@ -1675,9 +1730,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         case 'walk': {
           const parts = rest(node)
           const variant =
-            parts[0]?.kind === 'group'
-              ? headName(parts[0])
-              : undefined
+            parts[0]?.kind === 'group' ? headName(parts[0]) : undefined
 
           if (variant === 'list') {
             const iterable: Expression = parts[1]
@@ -1691,10 +1744,7 @@ export function mill(tree: RootNode, file: string): MillResult {
 
             const first = nextBody[0]
 
-            if (
-              first?.kind === 'group' &&
-              headName(first) === 'take'
-            ) {
+            if (first?.kind === 'group' && headName(first) === 'take') {
               const nameGroup = rest(first)[1]
 
               if (
@@ -1703,8 +1753,9 @@ export function mill(tree: RootNode, file: string): MillResult {
               ) {
                 const itemGroup = rest(nameGroup)[0]
 
-                if (itemGroup?.kind === 'group')
-                  {item = headName(itemGroup) ?? 'item'}
+                if (itemGroup?.kind === 'group') {
+                  item = headName(itemGroup) ?? 'item'
+                }
               }
 
               bodyNodes = nextBody.slice(1)
@@ -1732,10 +1783,9 @@ export function mill(tree: RootNode, file: string): MillResult {
             hookMap.get('hold') ??
             []
 
-          const cond: Expression =
-            condNodes?.[0]
-              ? toExpression(condNodes[0], scope)
-              : { form: 'boolean', value: false, span }
+          const cond: Expression = condNodes?.[0]
+            ? toExpression(condNodes[0], scope)
+            : { form: 'boolean', value: false, span }
 
           out.push({
             form: 'while',
@@ -1749,9 +1799,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         case 'fork': {
           const parts = rest(node)
           const variant =
-            parts[0]?.kind === 'group'
-              ? headName(parts[0])
-              : undefined
+            parts[0]?.kind === 'group' ? headName(parts[0]) : undefined
 
           if (variant === 'case') {
             // `fork case, <subject>` with `case <label>` arms: a pattern match on an enum
@@ -1767,8 +1815,9 @@ export function mill(tree: RootNode, file: string): MillResult {
             let otherwise: Statement[] | undefined
 
             for (const arm of parts.slice(2)) {
-              if (arm.kind !== 'group' || headName(arm) !== 'case')
-                {continue}
+              if (arm.kind !== 'group' || headName(arm) !== 'case') {
+                continue
+              }
 
               const labelGroup = rest(arm)[0]
               const label =
@@ -1776,20 +1825,24 @@ export function mill(tree: RootNode, file: string): MillResult {
                   ? headName(labelGroup)
                   : undefined
 
-              if (label === 'else')
-                {otherwise = toStatements(
+              if (label === 'else') {
+                otherwise = toStatements(
                   rest(arm).slice(1),
                   new Set(scope),
-                )}
-              else if (label) {
+                )
+              } else if (label) {
                 // leading `link <name>` groups rename the variant's fields (in order), so a nested match on the same
                 // enum can bind both without the field names colliding. The rest after them is the branch body.
                 const armParts = rest(arm).slice(1)
                 const binds: string[] = []
+
                 let bodyStart = 0
 
                 for (const part of armParts) {
-                  if (part.kind === 'group' && headName(part) === 'link') {
+                  if (
+                    part.kind === 'group' &&
+                    headName(part) === 'link'
+                  ) {
                     const nameGroup = rest(part)[0]
                     const bindName =
                       nameGroup?.kind === 'group'
@@ -1808,7 +1861,9 @@ export function mill(tree: RootNode, file: string): MillResult {
 
                 const branchScope = new Set(scope)
 
-                for (const bindName of binds) {branchScope.add(bindName)}
+                for (const bindName of binds) {
+                  branchScope.add(bindName)
+                }
 
                 const branch: {
                   label: string
@@ -1822,7 +1877,9 @@ export function mill(tree: RootNode, file: string): MillResult {
                   ),
                 }
 
-                if (binds.length > 0) {branch.binds = binds}
+                if (binds.length > 0) {
+                  branch.binds = binds
+                }
 
                 cases.push(branch)
               }
@@ -1844,8 +1901,9 @@ export function mill(tree: RootNode, file: string): MillResult {
           let pendingCond: Expression | undefined
 
           for (const child of rest(node)) {
-            if (child.kind !== 'group' || headName(child) !== 'hook')
-              {continue}
+            if (child.kind !== 'group' || headName(child) !== 'hook') {
+              continue
+            }
 
             const inner = rest(child)
             const variantName =
@@ -1858,8 +1916,9 @@ export function mill(tree: RootNode, file: string): MillResult {
             if (variantName === 'test') {
               // a `hook test` with no following `hook hold` still becomes a branch (with an empty body), so a bare
               // `test` + `miss` lowers to `if (cond) {} else {...}` rather than an invalid otherwise-only `if`
-              if (pendingCond)
-                {branches.push({ cond: pendingCond, body: [] })}
+              if (pendingCond) {
+                branches.push({ cond: pendingCond, body: [] })
+              }
 
               pendingCond = bodyNodes[0]
                 ? toExpression(bodyNodes[0], scope)
@@ -1884,8 +1943,9 @@ export function mill(tree: RootNode, file: string): MillResult {
             }
           }
 
-          if (pendingCond)
-            {branches.push({ cond: pendingCond, body: [] })}
+          if (pendingCond) {
+            branches.push({ cond: pendingCond, body: [] })
+          }
 
           out.push({ form: 'if', branches, otherwise, span })
           break
@@ -1925,11 +1985,11 @@ export function mill(tree: RootNode, file: string): MillResult {
       ) {
         const varGroup = rest(statement)[0]
         const paramName =
-          varGroup?.kind === 'group'
-            ? headName(varGroup)
-            : undefined
+          varGroup?.kind === 'group' ? headName(varGroup) : undefined
 
-        if (!paramName) {continue}
+        if (!paramName) {
+          continue
+        }
 
         const likeGroup = rest(statement).find(
           (n): n is GroupNode =>
@@ -1961,8 +2021,7 @@ export function mill(tree: RootNode, file: string): MillResult {
 
         const needArg = needGroup ? rest(needGroup)[0] : undefined
         const optional =
-          needArg?.kind === 'group' &&
-          headName(needArg) === 'false'
+          needArg?.kind === 'group' && headName(needArg) === 'false'
 
         const param: {
           name: string
@@ -1971,11 +2030,17 @@ export function mill(tree: RootNode, file: string): MillResult {
           optional?: boolean
         } = { name: paramName }
 
-        if (type) {param.type = type}
+        if (type) {
+          param.type = type
+        }
 
-        if (refine) {param.refine = refine}
+        if (refine) {
+          param.refine = refine
+        }
 
-        if (optional) {param.optional = true}
+        if (optional) {
+          param.optional = true
+        }
 
         params.push(param)
       }
@@ -2007,7 +2072,9 @@ export function mill(tree: RootNode, file: string): MillResult {
             n.kind === 'group' && headName(n) === 'like',
         )
 
-      if (likeInFree) {resultType = parseLikeType(likeInFree)}
+      if (likeInFree) {
+        resultType = parseLikeType(likeInFree)
+      }
     }
 
     return resultType
@@ -2021,23 +2088,25 @@ export function mill(tree: RootNode, file: string): MillResult {
   function buildHostConstant(group: GroupNode): Statement | undefined {
     const args = rest(group)
     const target = args[0]
-    const name =
-      target?.kind === 'group' ? headName(target) : undefined
+    const name = target?.kind === 'group' ? headName(target) : undefined
 
-    if (!name) {return undefined}
+    if (!name) {
+      return undefined
+    }
 
     const valueNode = args
       .slice(1)
       .find(
         a =>
           !(
-            a.kind === 'group' &&
-            HOST_ANNOTATION.has(headName(a) ?? '')
+            a.kind === 'group' && HOST_ANNOTATION.has(headName(a) ?? '')
           ),
       )
 
     // no value: a foreign host global, not a constant. Let the body builder handle it as an ambient binding.
-    if (!valueNode) {return undefined}
+    if (!valueNode) {
+      return undefined
+    }
 
     const value = toExpression(valueNode, new Set<string>())
 
@@ -2049,6 +2118,7 @@ export function mill(tree: RootNode, file: string): MillResult {
       )
 
     let result: Type | undefined
+
     if (likeNode) {
       result = parseLikeType(likeNode)
     } else if (value.form === 'integer') {
@@ -2076,9 +2146,7 @@ export function mill(tree: RootNode, file: string): MillResult {
     const parts = rest(group)
     const nameGroup = parts[0]
     const name =
-      nameGroup?.kind === 'group'
-        ? headName(nameGroup)
-        : undefined
+      nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
     const span = spanOf(group)
 
@@ -2086,7 +2154,9 @@ export function mill(tree: RootNode, file: string): MillResult {
       // a computed / symbol-keyed method (e.g. `task {symbol/iterator}` from `[Symbol.iterator]()` in a generated
       // binding) has no plain identifier name; it is not callable by name in seed, so skip it silently. Only a
       // genuinely empty `task` (no head at all) is an error.
-      if (nameGroup) {return undefined}
+      if (nameGroup) {
+        return undefined
+      }
 
       fail(group, 'task needs a name')
 
@@ -2104,11 +2174,11 @@ export function mill(tree: RootNode, file: string): MillResult {
       ) {
         const inner = rest(statement)
         const gName =
-          inner[0]?.kind === 'group'
-            ? headName(inner[0])
-            : undefined
+          inner[0]?.kind === 'group' ? headName(inner[0]) : undefined
 
-        if (!gName) {continue}
+        if (!gName) {
+          continue
+        }
 
         const needGroup = inner.find(
           (n): n is GroupNode =>
@@ -2159,15 +2229,21 @@ export function mill(tree: RootNode, file: string): MillResult {
       span,
     }
 
-    if (resultType) {fn.result = resultType}
+    if (resultType) {
+      fn.result = resultType
+    }
 
     // async is marked by `wait true` or `note async` (or retired `mark async`)
     const markedAsync = body.some(n => isAnnotation(n, 'async'))
 
-    if (markedAsync || body.some(isWaitTrue)) {fn.async = true}
+    if (markedAsync || body.some(isWaitTrue)) {
+      fn.async = true
+    }
 
     // visibility: `note private` (or retired `mark private`) makes the definition module-internal
-    if (body.some(n => isAnnotation(n, 'private'))) {fn.private = true}
+    if (body.some(n => isAnnotation(n, 'private'))) {
+      fn.private = true
+    }
 
     return fn
   }
@@ -2179,9 +2255,7 @@ export function mill(tree: RootNode, file: string): MillResult {
     const parts = rest(group)
     const nameGroup = parts[0]
     const name =
-      nameGroup?.kind === 'group'
-        ? headName(nameGroup)
-        : undefined
+      nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
     const span = spanOf(group)
 
@@ -2201,15 +2275,17 @@ export function mill(tree: RootNode, file: string): MillResult {
     }[] = []
 
     for (const child of body) {
-      if (child.kind !== 'group' || headName(child) !== 'case') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'case') {
+        continue
+      }
 
       const envGroup = rest(child)[0]
       const env =
-        envGroup?.kind === 'group'
-          ? headName(envGroup)
-          : undefined
+        envGroup?.kind === 'group' ? headName(envGroup) : undefined
 
-      if (!env) {continue}
+      if (!env) {
+        continue
+      }
 
       // the native expression: a `text <...>` child whose chunks hold the raw target syntax
       let expression: string | undefined
@@ -2217,14 +2293,18 @@ export function mill(tree: RootNode, file: string): MillResult {
       const imports: { module: string; alias?: string }[] = []
 
       for (const node of rest(child).slice(1)) {
-        if (node.kind !== 'group') {continue}
+        if (node.kind !== 'group') {
+          continue
+        }
 
         const head = headName(node)
 
         if (head === 'text') {
           const value = toExpression(node, new Set())
 
-          if (value.form === 'string') {expression = value.value}
+          if (value.form === 'string') {
+            expression = value.value
+          }
         } else if (head === 'load') {
           // `load <node:module>, name alias`: an import the rendered expression needs
           const moduleNode = rest(node)[0]
@@ -2235,7 +2315,9 @@ export function mill(tree: RootNode, file: string): MillResult {
                   .join('')
               : undefined
 
-          if (!module) {continue}
+          if (!module) {
+            continue
+          }
 
           const nameChild = rest(node).find(
             (n): n is GroupNode =>
@@ -2268,7 +2350,9 @@ export function mill(tree: RootNode, file: string): MillResult {
       span,
     }
 
-    if (result) {bind.result = result}
+    if (result) {
+      bind.result = result
+    }
 
     return bind
   }
@@ -2281,11 +2365,11 @@ export function mill(tree: RootNode, file: string): MillResult {
       if (child.kind === 'group' && headName(child) === 'task') {
         const nameGroup = rest(child)[0]
         const m =
-          nameGroup?.kind === 'group'
-            ? headName(nameGroup)
-            : undefined
+          nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
-        if (m) {names.push(m)}
+        if (m) {
+          names.push(m)
+        }
       }
     }
 
@@ -2295,9 +2379,7 @@ export function mill(tree: RootNode, file: string): MillResult {
   function buildMask(group: GroupNode): Statement | undefined {
     const nameGroup = rest(group)[0]
     const name =
-      nameGroup?.kind === 'group'
-        ? headName(nameGroup)
-        : undefined
+      nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
     if (!name) {
       fail(group, 'mask needs a name')
@@ -2325,13 +2407,13 @@ export function mill(tree: RootNode, file: string): MillResult {
     const out: Statement[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'wear') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'wear') {
+        continue
+      }
 
       const maskGroup = rest(child)[0]
       const mask =
-        maskGroup?.kind === 'group'
-          ? headName(maskGroup)
-          : undefined
+        maskGroup?.kind === 'group' ? headName(maskGroup) : undefined
 
       if (mask) {
         out.push({
@@ -2352,9 +2434,7 @@ export function mill(tree: RootNode, file: string): MillResult {
   function buildSuit(group: GroupNode): Statement[] {
     const targetGroup = rest(group)[0]
     const target =
-      targetGroup?.kind === 'group'
-        ? headName(targetGroup)
-        : undefined
+      targetGroup?.kind === 'group' ? headName(targetGroup) : undefined
 
     if (!target) {
       fail(group, 'suit needs a target form')
@@ -2369,9 +2449,7 @@ export function mill(tree: RootNode, file: string): MillResult {
     const parts = rest(group)
     const nameGroup = parts[0]
     const name =
-      nameGroup?.kind === 'group'
-        ? headName(nameGroup)
-        : undefined
+      nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
     const span = spanOf(group)
 
@@ -2390,15 +2468,14 @@ export function mill(tree: RootNode, file: string): MillResult {
         if (
           child.kind !== 'group' ||
           (headName(child) !== 'link' && headName(child) !== 'free')
-        )
-          {continue}
+        ) {
+          continue
+        }
 
         const inner = rest(child)
         const fieldNode = inner[0]
         const fieldName =
-          fieldNode?.kind === 'group'
-            ? headName(fieldNode)
-            : undefined
+          fieldNode?.kind === 'group' ? headName(fieldNode) : undefined
 
         const likeGroup = inner[1]
 
@@ -2422,16 +2499,19 @@ export function mill(tree: RootNode, file: string): MillResult {
           if (c.kind === 'group' && headName(c) === 'name') {
             const valNode = rest(c)[0]
 
-            if (valNode?.kind === 'text')
-              {nick = valNode.parts
+            if (valNode?.kind === 'text') {
+              nick = valNode.parts
                 .map(p => (p.kind === 'chunk' ? p.text : ''))
-                .join('')}
+                .join('')
+            }
 
             break
           }
         }
 
-        if (fieldName) {out.push({ name: fieldName, type, nick })}
+        if (fieldName) {
+          out.push({ name: fieldName, type, nick })
+        }
       }
 
       return out
@@ -2445,31 +2525,34 @@ export function mill(tree: RootNode, file: string): MillResult {
     }[] = []
 
     for (const child of parts.slice(1)) {
-      if (child.kind !== 'group' || headName(child) !== 'case') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'case') {
+        continue
+      }
 
       const vNameGroup = rest(child)[0]
       const vName =
-        vNameGroup?.kind === 'group'
-          ? headName(vNameGroup)
-          : undefined
+        vNameGroup?.kind === 'group' ? headName(vNameGroup) : undefined
 
-      if (vName)
-        {variants.push({ name: vName, fields: linkFields(child) })}
+      if (vName) {
+        variants.push({ name: vName, fields: linkFields(child) })
+      }
     }
 
     // `head <name>` children are the form's generic parameters (e.g. `form maybe / head t`)
     const params: string[] = []
 
     for (const child of parts.slice(1)) {
-      if (child.kind !== 'group' || headName(child) !== 'head') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'head') {
+        continue
+      }
 
       const gNameGroup = rest(child)[0]
       const gName =
-        gNameGroup?.kind === 'group'
-          ? headName(gNameGroup)
-          : undefined
+        gNameGroup?.kind === 'group' ? headName(gNameGroup) : undefined
 
-      if (gName) {params.push(gName)}
+      if (gName) {
+        params.push(gName)
+      }
     }
 
     // a transparent alias: `form X, like <type>` carries its base so the checker can unify X with that base. The bind
@@ -2512,11 +2595,15 @@ export function mill(tree: RootNode, file: string): MillResult {
     }
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'task') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'task') {
+        continue
+      }
 
       const fn = buildFunction(child)
 
-      if (fn?.form !== 'function') {continue}
+      if (fn?.form !== 'function') {
+        continue
+      }
 
       fn.generics = [
         ...formParams.map(name => ({ name })),
@@ -2545,31 +2632,34 @@ export function mill(tree: RootNode, file: string): MillResult {
     const out: Statement[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'load') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'load') {
+        continue
+      }
 
       let module: string | undefined
       let alias: string | undefined
 
       for (const part of rest(child)) {
-        if (part.kind === 'text')
-          {module = part.parts
+        if (part.kind === 'text') {
+          module = part.parts
             .map(p => (p.kind === 'chunk' ? p.text : ''))
-            .join('')}
-        else if (part.kind === 'group' && headName(part) === 'name') {
+            .join('')
+        } else if (part.kind === 'group' && headName(part) === 'name') {
           const a = rest(part)[0]
           alias = a?.kind === 'group' ? headName(a) : undefined
         }
       }
 
-      if (module && alias)
-        {out.push({
+      if (module && alias) {
+        out.push({
           form: 'native',
           alias,
           module,
           kind: asType ? 'type' : 'module',
           span: spanOf(child),
           file,
-        })}
+        })
+      }
     }
 
     return out
@@ -2583,23 +2673,24 @@ export function mill(tree: RootNode, file: string): MillResult {
     const args: DockArgument[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'bind') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'bind') {
+        continue
+      }
 
       const nameGroup = rest(child)[0]
       const name =
-        nameGroup?.kind === 'group'
-          ? headName(nameGroup)
-          : undefined
+        nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
       const valueNode = rest(child)[1]
 
-      if (name)
-        {args.push({
+      if (name) {
+        args.push({
           name,
           value: valueNode
             ? toExpression(valueNode, scope)
             : { form: 'unit', span: spanOf(child) },
-        })}
+        })
+      }
     }
 
     return args
@@ -2613,20 +2704,21 @@ export function mill(tree: RootNode, file: string): MillResult {
     const calls: DockCall[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'call') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'call') {
+        continue
+      }
 
       const nameGroup = rest(child)[0]
       const name =
-        nameGroup?.kind === 'group'
-          ? headName(nameGroup)
-          : undefined
+        nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
-      if (name)
-        {calls.push({
+      if (name) {
+        calls.push({
           name,
           args: buildBindArgs(child, scope),
           span: spanOf(child),
-        })}
+        })
+      }
     }
 
     return calls
@@ -2640,18 +2732,20 @@ export function mill(tree: RootNode, file: string): MillResult {
     const takes: DockTake[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group') {continue}
+      if (child.kind !== 'group') {
+        continue
+      }
 
       const headKw = headName(child)
 
       if (headKw === 'take') {
         const varGroup = rest(child)[0]
         const name =
-          varGroup?.kind === 'group'
-            ? headName(varGroup)
-            : undefined
+          varGroup?.kind === 'group' ? headName(varGroup) : undefined
 
-        if (!name) {continue}
+        if (!name) {
+          continue
+        }
 
         if (TAKE_SECTION.has(name)) {
           takes.push(...buildDockTakes(child))
@@ -2669,7 +2763,9 @@ export function mill(tree: RootNode, file: string): MillResult {
 
         const take: DockTake = { name, required, span: spanOf(child) }
 
-        if (likeGroup) {take.type = parseLikeType(likeGroup)}
+        if (likeGroup) {
+          take.type = parseLikeType(likeGroup)
+        }
 
         // a CLI short flag: `code <letter>` (e.g. `take title / code t` -> `-t`)
         const codeGroup = rest(child).find(
@@ -2680,8 +2776,9 @@ export function mill(tree: RootNode, file: string): MillResult {
         if (codeGroup) {
           const letter = rest(codeGroup)[0]
 
-          if (letter?.kind === 'group')
-            {take.short = headName(letter)}
+          if (letter?.kind === 'group') {
+            take.short = headName(letter)
+          }
         }
 
         // masked input: `wait rise` reads a secret without echoing
@@ -2693,55 +2790,85 @@ export function mill(tree: RootNode, file: string): MillResult {
               rest(n)[0]?.kind === 'group' &&
               headName(rest(n)[0] as GroupNode) === 'rise',
           )
-        )
-          {take.masked = true}
+        ) {
+          take.masked = true
+        }
 
         // help text: `note <Directory to hunt>`
         const noteGroup = rest(child).find(
-          (n): n is GroupNode => n.kind === 'group' && headName(n) === 'note',
+          (n): n is GroupNode =>
+            n.kind === 'group' && headName(n) === 'note',
         )
+
         if (noteGroup) {
           const textNode = rest(noteGroup)[0]
-          if (textNode?.kind === 'text') {take.note = textOf(textNode)}
+
+          if (textNode?.kind === 'text') {
+            take.note = textOf(textNode)
+          }
         }
 
         // default value: `bind 3000` / `bind <hello>` / `bind wave true`
         const bindGroup = rest(child).find(
-          (n): n is GroupNode => n.kind === 'group' && headName(n) === 'bind',
+          (n): n is GroupNode =>
+            n.kind === 'group' && headName(n) === 'bind',
         )
+
         if (bindGroup) {
           const valNode = rest(bindGroup)[0]
-          if (valNode?.kind === 'integer') {take.fallback = valNode.value}
-          else if (valNode?.kind === 'text') {take.fallback = textOf(valNode)}
-          else if (valNode?.kind === 'group' && headName(valNode) === 'wave') {
-            take.fallback = headName(rest(valNode)[0] as GroupNode) === 'true'
+
+          if (valNode?.kind === 'integer') {
+            take.fallback = valNode.value
+          } else if (valNode?.kind === 'text') {
+            take.fallback = textOf(valNode)
+          } else if (
+            valNode?.kind === 'group' &&
+            headName(valNode) === 'wave'
+          ) {
+            take.fallback =
+              headName(rest(valNode)[0] as GroupNode) === 'true'
           }
         }
 
         // variadic / rest positional: `many`
-        if (rest(child).some(n => n.kind === 'group' && headName(n) === 'many')) {
+        if (
+          rest(child).some(
+            n => n.kind === 'group' && headName(n) === 'many',
+          )
+        ) {
           take.variadic = true
         }
 
         // choices / enum: one or more `pick <value>`
         const picks = rest(child)
-          .filter((n): n is GroupNode => n.kind === 'group' && headName(n) === 'pick')
+          .filter(
+            (n): n is GroupNode =>
+              n.kind === 'group' && headName(n) === 'pick',
+          )
           .map(p => {
             const v = rest(p)[0]
-            return v?.kind === 'text' ? textOf(v) : v?.kind === 'group' ? headName(v) : undefined
+
+            return v?.kind === 'text'
+              ? textOf(v)
+              : v?.kind === 'group'
+                ? headName(v)
+                : undefined
           })
           .filter((x): x is string => x !== undefined)
-        if (picks.length > 0) {take.choices = picks}
+
+        if (picks.length > 0) {
+          take.choices = picks
+        }
 
         takes.push(take)
       } else if (headKw === 'link') {
         const varGroup = rest(child)[0]
         const name =
-          varGroup?.kind === 'group'
-            ? headName(varGroup)
-            : undefined
+          varGroup?.kind === 'group' ? headName(varGroup) : undefined
 
-        if (!name) {continue}
+        if (!name) {
+          continue
+        }
 
         const likeGroup = rest(child).find(
           (n): n is GroupNode =>
@@ -2754,7 +2881,9 @@ export function mill(tree: RootNode, file: string): MillResult {
           span: spanOf(child),
         }
 
-        if (likeGroup) {take.type = parseLikeType(likeGroup)}
+        if (likeGroup) {
+          take.type = parseLikeType(likeGroup)
+        }
 
         takes.push(take)
       }
@@ -2771,15 +2900,17 @@ export function mill(tree: RootNode, file: string): MillResult {
     const out: { name: string; value?: Expression }[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'send') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'send') {
+        continue
+      }
 
       const nameGroup = rest(child)[0]
       const name =
-        nameGroup?.kind === 'group'
-          ? headName(nameGroup)
-          : undefined
+        nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
-      if (!name) {continue}
+      if (!name) {
+        continue
+      }
 
       const valueNode = rest(child)[1]
       out.push(
@@ -2811,7 +2942,9 @@ export function mill(tree: RootNode, file: string): MillResult {
         continue
       }
 
-      if (node.kind !== 'group') {continue}
+      if (node.kind !== 'group') {
+        continue
+      }
 
       const span = spanOf(node)
 
@@ -2819,6 +2952,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         // `node <tag>` is `zone <tag>` that forces an html element even when `<tag>` is also a component name (the
         // escape hatch for rendering a real `<select>` inside a same-named component, e.g. native-select).
         case 'node':
+
         case 'zone': {
           const forced = headName(node) === 'node'
           const nameGroup = rest(node)[0]
@@ -2827,7 +2961,9 @@ export function mill(tree: RootNode, file: string): MillResult {
               ? headName(nameGroup)
               : undefined
 
-          if (!elName) {break}
+          if (!elName) {
+            break
+          }
 
           const attributes: ZoneAttribute[] = []
           const props: { name: string; value: Expression }[] = []
@@ -2840,8 +2976,9 @@ export function mill(tree: RootNode, file: string): MillResult {
               // `name <ref>`: bind this element to a local the rest of the zone can read
               const refGroup = rest(child)[0]
 
-              if (refGroup?.kind === 'group')
-                {ref = headName(refGroup)}
+              if (refGroup?.kind === 'group') {
+                ref = headName(refGroup)
+              }
             } else if (
               child.kind === 'group' &&
               headName(child) === 'seed'
@@ -2882,13 +3019,14 @@ export function mill(tree: RootNode, file: string): MillResult {
 
               const valueNode = rest(child)[1]
 
-              if (bindName)
-                {props.push({
+              if (bindName) {
+                props.push({
                   name: bindName,
                   value: valueNode
                     ? toExpression(valueNode, scope)
                     : { form: 'unit', span },
-                })}
+                })
+              }
             } else if (
               child.kind === 'group' &&
               headName(child) === 'hook'
@@ -2904,13 +3042,14 @@ export function mill(tree: RootNode, file: string): MillResult {
 
               const handlerNode = rest(child)[1]
 
-              if (eventName && handlerNode)
-                {attributes.push({
+              if (eventName && handlerNode) {
+                attributes.push({
                   name: eventName,
                   value: toExpression(handlerNode, scope),
                   event: true,
                   span: spanOf(child),
-                })}
+                })
+              }
             } else {
               children.push(child)
             }
@@ -2974,10 +3113,9 @@ export function mill(tree: RootNode, file: string): MillResult {
         case 'fork': {
           const hookMap = hooks(node)
           const condNodes = hookMap.get('test')
-          const cond: Expression =
-            condNodes?.[0]
-              ? toExpression(condNodes[0], scope)
-              : { form: 'boolean', value: false, span }
+          const cond: Expression = condNodes?.[0]
+            ? toExpression(condNodes[0], scope)
+            : { form: 'boolean', value: false, span }
 
           const elseNodes = hookMap.get('miss')
           out.push({
@@ -2999,11 +3137,11 @@ export function mill(tree: RootNode, file: string): MillResult {
         case 'walk': {
           const parts = rest(node)
           const variant =
-            parts[0]?.kind === 'group'
-              ? headName(parts[0])
-              : undefined
+            parts[0]?.kind === 'group' ? headName(parts[0]) : undefined
 
-          if (variant !== 'list') {break}
+          if (variant !== 'list') {
+            break
+          }
 
           const iterable: Expression = parts[1]
             ? toExpression(parts[1], scope)
@@ -3016,10 +3154,7 @@ export function mill(tree: RootNode, file: string): MillResult {
 
           const first = nextBody[0]
 
-          if (
-            first?.kind === 'group' &&
-            headName(first) === 'take'
-          ) {
+          if (first?.kind === 'group' && headName(first) === 'take') {
             const nameGroup = rest(first)[1]
 
             if (
@@ -3028,8 +3163,9 @@ export function mill(tree: RootNode, file: string): MillResult {
             ) {
               const itemGroup = rest(nameGroup)[0]
 
-              if (itemGroup?.kind === 'group')
-                {item = headName(itemGroup) ?? 'item'}
+              if (itemGroup?.kind === 'group') {
+                item = headName(itemGroup) ?? 'item'
+              }
             }
 
             bodyNodes = nextBody.slice(1)
@@ -3051,9 +3187,7 @@ export function mill(tree: RootNode, file: string): MillResult {
           const args = rest(node)
           const target = args[0]
           const nm =
-            target?.kind === 'group'
-              ? headName(target)
-              : undefined
+            target?.kind === 'group' ? headName(target) : undefined
 
           const valueNode = args[1]
 
@@ -3083,9 +3217,7 @@ export function mill(tree: RootNode, file: string): MillResult {
   function buildZone(group: GroupNode): Statement | undefined {
     const nameGroup = rest(group)[0]
     const name =
-      nameGroup?.kind === 'group'
-        ? headName(nameGroup)
-        : undefined
+      nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
     const span = spanOf(group)
 
@@ -3098,15 +3230,17 @@ export function mill(tree: RootNode, file: string): MillResult {
     const params: { name: string; type?: Type }[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'take') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'take') {
+        continue
+      }
 
       const varGroup = rest(child)[0]
       const paramName =
-        varGroup?.kind === 'group'
-          ? headName(varGroup)
-          : undefined
+        varGroup?.kind === 'group' ? headName(varGroup) : undefined
 
-      if (!paramName) {continue}
+      if (!paramName) {
+        continue
+      }
 
       const likeGroup = rest(child).find(
         (n): n is GroupNode =>
@@ -3115,7 +3249,9 @@ export function mill(tree: RootNode, file: string): MillResult {
 
       const param: { name: string; type?: Type } = { name: paramName }
 
-      if (likeGroup) {param.type = parseLikeType(likeGroup)}
+      if (likeGroup) {
+        param.type = parseLikeType(likeGroup)
+      }
 
       params.push(param)
     }
@@ -3153,22 +3289,23 @@ export function mill(tree: RootNode, file: string): MillResult {
     const methods: DockMethod[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'task') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'task') {
+        continue
+      }
 
       const mNameGroup = rest(child)[0]
       const mName =
-        mNameGroup?.kind === 'group'
-          ? headName(mNameGroup)
-          : undefined
+        mNameGroup?.kind === 'group' ? headName(mNameGroup) : undefined
 
-      if (mName)
-        {methods.push({
+      if (mName) {
+        methods.push({
           name: mName,
           takes: buildDockTakes(child),
           calls: buildDockCalls(child, scope),
           sends: buildDockSends(child, scope),
           span: spanOf(child),
-        })}
+        })
+      }
     }
 
     let component: DockRoute['component']
@@ -3181,29 +3318,30 @@ export function mill(tree: RootNode, file: string): MillResult {
     if (zoneChild) {
       const zNameGroup = rest(zoneChild)[0]
       const zName =
-        zNameGroup?.kind === 'group'
-          ? headName(zNameGroup)
-          : undefined
+        zNameGroup?.kind === 'group' ? headName(zNameGroup) : undefined
 
-      if (zName)
-        {component = {
+      if (zName) {
+        component = {
           name: zName,
           props: buildBindArgs(zoneChild, scope),
-        }}
+        }
+      }
     }
 
     const directives: { name: string; value?: Expression }[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'seed') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'seed') {
+        continue
+      }
 
       const nameGroup = rest(child)[0]
       const dName =
-        nameGroup?.kind === 'group'
-          ? headName(nameGroup)
-          : undefined
+        nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
-      if (!dName) {continue}
+      if (!dName) {
+        continue
+      }
 
       const valueNode = rest(child)[1]
       directives.push(
@@ -3213,23 +3351,23 @@ export function mill(tree: RootNode, file: string): MillResult {
       )
     }
 
-    const dockHooks: { name: string; calls: DockCall[] }[] =
-      []
+    const dockHooks: { name: string; calls: DockCall[] }[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'hook') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'hook') {
+        continue
+      }
 
       const nameGroup = rest(child)[0]
       const hName =
-        nameGroup?.kind === 'group'
-          ? headName(nameGroup)
-          : undefined
+        nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
-      if (hName)
-        {dockHooks.push({
+      if (hName) {
+        dockHooks.push({
           name: hName,
           calls: buildDockCalls(child, scope),
-        })}
+        })
+      }
     }
 
     const children = rest(group)
@@ -3262,24 +3400,23 @@ export function mill(tree: RootNode, file: string): MillResult {
     const span = spanOf(group)
     const nameGroup = rest(group)[0]
     const path =
-      nameGroup?.kind === 'group'
-        ? (headName(nameGroup) ?? '')
-        : ''
+      nameGroup?.kind === 'group' ? (headName(nameGroup) ?? '') : ''
 
     // the implementation: a `task <impl>` child binds the function that runs this command
     const calls: DockCall[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'task') {continue}
+      if (child.kind !== 'group' || headName(child) !== 'task') {
+        continue
+      }
 
       const implGroup = rest(child)[0]
       const impl =
-        implGroup?.kind === 'group'
-          ? headName(implGroup)
-          : undefined
+        implGroup?.kind === 'group' ? headName(implGroup) : undefined
 
-      if (impl)
-        {calls.push({ name: impl, args: [], span: spanOf(child) })}
+      if (impl) {
+        calls.push({ name: impl, args: [], span: spanOf(child) })
+      }
     }
 
     // nested `hook`s are subcommands
@@ -3292,12 +3429,18 @@ export function mill(tree: RootNode, file: string): MillResult {
 
     // command help text: a direct `note <text>` child of the hook
     let note: string | undefined
+
     const cmdNote = rest(group).find(
-      (n): n is GroupNode => n.kind === 'group' && headName(n) === 'note',
+      (n): n is GroupNode =>
+        n.kind === 'group' && headName(n) === 'note',
     )
+
     if (cmdNote) {
       const textNode = rest(cmdNote)[0]
-      if (textNode?.kind === 'text') {note = textOf(textNode)}
+
+      if (textNode?.kind === 'text') {
+        note = textOf(textNode)
+      }
     }
 
     return {
@@ -3318,10 +3461,7 @@ export function mill(tree: RootNode, file: string): MillResult {
   function isFfiDock(group: GroupNode): boolean {
     const first = rest(group)[0]
 
-    return (
-      first?.kind === 'group' &&
-      headName(first) === 'load'
-    )
+    return first?.kind === 'group' && headName(first) === 'load'
   }
 
   const program: Program = []
@@ -3336,7 +3476,9 @@ export function mill(tree: RootNode, file: string): MillResult {
     if (keyword === 'zone') {
       const zone = buildZone(group)
 
-      if (zone) {program.push(zone)}
+      if (zone) {
+        program.push(zone)
+      }
 
       continue
     }
@@ -3344,24 +3486,29 @@ export function mill(tree: RootNode, file: string): MillResult {
     if (keyword === 'task') {
       const fn = buildFunction(group)
 
-      if (fn) {program.push(fn)}
+      if (fn) {
+        program.push(fn)
+      }
     } else if (keyword === 'host') {
       // `host <name>, <value>` at the top level is a named constant (a nullary function). A value-less foreign global
       // falls through to the body builder, which records it as an ambient binding.
       const constant = buildHostConstant(group)
 
-      if (constant) {program.push(constant)}
-      else {program.push(...toStatements([group], new Set<string>()))}
+      if (constant) {
+        program.push(constant)
+      } else {
+        program.push(...toStatements([group], new Set<string>()))
+      }
     } else if (keyword === 'bind') {
       const bind = buildBind(group)
 
-      if (bind) {program.push(bind)}
+      if (bind) {
+        program.push(bind)
+      }
     } else if (keyword === 'form') {
       const nameGroup = rest(group)[0]
       const formName =
-        nameGroup?.kind === 'group'
-          ? headName(nameGroup)
-          : undefined
+        nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
       const primitive = formName ? TYPE_NAME[formName] : undefined
 
@@ -3396,22 +3543,27 @@ export function mill(tree: RootNode, file: string): MillResult {
       } else {
         const rt = buildRecordType(group)
 
-        if (rt) {program.push(rt)}
+        if (rt) {
+          program.push(rt)
+        }
 
         // `wear <mask>` blocks inside the form are trait instances for it (methods carry the form's generics)
-        const formParams =
-          rt?.form === 'record-type' ? rt.params : []
+        const formParams = rt?.form === 'record-type' ? rt.params : []
 
-        if (formName)
-          {program.push(...wearInstances(group, formName, formParams))}
+        if (formName) {
+          program.push(...wearInstances(group, formName, formParams))
+        }
 
-        if (formName && rt?.form === 'record-type')
-          {program.push(...formMethods(group, formName, rt.params))}
+        if (formName && rt?.form === 'record-type') {
+          program.push(...formMethods(group, formName, rt.params))
+        }
       }
     } else if (keyword === 'mask') {
       const mask = buildMask(group)
 
-      if (mask) {program.push(mask)}
+      if (mask) {
+        program.push(mask)
+      }
     } else if (keyword === 'suit') {
       program.push(...buildSuit(group))
     } else if (keyword === 'hook') {
@@ -3445,14 +3597,17 @@ export function mill(tree: RootNode, file: string): MillResult {
       const isTypeDock =
         firstChild?.kind === 'group' && headName(firstChild) === 'type'
 
-      if (isTypeDock) {program.push(...buildDock(group, true))}
-      else if (isFfiDock(group)) {program.push(...buildDock(group))}
-      else
-        {program.push({
+      if (isTypeDock) {
+        program.push(...buildDock(group, true))
+      } else if (isFfiDock(group)) {
+        program.push(...buildDock(group))
+      } else {
+        program.push({
           form: 'dock',
           route: buildDockRoute(group),
           span: spanOf(group),
-        })}
+        })
+      }
     } else if (
       keyword === 'load' ||
       keyword === 'bear' ||
@@ -3462,20 +3617,25 @@ export function mill(tree: RootNode, file: string): MillResult {
       // import aliases so the local name Y can be rewritten to X below.
       if (keyword === 'load') {
         for (const child of rest(group)) {
-          if (child.kind !== 'group' || headName(child) !== 'find') {continue}
+          if (child.kind !== 'group' || headName(child) !== 'find') {
+            continue
+          }
 
           const parts = rest(child).filter(
             (p): p is GroupNode => p.kind === 'group',
           )
+
           const target = parts[0] ? headName(parts[0]) : undefined
           const nameGroup = parts.find(p => headName(p) === 'name')
           const aliasNode = nameGroup ? rest(nameGroup)[0] : undefined
           const local =
-            aliasNode && aliasNode.kind === 'group'
+            aliasNode?.kind === 'group'
               ? headName(aliasNode)
               : undefined
 
-          if (target && local && local !== target) {aliases.set(local, target)}
+          if (target && local && local !== target) {
+            aliases.set(local, target)
+          }
         }
       }
     } else if (keyword === 'note') {
@@ -3485,22 +3645,30 @@ export function mill(tree: RootNode, file: string): MillResult {
     }
   }
 
-  if (diagnostics.length) {return { ok: false, diagnostics }}
+  if (diagnostics.length) {
+    return { ok: false, diagnostics }
+  }
 
   // apply import aliases. A reference is a `variable` expression (reads and calls), a `record` construction (`make X`),
   // or a `named` type. Definitions are `function`/`record-type` nodes whose name is not a `variable`/`record`/`named`
   // field, and the alias name is imported (never defined here), so every match is a genuine reference. String literals
   // and a record's own field names are plain strings, never visited as `name` here, so they are untouched.
   if (aliases.size) {
-    const rewriteName = (name: string): string => aliases.get(name) ?? name
+    const rewriteName = (name: string): string =>
+      aliases.get(name) ?? name
 
     const walk = (node: unknown): void => {
       if (Array.isArray(node)) {
-        for (const item of node) {walk(item)}
+        for (const item of node) {
+          walk(item)
+        }
+
         return
       }
 
-      if (!node || typeof node !== 'object') {return}
+      if (!node || typeof node !== 'object') {
+        return
+      }
 
       const record = node as Record<string, unknown>
 
@@ -3509,13 +3677,19 @@ export function mill(tree: RootNode, file: string): MillResult {
         typeof record.name === 'string'
       ) {
         record.name = rewriteName(record.name)
-      } else if (record.kind === 'named' && typeof record.name === 'string') {
+      } else if (
+        record.kind === 'named' &&
+        typeof record.name === 'string'
+      ) {
         record.name = rewriteName(record.name)
       }
 
       for (const key in record) {
         const value = record[key]
-        if (value && typeof value === 'object') {walk(value)}
+
+        if (value && typeof value === 'object') {
+          walk(value)
+        }
       }
     }
 

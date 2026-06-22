@@ -77,12 +77,17 @@ export function formatBytes(n: number): string {
   const sign = n < 0 ? '-' : ''
   const abs = Math.abs(n)
 
-  if (abs < 1024) {return `${sign}${abs}B`}
+  if (abs < 1024) {
+    return `${sign}${abs}B`
+  }
 
-  if (abs < 1024 * 1024) {return `${sign}${(abs / 1024).toFixed(1)}KB`}
+  if (abs < 1024 * 1024) {
+    return `${sign}${(abs / 1024).toFixed(1)}KB`
+  }
 
-  if (abs < 1024 * 1024 * 1024)
-    {return `${sign}${(abs / 1024 / 1024).toFixed(2)}MB`}
+  if (abs < 1024 * 1024 * 1024) {
+    return `${sign}${(abs / 1024 / 1024).toFixed(2)}MB`
+  }
 
   return `${sign}${(abs / 1024 / 1024 / 1024).toFixed(2)}GB`
 }

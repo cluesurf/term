@@ -14,7 +14,10 @@
  */
 
 import { projectResolver } from '@cluesurf/call/code/make'
-import { huntSeedCompiler, renderHunt } from '@cluesurf/test/code/seed-hunt'
+import {
+  huntSeedCompiler,
+  renderHunt,
+} from '@cluesurf/test/code/seed-hunt'
 import { logGood, logFail } from '@cluesurf/make/code/tint'
 
 export async function callHunt(input: {
@@ -39,8 +42,9 @@ export async function callHunt(input: {
     console.log(JSON.stringify(result, null, 2))
   } else {
     console.log(renderHunt(result))
-    if (result.findings === 0) logGood('No issues found')
-    else logFail(`Found ${result.findings} issue(s)`)
+
+    if (result.findings === 0) {logGood('No issues found')}
+    else {logFail(`Found ${result.findings} issue(s)`)}
   }
 
   process.exit(result.findings === 0 ? 0 : 1)

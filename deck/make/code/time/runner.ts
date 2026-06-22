@@ -33,7 +33,7 @@ export function discoverBenchmarks(
       (s): s is Extract<Program[number], { form: 'function' }> =>
         s.form === 'function' &&
         s.params.length === 0 &&
-        s.name.startsWith("time-"),
+        s.name.startsWith('time-'),
     )
     .filter(s => !filter || s.name.includes(filter))
     .map(s => ({ name: s.name, entry: toCamel(s.name) }))
@@ -87,7 +87,9 @@ export async function runBenchmarks(input: {
   warmup?: number
   iterations?: number
 }): Promise<BenchmarkResult[]> {
-  if (input.module.benchmarks.length === 0) {return []}
+  if (input.module.benchmarks.length === 0) {
+    return []
+  }
 
   const dir = await prepareModuleDir({
     root: input.root,

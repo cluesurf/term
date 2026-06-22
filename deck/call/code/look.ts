@@ -52,8 +52,9 @@ export async function callLook(input: {
     }
   }
 
-  if (!input.json && !input.csv)
-    {logStep(`Inspecting ${input.target}...`)}
+  if (!input.json && !input.csv) {
+    logStep(`Inspecting ${input.target}...`)
+  }
 
   const { symbols, modules, loadDiagnostics } = inspectModule(
     entry,

@@ -15,13 +15,16 @@ export const noDuplicateBranchCondition: Rule = {
   docs: 'two branches of a fork test share a condition; the later one is unreachable',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
-    if (node.form !== 'if') return
+
+    if (node.form !== 'if') {return}
 
     for (let i = 1; i < node.branches.length; i++) {
       const cond = node.branches[i]!.cond
-      if (!isStable(cond)) continue
+
+      if (!isStable(cond)) {continue}
 
       for (let j = 0; j < i; j++) {
         if (expressionsEqual(cond, node.branches[j]!.cond)) {

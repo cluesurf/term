@@ -167,6 +167,7 @@ function emitTone(group: GroupNode): string {
     first?.kind === 'group' && headName(first) !== 'have'
       ? headName(first)
       : ''
+
   const selector = scope === 'dark' ? '.dark' : ':root'
   const out: string[] = []
 
@@ -244,6 +245,7 @@ export function compileLookCss(
       if (only && !only.has(argName(group, 0))) {
         continue
       }
+
       blocks.push(emitFace(group))
     } else if (name === 'tone') {
       blocks.push(emitTone(group))

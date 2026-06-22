@@ -12,7 +12,11 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const SEED_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const SEED_ROOT = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+)
 const LINE = join(SEED_ROOT, 'deck', 'call', 'code', 'line.ts')
 const TSCONFIG = join(SEED_ROOT, 'tsconfig.json')
 
@@ -87,7 +91,10 @@ function main(): void {
     ['mind', 'The kernel is the type authority.', '--kind', 'decision'],
     dir,
   )
-  const recall = seed(['mind', '--find', 'kernel', '--back', 'json'], dir)
+  const recall = seed(
+    ['mind', '--find', 'kernel', '--back', 'json'],
+    dir,
+  )
   const recallJson = JSON.parse(recall.stdout.trim())
   expect(
     'mind: remembers a fact and recalls it by query',

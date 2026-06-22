@@ -10,14 +10,19 @@ export const noLonelyIf: Rule = {
   docs: 'an else that holds only an if should be an else-if arm',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
-    const node = target.node
-    if (node.form !== 'if' || !node.otherwise) return
+    if (target.kind !== 'statement') {return}
 
-    if (node.otherwise.length === 1 && node.otherwise[0]!.form === 'if') {
+    const node = target.node
+
+    if (node.form !== 'if' || !node.otherwise) {return}
+
+    if (
+      node.otherwise.length === 1 &&
+      node.otherwise[0]!.form === 'if'
+    ) {
       context.report({
         message: `this else holds only a fork; make it an else-if arm of the outer fork`,
-        span: node.otherwise[0]!.span,
+        span: node.otherwise[0].span,
       })
     }
   },

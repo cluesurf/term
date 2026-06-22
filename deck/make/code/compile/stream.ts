@@ -23,7 +23,12 @@ import { hashText } from '@cluesurf/make/code/compile/cache'
 import type { TopBlock } from '@cluesurf/make/code/compile/incremental-parse'
 
 function isHead(line: string): boolean {
-  return line.length > 0 && line[0] !== ' ' && line[0] !== '\t' && line[0] !== '#'
+  return (
+    line.length > 0 &&
+    !line.startsWith(' ') &&
+    !line.startsWith('\t') &&
+    !line.startsWith('#')
+  )
 }
 
 function isLeadingTrivia(line: string): boolean {
@@ -36,7 +41,10 @@ function isLeadingTrivia(line: string): boolean {
  * trailing trivia that may ride forward. Equivalent to `splitTopLevel`
  * on the joined source.
  */
-export function splitStreaming(lines: Iterable<string>, onBlock: (block: TopBlock) => void): void {
+export function splitStreaming(
+  lines: Iterable<string>,
+  onBlock: (block: TopBlock) => void,
+): void {
   let block: string[] = []
   let blockStartLine = 0
   let lineNo = 0
@@ -53,9 +61,14 @@ export function splitStreaming(lines: Iterable<string>, onBlock: (block: TopBloc
       // current block rides forward onto this new one. Find how many lines
       // ride forward (mirror splitTopLevel: never empty the current block).
       let trailing = 0
-      while (block.length - trailing > 1 && isLeadingTrivia(block[block.length - 1 - trailing]!)) {
+
+      while (
+        block.length - trailing > 1 &&
+        isLeadingTrivia(block[block.length - 1 - trailing]!)
+      ) {
         trailing++
       }
+
       const keep = block.length - trailing
       const trivia = block.slice(keep)
       emit(keep)
@@ -63,7 +76,8 @@ export function splitStreaming(lines: Iterable<string>, onBlock: (block: TopBloc
       block = trivia
     }
 
-    if (isHead(line)) seenHead = true
+    if (isHead(line)) {seenHead = true}
+
     block.push(line)
     lineNo++
   }
@@ -74,9 +88,12 @@ export function splitStreaming(lines: Iterable<string>, onBlock: (block: TopBloc
 }
 
 /** Collect the streamed blocks into an array (equivalent to splitTopLevel). */
-export function splitStreamingToArray(lines: Iterable<string>): TopBlock[] {
+export function splitStreamingToArray(
+  lines: Iterable<string>,
+): TopBlock[] {
   const out: TopBlock[] = []
   splitStreaming(lines, b => out.push(b))
+
   return out
 }
 
@@ -86,7 +103,9 @@ export function splitStreamingToArray(lines: Iterable<string>): TopBlock[] {
  * current block plus a tiny trivia backlog - never the whole file - and
  * yield each top-level block the instant it completes.
  */
-export async function* streamFileBlocks(path: string): AsyncGenerator<TopBlock> {
+export async function* streamFileBlocks(
+  path: string,
+): AsyncGenerator<TopBlock> {
   const rl = createInterface({
     input: createReadStream(path, { encoding: 'utf8' }),
     crlfDelay: Infinity,
@@ -99,9 +118,14 @@ export async function* streamFileBlocks(path: string): AsyncGenerator<TopBlock> 
   for await (const line of rl) {
     if (isHead(line) && seenHead) {
       let trailing = 0
-      while (block.length - trailing > 1 && isLeadingTrivia(block[block.length - 1 - trailing]!)) {
+
+      while (
+        block.length - trailing > 1 &&
+        isLeadingTrivia(block[block.length - 1 - trailing]!)
+      ) {
         trailing++
       }
+
       const keep = block.length - trailing
       const text = block.slice(0, keep).join('\n')
       yield { text, startLine: blockStartLine, hash: hashText(text) }
@@ -109,7 +133,8 @@ export async function* streamFileBlocks(path: string): AsyncGenerator<TopBlock> 
       block = block.slice(keep)
     }
 
-    if (isHead(line)) seenHead = true
+    if (isHead(line)) {seenHead = true}
+
     block.push(line)
   }
 

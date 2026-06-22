@@ -14,7 +14,10 @@
 // The e-graph form is taken only when it is strictly smaller than the original, so an irreducible expression is
 // returned byte-for-byte unchanged (no commutative churn).
 
-import type { Expression, BinaryOp } from '@cluesurf/make/code/compile/node'
+import type {
+  Expression,
+  BinaryOp,
+} from '@cluesurf/make/code/compile/node'
 import type { Span } from '@cluesurf/make/code/parser/diagnostic'
 import type { Expr } from '@cluesurf/make/code/ir/egraph'
 import { optimize } from '@cluesurf/make/code/ir/egraph'
@@ -28,7 +31,9 @@ const ARITH = new Set<BinaryOp>(['+', '-', '*'])
 // Returns undefined for anything containing a call or other effectful / non-path node, so such a value is never used
 // as a leaf (never reordered or cancelled).
 function pathKey(node: Expression): string | undefined {
-  if (node.form === 'variable') {return `v:${node.name}`}
+  if (node.form === 'variable') {
+    return `v:${node.name}`
+  }
 
   if (node.form === 'member') {
     const target = pathKey(node.target)
@@ -47,9 +52,13 @@ function toExpr(
 ): Expr | undefined {
   if (node.form === 'integer') {
     // a bigint or an out-of-safe-range literal would fold wrong in JS-number arithmetic
-    if (typeof node.value === 'bigint') {return undefined}
+    if (typeof node.value === 'bigint') {
+      return undefined
+    }
 
-    if (!Number.isSafeInteger(node.value)) {return undefined}
+    if (!Number.isSafeInteger(node.value)) {
+      return undefined
+    }
 
     return { t: 'int', value: node.value }
   }
@@ -57,11 +66,15 @@ function toExpr(
   if (node.form === 'binary' && ARITH.has(node.op)) {
     const left = toExpr(node.left, leaves)
 
-    if (!left) {return undefined}
+    if (!left) {
+      return undefined
+    }
 
     const right = toExpr(node.right, leaves)
 
-    if (!right) {return undefined}
+    if (!right) {
+      return undefined
+    }
 
     return { t: 'op', op: node.op, left, right }
   }
@@ -71,13 +84,19 @@ function toExpr(
   // or cancelling a non-integer leaf is wrong. Bail on float, unknown, dynamic, or a missing type. A call or other
   // effectful node has no path key, so it is never admitted.
   if (node.form === 'variable' || node.form === 'member') {
-    if (node.type?.kind !== 'number') {return undefined}
+    if (node.type?.kind !== 'number') {
+      return undefined
+    }
 
     const key = pathKey(node)
 
-    if (key === undefined) {return undefined}
+    if (key === undefined) {
+      return undefined
+    }
 
-    if (!leaves.has(key)) {leaves.set(key, node)}
+    if (!leaves.has(key)) {
+      leaves.set(key, node)
+    }
 
     return { t: 'var', name: key }
   }
@@ -95,7 +114,9 @@ function fromExpr(
 ): Expression | undefined {
   switch (expr.t) {
     case 'int':
-      if (!Number.isSafeInteger(expr.value)) {return undefined}
+      if (!Number.isSafeInteger(expr.value)) {
+        return undefined
+      }
 
       return { form: 'integer', value: expr.value, span }
     case 'var':
@@ -103,23 +124,36 @@ function fromExpr(
       // The leaf is pure, so sharing the node is safe. If it is somehow absent, returning undefined bails the rewrite
       // rather than fabricating a wrong node.
       return leaves.get(expr.name)
+
     case 'op': {
       const left = fromExpr(expr.left, leaves, span)
 
-      if (!left) {return undefined}
+      if (!left) {
+        return undefined
+      }
 
       const right = fromExpr(expr.right, leaves, span)
 
-      if (!right) {return undefined}
+      if (!right) {
+        return undefined
+      }
 
-      return { form: 'binary', op: expr.op as BinaryOp, left, right, span }
+      return {
+        form: 'binary',
+        op: expr.op as BinaryOp,
+        left,
+        right,
+        span,
+      }
     }
   }
 }
 
 // node count, to make sure the e-graph form genuinely shrinks the expression before we take it
 function size(expr: Expression): number {
-  if (expr.form === 'binary') {return 1 + size(expr.left) + size(expr.right)}
+  if (expr.form === 'binary') {
+    return 1 + size(expr.left) + size(expr.right)
+  }
 
   return 1
 }
@@ -127,16 +161,22 @@ function size(expr: Expression): number {
 // optimize an arithmetic expression via the e-graph, or return it unchanged when it is outside the sound fragment or
 // the e-graph finds nothing smaller.
 export function egraphArith(node: Expression): Expression {
-  if (node.form !== 'binary' || !ARITH.has(node.op)) {return node}
+  if (node.form !== 'binary' || !ARITH.has(node.op)) {
+    return node
+  }
 
   const leaves = new Map<string, Expression>()
   const expr = toExpr(node, leaves)
 
-  if (!expr) {return node}
+  if (!expr) {
+    return node
+  }
 
   const rebuilt = fromExpr(optimize(expr), leaves, node.span)
 
-  if (!rebuilt) {return node}
+  if (!rebuilt) {
+    return node
+  }
 
   return size(rebuilt) < size(node) ? rebuilt : node
 }

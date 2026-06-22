@@ -66,8 +66,9 @@ export function buildGlobalScope(program: Program): Scope {
     }
   }
 
-  for (const intrinsic of INTRINSICS)
-    {global.set(intrinsic, { kind: 'builtin' })}
+  for (const intrinsic of INTRINSICS) {
+    global.set(intrinsic, { kind: 'builtin' })
+  }
 
   return global
 }
@@ -95,19 +96,24 @@ export function resolve(
   // exposes `p` in that branch)
   const variantFields = new Map<string, string[]>()
 
-  for (const statement of program)
-    {if (statement.form === 'record-type')
-      {for (const variant of statement.variants)
-        {variantFields.set(
+  for (const statement of program) {
+    if (statement.form === 'record-type') {
+      for (const variant of statement.variants) {
+        variantFields.set(
           variant.name,
           variant.fields.map(f => f.name),
-        )}}}
+        )
+      }
+    }
+  }
 
   const look = (name: string): Binding | undefined => {
     for (let i = stack.length - 1; i >= 0; i--) {
       const found = stack[i]!.get(name)
 
-      if (found) {return found}
+      if (found) {
+        return found
+      }
     }
 
     return undefined
@@ -116,8 +122,11 @@ export function resolve(
   const known = (): string[] => {
     const names = new Set<string>()
 
-    for (const scope of stack)
-      {for (const name of scope.keys()) {names.add(name)}}
+    for (const scope of stack) {
+      for (const name of scope.keys()) {
+        names.add(name)
+      }
+    }
 
     return [...names]
   }
@@ -160,11 +169,15 @@ export function resolve(
       case 'call':
         resolveExpression(node.callee)
 
-        for (const arg of node.args) {resolveExpression(arg)}
+        for (const arg of node.args) {
+          resolveExpression(arg)
+        }
 
         break
       case 'array':
-        for (const item of node.items) {resolveExpression(item)}
+        for (const item of node.items) {
+          resolveExpression(item)
+        }
 
         break
       case 'map':
@@ -175,7 +188,9 @@ export function resolve(
 
         break
       case 'record':
-        for (const field of node.fields) {resolveExpression(field.value)}
+        for (const field of node.fields) {
+          resolveExpression(field.value)
+        }
 
         break
       case 'member':
@@ -190,10 +205,13 @@ export function resolve(
         // used only inside the closure still get their binding (needed for unknown-name checks and import collection)
         stack.push(new Map())
 
-        for (const param of node.params)
-          {declare(param.name, { kind: 'parameter' })}
+        for (const param of node.params) {
+          declare(param.name, { kind: 'parameter' })
+        }
 
-        for (const statement of node.body) {resolveStatement(statement)}
+        for (const statement of node.body) {
+          resolveStatement(statement)
+        }
 
         stack.pop()
         break
@@ -205,7 +223,9 @@ export function resolve(
           resolveExpression(branch.value)
         }
 
-        if (node.otherwise) {resolveExpression(node.otherwise)}
+        if (node.otherwise) {
+          resolveExpression(node.otherwise)
+        }
 
         break
       default:
@@ -216,7 +236,9 @@ export function resolve(
   function resolveBody(body: Statement[]): void {
     stack.push(new Map())
 
-    for (const statement of body) {resolveStatement(statement)}
+    for (const statement of body) {
+      resolveStatement(statement)
+    }
 
     stack.pop()
   }
@@ -235,7 +257,9 @@ export function resolve(
         resolveExpression(node.expr)
         break
       case 'return':
-        if (node.value) {resolveExpression(node.value)}
+        if (node.value) {
+          resolveExpression(node.value)
+        }
 
         break
       case 'while':
@@ -248,7 +272,9 @@ export function resolve(
           resolveBody(branch.body)
         }
 
-        if (node.otherwise) {resolveBody(node.otherwise)}
+        if (node.otherwise) {
+          resolveBody(node.otherwise)
+        }
 
         break
       case 'for-each':
@@ -256,7 +282,9 @@ export function resolve(
         stack.push(new Map())
         declare(node.item, { kind: 'local' })
 
-        for (const statement of node.body) {resolveStatement(statement)}
+        for (const statement of node.body) {
+          resolveStatement(statement)
+        }
 
         stack.pop()
         break
@@ -269,16 +297,20 @@ export function resolve(
           // bind the matched variant's fields as locals for this branch, honoring `binds` field-renames if present
           for (const fieldName of branch.binds ??
             variantFields.get(branch.label) ??
-            [])
-            {declare(fieldName, { kind: 'local' })}
+            []) {
+            declare(fieldName, { kind: 'local' })
+          }
 
-          for (const statement of branch.body)
-            {resolveStatement(statement)}
+          for (const statement of branch.body) {
+            resolveStatement(statement)
+          }
 
           stack.pop()
         }
 
-        if (node.otherwise) {resolveBody(node.otherwise)}
+        if (node.otherwise) {
+          resolveBody(node.otherwise)
+        }
 
         break
       case 'hold':
@@ -297,10 +329,13 @@ export function resolve(
       case 'function': {
         stack.push(new Map())
 
-        for (const param of node.params)
-          {declare(param.name, { kind: 'parameter' })}
+        for (const param of node.params) {
+          declare(param.name, { kind: 'parameter' })
+        }
 
-        for (const statement of node.body) {resolveStatement(statement)}
+        for (const statement of node.body) {
+          resolveStatement(statement)
+        }
 
         stack.pop()
         break
@@ -311,11 +346,13 @@ export function resolve(
       case 'zone': {
         stack.push(new Map())
 
-        for (const param of node.params)
-          {declare(param.name, { kind: 'parameter' })}
+        for (const param of node.params) {
+          declare(param.name, { kind: 'parameter' })
+        }
 
-        for (const ref of collectZoneRefs(node.body))
-          {declare(ref, { kind: 'local' })}
+        for (const ref of collectZoneRefs(node.body)) {
+          declare(ref, { kind: 'local' })
+        }
 
         resolveZoneNodes(node.body)
         stack.pop()
@@ -331,14 +368,22 @@ export function resolve(
     const walk = (list: ZoneNode[]): void => {
       for (const node of list) {
         if (node.form === 'element') {
-          if (node.ref) {refs.push(node.ref)}
+          if (node.ref) {
+            refs.push(node.ref)
+          }
 
           walk(node.children)
         } else if (node.form === 'fork') {
-          for (const branch of node.branches) {walk(branch.body)}
+          for (const branch of node.branches) {
+            walk(branch.body)
+          }
 
-          if (node.otherwise) {walk(node.otherwise)}
-        } else if (node.form === 'walk') {walk(node.body)}
+          if (node.otherwise) {
+            walk(node.otherwise)
+          }
+        } else if (node.form === 'walk') {
+          walk(node.body)
+        }
       }
     }
 
@@ -353,10 +398,13 @@ export function resolve(
     for (const node of nodes) {
       switch (node.form) {
         case 'element':
-          for (const attribute of node.attributes)
-            {resolveExpression(attribute.value)}
+          for (const attribute of node.attributes) {
+            resolveExpression(attribute.value)
+          }
 
-          for (const prop of node.props) {resolveExpression(prop.value)}
+          for (const prop of node.props) {
+            resolveExpression(prop.value)
+          }
 
           resolveZoneNodes(node.children)
           break
@@ -405,8 +453,9 @@ export function resolve(
       !(
         statement.form === 'function' && statement.name === options.only
       )
-    )
-      {continue}
+    ) {
+      continue
+    }
 
     resolveStatement(statement)
   }

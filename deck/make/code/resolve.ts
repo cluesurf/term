@@ -85,7 +85,10 @@ export function findProjectRoot(fromFile: string): string | undefined {
   let dir = dirname(fromFile)
 
   for (;;) {
-    if (existsSync(join(dir, 'link')) || existsSync(join(dir, 'deck.tree'))) {
+    if (
+      existsSync(join(dir, 'link')) ||
+      existsSync(join(dir, 'deck.tree'))
+    ) {
       return dir
     }
 
@@ -115,7 +118,7 @@ export function editorResolver(filePath: string): Resolver {
 export function moduleCompletions(
   root: string,
   partial: string,
-): Array<{ name: string; isDir: boolean }> {
+): { name: string; isDir: boolean }[] {
   const match = /^(@[^/]+\/[^/]+)\/(.*)$/.exec(partial)
 
   if (!match) {
@@ -135,7 +138,7 @@ export function moduleCompletions(
     return []
   }
 
-  const out: Array<{ name: string; isDir: boolean }> = []
+  const out: { name: string; isDir: boolean }[] = []
 
   for (const entry of entries) {
     if (entry.startsWith('.')) {
@@ -177,7 +180,9 @@ export function scanDefs(text: string): ModuleExport[] {
   const defs: ModuleExport[] = []
 
   text.split('\n').forEach((line, index) => {
-    const match = /^(task|form|mask|bind) ([a-z][A-Za-z0-9-]*)/.exec(line)
+    const match = /^(task|form|mask|bind) ([a-z][A-Za-z0-9-]*)/.exec(
+      line,
+    )
 
     if (match) {
       defs.push({
@@ -197,7 +202,7 @@ export function scanDefs(text: string): ModuleExport[] {
 function treeFilesIn(
   dir: string,
   base: string,
-  out: Array<{ path: string; rel: string }>,
+  out: { path: string; rel: string }[],
   depth = 0,
 ): void {
   if (depth > 8 || out.length > 2000) {
@@ -213,11 +218,16 @@ function treeFilesIn(
   }
 
   for (const entry of entries) {
-    if (entry.startsWith('.') || entry === 'node_modules' || entry === 'host') {
+    if (
+      entry.startsWith('.') ||
+      entry === 'node_modules' ||
+      entry === 'host'
+    ) {
       continue
     }
 
     const full = join(dir, entry)
+
     let isDir = false
 
     try {
@@ -268,7 +278,7 @@ export function findModuleExporting(
 
     for (const pkg of pkgs) {
       const pkgBase = join(scopeDir, pkg)
-      const files: Array<{ path: string; rel: string }> = []
+      const files: { path: string; rel: string }[] = []
       treeFilesIn(pkgBase, pkgBase, files)
 
       for (const file of files) {
@@ -281,7 +291,11 @@ export function findModuleExporting(
             .replace(/\.tree$/, '')
             .split(sep)
             .join('/')
-          return { importPath: `${scope}/${pkg}/${rel}`, kind: def.kind }
+
+          return {
+            importPath: `${scope}/${pkg}/${rel}`,
+            kind: def.kind,
+          }
         }
       }
     }

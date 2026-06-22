@@ -29,18 +29,21 @@ const MAX_PACKAGE_SIZE = 50 * 1024 * 1024
 
 export async function collectFiles(input: {
   dir: string
-}): Promise<Array<string>> {
-  const files: Array<string> = []
+}): Promise<string[]> {
+  const files: string[] = []
 
   // read .treeignore if exists
-  const extraExclude: Array<string> = []
+  const extraExclude: string[] = []
+
   try {
     const ignoreText = await fsp.readFile(
       path.join(input.dir, '.treeignore'),
       'utf-8',
     )
+
     for (const line of ignoreText.split('\n')) {
       const trimmed = line.trim()
+
       if (trimmed && !trimmed.startsWith('#')) {
         extraExclude.push(trimmed)
       }
@@ -64,8 +67,8 @@ export async function collectFiles(input: {
 async function walkDir(input: {
   base: string
   dir: string
-  files: Array<string>
-  exclude: Array<string>
+  files: string[]
+  exclude: string[]
 }): Promise<void> {
   const entries = await fsp.readdir(input.dir, {
     withFileTypes: true,
@@ -75,8 +78,9 @@ async function walkDir(input: {
     const fullPath = path.join(input.dir, entry.name)
     const relative = path.relative(input.base, fullPath)
 
-    if (input.exclude.some(ex => relative.startsWith(ex))) continue
-    if (entry.name.startsWith('.')) continue
+    if (input.exclude.some(ex => relative.startsWith(ex))) {continue}
+
+    if (entry.name.startsWith('.')) {continue}
 
     if (entry.isDirectory()) {
       await walkDir({
@@ -87,11 +91,13 @@ async function walkDir(input: {
       })
     } else if (entry.isFile()) {
       const stat = await fsp.stat(fullPath)
+
       if (stat.size > MAX_FILE_SIZE) {
         throw new Error(
           `File too large (${stat.size} bytes): ${relative}`,
         )
       }
+
       input.files.push(relative)
     }
   }
@@ -99,7 +105,7 @@ async function walkDir(input: {
 
 export async function createTarball(input: {
   dir: string
-  files: Array<string>
+  files: string[]
 }): Promise<Buffer> {
   const manifest = await loadManifest({ dir: input.dir })
   const markStr = showMark(manifest.mark)
@@ -143,8 +149,8 @@ export async function createTarball(input: {
 
 export async function validateManifest(input: {
   manifest: DeckManifest
-}): Promise<Array<string>> {
-  const errors: Array<string> = []
+}): Promise<string[]> {
+  const errors: string[] = []
 
   if (!input.manifest.name) {
     errors.push('Missing package name')
@@ -178,6 +184,7 @@ export async function publishDeck(input: {
 
   // validate
   const errors = await validateManifest({ manifest })
+
   if (errors.length > 0) {
     throw new Error(
       `Validation failed:\n${errors.map(e => `  - ${e}`).join('\n')}`,
@@ -190,6 +197,7 @@ export async function publishDeck(input: {
       name: fullName,
       config: input.config,
     })
+
     if (meta.versions[markStr]) {
       throw new Error(
         `Version ${markStr} already published for ${fullName}`,
@@ -205,6 +213,7 @@ export async function publishDeck(input: {
   // collect files
   const files = await collectFiles({ dir: input.dir })
   console.log(`Files to publish (${files.length}):`)
+
   for (const file of files) {
     console.log(`  ${file}`)
   }
@@ -215,6 +224,7 @@ export async function publishDeck(input: {
 
   if (input.dryRun) {
     console.log('Dry run complete. No upload.')
+
     return
   }
 
@@ -223,6 +233,7 @@ export async function publishDeck(input: {
 
   // read auth token
   const authToken = await loadAuthToken()
+
   if (!authToken) {
     throw new Error(
       'Not authenticated. Run `seed dock mind` to log in.',
@@ -250,8 +261,10 @@ export async function publishDeck(input: {
 async function loadAuthToken(): Promise<string | undefined> {
   const os = await import('os')
   const authFile = path.join(os.homedir(), '.seed', 'auth')
+
   try {
     const text = await fsp.readFile(authFile, 'utf-8')
+
     return text.trim()
   } catch {
     return undefined

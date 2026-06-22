@@ -10,8 +10,14 @@ const calendar = {
   minute: (millis: number): number => new Date(millis).getUTCMinutes(),
   second: (millis: number): number => new Date(millis).getUTCSeconds(),
   weekday: (millis: number): number => new Date(millis).getUTCDay(),
-  build: (year: number, month: number, day: number, hour: number, minute: number, second: number): number =>
-    Date.UTC(year, month - 1, day, hour, minute, second),
+  build: (
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+    second: number,
+  ): number => Date.UTC(year, month - 1, day, hour, minute, second),
   addMonths: (millis: number, count: number): number => {
     const date = new Date(millis)
     date.setUTCMonth(date.getUTCMonth() + count)

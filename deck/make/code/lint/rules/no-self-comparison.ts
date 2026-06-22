@@ -18,11 +18,15 @@ export const noSelfComparison: Rule = {
   docs: 'comparing an expression to itself is always constant and usually a mistake',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'expression') return
+    if (target.kind !== 'expression') {return}
+
     const node = target.node
-    if (node.form !== 'binary' || !COMPARE.has(node.op)) return
+
+    if (node.form !== 'binary' || !COMPARE.has(node.op)) {return}
+
     // only stable operands: comparing a call to itself (`now() == now()`) may legitimately differ, so do not flag it
-    if (!isStable(node.left)) return
+    if (!isStable(node.left)) {return}
+
     if (expressionsEqual(node.left, node.right)) {
       context.report({
         message: `both sides of this \`${node.op}\` are the same expression; the result is constant`,

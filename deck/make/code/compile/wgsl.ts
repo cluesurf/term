@@ -141,8 +141,9 @@ export function emitWgsl(input: Program): string {
           )}\n${pad(d)}}`
         })
 
-        if (node.otherwise)
-          {out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`}
+        if (node.otherwise) {
+          out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`
+        }
 
         return out
       }
@@ -181,9 +182,13 @@ export function emitWgsl(input: Program): string {
   const out: string[] = []
 
   for (const s of program) {
-    if (s.form !== 'function') {continue}
+    if (s.form !== 'function') {
+      continue
+    }
 
-    if (s.generics.length > 0) {continue} // WGSL is monomorphic: run monomorphization first
+    if (s.generics.length > 0) {
+      continue
+    } // WGSL is monomorphic: run monomorphization first
 
     const params = s.params
       .map(p => `${snake(p.name)}: ${wgslType(p.type)}`)

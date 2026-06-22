@@ -49,11 +49,17 @@ export function computeStats(
 
 // human-readable duration from nanoseconds
 export function formatDuration(ns: number): string {
-  if (ns < 1_000) {return `${ns.toFixed(1)}ns`}
+  if (ns < 1_000) {
+    return `${ns.toFixed(1)}ns`
+  }
 
-  if (ns < 1_000_000) {return `${(ns / 1_000).toFixed(2)}us`}
+  if (ns < 1_000_000) {
+    return `${(ns / 1_000).toFixed(2)}us`
+  }
 
-  if (ns < 1_000_000_000) {return `${(ns / 1_000_000).toFixed(2)}ms`}
+  if (ns < 1_000_000_000) {
+    return `${(ns / 1_000_000).toFixed(2)}ms`
+  }
 
   return `${(ns / 1_000_000_000).toFixed(2)}s`
 }

@@ -43,7 +43,9 @@ export class ModuleGraph {
   ensure(id: string, url: string, file: string): ModuleNode {
     const existing = this.byId.get(id)
 
-    if (existing) {return existing}
+    if (existing) {
+      return existing
+    }
 
     const node: ModuleNode = {
       url,
@@ -66,10 +68,7 @@ export class ModuleGraph {
 
   // record the imports of `node` (after compiling it). Updates importedModules + the reverse importers edges, and
   // returns any prior deps that lost their last importer (candidates to prune / dispose).
-  setImports(
-    node: ModuleNode,
-    deps: ModuleNode[],
-  ): ModuleNode[] {
+  setImports(node: ModuleNode, deps: ModuleNode[]): ModuleNode[] {
     const next = new Set(deps)
     const pruned: ModuleNode[] = []
 
@@ -78,12 +77,16 @@ export class ModuleGraph {
       if (!next.has(previous)) {
         previous.importers.delete(node)
 
-        if (previous.importers.size === 0) {pruned.push(previous)}
+        if (previous.importers.size === 0) {
+          pruned.push(previous)
+        }
       }
     }
 
     // add edges to current deps
-    for (const dep of next) {dep.importers.add(node)}
+    for (const dep of next) {
+      dep.importers.add(node)
+    }
 
     node.importedModules = next
 

@@ -11,9 +11,12 @@ export const noConstantCondition: Rule = {
   docs: 'a fork test condition that is a constant boolean is always (or never) taken',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
-    if (node.form !== 'if') return
+
+    if (node.form !== 'if') {return}
+
     for (const branch of node.branches) {
       if (branch.cond.form === 'boolean') {
         context.report({

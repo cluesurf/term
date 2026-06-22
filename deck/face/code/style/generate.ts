@@ -187,14 +187,31 @@ const SHADOW: Record<string, string> = {
 
 // a category tags which variants a utility gets (so the catalog is meaningful, not a full 8x cross-product):
 // interactive visuals get state variants, layout/spacing get responsive variants, colors also get dark.
-type Category = 'color' | 'layout' | 'space' | 'size' | 'type' | 'effect' | 'border' | 'misc'
-type Rule = { name: string; decls: [string, string][]; category: Category }
+type Category =
+  | 'color'
+  | 'layout'
+  | 'space'
+  | 'size'
+  | 'type'
+  | 'effect'
+  | 'border'
+  | 'misc'
+type Rule = {
+  name: string
+  decls: [string, string][]
+  category: Category
+}
 
 const rules: Rule[] = []
 const lines: string[] = []
 
 // one `face` rule with a single declaration
-function util(name: string, property: string, value: string, category: Category): void {
+function util(
+  name: string,
+  property: string,
+  value: string,
+  category: Category,
+): void {
   rules.push({ name, decls: [[property, value]], category })
 }
 
@@ -212,7 +229,11 @@ function family(
 }
 
 // a multi-declaration utility (display, flex shorthands)
-function group(name: string, decls: [string, string][], category: Category): void {
+function group(
+  name: string,
+  decls: [string, string][],
+  category: Category,
+): void {
   rules.push({ name, decls, category })
 }
 
@@ -237,12 +258,56 @@ function build(): void {
   family('gap-y', 'row-gap', SPACE, 'space')
 
   // sizing
-  family('w', 'width', { ...SPACE, ...FRACTION, screen: '100vw' }, 'size')
-  family('h', 'height', { ...SPACE, ...FRACTION, screen: '100vh' }, 'size')
-  family('min-w', 'min-width', { '0': '0px', full: '100%', min: 'min-content', max: 'max-content' }, 'size')
-  family('max-w', 'max-width', { ...FRACTION, none: 'none', xs: '20rem', sm: '24rem', md: '28rem', lg: '32rem', xl: '36rem', '2xl': '42rem' }, 'size')
-  family('min-h', 'min-height', { '0': '0px', full: '100%', screen: '100vh' }, 'size')
-  family('max-h', 'max-height', { full: '100%', screen: '100vh' }, 'size')
+  family(
+    'w',
+    'width',
+    { ...SPACE, ...FRACTION, screen: '100vw' },
+    'size',
+  )
+  family(
+    'h',
+    'height',
+    { ...SPACE, ...FRACTION, screen: '100vh' },
+    'size',
+  )
+  family(
+    'min-w',
+    'min-width',
+    {
+      '0': '0px',
+      full: '100%',
+      min: 'min-content',
+      max: 'max-content',
+    },
+    'size',
+  )
+  family(
+    'max-w',
+    'max-width',
+    {
+      ...FRACTION,
+      none: 'none',
+      xs: '20rem',
+      sm: '24rem',
+      md: '28rem',
+      lg: '32rem',
+      xl: '36rem',
+      '2xl': '42rem',
+    },
+    'size',
+  )
+  family(
+    'min-h',
+    'min-height',
+    { '0': '0px', full: '100%', screen: '100vh' },
+    'size',
+  )
+  family(
+    'max-h',
+    'max-height',
+    { full: '100%', screen: '100vh' },
+    'size',
+  )
 
   // colors over the palette
   for (const [hue, shades] of Object.entries(PALETTE)) {
@@ -263,9 +328,43 @@ function build(): void {
   // typography
   family('text', 'font-size', FONT_SIZE, 'type')
   family('font', 'font-weight', FONT_WEIGHT, 'type')
-  family('leading', 'line-height', { none: '1', tight: '1.25', snug: '1.375', normal: '1.5', relaxed: '1.625', loose: '2' }, 'type')
-  family('tracking', 'letter-spacing', { tighter: '-0.05em', tight: '-0.025em', normal: '0em', wide: '0.025em', wider: '0.05em', widest: '0.1em' }, 'type')
-  family('text', 'text-align', { left: 'left', center: 'center', right: 'right', justify: 'justify' }, 'type')
+  family(
+    'leading',
+    'line-height',
+    {
+      none: '1',
+      tight: '1.25',
+      snug: '1.375',
+      normal: '1.5',
+      relaxed: '1.625',
+      loose: '2',
+    },
+    'type',
+  )
+  family(
+    'tracking',
+    'letter-spacing',
+    {
+      tighter: '-0.05em',
+      tight: '-0.025em',
+      normal: '0em',
+      wide: '0.025em',
+      wider: '0.05em',
+      widest: '0.1em',
+    },
+    'type',
+  )
+  family(
+    'text',
+    'text-align',
+    {
+      left: 'left',
+      center: 'center',
+      right: 'right',
+      justify: 'justify',
+    },
+    'type',
+  )
 
   // display + flex/grid
   group('block', [['display', 'block']], 'layout')
@@ -275,29 +374,149 @@ function build(): void {
   group('inline-flex', [['display', 'inline-flex']], 'layout')
   group('grid', [['display', 'grid']], 'layout')
   group('hidden', [['display', 'none']], 'layout')
-  family('flex', 'flex-direction', { row: 'row', 'row-reverse': 'row-reverse', col: 'column', 'col-reverse': 'column-reverse' }, 'layout')
-  family('flex', 'flex-wrap', { wrap: 'wrap', 'wrap-reverse': 'wrap-reverse', nowrap: 'nowrap' }, 'layout')
-  family('items', 'align-items', { start: 'flex-start', center: 'center', end: 'flex-end', stretch: 'stretch', baseline: 'baseline' }, 'layout')
-  family('justify', 'justify-content', { start: 'flex-start', center: 'center', end: 'flex-end', between: 'space-between', around: 'space-around', evenly: 'space-evenly' }, 'layout')
-  family('self', 'align-self', { auto: 'auto', start: 'flex-start', center: 'center', end: 'flex-end', stretch: 'stretch' }, 'layout')
-  family('grid-cols', 'grid-template-columns', { '1': 'repeat(1, minmax(0, 1fr))', '2': 'repeat(2, minmax(0, 1fr))', '3': 'repeat(3, minmax(0, 1fr))', '4': 'repeat(4, minmax(0, 1fr))', '5': 'repeat(5, minmax(0, 1fr))', '6': 'repeat(6, minmax(0, 1fr))', '12': 'repeat(12, minmax(0, 1fr))' }, 'layout')
+  family(
+    'flex',
+    'flex-direction',
+    {
+      row: 'row',
+      'row-reverse': 'row-reverse',
+      col: 'column',
+      'col-reverse': 'column-reverse',
+    },
+    'layout',
+  )
+  family(
+    'flex',
+    'flex-wrap',
+    { wrap: 'wrap', 'wrap-reverse': 'wrap-reverse', nowrap: 'nowrap' },
+    'layout',
+  )
+  family(
+    'items',
+    'align-items',
+    {
+      start: 'flex-start',
+      center: 'center',
+      end: 'flex-end',
+      stretch: 'stretch',
+      baseline: 'baseline',
+    },
+    'layout',
+  )
+  family(
+    'justify',
+    'justify-content',
+    {
+      start: 'flex-start',
+      center: 'center',
+      end: 'flex-end',
+      between: 'space-between',
+      around: 'space-around',
+      evenly: 'space-evenly',
+    },
+    'layout',
+  )
+  family(
+    'self',
+    'align-self',
+    {
+      auto: 'auto',
+      start: 'flex-start',
+      center: 'center',
+      end: 'flex-end',
+      stretch: 'stretch',
+    },
+    'layout',
+  )
+  family(
+    'grid-cols',
+    'grid-template-columns',
+    {
+      '1': 'repeat(1, minmax(0, 1fr))',
+      '2': 'repeat(2, minmax(0, 1fr))',
+      '3': 'repeat(3, minmax(0, 1fr))',
+      '4': 'repeat(4, minmax(0, 1fr))',
+      '5': 'repeat(5, minmax(0, 1fr))',
+      '6': 'repeat(6, minmax(0, 1fr))',
+      '12': 'repeat(12, minmax(0, 1fr))',
+    },
+    'layout',
+  )
 
   // borders + radius
   family('rounded', 'border-radius', RADIUS, 'border')
-  family('border', 'border-width', { '': '1px', '0': '0px', '2': '2px', '4': '4px', '8': '8px' }, 'border')
+  family(
+    'border',
+    'border-width',
+    { '': '1px', '0': '0px', '2': '2px', '4': '4px', '8': '8px' },
+    'border',
+  )
 
   // effects
   family('shadow', 'box-shadow', SHADOW, 'effect')
   const opacity: Record<string, string> = {}
-  for (const n of [0, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 100]) opacity[String(n)] = String(n / 100)
+  for (const n of [
+    0, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 100,
+  ])
+    opacity[String(n)] = String(n / 100)
   family('opacity', 'opacity', opacity, 'effect')
 
   // position + layout
-  family('', 'position', { static: 'static', fixed: 'fixed', absolute: 'absolute', relative: 'relative', sticky: 'sticky' }, 'misc')
-  family('inset', 'inset', { '0': '0px', auto: 'auto', full: '100%' }, 'misc')
-  family('z', 'z-index', { '0': '0', '10': '10', '20': '20', '30': '30', '40': '40', '50': '50', auto: 'auto' }, 'misc')
-  family('overflow', 'overflow', { auto: 'auto', hidden: 'hidden', visible: 'visible', scroll: 'scroll' }, 'misc')
-  family('cursor', 'cursor', { pointer: 'pointer', default: 'default', 'not-allowed': 'not-allowed', wait: 'wait', text: 'text' }, 'misc')
+  family(
+    '',
+    'position',
+    {
+      static: 'static',
+      fixed: 'fixed',
+      absolute: 'absolute',
+      relative: 'relative',
+      sticky: 'sticky',
+    },
+    'misc',
+  )
+  family(
+    'inset',
+    'inset',
+    { '0': '0px', auto: 'auto', full: '100%' },
+    'misc',
+  )
+  family(
+    'z',
+    'z-index',
+    {
+      '0': '0',
+      '10': '10',
+      '20': '20',
+      '30': '30',
+      '40': '40',
+      '50': '50',
+      auto: 'auto',
+    },
+    'misc',
+  )
+  family(
+    'overflow',
+    'overflow',
+    {
+      auto: 'auto',
+      hidden: 'hidden',
+      visible: 'visible',
+      scroll: 'scroll',
+    },
+    'misc',
+  )
+  family(
+    'cursor',
+    'cursor',
+    {
+      pointer: 'pointer',
+      default: 'default',
+      'not-allowed': 'not-allowed',
+      wait: 'wait',
+      text: 'text',
+    },
+    'misc',
+  )
 }
 
 // which variants each category gets: interactive visuals get state variants, layout/spacing/sizing/type get responsive
@@ -332,8 +551,12 @@ function main(): void {
   build()
 
   lines.push('')
-  lines.push('# GENERATED by face/code/style/generate.ts. Do not edit by hand. The full Tailwind atomic utility set,')
-  lines.push('# derived from the theme scales, with responsive + state variants per category. Compiled to CSS by look-css.')
+  lines.push(
+    '# GENERATED by face/code/style/generate.ts. Do not edit by hand. The full Tailwind atomic utility set,',
+  )
+  lines.push(
+    '# derived from the theme scales, with responsive + state variants per category. Compiled to CSS by look-css.',
+  )
 
   // base utilities first
   for (const rule of rules) {

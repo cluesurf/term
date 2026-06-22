@@ -19,34 +19,40 @@ export function makeSeedType(
   formGenerics: Map<string, string[]>,
   // opaque per-backend handle types (`dock type`): kept as named types so a backend resolves them to a concrete
   // handle, rather than being inferred as a fresh generic variable
-  opaqueTypes: Set<string> = new Set(),
+  opaqueTypes = new Set<string>(),
 ): SeedType {
   const seed: SeedType = (type, generics) => {
-    if (!type) {return sub.fresh()}
+    if (!type) {
+      return sub.fresh()
+    }
 
     if (type.kind === 'named') {
       const generic = generics.get(type.name)
 
-      if (generic) {return generic}
+      if (generic) {
+        return generic
+      }
 
       // `list` is the native array type: `like list` is array<unknown>, `like list<t>` is array<t>
-      if (type.name === 'list')
-        {return {
+      if (type.name === 'list') {
+        return {
           kind: 'array',
           element: type.args?.[0]
             ? seed(type.args[0], generics)
             : UNKNOWN,
-        }}
+        }
+      }
 
       // `hash` is the native map type: `like hash<k, v>` is map<k, v>, `like hash` is map<unknown, unknown>
-      if (type.name === 'hash')
-        {return {
+      if (type.name === 'hash') {
+        return {
           kind: 'map',
           key: type.args?.[0] ? seed(type.args[0], generics) : UNKNOWN,
           value: type.args?.[1]
             ? seed(type.args[1], generics)
             : UNKNOWN,
-        }}
+        }
+      }
 
       if (records.has(type.name)) {
         // a form: give it a fresh type argument per generic parameter (maybe -> maybe<?a>), inferred from usage
@@ -60,29 +66,33 @@ export function makeSeedType(
       }
 
       // an opaque handle type stays named, so each backend resolves it to its concrete per-env type
-      if (opaqueTypes.has(type.name))
-        {return { kind: 'named', name: type.name }}
+      if (opaqueTypes.has(type.name)) {
+        return { kind: 'named', name: type.name }
+      }
 
       return sub.fresh() // an unrecognized name: infer it from usage rather than forcing a mismatch
     }
 
-    if (type.kind === 'array')
-      {return { kind: 'array', element: seed(type.element, generics) }}
+    if (type.kind === 'array') {
+      return { kind: 'array', element: seed(type.element, generics) }
+    }
 
-    if (type.kind === 'map')
-      {return {
+    if (type.kind === 'map') {
+      return {
         kind: 'map',
         key: seed(type.key, generics),
         value: seed(type.value, generics),
-      }}
+      }
+    }
 
-    if (type.kind === 'function')
-      {return {
+    if (type.kind === 'function') {
+      return {
         kind: 'function',
         params: type.params.map(p => seed(p, generics)),
         result: seed(type.result, generics),
         effects: type.effects,
-      }}
+      }
+    }
 
     return type
   }

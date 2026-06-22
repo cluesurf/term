@@ -167,22 +167,30 @@ function collectArrayEq(body: Statement[]): {
   const record = (callee: Expression): void => {
     const op = collectionCall(callee)
 
-    if (op?.kind !== 'array') {return}
+    if (op?.kind !== 'array') {
+      return
+    }
 
-    if (ARRAY_OP_BOUND[op.op] !== 'eq') {return}
+    if (ARRAY_OP_BOUND[op.op] !== 'eq') {
+      return
+    }
 
     const element =
       op.target.type?.kind === 'array'
         ? op.target.type.element
         : undefined
 
-    if (element?.kind === 'variable') {ids.add(element.id)}
-    else if (element?.kind === 'named')
-      {names.add(element.name.toUpperCase())}
+    if (element?.kind === 'variable') {
+      ids.add(element.id)
+    } else if (element?.kind === 'named') {
+      names.add(element.name.toUpperCase())
+    }
   }
 
   const visitExpr = (e: Expression | undefined): void => {
-    if (!e) {return}
+    if (!e) {
+      return
+    }
 
     switch (e.form) {
       case 'call':
@@ -259,14 +267,18 @@ function collectArrayEq(body: Statement[]): {
             visitStmts(b.body)
           })
 
-          if (s.otherwise) {visitStmts(s.otherwise)}
+          if (s.otherwise) {
+            visitStmts(s.otherwise)
+          }
 
           break
         case 'match':
           visitExpr(s.subject)
           s.cases.forEach(c => visitStmts(c.body))
 
-          if (s.otherwise) {visitStmts(s.otherwise)}
+          if (s.otherwise) {
+            visitStmts(s.otherwise)
+          }
 
           break
         default:
@@ -319,10 +331,13 @@ export function emitSwift(program: Program): string {
         return `SeedMap<${swiftType(type.key)}, ${swiftType(
           type.value,
         )}>`
+
       case 'named': {
         const opaque = opaqueTypes.get(type.name)
 
-        if (opaque) {return opaque}
+        if (opaque) {
+          return opaque
+        }
 
         return type.args && type.args.length > 0
           ? `${pascal(type.name)}<${type.args
@@ -330,6 +345,7 @@ export function emitSwift(program: Program): string {
               .join(', ')}>`
           : pascal(type.name)
       }
+
       case 'function':
         return `(${type.params
           .map(swiftType)
@@ -371,19 +387,26 @@ export function emitSwift(program: Program): string {
     const keyNames = new Set<string>()
 
     const markKeys = (t: Type | undefined, isKey: boolean): void => {
-      if (!t) {return}
+      if (!t) {
+        return
+      }
 
       if (t.kind === 'variable') {
-        if (isKey) {keyIds.add(t.id)}
+        if (isKey) {
+          keyIds.add(t.id)
+        }
       } else if (t.kind === 'map') {
         markKeys(t.key, true)
         markKeys(t.value, false)
-      } else if (t.kind === 'array') {markKeys(t.element, false)}
-      else if (t.kind === 'function') {
+      } else if (t.kind === 'array') {
+        markKeys(t.element, false)
+      } else if (t.kind === 'function') {
         t.params.forEach(p => markKeys(p, false))
         markKeys(t.result, false)
       } else if (t.kind === 'named') {
-        if (isKey) {keyNames.add(t.name.toUpperCase())}
+        if (isKey) {
+          keyNames.add(t.name.toUpperCase())
+        }
 
         const keyArgs = formKeyIndices.get(t.name)
         t.args?.forEach((a, i) => markKeys(a, keyArgs?.has(i) ?? false))
@@ -415,13 +438,16 @@ export function emitSwift(program: Program): string {
     const namedInSig = new Set<string>()
 
     const scan = (t: Type | undefined): void => {
-      if (!t) {return}
+      if (!t) {
+        return
+      }
 
       if (t.kind === 'named') {
         namedInSig.add(t.name.toUpperCase())
         t.args?.forEach(scan)
-      } else if (t.kind === 'array') {scan(t.element)}
-      else if (t.kind === 'map') {
+      } else if (t.kind === 'array') {
+        scan(t.element)
+      } else if (t.kind === 'map') {
         scan(t.key)
         scan(t.value)
       } else if (t.kind === 'function') {
@@ -437,15 +463,20 @@ export function emitSwift(program: Program): string {
     // so the body's `x.measure()` resolves through it
     const needTrait = new Map<string, string>()
 
-    for (const g of node.generics)
-      {if (g.need) {needTrait.set(g.name.toUpperCase(), pascal(g.need))}}
+    for (const g of node.generics) {
+      if (g.need) {
+        needTrait.set(g.name.toUpperCase(), pascal(g.need))
+      }
+    }
 
     const keptDeclared = declared
       .filter(d => namedInSig.has(d))
       .map(d => {
         const base = bound(d, keyNames.has(d), arrayEq.names.has(d))
 
-        if (!needTrait.has(d)) {return base}
+        if (!needTrait.has(d)) {
+          return base
+        }
 
         return base.includes(':')
           ? `${base} & ${needTrait.get(d)}`
@@ -465,7 +496,9 @@ export function emitSwift(program: Program): string {
   const formKeyIndices = new Map<string, Set<number>>()
 
   for (const node of program) {
-    if (node.form !== 'record-type') {continue}
+    if (node.form !== 'record-type') {
+      continue
+    }
 
     for (const v of node.variants) {
       variantSet.add(v.name)
@@ -479,15 +512,22 @@ export function emitSwift(program: Program): string {
       const keyParams = new Set<string>()
 
       const findKeys = (t: Type | undefined): void => {
-        if (!t) {return}
+        if (!t) {
+          return
+        }
 
         if (t.kind === 'map') {
-          if (t.key.kind === 'named') {keyParams.add(t.key.name)}
+          if (t.key.kind === 'named') {
+            keyParams.add(t.key.name)
+          }
 
           findKeys(t.key)
           findKeys(t.value)
-        } else if (t.kind === 'array') {findKeys(t.element)}
-        else if (t.kind === 'named') {t.args?.forEach(findKeys)}
+        } else if (t.kind === 'array') {
+          findKeys(t.element)
+        } else if (t.kind === 'named') {
+          t.args?.forEach(findKeys)
+        }
       }
 
       const fields =
@@ -499,19 +539,25 @@ export function emitSwift(program: Program): string {
 
       const indices = new Set<number>()
       node.params.forEach((p, i) => {
-        if (keyParams.has(p)) {indices.add(i)}
+        if (keyParams.has(p)) {
+          indices.add(i)
+        }
       })
 
-      if (indices.size > 0) {formKeyIndices.set(node.name, indices)}
+      if (indices.size > 0) {
+        formKeyIndices.set(node.name, indices)
+      }
     }
   }
 
   // native dock module aliases (`dns`, `fs`): a call to one returning a list yields a plain Array that must be wrapped
   const aliases = new Set<string>()
 
-  for (const node of program)
-    {if (node.form === 'native' && node.kind !== 'type')
-      {aliases.add(node.alias)}}
+  for (const node of program) {
+    if (node.form === 'native' && node.kind !== 'type') {
+      aliases.add(node.alias)
+    }
+  }
 
   const rootName = (node: Expression): string | undefined =>
     node.form === 'variable'
@@ -525,8 +571,9 @@ export function emitSwift(program: Program): string {
   let fnReturnsArray = false
 
   const isNativeCall = (node: Expression): boolean => {
-    if (node.form !== 'call' || node.callee.form !== 'member')
-      {return false}
+    if (node.form !== 'call' || node.callee.form !== 'member') {
+      return false
+    }
 
     const root = rootName(node.callee)
 
@@ -539,56 +586,69 @@ export function emitSwift(program: Program): string {
   // with the receiver type replaced by `Self`. See note/seed/compiler/trait-dictionary-passing.md.
   const maskMethods = new Set<string>()
 
-  for (const node of program)
-    {if (node.form === 'mask')
-      {for (const m of node.methods) {maskMethods.add(m)}}}
+  for (const node of program) {
+    if (node.form === 'mask') {
+      for (const m of node.methods) {
+        maskMethods.add(m)
+      }
+    }
+  }
 
   const instanceTargets = new Map<string, string[]>()
 
-  for (const node of program)
-    {if (node.form === 'instance') {
+  for (const node of program) {
+    if (node.form === 'instance') {
       const list = instanceTargets.get(node.mask) ?? []
       list.push(node.target)
       instanceTargets.set(node.mask, list)
-    }}
+    }
+  }
 
   type Fn = Extract<Statement, { form: 'function' }>
   const implFn = new Map<string, Fn>()
 
-  for (const node of program)
-    {if (node.form === 'function' && node.method)
-      {implFn.set(`${node.method.form}:${node.method.name}`, node)}}
+  for (const node of program) {
+    if (node.form === 'function' && node.method) {
+      implFn.set(`${node.method.form}:${node.method.name}`, node)
+    }
+  }
 
   const subSelf = (
     t: Type | undefined,
     target: string,
   ): Type | undefined => {
-    if (!t) {return t}
+    if (!t) {
+      return t
+    }
 
-    if (t.kind === 'named')
-      {return t.name === target
+    if (t.kind === 'named') {
+      return t.name === target
         ? { kind: 'named', name: 'Self' }
         : t.args
           ? { ...t, args: t.args.map(a => subSelf(a, target)!) }
-          : t}
+          : t
+    }
 
-    if (t.kind === 'array')
-      {return { kind: 'array', element: subSelf(t.element, target)! }}
+    if (t.kind === 'array') {
+      return { kind: 'array', element: subSelf(t.element, target)! }
+    }
 
-    if (t.kind === 'map')
-      {return {
+    if (t.kind === 'map') {
+      return {
         kind: 'map',
         key: subSelf(t.key, target)!,
         value: subSelf(t.value, target)!,
-      }}
+      }
+    }
 
-    if (t.kind === 'function')
-      {return {
+    if (t.kind === 'function') {
+      return {
         kind: 'function',
         params: t.params.map(p => subSelf(p, target)!),
         result: subSelf(t.result, target)!,
         effects: t.effects,
-      }}
+      }
+    }
 
     return t
   }
@@ -599,7 +659,9 @@ export function emitSwift(program: Program): string {
     fn: Fn | undefined,
     target: string,
   ): string => {
-    if (!fn) {return ''}
+    if (!fn) {
+      return ''
+    }
 
     const rest = fn.params
       .slice(1)
@@ -618,7 +680,9 @@ export function emitSwift(program: Program): string {
     fn: Fn | undefined,
     target: string,
   ): string => {
-    if (!fn) {return ''}
+    if (!fn) {
+      return ''
+    }
 
     const restNames = fn.params.slice(1).map(p => camel(p.name))
     const rest = fn.params
@@ -778,8 +842,9 @@ export function emitSwift(program: Program): string {
         if (
           node.target.form === 'variable' &&
           bind.get(node.target.name)?.has(node.name)
-        )
-          {return camel(node.name)}
+        ) {
+          return camel(node.name)
+        }
 
         return `${expr(node.target, bind)}.${camel(node.name)}`
       }
@@ -922,9 +987,7 @@ export function emitSwift(program: Program): string {
       case 'let': {
         // annotate an ADT binding so leading-dot construction has a type to infer from
         const annotation =
-          node.type?.kind === 'named'
-            ? `: ${swiftType(node.type)}`
-            : ''
+          node.type?.kind === 'named' ? `: ${swiftType(node.type)}` : ''
 
         return `${node.mutable ? 'var' : 'let'} ${vname(
           node.name,
@@ -941,7 +1004,9 @@ export function emitSwift(program: Program): string {
       case 'expression':
         return expr(node.expr, bind)
       case 'return':
-        if (!node.value) {return 'return'}
+        if (!node.value) {
+          return 'return'
+        }
 
         // a list-returning function that returns a native dock call directly wraps the shim's plain Array
         return fnReturnsArray && isNativeCall(node.value)
@@ -987,8 +1052,9 @@ export function emitSwift(program: Program): string {
           const fields = variantFields.get(b.label) ?? []
           const branchBind: Bindings = new Map(bind)
 
-          if (subjectVar && fields.length > 0)
-            {branchBind.set(subjectVar, new Set(fields))}
+          if (subjectVar && fields.length > 0) {
+            branchBind.set(subjectVar, new Set(fields))
+          }
 
           const pattern =
             fields.length > 0
@@ -1004,14 +1070,15 @@ export function emitSwift(program: Program): string {
           )}`
         })
 
-        if (node.otherwise)
-          {arms.push(
+        if (node.otherwise) {
+          arms.push(
             `${pad(d + 1)}default:\n${block(
               node.otherwise,
               d + 2,
               bind,
             )}`,
-          )}
+          )
+        }
 
         return `switch ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
       }
@@ -1025,10 +1092,11 @@ export function emitSwift(program: Program): string {
           )} {\n${block(b.body, d + 1, bind)}\n${pad(d)}}`
         })
 
-        if (node.otherwise)
-          {out += ` else {\n${block(node.otherwise, d + 1, bind)}\n${pad(
+        if (node.otherwise) {
+          out += ` else {\n${block(node.otherwise, d + 1, bind)}\n${pad(
             d,
-          )}}`}
+          )}}`
+        }
 
         return out
       }
@@ -1187,7 +1255,9 @@ export function emitSwift(program: Program): string {
   )) {
     const line = `import ${need.module.replace(/^[a-z]+:/, '')}`
 
-    if (!imports.includes(line)) {imports.push(line)}
+    if (!imports.includes(line)) {
+      imports.push(line)
+    }
   }
 
   const body = program
@@ -1197,14 +1267,15 @@ export function emitSwift(program: Program): string {
 
   const prelude: string[] = []
 
-  if (body.some(b => b.includes('SeedError(')))
-    {prelude.push(
+  if (body.some(b => b.includes('SeedError('))) {
+    prelude.push(
       'struct SeedError: Error { let message: String; init(_ m: String) { message = m } }',
-    )}
+    )
+  }
 
   // the reference wrapper for maps (a class so mutation persists across a struct copy); emitted only when used
-  if (body.some(b => b.includes('SeedMap')))
-    {prelude.push(
+  if (body.some(b => b.includes('SeedMap'))) {
+    prelude.push(
       [
         'final class SeedMap<K: Hashable, V> {',
         '    var data: [K: V]',
@@ -1213,11 +1284,12 @@ export function emitSwift(program: Program): string {
         '    @discardableResult func removing(_ key: K) -> Bool { let had = data[key] != nil; data.removeValue(forKey: key); return had }',
         '}',
       ].join('\n'),
-    )}
+    )
+  }
 
   // the reference wrapper for lists (a class so an in-place `push` persists across a copy); emitted only when used
-  if (body.some(b => b.includes('SeedList')))
-    {prelude.push(
+  if (body.some(b => b.includes('SeedList'))) {
+    prelude.push(
       [
         'final class SeedList<T> {',
         '    var data: [T]',
@@ -1229,7 +1301,8 @@ export function emitSwift(program: Program): string {
         '    @discardableResult func splicing(_ start: Int, _ count: Int, _ items: [T]) -> Int { data.replaceSubrange(start..<(start + count), with: items); return data.count }',
         '}',
       ].join('\n'),
-    )}
+    )
+  }
 
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'
 }
@@ -1240,19 +1313,25 @@ function reassigned(body: Statement[], into: Set<string>): void {
   for (const s of body) {
     switch (s.form) {
       case 'assign':
-        if (s.target.form === 'variable') {into.add(s.target.name)}
+        if (s.target.form === 'variable') {
+          into.add(s.target.name)
+        }
 
         break
       case 'if':
         s.branches.forEach(b => reassigned(b.body, into))
 
-        if (s.otherwise) {reassigned(s.otherwise, into)}
+        if (s.otherwise) {
+          reassigned(s.otherwise, into)
+        }
 
         break
       case 'match':
         s.cases.forEach(c => reassigned(c.body, into))
 
-        if (s.otherwise) {reassigned(s.otherwise, into)}
+        if (s.otherwise) {
+          reassigned(s.otherwise, into)
+        }
 
         break
       case 'while':

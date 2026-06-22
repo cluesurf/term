@@ -54,12 +54,15 @@ function nodeHead(group: GroupNode): string | undefined {
 function nodeValue(group: GroupNode): string {
   const arg = group.nodes[1]
 
-  if (!arg) {return ''}
+  if (!arg) {
+    return ''
+  }
 
-  if (arg.kind === 'text' || arg.kind === 'name')
-    {return arg.parts
+  if (arg.kind === 'text' || arg.kind === 'name') {
+    return arg.parts
       .map(p => (p.kind === 'chunk' ? p.text : ''))
-      .join('')}
+      .join('')
+  }
 
   return ''
 }
@@ -96,7 +99,9 @@ async function findFreePort(start: number): Promise<number> {
     }
   }
 
-  throw new Error(`no free port in ${start}..${MAX_PORT} (stop apps with \`seed halt\`)`)
+  throw new Error(
+    `no free port in ${start}..${MAX_PORT} (stop apps with \`seed halt\`)`,
+  )
 }
 
 // the directory (cwd or an ancestor) that holds the `link/` package links a build resolves through; falls back to cwd
@@ -104,11 +109,15 @@ export function findProjectRoot(start: string): string {
   let dir = start
 
   for (;;) {
-    if (existsSync(path.join(dir, 'link'))) {return dir}
+    if (existsSync(path.join(dir, 'link'))) {
+      return dir
+    }
 
     const up = path.dirname(dir)
 
-    if (up === dir) {return start}
+    if (up === dir) {
+      return start
+    }
 
     dir = up
   }
@@ -125,7 +134,9 @@ export function findEntry(
   cwd: string,
   entry: string | undefined,
 ): string | undefined {
-  if (entry) {return resolveEntry(path.resolve(cwd, entry))}
+  if (entry) {
+    return resolveEntry(path.resolve(cwd, entry))
+  }
 
   let dir = cwd
 
@@ -136,14 +147,18 @@ export function findEntry(
       const text = readFileSync(manifest, 'utf8')
       const match = /(?:^|\n)\s*boot\s+(\S+)/.exec(text)
 
-      if (match) {return resolveEntry(path.resolve(dir, match[1]!))}
+      if (match) {
+        return resolveEntry(path.resolve(dir, match[1]!))
+      }
 
       return undefined
     }
 
     const up = path.dirname(dir)
 
-    if (up === dir) {return undefined}
+    if (up === dir) {
+      return undefined
+    }
 
     dir = up
   }
@@ -154,11 +169,15 @@ function findAppDir(start: string): string | undefined {
   let dir = start
 
   for (;;) {
-    if (existsSync(path.join(dir, 'deck.tree'))) {return dir}
+    if (existsSync(path.join(dir, 'deck.tree'))) {
+      return dir
+    }
 
     const up = path.dirname(dir)
 
-    if (up === dir) {return undefined}
+    if (up === dir) {
+      return undefined
+    }
 
     dir = up
   }
@@ -170,28 +189,40 @@ function findAppDir(start: string): string | undefined {
 function loadHostEnv(appDir: string): string[] {
   const file = path.join(appDir, 'bind', 'host', 'base.tree')
 
-  if (!existsSync(file)) {return []}
+  if (!existsSync(file)) {
+    return []
+  }
 
   const result = parse({ file, text: readFileSync(file, 'utf8') })
 
-  if (!result.ok) {return []}
+  if (!result.ok) {
+    return []
+  }
 
   const host = result.tree.nodes.find(g => nodeHead(g) === 'host')
 
-  if (!host) {return []}
+  if (!host) {
+    return []
+  }
 
   const loaded: string[] = []
 
   for (const node of host.nodes.slice(1)) {
-    if (node.kind !== 'group') {continue}
+    if (node.kind !== 'group') {
+      continue
+    }
 
     const key = nodeHead(node)
 
-    if (!key) {continue}
+    if (!key) {
+      continue
+    }
 
     const name = toConstant(key)
 
-    if (process.env[name] !== undefined) {continue}
+    if (process.env[name] !== undefined) {
+      continue
+    }
 
     process.env[name] = nodeValue(node)
     loaded.push(name)
@@ -230,6 +261,7 @@ async function buildClientBundle(opts: {
           first ? `${first.name}: ${first.message}` : 'unknown error'
         } (server SSR still served)`,
       )
+
       return
     }
 
@@ -240,6 +272,7 @@ async function buildClientBundle(opts: {
       // only prepend shims actually referenced, so an unused dock (e.g. floating-ui `position`) stays out of the bundle
       result.typescript,
     )
+
     const source = `${prelude}\n${result.typescript}`
 
     // browser bundle: everything inlined (no `packages: external`), minified in prod for the smallest payload
@@ -263,6 +296,7 @@ async function buildClientBundle(opts: {
 
     const buildDir = path.join(appDir, 'build')
     mkdirSync(buildDir, { recursive: true })
+
     const outFile = path.join(buildDir, 'boot.js')
     const mapFile = path.join(buildDir, 'import-map.json')
     const stampFile = path.join(buildDir, '.boot.js.key')
@@ -274,6 +308,7 @@ async function buildClientBundle(opts: {
       readFileSync(stampFile, 'utf8') === key
     ) {
       logGood(`Cached client bundle (build/boot.js)`)
+
       return
     }
 
@@ -284,6 +319,7 @@ async function buildClientBundle(opts: {
 
     if (!existsSync(cacheFile)) {
       mkdirSync(cacheOut, { recursive: true })
+
       const srcFile = path.join(cacheOut, 'boot.ts')
       writeFileSync(srcFile, source)
 
@@ -316,7 +352,9 @@ async function buildClientBundle(opts: {
       })
 
       // map each external to an esm.sh CDN module (a web-standard import map; no bundler or install needed at runtime)
-      const importMap: { imports: Record<string, string> } = { imports: {} }
+      const importMap: { imports: Record<string, string> } = {
+        imports: {},
+      }
 
       for (const dep of externals) {
         importMap.imports[dep] = `https://esm.sh/${dep}`
@@ -334,7 +372,9 @@ async function buildClientBundle(opts: {
     writeFileSync(stampFile, key)
     logGood(`Built client bundle -> build/boot.js (${key.slice(0, 8)})`)
   } catch (err) {
-    logFail(`Client build error: ${formatError(err)} (server SSR still served)`)
+    logFail(
+      `Client build error: ${formatError(err)} (server SSR still served)`,
+    )
   }
 }
 
@@ -347,6 +387,7 @@ function toneEncode(text: string): string {
   const letters = [...text]
     .map(ch => TONE[ch.charCodeAt(0) % 16])
     .join('')
+
   const groups: string[] = []
 
   for (let i = 0; i < letters.length; i += 4) {
@@ -381,20 +422,26 @@ function hashAssets(buildDir: string, prod: boolean): void {
     try {
       const file = path.join(buildDir, hashed)
 
-      if (existsSync(file)) {rmSync(file)}
+      if (existsSync(file)) {
+        rmSync(file)
+      }
     } catch {
       // a missing / unremovable stale file is not fatal
     }
   }
 
   try {
-    if (existsSync(manifestFile)) {rmSync(manifestFile)}
+    if (existsSync(manifestFile)) {
+      rmSync(manifestFile)
+    }
   } catch {
     // ignore
   }
 
   // dev: stable names, no manifest (the shell resolves every asset to itself)
-  if (!prod) {return}
+  if (!prod) {
+    return
+  }
 
   const sources = ['style/look.css', 'boot.js']
   const map: Record<string, string> = {}
@@ -402,9 +449,14 @@ function hashAssets(buildDir: string, prod: boolean): void {
   for (const logical of sources) {
     const file = path.join(buildDir, logical)
 
-    if (!existsSync(file)) {continue}
+    if (!existsSync(file)) {
+      continue
+    }
 
-    const tone = toneEncode(hashText(readFileSync(file, 'utf8')).slice(0, 8))
+    const tone = toneEncode(
+      hashText(readFileSync(file, 'utf8')).slice(0, 8),
+    )
+
     const dot = logical.lastIndexOf('.')
     const hashed =
       dot >= 0
@@ -479,6 +531,7 @@ function watchStyles(appDir: string): () => void {
   }
 
   let timer: ReturnType<typeof setTimeout> | undefined
+
   const watcher = watch(styleDir, { recursive: true }, () => {
     if (timer) {
       clearTimeout(timer)
@@ -530,10 +583,11 @@ export async function callBoot(input: {
     const appDir = findAppDir(entry) ?? findAppDir(cwd)
     const loadedEnv = appDir ? loadHostEnv(appDir) : []
 
-    if (loadedEnv.length)
-      {console.log(
+    if (loadedEnv.length) {
+      console.log(
         fade(`  env: ${loadedEnv.join(', ')} (bind/host/base.tree)`),
-      )}
+      )
+    }
 
     // warm the local cache from a remote (Tier 5) before compiling, so a cold machine / CI reuses shared artifacts
     const cacheDir = path.join(projectRoot, '.seed', 'cache')
@@ -546,12 +600,13 @@ export async function callBoot(input: {
           input.remoteToken,
         )
 
-        if (pulled)
-          {console.log(
+        if (pulled) {
+          console.log(
             fade(
               `  pulled ${pulled} cache artifacts from ${input.remote}`,
             ),
-          )}
+          )
+        }
       } catch {
         // a remote-cache failure must never fail the build
       }
@@ -567,7 +622,12 @@ export async function callBoot(input: {
     // cache (`.seed/cache`) makes a cold re-boot reuse the prior parse + mill + compile (Tier 1).
     // resolve modules against the APP dir (the entry's package root, holding `deck.tree`), not the link/cache
     // `projectRoot`, so the app's own `@scope/...` and relative imports resolve correctly.
-    const resolve = projectResolver(appDir ?? projectRoot, env, installRoot)
+    const resolve = projectResolver(
+      appDir ?? projectRoot,
+      env,
+      installRoot,
+    )
+
     const result = compile(
       { file: entry, text: readFileSync(entry, 'utf8') },
       { resolve, cache: projectCache(projectRoot), env },
@@ -592,12 +652,13 @@ export async function callBoot(input: {
           input.remoteToken,
         )
 
-        if (pushed)
-          {console.log(
+        if (pushed) {
+          console.log(
             fade(
               `  pushed ${pushed} cache artifacts to ${input.remote}`,
             ),
-          )}
+          )
+        }
       } catch {
         // a remote-cache failure must never fail the build
       }
@@ -609,7 +670,13 @@ export async function callBoot(input: {
       const prod = process.env.NODE_ENV === 'production'
       // compile the app's look stylesheets to build/style/*.css (so `seed boot` needs no separate make step for CSS)
       buildStyles(appDir)
-      await buildClientBundle({ entry, appDir, projectRoot, installRoot, prod })
+      await buildClientBundle({
+        entry,
+        appDir,
+        projectRoot,
+        installRoot,
+        prod,
+      })
       // content-hash the cache-bust-critical assets (stylesheet + client bundle) and write the manifest the shell reads
       hashAssets(path.join(appDir, 'build'), prod)
       // seed the dev live-reload id (the client polls /base/__id and reloads when it changes)
@@ -628,7 +695,8 @@ export async function callBoot(input: {
     const bundleConfig = {
       bundle: true,
       format: 'esm' as const,
-      platform: env === 'browser' ? ('browser' as const) : ('node' as const),
+      platform:
+        env === 'browser' ? ('browser' as const) : ('node' as const),
       packages: 'external' as const,
     }
 
@@ -704,6 +772,7 @@ export async function callBoot(input: {
     // dev: hot-reload styles. Watch `site/style`, recompile look.css + bump the reload id on edit; the browser polls
     // `/base/__id` and reloads with the new CSS (no manual refresh). Disabled in production.
     const dev = process.env.NODE_ENV !== 'production'
+
     const stopWatch = dev && appDir ? watchStyles(appDir) : () => {}
 
     if (dev && appDir) {

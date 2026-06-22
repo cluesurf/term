@@ -10,8 +10,10 @@ export const noDoubleNegation: Rule = {
   docs: 'a double negation is redundant; use the value directly',
   fixable: true,
   check(target, context) {
-    if (target.kind !== 'expression') return
+    if (target.kind !== 'expression') {return}
+
     const node = target.node
+
     if (
       node.form === 'unary' &&
       node.op === '!' &&

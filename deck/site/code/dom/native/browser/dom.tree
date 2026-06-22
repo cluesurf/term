@@ -195,7 +195,7 @@ task set-title
 # asset (the page URL stays put, e.g. /vibe.pdf). proxy-target reports nothing -- the navigation already happened.
 task set-proxy
   take url, like text
-  save place/href, read place/pathname
+  save skip, code 0
 
 task proxy-target
   like text

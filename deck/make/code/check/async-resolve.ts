@@ -15,15 +15,20 @@ type Fn = Extract<Statement, { form: 'function' }>
 export function resolveAsync(program: Program): void {
   const functions = new Map<string, Fn>()
 
-  for (const statement of program)
-    {if (statement.form === 'function')
-      {functions.set(statement.name, statement)}}
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      functions.set(statement.name, statement)
+    }
+  }
 
   // seed: a function is async if it is marked async (task-level) or already awaits something (a call-level `wait true`)
   const asyncSet = new Set<string>()
 
-  for (const [name, fn] of functions)
-    {if (fn.async || bodyAwaits(fn.body)) {asyncSet.add(name)}}
+  for (const [name, fn] of functions) {
+    if (fn.async || bodyAwaits(fn.body)) {
+      asyncSet.add(name)
+    }
+  }
 
   // fixed point: a function that calls an async function in non-background position is itself async
   let changed = true
@@ -32,7 +37,9 @@ export function resolveAsync(program: Program): void {
     changed = false
 
     for (const [name, fn] of functions) {
-      if (asyncSet.has(name)) {continue}
+      if (asyncSet.has(name)) {
+        continue
+      }
 
       if (bodyCallsAsync(fn.body, asyncSet)) {
         asyncSet.add(name)
@@ -44,7 +51,9 @@ export function resolveAsync(program: Program): void {
   // apply: mark each async function, and wrap every default (non-background, not-yet-awaited) call to an async function
   // in an `await`
   for (const [name, fn] of functions) {
-    if (asyncSet.has(name)) {fn.async = true}
+    if (asyncSet.has(name)) {
+      fn.async = true
+    }
 
     fn.body = fn.body.map(s => stmt(s, asyncSet))
   }
@@ -55,7 +64,9 @@ function bodyAwaits(body: Statement[]): boolean {
   let found = false
 
   const e = (node: Expression | undefined): void => {
-    if (!node || found) {return}
+    if (!node || found) {
+      return
+    }
 
     if (node.form === 'await') {
       found = true
@@ -63,12 +74,16 @@ function bodyAwaits(body: Statement[]): boolean {
       return
     }
 
-    if (node.form === 'closure') {return} // a closure's await belongs to the closure
+    if (node.form === 'closure') {
+      return
+    } // a closure's await belongs to the closure
 
     walkExpr(node, e)
   }
 
-  for (const s of body) {walkStmt(s, e)}
+  for (const s of body) {
+    walkStmt(s, e)
+  }
 
   return found
 }
@@ -81,9 +96,13 @@ function bodyCallsAsync(
   let found = false
 
   const e = (node: Expression | undefined): void => {
-    if (!node || found) {return}
+    if (!node || found) {
+      return
+    }
 
-    if (node.form === 'closure') {return}
+    if (node.form === 'closure') {
+      return
+    }
 
     if (
       node.form === 'call' &&
@@ -99,7 +118,9 @@ function bodyCallsAsync(
     walkExpr(node, e)
   }
 
-  for (const s of body) {walkStmt(s, e)}
+  for (const s of body) {
+    walkStmt(s, e)
+  }
 
   return found
 }
@@ -170,8 +191,9 @@ function expr(node: Expression, asyncSet: Set<string>): Expression {
         !node.background &&
         node.callee.form === 'variable' &&
         asyncSet.has(node.callee.name)
-      )
-        {return { form: 'await', expr: call, span: node.span }}
+      ) {
+        return { form: 'await', expr: call, span: node.span }
+      }
 
       return call
     }
@@ -270,7 +292,9 @@ function walkExpr(
         visit(b.value)
       })
 
-      if (node.otherwise) {visit(node.otherwise)}
+      if (node.otherwise) {
+        visit(node.otherwise)
+      }
 
       break
     default:
@@ -294,7 +318,9 @@ function walkStmt(
       visit(node.expr)
       break
     case 'return':
-      if (node.value) {visit(node.value)}
+      if (node.value) {
+        visit(node.value)
+      }
 
       break
     case 'throw':

@@ -419,17 +419,18 @@ export function renderKink(
       `  ${paint.dim('site')} ${wrap('<', paint.bright(location))}`,
     )
 
-    if (marker.label)
-      {out.push(
+    if (marker.label) {
+      out.push(
         `    ${paint.dim('call')} ${wrap(
           '<',
           paint.white(marker.label),
         )}`,
-      )}
-    else if (i > 0)
-      {out.push(
+      )
+    } else if (i > 0) {
+      out.push(
         `    ${paint.dim('call')} ${wrap('<', paint.white('related'))}`,
-      )}
+      )
+    }
 
     out.push(
       ...sourceSnippet(
@@ -443,10 +444,11 @@ export function renderKink(
     )
   })
 
-  if (diagnostic.hint)
-    {out.push(
+  if (diagnostic.hint) {
+    out.push(
       `  ${paint.dim('note')} ${wrap('<', paint.dim(diagnostic.hint))}`,
-    )}
+    )
+  }
 
   return out.join('\n')
 }
@@ -457,7 +459,9 @@ export function report(
   lines: string[],
   color = chalk.level > 0,
 ): string {
-  if (diagnostics.length === 0) {return 'no problems found'}
+  if (diagnostics.length === 0) {
+    return 'no problems found'
+  }
 
   const errors = diagnostics.filter(d => d.severity === 'error').length
   const warnings = diagnostics.filter(
@@ -466,10 +470,13 @@ export function report(
 
   const parts: string[] = []
 
-  if (errors) {parts.push(`${errors} error${errors === 1 ? '' : 's'}`)}
+  if (errors) {
+    parts.push(`${errors} error${errors === 1 ? '' : 's'}`)
+  }
 
-  if (warnings)
-    {parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`)}
+  if (warnings) {
+    parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`)
+  }
 
   const body = diagnostics
     .map(d => renderKink(d, lines, color))
@@ -524,9 +531,13 @@ function editDistance(a: string, b: string): number {
   const cols = b.length + 1
   const grid = new Array<number>(rows * cols)
 
-  for (let i = 0; i < rows; i++) {grid[i * cols] = i}
+  for (let i = 0; i < rows; i++) {
+    grid[i * cols] = i
+  }
 
-  for (let j = 0; j < cols; j++) {grid[j] = j}
+  for (let j = 0; j < cols; j++) {
+    grid[j] = j
+  }
 
   for (let i = 1; i < rows; i++) {
     for (let j = 1; j < cols; j++) {

@@ -58,7 +58,11 @@ export async function callScan(input: {
   }
 
   const text = readFileSync(file, 'utf8')
-  const result = compile({ file, text }, { resolve: editorResolver(file) })
+  const result = compile(
+    { file, text },
+    { resolve: editorResolver(file) },
+  )
+
   // errors when it failed; warnings (unused, termination, unchecked holds) when it compiled. `ok` is the gate.
   const diagnostics = result.ok ? result.warnings : result.diagnostics
 
@@ -81,6 +85,7 @@ export async function callScan(input: {
     const where = `${path.relative(input.root, d.file)}:${
       d.span.start.line + 1
     }:${d.span.start.column + 1}`
+
     const line = `${where}  ${d.name}: ${d.message}${
       d.hint ? ` (${d.hint})` : ''
     }`

@@ -3,15 +3,20 @@
 // OPFS exposes no synchronous API on the main thread. This mirrors the node / rust / swift / kotlin `io` shim members
 // so the per-platform file bindings forward to the same names.
 const io = (() => {
-  const root = (): Promise<FileSystemDirectoryHandle> => navigator.storage.getDirectory()
+  const root = (): Promise<FileSystemDirectoryHandle> =>
+    navigator.storage.getDirectory()
   const locate = async (
     path: string,
     create: boolean,
-  ): Promise<{ directory: FileSystemDirectoryHandle; name: string }> => {
+  ): Promise<{
+    directory: FileSystemDirectoryHandle
+    name: string
+  }> => {
     const parts = path.split('/').filter(Boolean)
     const name = parts.pop() as string
     let directory = await root()
-    for (const part of parts) directory = await directory.getDirectoryHandle(part, { create })
+    for (const part of parts)
+      directory = await directory.getDirectoryHandle(part, { create })
     return { directory, name }
   }
   const exists = async (path: string): Promise<boolean> => {
@@ -40,7 +45,10 @@ const io = (() => {
     const handle = await directory.getFileHandle(name)
     return new Uint8Array(await (await handle.getFile()).arrayBuffer())
   }
-  const writeBytes = async (path: string, data: Uint8Array): Promise<void> => {
+  const writeBytes = async (
+    path: string,
+    data: Uint8Array,
+  ): Promise<void> => {
     const { directory, name } = await locate(path, true)
     const handle = await directory.getFileHandle(name, { create: true })
     const writable = await handle.createWritable()
@@ -60,7 +68,8 @@ const io = (() => {
       const { directory, name } = await locate(path, false)
       await directory.removeEntry(name)
     },
-    fileCopy: async (from: string, to: string): Promise<void> => write(to, await read(from)),
+    fileCopy: async (from: string, to: string): Promise<void> =>
+      write(to, await read(from)),
     fileMove: async (from: string, to: string): Promise<void> => {
       await write(to, await read(from))
       const { directory, name } = await locate(from, false)

@@ -45,13 +45,20 @@ export function group(children: Cell[]): Cell {
 
 // render the current state of the view to a string (reads cached cell values, no recompute)
 export function render(cell: Cell): string {
-  if (cell.kind === 'text') {return cell.value}
+  if (cell.kind === 'text') {
+    return cell.value
+  }
 
   return cell.children.map(render).join('')
 }
 
 // dispose every reactive cell in a view
 export function dispose(cell: Cell): void {
-  if (cell.kind === 'text') {cell.dispose()}
-  else {for (const child of cell.children) {dispose(child)}}
+  if (cell.kind === 'text') {
+    cell.dispose()
+  } else {
+    for (const child of cell.children) {
+      dispose(child)
+    }
+  }
 }

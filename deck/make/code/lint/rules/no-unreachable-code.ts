@@ -44,7 +44,7 @@ export const noUnreachableCode: Rule = {
   docs: 'a statement after a terminator (send back / halt / throw) in the same block can never run',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
 
     for (const body of bodiesOf(target.node)) {
       for (let i = 0; i < body.length - 1; i++) {

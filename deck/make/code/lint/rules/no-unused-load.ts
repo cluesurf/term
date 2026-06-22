@@ -13,10 +13,14 @@ export const noUnusedLoad: Rule = {
   docs: 'a native import (`dock load`) whose alias is never used should be removed',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
-    if (node.form !== 'native') return
-    if (context.referenced.has(node.alias)) return
+
+    if (node.form !== 'native') {return}
+
+    if (context.referenced.has(node.alias)) {return}
+
     context.report({
       message: `the import "${node.alias}" (${node.module}) is never used`,
       span: node.span,

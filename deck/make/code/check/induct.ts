@@ -96,8 +96,9 @@ function replaceCall(
         e.callee.name === fname &&
         args.length === 1 &&
         match(args[0]!)
-      )
-        {return build(args[0]!)}
+      ) {
+        return build(args[0]!)
+      }
 
       return {
         ...e,
@@ -143,15 +144,15 @@ function recurrence(
     (s): s is Fn => s.form === 'function' && s.name === fname,
   )
 
-  if (fn?.params.length !== 1 || fn.body.length !== 1) {return null}
+  if (fn?.params.length !== 1 || fn.body.length !== 1) {
+    return null
+  }
 
   const ret = fn.body[0]!
 
-  if (
-    ret.form !== 'return' ||
-    ret.value?.form !== 'conditional'
-  )
-    {return null}
+  if (ret.form !== 'return' || ret.value?.form !== 'conditional') {
+    return null
+  }
 
   const param = fn.params[0]!.name
   const base = ret.value.branches.find(
@@ -164,7 +165,9 @@ function recurrence(
       Number(b.cond.right.value) === 0,
   )
 
-  if (!base || !ret.value.otherwise) {return null}
+  if (!base || !ret.value.otherwise) {
+    return null
+  }
 
   return { param, zero: base.value, otherwise: ret.value.otherwise }
 }
@@ -174,7 +177,9 @@ function goalFunction(e: Expression, program: Program): string | null {
   let found: string | null = null
 
   const walk = (x: Expression): void => {
-    if (found) {return}
+    if (found) {
+      return
+    }
 
     if (
       x.form === 'call' &&
@@ -189,7 +194,9 @@ function goalFunction(e: Expression, program: Program): string | null {
     if (x.form === 'binary') {
       walk(x.left)
       walk(x.right)
-    } else if (x.form === 'call') {x.args.forEach(walk)}
+    } else if (x.form === 'call') {
+      x.args.forEach(walk)
+    }
   }
 
   walk(e)
@@ -205,16 +212,22 @@ export function checkFold(
   goal: Expression,
   inductVar: string,
 ): boolean {
-  if (goal.form !== 'binary' || goal.op !== '==') {return false}
+  if (goal.form !== 'binary' || goal.op !== '==') {
+    return false
+  }
 
   const span = goal.span
   const fname = goalFunction(goal, program)
 
-  if (!fname) {return false}
+  if (!fname) {
+    return false
+  }
 
   const rec = recurrence(program, fname)
 
-  if (!rec) {return false}
+  if (!rec) {
+    return false
+  }
 
   const { param, zero, otherwise } = rec
 
@@ -227,8 +240,9 @@ export function checkFold(
     () => zero,
   ) as Binary
 
-  if (base.form !== 'binary' || !ringEqual(base.left, base.right))
-    {return false}
+  if (base.form !== 'binary' || !ringEqual(base.left, base.right)) {
+    return false
+  }
 
   // step: n := k+1, f(k+1) := otherwise[param := k+1] (which recurses to f(k)); abstract f(k) as S in both the step
   // goal and the induction hypothesis, then ring-check that the two differences agree.
@@ -255,7 +269,9 @@ export function checkFold(
 
   const ih = replaceCall(goal, fname, matchK, () => S) as Binary
 
-  if (stepGoal.form !== 'binary' || ih.form !== 'binary') {return false}
+  if (stepGoal.form !== 'binary' || ih.form !== 'binary') {
+    return false
+  }
 
   const stepDiff = binE('-', stepGoal.left, stepGoal.right, span)
   const ihDiff = binE('-', ih.left, ih.right, span)

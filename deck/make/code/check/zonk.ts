@@ -11,30 +11,34 @@ import type { Substitution } from '@cluesurf/make/code/check/substitution'
 export function zonk(type: Type, sub: Substitution): Type {
   const t = sub.resolve(type)
 
-  if (t.kind === 'array')
-    {return { kind: 'array', element: zonk(t.element, sub) }}
+  if (t.kind === 'array') {
+    return { kind: 'array', element: zonk(t.element, sub) }
+  }
 
-  if (t.kind === 'map')
-    {return {
+  if (t.kind === 'map') {
+    return {
       kind: 'map',
       key: zonk(t.key, sub),
       value: zonk(t.value, sub),
-    }}
+    }
+  }
 
-  if (t.kind === 'function')
-    {return {
+  if (t.kind === 'function') {
+    return {
       kind: 'function',
       params: t.params.map(p => zonk(p, sub)),
       result: zonk(t.result, sub),
       effects: t.effects,
-    }}
+    }
+  }
 
-  if (t.kind === 'named' && t.args)
-    {return {
+  if (t.kind === 'named' && t.args) {
+    return {
       kind: 'named',
       name: t.name,
       args: t.args.map(a => zonk(a, sub)),
-    }}
+    }
+  }
 
   return t
 }
@@ -53,33 +57,37 @@ export function zonkGeneric(
     return name ? { kind: 'named', name } : r
   }
 
-  if (r.kind === 'array')
-    {return {
+  if (r.kind === 'array') {
+    return {
       kind: 'array',
       element: zonkGeneric(r.element, names, sub),
-    }}
+    }
+  }
 
-  if (r.kind === 'map')
-    {return {
+  if (r.kind === 'map') {
+    return {
       kind: 'map',
       key: zonkGeneric(r.key, names, sub),
       value: zonkGeneric(r.value, names, sub),
-    }}
+    }
+  }
 
-  if (r.kind === 'function')
-    {return {
+  if (r.kind === 'function') {
+    return {
       kind: 'function',
       params: r.params.map(t => zonkGeneric(t, names, sub)),
       result: zonkGeneric(r.result, names, sub),
       effects: r.effects,
-    }}
+    }
+  }
 
-  if (r.kind === 'named' && r.args)
-    {return {
+  if (r.kind === 'named' && r.args) {
+    return {
       kind: 'named',
       name: r.name,
       args: r.args.map(t => zonkGeneric(t, names, sub)),
-    }}
+    }
+  }
 
   return r
 }
@@ -92,7 +100,9 @@ export function substGenerics(
   if (type.kind === 'named') {
     const direct = map.get(type.name)
 
-    if (direct && (!type.args || type.args.length === 0)) {return direct}
+    if (direct && (!type.args || type.args.length === 0)) {
+      return direct
+    }
 
     return {
       kind: 'named',
@@ -101,23 +111,26 @@ export function substGenerics(
     }
   }
 
-  if (type.kind === 'array')
-    {return { kind: 'array', element: substGenerics(type.element, map) }}
+  if (type.kind === 'array') {
+    return { kind: 'array', element: substGenerics(type.element, map) }
+  }
 
-  if (type.kind === 'map')
-    {return {
+  if (type.kind === 'map') {
+    return {
       kind: 'map',
       key: substGenerics(type.key, map),
       value: substGenerics(type.value, map),
-    }}
+    }
+  }
 
-  if (type.kind === 'function')
-    {return {
+  if (type.kind === 'function') {
+    return {
       kind: 'function',
       params: type.params.map(p => substGenerics(p, map)),
       result: substGenerics(type.result, map),
       effects: type.effects,
-    }}
+    }
+  }
 
   return type
 }

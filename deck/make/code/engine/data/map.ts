@@ -32,8 +32,9 @@ function keyTrits(key: string): Trit[] {
   for (const ch of key) {
     const trits = toTrits(BigInt(ch.codePointAt(0)!))
 
-    for (let i = 0; i < TRITS_PER_CODEPOINT; i++)
-      {out.push(trits[i] ?? 0)}
+    for (let i = 0; i < TRITS_PER_CODEPOINT; i++) {
+      out.push(trits[i] ?? 0)
+    }
   }
 
   return out
@@ -52,7 +53,9 @@ function descend<V>(
     let next = node.kids[slot]
 
     if (!next) {
-      if (!create) {return undefined}
+      if (!create) {
+        return undefined
+      }
 
       next = { kids: [] }
       node.kids[slot] = next
@@ -71,7 +74,9 @@ export function set<V>(
 ): void {
   const node = descend(map.root, keyTrits(key), true)!
 
-  if (!node.entry) {map.size += 1}
+  if (!node.entry) {
+    map.size += 1
+  }
 
   node.entry = { key, value }
 }
@@ -87,7 +92,9 @@ export function has<V>(map: TernaryMap<V>, key: string): boolean {
 export function remove<V>(map: TernaryMap<V>, key: string): boolean {
   const node = descend(map.root, keyTrits(key), false)
 
-  if (!node?.entry) {return false}
+  if (!node?.entry) {
+    return false
+  }
 
   node.entry = undefined
   map.size -= 1
@@ -106,9 +113,15 @@ export function entries<V>(
   const out: { key: string; value: V }[] = []
 
   const walk = (node: TrieNode<V>): void => {
-    if (node.entry) {out.push(node.entry)}
+    if (node.entry) {
+      out.push(node.entry)
+    }
 
-    for (const kid of node.kids) {if (kid) {walk(kid)}}
+    for (const kid of node.kids) {
+      if (kid) {
+        walk(kid)
+      }
+    }
   }
 
   walk(map.root)

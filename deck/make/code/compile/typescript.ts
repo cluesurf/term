@@ -182,6 +182,7 @@ function tsType(type: Type | undefined): string {
       return `${tsType(type.element)}[]`
     case 'map':
       return `Map<${tsType(type.key)}, ${tsType(type.value)}>`
+
     case 'named': {
       const opaque = tsOpaqueTypes.get(type.name)
 
@@ -269,8 +270,9 @@ function collectAssigned(
         collectAssignedExpr(statement.init, into)
         break
       case 'assign':
-        if (statement.target.form === 'variable')
-          {into.add(statement.target.name)}
+        if (statement.target.form === 'variable') {
+          into.add(statement.target.name)
+        }
 
         collectAssignedExpr(statement.value, into)
         break
@@ -278,7 +280,9 @@ function collectAssigned(
         collectAssignedExpr(statement.expr, into)
         break
       case 'return':
-        if (statement.value) {collectAssignedExpr(statement.value, into)}
+        if (statement.value) {
+          collectAssignedExpr(statement.value, into)
+        }
 
         break
       case 'throw':
@@ -298,11 +302,13 @@ function collectAssigned(
       case 'match':
         collectAssignedExpr(statement.subject, into)
 
-        for (const branch of statement.cases)
-          {collectAssigned(branch.body, into)}
+        for (const branch of statement.cases) {
+          collectAssigned(branch.body, into)
+        }
 
-        if (statement.otherwise)
-          {collectAssigned(statement.otherwise, into)}
+        if (statement.otherwise) {
+          collectAssigned(statement.otherwise, into)
+        }
 
         break
       case 'if':
@@ -311,8 +317,9 @@ function collectAssigned(
           collectAssigned(branch.body, into)
         }
 
-        if (statement.otherwise)
-          {collectAssigned(statement.otherwise, into)}
+        if (statement.otherwise) {
+          collectAssigned(statement.otherwise, into)
+        }
 
         break
       case 'function':
@@ -400,11 +407,12 @@ function makeEmitter(
         )
 
         // an enum variant carries a discriminant tag; a struct is a plain object
-        if (variants.has(node.name))
-          {return `{ ${[
+        if (variants.has(node.name)) {
+          return `{ ${[
             'form: ' + JSON.stringify(node.name),
             ...fields,
-          ].join(', ')} }`}
+          ].join(', ')} }`
+        }
 
         return `{ ${fields.join(', ')} }`
       }
@@ -471,7 +479,9 @@ function makeEmitter(
   }
 
   const block = (body: Statement[], depth: number): string => {
-    if (body.length === 0) {return '{}'}
+    if (body.length === 0) {
+      return '{}'
+    }
 
     const inner = body
       .map(s => `${pad(depth + 1)}${statement(s, depth + 1)}`)
@@ -500,17 +510,17 @@ function makeEmitter(
       const ref =
         zone.form === 'element' && zone.ref ? toCamel(zone.ref) : next()
 
-      if (zone.form === 'text')
-        {out.push(`const ${ref} = text(${JSON.stringify(zone.value)})`)}
-      else if (zone.form === 'read')
-        {out.push(
+      if (zone.form === 'text') {
+        out.push(`const ${ref} = text(${JSON.stringify(zone.value)})`)
+      } else if (zone.form === 'read') {
+        out.push(
           `const ${ref} = dynamic(() => ${expression(zone.value)})`,
-        )}
-      else if (zone.form === 'element') {
+        )
+      } else if (zone.form === 'element') {
         out.push(`const ${ref} = element(${JSON.stringify(zone.name)})`)
 
-        for (const attribute of zone.attributes)
-          {out.push(
+        for (const attribute of zone.attributes) {
+          out.push(
             attribute.event
               ? `event(${ref}, ${JSON.stringify(
                   attribute.name,
@@ -518,10 +528,15 @@ function makeEmitter(
               : `attribute(${ref}, ${JSON.stringify(
                   attribute.name,
                 )}, ${expression(attribute.value)})`,
-          )}
+          )
+        }
 
-        for (const child of zone.children) {attach(child, ref, out)}
-      } else {out.push(`const ${ref} = text("")`)}
+        for (const child of zone.children) {
+          attach(child, ref, out)
+        }
+      } else {
+        out.push(`const ${ref} = text("")`)
+      }
 
       return ref
     }
@@ -567,7 +582,9 @@ function makeEmitter(
           out.push(showCall(part, zone))
           out.push(`append(${parent}, ${part})`)
           collect.push(part)
-        } else {out.push(showCall(parent, zone))}
+        } else {
+          out.push(showCall(parent, zone))
+        }
       } else if (zone.form === 'walk') {
         if (collect) {
           const part = next()
@@ -575,21 +592,22 @@ function makeEmitter(
           out.push(eachCall(part, zone))
           out.push(`append(${parent}, ${part})`)
           collect.push(part)
-        } else {out.push(eachCall(parent, zone))}
+        } else {
+          out.push(eachCall(parent, zone))
+        }
       } else if (zone.form !== 'slot') {
         const ref = build(zone, out)
         out.push(`append(${parent}, ${ref})`)
 
-        if (collect) {collect.push(ref)}
+        if (collect) {
+          collect.push(ref)
+        }
       }
     }
 
     // a body list as a thunk `(params) => view` returning one node (children attached under a fragment element).
     // Not an IIFE: it is the `then` / `other` / `build` callback the render runtime invokes.
-    const fragment = (
-      params: string[],
-      body: ZoneNode[],
-    ): string => {
+    const fragment = (params: string[], body: ZoneNode[]): string => {
       const out: string[] = []
       const only = body[0]
 
@@ -607,7 +625,9 @@ function makeEmitter(
       } else {
         out.push(`const frag = element("seed-fragment")`)
 
-        for (const child of body) {attach(child, 'frag', out)}
+        for (const child of body) {
+          attach(child, 'frag', out)
+        }
 
         out.push('return frag')
       }
@@ -644,8 +664,8 @@ function makeEmitter(
       lines.push(`const __scope = openScope()`)
     }
 
-    for (const child of node.body)
-      {if (child.form === 'save') {
+    for (const child of node.body) {
+      if (child.form === 'save') {
         if (hmr && isSignalSave(child)) {
           signals.push(child.name)
 
@@ -660,17 +680,21 @@ function makeEmitter(
               child.name,
             )} = makeSignal(${key} in __seed ? __seed[${key}] : ${init})`,
           )
-        } else
-          {lines.push(
+        } else {
+          lines.push(
             `const ${toCamel(child.name)} = ${expression(child.value)}`,
-          )}
-      }}
+          )
+        }
+      }
+    }
 
     const roots: string[] = []
 
-    for (const child of node.body)
-      {if (child.form !== 'save')
-        {attach(child, host, lines, hmr ? roots : undefined)}}
+    for (const child of node.body) {
+      if (child.form !== 'save') {
+        attach(child, host, lines, hmr ? roots : undefined)
+      }
+    }
 
     // HMR: close the scope and register this instance (host, live signals, scope, root nodes) so the dev client can
     // snapshot its state, tear it down, and re-mount it from the fresh module on the next change.
@@ -755,8 +779,9 @@ function makeEmitter(
           )}) ${block(branch.body, depth)}`
         })
 
-        if (node.otherwise)
-          {out += ` else ${block(node.otherwise, depth)}`}
+        if (node.otherwise) {
+          out += ` else ${block(node.otherwise, depth)}`
+        }
 
         return out
       }
@@ -809,8 +834,9 @@ function makeEmitter(
           )}) ${block(branch.body, depth)}`
         })
 
-        if (node.otherwise)
-          {out += ` else ${block(node.otherwise, depth)}`}
+        if (node.otherwise) {
+          out += ` else ${block(node.otherwise, depth)}`
+        }
 
         return out
       }
@@ -905,9 +931,13 @@ export function emitTypeScript(
 
   const variants = new Set<string>(options?.variants)
 
-  for (const node of program)
-    {if (node.form === 'record-type')
-      {for (const v of node.variants) {variants.add(v.name)}}}
+  for (const node of program) {
+    if (node.form === 'record-type') {
+      for (const v of node.variants) {
+        variants.add(v.name)
+      }
+    }
+  }
 
   const env = options?.env ?? 'node'
   const binds = collectBinds(program)
@@ -940,8 +970,9 @@ export function emitTypeScript(
   )) {
     const globalName = node.module.slice('global:'.length)
 
-    if (toCamel(node.alias) !== globalName)
-      {imports.push(`const ${toCamel(node.alias)} = ${globalName}`)}
+    if (toCamel(node.alias) !== globalName) {
+      imports.push(`const ${toCamel(node.alias)} = ${globalName}`)
+    }
   }
 
   // a declarative binding's env target may name imports its rendered expression needs (dedup against the natives). Only
@@ -956,7 +987,9 @@ export function emitTypeScript(
         ? `import * as ${toCamel(need.alias)} from "${need.module}"`
         : `import "${need.module}"`
 
-      if (!imports.includes(line)) {imports.push(line)}
+      if (!imports.includes(line)) {
+        imports.push(line)
+      }
     }
   }
 
@@ -978,7 +1011,9 @@ export function emitTypeScript(
   const emittable = program.filter(node => node.form !== 'native')
   const lastIndex = new Map<string, number>()
   emittable.forEach((node, i) => {
-    if (declares(node)) {lastIndex.set(`${node.form}:${node.name}`, i)}
+    if (declares(node)) {
+      lastIndex.set(`${node.form}:${node.name}`, i)
+    }
   })
 
   const lines = emittable

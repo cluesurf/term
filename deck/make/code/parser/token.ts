@@ -75,10 +75,7 @@ const TEXT_MATCHERS: TokenKind[] = [
   TokenKind.Chunk,
 ]
 
-const NAME_MATCHERS: TokenKind[] = [
-  TokenKind.OpenBrace,
-  TokenKind.Name,
-]
+const NAME_MATCHERS: TokenKind[] = [TokenKind.OpenBrace, TokenKind.Name]
 
 const DEFAULT_MATCHERS: TokenKind[] = [
   TokenKind.CloseBrace,
@@ -168,6 +165,7 @@ export function tokenize(source: {
 
   for (const rawLine of tokens.lines) {
     const lineText = `${rawLine}\n`
+
     // a cursor over the line, advanced in place (no slicing): O(line) total
     let pos = 0
 
@@ -204,9 +202,12 @@ export function tokenize(source: {
         const pattern = PATTERN[kind]
         // sticky match anchored at the cursor
         pattern.lastIndex = pos
+
         const found = pattern.exec(lineText)
 
-        if (!found) {continue}
+        if (!found) {
+          continue
+        }
 
         matched = true
 
@@ -238,8 +239,11 @@ export function tokenize(source: {
         pos += size
         column += size
 
-        if (kind === TokenKind.OpenBrace) {braceStack.push(text)}
-        else if (kind === TokenKind.CloseBrace) {braceStack.pop()}
+        if (kind === TokenKind.OpenBrace) {
+          braceStack.push(text)
+        } else if (kind === TokenKind.CloseBrace) {
+          braceStack.pop()
+        }
 
         switch (kind) {
           case TokenKind.Newline:
@@ -263,10 +267,11 @@ export function tokenize(source: {
           case TokenKind.Chunk:
             // a chunk in a text literal may carry unescaped `<` (a generic / less-than); each deepens the bracket
             // balance so its matching `>` is treated as content rather than the literal's terminator.
-            if (mode === LexMode.Text && textDepthStack.length > 0)
-              {textDepthStack[textDepthStack.length - 1]! += (
+            if (mode === LexMode.Text && textDepthStack.length > 0) {
+              textDepthStack[textDepthStack.length - 1]! += (
                 text.match(/(?<!\\)</g) ?? []
-              ).length}
+              ).length
+            }
 
             break
           default:
@@ -289,7 +294,10 @@ export function tokenize(source: {
               file: source.file,
               span: previous
                 ? previous.span
-                : { start: { line, column }, end: { line, column: column + 1 } },
+                : {
+                    start: { line, column },
+                    end: { line, column: column + 1 },
+                  },
             }),
           ],
         }
@@ -305,7 +313,10 @@ export function tokenize(source: {
             file: source.file,
             span: previous
               ? previous.span
-              : { start: { line, column }, end: { line, column: column + 1 } },
+              : {
+                  start: { line, column },
+                  end: { line, column: column + 1 },
+                },
           }),
         ],
       }

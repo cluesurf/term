@@ -24,7 +24,12 @@ export type TopBlock = {
 
 // is this a top-level definition head: a column-0 line that is neither blank nor a comment
 function isHead(line: string): boolean {
-  return line.length > 0 && line[0] !== ' ' && line[0] !== '\t' && line[0] !== '#'
+  return (
+    line.length > 0 &&
+    !line.startsWith(' ') &&
+    !line.startsWith('\t') &&
+    !line.startsWith('#')
+  )
 }
 
 // is this line trivia that rides forward onto the next definition (a blank line or a comment)
@@ -35,6 +40,7 @@ function isLeadingTrivia(line: string): boolean {
 export function splitTopLevel(source: string): TopBlock[] {
   const lines = source.split('\n')
   const blocks: TopBlock[] = []
+
   let start = 0
   let seenHead = false
 
@@ -47,6 +53,7 @@ export function splitTopLevel(source: string): TopBlock[] {
     if (isHead(lines[i]!) && seenHead) {
       // a new definition begins; the comment / blank run immediately above it rides forward into the new block
       let boundary = i
+
       while (
         boundary > start &&
         isLeadingTrivia(lines[boundary - 1]!)
@@ -81,15 +88,18 @@ function shiftNode(node: Node, delta: number): void {
       for (const comment of node.comments ?? []) {
         shiftSpan(comment.span, delta)
       }
+
       for (const child of node.nodes) {
         shiftNode(child, delta)
       }
+
       break
     case 'name':
     case 'text':
       for (const part of node.parts) {
         shiftNode(part, delta)
       }
+
       break
     case 'chunk':
     case 'integer':
@@ -101,6 +111,7 @@ function shiftNode(node: Node, delta: number): void {
       if (node.group) {
         shiftNode(node.group, delta)
       }
+
       break
   }
 }
@@ -123,6 +134,7 @@ export function incrementalParse(
   const blocks = splitTopLevel(source)
   const nodes: GroupNode[] = []
   const used = new Set<string>()
+
   let reused = 0
   let parsed = 0
 
@@ -131,10 +143,12 @@ export function incrementalParse(
 
     if (cached && !used.has(block.hash)) {
       const delta = block.startLine - cached.shiftedTo
+
       if (delta !== 0) {
         for (const group of cached.groups) {
           shiftNode(group, delta)
         }
+
         cached.shiftedTo = block.startLine
       }
 

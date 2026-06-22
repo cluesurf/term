@@ -3,19 +3,10 @@
 // Run: npx tsx test/server/run.ts
 
 import { LanguageServer } from '@cluesurf/flow/code/server'
-import {
-  MessageReader,
-  encode,
-} from '@cluesurf/flow/code/protocol'
+import { MessageReader, encode } from '@cluesurf/flow/code/protocol'
 import type { Message } from '@cluesurf/flow/code/protocol'
-import {
-  analyze,
-  forEachExpression,
-} from '@cluesurf/flow/code/analyze'
-import {
-  buildIndex,
-  referenceAt,
-} from '@cluesurf/flow/code/symbols'
+import { analyze, forEachExpression } from '@cluesurf/flow/code/analyze'
+import { buildIndex, referenceAt } from '@cluesurf/flow/code/symbols'
 
 let pass = 0
 let fail = 0
@@ -135,11 +126,7 @@ const hoverContents = (
     contents: { kind: string; value: string }
   } | null
 )?.contents
-expect(
-  'hover: renders markdown',
-  hoverContents?.kind,
-  'markdown',
-)
+expect('hover: renders markdown', hoverContents?.kind, 'markdown')
 expect(
   'hover: the integer literal reports type number',
   hoverContents?.value.includes('number'),
@@ -370,7 +357,9 @@ expect(
 // inside the package resolves the stdlib exactly as a build would.
 const { pathToFileURL } = await import('node:url')
 const { join } = await import('node:path')
-const projUri = pathToFileURL(join(process.cwd(), 'flow-probe.tree')).href
+const projUri = pathToFileURL(
+  join(process.cwd(), 'flow-probe.tree'),
+).href
 const projServer = new LanguageServer()
 await projServer.dispatch({
   jsonrpc: '2.0',
@@ -534,7 +523,8 @@ const rankItems = (
 ).items
 const amountSort =
   rankItems.find(i => i.label === 'amount')?.sortText ?? 'z'
-const labelSort = rankItems.find(i => i.label === 'label')?.sortText ?? 'z'
+const labelSort =
+  rankItems.find(i => i.label === 'label')?.sortText ?? 'z'
 expect(
   'completion: argument-type match ranks first',
   amountSort < labelSort,
@@ -569,7 +559,9 @@ const inlayDoc =
 await server.dispatch({
   jsonrpc: '2.0',
   method: 'textDocument/didOpen',
-  params: { textDocument: { uri: 'file:///inlay.tree', text: inlayDoc } },
+  params: {
+    textDocument: { uri: 'file:///inlay.tree', text: inlayDoc },
+  },
 })
 const hints = (
   await server.dispatch({

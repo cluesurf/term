@@ -47,22 +47,28 @@ function suppressions(tree: RootNode): Map<number, Set<string>> {
       if (found) {
         const line = comment.span.start.line + 1
 
-        if (!map.has(line)) {map.set(line, new Set())}
+        if (!map.has(line)) {
+          map.set(line, new Set())
+        }
 
         map.get(line)!.add(found[1]!)
       }
     }
 
-    for (const child of group.nodes)
-      {if (
+    for (const child of group.nodes) {
+      if (
         child &&
         typeof child === 'object' &&
         (child as { kind?: string }).kind === 'group'
-      )
-        {visit(child as never)}}
+      ) {
+        visit(child as never)
+      }
+    }
   }
 
-  for (const group of tree.nodes) {visit(group)}
+  for (const group of tree.nodes) {
+    visit(group)
+  }
 
   return map
 }
@@ -90,20 +96,27 @@ export function analyze(source: {
           })
         : [],
     fix: (config: LintConfig = {}) => {
-      if (!program) {return source.text}
+      if (!program) {
+        return source.text
+      }
 
       const findings = lint(program, source.file, source.text, {
         ...config,
         suppress,
       })
+
       const fixed = applyFixes(source.text, findings)
       // re-parse + format the fixed text so the layout is normalized (a fix may leave odd spacing)
       const reparsed = parseTolerant({ file: source.file, text: fixed })
 
-      return reparsed.diagnostics.length ? fixed : formatTree(reparsed.tree)
+      return reparsed.diagnostics.length
+        ? fixed
+        : formatTree(reparsed.tree)
     },
     check: () => {
-      if (!program) {return all}
+      if (!program) {
+        return all
+      }
 
       const result = compileProgram(program, source.file)
 

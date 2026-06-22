@@ -27,14 +27,20 @@ export type Inst =
 
 // the variables an instruction reads
 function reads(inst: Inst): string[] {
-  if (inst.op === 'return') {return [inst.name]}
+  if (inst.op === 'return') {
+    return [inst.name]
+  }
 
   if (inst.op === 'let') {
     const v = inst.value
 
-    if (v.kind === 'make' || v.kind === 'call') {return v.args}
+    if (v.kind === 'make' || v.kind === 'call') {
+      return v.args
+    }
 
-    if (v.kind === 'var') {return [v.name]}
+    if (v.kind === 'var') {
+      return [v.name]
+    }
 
     return []
   }
@@ -43,51 +49,54 @@ function reads(inst: Inst): string[] {
 }
 
 // run Perceus over a straight-line function body. params are the owned inputs.
-export function perceus(
-  params: string[],
-  body: Inst[],
-): Inst[] {
+export function perceus(params: string[], body: Inst[]): Inst[] {
   // last-use index of each variable (the point where its owned reference is consumed)
   const lastUse = new Map<string, number>()
   body.forEach((inst, i) => {
-    for (const v of reads(inst)) {lastUse.set(v, i)}
+    for (const v of reads(inst)) {
+      lastUse.set(v, i)
+    }
   })
 
   // arity of each record binding, for reuse matching
   const arity = new Map<string, number>()
 
   for (const inst of body) {
-    if (inst.op === 'let' && inst.value.kind === 'make')
-      {arity.set(inst.name, inst.value.args.length)}
+    if (inst.op === 'let' && inst.value.kind === 'make') {
+      arity.set(inst.name, inst.value.args.length)
+    }
   }
 
   const out: Inst[] = []
 
   // a parameter never used must be dropped at entry (it was owned but consumed nowhere)
-  for (const p of params)
-    {if (!lastUse.has(p)) {out.push({ op: 'drop', name: p })}}
+  for (const p of params) {
+    if (!lastUse.has(p)) {
+      out.push({ op: 'drop', name: p })
+    }
+  }
 
   body.forEach((inst, i) => {
     // a non-last use needs a dup: we are taking a reference while the value lives on for a later use
     for (const v of reads(inst)) {
-      if (lastUse.get(v) !== i) {out.push({ op: 'dup', name: v })}
+      if (lastUse.get(v) !== i) {
+        out.push({ op: 'dup', name: v })
+      }
     }
 
     out.push(inst)
 
     // a binding that is never read is dead: drop it right after it is created
-    if (inst.op === 'let' && !lastUse.has(inst.name))
-      {out.push({ op: 'drop', name: inst.name })}
+    if (inst.op === 'let' && !lastUse.has(inst.name)) {
+      out.push({ op: 'drop', name: inst.name })
+    }
   })
 
   return reuse(out, arity)
 }
 
 // FBIP: a `drop x` of a record immediately followed by a `let y = make(...)` of the same arity reuses x's cell
-function reuse(
-  insts: Inst[],
-  arity: Map<string, number>,
-): Inst[] {
+function reuse(insts: Inst[], arity: Map<string, number>): Inst[] {
   const out: Inst[] = []
 
   for (let i = 0; i < insts.length; i++) {
@@ -133,9 +142,11 @@ export function perceusControl(
   // an owned parameter never used on any path is dropped at entry
   const entryDrops: Inst[] = []
 
-  for (const p of params)
-    {if (isHeap(p) && !liveIn.has(p))
-      {entryDrops.push({ op: 'drop', name: p })}}
+  for (const p of params) {
+    if (isHeap(p) && !liveIn.has(p)) {
+      entryDrops.push({ op: 'drop', name: p })
+    }
+  }
 
   return [...entryDrops, ...out]
 }
@@ -166,13 +177,15 @@ function processBlock(
           new Set([...liveHeader, ...live]),
           isHeap,
         )
+
         const grown = new Set([...liveHeader, ...bodyIn])
 
         if (
           grown.size === liveHeader.size &&
           [...grown].every(v => liveHeader.has(v))
-        )
-          {break}
+        ) {
+          break
+        }
 
         liveHeader = grown
       }
@@ -189,11 +202,15 @@ function processBlock(
       // owned reference past the last iteration; that reference must be dropped right after the loop.
       const dropsAfter = [...liveHeader].filter(v => !live.has(v))
 
-      for (const v of dropsAfter) {reversed.push({ op: 'drop', name: v })}
+      for (const v of dropsAfter) {
+        reversed.push({ op: 'drop', name: v })
+      }
 
       reversed.push({ op: 'while', cond: inst.cond, body: bodyOut })
 
-      for (const v of liveHeader) {live.add(v)}
+      for (const v of liveHeader) {
+        live.add(v)
+      }
 
       continue
     }
@@ -202,13 +219,18 @@ function processBlock(
       const armResults = inst.arms.map(arm =>
         processBlock(arm, live, isHeap),
       )
+
       const armIns = armResults.map(([, inSet]) => inSet)
 
       // the union of values consumed across all arms: every arm must leave the same set owned, so an arm that does
       // not consume one of these (and where it is not live after the match) drops it.
       const consumed = new Set<string>()
 
-      for (const s of armIns) {for (const v of s) {consumed.add(v)}}
+      for (const s of armIns) {
+        for (const v of s) {
+          consumed.add(v)
+        }
+      }
 
       const arms = armResults.map(([out], i) => {
         const drops = [...consumed]
@@ -220,7 +242,11 @@ function processBlock(
 
       reversed.push({ op: 'match', subject: inst.subject, arms })
 
-      for (const s of armIns) {for (const v of s) {live.add(v)}}
+      for (const s of armIns) {
+        for (const v of s) {
+          live.add(v)
+        }
+      }
 
       continue
     }
@@ -244,9 +270,13 @@ function processBlock(
         else: [...dropInElse, ...elseOut],
       })
 
-      for (const v of thenIn) {live.add(v)}
+      for (const v of thenIn) {
+        live.add(v)
+      }
 
-      for (const v of elseIn) {live.add(v)}
+      for (const v of elseIn) {
+        live.add(v)
+      }
 
       continue
     }
@@ -257,8 +287,11 @@ function processBlock(
     // consumes two). Only reference-counted (heap) reads matter; a copyable value (integer, boolean) carries no RC.
     const readCounts = new Map<string, number>()
 
-    for (const v of reads(inst))
-      {if (isHeap(v)) {readCounts.set(v, (readCounts.get(v) ?? 0) + 1)}}
+    for (const v of reads(inst)) {
+      if (isHeap(v)) {
+        readCounts.set(v, (readCounts.get(v) ?? 0) + 1)
+      }
+    }
 
     const dups: Inst[] = []
 
@@ -267,20 +300,29 @@ function processBlock(
       // one, so the remainder are dup'd.
       const need = count + (live.has(v) ? 1 : 0) - 1
 
-      for (let k = 0; k < need; k++) {dups.push({ op: 'dup', name: v })}
+      for (let k = 0; k < need; k++) {
+        dups.push({ op: 'dup', name: v })
+      }
     }
 
-    if (def && inst.op === 'let' && isHeap(def) && !live.has(def))
-      {reversed.push({ op: 'drop', name: def })} // a dead heap binding
+    if (def && inst.op === 'let' && isHeap(def) && !live.has(def)) {
+      reversed.push({ op: 'drop', name: def })
+    } // a dead heap binding
 
     reversed.push(inst)
 
-    for (const d of dups) {reversed.push(d)}
+    for (const d of dups) {
+      reversed.push(d)
+    }
 
-    if (def) {live.delete(def)}
+    if (def) {
+      live.delete(def)
+    }
 
     // `live` tracks only heap names (copyable values need no liveness for RC)
-    for (const v of readCounts.keys()) {live.add(v)}
+    for (const v of readCounts.keys()) {
+      live.add(v)
+    }
   }
 
   return [reversed.reverse(), live]
@@ -298,15 +340,19 @@ export function showInst(inst: Inst): string {
     case 'let': {
       const v = inst.value
 
-      if (v.kind === 'make')
-        {return `let ${inst.name} = make ${v.ctor}(${v.args.join(
+      if (v.kind === 'make') {
+        return `let ${inst.name} = make ${v.ctor}(${v.args.join(
           ', ',
-        )})${v.reuse ? ` reuse ${v.reuse}` : ''}`}
+        )})${v.reuse ? ` reuse ${v.reuse}` : ''}`
+      }
 
-      if (v.kind === 'call')
-        {return `let ${inst.name} = ${v.fn}(${v.args.join(', ')})`}
+      if (v.kind === 'call') {
+        return `let ${inst.name} = ${v.fn}(${v.args.join(', ')})`
+      }
 
-      if (v.kind === 'var') {return `let ${inst.name} = ${v.name}`}
+      if (v.kind === 'var') {
+        return `let ${inst.name} = ${v.name}`
+      }
 
       return `let ${inst.name} = lit`
     }

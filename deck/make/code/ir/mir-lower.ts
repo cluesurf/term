@@ -15,7 +15,9 @@ import type {
 import type { Inst } from '@cluesurf/make/code/ir/perceus'
 
 function isHeapType(type?: Type): boolean {
-  if (!type) {return false}
+  if (!type) {
+    return false
+  }
 
   return (
     type.kind === 'string' ||
@@ -33,15 +35,21 @@ export function lowerToMir(
   params: { name: string; type?: Type }[] = [],
 ): Lowered {
   const heap = new Set<string>()
+
   let counter = 0
+
   const fresh = (): string => `_t${counter++}`
 
   const markHeap = (name: string, type?: Type): void => {
-    if (isHeapType(type)) {heap.add(name)}
+    if (isHeapType(type)) {
+      heap.add(name)
+    }
   }
 
   // a heap-typed parameter is owned on entry and must be in the RC set
-  for (const p of params) {markHeap(p.name, p.type)}
+  for (const p of params) {
+    markHeap(p.name, p.type)
+  }
 
   // flatten an expression to ANF: push its prefix `let`s into `out`, return the name that holds its value
   function flatten(expr: Expression, out: Inst[]): string {
@@ -54,20 +62,28 @@ export function lowerToMir(
       case 'boolean':
       case 'string':
       case 'null':
+
       case 'unit': {
         const t = fresh()
         out.push({ op: 'let', name: t, value: { kind: 'lit' } })
         markHeap(t, expr.type) // a string literal is heap; the numeric literals are not
+
         return t
       }
 
       case 'call': {
         const fn =
           expr.callee.form === 'variable' ? expr.callee.name : 'call'
+
         const args = expr.args.map(a => flatten(a, out))
         const t = fresh()
-        out.push({ op: 'let', name: t, value: { kind: 'call', fn, args } })
+        out.push({
+          op: 'let',
+          name: t,
+          value: { kind: 'call', fn, args },
+        })
         markHeap(t, expr.type)
+
         return t
       }
 
@@ -81,6 +97,7 @@ export function lowerToMir(
           value: { kind: 'call', fn: expr.op, args: [left, right] },
         })
         markHeap(t, expr.type)
+
         return t
       }
 
@@ -93,6 +110,7 @@ export function lowerToMir(
           value: { kind: 'call', fn: expr.op, args: [operand] },
         })
         markHeap(t, expr.type)
+
         return t
       }
 
@@ -105,6 +123,7 @@ export function lowerToMir(
           value: { kind: 'make', ctor: expr.name, args },
         })
         heap.add(t) // a record is always heap
+
         return t
       }
 
@@ -117,6 +136,7 @@ export function lowerToMir(
           value: { kind: 'make', ctor: 'list', args },
         })
         heap.add(t) // a list is always heap
+
         return t
       }
 
@@ -129,6 +149,7 @@ export function lowerToMir(
           value: { kind: 'call', fn: 'member', args: [target] },
         })
         markHeap(t, expr.type)
+
         return t
       }
 
@@ -141,6 +162,7 @@ export function lowerToMir(
           value: { kind: 'call', fn: 'await', args: [inner] },
         })
         markHeap(t, expr.type)
+
         return t
       }
 
@@ -150,6 +172,7 @@ export function lowerToMir(
         const t = fresh()
         out.push({ op: 'let', name: t, value: { kind: 'lit' } })
         markHeap(t, expr.type)
+
         return t
       }
     }
@@ -164,7 +187,11 @@ export function lowerToMir(
         case 'let': {
           const name = flatten(s.init, out)
           // preserve the source binding name; alias it to the flattened value
-          out.push({ op: 'let', name: s.name, value: { kind: 'var', name } })
+          out.push({
+            op: 'let',
+            name: s.name,
+            value: { kind: 'var', name },
+          })
           markHeap(s.name, s.init.type)
           break
         }
@@ -174,6 +201,7 @@ export function lowerToMir(
             const name = flatten(s.value, out)
             out.push({ op: 'return', name })
           }
+
           break
         }
 
@@ -184,6 +212,7 @@ export function lowerToMir(
         case 'assign': {
           // a reassignment consumes the new value; model it as a binding to the target name
           const name = flatten(s.value, out)
+
           if (s.target.form === 'variable') {
             out.push({
               op: 'let',
@@ -192,6 +221,7 @@ export function lowerToMir(
             })
             markHeap(s.target.name, s.value.type)
           }
+
           break
         }
 
@@ -210,7 +240,10 @@ export function lowerToMir(
         case 'match': {
           const subject = flatten(s.subject, out)
           const arms = s.cases.map(c => lowerBlock(c.body))
-          if (s.otherwise) {arms.push(lowerBlock(s.otherwise))}
+
+          if (s.otherwise) {
+            arms.push(lowerBlock(s.otherwise))
+          }
 
           out.push({ op: 'match', subject, arms })
           break
@@ -236,6 +269,7 @@ export function lowerToMir(
     const then = lowerBlock(head!.body)
 
     let elseInsts: Inst[]
+
     if (rest.length > 0) {
       const nested: Inst[] = []
       nested.push(lowerIf(rest, otherwise, nested))

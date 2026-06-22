@@ -21,6 +21,7 @@ export async function install(input: {
   offline?: boolean
 }): Promise<void> {
   const config: FetchConfig = makeDefaultFetchConfig()
+
   if (input.offline) {
     config.offline = true
   }
@@ -75,6 +76,7 @@ export async function addDependency(input: {
 
   // check if already exists
   const existing = manifest.link.findIndex(l => l.name === input.name)
+
   if (existing >= 0) {
     manifest.link[existing] = { name: input.name, mark: hold }
   } else {
@@ -107,16 +109,17 @@ export async function removeDependency(input: {
 
 export async function verifyInstall(input: { root: string }): Promise<{
   ok: boolean
-  missing: Array<string>
-  outdated: Array<string>
+  missing: string[]
+  outdated: string[]
 }> {
   const lockfile = await loadLockfile({ dir: input.root })
+
   if (!lockfile) {
     return { ok: false, missing: ['lock.tree not found'], outdated: [] }
   }
 
-  const missing: Array<string> = []
-  const outdated: Array<string> = []
+  const missing: string[] = []
+  const outdated: string[] = []
 
   for (const entry of lockfile.decks) {
     const markStr = showMark(entry.mark)

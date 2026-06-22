@@ -32,7 +32,9 @@ export function propagateUpdate(
   const changed = graph.getById(changedId)
 
   // an unknown or never-loaded module cannot be hot-updated in place
-  if (!changed?.loaded) {return { type: 'full-reload' }}
+  if (!changed?.loaded) {
+    return { type: 'full-reload' }
+  }
 
   const boundaries: HmrUpdate[] = []
 
@@ -45,7 +47,9 @@ export function propagateUpdate(
     }
 
     // a non-accepting module with no importers is the top of a path: nothing accepts the change
-    if (node.importers.size === 0) {return true}
+    if (node.importers.size === 0) {
+      return true
+    }
 
     for (const importer of node.importers) {
       // the importer explicitly accepts this dep: it is the boundary for this path
@@ -55,22 +59,30 @@ export function propagateUpdate(
       }
 
       // a cycle back to a module already on this path cannot be resolved by accept: full reload
-      if (chain.includes(importer.id)) {return true}
+      if (chain.includes(importer.id)) {
+        return true
+      }
 
-      if (deadEnd(importer, [...chain, importer.id])) {return true}
+      if (deadEnd(importer, [...chain, importer.id])) {
+        return true
+      }
     }
 
     return false
   }
 
-  if (deadEnd(changed, [changed.id])) {return { type: 'full-reload' }}
+  if (deadEnd(changed, [changed.id])) {
+    return { type: 'full-reload' }
+  }
 
   // dedupe boundaries (the same boundary can be reached by multiple paths)
   const seen = new Set<string>()
   const updates = boundaries.filter(u => {
     const key = `${u.boundary}\n${u.accepted}`
 
-    if (seen.has(key)) {return false}
+    if (seen.has(key)) {
+      return false
+    }
 
     seen.add(key)
 
@@ -88,7 +100,9 @@ export function affectedModules(
 ): string[] {
   const changed = graph.getById(changedId)
 
-  if (!changed) {return []}
+  if (!changed) {
+    return []
+  }
 
   const affected = new Set<string>([changed.id])
   const stack: ModuleNode[] = [changed]

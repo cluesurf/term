@@ -47,7 +47,10 @@ function main(): void {
     'incremental parse equals a whole-file parse',
     ser(cold.tree) === ser(parse({ file: 'f.tree', text: src }).tree),
   )
-  ok('cold pass parses every block', cold.parsed === 3 && cold.reused === 0)
+  ok(
+    'cold pass parses every block',
+    cold.parsed === 3 && cold.reused === 0,
+  )
 
   // editing one definition re-parses only that one; the others are reused (re-positioned by a span shift)
   const cache = new Map()

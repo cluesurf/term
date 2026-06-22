@@ -29,14 +29,20 @@ export function makeExpect(deps: {
   return (actual, wanted, span, what) => {
     // defensive: a malformed program (e.g. a duplicate definition that already produced a diagnostic) can leave a
     // type undefined. Never crash on it -- the real error has been reported elsewhere.
-    if (!actual || !wanted) {return}
+    if (!actual || !wanted) {
+      return
+    }
 
     // remember which sides were still inference variables, so we can blame where they were first fixed
     const suspects: number[] = []
 
-    if (actual.kind === 'variable') {suspects.push(actual.id)}
+    if (actual.kind === 'variable') {
+      suspects.push(actual.id)
+    }
 
-    if (wanted.kind === 'variable') {suspects.push(wanted.id)}
+    if (wanted.kind === 'variable') {
+      suspects.push(wanted.id)
+    }
 
     if (!unify(actual, wanted, span)) {
       const markers: { span: Span; label?: string }[] = [{ span }]
@@ -44,11 +50,12 @@ export function makeExpect(deps: {
       for (const id of suspects) {
         const where = origin.get(id)
 
-        if (where)
-          {markers.push({
+        if (where) {
+          markers.push({
             span: where.span,
             label: `first used as ${showType(where.type)} here`,
-          })}
+          })
+        }
       }
 
       diagnostics.push(

@@ -37,8 +37,14 @@ async function main(): Promise<void> {
   }
 
   // a recompile error: overlay shown, NO reload (the running app keeps its state)
-  await applyHmr({ type: 'error', errors: ['type mismatch on line 7'] }, env)
-  ok('an error shows the overlay', shown?.[0] === 'type mismatch on line 7')
+  await applyHmr(
+    { type: 'error', errors: ['type mismatch on line 7'] },
+    env,
+  )
+  ok(
+    'an error shows the overlay',
+    shown?.[0] === 'type mismatch on line 7',
+  )
   ok('an error does NOT reload (state is preserved)', !reloaded)
 
   // the next good update clears the overlay

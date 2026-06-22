@@ -12,13 +12,19 @@ export const preferHostForConstant: Rule = {
   docs: 'a `save` that is never reassigned should be a `host` constant',
   fixable: true,
   check(target, context) {
-    if (target.kind !== 'statement') {return}
+    if (target.kind !== 'statement') {
+      return
+    }
 
     const s = target.node
 
-    if (s.form !== 'let' || !s.mutable) {return}
+    if (s.form !== 'let' || !s.mutable) {
+      return
+    }
 
-    if (context.reassigned.has(s.name)) {return}
+    if (context.reassigned.has(s.name)) {
+      return
+    }
 
     const keyword: Span = {
       start: s.span.start,

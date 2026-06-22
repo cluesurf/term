@@ -89,7 +89,9 @@ function apply(fun: Term, ...args: Term[]): Term {
 function lambdas(count: number, body: Term): Term {
   let term = body
 
-  for (let i = 0; i < count; i++) {term = { tag: 'lam', body: term }}
+  for (let i = 0; i < count; i++) {
+    term = { tag: 'lam', body: term }
+  }
 
   return term
 }
@@ -183,7 +185,9 @@ function kernelTypeAt(
   generics: Map<string, number>,
   known: Set<string>,
 ): Term | null {
-  if (!type) {return null}
+  if (!type) {
+    return null
+  }
 
   switch (type.kind) {
     case 'number':
@@ -198,7 +202,9 @@ function kernelTypeAt(
     case 'named': {
       const position = generics.get(type.name)
 
-      if (position !== undefined) {return variable(depth - position - 1)} // a generic type parameter, by de Bruijn index
+      if (position !== undefined) {
+        return variable(depth - position - 1)
+      } // a generic type parameter, by de Bruijn index
 
       return known.has(type.name) ? constant(type.name) : null
     }
@@ -228,7 +234,9 @@ const isUnit = (term: Term): boolean =>
 class Decline extends Error {}
 
 function need<T>(value: T | null): T {
-  if (value === null) {throw new Decline()}
+  if (value === null) {
+    throw new Decline()
+  }
 
   return value
 }
@@ -260,11 +268,13 @@ export function elaborateReport(
   // function is treated as transparent (a sound, conservative fallback), never a
   // compiler crash.
   let terminating: Set<string>
+
   try {
     terminating = terminatingFunctions(program)
   } catch {
     terminating = new Set<string>()
   }
+
   const diagnostics: Diagnostic[] = []
   const verified: string[] = []
   const discharged: Span[] = [] // holds the kernel proved by definitional equality (the non-linear fallback)
@@ -281,8 +291,11 @@ export function elaborateReport(
   // named types we postulate as constants (record-types / enums), so they can appear in signatures
   const namedTypes = new Set<string>()
 
-  for (const statement of program)
-    {if (statement.form === 'record-type') {namedTypes.add(statement.name)}}
+  for (const statement of program) {
+    if (statement.form === 'record-type') {
+      namedTypes.add(statement.name)
+    }
+  }
 
   // data: encode each record-type as kernel constants. A struct gets a constructor (make__r) and one projection
   // per field (r__field); an enum gets a constructor per variant and a non-dependent eliminator (match__e). All
@@ -296,16 +309,20 @@ export function elaborateReport(
   const variantToEnum = new Map<string, string[]>()
   const ctorKey = (enumName: string, variant: string): string =>
     `${enumName}__${variant}`
+
   // internal `enum__variant` key -> its fields (surface name + kernel type term), for binding them in a match branch
   const variantFieldInfo = new Map<
     string,
     { name: string; type: Term }[]
   >()
+
   const enumEncodings: { name: string; encoding: Term }[] = [] // each enum's derived self-type encoding
   const enumDefs: { name: string; term: Term }[] = [] // computing definitions for constructors + eliminators
 
   for (const statement of program) {
-    if (statement.form !== 'record-type') {continue}
+    if (statement.form !== 'record-type') {
+      continue
+    }
 
     const self = constant(statement.name)
 
@@ -315,7 +332,9 @@ export function elaborateReport(
         variant.fields.every(f => kernelType(f.type, namedTypes)),
       )
 
-      if (!ok) {continue}
+      if (!ok) {
+        continue
+      }
 
       for (const variant of statement.variants) {
         const fieldTypes = variant.fields.map(
@@ -329,6 +348,7 @@ export function elaborateReport(
             self,
           ),
         })
+
         const owners = variantToEnum.get(variant.name) ?? []
         owners.push(statement.name)
         variantToEnum.set(variant.name, owners)
@@ -358,13 +378,15 @@ export function elaborateReport(
         const fieldTs = statement.variants[i - 1]!.fields.map(
           f => kernelType(f.type, namedTypes)!,
         )
+
         const k = fieldTs.length
 
         // branch i's type: F_0 -> F_1 -> .. -> F_{k-1} -> A, with A at index i + k from the deepest point
         let branch: Term = variable(i + k)
 
-        for (let j = k - 1; j >= 0; j--)
-          {branch = arrow(fieldTs[j]!, branch)}
+        for (let j = k - 1; j >= 0; j--) {
+          branch = arrow(fieldTs[j]!, branch)
+        }
 
         eliminator = arrow(branch, eliminator)
       }
@@ -382,11 +404,15 @@ export function elaborateReport(
 
       let body: Term = apply(variable(n), variable(n + 1)) // P x
 
-      for (let i = n - 1; i >= 0; i--)
-        {body = arrow(
-          apply(variable(i), constant(ctorKey(statement.name, variants[i]!))),
+      for (let i = n - 1; i >= 0; i--) {
+        body = arrow(
+          apply(
+            variable(i),
+            constant(ctorKey(statement.name, variants[i]!)),
+          ),
           body,
-        )} // P v_i -> ..
+        )
+      } // P v_i -> ..
 
       body = arrow(arrow(self, TYPE0), body) // (P : e -> Type0) -> ..
       enumEncodings.push({
@@ -403,10 +429,12 @@ export function elaborateReport(
       // are n+1..n+k; for the eliminator, branches are 0..n-1, x is n, A is n+1.
       statement.variants.forEach((variant, i) => {
         const k = variant.fields.length
+
         let cbody: Term = variable(n - 1 - i) // b_i
 
-        for (let j = 0; j < k; j++)
-          {cbody = apply(cbody, variable(n + k - j))} // f_0 .. f_{k-1}
+        for (let j = 0; j < k; j++) {
+          cbody = apply(cbody, variable(n + k - j))
+        } // f_0 .. f_{k-1}
 
         enumDefs.push({
           name: ctorKey(statement.name, variant.name),
@@ -415,10 +443,12 @@ export function elaborateReport(
       })
 
       const motive: Term = { tag: 'lam', body: variable(n + 2) } // \_. A
+
       let ebody: Term = apply(variable(n), motive) // x (\_. A)
 
-      for (let j = 0; j < n; j++)
-        {ebody = apply(ebody, variable(n - 1 - j))} // b_0 .. b_{n-1}
+      for (let j = 0; j < n; j++) {
+        ebody = apply(ebody, variable(n - 1 - j))
+      } // b_0 .. b_{n-1}
 
       enumDefs.push({
         name: `match__${statement.name}`,
@@ -430,7 +460,9 @@ export function elaborateReport(
         kernelType(f.type, namedTypes),
       )
 
-      if (!ok) {continue}
+      if (!ok) {
+        continue
+      }
 
       const fieldTypes = statement.fields.map(
         f => kernelType(f.type, namedTypes)!,
@@ -444,11 +476,12 @@ export function elaborateReport(
         ),
       })
 
-      for (const field of statement.fields)
-        {dataSignature.push({
+      for (const field of statement.fields) {
+        dataSignature.push({
           name: `${statement.name}__${field.name}`,
           type: arrow(self, kernelType(field.type, namedTypes)!),
-        })}
+        })
+      }
 
       recordFields.set(
         statement.name,
@@ -473,7 +506,9 @@ export function elaborateReport(
   const representable = new Set<string>()
 
   for (const statement of program) {
-    if (statement.form !== 'function') {continue}
+    if (statement.form !== 'function') {
+      continue
+    }
 
     const generics = new Map<string, number>()
     statement.generics.forEach((g, i) => generics.set(g.name, i))
@@ -496,7 +531,9 @@ export function elaborateReport(
       ),
     )
 
-    if (!resultType || paramTypes.some(t => t === null)) {continue}
+    if (!resultType || paramTypes.some(t => t === null)) {
+      continue
+    }
 
     // build inside-out: result, then value params (many), then erased generic type params (0)
     let type = (paramTypes as Term[]).reduceRight<Term>(
@@ -504,8 +541,9 @@ export function elaborateReport(
       resultType,
     )
 
-    for (let i = 0; i < statement.generics.length; i++)
-      {type = erasedPi(TYPE0, type)}
+    for (let i = 0; i < statement.generics.length; i++) {
+      type = erasedPi(TYPE0, type)
+    }
 
     functionType.set(statement.name, type)
     functionGenerics.set(statement.name, statement.generics.length)
@@ -520,8 +558,9 @@ export function elaborateReport(
   // recursive reference safe.
   for (const { name, encoding } of enumEncodings) {
     try {
-      if (infer(baseContext, encoding).type.v === 'type')
-        {defineConstant(name, evaluate([], encoding))}
+      if (infer(baseContext, encoding).type.v === 'type') {
+        defineConstant(name, evaluate([], encoding))
+      }
     } catch {
       // the encoding did not form: keep the postulated type, no derivation
     }
@@ -566,10 +605,13 @@ export function elaborateReport(
       case 'variable': {
         const level = scope.get(node.name)
 
-        if (level !== undefined)
-          {return variable(context.level - level - 1)}
+        if (level !== undefined) {
+          return variable(context.level - level - 1)
+        }
 
-        if (functionType.has(node.name)) {return constant(node.name)} // a nullary function used as a value
+        if (functionType.has(node.name)) {
+          return constant(node.name)
+        } // a nullary function used as a value
 
         return null
       }
@@ -577,7 +619,9 @@ export function elaborateReport(
       case 'unary': {
         const operand = expr(node.operand, scope, context)
 
-        if (!operand) {return null}
+        if (!operand) {
+          return null
+        }
 
         return apply(constant(node.op === '-' ? 'neg' : 'not'), operand)
       }
@@ -602,7 +646,9 @@ export function elaborateReport(
           } else {
             right = expr(node.right, scope, context)
 
-            if (!right) {return null}
+            if (!right) {
+              return null
+            }
 
             try {
               operandType = infer(context, right).type
@@ -613,7 +659,9 @@ export function elaborateReport(
             left = expr(node.left, scope, context, operandType)
           }
 
-          if (!left || !right) {return null}
+          if (!left || !right) {
+            return null
+          }
 
           return apply(
             constant(node.op === '==' ? 'equal' : 'notequal'),
@@ -626,11 +674,15 @@ export function elaborateReport(
         const left = expr(node.left, scope, context)
         const right = expr(node.right, scope, context)
 
-        if (!left || !right) {return null}
+        if (!left || !right) {
+          return null
+        }
 
         const op = OPERATOR[node.op]
 
-        if (!op) {return null}
+        if (!op) {
+          return null
+        }
 
         return apply(constant(op), left, right)
       }
@@ -639,8 +691,9 @@ export function elaborateReport(
         if (
           node.callee.form !== 'variable' ||
           !functionType.has(node.callee.name)
-        )
-          {return null}
+        ) {
+          return null
+        }
 
         // a generic call gets a fresh metavariable per type parameter; the kernel solves them from the value
         // arguments by unification (the type witnesses are erased, multiplicity 0)
@@ -653,11 +706,15 @@ export function elaborateReport(
         // argument can resolve against the parameter it fills. Only a CLOSED `const` parameter type is a usable guide;
         // a dependent one is left unguided (the arg falls back to its unique owner, or declines).
         const paramDomains: (Term | undefined)[] = []
+
         let pt: Term | undefined = functionType.get(node.callee.name)
 
-        while (pt && pt.tag === 'pi') {
-          if (pt.mult !== 0)
-            {paramDomains.push(pt.domain.tag === 'const' ? pt.domain : undefined)}
+        while (pt?.tag === 'pi') {
+          if (pt.mult !== 0) {
+            paramDomains.push(
+              pt.domain.tag === 'const' ? pt.domain : undefined,
+            )
+          }
 
           pt = pt.codomain
         }
@@ -673,11 +730,16 @@ export function elaborateReport(
             domain ? evaluate([], domain) : undefined,
           )
 
-          if (!term) {args.push(null as unknown as Term)}
-          else {args.push(term)}
+          if (!term) {
+            args.push(null as unknown as Term)
+          } else {
+            args.push(term)
+          }
         })
 
-        if (args.some(a => a === null)) {return null}
+        if (args.some(a => a === null)) {
+          return null
+        }
 
         return apply(
           constant(node.callee.name),
@@ -690,23 +752,29 @@ export function elaborateReport(
         // p.field -> apply the field projection, after learning p's record type from the kernel
         const target = expr(node.target, scope, context)
 
-        if (!target) {return null}
+        if (!target) {
+          return null
+        }
 
         let recordName: string | null = null
 
         try {
           const type = quote(context.level, infer(context, target).type)
 
-          if (type.tag === 'const') {recordName = type.name}
+          if (type.tag === 'const') {
+            recordName = type.name
+          }
         } catch {
           return null
         }
 
-        if (recordName === null || !recordFields.has(recordName))
-          {return null}
+        if (recordName === null || !recordFields.has(recordName)) {
+          return null
+        }
 
-        if (!recordFields.get(recordName)!.includes(node.name))
-          {return null}
+        if (!recordFields.get(recordName)!.includes(node.name)) {
+          return null
+        }
 
         return apply(constant(`${recordName}__${node.name}`), target)
       }
@@ -747,15 +815,21 @@ export function elaborateReport(
           }
 
           // an overloaded constructor with no guiding type is ambiguous here: decline so the surface checker reports it
-          if (!enumName) {return null}
+          if (!enumName) {
+            return null
+          }
 
           const declared =
             variantFieldInfo.get(ctorKey(enumName, node.name)) ?? []
+
           const fieldValues: Term[] = []
 
           for (const field of node.fields) {
             // give a nested constructor its expected type, so an overloaded one resolves against this field's type
-            const fieldType = declared.find(d => d.name === field.name)?.type
+            const fieldType = declared.find(
+              d => d.name === field.name,
+            )?.type
+
             const value = expr(
               field.value,
               scope,
@@ -763,17 +837,24 @@ export function elaborateReport(
               fieldType ? evaluate([], fieldType) : undefined,
             )
 
-            if (!value) {return null}
+            if (!value) {
+              return null
+            }
 
             fieldValues.push(value)
           }
 
-          return apply(constant(ctorKey(enumName, node.name)), ...fieldValues)
+          return apply(
+            constant(ctorKey(enumName, node.name)),
+            ...fieldValues,
+          )
         }
 
         const order = recordFields.get(node.name)
 
-        if (!order) {return null}
+        if (!order) {
+          return null
+        }
 
         const byName = new Map(node.fields.map(f => [f.name, f.value]))
         const args: Term[] = []
@@ -781,11 +862,15 @@ export function elaborateReport(
         for (const fieldName of order) {
           const value = byName.get(fieldName)
 
-          if (!value) {return null} // a missing field: decline (the surface checker covers it)
+          if (!value) {
+            return null
+          } // a missing field: decline (the surface checker covers it)
 
           const term = expr(value, scope, context)
 
-          if (!term) {return null}
+          if (!term) {
+            return null
+          }
 
           args.push(term)
         }
@@ -804,7 +889,9 @@ export function elaborateReport(
         for (const item of node.items) {
           const term = expr(item, scope, context)
 
-          if (!term) {return null}
+          if (!term) {
+            return null
+          }
 
           items.push(term)
         }
@@ -826,8 +913,9 @@ export function elaborateReport(
 
         let result = apply(constant('arrayEmpty'), element)
 
-        for (const item of items)
-          {result = apply(constant('arrayPush'), element, result, item)}
+        for (const item of items) {
+          result = apply(constant('arrayPush'), element, result, item)
+        }
 
         return result
       }
@@ -846,28 +934,37 @@ export function elaborateReport(
     context: Context,
     resultValue: Value,
   ): Term | null {
-    if (statements.length === 0) {return null}
+    if (statements.length === 0) {
+      return null
+    }
 
     const [head, ...tail] = statements
 
     switch (head!.form) {
       case 'return': {
-        if (tail.length > 0) {return null} // unreachable code after a return
+        if (tail.length > 0) {
+          return null
+        } // unreachable code after a return
 
-        if (!head.value)
-          {return isUnit(quote(context.level, resultValue))
+        if (!head.value) {
+          return isUnit(quote(context.level, resultValue))
             ? constant('unitValue')
-            : null}
+            : null
+        }
 
         return expr(head.value, scope, context, resultValue)
       }
 
       case 'let': {
-        if (head.mutable) {return null} // a reassignable binding is not a pure let; decline
+        if (head.mutable) {
+          return null
+        } // a reassignable binding is not a pure let; decline
 
         const value = expr(head.init, scope, context)
 
-        if (!value) {return null}
+        if (!value) {
+          return null
+        }
 
         let valueType
 
@@ -881,7 +978,9 @@ export function elaborateReport(
         const innerScope = new Map(scope).set(head.name, context.level)
         const rest = body(tail, innerScope, inner, resultValue)
 
-        if (!rest) {return null}
+        if (!rest) {
+          return null
+        }
 
         // model `let x = v; rest` as an immediately-applied lambda: (\ (x : T). rest) v. The codomain is the result
         // type quoted one binder deeper (so any generic reference is shifted past the new binding).
@@ -904,13 +1003,19 @@ export function elaborateReport(
         // the fall-through (or explicit else) is the final branch; require it so the value is total
         const elseStatements = head.otherwise ?? tail
 
-        if (head.otherwise && tail.length > 0) {return null} // if/else followed by more code: decline
+        if (head.otherwise && tail.length > 0) {
+          return null
+        } // if/else followed by more code: decline
 
-        if (elseStatements.length === 0) {return null}
+        if (elseStatements.length === 0) {
+          return null
+        }
 
         let result = body(elseStatements, scope, context, resultValue)
 
-        if (!result) {return null}
+        if (!result) {
+          return null
+        }
 
         for (let i = head.branches.length - 1; i >= 0; i--) {
           const branch = head.branches[i]!
@@ -922,7 +1027,9 @@ export function elaborateReport(
             resultValue,
           )
 
-          if (!condition || !consequent) {return null}
+          if (!condition || !consequent) {
+            return null
+          }
 
           result = apply(
             constant('cond'),
@@ -941,13 +1048,19 @@ export function elaborateReport(
         // declaration order. The eliminator binds no fields, so a branch that projects a variant field declines
         // (its body() returns null) and the surface checker covers it; an `otherwise` or missing variant also
         // declines (the eliminator is total over exactly the variants).
-        if (tail.length > 0) {return null} // the match must produce the result (be the tail)
+        if (tail.length > 0) {
+          return null
+        } // the match must produce the result (be the tail)
 
-        if (head.otherwise) {return null}
+        if (head.otherwise) {
+          return null
+        }
 
         const subject = expr(head.subject, scope, context)
 
-        if (!subject) {return null}
+        if (!subject) {
+          return null
+        }
 
         let enumName: string | null = null
 
@@ -957,25 +1070,33 @@ export function elaborateReport(
             infer(context, subject).type,
           )
 
-          if (type.tag === 'const') {enumName = type.name}
+          if (type.tag === 'const') {
+            enumName = type.name
+          }
         } catch {
           return null
         }
 
         const order = enumName ? variantNames.get(enumName) : undefined
 
-        if (!order) {return null}
+        if (!order) {
+          return null
+        }
 
         const branches: Term[] = []
 
         for (const variant of order) {
           const branch = head.cases.find(c => c.label === variant)
 
-          if (!branch) {return null} // non-exhaustive against the eliminator: decline
+          if (!branch) {
+            return null
+          } // non-exhaustive against the eliminator: decline
 
           // bind the variant's fields: each branch is a lambda over its fields (the eliminator passes them in), with
           // the fields in scope in the branch body. `succ p`'s branch becomes `\p. <body using p>`.
-          const fieldInfo = variantFieldInfo.get(ctorKey(enumName!, variant)) ?? []
+          const fieldInfo =
+            variantFieldInfo.get(ctorKey(enumName!, variant)) ?? []
+
           let branchScope = scope
           let branchContext = context
 
@@ -1000,13 +1121,16 @@ export function elaborateReport(
             resultValue,
           )
 
-          if (!inner) {return null}
+          if (!inner) {
+            return null
+          }
 
           // wrap the body in one lambda per field, innermost field last
           let term = inner
 
-          for (let w = 0; w < fieldInfo.length; w++)
-            {term = { tag: 'lam', body: term }}
+          for (let w = 0; w < fieldInfo.length; w++) {
+            term = { tag: 'lam', body: term }
+          }
 
           branches.push(term)
         }
@@ -1033,10 +1157,13 @@ export function elaborateReport(
     left: Value,
     right: Value,
   ): 'ok' | 'fail' | 'open' {
-    if (!proof || proof.length === 0)
-      {return areConvertible(level, left, right) ? 'ok' : 'open'}
+    if (!proof || proof.length === 0) {
+      return areConvertible(level, left, right) ? 'ok' : 'open'
+    }
 
-    if (proof.length > 1) {return 'open'} // a sequence of top-level tactics is not lowered yet
+    if (proof.length > 1) {
+      return 'open'
+    } // a sequence of top-level tactics is not lowered yet
 
     const tactic = proof[0]!
     const here = {
@@ -1060,6 +1187,7 @@ export function elaborateReport(
         ) {
           return 'fail'
         }
+
         return areConvertible(level, left, right) ? 'ok' : 'fail'
 
       case 'melt':
@@ -1068,7 +1196,9 @@ export function elaborateReport(
       case 'cite': {
         const lemma = tactic.arg ? lemmas.get(tactic.arg) : undefined
 
-        if (!lemma) {return 'fail'}
+        if (!lemma) {
+          return 'fail'
+        }
 
         // a cited lemma must state the same equality, in either orientation (== is symmetric)
         return (lemma.left === here.left &&
@@ -1082,7 +1212,9 @@ export function elaborateReport(
         // symmetry: prove a == b by citing the reversed lemma b == a
         const lemma = tactic.arg ? lemmas.get(tactic.arg) : undefined
 
-        if (!lemma) {return 'fail'}
+        if (!lemma) {
+          return 'fail'
+        }
 
         return lemma.left === here.right && lemma.right === here.left
           ? 'ok'
@@ -1093,24 +1225,35 @@ export function elaborateReport(
         // transitivity: a chain of cited lemmas a == m, m == ..., == b whose ends match the goal
         const steps = tactic.children
 
-        if (steps.length === 0) {return 'fail'}
+        if (steps.length === 0) {
+          return 'fail'
+        }
 
         const eqs: { left: string; right: string }[] = []
 
         for (const step of steps) {
-          if (step.head !== 'cite' || !step.arg) {return 'open'} // only chains of `cite` are lowered
+          if (step.head !== 'cite' || !step.arg) {
+            return 'open'
+          } // only chains of `cite` are lowered
 
           const lemma = lemmas.get(step.arg)
 
-          if (!lemma) {return 'fail'}
+          if (!lemma) {
+            return 'fail'
+          }
 
           eqs.push(lemma)
         }
 
-        if (eqs[0]!.left !== here.left) {return 'fail'}
+        if (eqs[0]!.left !== here.left) {
+          return 'fail'
+        }
 
-        for (let i = 0; i < eqs.length - 1; i++)
-          {if (eqs[i]!.right !== eqs[i + 1]!.left) {return 'fail'}}
+        for (let i = 0; i < eqs.length - 1; i++) {
+          if (eqs[i]!.right !== eqs[i + 1]!.left) {
+            return 'fail'
+          }
+        }
 
         return eqs[eqs.length - 1]!.right === here.right ? 'ok' : 'fail'
       }
@@ -1168,13 +1311,15 @@ export function elaborateReport(
           infer(ctx, need(expr(statement.expr, sc, ctx))) // ensure it is well-typed
           break
         case 'return':
-          if (statement.value)
-            {check(
+          if (statement.value) {
+            check(
               ctx,
               need(expr(statement.value, sc, ctx)),
               resultValue,
-            )}
-          else if (!isUnitValue(resultValue)) {throw new Decline()}
+            )
+          } else if (!isUnitValue(resultValue)) {
+            throw new Decline()
+          }
 
           break
         case 'if':
@@ -1185,8 +1330,9 @@ export function elaborateReport(
             const branchAssumptions = [...assumptions]
             const cond = branch.cond
 
-            if (cond.form === 'binary' && cond.op === '==')
-              {branchAssumptions.push([cond.left, cond.right])}
+            if (cond.form === 'binary' && cond.op === '==') {
+              branchAssumptions.push([cond.left, cond.right])
+            }
 
             checkCommands(
               branch.body,
@@ -1197,19 +1343,26 @@ export function elaborateReport(
             )
           }
 
-          if (statement.otherwise)
-            {checkCommands(
+          if (statement.otherwise) {
+            checkCommands(
               statement.otherwise,
               sc,
               ctx,
               resultValue,
               assumptions,
-            )}
+            )
+          }
 
           break
         case 'while':
           check(ctx, need(expr(statement.cond, sc, ctx)), BOOLEAN_VALUE)
-          checkCommands(statement.body, sc, ctx, resultValue, assumptions)
+          checkCommands(
+            statement.body,
+            sc,
+            ctx,
+            resultValue,
+            assumptions,
+          )
           break
 
         case 'for-each': {
@@ -1223,8 +1376,9 @@ export function elaborateReport(
             iterableType.tag !== 'app' ||
             iterableType.fun.tag !== 'const' ||
             iterableType.fun.name !== 'Array'
-          )
-            {throw new Decline()}
+          ) {
+            throw new Decline()
+          }
 
           const elementType = evaluate(ctx.env, iterableType.arg)
           const innerScope = new Map(sc).set(statement.item, ctx.level)
@@ -1245,20 +1399,29 @@ export function elaborateReport(
           if (
             subjectType.tag !== 'const' ||
             !variantNames.has(subjectType.name)
-          )
-            {throw new Decline()}
+          ) {
+            throw new Decline()
+          }
 
-          for (const branch of statement.cases)
-            {checkCommands(branch.body, sc, ctx, resultValue, assumptions)}
+          for (const branch of statement.cases) {
+            checkCommands(
+              branch.body,
+              sc,
+              ctx,
+              resultValue,
+              assumptions,
+            )
+          }
 
-          if (statement.otherwise)
-            {checkCommands(
+          if (statement.otherwise) {
+            checkCommands(
               statement.otherwise,
               sc,
               ctx,
               resultValue,
               assumptions,
-            )}
+            )
+          }
 
           break
         }
@@ -1310,10 +1473,16 @@ export function elaborateReport(
   // cited lemma against the goal.
   // collect the free de Bruijn variable indices of a (closed-context) term. Used to decide which variables a generalized
   // induction hypothesis quantifies over.
-  function freeVarIndices(term: Term, depth = 0, acc = new Set<number>()): Set<number> {
+  function freeVarIndices(
+    term: Term,
+    depth = 0,
+    acc = new Set<number>(),
+  ): Set<number> {
     switch (term.tag) {
       case 'var':
-        if (term.index - depth >= 0) {acc.add(term.index - depth)}
+        if (term.index - depth >= 0) {
+          acc.add(term.index - depth)
+        }
 
         return acc
       case 'app':
@@ -1352,7 +1521,9 @@ export function elaborateReport(
       if (isBinderHole || isSetHole) {
         const prior = subst.get(base)
 
-        if (prior) {return termsEqual(prior, subject)}
+        if (prior) {
+          return termsEqual(prior, subject)
+        }
 
         subst.set(base, subject)
 
@@ -1360,7 +1531,9 @@ export function elaborateReport(
       }
     }
 
-    if (pattern.tag !== subject.tag) {return false}
+    if (pattern.tag !== subject.tag) {
+      return false
+    }
 
     switch (pattern.tag) {
       case 'var':
@@ -1370,13 +1543,34 @@ export function elaborateReport(
       case 'app':
         return (
           subject.tag === 'app' &&
-          matchPattern(pattern.fun, subject.fun, binders, depth, subst, holes) &&
-          matchPattern(pattern.arg, subject.arg, binders, depth, subst, holes)
+          matchPattern(
+            pattern.fun,
+            subject.fun,
+            binders,
+            depth,
+            subst,
+            holes,
+          ) &&
+          matchPattern(
+            pattern.arg,
+            subject.arg,
+            binders,
+            depth,
+            subst,
+            holes,
+          )
         )
       case 'lam':
         return (
           subject.tag === 'lam' &&
-          matchPattern(pattern.body, subject.body, binders, depth + 1, subst, holes)
+          matchPattern(
+            pattern.body,
+            subject.body,
+            binders,
+            depth + 1,
+            subst,
+            holes,
+          )
         )
       default:
         // other shapes (pi, sigma, id, ...) do not occur in the first-order equational lemmas we cite
@@ -1413,11 +1607,19 @@ export function elaborateReport(
 
         return fun && arg ? { tag: 'app', fun, arg } : null
       }
+
       case 'lam': {
-        const body = instantiate(rhs.body, binders, depth + 1, subst, holes)
+        const body = instantiate(
+          rhs.body,
+          binders,
+          depth + 1,
+          subst,
+          holes,
+        )
 
         return body ? { tag: 'lam', body } : null
       }
+
       default:
         return rhs
     }
@@ -1427,33 +1629,61 @@ export function elaborateReport(
   // replace it with the instantiated rhs. Returns the rewritten term, or null if the lemma does not fire anywhere.
   function rewriteOnce(
     target: Term,
-    rule: { binderCount: number; lhs: Term; rhs: Term; holes?: Set<number> },
+    rule: {
+      binderCount: number
+      lhs: Term
+      rhs: Term
+      holes?: Set<number>
+    },
   ): Term | null {
     const subst = new Map<number, Term>()
 
-    if (matchPattern(rule.lhs, target, rule.binderCount, 0, subst, rule.holes)) {
-      const rhs = instantiate(rule.rhs, rule.binderCount, 0, subst, rule.holes)
+    if (
+      matchPattern(
+        rule.lhs,
+        target,
+        rule.binderCount,
+        0,
+        subst,
+        rule.holes,
+      )
+    ) {
+      const rhs = instantiate(
+        rule.rhs,
+        rule.binderCount,
+        0,
+        subst,
+        rule.holes,
+      )
 
-      if (rhs) {return rhs}
+      if (rhs) {
+        return rhs
+      }
     }
 
     switch (target.tag) {
       case 'app': {
         const fun = rewriteOnce(target.fun, rule)
 
-        if (fun) {return { tag: 'app', fun, arg: target.arg }}
+        if (fun) {
+          return { tag: 'app', fun, arg: target.arg }
+        }
 
         const arg = rewriteOnce(target.arg, rule)
 
-        if (arg) {return { tag: 'app', fun: target.fun, arg }}
+        if (arg) {
+          return { tag: 'app', fun: target.fun, arg }
+        }
 
         return null
       }
+
       case 'lam': {
         const body = rewriteOnce(target.body, rule)
 
         return body ? { tag: 'lam', body } : null
       }
+
       default:
         return null
     }
@@ -1463,7 +1693,12 @@ export function elaborateReport(
   // rewrite set cannot loop. Each rewrite replaces a subterm by a provably equal one, so the result equals the input.
   function rewriteWithLemmas(
     target: Term,
-    rules: { binderCount: number; lhs: Term; rhs: Term; holes?: Set<number> }[],
+    rules: {
+      binderCount: number
+      lhs: Term
+      rhs: Term
+      holes?: Set<number>
+    }[],
     fuel: number,
   ): Term {
     let current = target
@@ -1483,7 +1718,9 @@ export function elaborateReport(
         }
       }
 
-      if (!progressed) {break}
+      if (!progressed) {
+        break
+      }
     }
 
     return current
@@ -1512,8 +1749,9 @@ export function elaborateReport(
       rhs.arg.tag === 'var' &&
       rhs.fun.arg.index === lhs.arg.index &&
       rhs.arg.index === lhs.fun.arg.index
-    )
-      {return lhs.fun.fun.name}
+    ) {
+      return lhs.fun.fun.name
+    }
 
     return null
   }
@@ -1526,16 +1764,23 @@ export function elaborateReport(
   }): string | null {
     const { lhs, rhs } = rule
     const op = (t: Term): string | null =>
-      t.tag === 'app' && t.fun.tag === 'app' && t.fun.fun.tag === 'const'
+      t.tag === 'app' &&
+      t.fun.tag === 'app' &&
+      t.fun.fun.tag === 'const'
         ? t.fun.fun.name
         : null
+
     const left = (t: Term): Term | null =>
       t.tag === 'app' && t.fun.tag === 'app' ? t.fun.arg : null
+
     const right = (t: Term): Term | null =>
       t.tag === 'app' ? t.arg : null
+
     const f = op(lhs)
 
-    if (!f || op(rhs) !== f) {return null}
+    if (!f || op(rhs) !== f) {
+      return null
+    }
 
     const ll = left(lhs)
     const lr = right(lhs)
@@ -1543,7 +1788,9 @@ export function elaborateReport(
     const rr = right(rhs)
 
     // lhs inner is on the LEFT: f (f a b) c ; rhs inner is on the RIGHT: f a (f b c)
-    if (ll && op(ll) === f && rr && op(rr) === f) {return f}
+    if (ll && op(ll) === f && rr && op(rr) === f) {
+      return f
+    }
 
     return null
   }
@@ -1559,8 +1806,9 @@ export function elaborateReport(
       term.fun.tag !== 'app' ||
       term.fun.fun.tag !== 'const' ||
       !operators.has(term.fun.fun.name)
-    )
-      {return null}
+    ) {
+      return null
+    }
 
     const op = term.fun.fun.name
     const operands: Term[] = []
@@ -1568,8 +1816,11 @@ export function elaborateReport(
     for (const side of [term.fun.arg, term.arg]) {
       const inner = flattenAc(side, operators)
 
-      if (inner && inner.op === op) {operands.push(...inner.operands)}
-      else {operands.push(side)}
+      if (inner?.op === op) {
+        operands.push(...inner.operands)
+      } else {
+        operands.push(side)
+      }
     }
 
     return { op, operands }
@@ -1632,10 +1883,13 @@ export function elaborateReport(
       for (const rule of rules) {
         const lhsFlat = flattenAc(rule.lhs, operators)
 
-        if (!lhsFlat || lhsFlat.op !== flat.op) {continue}
+        if (lhsFlat?.op !== flat.op) {
+          continue
+        }
 
         // does the rule's lhs chain occur as a sub-multiset of this chain?
         const used = new Array(flat.operands.length).fill(false)
+
         let matched = true
 
         for (const need of lhsFlat.operands.map(showTerm)) {
@@ -1651,17 +1905,22 @@ export function elaborateReport(
           used[at] = true
         }
 
-        if (!matched) {continue}
+        if (!matched) {
+          continue
+        }
 
         const keep = flat.operands.filter((_, i) => !used[i])
         const rhsFlat = flattenAc(rule.rhs, operators)
         const rhsOperands =
-          rhsFlat && rhsFlat.op === flat.op
+          rhsFlat?.op === flat.op
             ? rhsFlat.operands
             : [rule.rhs]
+
         const next = [...keep, ...rhsOperands]
 
-        if (next.length === 0) {return rule.rhs}
+        if (next.length === 0) {
+          return rule.rhs
+        }
 
         return next.reduceRight((acc, part) => ({
           tag: 'app',
@@ -1675,19 +1934,25 @@ export function elaborateReport(
       case 'app': {
         const fun = acRewriteAt(term.fun, operators, rules)
 
-        if (fun) {return { tag: 'app', fun, arg: term.arg }}
+        if (fun) {
+          return { tag: 'app', fun, arg: term.arg }
+        }
 
         const arg = acRewriteAt(term.arg, operators, rules)
 
-        if (arg) {return { tag: 'app', fun: term.fun, arg }}
+        if (arg) {
+          return { tag: 'app', fun: term.fun, arg }
+        }
 
         return null
       }
+
       case 'lam': {
         const body = acRewriteAt(term.body, operators, rules)
 
         return body ? { tag: 'lam', body } : null
       }
+
       default:
         return null
     }
@@ -1711,7 +1976,9 @@ export function elaborateReport(
     for (let i = 0; i < fuel; i++) {
       const next = acRewriteAt(current, operators, acRules)
 
-      if (!next) {break}
+      if (!next) {
+        break
+      }
 
       current = reduce(next)
     }
@@ -1730,23 +1997,30 @@ export function elaborateReport(
   ): number | null {
     const order = variantNames.get(enumName)
 
-    if (!order) {return null}
+    if (!order) {
+      return null
+    }
 
     const n = order.length
     // the n distinct separators: separator_i = \a0..a_{n-1}. a_i (pairwise non-convertible)
     const separators = order.map((_, i) =>
       evaluate([], lambdas(n, variable(n - 1 - i))),
     )
+
     // branch_i : (its fields) -> separator_i ; ignores the fields, returns the i-th separator
     const branches = order.map((variant, i) => {
-      const fieldCount = (variantFieldInfo.get(ctorKey(enumName, variant)) ?? []).length
+      const fieldCount = (
+        variantFieldInfo.get(ctorKey(enumName, variant)) ?? []
+      ).length
 
       return lambdas(fieldCount + n, variable(n - 1 - i))
     })
 
     const idEnv: Value[] = []
 
-    for (let l = level - 1; l >= 0; l--) {idEnv.push(neutralVar(l))}
+    for (let l = level - 1; l >= 0; l--) {
+      idEnv.push(neutralVar(l))
+    }
 
     const discriminated = evaluate(
       idEnv,
@@ -1758,9 +2032,11 @@ export function elaborateReport(
       ),
     )
 
-    for (let i = 0; i < n; i++)
-      {if (areConvertible(level, discriminated, separators[i]!))
-        {return i}}
+    for (let i = 0; i < n; i++) {
+      if (areConvertible(level, discriminated, separators[i]!)) {
+        return i
+      }
+    }
 
     return null
   }
@@ -1791,7 +2067,9 @@ export function elaborateReport(
 
     const right = expr(rightNode, scope, ctx)
 
-    if (!right) {return [null, null]}
+    if (!right) {
+      return [null, null]
+    }
 
     left = expr(leftNode, scope, ctx, guide(right))
 
@@ -1810,11 +2088,21 @@ export function elaborateReport(
     try {
       const type = quote(context.level, infer(context, leftTerm).type)
 
-      if (type.tag !== 'const' || !variantNames.has(type.name))
-        {return false}
+      if (type.tag !== 'const' || !variantNames.has(type.name)) {
+        return false
+      }
 
-      const iLeft = constructorIndex(context.level, leftValue, type.name)
-      const iRight = constructorIndex(context.level, rightValue, type.name)
+      const iLeft = constructorIndex(
+        context.level,
+        leftValue,
+        type.name,
+      )
+
+      const iRight = constructorIndex(
+        context.level,
+        rightValue,
+        type.name,
+      )
 
       return iLeft !== null && iRight !== null && iLeft !== iRight
     } catch {
@@ -1835,7 +2123,12 @@ export function elaborateReport(
     citedLemmas: string[],
     // GENERALIZED induction hypotheses: rewrite rules whose `holes` are the induction's non-recursive variables, so the
     // hypothesis fires at any instance of them (the strong-induction principle, needed for accumulator recursions).
-    generalIH: { binderCount: number; lhs: Term; rhs: Term; holes: Set<number> }[] = [],
+    generalIH: {
+      binderCount: number
+      lhs: Term
+      rhs: Term
+      holes: Set<number>
+    }[] = [],
   ): boolean {
     const acOperators = new Set<string>()
     const commutative = new Set<string>()
@@ -1844,40 +2137,58 @@ export function elaborateReport(
     for (const name of citedLemmas) {
       const rule = lemmaRules.get(name)
 
-      if (!rule) {continue}
+      if (!rule) {
+        continue
+      }
 
       const c = commutativityOperator(rule)
 
-      if (c) {commutative.add(c)}
+      if (c) {
+        commutative.add(c)
+      }
 
       const a = associativityOperator(rule)
 
-      if (a) {associative.add(a)}
+      if (a) {
+        associative.add(a)
+      }
     }
 
-    for (const op of commutative)
-      {if (associative.has(op)) {acOperators.add(op)}}
+    for (const op of commutative) {
+      if (associative.has(op)) {
+        acOperators.add(op)
+      }
+    }
 
-    const rewriteRules: { binderCount: number; lhs: Term; rhs: Term; holes?: Set<number> }[] =
-      hypotheses.map(([ihLeft, ihRight]) => ({
-        binderCount: 0,
-        lhs: quote(level, ihLeft),
-        rhs: quote(level, ihRight),
-      }))
+    const rewriteRules: {
+      binderCount: number
+      lhs: Term
+      rhs: Term
+      holes?: Set<number>
+    }[] = hypotheses.map(([ihLeft, ihRight]) => ({
+      binderCount: 0,
+      lhs: quote(level, ihLeft),
+      rhs: quote(level, ihRight),
+    }))
 
     // the generalized induction hypotheses fire before the cited lemmas, instantiating their hole variables on demand
-    for (const gih of generalIH) {rewriteRules.push(gih)}
+    for (const gih of generalIH) {
+      rewriteRules.push(gih)
+    }
 
     for (const name of citedLemmas) {
       const rule = lemmaRules.get(name)
 
-      if (!rule) {continue}
+      if (!rule) {
+        continue
+      }
 
       const c = commutativityOperator(rule)
       const a = associativityOperator(rule)
 
-      if ((c && acOperators.has(c)) || (a && acOperators.has(a)))
-        {continue}
+      if ((c && acOperators.has(c)) || (a && acOperators.has(a))) {
+        continue
+      }
 
       rewriteRules.push(rule)
     }
@@ -1887,6 +2198,7 @@ export function elaborateReport(
       rewriteRules,
       200,
     )
+
     const rightTermRewritten = rewriteWithLemmas(
       quote(level, caseRight),
       rewriteRules,
@@ -1910,6 +2222,7 @@ export function elaborateReport(
         rewriteRules,
         64,
       )
+
       const racf = acRewriteFix(
         rightTermRewritten,
         acOperators,
@@ -1918,7 +2231,9 @@ export function elaborateReport(
         64,
       )
 
-      if (showTerm(lacf) === showTerm(racf)) {return true}
+      if (showTerm(lacf) === showTerm(racf)) {
+        return true
+      }
     }
 
     return dischargeModulo(
@@ -1947,25 +2262,35 @@ export function elaborateReport(
     // added as ground rewrites + convertibility hypotheses, so an inductive implication can use its antecedent.
     assumptions: [Expression, Expression][] = [],
   ): boolean {
-    if (goal.op !== '==') {return false}
+    if (goal.op !== '==') {
+      return false
+    }
 
     const varLevel = scope.get(inductVar)
 
-    if (varLevel === undefined) {return false}
+    if (varLevel === undefined) {
+      return false
+    }
 
     try {
       const index = context.level - varLevel - 1
       const typeValue = context.types[index]
 
-      if (!typeValue) {return false}
+      if (!typeValue) {
+        return false
+      }
 
       const typeTerm = quote(context.level, typeValue)
 
-      if (typeTerm.tag !== 'const') {return false}
+      if (typeTerm.tag !== 'const') {
+        return false
+      }
 
       const variants = variantNames.get(typeTerm.name)
 
-      if (!variants || variants.length === 0) {return false}
+      if (!variants || variants.length === 0) {
+        return false
+      }
 
       // close a case, splitting on a constructor's FIELDS when it does not reduce. `subst` maps a variable's level to a
       // constructor RECIPE (a variant + the levels of its field variables); the environment is rebuilt by applying each
@@ -1973,7 +2298,11 @@ export function elaborateReport(
       // becomes `succ q`) reflects the split. Try to close the case; if it does not reduce and budget remains, pick an
       // inductive-typed field still standing for a neutral, split it into its own constructors, and recurse on each.
       // Bounded case analysis on sub-terms (what a function matching a field needs); sound because every leaf is a case.
-      type Recipe = { variant: string; enumName: string; fieldLevels: number[] }
+      type Recipe = {
+        variant: string
+        enumName: string
+        fieldLevels: number[]
+      }
 
       const buildSplitEnv = (
         ctx: Context,
@@ -2004,7 +2333,12 @@ export function elaborateReport(
         splittable: { level: number; enumName: string }[],
         hyps: [Value, Value][],
         depth: number,
-        generalIH: { binderCount: number; lhs: Term; rhs: Term; holes: Set<number> }[] = [],
+        generalIH: {
+          binderCount: number
+          lhs: Term
+          rhs: Term
+          holes: Set<number>
+        }[] = [],
         ihLevel = -1,
       ): boolean => {
         const [lt, rt] = elaborateGoalSides(
@@ -2014,7 +2348,9 @@ export function elaborateReport(
           ctx,
         )
 
-        if (!lt || !rt) {return false}
+        if (!lt || !rt) {
+          return false
+        }
 
         const env = buildSplitEnv(ctx, subst)
 
@@ -2032,29 +2368,42 @@ export function elaborateReport(
             citedLemmas,
             gih,
           )
-        )
-          {return true}
+        ) {
+          return true
+        }
 
-        if (depth <= 0) {return false}
+        if (depth <= 0) {
+          return false
+        }
 
         for (let si = 0; si < splittable.length; si++) {
           const target = splittable[si]!
           const rest = splittable.filter((_, i) => i !== si)
           const targetVariants = variantNames.get(target.enumName)
 
-          if (!targetVariants) {continue}
+          if (!targetVariants) {
+            continue
+          }
 
           let allClosed = true
 
           for (const targetVariant of targetVariants) {
             const subFields =
-              variantFieldInfo.get(ctorKey(target.enumName, targetVariant)) ?? []
+              variantFieldInfo.get(
+                ctorKey(target.enumName, targetVariant),
+              ) ?? []
+
             let inner2 = ctx
+
             const subLevels: number[] = []
 
             for (const f of subFields) {
               subLevels.push(inner2.level)
-              inner2 = bind(inner2, 'many', evaluate(inner2.env, f.type))
+              inner2 = bind(
+                inner2,
+                'many',
+                evaluate(inner2.env, f.type),
+              )
             }
 
             const subst2 = new Map(subst)
@@ -2093,21 +2442,26 @@ export function elaborateReport(
             }
           }
 
-          if (allClosed) {return true}
+          if (allClosed) {
+            return true
+          }
         }
 
         return false
       }
 
       for (const variant of variants) {
-        const fields = variantFieldInfo.get(ctorKey(typeTerm.name, variant)) ?? []
+        const fields =
+          variantFieldInfo.get(ctorKey(typeTerm.name, variant)) ?? []
+
         const k = fields.length
 
         // extend the context with one fresh free variable per field of this constructor
         let inner = context
 
-        for (const field of fields)
-          {inner = bind(inner, 'many', evaluate(inner.env, field.type))}
+        for (const field of fields) {
+          inner = bind(inner, 'many', evaluate(inner.env, field.type))
+        }
 
         // the constructor applied to its fresh field variables (field j sits at de Bruijn index k-1-j in `inner`)
         const consValue = evaluate(
@@ -2126,13 +2480,16 @@ export function elaborateReport(
           inner,
         )
 
-        if (!leftTerm || !rightTerm) {return false}
+        if (!leftTerm || !rightTerm) {
+          return false
+        }
 
         const subject = index + k
 
         // the case goal: substitute the induction variable with the constructor, through the environment
         const caseEnv = [...inner.env]
         caseEnv[subject] = consValue
+
         const caseLeft = evaluate(caseEnv, leftTerm)
         const caseRight = evaluate(caseEnv, rightTerm)
 
@@ -2157,6 +2514,7 @@ export function elaborateReport(
         // substitute the induction variable with the constructor (the same caseEnv as the goal), so the antecedent holds
         // at this case. Added as a hypothesis the discharge can use (and, below, as a directed rewrite).
         const assumptionPairs: [Value, Value][] = []
+
         let caseVacuous = false
 
         for (const [aLeft, aRight] of assumptions) {
@@ -2168,13 +2526,17 @@ export function elaborateReport(
             const rv = evaluate(caseEnv, rt)
 
             // an antecedent that equates distinct constructors is impossible: this case is vacuously true
-            if (equationAbsurd(inner, lt, lv, rv)) {caseVacuous = true}
+            if (equationAbsurd(inner, lt, lv, rv)) {
+              caseVacuous = true
+            }
 
             assumptionPairs.push([lv, rv])
           }
         }
 
-        if (caseVacuous) {continue}
+        if (caseVacuous) {
+          continue
+        }
 
         hypotheses.push(...assumptionPairs)
 
@@ -2215,9 +2577,14 @@ export function elaborateReport(
                   const free = new Set<number>()
                   freeVarIndices(lhs, 0, free)
                   freeVarIndices(rhs, 0, free)
+
                   const holes = new Set<number>()
 
-                  for (const idx of free) {if (idx >= k) {holes.add(idx)}}
+                  for (const idx of free) {
+                    if (idx >= k) {
+                      holes.add(idx)
+                    }
+                  }
 
                   return { binderCount: 0, lhs, rhs, holes }
                 })
@@ -2243,8 +2610,9 @@ export function elaborateReport(
             generalIH,
             inner.level,
           )
-        )
-          {return false}
+        ) {
+          return false
+        }
       }
 
       return true
@@ -2266,30 +2634,42 @@ export function elaborateReport(
     citedLemmas: string[],
     assumptions: [Expression, Expression][] = [],
   ): boolean {
-    if (goal.op !== '==') {return false}
+    if (goal.op !== '==') {
+      return false
+    }
 
     try {
       const infos = inductVars.map(name => {
         const level = scope.get(name)
 
-        if (level === undefined) {return null}
+        if (level === undefined) {
+          return null
+        }
 
         const typeValue = context.types[context.level - level - 1]
 
-        if (!typeValue) {return null}
+        if (!typeValue) {
+          return null
+        }
 
         const typeTerm = quote(context.level, typeValue)
 
-        if (typeTerm.tag !== 'const') {return null}
+        if (typeTerm.tag !== 'const') {
+          return null
+        }
 
         const variants = variantNames.get(typeTerm.name)
 
-        if (!variants || variants.length === 0) {return null}
+        if (!variants || variants.length === 0) {
+          return null
+        }
 
         return { name, level, enumName: typeTerm.name, variants }
       })
 
-      if (infos.some(i => i === null)) {return false}
+      if (infos.some(i => i === null)) {
+        return false
+      }
 
       const chosen: {
         level: number
@@ -2310,6 +2690,7 @@ export function elaborateReport(
               variable(ctx.level - choice.fieldLevels[j]! - 1),
             ),
           )
+
           caseEnv[ctx.level - choice.level - 1] = evaluate(
             ctx.env,
             consTerm,
@@ -2323,7 +2704,9 @@ export function elaborateReport(
           ctx,
         )
 
-        if (!leftTerm || !rightTerm) {return false}
+        if (!leftTerm || !rightTerm) {
+          return false
+        }
 
         const caseLeft = evaluate(caseEnv, leftTerm)
         const caseRight = evaluate(caseEnv, rightTerm)
@@ -2333,7 +2716,8 @@ export function elaborateReport(
         // the diagonal induction hypothesis: step every variable at a recursive constructor to its field, together
         const recursive = chosen.filter(choice =>
           choice.fields.some(
-            f => f.type.tag === 'const' && f.type.name === choice.enumName,
+            f =>
+              f.type.tag === 'const' && f.type.name === choice.enumName,
           ),
         )
 
@@ -2343,8 +2727,10 @@ export function elaborateReport(
           for (const choice of recursive) {
             const fieldIndex = choice.fields.findIndex(
               f =>
-                f.type.tag === 'const' && f.type.name === choice.enumName,
+                f.type.tag === 'const' &&
+                f.type.name === choice.enumName,
             )
+
             ihEnv[ctx.level - choice.level - 1] =
               ctx.env[ctx.level - choice.fieldLevels[fieldIndex]! - 1]!
           }
@@ -2364,7 +2750,9 @@ export function elaborateReport(
             const rv = evaluate(caseEnv, rt)
 
             // an antecedent that equates distinct constructors is impossible: this case is vacuously true
-            if (equationAbsurd(ctx, lt, lv, rv)) {return true}
+            if (equationAbsurd(ctx, lt, lv, rv)) {
+              return true
+            }
 
             hypotheses.push([lv, rv])
           }
@@ -2382,13 +2770,18 @@ export function elaborateReport(
 
       // pick a constructor for variable `i`, extend the context with its fields, and recurse to the next variable
       const pick = (i: number, ctx: Context): boolean => {
-        if (i === infos.length) {return dischargeLeaf(ctx)}
+        if (i === infos.length) {
+          return dischargeLeaf(ctx)
+        }
 
         const info = infos[i]!
 
         for (const variant of info.variants) {
-          const fields = variantFieldInfo.get(ctorKey(info.enumName, variant)) ?? []
+          const fields =
+            variantFieldInfo.get(ctorKey(info.enumName, variant)) ?? []
+
           let inner = ctx
+
           const fieldLevels: number[] = []
 
           for (const field of fields) {
@@ -2407,7 +2800,9 @@ export function elaborateReport(
           const ok = pick(i + 1, inner)
           chosen.pop()
 
-          if (!ok) {return false}
+          if (!ok) {
+            return false
+          }
         }
 
         return true
@@ -2427,7 +2822,9 @@ export function elaborateReport(
     scope: Scope,
     context: Context,
   ): void {
-    if (!name || goal.form !== 'binary') {return}
+    if (!name || goal.form !== 'binary') {
+      return
+    }
 
     try {
       const [left, right] = elaborateGoalSides(
@@ -2437,7 +2834,9 @@ export function elaborateReport(
         context,
       )
 
-      if (!left || !right) {return}
+      if (!left || !right) {
+        return
+      }
 
       const leftValue = evaluate(context.env, left)
       const rightValue = evaluate(context.env, right)
@@ -2460,11 +2859,15 @@ export function elaborateReport(
     context: Context,
     citedName: string,
   ): boolean {
-    if (goal.form !== 'binary' || goal.op !== '==') {return false}
+    if (goal.form !== 'binary' || goal.op !== '==') {
+      return false
+    }
 
     const lemma = lemmaRules.get(citedName)
 
-    if (!lemma || lemma.binderCount !== 1) {return false}
+    if (lemma?.binderCount !== 1) {
+      return false
+    }
 
     try {
       const [left, right] = elaborateGoalSides(
@@ -2474,21 +2877,24 @@ export function elaborateReport(
         context,
       )
 
-      if (!left || !right) {return false}
+      if (!left || !right) {
+        return false
+      }
 
       // both sides must be functions (their type is a pi)
-      if (quote(context.level, infer(context, left).type).tag !== 'pi')
-        {return false}
+      if (
+        quote(context.level, infer(context, left).type).tag !== 'pi'
+      ) {
+        return false
+      }
 
       const point = neutralVar(context.level)
-      const leftAtPoint = applyValue(
-        evaluate(context.env, left),
-        point,
-      )
+      const leftAtPoint = applyValue(evaluate(context.env, left), point)
       const rightAtPoint = applyValue(
         evaluate(context.env, right),
         point,
       )
+
       // the lemma instantiated at the same fresh point (its single binder -> the point)
       const lemmaLeft = evaluate([point], lemma.lhs)
       const lemmaRight = evaluate([point], lemma.rhs)
@@ -2556,7 +2962,9 @@ export function elaborateReport(
       return
     }
 
-    if (goal.form !== 'binary') {return}
+    if (goal.form !== 'binary') {
+      return
+    }
 
     const hasProof = (statement.proof?.length ?? 0) > 0
     // explicit induction: `fold <var>` proves a universal `L(n) == R(n)` by Peano induction over a recursive function
@@ -2591,6 +2999,7 @@ export function elaborateReport(
       const extraVars = tactic.children
         .filter(child => child.head !== 'cite' && !child.arg)
         .map(child => child.head)
+
       const inductVars = [tactic.arg, ...extraVars]
 
       const byInduction =
@@ -2615,14 +3024,15 @@ export function elaborateReport(
       if (byInduction || checkFold(program, goal, tactic.arg)) {
         discharged.push(statement.span)
         recordLemmaRule(statement.name, goal, scope, context)
-      } else
-        {diagnostics.push(
+      } else {
+        diagnostics.push(
           diagnose('invalid-proof', {
             file,
             span: statement.span,
             message: 'the induction did not establish the equality',
           }),
-        )}
+        )
+      }
 
       return
     }
@@ -2650,7 +3060,9 @@ export function elaborateReport(
       }
     }
 
-    if (goal.op !== '==') {return}
+    if (goal.op !== '==') {
+      return
+    }
 
     // a commutative-ring identity (when no explicit proof is given): L and R normalize to the same polynomial, so the
     // equality holds for ALL values of the variables. This discharges the non-linear algebraic universals (the
@@ -2668,7 +3080,9 @@ export function elaborateReport(
     // linear prover is authoritative -- this is what stops the kernel from wrongly discharging a value-false
     // arithmetic claim like `add 3 3 == add 4 4` through its opaque view of number literals. A goal WITH an explicit
     // proof (`calm`/`cite`/...) is still validated by the kernel, so a bogus tactic is caught.
-    if (!hasProof && isLinearGoal(goal)) {return}
+    if (!hasProof && isLinearGoal(goal)) {
+      return
+    }
 
     const [left, right] = elaborateGoalSides(
       goal.left,
@@ -2677,7 +3091,9 @@ export function elaborateReport(
       context,
     )
 
-    if (!left || !right) {return}
+    if (!left || !right) {
+      return
+    }
 
     try {
       infer(context, left)
@@ -2722,6 +3138,7 @@ export function elaborateReport(
               200,
             ),
           )
+
           const rRewritten = evaluate(
             context.env,
             rewriteWithLemmas(
@@ -2786,8 +3203,9 @@ export function elaborateReport(
     if (
       statement.form !== 'function' ||
       !representable.has(statement.name)
-    )
-      {continue}
+    ) {
+      continue
+    }
 
     // peel the function's kernel type pi-by-pi to build the body context: the leading generic binders, then the
     // value parameters (named into scope), leaving the result type. This handles generics and dependency uniformly.
@@ -2801,7 +3219,9 @@ export function elaborateReport(
     )
 
     for (let i = 0; i < statement.generics.length; i++) {
-      if (remaining.v !== 'pi') {break}
+      if (remaining.v !== 'pi') {
+        break
+      }
 
       const witness = neutralVar(context.level)
       const domain = remaining.domain
@@ -2811,7 +3231,9 @@ export function elaborateReport(
     }
 
     for (const parameter of statement.params) {
-      if (remaining.v !== 'pi') {break}
+      if (remaining.v !== 'pi') {
+        break
+      }
 
       const witness = neutralVar(context.level)
       scope.set(parameter.name, context.level)
@@ -2842,8 +3264,9 @@ export function elaborateReport(
             let i = 0;
             i < statement.generics.length + statement.params.length;
             i++
-          )
-            {lambda = { tag: 'lam', body: lambda }}
+          ) {
+            lambda = { tag: 'lam', body: lambda }
+          }
 
           defineConstant(statement.name, evaluate([], lambda))
         }
@@ -2871,8 +3294,9 @@ export function elaborateReport(
   // them (e.g. `double 3` unfolds to `add 3 3`). Whatever the kernel leaves open is handled by the linear prover
   // (`checkHolds`), which also walks top-level holds.
   for (const statement of program) {
-    if (statement.form === 'hold')
-      {checkHold(statement, new Map(), baseContext)}
+    if (statement.form === 'hold') {
+      checkHold(statement, new Map(), baseContext)
+    }
   }
 
   return { diagnostics, verified, discharged }

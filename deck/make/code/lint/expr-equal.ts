@@ -6,10 +6,18 @@
 // that flags a "duplicate" or "self" pattern fires only on stable expressions, so an intentional pair of effectful
 // calls (`if next() ... else if next() ...`) is never misreported.
 
-import type { Expression, Statement } from '@cluesurf/make/code/compile/node'
+import type {
+  Expression,
+  Statement,
+} from '@cluesurf/make/code/compile/node'
 
-export function expressionsEqual(a: Expression, b: Expression): boolean {
-  if (a.form !== b.form) {return false}
+export function expressionsEqual(
+  a: Expression,
+  b: Expression,
+): boolean {
+  if (a.form !== b.form) {
+    return false
+  }
 
   switch (a.form) {
     case 'integer':
@@ -80,7 +88,9 @@ function optionalListsEqual(
   a: Statement[] | undefined,
   b: Statement[] | undefined,
 ): boolean {
-  if (!a || !b) {return !a && !b}
+  if (!a || !b) {
+    return !a && !b
+  }
 
   return statementListsEqual(a, b)
 }
@@ -88,14 +98,18 @@ function optionalListsEqual(
 // structural equality for two statements. Handles the common branch-body forms and recurses into nested blocks;
 // any form not covered returns false, so the dependent rule only ever fires on a fully-recognized exact match.
 export function statementsEqual(a: Statement, b: Statement): boolean {
-  if (a.form !== b.form) {return false}
+  if (a.form !== b.form) {
+    return false
+  }
 
   switch (a.form) {
     case 'expression':
       return expressionsEqual(a.expr, (b as typeof a).expr)
     case 'return': {
       const o = b as typeof a
-      if (!a.value || !o.value) {return !a.value && !o.value}
+      if (!a.value || !o.value) {
+        return !a.value && !o.value
+      }
 
       return expressionsEqual(a.value, o.value)
     }

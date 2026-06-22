@@ -83,9 +83,11 @@ export function hoistKotlinImports(source: string): string {
   const imports: string[] = []
   const seen = new Set<string>()
   const body: string[] = []
+
   for (const line of source.split('\n')) {
     if (/^\s*import\s+\S/.test(line)) {
       const trimmed = line.trim()
+
       if (!seen.has(trimmed)) {
         seen.add(trimmed)
         imports.push(trimmed)
@@ -94,6 +96,7 @@ export function hoistKotlinImports(source: string): string {
       body.push(line)
     }
   }
+
   return imports.length > 0
     ? `${imports.join('\n')}\n${body.join('\n')}`
     : source
@@ -111,6 +114,7 @@ export function emitKotlin(program: Program): string {
       )
       .map(n => [n.alias, n.module]),
   )
+
   // declarative native bindings render their `case kotlin` template at call sites
   const binds = collectBinds(program)
   // the Kotlin subclass for a variant label, and each variant's field names (for construction / smart-cast access)
@@ -118,7 +122,9 @@ export function emitKotlin(program: Program): string {
   const variantFieldNames = new Map<string, string[]>()
 
   for (const node of program) {
-    if (node.form !== 'record-type') {continue}
+    if (node.form !== 'record-type') {
+      continue
+    }
 
     for (const v of node.variants) {
       variantClass.set(v.name, `${pascal(node.name)}${pascal(v.name)}`)
@@ -136,16 +142,20 @@ export function emitKotlin(program: Program): string {
   // dispatch only reaches a method through the right instance). See note/seed/compiler/trait-dictionary-passing.md.
   const maskMethods = new Set<string>()
 
-  for (const node of program)
-    {if (node.form === 'mask')
-      {for (const m of node.methods) {maskMethods.add(m)}}}
+  for (const node of program) {
+    if (node.form === 'mask') {
+      for (const m of node.methods) {
+        maskMethods.add(m)
+      }
+    }
+  }
 
   type Instance = Extract<Statement, { form: 'instance' }>
   const conformances = new Map<string, Instance[]>()
   const instanceTargets = new Map<string, string[]>()
 
-  for (const node of program)
-    {if (node.form === 'instance') {
+  for (const node of program) {
+    if (node.form === 'instance') {
       const list = conformances.get(node.target) ?? []
       list.push(node)
       conformances.set(node.target, list)
@@ -153,14 +163,17 @@ export function emitKotlin(program: Program): string {
       const targets = instanceTargets.get(node.mask) ?? []
       targets.push(node.target)
       instanceTargets.set(node.mask, targets)
-    }}
+    }
+  }
 
   type Fn = Extract<Statement, { form: 'function' }>
   const implFn = new Map<string, Fn>()
 
-  for (const node of program)
-    {if (node.form === 'function' && node.method)
-      {implFn.set(`${node.method.form}:${node.method.name}`, node)}}
+  for (const node of program) {
+    if (node.form === 'function' && node.method) {
+      implFn.set(`${node.method.form}:${node.method.name}`, node)
+    }
+  }
 
   let varNames = new Map<number, string>()
 
@@ -180,10 +193,13 @@ export function emitKotlin(program: Program): string {
         return `MutableMap<${kotlinType(type.key)}, ${kotlinType(
           type.value,
         )}>`
+
       case 'named': {
         const opaque = opaqueTypes.get(type.name)
 
-        if (opaque) {return opaque}
+        if (opaque) {
+          return opaque
+        }
 
         return type.args && type.args.length > 0
           ? `${pascal(type.name)}<${type.args
@@ -191,6 +207,7 @@ export function emitKotlin(program: Program): string {
               .join(', ')}>`
           : pascal(type.name)
       }
+
       case 'function':
         return `(${type.params
           .map(kotlinType)
@@ -218,35 +235,41 @@ export function emitKotlin(program: Program): string {
     target: string,
     mask: string,
   ): Type | undefined => {
-    if (!t) {return t}
+    if (!t) {
+      return t
+    }
 
-    if (t.kind === 'named')
-      {return t.name === target
+    if (t.kind === 'named') {
+      return t.name === target
         ? { kind: 'named', name: mask }
         : t.args
           ? { ...t, args: t.args.map(a => subSelfK(a, target, mask)!) }
-          : t}
+          : t
+    }
 
-    if (t.kind === 'array')
-      {return {
+    if (t.kind === 'array') {
+      return {
         kind: 'array',
         element: subSelfK(t.element, target, mask)!,
-      }}
+      }
+    }
 
-    if (t.kind === 'map')
-      {return {
+    if (t.kind === 'map') {
+      return {
         kind: 'map',
         key: subSelfK(t.key, target, mask)!,
         value: subSelfK(t.value, target, mask)!,
-      }}
+      }
+    }
 
-    if (t.kind === 'function')
-      {return {
+    if (t.kind === 'function') {
+      return {
         kind: 'function',
         params: t.params.map(p => subSelfK(p, target, mask)!),
         result: subSelfK(t.result, target, mask)!,
         effects: t.effects,
-      }}
+      }
+    }
 
     return t
   }
@@ -258,7 +281,9 @@ export function emitKotlin(program: Program): string {
     target: string,
     mask: string,
   ): string => {
-    if (!fn) {return ''}
+    if (!fn) {
+      return ''
+    }
 
     const rest = fn.params
       .slice(1)
@@ -279,7 +304,9 @@ export function emitKotlin(program: Program): string {
     target: string,
     mask: string,
   ): string => {
-    if (!fn) {return ''}
+    if (!fn) {
+      return ''
+    }
 
     const rest = fn.params
       .slice(1)
@@ -330,13 +357,16 @@ export function emitKotlin(program: Program): string {
     const namedInSig = new Set<string>()
 
     const scan = (t: Type | undefined): void => {
-      if (!t) {return}
+      if (!t) {
+        return
+      }
 
       if (t.kind === 'named') {
         namedInSig.add(t.name.toUpperCase())
         t.args?.forEach(scan)
-      } else if (t.kind === 'array') {scan(t.element)}
-      else if (t.kind === 'map') {
+      } else if (t.kind === 'array') {
+        scan(t.element)
+      } else if (t.kind === 'map') {
         scan(t.key)
         scan(t.value)
       } else if (t.kind === 'function') {
@@ -352,8 +382,11 @@ export function emitKotlin(program: Program): string {
     // body's `x.measure()` resolves through it
     const needTrait = new Map<string, string>()
 
-    for (const g of node.generics)
-      {if (g.need) {needTrait.set(g.name.toUpperCase(), pascal(g.need))}}
+    for (const g of node.generics) {
+      if (g.need) {
+        needTrait.set(g.name.toUpperCase(), pascal(g.need))
+      }
+    }
 
     const kept = declared
       .filter(d => namedInSig.has(d))
@@ -649,13 +682,14 @@ export function emitKotlin(program: Program): string {
           )}\n${pad(d + 1)}}`
         })
 
-        if (node.otherwise)
-          {arms.push(
+        if (node.otherwise) {
+          arms.push(
             `${pad(d + 1)}else -> {\n${block(
               node.otherwise,
               d + 2,
             )}\n${pad(d + 1)}}`,
-          )}
+          )
+        }
 
         return `when (${subject}) {\n${arms.join('\n')}\n${pad(d)}}`
       }
@@ -669,8 +703,9 @@ export function emitKotlin(program: Program): string {
           )}\n${pad(d)}}`
         })
 
-        if (node.otherwise)
-          {out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`}
+        if (node.otherwise) {
+          out += ` else {\n${block(node.otherwise, d + 1)}\n${pad(d)}}`
+        }
 
         return out
       }
@@ -776,7 +811,9 @@ export function emitKotlin(program: Program): string {
         // a form that implements traits declares them on the data class with overrides delegating to the free functions
         const impls = conformances.get(node.name) ?? []
 
-        if (impls.length === 0) {return decl}
+        if (impls.length === 0) {
+          return decl
+        }
 
         const supers = impls.map(i => pascal(i.mask)).join(', ')
         const overrides = impls.flatMap(i =>
@@ -865,19 +902,25 @@ function reassigned(body: Statement[], into: Set<string>): void {
   for (const s of body) {
     switch (s.form) {
       case 'assign':
-        if (s.target.form === 'variable') {into.add(s.target.name)}
+        if (s.target.form === 'variable') {
+          into.add(s.target.name)
+        }
 
         break
       case 'if':
         s.branches.forEach(b => reassigned(b.body, into))
 
-        if (s.otherwise) {reassigned(s.otherwise, into)}
+        if (s.otherwise) {
+          reassigned(s.otherwise, into)
+        }
 
         break
       case 'match':
         s.cases.forEach(c => reassigned(c.body, into))
 
-        if (s.otherwise) {reassigned(s.otherwise, into)}
+        if (s.otherwise) {
+          reassigned(s.otherwise, into)
+        }
 
         break
       case 'while':

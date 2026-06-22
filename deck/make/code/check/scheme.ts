@@ -17,30 +17,39 @@ export function instantiateScheme(
   scheme: Scheme,
   sub: Substitution,
 ): Type {
-  if (scheme.vars.length === 0) {return scheme.type}
+  if (scheme.vars.length === 0) {
+    return scheme.type
+  }
 
   const map = new Map<number, Type>()
 
-  for (const id of scheme.vars) {map.set(id, sub.fresh())}
+  for (const id of scheme.vars) {
+    map.set(id, sub.fresh())
+  }
 
   const go = (t: Type): Type => {
     const r = sub.resolve(t)
 
-    if (r.kind === 'variable') {return map.get(r.id) ?? r}
+    if (r.kind === 'variable') {
+      return map.get(r.id) ?? r
+    }
 
-    if (r.kind === 'array')
-      {return { kind: 'array', element: go(r.element) }}
+    if (r.kind === 'array') {
+      return { kind: 'array', element: go(r.element) }
+    }
 
-    if (r.kind === 'map')
-      {return { kind: 'map', key: go(r.key), value: go(r.value) }}
+    if (r.kind === 'map') {
+      return { kind: 'map', key: go(r.key), value: go(r.value) }
+    }
 
-    if (r.kind === 'function')
-      {return {
+    if (r.kind === 'function') {
+      return {
         kind: 'function',
         params: r.params.map(go),
         result: go(r.result),
         effects: r.effects,
-      }}
+      }
+    }
 
     return r
   }
@@ -56,9 +65,11 @@ export function freeTypeVars(
 ): void {
   const r = sub.resolve(type)
 
-  if (r.kind === 'variable') {into.add(r.id)}
-  else if (r.kind === 'array') {freeTypeVars(r.element, into, sub)}
-  else if (r.kind === 'map') {
+  if (r.kind === 'variable') {
+    into.add(r.id)
+  } else if (r.kind === 'array') {
+    freeTypeVars(r.element, into, sub)
+  } else if (r.kind === 'map') {
     freeTypeVars(r.key, into, sub)
     freeTypeVars(r.value, into, sub)
   } else if (r.kind === 'function') {
@@ -82,7 +93,11 @@ export function generalize(
     const seen = new Set<number>()
     freeTypeVars(scheme.type, seen, sub)
 
-    for (const v of seen) {if (!scheme.vars.includes(v)) {inEnv.add(v)}}
+    for (const v of seen) {
+      if (!scheme.vars.includes(v)) {
+        inEnv.add(v)
+      }
+    }
   }
 
   return [...inType].filter(v => !inEnv.has(v))

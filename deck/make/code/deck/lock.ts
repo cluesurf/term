@@ -47,16 +47,23 @@ function rest(group: GroupNode): Node[] {
 function value(group: GroupNode): string {
   const arg = rest(group)[0]
 
-  if (!arg) {return ''}
+  if (!arg) {
+    return ''
+  }
 
-  if (arg.kind === 'text')
-    {return arg.parts
+  if (arg.kind === 'text') {
+    return arg.parts
       .map(p => (p.kind === 'chunk' ? p.text : ''))
-      .join('')}
+      .join('')
+  }
 
-  if (arg.kind === 'name') {return nameText(arg)}
+  if (arg.kind === 'name') {
+    return nameText(arg)
+  }
 
-  if (arg.kind === 'group') {return headName(arg) ?? ''}
+  if (arg.kind === 'group') {
+    return headName(arg) ?? ''
+  }
 
   return ''
 }
@@ -66,8 +73,11 @@ function child(
   group: GroupNode,
   keyword: string,
 ): GroupNode | undefined {
-  for (const node of rest(group))
-    {if (node.kind === 'group' && headName(node) === keyword) {return node}}
+  for (const node of rest(group)) {
+    if (node.kind === 'group' && headName(node) === keyword) {
+      return node
+    }
+  }
 
   return undefined
 }
@@ -76,7 +86,9 @@ export function parseLockfile(text: string): Lockfile {
   const lock: Lockfile = { base: '', requests: [], links: [] }
   const result = parse({ file: 'deck.lock.tree', text })
 
-  if (!result.ok) {return lock}
+  if (!result.ok) {
+    return lock
+  }
 
   const tree: RootNode = result.tree
 

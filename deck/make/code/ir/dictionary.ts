@@ -27,17 +27,21 @@ function matchType(
   generics: Set<string>,
   subst: Map<string, Type>,
 ): void {
-  if (!declared || !actual) {return}
+  if (!declared || !actual) {
+    return
+  }
 
   if (declared.kind === 'named' && generics.has(declared.name)) {
-    if (!subst.has(declared.name)) {subst.set(declared.name, actual)}
+    if (!subst.has(declared.name)) {
+      subst.set(declared.name, actual)
+    }
 
     return
   }
 
-  if (declared.kind === 'array' && actual.kind === 'array')
-    {matchType(declared.element, actual.element, generics, subst)}
-  else if (declared.kind === 'map' && actual.kind === 'map') {
+  if (declared.kind === 'array' && actual.kind === 'array') {
+    matchType(declared.element, actual.element, generics, subst)
+  } else if (declared.kind === 'map' && actual.kind === 'map') {
     matchType(declared.key, actual.key, generics, subst)
     matchType(declared.value, actual.value, generics, subst)
   } else if (
@@ -62,11 +66,15 @@ export function passDictionaries(program: Program): Program {
   // masks: name -> declared method names
   const masks = new Map<string, string[]>()
 
-  for (const statement of program)
-    {if (statement.form === 'mask')
-      {masks.set(statement.name, statement.methods)}}
+  for (const statement of program) {
+    if (statement.form === 'mask') {
+      masks.set(statement.name, statement.methods)
+    }
+  }
 
-  if (masks.size === 0) {return program}
+  if (masks.size === 0) {
+    return program
+  }
 
   // the functions this pass exists for: generics carrying a real trait bound. With none, the program is left exactly
   // as it was (the common case: stdlib defines masks and concrete instances but no trait-bounded generics).
@@ -79,14 +87,18 @@ export function passDictionaries(program: Program): Program {
     (s): s is Fn => s.form === 'function' && ordered(s).length > 0,
   )
 
-  if (bounded.length === 0) {return program}
+  if (bounded.length === 0) {
+    return program
+  }
 
   // instance dictionaries: `${mask}:${target}` -> (methodName -> implementing function name). An instance's method
   // bodies were already desugared to `function`s tagged with `method = { form: target, name }`.
   const instanceMethods = new Map<string, Map<string, string>>()
 
   for (const statement of program) {
-    if (statement.form !== 'instance') {continue}
+    if (statement.form !== 'instance') {
+      continue
+    }
 
     const methods = new Map<string, string>()
 
@@ -98,7 +110,9 @@ export function passDictionaries(program: Program): Program {
           f.method.name === method,
       )
 
-      if (fn) {methods.set(method, fn.name)}
+      if (fn) {
+        methods.set(method, fn.name)
+      }
     }
 
     instanceMethods.set(
@@ -110,21 +124,21 @@ export function passDictionaries(program: Program): Program {
   // method name -> the trait(s) that declare it (to recognise a trait-method call site)
   const methodMasks = new Map<string, Set<string>>()
 
-  for (const [mask, methods] of masks)
-    {for (const method of methods) {
+  for (const [mask, methods] of masks) {
+    for (const method of methods) {
       let set = methodMasks.get(method)
 
-      if (!set) {methodMasks.set(method, (set = new Set()))}
+      if (!set) {
+        methodMasks.set(method, (set = new Set()))
+      }
 
       set.add(mask)
-    }}
+    }
+  }
 
   // captured before we mutate params: original parameter types + the per-function bound list and dictionary-parameter
   // map (generic name -> mask -> param name), used by both the body rewrite and the call-site rewrite (forwarding)
-  const boundsOf = new Map<
-    string,
-    { name: string; mask: string }[]
-  >()
+  const boundsOf = new Map<string, { name: string; mask: string }[]>()
 
   const origParams = new Map<string, (Type | undefined)[]>()
   const paramOf = new Map<string, Map<string, Map<string, string>>>()
@@ -148,7 +162,9 @@ export function passDictionaries(program: Program): Program {
 
       let byMask = perGeneric.get(bound.name)
 
-      if (!byMask) {perGeneric.set(bound.name, (byMask = new Map()))}
+      if (!byMask) {
+        perGeneric.set(bound.name, (byMask = new Map()))
+      }
 
       byMask.set(bound.mask, pname)
       fn.params.push({
@@ -163,7 +179,9 @@ export function passDictionaries(program: Program): Program {
 
   // 2. rewrite every call site of a bounded function to pass the dictionary argument(s)
   for (const statement of program) {
-    if (statement.form !== 'function') {continue}
+    if (statement.form !== 'function') {
+      continue
+    }
 
     rewriteCallSites(statement.body, statement)
   }
@@ -176,7 +194,9 @@ export function passDictionaries(program: Program): Program {
     const [mask, target] = key.split(':') as [string, string]
     const methods = instanceMethods.get(key)
 
-    if (!methods) {continue}
+    if (!methods) {
+      continue
+    }
 
     consts.push({
       form: 'let',
@@ -206,20 +226,27 @@ export function passDictionaries(program: Program): Program {
     perGeneric: Map<string, Map<string, string>>,
   ): void {
     walkExpressions(body, node => {
-      if (node.form !== 'call' || node.callee.form !== 'variable')
-        {return}
+      if (node.form !== 'call' || node.callee.form !== 'variable') {
+        return
+      }
 
       const declaring = methodMasks.get(node.callee.name)
 
-      if (!declaring) {return}
+      if (!declaring) {
+        return
+      }
 
       const receiver = node.args[0]?.type
 
-      if (receiver?.kind !== 'named') {return}
+      if (receiver?.kind !== 'named') {
+        return
+      }
 
       const byMask = perGeneric.get(receiver.name)
 
-      if (!byMask) {return}
+      if (!byMask) {
+        return
+      }
 
       // pick the bound trait that declares this method
       let dict: string | undefined
@@ -233,7 +260,9 @@ export function passDictionaries(program: Program): Program {
         }
       }
 
-      if (!dict) {return}
+      if (!dict) {
+        return
+      }
 
       node.callee = {
         form: 'member',
@@ -251,19 +280,19 @@ export function passDictionaries(program: Program): Program {
   // at any call to a bounded function, append one dictionary argument per bound: the concrete instance's constant
   // when the type argument is a known form, or the enclosing function's own dictionary parameter when the argument is
   // itself still bound by the same trait (forwarding through a generic call chain)
-  function rewriteCallSites(
-    body: Statement[],
-    enclosing: Fn,
-  ): void {
+  function rewriteCallSites(body: Statement[], enclosing: Fn): void {
     const enclosingBounds = boundsOf.get(enclosing.name)
     const enclosingParams = paramOf.get(enclosing.name)
     walkExpressions(body, node => {
-      if (node.form !== 'call' || node.callee.form !== 'variable')
-        {return}
+      if (node.form !== 'call' || node.callee.form !== 'variable') {
+        return
+      }
 
       const bounds = boundsOf.get(node.callee.name)
 
-      if (!bounds) {return}
+      if (!bounds) {
+        return
+      }
 
       const params = origParams.get(node.callee.name)!
       const genericNames = new Set(bounds.map(b => b.name))
@@ -303,7 +332,9 @@ export function passDictionaries(program: Program): Program {
       if (forwarded) {
         const pname = enclosingParams?.get(concrete.name)?.get(mask)
 
-        if (pname) {return { form: 'variable', name: pname, span }}
+        if (pname) {
+          return { form: 'variable', name: pname, span }
+        }
       }
 
       // concrete instance: pass its dictionary constant
@@ -376,7 +407,9 @@ function walkExpressions(
           expr(b.value)
         })
 
-        if (node.otherwise) {expr(node.otherwise)}
+        if (node.otherwise) {
+          expr(node.otherwise)
+        }
 
         break
       case 'closure':
@@ -402,7 +435,9 @@ function walkExpressions(
           expr(node.expr)
           break
         case 'return':
-          if (node.value) {expr(node.value)}
+          if (node.value) {
+            expr(node.value)
+          }
 
           break
         case 'throw':
@@ -422,14 +457,18 @@ function walkExpressions(
             stmts(b.body)
           })
 
-          if (node.otherwise) {stmts(node.otherwise)}
+          if (node.otherwise) {
+            stmts(node.otherwise)
+          }
 
           break
         case 'match':
           expr(node.subject)
           node.cases.forEach(c => stmts(c.body))
 
-          if (node.otherwise) {stmts(node.otherwise)}
+          if (node.otherwise) {
+            stmts(node.otherwise)
+          }
 
           break
         default:

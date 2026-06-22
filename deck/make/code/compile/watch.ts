@@ -62,9 +62,13 @@ export function watch(options: {
     (_event, filename) => {
       const name = typeof filename === 'string' ? filename : ''
 
-      if (!name.endsWith('.tree')) {return}
+      if (!name.endsWith('.tree')) {
+        return
+      }
 
-      if (timer) {clearTimeout(timer)}
+      if (timer) {
+        clearTimeout(timer)
+      }
 
       timer = setTimeout(() => recompile(name), debounceMs)
     },
@@ -72,7 +76,9 @@ export function watch(options: {
 
   return {
     close: () => {
-      if (timer) {clearTimeout(timer)}
+      if (timer) {
+        clearTimeout(timer)
+      }
 
       fsWatcher.close()
     },

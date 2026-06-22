@@ -43,21 +43,121 @@ type Component = { params: string[]; slotted: boolean }
 // are rarely written raw (dialog, select, progress, menu, meter, output,
 // details, summary), so those remain available as components.
 const HTML_TAGS = new Set<string>([
-  'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base',
-  'bdi', 'bdo', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption',
-  'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del',
-  'dfn', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset',
-  'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5',
-  'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img',
-  'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map',
-  'mark', 'meta', 'nav', 'object', 'ol', 'optgroup',
-  'option', 'p', 'param', 'picture', 'pre', 'q',
-  'rp', 'rt', 'ruby', 's', 'samp', 'script', 'section',
-  'small', 'source', 'span', 'strong', 'style', 'sub', 'sup',
-  'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead',
-  'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr',
-  'svg', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'g',
-  'defs', 'use', 'symbol', 'ellipse', 'tspan',
+  'a',
+  'abbr',
+  'address',
+  'area',
+  'article',
+  'aside',
+  'audio',
+  'b',
+  'base',
+  'bdi',
+  'bdo',
+  'blockquote',
+  'body',
+  'br',
+  'button',
+  'canvas',
+  'caption',
+  'cite',
+  'code',
+  'col',
+  'colgroup',
+  'data',
+  'datalist',
+  'dd',
+  'del',
+  'dfn',
+  'div',
+  'dl',
+  'dt',
+  'em',
+  'embed',
+  'fieldset',
+  'figcaption',
+  'figure',
+  'footer',
+  'form',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'head',
+  'header',
+  'hgroup',
+  'hr',
+  'html',
+  'i',
+  'iframe',
+  'img',
+  'input',
+  'ins',
+  'kbd',
+  'label',
+  'legend',
+  'li',
+  'link',
+  'main',
+  'map',
+  'mark',
+  'meta',
+  'nav',
+  'object',
+  'ol',
+  'optgroup',
+  'option',
+  'p',
+  'param',
+  'picture',
+  'pre',
+  'q',
+  'rp',
+  'rt',
+  'ruby',
+  's',
+  'samp',
+  'script',
+  'section',
+  'small',
+  'source',
+  'span',
+  'strong',
+  'style',
+  'sub',
+  'sup',
+  'table',
+  'tbody',
+  'td',
+  'template',
+  'textarea',
+  'tfoot',
+  'th',
+  'thead',
+  'time',
+  'title',
+  'tr',
+  'track',
+  'u',
+  'ul',
+  'var',
+  'video',
+  'wbr',
+  'svg',
+  'path',
+  'circle',
+  'rect',
+  'line',
+  'polyline',
+  'polygon',
+  'g',
+  'defs',
+  'use',
+  'symbol',
+  'ellipse',
+  'tspan',
 ])
 
 // build the program-wide component registry: name -> its input params (after
@@ -82,17 +182,27 @@ function collectComponents(program: Program): Map<string, Component> {
 
 function hasSlot(nodes: ZoneNode[]): boolean {
   for (const node of nodes) {
-    if (node.form === 'slot') {return true}
-
-    if (node.form === 'element' && hasSlot(node.children)) {return true}
-
-    if (node.form === 'fork') {
-      if (node.branches.some(b => hasSlot(b.body))) {return true}
-
-      if (node.otherwise && hasSlot(node.otherwise)) {return true}
+    if (node.form === 'slot') {
+      return true
     }
 
-    if (node.form === 'walk' && hasSlot(node.body)) {return true}
+    if (node.form === 'element' && hasSlot(node.children)) {
+      return true
+    }
+
+    if (node.form === 'fork') {
+      if (node.branches.some(b => hasSlot(b.body))) {
+        return true
+      }
+
+      if (node.otherwise && hasSlot(node.otherwise)) {
+        return true
+      }
+    }
+
+    if (node.form === 'walk' && hasSlot(node.body)) {
+      return true
+    }
   }
 
   return false
@@ -104,7 +214,9 @@ function lowerZone(
   components: Map<string, Component>,
 ): Statement {
   const span = zone.span
+
   let counter = 0
+
   const fresh = (): string => `view${counter++}`
 
   const variable = (name: string): Expression => ({
@@ -158,7 +270,8 @@ function lowerZone(
           ]),
         )
 
-  const slotted = components.get(zone.name)?.slotted ?? hasSlot(zone.body)
+  const slotted =
+    components.get(zone.name)?.slotted ?? hasSlot(zone.body)
 
   // build a body list as a `(params) => view` thunk returning exactly one node.
   // A single static node is returned directly (no wrapper) so list/conditional
@@ -178,7 +291,7 @@ function lowerZone(
       (only.form === 'text' ||
         only.form === 'read' ||
         (only.form === 'element' &&
-        (!components.has(only.name) || only.forced)))
+          (!components.has(only.name) || only.forced)))
     ) {
       const ref = build(only, inner)
       inner.push({ form: 'return', value: variable(ref), span })
@@ -193,7 +306,9 @@ function lowerZone(
         span,
       })
 
-      for (const child of body) {attach(child, frag, inner)}
+      for (const child of body) {
+        attach(child, frag, inner)
+      }
 
       inner.push({ form: 'return', value: variable(frag), span })
     }
@@ -201,7 +316,8 @@ function lowerZone(
     return { form: 'closure', params, body: inner, span }
   }
 
-  const thunk = (body: ZoneNode[]): Expression => fragmentThunk([], body)
+  const thunk = (body: ZoneNode[]): Expression =>
+    fragmentThunk([], body)
 
   // a component instance call: name(parent, ...propsByParamOrder, childrenThunk?)
   const componentCall = (
@@ -216,12 +332,13 @@ function lowerZone(
       args.push(prop ? prop.value : { form: 'unit', span })
     }
 
-    if (comp.slotted)
-      {args.push(
+    if (comp.slotted) {
+      args.push(
         node.children.length
           ? thunk(node.children)
           : { form: 'unit', span },
-      )}
+      )
+    }
 
     return call(node.name, args)
   }
@@ -229,8 +346,7 @@ function lowerZone(
   // build a node, appending its statements to `out`, returning the variable
   // name of the built node (for nodes that produce a single element/text).
   const build = (node: ZoneNode, out: Statement[]): string => {
-    const ref =
-      node.form === 'element' && node.ref ? node.ref : fresh()
+    const ref = node.form === 'element' && node.ref ? node.ref : fresh()
 
     if (node.form === 'text') {
       out.push({
@@ -245,7 +361,12 @@ function lowerZone(
         form: 'let',
         name: ref,
         init: call('dynamic', [
-          { form: 'closure', params: [], body: [{ form: 'return', value: node.value, span }], span },
+          {
+            form: 'closure',
+            params: [],
+            body: [{ form: 'return', value: node.value, span }],
+            span,
+          },
         ]),
         mutable: false,
         span,
@@ -274,25 +395,36 @@ function lowerZone(
         span,
       })
 
-      for (const attribute of node.attributes)
-        {out.push(
+      for (const attribute of node.attributes) {
+        out.push(
           attribute.event
             ? exprStatement(
                 call('event', [
                   variable(ref),
                   string(attribute.name),
-                  { form: 'closure', params: [], body: [{ form: 'return', value: attribute.value, span }], span },
+                  {
+                    form: 'closure',
+                    params: [],
+                    body: [
+                      { form: 'return', value: attribute.value, span },
+                    ],
+                    span,
+                  },
                 ]),
               )
             : attributeStatement(ref, attribute.name, attribute.value),
-        )}
+        )
+      }
 
       // `bind <name>, <value>` on an HTML element is an attribute (on a
       // component it is a prop, handled by componentCall). Emit them here.
-      for (const prop of node.props)
-        {out.push(attributeStatement(ref, prop.name, prop.value))}
+      for (const prop of node.props) {
+        out.push(attributeStatement(ref, prop.name, prop.value))
+      }
 
-      for (const child of node.children) {attach(child, ref, out)}
+      for (const child of node.children) {
+        attach(child, ref, out)
+      }
     } else {
       out.push({
         form: 'let',
@@ -308,7 +440,11 @@ function lowerZone(
 
   // attach a node under `parent`: build + append, or lower control flow / slots
   // / component calls (which mount themselves).
-  const attach = (node: ZoneNode, parent: string, out: Statement[]): void => {
+  const attach = (
+    node: ZoneNode,
+    parent: string,
+    out: Statement[],
+  ): void => {
     if (node.form === 'fork') {
       // show(parent, () => cond, () => then, () => else)
       const branch = node.branches[0]
@@ -316,7 +452,22 @@ function lowerZone(
         exprStatement(
           call('show', [
             variable(parent),
-            { form: 'closure', params: [], body: [{ form: 'return', value: branch?.cond ?? { form: 'boolean', value: false, span }, span }], span },
+            {
+              form: 'closure',
+              params: [],
+              body: [
+                {
+                  form: 'return',
+                  value: branch?.cond ?? {
+                    form: 'boolean',
+                    value: false,
+                    span,
+                  },
+                  span,
+                },
+              ],
+              span,
+            },
             thunk(branch?.body ?? []),
             thunk(node.otherwise ?? []),
           ]),
@@ -329,7 +480,12 @@ function lowerZone(
         exprStatement(
           call('each', [
             variable(parent),
-            { form: 'closure', params: [], body: [{ form: 'return', value: node.iterable, span }], span },
+            {
+              form: 'closure',
+              params: [],
+              body: [{ form: 'return', value: node.iterable, span }],
+              span,
+            },
             itemBody,
           ]),
         ),
@@ -396,7 +552,11 @@ function lowerZone(
       })
     } else {
       const ref = build(node, out)
-      out.push(exprStatement(call('append', [variable(parent), variable(ref)])))
+      out.push(
+        exprStatement(
+          call('append', [variable(parent), variable(ref)]),
+        ),
+      )
     }
   }
 
@@ -405,16 +565,29 @@ function lowerZone(
   const host = zone.params[0]?.name ?? 'host'
   const body: Statement[] = []
 
-  for (const node of zone.body)
-    {if (node.form === 'save')
-      {body.push({ form: 'let', name: node.name, init: node.value, mutable: false, span })}}
+  for (const node of zone.body) {
+    if (node.form === 'save') {
+      body.push({
+        form: 'let',
+        name: node.name,
+        init: node.value,
+        mutable: false,
+        span,
+      })
+    }
+  }
 
-  for (const node of zone.body)
-    {if (node.form !== 'save') {attach(node, host, body)}}
+  for (const node of zone.body) {
+    if (node.form !== 'save') {
+      attach(node, host, body)
+    }
+  }
 
   const params = zone.params.map(p => ({ name: p.name, type: p.type }))
 
-  if (slotted) {params.push({ name: 'children', type: undefined })}
+  if (slotted) {
+    params.push({ name: 'children', type: undefined })
+  }
 
   return {
     form: 'function',
@@ -430,7 +603,9 @@ function lowerZone(
 export function lowerZones(program: Program): Program {
   const components = collectComponents(program)
 
-  if (components.size === 0) {return program}
+  if (components.size === 0) {
+    return program
+  }
 
   return program.map(node =>
     node.form === 'zone' ? lowerZone(node, components) : node,

@@ -18,12 +18,14 @@ export type RootNode = { kind: 'root'; nodes: GroupNode[] }
 export type Comment = { text: string; span: Span }
 export type GroupNode = {
   kind: 'group'
-  nodes: (| GroupNode
+  nodes: (
+    | GroupNode
     | NameNode
     | TextNode
     | IntegerNode
     | DecimalNode
-    | RadixNode)[]
+    | RadixNode
+  )[]
   parent?: GroupNode | InterpolationNode
   optional?: boolean
   // CST trivia: comments written on the lines above this group. The formatter re-emits them; lint reads
@@ -104,9 +106,7 @@ function buildTree(
   diagnostics: Diagnostic[],
 ): RootNode {
   const root: RootNode = { kind: 'root', nodes: [] }
-  const stack: Frame[] = [
-    { line: [root], levels: [root], level: 0 },
-  ]
+  const stack: Frame[] = [{ line: [root], levels: [root], level: 0 }]
 
   const top = () => stack[stack.length - 1]!
   // a sentinel returned when the current line has underflowed (e.g. a
@@ -127,7 +127,7 @@ function buildTree(
   }
 
   const unexpected = (event: Event) => {
-    const token = 'token' in event ? (event.token) : undefined
+    const token = 'token' in event ? event.token : undefined
     diagnostics.push(
       diagnose('unexpected-node', {
         file,
@@ -255,7 +255,9 @@ function buildTree(
           here.parts.push(chunk)
           setParent(chunk, here)
 
-          if (optional && here.parent) {here.parent.optional = true}
+          if (optional && here.parent) {
+            here.parent.optional = true
+          }
         } else if (here.kind === 'text') {
           const chunk: ChunkNode = {
             kind: 'chunk',
@@ -371,13 +373,15 @@ export function parse(source: {
 }): ParseResult {
   const tokenResult = tokenize(source)
 
-  if (!tokenResult.ok)
-    {return { ok: false, diagnostics: tokenResult.diagnostics }}
+  if (!tokenResult.ok) {
+    return { ok: false, diagnostics: tokenResult.diagnostics }
+  }
 
   const eventResult = buildEvents(tokenResult.tokens)
 
-  if (!eventResult.ok)
-    {return { ok: false, diagnostics: eventResult.diagnostics }}
+  if (!eventResult.ok) {
+    return { ok: false, diagnostics: eventResult.diagnostics }
+  }
 
   const diagnostics: Diagnostic[] = []
   const tree = buildTree(
@@ -386,7 +390,9 @@ export function parse(source: {
     diagnostics,
   )
 
-  if (diagnostics.length) {return { ok: false, diagnostics }}
+  if (diagnostics.length) {
+    return { ok: false, diagnostics }
+  }
 
   return { ok: true, tree }
 }
@@ -399,13 +405,15 @@ export function parseTolerant(source: { file: string; text: string }): {
   const empty: RootNode = { kind: 'root', nodes: [] }
   const tokenResult = tokenize(source)
 
-  if (!tokenResult.ok)
-    {return { tree: empty, diagnostics: tokenResult.diagnostics }}
+  if (!tokenResult.ok) {
+    return { tree: empty, diagnostics: tokenResult.diagnostics }
+  }
 
   const eventResult = buildEvents(tokenResult.tokens)
 
-  if (!eventResult.ok)
-    {return { tree: empty, diagnostics: eventResult.diagnostics }}
+  if (!eventResult.ok) {
+    return { tree: empty, diagnostics: eventResult.diagnostics }
+  }
 
   const diagnostics: Diagnostic[] = []
   const tree = buildTree(
@@ -418,17 +426,17 @@ export function parseTolerant(source: { file: string; text: string }): {
 }
 
 // Render a name or text node inline (e.g. inside interpolation or as a head value).
-function renderParts(
-  parts: (ChunkNode | InterpolationNode)[],
-): string {
+function renderParts(parts: (ChunkNode | InterpolationNode)[]): string {
   let out = ''
 
   for (const part of parts) {
-    if (part.kind === 'chunk') {out += part.text}
-    else
-      {out += `${'{'.repeat(part.depth)}${
+    if (part.kind === 'chunk') {
+      out += part.text
+    } else {
+      out += `${'{'.repeat(part.depth)}${
         part.group ? renderInline(part.group) : ''
-      }${'}'.repeat(part.depth)}`}
+      }${'}'.repeat(part.depth)}`
+    }
   }
 
   return out
@@ -439,7 +447,9 @@ function renderInline(group: GroupNode): string {
   const [head, ...rest] = group.nodes
   const headText = head ? renderHead(head) : ''
 
-  if (rest.length === 0) {return headText}
+  if (rest.length === 0) {
+    return headText
+  }
 
   return `${headText}(${rest
     .map(n => (n.kind === 'group' ? renderInline(n) : renderHead(n)))
@@ -479,12 +489,17 @@ export function printTree(tree: RootNode): string {
     )
 
     for (const child of rest) {
-      if (child.kind === 'group') {walk(child, depth + 1)}
-      else {lines.push(`${'  '.repeat(depth + 1)}${renderHead(child)}`)}
+      if (child.kind === 'group') {
+        walk(child, depth + 1)
+      } else {
+        lines.push(`${'  '.repeat(depth + 1)}${renderHead(child)}`)
+      }
     }
   }
 
-  for (const group of tree.nodes) {walk(group, 0)}
+  for (const group of tree.nodes) {
+    walk(group, 0)
+  }
 
   return lines.join('\n')
 }

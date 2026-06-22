@@ -177,8 +177,11 @@ export async function callHost(input: {
       })
 
       child.on('close', code => {
-        if (code === 0) {resolve()}
-        else {reject(new Error(`npm publish exited with code ${code}`))}
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(`npm publish exited with code ${code}`))
+        }
       })
       child.on('error', reject)
     })

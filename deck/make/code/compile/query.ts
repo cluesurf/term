@@ -72,8 +72,9 @@ export class Database {
       existing &&
       Object.is(existing.value, value) &&
       existing.durability === durability
-    )
-      {return}
+    ) {
+      return
+    }
 
     this.revision += 1
     this.inputs.set(key, {
@@ -110,12 +111,15 @@ export class Database {
       input<T>(key: string): T {
         const cell = db.inputs.get(key)
 
-        if (!cell) {throw new Error(`unknown input: ${key}`)}
+        if (!cell) {
+          throw new Error(`unknown input: ${key}`)
+        }
 
         frame.deps.add(key)
 
-        if (cell.durability < frame.durability)
-          {frame.durability = cell.durability}
+        if (cell.durability < frame.durability) {
+          frame.durability = cell.durability
+        }
 
         return cell.value as T
       },
@@ -124,7 +128,9 @@ export class Database {
         compute: Compute<T>,
         equals: Equals<T> = Object.is,
       ): Promise<T> {
-        if (active.has(key)) {throw new Error(`query cycle: ${key}`)}
+        if (active.has(key)) {
+          throw new Error(`query cycle: ${key}`)
+        }
 
         const value = (await db.resolveKey(
           key,
@@ -137,8 +143,9 @@ export class Database {
         const memo = db.memos.get(key)!
         frame.deps.add(key)
 
-        if (memo.durability < frame.durability)
-          {frame.durability = memo.durability}
+        if (memo.durability < frame.durability) {
+          frame.durability = memo.durability
+        }
 
         return value
       },
@@ -154,12 +161,15 @@ export class Database {
   ): Promise<unknown> {
     const memo = this.memos.get(key)
 
-    if (memo?.verifiedAt === this.revision)
-      {return Promise.resolve(memo.value)}
+    if (memo?.verifiedAt === this.revision) {
+      return Promise.resolve(memo.value)
+    }
 
     const flying = this.inFlight.get(key)
 
-    if (flying) {return flying}
+    if (flying) {
+      return flying
+    }
 
     const promise = this.computeKey(key, compute, equals, active)
     this.inFlight.set(key, promise)
@@ -167,8 +177,9 @@ export class Database {
     void promise
       .catch(() => undefined)
       .finally(() => {
-        if (this.inFlight.get(key) === promise)
-          {this.inFlight.delete(key)}
+        if (this.inFlight.get(key) === promise) {
+          this.inFlight.delete(key)
+        }
       })
 
     return promise
@@ -234,13 +245,19 @@ export class Database {
     // changed. This is the O(1) keystroke case: editing a LOW file never walks a HIGH-durability (stdlib) query.
     let maxChanged = 0
 
-    for (let d = memo.durability; d <= HIGH; d++)
-      {maxChanged = Math.max(maxChanged, this.lastChanged[d])}
+    for (let d = memo.durability; d <= HIGH; d++) {
+      maxChanged = Math.max(maxChanged, this.lastChanged[d])
+    }
 
-    if (maxChanged <= memo.verifiedAt) {return false}
+    if (maxChanged <= memo.verifiedAt) {
+      return false
+    }
 
-    for (const dep of memo.deps)
-      {if (await this.changedAfter(dep, memo.verifiedAt)) {return true}}
+    for (const dep of memo.deps) {
+      if (await this.changedAfter(dep, memo.verifiedAt)) {
+        return true
+      }
+    }
 
     return false
   }
@@ -252,16 +269,22 @@ export class Database {
   ): Promise<boolean> {
     const input = this.inputs.get(key)
 
-    if (input) {return input.changedAt > revision}
+    if (input) {
+      return input.changedAt > revision
+    }
 
     const memo = this.memos.get(key)
 
-    if (!memo) {return true} // unknown dependency: assume changed
+    if (!memo) {
+      return true
+    } // unknown dependency: assume changed
 
     if (memo.verifiedAt !== this.revision) {
-      if (await this.depsChanged(memo))
-        {await this.resolveKey(key, memo.compute, memo.equals, new Set())}
-      else {memo.verifiedAt = this.revision}
+      if (await this.depsChanged(memo)) {
+        await this.resolveKey(key, memo.compute, memo.equals, new Set())
+      } else {
+        memo.verifiedAt = this.revision
+      }
     }
 
     return this.memos.get(key)!.changedAt > revision

@@ -1,11 +1,23 @@
 // TCP runtime over node:net (plain) and node:tls (secure). Total functions wrapping the platform socket: connect /
 // listen / accept / read / write / close. Each returns a promise, so the public async TCP API awaits it. The opaque
 // handle a seed `connection` / `listener` holds is the raw node Socket / Server. Reached only through the public TCP API.
-import { createConnection, createServer, type Socket, type Server } from 'node:net'
-import { connect as tlsConnect, createServer as tlsCreateServer } from 'node:tls'
+import {
+  createConnection,
+  createServer,
+  type Socket,
+  type Server,
+} from 'node:net'
+import {
+  connect as tlsConnect,
+  createServer as tlsCreateServer,
+} from 'node:tls'
 
 const tcp = {
-  connect: (host: string, port: number, secure: boolean): Promise<Socket> =>
+  connect: (
+    host: string,
+    port: number,
+    secure: boolean,
+  ): Promise<Socket> =>
     new Promise((ok, fail) => {
       const socket = secure
         ? tlsConnect({ host, port }, () => ok(socket))
@@ -30,7 +42,9 @@ const tcp = {
     }),
 
   accept: (server: Server): Promise<Socket> =>
-    new Promise(ok => server.once('connection', socket => ok(socket as Socket))),
+    new Promise(ok =>
+      server.once('connection', socket => ok(socket as Socket)),
+    ),
 
   read: (socket: Socket): Promise<string> =>
     new Promise(ok => {
@@ -47,7 +61,9 @@ const tcp = {
     }),
 
   write: (socket: Socket, data: string): Promise<number> =>
-    new Promise(ok => socket.write(data, () => ok(Buffer.byteLength(data)))),
+    new Promise(ok =>
+      socket.write(data, () => ok(Buffer.byteLength(data))),
+    ),
 
   close: (socket: Socket): Promise<void> =>
     new Promise(ok => socket.end(() => ok())),

@@ -16,10 +16,15 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const sp = { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
+const sp = {
+  start: { line: 0, column: 0 },
+  end: { line: 0, column: 0 },
+}
 const strType = { kind: 'string' as const }
 
-const str = (): Statement extends never ? never : Record<string, unknown> =>
+const str = (): Statement extends never
+  ? never
+  : Record<string, unknown> =>
   ({ form: 'string', value: 'x', span: sp, type: strType }) as never
 const intLit = (): unknown => ({ form: 'integer', value: 0, span: sp })
 const v = (name: string): unknown => ({
@@ -36,7 +41,9 @@ const letHeap = (name: string): unknown => ({
   span: sp,
   type: strType,
 })
-const fn = (body: unknown[]): Extract<Statement, { form: 'function' }> =>
+const fn = (
+  body: unknown[],
+): Extract<Statement, { form: 'function' }> =>
   ({
     form: 'function',
     name: 'f',
@@ -71,7 +78,12 @@ function main(): void {
       letHeap('s'),
       {
         form: 'expression',
-        expr: { form: 'call', callee: v('use'), args: [v('s')], span: sp },
+        expr: {
+          form: 'call',
+          callee: v('use'),
+          args: [v('s')],
+          span: sp,
+        },
         span: sp,
       },
     ]).length === 0,
@@ -101,7 +113,12 @@ function main(): void {
         form: 'expression',
         expr: {
           form: 'call',
-          callee: { form: 'member', target: v('s'), name: 'size', span: sp },
+          callee: {
+            form: 'member',
+            target: v('s'),
+            name: 'size',
+            span: sp,
+          },
           args: [],
           span: sp,
         },

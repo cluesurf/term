@@ -86,7 +86,9 @@ export function truthy(v: Value): boolean {
 
 // structural equality across the value forms
 export function valuesEqual(a: Value, b: Value): boolean {
-  if (a.form !== b.form) {return false}
+  if (a.form !== b.form) {
+    return false
+  }
 
   switch (a.form) {
     case 'unit':
@@ -103,11 +105,15 @@ export function valuesEqual(a: Value, b: Value): boolean {
     case 'array': {
       const bv = (b as typeof a).value
 
-      if (Arr.size(a.value) !== Arr.size(bv)) {return false}
+      if (Arr.size(a.value) !== Arr.size(bv)) {
+        return false
+      }
 
-      for (let i = 0; i < Arr.size(a.value); i++)
-        {if (!valuesEqual(Arr.get(a.value, i), Arr.get(bv, i)))
-          {return false}}
+      for (let i = 0; i < Arr.size(a.value); i++) {
+        if (!valuesEqual(Arr.get(a.value, i), Arr.get(bv, i))) {
+          return false
+        }
+      }
 
       return true
     }

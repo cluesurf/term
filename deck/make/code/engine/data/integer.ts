@@ -30,9 +30,11 @@ export type TernaryInteger = {
 export function fitResolution(value: bigint): Resolution {
   const len = tritLength(value)
 
-  for (const r of FIXED)
-    {if (len <= RESOLUTION_WIDTH[r as 'tri8' | 'tri16' | 'tri40'])
-      {return r}}
+  for (const r of FIXED) {
+    if (len <= RESOLUTION_WIDTH[r as 'tri8' | 'tri16' | 'tri40']) {
+      return r
+    }
+  }
 
   return 'big'
 }
@@ -49,10 +51,11 @@ export function integer(
     const width = RESOLUTION_WIDTH[resolution]
     const { min, max } = tritWordRange(width)
 
-    if (v < min || v > max)
-      {throw new Error(
+    if (v < min || v > max) {
+      throw new Error(
         `value ${v} does not fit ${resolution} (width ${width})`,
-      )}
+      )
+    }
 
     return { value: v, resolution }
   }
@@ -100,7 +103,9 @@ export function divide(
   a: TernaryInteger,
   b: TernaryInteger,
 ): TernaryInteger {
-  if (b.value === 0n) {throw new Error('division by zero')}
+  if (b.value === 0n) {
+    throw new Error('division by zero')
+  }
 
   return wrap(a.value / b.value)
 }
@@ -109,7 +114,9 @@ export function remainder(
   a: TernaryInteger,
   b: TernaryInteger,
 ): TernaryInteger {
-  if (b.value === 0n) {throw new Error('division by zero')}
+  if (b.value === 0n) {
+    throw new Error('division by zero')
+  }
 
   return wrap(a.value % b.value)
 }

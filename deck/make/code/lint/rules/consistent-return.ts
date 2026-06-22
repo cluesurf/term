@@ -17,20 +17,28 @@ function collectReturns(
         ;(s.value ? withValue : withoutValue).push(s)
         break
       case 'if':
-        for (const b of s.branches)
-          {collectReturns(b.body, withValue, withoutValue)}
-        if (s.otherwise)
-          {collectReturns(s.otherwise, withValue, withoutValue)}
+        for (const b of s.branches) {
+          collectReturns(b.body, withValue, withoutValue)
+        }
+
+        if (s.otherwise) {
+          collectReturns(s.otherwise, withValue, withoutValue)
+        }
+
         break
       case 'while':
       case 'for-each':
         collectReturns(s.body, withValue, withoutValue)
         break
       case 'match':
-        for (const c of s.cases)
-          {collectReturns(c.body, withValue, withoutValue)}
-        if (s.otherwise)
-          {collectReturns(s.otherwise, withValue, withoutValue)}
+        for (const c of s.cases) {
+          collectReturns(c.body, withValue, withoutValue)
+        }
+
+        if (s.otherwise) {
+          collectReturns(s.otherwise, withValue, withoutValue)
+        }
+
         break
       default:
         break
@@ -45,9 +53,11 @@ export const consistentReturn: Rule = {
   docs: 'a function should return a value on every path or on none',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
-    if (node.form !== 'function') return
+
+    if (node.form !== 'function') {return}
 
     const withValue: Statement[] = []
     const withoutValue: Statement[] = []

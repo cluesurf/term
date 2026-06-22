@@ -53,7 +53,9 @@ function resolveValue(
   node: Node | undefined,
   subs: Map<string, string>,
 ): string {
-  if (!node) {return ''}
+  if (!node) {
+    return ''
+  }
 
   switch (node.kind) {
     case 'integer':
@@ -83,10 +85,13 @@ function resolveValue(
           kw === 'size' ||
           kw === 'mark') &&
         args[0]
-      )
-        {return resolveValue(args[0], subs)}
+      ) {
+        return resolveValue(args[0], subs)
+      }
 
-      if (kw && args.length === 0) {return subs.get(kw) ?? kw} // a bare name group
+      if (kw && args.length === 0) {
+        return subs.get(kw) ?? kw
+      } // a bare name group
 
       return kw ?? ''
     }
@@ -111,16 +116,18 @@ function substituteName(
   let text = ''
 
   for (const part of name.parts) {
-    if (part.kind === 'chunk') {text += part.text}
-    else {
+    if (part.kind === 'chunk') {
+      text += part.text
+    } else {
       const param = interpolationName(part)
 
-      if (param !== undefined && subs.has(param))
-        {text += subs.get(param)!}
-      else
-        {text += `${'{'.repeat(part.depth)}${param ?? ''}${'}'.repeat(
+      if (param !== undefined && subs.has(param)) {
+        text += subs.get(param)!
+      } else {
+        text += `${'{'.repeat(part.depth)}${param ?? ''}${'}'.repeat(
           part.depth,
-        )}`}
+        )}`
+      }
     }
   }
 
@@ -136,16 +143,19 @@ function substituteText(
 ): TextNode {
   const parts = text.parts.map(
     (part): ChunkNode | InterpolationNode => {
-      if (part.kind === 'chunk') {return part}
+      if (part.kind === 'chunk') {
+        return part
+      }
 
       const param = interpolationName(part)
 
-      if (param !== undefined && subs.has(param))
-        {return {
+      if (param !== undefined && subs.has(param)) {
+        return {
           kind: 'chunk',
           text: subs.get(param)!,
           token: chunkToken(subs.get(param)!),
-        }}
+        }
+      }
 
       return part
     },
@@ -173,22 +183,26 @@ export function collectTemplates(
   const templates = new Map<string, Template>()
 
   for (const group of tree.nodes) {
-    if (headName(group) !== 'tree') {continue}
+    if (headName(group) !== 'tree') {
+      continue
+    }
 
     const args = rest(group)
     const name =
-      args[0]?.kind === 'group'
-        ? headName(args[0])
-        : undefined
+      args[0]?.kind === 'group' ? headName(args[0]) : undefined
 
-    if (!name) {continue}
+    if (!name) {
+      continue
+    }
 
     const params: string[] = []
 
     let body: Node[] = []
 
     for (const node of args.slice(1)) {
-      if (node.kind !== 'group') {continue}
+      if (node.kind !== 'group') {
+        continue
+      }
 
       const head = headName(node)
 
@@ -196,7 +210,9 @@ export function collectTemplates(
         const p = rest(node)[0]
         const pName = p?.kind === 'group' ? headName(p) : undefined
 
-        if (pName) {params.push(pName)}
+        if (pName) {
+          params.push(pName)
+        }
       } else if (head === 'hook') {
         body = rest(node).slice(1) // drop the hook variant marker (fuse / bind / ...), keep the body
       }
@@ -215,15 +231,17 @@ export function collectEnumerations(
   const enums = new Map<string, string[]>()
 
   for (const group of tree.nodes) {
-    if (headName(group) !== 'host') {continue}
+    if (headName(group) !== 'host') {
+      continue
+    }
 
     const args = rest(group)
     const name =
-      args[0]?.kind === 'group'
-        ? headName(args[0])
-        : undefined
+      args[0]?.kind === 'group' ? headName(args[0]) : undefined
 
-    if (!name) {continue}
+    if (!name) {
+      continue
+    }
 
     const items = args
       .slice(1)
@@ -234,13 +252,13 @@ export function collectEnumerations(
       .map(n => {
         const item = rest(n)[0]
 
-        return item?.kind === 'group'
-          ? headName(item)
-          : undefined
+        return item?.kind === 'group' ? headName(item) : undefined
       })
       .filter((x): x is string => x !== undefined)
 
-    if (items.length > 0) {enums.set(name, items)}
+    if (items.length > 0) {
+      enums.set(name, items)
+    }
   }
 
   return enums
@@ -265,7 +283,9 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
 
   const template = name ? ctx.templates.get(name) : undefined
 
-  if (!template) {return []}
+  if (!template) {
+    return []
+  }
 
   const subs = new Map<string, string>()
   const beams: Beams = new Map()
@@ -273,7 +293,9 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
   let positional = 0
 
   for (const node of args.slice(1)) {
-    if (node.kind !== 'group') {continue}
+    if (node.kind !== 'group') {
+      continue
+    }
 
     const head = headName(node)
 
@@ -290,19 +312,19 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
     } else if (head === 'bind') {
       const inner = rest(node)
       const param =
-        inner[0]?.kind === 'group'
-          ? headName(inner[0])
-          : undefined
+        inner[0]?.kind === 'group' ? headName(inner[0]) : undefined
 
-      if (param) {subs.set(param, resolveValue(inner[1], ctx.subs))}
+      if (param) {
+        subs.set(param, resolveValue(inner[1], ctx.subs))
+      }
     } else if (head === 'beam') {
       const inner = rest(node)
       const beamName =
-        inner[0]?.kind === 'group'
-          ? headName(inner[0])
-          : undefined
+        inner[0]?.kind === 'group' ? headName(inner[0]) : undefined
 
-      if (beamName) {beams.set(beamName, inner.slice(1))}
+      if (beamName) {
+        beams.set(beamName, inner.slice(1))
+      }
     }
   }
 
@@ -331,13 +353,17 @@ function unrollWalk(
   const iterName = iterArg ? resolveValue(iterArg, ctx.subs) : undefined
   const items = iterName ? ctx.enums.get(iterName) : undefined
 
-  if (!items) {return undefined} // the iterable is not a known enumeration: leave it as a runtime walk
+  if (!items) {
+    return undefined
+  } // the iterable is not a known enumeration: leave it as a runtime walk
 
   const stepHook = args.find(
     (a): a is GroupNode => a.kind === 'group' && headName(a) === 'hook',
   )
 
-  if (!stepHook) {return undefined}
+  if (!stepHook) {
+    return undefined
+  }
 
   const stepChildren = rest(stepHook).slice(1) // drop the hook variant marker (`step` / `next`), keep the loop body
   const takeNode = stepChildren.find(
@@ -346,9 +372,7 @@ function unrollWalk(
 
   const itemArg = takeNode && rest(takeNode)[0]
   const itemVar =
-    itemArg?.kind === 'group'
-      ? (headName(itemArg) ?? 'item')
-      : 'item'
+    itemArg?.kind === 'group' ? (headName(itemArg) ?? 'item') : 'item'
 
   const bodyNodes = stepChildren.filter(c => c !== takeNode)
 
@@ -358,8 +382,9 @@ function unrollWalk(
     const subs = new Map(ctx.subs)
     subs.set(itemVar, item)
 
-    for (const node of expandBody(bodyNodes, { ...ctx, subs }))
-      {out.push(node)}
+    for (const node of expandBody(bodyNodes, { ...ctx, subs })) {
+      out.push(node)
+    }
   }
 
   return out
@@ -376,30 +401,36 @@ function expandBody(nodes: Node[], ctx: Context): Node[] {
       if (head === 'slot') {
         const slotArg = rest(node)[0]
         const slotName =
-          slotArg?.kind === 'group'
-            ? headName(slotArg)
-            : undefined
+          slotArg?.kind === 'group' ? headName(slotArg) : undefined
 
         const beamed = (slotName && ctx.beams.get(slotName)) || []
 
-        for (const b of expandBody(beamed, ctx)) {out.push(b)}
+        for (const b of expandBody(beamed, ctx)) {
+          out.push(b)
+        }
 
         continue
       }
 
       if (head === 'fuse') {
-        for (const e of expandFuse(node, ctx)) {out.push(e)}
+        for (const e of expandFuse(node, ctx)) {
+          out.push(e)
+        }
 
         continue
       }
 
-      if (head === 'tree') {continue}
+      if (head === 'tree') {
+        continue
+      }
 
       if (head === 'walk') {
         const unrolled = unrollWalk(node, ctx)
 
         if (unrolled) {
-          for (const u of unrolled) {out.push(u)}
+          for (const u of unrolled) {
+            out.push(u)
+          }
 
           continue
         }
@@ -425,18 +456,27 @@ function expandBody(nodes: Node[], ctx: Context): Node[] {
 // expand a top-level node: instantiate fuses, drop template definitions, and recurse into groups (so a `fuse` nested
 // inside a `form` expands in place). Top-level `walk`s are runtime loops and left untouched.
 function expandTop(node: Node, ctx: Context): Node[] {
-  if (node.kind !== 'group') {return [node]}
+  if (node.kind !== 'group') {
+    return [node]
+  }
 
   const head = headName(node)
 
-  if (head === 'fuse') {return expandFuse(node, ctx)}
+  if (head === 'fuse') {
+    return expandFuse(node, ctx)
+  }
 
-  if (head === 'tree') {return []}
+  if (head === 'tree') {
+    return []
+  }
 
   const nodes: Node[] = []
 
-  for (const child of node.nodes)
-    {for (const e of expandTop(child, ctx)) {nodes.push(e)}}
+  for (const child of node.nodes) {
+    for (const e of expandTop(child, ctx)) {
+      nodes.push(e)
+    }
+  }
 
   return [
     {
@@ -456,13 +496,15 @@ export function expandTemplates(
 ): RootNode {
   const templates = new Map(externalTemplates)
 
-  for (const [name, template] of collectTemplates(tree))
-    {templates.set(name, template)}
+  for (const [name, template] of collectTemplates(tree)) {
+    templates.set(name, template)
+  }
 
   const enums = new Map(externalEnums)
 
-  for (const [name, items] of collectEnumerations(tree))
-    {enums.set(name, items)}
+  for (const [name, items] of collectEnumerations(tree)) {
+    enums.set(name, items)
+  }
 
   const ctx: Context = {
     templates,
@@ -475,7 +517,9 @@ export function expandTemplates(
 
   for (const group of tree.nodes) {
     for (const expanded of expandTop(group, ctx)) {
-      if (expanded.kind === 'group') {nodes.push(expanded)}
+      if (expanded.kind === 'group') {
+        nodes.push(expanded)
+      }
     }
   }
 

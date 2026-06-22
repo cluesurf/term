@@ -10,12 +10,15 @@ export const noUselessReturn: Rule = {
   docs: 'a value-less return as the last statement of a function is redundant',
   fixable: true,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
-    if (node.form !== 'function') return
+
+    if (node.form !== 'function') {return}
 
     const last = node.body[node.body.length - 1]
-    if (last && last.form === 'return' && !last.value) {
+
+    if (last?.form === 'return' && !last.value) {
       context.report({
         message: `this \`send back\` has no value and is the last statement, so it does nothing`,
         span: last.span,

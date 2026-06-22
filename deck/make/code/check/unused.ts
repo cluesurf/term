@@ -30,11 +30,15 @@ function collectReads(expr: Expression, read: Set<string>): void {
     case 'call':
       collectReads(expr.callee, read)
 
-      for (const arg of expr.args) {collectReads(arg, read)}
+      for (const arg of expr.args) {
+        collectReads(arg, read)
+      }
 
       break
     case 'array':
-      for (const item of expr.items) {collectReads(item, read)}
+      for (const item of expr.items) {
+        collectReads(item, read)
+      }
 
       break
     case 'map':
@@ -45,7 +49,9 @@ function collectReads(expr: Expression, read: Set<string>): void {
 
       break
     case 'record':
-      for (const field of expr.fields) {collectReads(field.value, read)}
+      for (const field of expr.fields) {
+        collectReads(field.value, read)
+      }
 
       break
     case 'conditional':
@@ -54,7 +60,9 @@ function collectReads(expr: Expression, read: Set<string>): void {
         collectReads(branch.value, read)
       }
 
-      if (expr.otherwise) {collectReads(expr.otherwise, read)}
+      if (expr.otherwise) {
+        collectReads(expr.otherwise, read)
+      }
 
       break
     default:
@@ -73,8 +81,9 @@ function walk(
         collectReads(statement.init, read)
 
         // a re-`save` to an existing name counts as a use of the binding's slot; only record first declaration
-        if (!declared.has(statement.name))
-          {declared.set(statement.name, statement)}
+        if (!declared.has(statement.name)) {
+          declared.set(statement.name, statement)
+        }
 
         break
       case 'assign':
@@ -85,7 +94,9 @@ function walk(
         collectReads(statement.expr, read)
         break
       case 'return':
-        if (statement.value) {collectReads(statement.value, read)}
+        if (statement.value) {
+          collectReads(statement.value, read)
+        }
 
         break
       case 'throw':
@@ -105,11 +116,13 @@ function walk(
       case 'match':
         collectReads(statement.subject, read)
 
-        for (const branch of statement.cases)
-          {walk(branch.body, declared, read)}
+        for (const branch of statement.cases) {
+          walk(branch.body, declared, read)
+        }
 
-        if (statement.otherwise)
-          {walk(statement.otherwise, declared, read)}
+        if (statement.otherwise) {
+          walk(statement.otherwise, declared, read)
+        }
 
         break
       case 'if':
@@ -118,8 +131,9 @@ function walk(
           walk(branch.body, declared, read)
         }
 
-        if (statement.otherwise)
-          {walk(statement.otherwise, declared, read)}
+        if (statement.otherwise) {
+          walk(statement.otherwise, declared, read)
+        }
 
         break
       default:
@@ -139,12 +153,15 @@ export function findUnused(
   const referenced = new Set<string>()
 
   for (const statement of program) {
-    if (statement.form === 'function')
-      {walk(statement.body, new Map(), referenced)}
+    if (statement.form === 'function') {
+      walk(statement.body, new Map(), referenced)
+    }
   }
 
   for (const statement of program) {
-    if (statement.form !== 'function') {continue}
+    if (statement.form !== 'function') {
+      continue
+    }
 
     const declared = new Map<string, Statement>()
     const read = new Set<string>()

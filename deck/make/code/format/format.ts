@@ -112,6 +112,7 @@ function wrapComment(text: string, indent: string): string[] {
   const prefix = '# '
   const max = WIDTH - indent.length
   const lines: string[] = []
+
   let line = prefix
 
   for (const word of body.split(/\s+/)) {
@@ -133,12 +134,16 @@ function wrapComment(text: string, indent: string): string[] {
 }
 
 function comments(group: GroupNode, indent: string): string[] {
-  return (group.comments ?? []).flatMap(c => wrapComment(c.text, indent))
+  return (group.comments ?? []).flatMap(c =>
+    wrapComment(c.text, indent),
+  )
 }
 
 // does this group (or any descendant) carry a comment? Inlining would drop those comments, so such groups stack.
 function hasComment(node: Node): boolean {
-  if (node.kind !== 'group') {return false}
+  if (node.kind !== 'group') {
+    return false
+  }
 
   return (node.comments?.length ?? 0) > 0 || node.nodes.some(hasComment)
 }
@@ -175,7 +180,9 @@ function formatGroup(group: GroupNode, depth: number): string[] {
 
   let split = 0
 
-  while (split < kids.length && isLeaf(kids[split]!)) {split++}
+  while (split < kids.length && isLeaf(kids[split]!)) {
+    split++
+  }
 
   const headParts = [
     head ? flatten(head) : '',
@@ -191,6 +198,7 @@ function formatGroup(group: GroupNode, depth: number): string[] {
   // A block followed by a statement (or two adjacent blocks) stays tight, so the indentation provides the separation.
   // Other constructs (fork / walk / make / form ...) keep their children tight; only function bodies breathe.
   const spaceBody = headName(group) === 'task'
+
   let prevHead: string | undefined
   let prevSignature = false
   let prevCompound = false
@@ -205,6 +213,7 @@ function formatGroup(group: GroupNode, depth: number): string[] {
       kid.kind === 'group'
         ? headName(kid)
         : (flatten(kid).split(/[\s,]/)[0] ?? '')
+
     const signature = SIGNATURE_HEADS.has(head)
     const compound = kidLines.length > 1
 
@@ -215,7 +224,10 @@ function formatGroup(group: GroupNode, depth: number): string[] {
           : prevSignature && !signature
             ? true // signature -> body boundary
             : compound && !prevCompound // set a block off from a preceding simple statement
-      if (blank) {lines.push('')}
+
+      if (blank) {
+        lines.push('')
+      }
     }
 
     lines.push(...kidLines)
@@ -240,7 +252,9 @@ export function formatTree(tree: RootNode): string {
 export function format(source: { file: string; text: string }): string {
   const result = parse(source)
 
-  if (!result.ok) {return source.text}
+  if (!result.ok) {
+    return source.text
+  }
 
   return formatTree(result.tree)
 }

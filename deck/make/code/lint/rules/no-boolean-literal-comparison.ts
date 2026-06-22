@@ -14,12 +14,15 @@ export const noBooleanLiteralComparison: Rule = {
   docs: 'comparing to a boolean literal is redundant; use the boolean directly',
   fixable: true,
   check(target, context) {
-    if (target.kind !== 'expression') return
+    if (target.kind !== 'expression') {return}
+
     const node = target.node
-    if (node.form !== 'binary' || !EQUALITY.has(node.op)) return
+
+    if (node.form !== 'binary' || !EQUALITY.has(node.op)) {return}
 
     const { left, right, op } = node
-    if (left.form !== 'boolean' && right.form !== 'boolean') return
+
+    if (left.form !== 'boolean' && right.form !== 'boolean') {return}
 
     // the cases that reduce to the bare operand are slice-fixable: `x == true` and `x != false` are just `x`. The
     // negating cases (`x == false`, `x != true`) need a `fork lack` wrapper, so they are reported without a fix.
@@ -27,6 +30,7 @@ export const noBooleanLiteralComparison: Rule = {
       (op === '==' && b === true) || (op === '!=' && b === false)
 
     let fix
+
     if (right.form === 'boolean' && positive(right.value)) {
       fix = { span: node.span, text: context.slice(left.span) }
     } else if (left.form === 'boolean' && positive(left.value)) {

@@ -70,7 +70,11 @@ function main(): void {
 
   // hover over `read a` (line 6, the `a`) reports its type
   const hover = hoverAt(program, { line: 6, character: 11 })
-  ok('hoverAt reports a type under the cursor', hover !== undefined, JSON.stringify(hover))
+  ok(
+    'hoverAt reports a type under the cursor',
+    hover !== undefined,
+    JSON.stringify(hover),
+  )
 
   // navigation data: the index carries the references and signatures definition/rename/signature-help query
   ok(
@@ -97,8 +101,11 @@ async function backdating(): Promise<void> {
   const uri = 'bd.tree'
   const bad = `task f\n  like number\n  send back\n    read nope\n`
   const good = `task f\n  like number\n  send back, code 1\n`
-  const msg = (method: string, params: unknown) =>
-    ({ jsonrpc: '2.0' as const, method, params })
+  const msg = (method: string, params: unknown) => ({
+    jsonrpc: '2.0' as const,
+    method,
+    params,
+  })
   const publishes = (out: { method?: string }[]): boolean =>
     out.some(m => m.method === 'textDocument/publishDiagnostics')
 

@@ -37,7 +37,9 @@ export const array = (items: Value[]): Value => ({
 export const mapLit = (pairs: [string, Value][]): Value => {
   const m = Mp.makeMap<Value>()
 
-  for (const [k, v] of pairs) {Mp.set(m, `s:${k}`, v)}
+  for (const [k, v] of pairs) {
+    Mp.set(m, `s:${k}`, v)
+  }
 
   return { form: 'map', value: m }
 }
@@ -72,15 +74,16 @@ export const member = (c: Value, name: string): Value =>
   memberGet(c, name)
 
 export function setIndex(c: Value, i: Value, v: Value): Value {
-  if (c.form === 'array')
-    {return {
+  if (c.form === 'array') {
+    return {
       form: 'array',
       value: Arr.set(
         c.value,
         Number((i as { value: { value: bigint } }).value.value),
         v,
       ),
-    }}
+    }
+  }
 
   if (c.form === 'map') {
     Mp.set(c.value, keyOf(i), v)
@@ -111,13 +114,17 @@ export const print = (...args: Value[]): Value => {
 export const len = (v: Value): Value => member(v, 'length')
 
 export const push = (a: Value, v: Value): Value => {
-  if (a.form !== 'array') {throw new Error('push needs an array')}
+  if (a.form !== 'array') {
+    throw new Error('push needs an array')
+  }
 
   return { form: 'array', value: Arr.push(a.value, v) }
 }
 
 export const keys = (m: Value): Value => {
-  if (m.form !== 'map') {throw new Error('keys needs a map')}
+  if (m.form !== 'map') {
+    throw new Error('keys needs a map')
+  }
 
   return array(Mp.keys(m.value).map(k => str(k.replace(/^s:/, ''))))
 }
@@ -140,25 +147,32 @@ export const fromError = (e: unknown): Value =>
 
 // `for` iteration: yield the elements of an array, or the values of a map, as a JS iterable of Values
 export const iterate = (v: Value): Iterable<Value> => {
-  if (v.form === 'array') {return Arr.toArray(v.value)}
+  if (v.form === 'array') {
+    return Arr.toArray(v.value)
+  }
 
-  if (v.form === 'map') {return Mp.values(v.value)}
+  if (v.form === 'map') {
+    return Mp.values(v.value)
+  }
 
   throw new Error(`cannot iterate ${v.form}`)
 }
 
 export const toInt = (v: Value): Value => {
-  if (v.form === 'integer') {return v}
+  if (v.form === 'integer') {
+    return v
+  }
 
-  if (v.form === 'float')
-    {return int(
+  if (v.form === 'float') {
+    return int(
       BigInt(
         Math.trunc(
           Number((v.value as { mantissa: bigint }).mantissa) *
             3 ** (v.value as { exponent: number }).exponent,
         ),
       ),
-    )}
+    )
+  }
 
   if (v.form === 'string') {
     const s = show(v)

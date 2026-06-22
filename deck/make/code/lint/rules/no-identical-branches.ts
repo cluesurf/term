@@ -12,11 +12,14 @@ export const noIdenticalBranches: Rule = {
   docs: 'both branches of a fork test run the same statements, so the condition has no effect',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
-    if (node.form !== 'if') return
+
+    if (node.form !== 'if') {return}
+
     // only a plain two-way fork: one `hook test`/`hook hold` plus a `hook miss`. A multi-arm chain is not "identical".
-    if (node.branches.length !== 1 || !node.otherwise) return
+    if (node.branches.length !== 1 || !node.otherwise) {return}
 
     if (statementListsEqual(node.branches[0]!.body, node.otherwise)) {
       context.report({

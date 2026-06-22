@@ -10,15 +10,17 @@ export const noNegatedCondition: Rule = {
   docs: 'a negated condition with an else is clearer inverted',
   fixable: false,
   check(target, context) {
-    if (target.kind !== 'statement') return
+    if (target.kind !== 'statement') {return}
+
     const node = target.node
+
     if (
       node.form !== 'if' ||
       node.branches.length !== 1 ||
       !node.otherwise ||
       node.otherwise.length === 0
     )
-      return
+      {return}
 
     const cond = node.branches[0]!.cond
     const negated =

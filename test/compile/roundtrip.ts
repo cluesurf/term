@@ -19,7 +19,10 @@ import {
   nativePrelude,
 } from '@cluesurf/make/code/compile/native'
 import { emitSwift } from '@cluesurf/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@cluesurf/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@cluesurf/make/code/compile/kotlin'
 import { emitLlvm } from '@cluesurf/make/code/compile/llvm'
 import { emitRust } from '@cluesurf/make/code/compile/rust'
 import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
@@ -157,7 +160,9 @@ function runKotlin(
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
-    hoistKotlinImports(`${emitKotlin(program)}\nfun main() { println(${callExpr}) }\n`),
+    hoistKotlinImports(
+      `${emitKotlin(program)}\nfun main() { println(${callExpr}) }\n`,
+    ),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -333,9 +338,11 @@ function runKotlinIo(
   )}))\n}\n`
   writeFileSync(
     file,
-    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
-      program,
-    )}${main}`),
+    hoistKotlinImports(
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+        program,
+      )}${main}`,
+    ),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -427,9 +434,11 @@ function runKotlinMath(
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
-    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
-      program,
-    )}\nfun main() { print(compute()) }\n`),
+    hoistKotlinImports(
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+        program,
+      )}\nfun main() { print(compute()) }\n`,
+    ),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -490,9 +499,11 @@ function runKotlinCrypto(
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
-    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
-      program,
-    )}\nsuspend fun main() { print(compute()) }\n`),
+    hoistKotlinImports(
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+        program,
+      )}\nsuspend fun main() { print(compute()) }\n`,
+    ),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -586,9 +597,11 @@ function runKotlinText(
   const mainSig = isAsync ? 'suspend fun main()' : 'fun main()'
   writeFileSync(
     file,
-    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
-      program,
-    )}\n${mainSig} { print(compute()) }\n`),
+    hoistKotlinImports(
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+        program,
+      )}\n${mainSig} { print(compute()) }\n`,
+    ),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {
@@ -748,9 +761,11 @@ function runKotlinConsole(
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
     file,
-    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
-      program,
-    )}\nfun main() { compute() }\n`),
+    hoistKotlinImports(
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
+        program,
+      )}\nfun main() { compute() }\n`,
+    ),
   )
   const jar = file.replace(/\.kt$/, '.jar')
   try {

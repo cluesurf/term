@@ -48,11 +48,15 @@ export function dispatch(
   while (i < argv.length) {
     const token = argv[i]!
 
-    if (token.startsWith('-')) {break}
+    if (token.startsWith('-')) {
+      break
+    }
 
     const next = level.find(r => r.path === token)
 
-    if (!next) {break}
+    if (!next) {
+      break
+    }
 
     current = next
     command.push(next.path)
@@ -60,21 +64,25 @@ export function dispatch(
     i++
   }
 
-  if (!current)
-    {return {
+  if (!current) {
+    return {
       ok: false,
       error:
         argv.length === 0
           ? 'no command given'
           : `unknown command "${argv[0]}"`,
       command,
-    }}
+    }
+  }
 
   // short-flag letter -> the take's full name, so `-t` resolves to `--title`
   const shortToName = new Map<string, string>()
 
-  for (const take of current.takes)
-    {if (take.short) {shortToName.set(take.short, take.name)}}
+  for (const take of current.takes) {
+    if (take.short) {
+      shortToName.set(take.short, take.name)
+    }
+  }
 
   // parse the rest: --flag / -f value, --flag=value, --no-flag, boolean flags, positionals
   const args: Record<string, ArgValue> = {}
@@ -123,14 +131,23 @@ export function dispatch(
   // bind positionals to the command's declared takes, in order. A variadic
   // take collects all remaining positionals from its index onward.
   let posCursor = 0
+
   for (const take of current.takes) {
     if (take.variadic) {
-      if (args[take.name] === undefined) {args[take.name] = positionals.slice(posCursor)}
+      if (args[take.name] === undefined) {
+        args[take.name] = positionals.slice(posCursor)
+      }
+
       posCursor = positionals.length
       continue
     }
+
     const value = positionals[posCursor]
-    if (value !== undefined && args[take.name] === undefined) {args[take.name] = value}
+
+    if (value !== undefined && args[take.name] === undefined) {
+      args[take.name] = value
+    }
+
     posCursor++
   }
 
@@ -147,13 +164,18 @@ export function dispatch(
           error: `--${take.name} must be one of: ${take.choices.join(', ')} (got "${value}")`,
         }
       }
+
       // type coercion
       if (take.type?.kind === 'number' || take.type?.kind === 'float') {
         const n = Number(value)
-        if (!Number.isNaN(n)) {args[take.name] = n}
+
+        if (!Number.isNaN(n)) {
+          args[take.name] = n
+        }
       } else if (take.type?.kind === 'boolean') {
         args[take.name] = value === 'true'
       }
+
       value = args[take.name]
     }
 
@@ -174,28 +196,51 @@ export function dispatch(
 /** Render `--help` text for a command from its route (path, note, takes). */
 export function renderHelp(route: DockRoute): string {
   const lines: string[] = []
-  lines.push(`seed ${route.path}${route.note ? ` - ${route.note}` : ''}`)
+  lines.push(
+    `seed ${route.path}${route.note ? ` - ${route.note}` : ''}`,
+  )
+
   if (route.takes.length > 0) {
     lines.push('')
     lines.push('options:')
+
     for (const take of route.takes) {
       const flag = `--${take.name}${take.short ? `, -${take.short}` : ''}`
       const meta: string[] = []
-      if (take.type) {meta.push(take.type.kind)}
-      if (take.required) {meta.push('required')}
-      if (take.fallback !== undefined) {meta.push(`default ${JSON.stringify(take.fallback)}`)}
-      if (take.choices) {meta.push(`one of ${take.choices.join('|')}`)}
-      if (take.variadic) {meta.push('variadic')}
+
+      if (take.type) {
+        meta.push(take.type.kind)
+      }
+
+      if (take.required) {
+        meta.push('required')
+      }
+
+      if (take.fallback !== undefined) {
+        meta.push(`default ${JSON.stringify(take.fallback)}`)
+      }
+
+      if (take.choices) {
+        meta.push(`one of ${take.choices.join('|')}`)
+      }
+
+      if (take.variadic) {
+        meta.push('variadic')
+      }
+
       const suffix = meta.length ? `  (${meta.join(', ')})` : ''
       lines.push(`  ${flag.padEnd(22)} ${take.note ?? ''}${suffix}`)
     }
   }
+
   if (route.children.length > 0) {
     lines.push('')
     lines.push('subcommands:')
+
     for (const child of route.children) {
       lines.push(`  ${child.path.padEnd(22)} ${child.note ?? ''}`)
     }
   }
+
   return lines.join('\n')
 }

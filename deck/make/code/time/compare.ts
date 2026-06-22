@@ -38,14 +38,15 @@ export function compareResults(input: {
   const entries = input.current.map(r => {
     const baseline_ns = baselineByName.get(r.name)
 
-    if (baseline_ns === undefined)
-      {return {
+    if (baseline_ns === undefined) {
+      return {
         name: r.name,
         baseline_ns: 0,
         current_ns: r.mean_ns,
         pct: 0,
         status: 'new' as const,
-      }}
+      }
+    }
 
     const pct =
       baseline_ns > 0

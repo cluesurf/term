@@ -16,4 +16,6 @@ void main() {
   color = vec4(0.2, 0.6, 1.0, 1.0);
 }`
 
-export const vertices = new Float32Array([0.0, 0.5, -0.5, -0.5, 0.5, -0.5])
+export const vertices = new Float32Array([
+  0.0, 0.5, -0.5, -0.5, 0.5, -0.5,
+])

@@ -64,9 +64,13 @@ function editDistance(a: string, b: string): number {
     Array.from({ length: n + 1 }, () => 0),
   )
 
-  for (let i = 0; i <= m; i++) {dp[i]![0] = i}
+  for (let i = 0; i <= m; i++) {
+    dp[i]![0] = i
+  }
 
-  for (let j = 0; j <= n; j++) {dp[0]![j] = j}
+  for (let j = 0; j <= n; j++) {
+    dp[0]![j] = j
+  }
 
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
@@ -95,7 +99,9 @@ function suggestCommand(input: string): string | undefined {
     }
   }
 
-  if (bestDist <= 2 && best) {return best}
+  if (bestDist <= 2 && best) {
+    return best
+  }
 
   return undefined
 }
@@ -238,8 +244,8 @@ const cli = yargs(hideBin(process.argv))
     async argv => {
       await callScan({
         root,
-        file: argv.file as string,
-        back: argv.back as string,
+        file: argv.file,
+        back: argv.back,
       })
     },
   )
@@ -278,7 +284,7 @@ const cli = yargs(hideBin(process.argv))
         name: argv.name,
         kind: argv.kind,
         find: argv.find,
-        back: argv.back as string,
+        back: argv.back,
       })
     },
   )
@@ -450,6 +456,7 @@ const cli = yargs(hideBin(process.argv))
             .map(p => Number(p.trim()))
             .filter(p => Number.isInteger(p) && p > 0)
         : undefined
+
       await callHalt({ ports })
     },
   )
@@ -680,16 +687,29 @@ const cli = yargs(hideBin(process.argv))
       yargs
         .positional('glob', {
           type: 'string',
-          description: 'Directory of .tree files to hunt (default: deck/base/code)',
+          description:
+            'Directory of .tree files to hunt (default: deck/base/code)',
         })
-        .option('runs', { type: 'number', description: 'Fuzz inputs per seed' })
-        .option('seeds', { type: 'number', description: 'Distinct fuzz seeds' })
-        .option('fuzz-timeout', { type: 'number', description: 'Watchdog seconds per fuzz seed' })
-        .option('json', { type: 'boolean', description: 'Machine-readable output' }),
+        .option('runs', {
+          type: 'number',
+          description: 'Fuzz inputs per seed',
+        })
+        .option('seeds', {
+          type: 'number',
+          description: 'Distinct fuzz seeds',
+        })
+        .option('fuzz-timeout', {
+          type: 'number',
+          description: 'Watchdog seconds per fuzz seed',
+        })
+        .option('json', {
+          type: 'boolean',
+          description: 'Machine-readable output',
+        }),
     async argv => {
       await callHunt({
         root,
-        glob: argv.glob as string | undefined,
+        glob: argv.glob,
         runs: argv.runs,
         seeds: argv.seeds,
         fuzzTimeout: argv.fuzzTimeout,
