@@ -778,14 +778,20 @@ export function elaborateReport(
           variantToEnum.set(variant.name, owners)
           variantFieldInfo.set(
             ctorKey(statement.name, variant.name),
-            variant.fields.map(f => ({
+            variant.fields.map((f, j) => ({
               name: f.name,
+              // a dependent field (`rest : vecnat count`) references an EARLIER field. In the match's branch binding
+              // the fields are bound in order, so field j sees fields 0..j-1 as the innermost binders -- field i at
+              // de Bruijn j - i - 1. Computing at depth m + j with the preceding fields scoped at m + i produces
+              // exactly that, so the sibling reference is a valid (field-relative) index, not a negative one.
               type: kernelTypeAt(
                 f.type,
-                m,
+                m + j,
                 dataGenerics,
                 namedTypes,
-                fieldLevels(variant),
+                new Map(
+                  variant.fields.slice(0, j).map((g, i) => [g.name, m + i]),
+                ),
                 resolveIndexCtor,
               )!,
             })),
@@ -1128,13 +1134,25 @@ export function elaborateReport(
     statement.generics.forEach((g, i) => generics.set(g.name, i))
 
     const arity = statement.generics.length + statement.params.length
+    // a VALUE PARAMETER is in scope for any LATER parameter's type and for the result type, so a function can be
+    // value-dependent: `take n, like nat` then `take v, like vec / head / read n` types `v` as `vec n`, and the result
+    // can mention `n` too. Each value param sits at de Bruijn level generics.length + its index (the value binders come
+    // after the erased generic binders). Earlier params are passed as the value scope; the kernel's arrow chain is a
+    // dependent Pi, so the references resolve.
+    const valueParamScope = (upTo: number): Map<string, number> =>
+      new Map(
+        statement.params
+          .slice(0, upTo)
+          .map((q, k) => [q.name, statement.generics.length + k]),
+      )
+
     // result is at full depth (after all generic + value binders); each param at the depth before its own binder
     const resultType = kernelTypeAt(
       statement.result,
       arity,
       generics,
       namedTypes,
-      new Map(),
+      valueParamScope(statement.params.length),
       resolveIndexCtor,
     )
 
@@ -1144,7 +1162,7 @@ export function elaborateReport(
         statement.generics.length + i,
         generics,
         namedTypes,
-        new Map(),
+        valueParamScope(i),
         resolveIndexCtor,
       ),
     )

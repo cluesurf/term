@@ -14,7 +14,7 @@
   seed
 </h3>
 <p align='center'>
-  A Reactive Language Φ<br/>
+  A Paradigm Compiler Φ<br/>
   (WIP)
 </p>
 

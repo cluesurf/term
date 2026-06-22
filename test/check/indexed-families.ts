@@ -125,5 +125,175 @@ task use-one
 `),
 )
 
+// a length-tagging family + functions that PATTERN MATCH on an indexed value (the non-dependent eliminator: `fork
+// case` reduces on `vecnat <index>`). The match peels the subject's full type spine -- type args AND index args -- and
+// feeds them as the eliminator's leading witnesses, and a dependent field (`rest : vecnat count`) binds correctly in
+// the branch.
+const MATCH_PRELUDE = `form nat
+  case zero
+  case succ
+    link prior, like nat
+
+form bit
+  case off
+  case on
+
+form vecnat
+  head n, like nat
+  case vnil
+    head
+      make zero
+  case vcons
+    link count, like nat
+    link item, like nat
+    link rest, like vecnat
+      head
+        read count
+    head
+      make succ
+        bind prior
+          read count
+
+task tag-empty
+  take v, like vecnat
+    head
+      make zero
+  like bit
+  fork case, read v
+    case vnil
+      send back
+        make on
+    case vcons
+      link count
+      link item
+      link rest
+      send back
+        make off
+
+task tag-one
+  take v, like vecnat
+    head
+      make succ
+        bind prior
+          make zero
+  like bit
+  fork case, read v
+    case vnil
+      send back
+        make on
+    case vcons
+      link count
+      link item
+      link rest
+      send back
+        make off
+`
+
+// a length-1 vector value, indented to sit directly under `call tag-one` (8 spaces for `make vcons`, deeper for its
+// bindings) so it nests correctly when interpolated.
+const ONE = `        make vcons
+          bind count
+            make zero
+          bind item
+            make zero
+          bind rest
+            make vnil`
+
+// 5. `fork case` on an indexed value REDUCES through the empty (0-field) branch: tag-empty (vnil) = on.
+ok(
+  'fork case reduces on an indexed value (vnil branch)',
+  compiles(`${MATCH_PRELUDE}
+rule empty-on
+  show hold
+    call is-equal
+      call tag-empty
+        make vnil
+      make on
+  calm hold
+`),
+)
+
+// 6. `fork case` reduces through the dependent-field (3-field, `rest : vecnat count`) branch: tag-one (cons ..) = off.
+ok(
+  'fork case reduces on an indexed value (dependent vcons branch)',
+  compiles(`${MATCH_PRELUDE}
+rule one-off
+  show hold
+    call is-equal
+      call tag-one
+${ONE}
+      make off
+  calm hold
+`),
+)
+
+// 7. SOUNDNESS: the match reduces to the RIGHT branch -- tag-one (cons ..) is off, NOT on. Must be rejected.
+ok(
+  'match reduces to the correct branch (cons is not on)',
+  !compiles(`${MATCH_PRELUDE}
+rule one-not-on
+  show hold
+    call is-equal
+      call tag-one
+${ONE}
+      make on
+  calm hold
+`),
+)
+
+// VALUE-GENERIC function parameter: `is-empty : (n : nat) -> vecnat n -> bit` abstracts over the index value, so one
+// function works at any length. This is a dependent function parameter (the type of `v` mentions the earlier value
+// param `n`). The match then reduces once the index is concrete at the call site.
+const GENERIC_PRELUDE = `${MATCH_PRELUDE}
+task is-empty
+  take n, like nat
+  take v, like vecnat
+    head
+      read n
+  like bit
+  fork case, read v
+    case vnil
+      send back
+        make on
+    case vcons
+      link count
+      link item
+      link rest
+      send back
+        make off
+`
+
+// 8. value-generic matching reduces at a concrete call: is-empty zero (vnil) = on.
+ok(
+  'value-generic function over vecnat n: is-empty zero vnil = on',
+  compiles(`${GENERIC_PRELUDE}
+rule generic-empty
+  show hold
+    call is-equal
+      call is-empty
+        make zero
+        make vnil
+      make on
+  calm hold
+`),
+)
+
+// 9. and through the cons branch at a concrete length: is-empty (succ zero) (cons ..) = off.
+ok(
+  'value-generic function: is-empty (succ zero) (cons ..) = off',
+  compiles(`${GENERIC_PRELUDE}
+rule generic-cons
+  show hold
+    call is-equal
+      call is-empty
+        make succ
+          bind prior
+            make zero
+${ONE}
+      make off
+  calm hold
+`),
+)
+
 console.log(`\nindexed families: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)
