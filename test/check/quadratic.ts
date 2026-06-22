@@ -265,5 +265,80 @@ ok(
 `),
 )
 
+// 11. GENERAL MULTIVARIATE non-diagonal SOS: a^4 + b^4 >= 2 a^2 b^2 is (a^2 - b^2)^2 >= 0. The difference has a
+// negative cross term (-2 a^2 b^2), so it is not diagonal and not a single perfect square in one variable; the Gram
+// matrix search finds the PSD certificate, verified by z^T Q z == difference.
+ok(
+  'multivariate SOS: a^4 + b^4 >= 2 a^2 b^2  ((a^2 - b^2)^2)',
+  proven(`rule sos-difference
+  mark a, like integer
+  mark b, like integer
+  show hold
+    call is-minimum
+      call add
+        call multiply
+          call multiply
+            read a
+            read a
+          call multiply
+            read a
+            read a
+        call multiply
+          call multiply
+            read b
+            read b
+          call multiply
+            read b
+            read b
+      call multiply
+        mark 2
+        call multiply
+          call multiply
+            read a
+            read a
+          call multiply
+            read b
+            read b
+  calm hold
+`),
+)
+
+// 12. SOUNDNESS CONTROL: a^4 + b^4 >= 3 a^2 b^2 is FALSE (a = b = 1 gives 2 < 3); no PSD Gram certificate exists, so it
+// must be rejected.
+ok(
+  'multivariate non-SOS is rejected (a^4 + b^4 >= 3 a^2 b^2)',
+  !proven(`rule sos-too-strong
+  mark a, like integer
+  mark b, like integer
+  show hold
+    call is-minimum
+      call add
+        call multiply
+          call multiply
+            read a
+            read a
+          call multiply
+            read a
+            read a
+        call multiply
+          call multiply
+            read b
+            read b
+          call multiply
+            read b
+            read b
+      call multiply
+        mark 3
+        call multiply
+          call multiply
+            read a
+            read a
+          call multiply
+            read b
+            read b
+  calm hold
+`),
+)
+
 console.log(`\nquadratic: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

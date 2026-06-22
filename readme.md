@@ -14,7 +14,7 @@
   seed
 </h3>
 <p align='center'>
-  A Keystone Artifact Φ<br/>
+  A Keystone Artifact θ<br/>
   (WIP)
 </p>
 

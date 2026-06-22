@@ -615,11 +615,192 @@ function perfectSquareProves(expr: Expression): boolean {
   return univariatePerfectSquare(difference)
 }
 
+// ===== general multivariate sum-of-squares (the nonlinear `nia` / SOS decision via a Gram matrix) =====
+// p is a sum of squares (hence >= 0) iff p = z^T Q z for the monomial vector z and a PSD matrix Q. We search for such a
+// Q over the NEWTON basis (the half of each even-exponent monomial of p) and -- crucially -- VERIFY the candidate: it
+// is accepted only if Q is positive-semidefinite AND z^T Q z equals p exactly. So a wrong search NEVER yields a false
+// positive (it can only miss an SOS). This catches the non-diagonal multivariate cases the perfect-square / diagonal
+// tests miss, e.g. (a^2 - b^2)^2 written as a^4 + b^4 >= 2 a^2 b^2. The matrix M below is 2Q, kept integer.
+
+// half of a monomial (each exponent halved), or null if any exponent is odd
+function halfMonomial(key: string): string | null {
+  const counts = new Map<string, number>()
+
+  for (const v of monomialVars(key)) {
+    counts.set(v, (counts.get(v) ?? 0) + 1)
+  }
+
+  const half: string[] = []
+
+  for (const [v, c] of counts) {
+    if (c % 2 !== 0) {
+      return null
+    }
+
+    for (let i = 0; i < c / 2; i++) {
+      half.push(v)
+    }
+  }
+
+  return monomialKey(half)
+}
+
+const multiplyMonomial = (a: string, b: string): string =>
+  monomialKey([...monomialVars(a), ...monomialVars(b)])
+
+// the cartesian product of a list of option-lists (for the bounded ambiguous-monomial search)
+function cartesian(lists: number[][]): number[][] {
+  let out: number[][] = [[]]
+
+  for (const list of lists) {
+    const next: number[][] = []
+
+    for (const prefix of out) {
+      for (const item of list) {
+        next.push([...prefix, item])
+      }
+    }
+
+    out = next
+  }
+
+  return out
+}
+
+function multivariateSOS(poly: Poly): boolean {
+  const p = new Map([...poly].filter(([, c]) => c !== 0))
+
+  if (p.size === 0) {
+    return true // 0 is a sum of squares
+  }
+
+  // the Newton basis: the half of each even-exponent monomial of p
+  const basisSet = new Set<string>()
+
+  for (const key of p.keys()) {
+    const half = halfMonomial(key)
+
+    if (half !== null) {
+      basisSet.add(half)
+    }
+  }
+
+  const basis = [...basisSet]
+  const n = basis.length
+
+  if (n === 0 || n > 8) {
+    return false // empty or too large for the bounded search
+  }
+
+  // the basis pairs (i <= j) that produce each monomial
+  const pairsFor = new Map<string, [number, number][]>()
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i; j < n; j++) {
+      const product = multiplyMonomial(basis[i]!, basis[j]!)
+      const list = pairsFor.get(product) ?? []
+      list.push([i, j])
+      pairsFor.set(product, list)
+    }
+  }
+
+  // every monomial of p must be representable by some pair
+  for (const key of p.keys()) {
+    if (!pairsFor.has(key)) {
+      return false
+    }
+  }
+
+  const ambiguous = [...p.keys()].filter(
+    key => (pairsFor.get(key) ?? []).length > 1,
+  )
+
+  if (ambiguous.length > 3) {
+    return false // bound the discrete search
+  }
+
+  // try assigning each ambiguous monomial's coefficient to one of its producing pairs (the determined ones use their
+  // single pair). Build M = 2Q, then VERIFY identity + positive-semidefiniteness.
+  for (const combo of cartesian(
+    ambiguous.map(key => (pairsFor.get(key) ?? []).map((_, i) => i)),
+  )) {
+    const matrix = Array.from({ length: n }, () =>
+      new Array<number>(n).fill(0),
+    )
+
+    for (const [key, coefficient] of p) {
+      const pairs = pairsFor.get(key)!
+      const [i, j] =
+        pairs.length === 1
+          ? pairs[0]!
+          : pairs[combo[ambiguous.indexOf(key)]!]!
+
+      if (i === j) {
+        matrix[i]![i]! += 2 * coefficient
+      } else {
+        matrix[i]![j]! += coefficient
+        matrix[j]![i]! += coefficient
+      }
+    }
+
+    // VERIFY z^T M z == 2p exactly (every produced monomial matches): the soundness guarantee.
+    const produced = new Map<string, number>()
+
+    for (let i = 0; i < n; i++) {
+      for (let j = i; j < n; j++) {
+        const product = multiplyMonomial(basis[i]!, basis[j]!)
+        const contribution = i === j ? matrix[i]![i]! : 2 * matrix[i]![j]!
+        produced.set(product, (produced.get(product) ?? 0) + contribution)
+      }
+    }
+
+    let identity = true
+
+    for (const key of new Set([...produced.keys(), ...p.keys()])) {
+      if ((produced.get(key) ?? 0) !== 2 * (p.get(key) ?? 0)) {
+        identity = false
+        break
+      }
+    }
+
+    if (identity && isPositiveSemidefinite(matrix)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+// a goal `L >= R` / `R <= L` whose difference is a sum of squares.
+function sosProves(expr: Expression): boolean {
+  if (expr.form !== 'binary' || (expr.op !== '>=' && expr.op !== '<=')) {
+    return false
+  }
+
+  const upper = expr.op === '>=' ? expr.left : expr.right
+  const lower = expr.op === '>=' ? expr.right : expr.left
+  const high = expandPolynomial(upper)
+  const low = expandPolynomial(lower)
+
+  if (!high || !low) {
+    return false
+  }
+
+  const difference: Poly = new Map(high)
+
+  for (const [key, value] of low) {
+    difference.set(key, (difference.get(key) ?? 0) - value)
+  }
+
+  return multivariateSOS(difference)
+}
+
 function nonlinearProves(expr: Expression): boolean {
   return (
     positivityProves(expr) ||
     quadraticProves(expr) ||
-    perfectSquareProves(expr)
+    perfectSquareProves(expr) ||
+    sosProves(expr)
   )
 }
 
