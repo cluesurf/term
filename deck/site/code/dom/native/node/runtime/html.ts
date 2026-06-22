@@ -30,17 +30,17 @@ function stashTitle(title: string): void {
   pendingTitle = title
 }
 
-// a per-request redirect target set by a resource route (e.g. /vibe.pdf). The host reads it after dispatch and returns
-// a 302 instead of rendering. Read-and-clear so it never leaks to the next request.
-let pendingRedirect: string | undefined
+// a per-request proxy source set by a resource route (e.g. /vibe.pdf). The host reads it after dispatch and, if set,
+// fetches + streams that URL's bytes instead of rendering. Read-and-clear so it never leaks to the next request.
+let pendingProxy: string | undefined
 
-function stashRedirect(url: string): void {
-  pendingRedirect = url
+function stashProxy(url: string): void {
+  pendingProxy = url
 }
 
-function takeRedirect(): string {
-  const url = pendingRedirect ?? ''
-  pendingRedirect = undefined
+function takeProxy(): string {
+  const url = pendingProxy ?? ''
+  pendingProxy = undefined
 
   return url
 }
@@ -345,7 +345,7 @@ export const html = {
   setTitle: stashTitle,
   setMeta: stashMeta,
   resetMeta,
-  setRedirect: stashRedirect,
-  takeRedirect,
+  setProxy: stashProxy,
+  takeProxy,
 }
 

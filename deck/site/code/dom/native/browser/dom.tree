@@ -191,13 +191,13 @@ task set-title
   take title, like text
   save page/title, read title
 
-# a resource route's redirect: navigate the browser there (window.location.href = url). On the client this happens
-# immediately, so redirect-target reports nothing for the host to act on.
-task set-redirect
+# a resource route's proxy: on the client, do a FULL navigation to the current path so the server fetches + streams the
+# asset (the page URL stays put, e.g. /vibe.pdf). proxy-target reports nothing -- the navigation already happened.
+task set-proxy
   take url, like text
-  save place/href, read url
+  save place/href, read place/pathname
 
-task redirect-target
+task proxy-target
   like text
   send back, text <>
 

@@ -10,7 +10,7 @@
     "make": "npx esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --outfile=host/line.js --banner:js='#!/usr/bin/env node'",
     "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
     "test": "vitest run",
-    "lint": "eslint --fix \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\" && prettier --write \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
+    "lint": "NODE_OPTIONS=--max-old-space-size=8192 eslint --fix \"deck/make/code/**/*.ts\" \"deck/call/code/**/*.ts\" \"deck/flow/code/**/*.ts\" \"deck/deck/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\" ; prettier --write \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "format": "prettier --write \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "host": "pnpm make && npm publish --access=public"
   },

@@ -14,7 +14,7 @@ load @cluesurf/site/code/dom/dom
   find create-element
   find serialize
   find page-shell
-  find redirect-target
+  find proxy-target
 load @cluesurf/site/code/http/http
   find request
   find response
@@ -45,9 +45,11 @@ task host
       call route
         read root
         read request/path
-      # a resource route may have stashed a redirect target during dispatch (e.g. /vibe.pdf); return a 302 to it
+      # a resource route may have stashed a proxy source during dispatch (e.g. /vibe.pdf). Signal the transport to fetch
+      # + stream that URL through this origin (status 1 = proxy; the page URL stays put, the real content-type is used).
+      # Otherwise render the matched page.
       save target
-        call redirect-target
+        call proxy-target
       fork test
         hook test
           call is-unequal
@@ -56,7 +58,7 @@ task host
         hook hold
           send back
             make response
-              bind status, mark 302
+              bind status, mark 1
               bind body, read target
         hook miss
           send back

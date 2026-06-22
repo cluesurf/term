@@ -100,13 +100,13 @@ task set-meta
   take name, like text
   take content, like text
 
-# a resource route's redirect target (e.g. /vibe.pdf). On the server it is stashed for the host to turn into a 302; in
-# the browser it navigates (window.location).
-task set-redirect
+# a resource route's proxy source (e.g. /vibe.pdf). On the server it is stashed for the host to fetch + stream (the
+# page URL stays put); in the browser it triggers a full navigation so the server handles it.
+task set-proxy
   take url, like text
 
-# the redirect target stashed during this render, or empty (server only; the browser navigates immediately).
-task redirect-target
+# the proxy source stashed during this render, or empty (server only; the browser navigates immediately).
+task proxy-target
   like text
 
 # the app mount host (document body). The boot mounts the matched route's component here.

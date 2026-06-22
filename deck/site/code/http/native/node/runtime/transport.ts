@@ -90,8 +90,20 @@ const transport = {
       const response = await handle({ method: context.req.method, path: url.pathname, body })
       const out = response.body ?? ''
       const status = (response.status ?? 200) as never
-      // a redirect resource route (e.g. /vibe.pdf) returns a 3xx with the target URL as the body -> issue a real redirect
       const code = response.status ?? 200
+      // a proxy resource route (e.g. /vibe.pdf) returns the sentinel status 1 with the source URL as the body: fetch it
+      // and stream the bytes back through this origin (the page URL stays put), carrying the upstream content-type.
+      if (code === 1 && out) {
+        const upstream = await fetch(out)
+        const buffer = Buffer.from(await upstream.arrayBuffer())
+        const type =
+          upstream.headers.get('content-type') ?? 'application/octet-stream'
+        return context.body(buffer as never, 200 as never, {
+          'Content-Type': type,
+          ...NO_STORE,
+        })
+      }
+      // a redirect resource route returns a 3xx with the target URL as the body -> issue a real redirect
       if (code >= 300 && code < 400 && out) {
         return context.redirect(out, code as never)
       }

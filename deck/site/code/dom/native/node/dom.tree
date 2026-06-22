@@ -242,16 +242,16 @@ task set-meta
     read name
     read content
 
-# stash / read the resource-route redirect target (the host turns a non-empty target into a 302)
-task set-redirect
+# stash / read the resource-route proxy source (the host fetches + streams a non-empty target's bytes)
+task set-proxy
   take url, like text
-  call doc/set-redirect
+  call doc/set-proxy
     read url
 
-task redirect-target
+task proxy-target
   like text
   send back
-    call doc/take-redirect
+    call doc/take-proxy
 
 task page-body
   like view
