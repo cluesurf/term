@@ -24,11 +24,6 @@
 
 ## Introduction
 
-Every platform has its own language, its own build tools, its own
-ecosystem. Writing an app that runs on servers, browsers, iOS, and
-Android means learning four toolchains, maintaining four codebases, and
-watching them drift apart. The logic is the same. The plumbing is not.
-
 Seed is a programming framework built on a simple, indentation-based
 syntax (the [tree](https://github.com/cluesurf/tree) format). You write
 the logic once, and one source compiles to idiomatic Rust, TypeScript,
@@ -38,6 +33,11 @@ rich type system, ships with a full toolchain (compiler, package
 manager, and language server), and is designed so the compiler can reach
 near-optimal native code on each target without the author giving up a
 clean, readable surface.
+
+Every platform has its own language, its own build tools, its own
+ecosystem. Writing an app that runs on servers, browsers, iOS, and
+Android means learning four toolchains, maintaining four codebases, and
+watching them drift apart. The logic is the same. The plumbing is not.
 
 Dart, through Flutter, has a comparable multi-platform reach but
 different goals: Seed emits each platform's native idioms rather than
