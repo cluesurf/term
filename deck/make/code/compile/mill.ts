@@ -3425,10 +3425,10 @@ export function mill(tree: RootNode, file: string): MillResult {
         n =>
           n.kind === 'group' &&
           (headName(n) === 'zone' ||
-            // a resource route: `hook </vibe.pdf> / seed redirect, text <url>` has no zone but redirects on the server
+            // a resource route: `hook </vibe.pdf> / seed proxy, text <url>` has no zone; the server streams the asset
             (headName(n) === 'seed' &&
               rest(n)[0]?.kind === 'group' &&
-              headName(rest(n)[0] as GroupNode) === 'redirect')),
+              headName(rest(n)[0] as GroupNode) === 'proxy')),
       )
 
       program.push({
