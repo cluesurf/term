@@ -11,11 +11,11 @@
 </p>
 
 <h3 align='center'>
-  seed<br/>
-  (WIP)
+  seed
 </h3>
 <p align='center'>
-  A Reactive Language Φ
+  A Reactive Language Φ<br/>
+  (WIP)
 </p>
 
 <br/>
@@ -40,11 +40,11 @@ near-optimal native code on each target without the author giving up a
 clean, readable surface.
 
 Dart, through Flutter, has a comparable multi-platform reach but
-different goals: Seed emits each platform's
-native idioms rather than shipping one runtime, and puts a formal type
-system and proof checker at the center. Kind is the closer relative on
-that side, a dependently typed language with a small core, while Seed
-aims more squarely at building real cross-platform applications.
+different goals: Seed emits each platform's native idioms rather than
+shipping one runtime, and puts a formal type system and proof checker at
+the center. Kind is the closer relative on that side, a dependently
+typed language with a small core, while Seed aims more squarely at
+building real cross-platform applications.
 
 You write the usual types, classes, functions, and data models. Beyond
 that, templates can parse the tree AST directly, so the boilerplate of
@@ -61,12 +61,11 @@ through decision procedures for linear arithmetic, ring identities,
 congruence closure, and nonlinear non-negativity.
 
 Most types are inferred, and a language server gives live diagnostics,
-hovers,
-completion, and go-to-definition, with a parser that recovers from
-errors instead of stopping at the first one. Compilation is incremental,
-rebuilding only the modules that changed, and the package manager
-follows the pnpm model, with a content-addressed store and linked
-dependencies.
+hovers, completion, and go-to-definition, with a parser that recovers
+from errors instead of stopping at the first one. Compilation is
+incremental, rebuilding only the modules that changed, and the package
+manager follows the pnpm model, with a content-addressed store and
+linked dependencies.
 
 Doing this optimally is the hard part. Because meaning is fixed by the
 type system rather than by how the code is phrased, the backend is free
