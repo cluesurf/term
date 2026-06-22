@@ -57,6 +57,7 @@ import { terminatingFunctions } from '@cluesurf/make/code/check/totality'
 import { isLinearGoal } from '@cluesurf/make/code/check/holds'
 import {
   ringEqual,
+  ringEqualModulo,
   nonNegativeDifference,
 } from '@cluesurf/make/code/check/ring'
 import { checkFold } from '@cluesurf/make/code/check/induct'
@@ -95,6 +96,24 @@ function lambdas(count: number, body: Term): Term {
   }
 
   return term
+}
+
+// the Church / self-encoding of constructor `variantIndex` of a datatype with `variantCount` variants, this one carrying
+// `fieldCount` fields: `\f_0..f_{k-1}. \P. \b_0..b_{n-1}. b_i f_0 .. f_{k-1}`. Shared by enums (n variants) and structs
+// (a single variant, n = 1), so the constructor that drives `match` / projection reduction is defined in exactly one
+// place. de Bruijn (innermost = 0): branches b_{n-1}..b_0 are 0..n-1, P is n, fields f_{k-1}..f_0 are n+1..n+k.
+function constructorEncoding(
+  variantIndex: number,
+  fieldCount: number,
+  variantCount: number,
+): Term {
+  let body: Term = variable(variantCount - 1 - variantIndex) // b_i
+
+  for (let j = 0; j < fieldCount; j++) {
+    body = apply(body, variable(variantCount + fieldCount - j)) // f_0 .. f_{k-1}
+  }
+
+  return lambdas(fieldCount + 1 + variantCount, body)
 }
 
 // ---- the base signature: base types and primitive operations as postulated kernel constants ----
@@ -364,6 +383,8 @@ export function elaborateReport(
   // sound postulates the kernel checks against, with their field/result types drawn from the declared types.
   const dataSignature: { name: string; type: Term }[] = []
   const recordFields = new Map<string, string[]>() // record name -> field names in declaration order
+  // record name -> each field's surface name and kernel type, for no-confusion at depth through a struct's fields
+  const recordFieldInfo = new Map<string, { name: string; type: Term }[]>()
   const variantNames = new Map<string, string[]>() // enum name -> variant names in declaration order
   // a variant's SURFACE name -> every enum that declares it. Constructors are namespaced internally as `enum__variant`,
   // so one surface name (e.g. `minus` on both `pole` and `spin`) lives in two enums without clashing. A use site picks
@@ -490,17 +511,9 @@ export function elaborateReport(
       // de Bruijn (innermost = 0): for a constructor, branches b_{n-1}..b_0 are 0..n-1, P is n, fields f_{k-1}..f_0
       // are n+1..n+k; for the eliminator, branches are 0..n-1, x is n, A is n+1.
       statement.variants.forEach((variant, i) => {
-        const k = variant.fields.length
-
-        let cbody: Term = variable(n - 1 - i) // b_i
-
-        for (let j = 0; j < k; j++) {
-          cbody = apply(cbody, variable(n + k - j))
-        } // f_0 .. f_{k-1}
-
         enumDefs.push({
           name: ctorKey(statement.name, variant.name),
-          term: lambdas(k + 1 + n, cbody),
+          term: constructorEncoding(i, variant.fields.length, n),
         })
       })
 
@@ -549,6 +562,38 @@ export function elaborateReport(
         statement.name,
         statement.fields.map(f => f.name),
       )
+
+      recordFieldInfo.set(
+        statement.name,
+        statement.fields.map((f, fi) => ({
+          name: f.name,
+          type: fieldTypes[fi]!,
+        })),
+      )
+
+      // COMPUTING definitions so the kernel REDUCES a projection on a freshly-built record. A struct is a single-variant
+      // self-encoding: the constructor bundles its fields into a one-branch eliminator, and each projection applies that
+      // bundle to a selector returning the i-th field. Then `r__field_i (make__r a_0..a_{k-1})` reduces to `a_i`, so
+      // `calm` discharges `read p/field` on a constructed record (and constructor injectivity falls out for free). This
+      // mirrors the enum constructor / eliminator defs above, specialized to one variant with per-field selectors.
+      const k = statement.fields.length
+
+      // make__r is the single-variant constructor (one branch), reusing the shared self-encoding.
+      enumDefs.push({
+        name: `make__${statement.name}`,
+        term: constructorEncoding(0, k, 1),
+      })
+
+      // r__field_i = \x. x (\_. T_i) (\f_0..f_{k-1}. f_i)   (the motive is unused by the reduction, the selector picks i)
+      statement.fields.forEach((field, i) => {
+        const selector = lambdas(k, variable(k - 1 - i))
+        const motive: Term = { tag: 'lam', body: fieldTypes[i]! }
+
+        enumDefs.push({
+          name: `${statement.name}__${field.name}`,
+          term: lambdas(1, apply(apply(variable(0), motive), selector)),
+        })
+      })
     }
   }
 
@@ -2143,9 +2188,156 @@ export function elaborateReport(
     return [left, right]
   }
 
-  // is an equation hypothesis ABSURD, i.e. does it equate two DISTINCT constructors of the same enum? Constructors are
-  // disjoint (no confusion), so such an equation cannot hold, which makes its case vacuously true. This is what lets a
-  // conditional theorem (like the transitivity of an order) discharge the cases whose antecedent is impossible.
+  // the field values of a constructor value: extract field j by matching with a branch that returns f_j (the other
+  // branches are never selected, since `value` discriminated to `variantIndex`). Reuses the same match-eliminator
+  // machinery as `constructorIndex`. Used by no-confusion at depth to recurse into a shared constructor's arguments.
+  function constructorFields(
+    level: number,
+    value: Value,
+    enumName: string,
+    variantIndex: number,
+    fieldCount: number,
+  ): Value[] {
+    const order = variantNames.get(enumName)
+
+    if (!order) {
+      return []
+    }
+
+    const idEnv: Value[] = []
+
+    for (let l = level - 1; l >= 0; l--) {
+      idEnv.push(neutralVar(l))
+    }
+
+    const fields: Value[] = []
+
+    for (let j = 0; j < fieldCount; j++) {
+      const branches = order.map((variant, m) => {
+        const fc = (variantFieldInfo.get(ctorKey(enumName, variant)) ?? [])
+          .length
+
+        // branch m returns its j-th field for the target variant, an ignored placeholder otherwise
+        const body =
+          m === variantIndex ? variable(fc - 1 - j) : constant('unitValue')
+
+        return lambdas(fc, body)
+      })
+
+      fields.push(
+        evaluate(
+          idEnv,
+          apply(
+            constant(`match__${enumName}`),
+            TYPE0,
+            quote(level, value),
+            ...branches,
+          ),
+        ),
+      )
+    }
+
+    return fields
+  }
+
+  // NO-CONFUSION at any depth: the equation is absurd if the two values are distinct constructors of the same enum, OR
+  // they share a constructor but a corresponding field pair is itself absurd (by injectivity, `c a = c b` forces
+  // `a = b`, so an impossible field makes the whole equation impossible). Bounded by the finite term structure, every
+  // recursion descending into strict sub-values, with a depth guard as a backstop. Sound: it only fires on genuine
+  // constructors (each confirmed by `constructorIndex`), never on neutral / stuck values, so a satisfiable case is
+  // never wrongly closed.
+  function absurdAtType(
+    level: number,
+    typeTerm: Term,
+    leftValue: Value,
+    rightValue: Value,
+    depth: number,
+  ): boolean {
+    if (depth <= 0 || typeTerm.tag !== 'const') {
+      return false
+    }
+
+    // a struct has one constructor, so it is never absurd at the top, but a FIELD pair can be. Extract each field with
+    // its (now-reducing) projection and recurse. By injectivity `make r .. = make r ..` forces the fields equal, so an
+    // impossible field makes the record equation impossible.
+    const recordInfo = recordFieldInfo.get(typeTerm.name)
+
+    if (recordInfo) {
+      const idEnv: Value[] = []
+
+      for (let l = level - 1; l >= 0; l--) {
+        idEnv.push(neutralVar(l))
+      }
+
+      for (const field of recordInfo) {
+        const project = (value: Value): Value =>
+          evaluate(
+            idEnv,
+            apply(
+              constant(`${typeTerm.name}__${field.name}`),
+              quote(level, value),
+            ),
+          )
+
+        if (
+          absurdAtType(
+            level,
+            field.type,
+            project(leftValue),
+            project(rightValue),
+            depth - 1,
+          )
+        ) {
+          return true
+        }
+      }
+
+      return false
+    }
+
+    if (!variantNames.has(typeTerm.name)) {
+      return false
+    }
+
+    const iLeft = constructorIndex(level, leftValue, typeTerm.name)
+    const iRight = constructorIndex(level, rightValue, typeTerm.name)
+
+    if (iLeft === null || iRight === null) {
+      return false
+    }
+
+    if (iLeft !== iRight) {
+      return true
+    }
+
+    const order = variantNames.get(typeTerm.name)!
+    const fieldInfo =
+      variantFieldInfo.get(ctorKey(typeTerm.name, order[iLeft]!)) ?? []
+    const k = fieldInfo.length
+
+    if (k === 0) {
+      return false
+    }
+
+    const lf = constructorFields(level, leftValue, typeTerm.name, iLeft, k)
+    const rf = constructorFields(level, rightValue, typeTerm.name, iLeft, k)
+
+    for (let j = 0; j < k; j++) {
+      if (
+        lf[j] &&
+        rf[j] &&
+        absurdAtType(level, fieldInfo[j]!.type, lf[j]!, rf[j]!, depth - 1)
+      ) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  // is an equation hypothesis ABSURD, i.e. impossible by constructor disjointness / injectivity (no confusion)? Such an
+  // equation cannot hold, which makes its case vacuously true. This is what lets a conditional theorem (like the
+  // transitivity of an order) discharge the cases whose antecedent is impossible, and what `calm miss` uses to refute.
   function equationAbsurd(
     context: Context,
     leftTerm: Term,
@@ -2155,23 +2347,7 @@ export function elaborateReport(
     try {
       const type = quote(context.level, infer(context, leftTerm).type)
 
-      if (type.tag !== 'const' || !variantNames.has(type.name)) {
-        return false
-      }
-
-      const iLeft = constructorIndex(
-        context.level,
-        leftValue,
-        type.name,
-      )
-
-      const iRight = constructorIndex(
-        context.level,
-        rightValue,
-        type.name,
-      )
-
-      return iLeft !== null && iRight !== null && iLeft !== iRight
+      return absurdAtType(context.level, type, leftValue, rightValue, 64)
     } catch {
       return false
     }
@@ -3137,6 +3313,22 @@ export function elaborateReport(
     // kernel's opaque arithmetic cannot. Sound: a zero polynomial is identically zero over any commutative ring. With
     // an explicit proof present, the kernel validates that proof instead, so a bogus tactic is still caught.
     if (!hasProof && ringEqual(goal.left, goal.right)) {
+      discharged.push(statement.span)
+
+      return
+    }
+
+    // a ring identity MODULO the path's equational hypotheses: `L - R` reduces to zero in the ideal the `have` equations
+    // generate, so the identity holds whenever the hypotheses do. This discharges CONDITIONAL algebraic identities that
+    // the kernel's literal-subterm hypothesis rewrite cannot thread through an AC-normalized polynomial (rational
+    // well-definedness, where `a*d = a'*b` forces a cross-multiplied sum identity). Sound over the integers (see
+    // `ringEqualModulo`), and only fires when the goal genuinely holds modulo the hypotheses, so a stated tactic that
+    // does no real work is never masking an unsound step.
+    if (
+      goal.op === '==' &&
+      assumptions.length > 0 &&
+      ringEqualModulo(goal.left, goal.right, assumptions)
+    ) {
       discharged.push(statement.span)
 
       return

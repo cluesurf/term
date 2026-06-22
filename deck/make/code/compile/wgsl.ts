@@ -14,6 +14,7 @@ import {
   unsupported,
 } from '@cluesurf/make/code/compile/backend'
 import { monomorphize } from '@cluesurf/make/code/ir/monomorphize'
+import { experimentalBanner } from '@cluesurf/make/code/compile/backend-registry'
 
 function snake(name: string): string {
   return name.replace(/-/g, '_')
@@ -207,5 +208,5 @@ export function emitWgsl(input: Program): string {
     )
   }
 
-  return out.join('\n\n') + '\n'
+  return experimentalBanner('wgsl', '//') + out.join('\n\n') + '\n'
 }

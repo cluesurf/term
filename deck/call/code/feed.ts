@@ -1,6 +1,6 @@
-// `seed serve [entry]`: the dev server. Compiles the app in per-module mode, serves each module lazily over native
-// ESM, and hot-reloads on change over SSE. The entry is an argument or the `deck.tree` boot entry. Stays alive until
-// interrupted. See code/dev/server.ts and note/seed/plan/compilation-performance.md (Tier 3).
+// `seed feed [entry]`: the dev server. Compiles the app in per-module mode, serves each module lazily over native
+// ESM, and hot-reloads on change over SSE (it "feeds" live updates to the browser). The entry is an argument or the
+// `deck.tree` boot entry. Stays alive until interrupted. See code/dev/server.ts.
 
 import { realpathSync, watch as fsWatch, existsSync } from 'fs'
 import path from 'path'
@@ -15,7 +15,7 @@ import {
   fade,
 } from '@cluesurf/make/code/tint'
 
-export async function callServe(input: {
+export async function callFeed(input: {
   root: string
   entry?: string
   port?: number

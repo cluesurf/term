@@ -1,6 +1,6 @@
-// `seed daemon`: run the long-lived compiler daemon. It hosts the warm incremental analyzer over HTTP, so the LSP,
-// `seed serve`, and CLI share one warm compiler instead of each cold-starting. Stays alive until interrupted.
-// See code/dev/daemon.ts and note/seed/plan/compilation-performance.md (Tier 4).
+// `seed work`: run the long-lived compiler daemon (the background worker). It hosts the warm incremental analyzer over
+// HTTP, so the LSP, `seed feed`, and the CLI share one warm compiler instead of each cold-starting. Stays alive until
+// interrupted. See code/dev/daemon.ts.
 
 import { startDaemon } from '@cluesurf/make/code/dev/daemon'
 import type { NativeEnv } from '@cluesurf/make/code/compile/native'
@@ -12,12 +12,12 @@ import {
   fade,
 } from '@cluesurf/make/code/tint'
 
-export async function callDaemon(input: {
+export async function callWork(input: {
   root: string
   port?: number
   env?: NativeEnv
 }): Promise<void> {
-  logStep('Starting compiler daemon...')
+  logStep('Starting compiler worker...')
 
   try {
     const port = input.port ?? 5179
@@ -27,7 +27,7 @@ export async function callDaemon(input: {
       env: input.env ?? 'node',
     })
 
-    logGood(`compiler daemon on http://localhost:${port}`)
+    logGood(`compiler worker on http://localhost:${port}`)
     console.log(
       fade(
         '  POST /analyze {file, text} -> diagnostics. ctrl-c to stop.',

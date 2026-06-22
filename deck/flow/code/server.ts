@@ -16,6 +16,7 @@ import type {
   LspPosition,
 } from '@cluesurf/flow/code/analyze'
 import { IncrementalAnalyzer } from '@cluesurf/make/code/compile/analyzer'
+import { analyze } from '@cluesurf/make/code/analyze'
 import {
   editorResolver,
   findModuleExporting,
@@ -609,6 +610,7 @@ export class LanguageServer {
               textDocumentSync: 1,
               hoverProvider: true,
               definitionProvider: true,
+              implementationProvider: true,
               referencesProvider: true,
               renameProvider: true,
               documentSymbolProvider: true,
@@ -1107,7 +1109,85 @@ export class LanguageServer {
           })
         }
 
+        // lint auto-fixes: every fixable finding becomes a quick fix, plus a single "fix all" action when there is
+        // more than one. The lint engine already computes the edit; we just map its span to an LSP range.
+        const findings = analyze({ file: uri, text }).lint()
+        const fixable = findings.filter(finding => finding.fix)
+
+        for (const finding of fixable) {
+          actions.push({
+            title: `${finding.message} (${finding.code})`,
+            kind: 'quickfix',
+            edit: {
+              changes: {
+                [uri]: [
+                  {
+                    range: toRange(finding.fix!.span),
+                    newText: finding.fix!.text,
+                  },
+                ],
+              },
+            },
+          })
+        }
+
+        if (fixable.length > 1) {
+          actions.push({
+            title: `Fix all ${fixable.length} lint findings`,
+            kind: 'source.fixAll',
+            edit: {
+              changes: {
+                [uri]: fixable.map(finding => ({
+                  range: toRange(finding.fix!.span),
+                  newText: finding.fix!.text,
+                })),
+              },
+            },
+          })
+        }
+
         return [respond(message, actions)]
+      }
+
+      case 'textDocument/implementation': {
+        // go to the implementations of a trait (mask) or one of its methods: the instance targets that conform to it.
+        const params = message.params as PositionParams
+        const uri = params.textDocument.uri
+        const index = this.indexes.get(uri)
+        const program = this.documentPrograms.get(uri)
+        const ref = index && referenceAt(index, params.position)
+
+        if (!ref || !program) {
+          return [respond(message, null)]
+        }
+
+        const locations: { uri: string; range: ReturnType<typeof toRange> }[] =
+          []
+
+        for (const statement of program) {
+          if (statement.form !== 'instance') {
+            continue
+          }
+
+          // the cursor is on the trait name itself, or on a method the trait declares (the instance implements it)
+          const onTrait = statement.mask === ref.name
+          const onMethod = statement.methods?.includes(ref.name)
+
+          if (!onTrait && !onMethod) {
+            continue
+          }
+
+          const definition = index.definitions.get(statement.target)
+
+          if (definition) {
+            locations.push({
+              uri,
+              range: toRange(definition.span),
+            })
+          }
+        }
+
+        return [respond(message, locations.length ? locations : null)]
       }
 
       default:

@@ -28,6 +28,14 @@ import {
   buildHistoryEntry,
 } from '@cluesurf/make/code/time/compare'
 import type { BenchmarkResult } from '@cluesurf/make/code/time/stats'
+import {
+  runCpuProfile,
+  formatCpuResult,
+} from '@cluesurf/make/code/time/cpu'
+import {
+  runMemoryProfile,
+  formatMemoryResult,
+} from '@cluesurf/make/code/time/memory'
 
 export async function callTime(input: {
   root: string
@@ -39,7 +47,22 @@ export async function callTime(input: {
   failOnRegression?: number
   markdown?: boolean
   history?: string
+  cpu?: string
+  memory?: string
+  top?: number
 }): Promise<void> {
+  // profiling mode: `seed time --cpu <file>` / `--memory <file>` profiles one file's hotspots instead of benchmarking.
+  if (input.cpu || input.memory) {
+    await runProfile({
+      root: input.root,
+      cpu: input.cpu,
+      memory: input.memory,
+      top: input.top,
+    })
+
+    return
+  }
+
   logStep('Running benchmarks...')
 
   try {
@@ -182,6 +205,71 @@ export async function callTime(input: {
 
     logGood(`${allResults.length} benchmark(s) complete`)
   } catch (err) {
+    logFail(formatError(err))
+    process.exit(1)
+  }
+}
+
+// profile one file: CPU hotspots (V8 --cpu-prof) or memory (heap delta). Folded into `time` since both answer "how
+// expensive is this".
+async function runProfile(input: {
+  root: string
+  cpu?: string
+  memory?: string
+  top?: number
+}): Promise<void> {
+  const target = (input.cpu ?? input.memory)!
+  const filePath = path.resolve(input.root, target)
+
+  try {
+    await fs.access(filePath)
+  } catch {
+    logFail(`File not found: ${target}`)
+    process.exit(1)
+  }
+
+  const text = await fs.readFile(filePath, 'utf-8')
+  const relative = path.relative(input.root, filePath)
+  const name = path.basename(filePath, '.tree')
+
+  try {
+    if (input.cpu) {
+      logStep('CPU profiling...')
+      const result = await runCpuProfile({
+        text,
+        file: relative,
+        root: input.root,
+        name,
+        top: input.top,
+      })
+      console.log('')
+      console.log(formatCpuResult(result))
+      console.log('')
+      logGood('CPU profile complete')
+    } else {
+      logStep('Memory profiling...')
+      const result = await runMemoryProfile({
+        text,
+        file: relative,
+        root: input.root,
+        name,
+      })
+      console.log('')
+      console.log(formatMemoryResult(result))
+      console.log('')
+      logGood('Memory profile complete')
+    }
+  } catch (err) {
+    if (err instanceof CompileFailure) {
+      logFail(`${err.diagnostics.length} compilation error(s)`)
+
+      for (const diagnostic of err.diagnostics) {
+        console.error(render(diagnostic, text.split('\n')))
+      }
+
+      process.exit(1)
+    }
+
     logFail(formatError(err))
     process.exit(1)
   }

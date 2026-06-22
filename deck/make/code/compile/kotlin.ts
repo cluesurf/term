@@ -208,10 +208,14 @@ export function emitKotlin(program: Program): string {
           : pascal(type.name)
       }
 
-      case 'function':
-        return `(${type.params
+      case 'function': {
+        // an async function value is a `suspend` function type; calling it is a suspending call (no `.await`).
+        const suspend = type.effects?.includes('async') ? 'suspend ' : ''
+
+        return `${suspend}(${type.params
           .map(kotlinType)
           .join(', ')}) -> ${kotlinType(type.result)}`
+      }
       case 'number':
         return 'Long'
       case 'float':
@@ -641,10 +645,25 @@ export function emitKotlin(program: Program): string {
 
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
-      case 'let':
+      case 'let': {
+        // a suspend lambda only becomes suspend when its expected type says so: annotate an async-closure binding with
+        // the `suspend (..) -> R` function type, otherwise Kotlin infers an ordinary (non-suspending) lambda.
+        const ann =
+          node.init.form === 'closure' && node.init.async
+            ? `: ${kotlinType({
+                kind: 'function',
+                params: node.init.params.map(
+                  (p): Type => p.type ?? { kind: 'unknown' },
+                ),
+                result: node.init.result ?? { kind: 'unknown' },
+                effects: ['async'],
+              })}`
+            : ''
+
         return `${node.mutable ? 'var' : 'val'} ${camel(
           node.name,
-        )} = ${expr(node.init)}`
+        )}${ann} = ${expr(node.init)}`
+      }
       case 'assign':
         return node.op === '='
           ? `${expr(node.target)} = ${expr(node.value)}`

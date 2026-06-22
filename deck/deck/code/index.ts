@@ -12,7 +12,16 @@ export {
   saveLockfile,
 } from './lock'
 export { resolve, buildLockfile } from './resolve'
-export { linkPackages, cleanLinks, devLink, devUnlink } from './link'
+export {
+  linkPackages,
+  cleanLinks,
+  devLink,
+  devUnlink,
+  registerGlobalLink,
+  unregisterGlobalLink,
+  listGlobalLinks,
+  consumeGlobalLink,
+} from './link'
 export { hashFile, hashBuffer, hashText, verifyHash } from './hash'
 export {
   parseMark,
@@ -50,6 +59,8 @@ export {
   validateManifest,
 } from './publish'
 export { toRegistryName, toTreeName, parseScope } from './name'
+export { auditDependencies } from './audit'
+export type { Advisory, AuditResult } from './audit'
 
 export type {
   Mark,

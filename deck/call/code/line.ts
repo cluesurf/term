@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 import { showBanner, showInfo } from '@cluesurf/make/code/show'
@@ -14,13 +15,13 @@ import { callTest } from '@cluesurf/call/code/test'
 import { callTime } from '@cluesurf/call/code/time'
 import { callBoot } from '@cluesurf/call/code/boot'
 import { callHalt } from '@cluesurf/call/code/halt'
-import { callServe } from '@cluesurf/call/code/serve'
-import { callDaemon } from '@cluesurf/call/code/daemon'
+import { callFeed } from '@cluesurf/call/code/feed'
+import { callWork } from '@cluesurf/call/code/work'
+import { callWake } from '@cluesurf/call/code/wake'
 import { callWash } from '@cluesurf/call/code/wash'
 import { callWalk } from '@cluesurf/call/code/walk'
 import { callMove } from '@cluesurf/call/code/move'
 import { callNote } from '@cluesurf/call/code/note'
-import { callProfile } from '@cluesurf/call/code/profile'
 import { callForm } from '@cluesurf/call/code/form'
 import { callLint } from '@cluesurf/call/code/lint'
 import { callHold } from '@cluesurf/call/code/hold'
@@ -29,6 +30,7 @@ import { callLook } from '@cluesurf/call/code/look'
 import { logFail, warn } from '@cluesurf/make/code/tint'
 
 const COMMANDS = [
+  'wake',
   'load',
   'save',
   'toss',
@@ -40,11 +42,10 @@ const COMMANDS = [
   'mind',
   'test',
   'time',
-  'profile',
   'boot',
   'halt',
-  'serve',
-  'daemon',
+  'feed',
+  'work',
   'wash',
   'walk',
   'move',
@@ -55,7 +56,22 @@ const COMMANDS = [
   'hold',
   'hunt',
   'look',
+  'fill',
 ]
+
+// the published version, read from this package's manifest at runtime (the bundled entry sits at host/line.js, so the
+// manifest is one directory up)
+function readVersion(): string {
+  try {
+    const manifest = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    )
+
+    return String(manifest.version ?? '0.0.0')
+  } catch {
+    return '0.0.0'
+  }
+}
 
 function editDistance(a: string, b: string): number {
   const m = a.length
@@ -123,6 +139,21 @@ const cli = yargs(hideBin(process.argv))
     default: 'line',
     description: 'Response format',
   })
+  .command(
+    'wake [name]',
+    'Scaffold a new Seed project',
+    yargs =>
+      yargs.positional('name', {
+        type: 'string',
+        description: 'Project name (a new directory); omit for current directory',
+      }),
+    async argv => {
+      await callWake({
+        root,
+        name: argv.name,
+      })
+    },
+  )
   .command(
     'load',
     'Install all dependencies',
@@ -196,10 +227,14 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'seek',
-    'Check if packages are installed correctly',
-    () => {},
-    async () => {
-      await callSeek({ root })
+    'Check if packages are installed correctly (--audit for security advisories)',
+    yargs =>
+      yargs.option('audit', {
+        type: 'boolean',
+        description: 'Report known security vulnerabilities in dependencies',
+      }),
+    async argv => {
+      await callSeek({ root, audit: argv.audit })
     },
   )
   .command(
@@ -305,7 +340,7 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'time [filter]',
-    'Run benchmarks',
+    'Run benchmarks, or profile a file with --cpu / --memory',
     yargs =>
       yargs
         .positional('filter', {
@@ -315,6 +350,18 @@ const cli = yargs(hideBin(process.argv))
         .option('file', {
           type: 'string',
           description: 'Run benchmarks in a specific file',
+        })
+        .option('cpu', {
+          type: 'string',
+          description: 'Profile CPU hotspots of a .tree file',
+        })
+        .option('memory', {
+          type: 'string',
+          description: 'Profile memory use of a .tree file',
+        })
+        .option('top', {
+          type: 'number',
+          description: 'Show the top-N hottest functions (with --cpu)',
         })
         .option('json', {
           type: 'boolean',
@@ -352,52 +399,9 @@ const cli = yargs(hideBin(process.argv))
         failOnRegression: argv['fail-on-regression'],
         markdown: argv.markdown,
         history: argv.history,
-      })
-    },
-  )
-  .command(
-    'profile <mode> <file>',
-    'Profile CPU or memory usage',
-    yargs =>
-      yargs
-        .positional('mode', {
-          type: 'string',
-          description: 'Profile mode: cpu or memory',
-        })
-        .positional('file', {
-          type: 'string',
-          description: 'File to profile',
-        })
-        .option('flame', {
-          type: 'boolean',
-          description: 'Show flamegraph instructions',
-        })
-        .option('top', {
-          type: 'number',
-          description: 'Show top-N hottest functions',
-        })
-        .option('time', {
-          type: 'boolean',
-          description: 'Profile time blocks only',
-        })
-        .option('heap', {
-          type: 'boolean',
-          description: 'Capture heap snapshot',
-        })
-        .option('track', {
-          type: 'boolean',
-          description: 'Record memory timeline',
-        }),
-    async argv => {
-      await callProfile({
-        root,
-        mode: argv.mode!,
-        file: argv.file!,
-        flame: argv.flame,
+        cpu: argv.cpu,
+        memory: argv.memory,
         top: argv.top,
-        time: argv.time,
-        heap: argv.heap,
-        track: argv.track,
       })
     },
   )
@@ -461,7 +465,7 @@ const cli = yargs(hideBin(process.argv))
     },
   )
   .command(
-    'serve [entry]',
+    'feed [entry]',
     'Start the dev server (lazy ESM + hot reload)',
     yargs =>
       yargs
@@ -477,7 +481,7 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('env', { type: 'string', description: 'Target env' }),
     async argv => {
-      await callServe({
+      await callFeed({
         root,
         entry: argv.entry,
         port: argv.port,
@@ -486,8 +490,8 @@ const cli = yargs(hideBin(process.argv))
     },
   )
   .command(
-    'daemon',
-    'Run the long-lived compiler daemon (shared warm analyzer)',
+    'work',
+    'Run the long-lived compiler worker (shared warm analyzer)',
     yargs =>
       yargs
         .option('port', {
@@ -497,7 +501,7 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('env', { type: 'string', description: 'Target env' }),
     async argv => {
-      await callDaemon({
+      await callWork({
         root,
         port: argv.port,
         env: argv.env as never,
@@ -737,22 +741,32 @@ const cli = yargs(hideBin(process.argv))
           logFail('No deck.tree found')
         }
       } else {
-        showInfo()
+        showInfo(readVersion())
       }
     },
+  )
+  .completion(
+    'fill',
+    'Print the shell completion script (add to your shell rc file)',
   )
   .demandCommand(0)
   .strict(false)
   .fail((msg, err) => {
+    // a thrown command error exits with the general failure code; a usage / validation error exits with the
+    // conventional usage code (64), so scripts can tell a bad invocation from a real failure.
     if (err) {
       logFail(err.message)
-    } else if (msg) {
+      process.exit(1)
+    }
+
+    if (msg) {
       logFail(msg)
     }
 
-    process.exit(1)
+    process.exit(64)
   })
-  .version(false)
+  .version('version', 'Show the version number', readVersion())
+  .alias('version', 'v')
 
 async function main(): Promise<void> {
   const argv = await cli.parse()
@@ -780,7 +794,7 @@ async function main(): Promise<void> {
       )
     }
 
-    process.exit(1)
+    process.exit(64)
   }
 }
 

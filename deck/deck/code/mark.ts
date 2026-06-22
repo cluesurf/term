@@ -73,18 +73,34 @@ export function parseMarkHold(text: string): MarkHold {
     return result
   }
 
-  // caret: "^1.2.3" -> treat as 1.x.x
+  // caret: compatible-with-`mark`, the npm rule. `^1.2.3` allows >=1.2.3 <2.0.0. For a leading-zero version the left-
+  // most non-zero element is locked instead: `^0.2.3` is >=0.2.3 <0.3.0, `^0.0.3` is >=0.0.3 <0.0.4. The lower bound is
+  // the version itself (not a coarse `1.x.x`), so the band excludes earlier patches.
   if (text.startsWith('^')) {
     const mark = parseMark(text.slice(1))
 
-    return { form: 'wild', major: mark.major }
+    let head: Mark
+
+    if (mark.major > 0) {
+      head = { major: mark.major + 1, minor: 0, patch: 0 }
+    } else if (mark.minor > 0) {
+      head = { major: 0, minor: mark.minor + 1, patch: 0 }
+    } else {
+      head = { major: 0, minor: 0, patch: mark.patch + 1 }
+    }
+
+    return { form: 'band', base: mark, head }
   }
 
-  // tilde: "~1.2.3" -> treat as 1.2.x
+  // tilde: approximately-equivalent, the npm rule. `~1.2.3` allows >=1.2.3 <1.3.0 (patch changes within the minor).
   if (text.startsWith('~')) {
     const mark = parseMark(text.slice(1))
 
-    return { form: 'wild', major: mark.major, minor: mark.minor }
+    return {
+      form: 'band',
+      base: mark,
+      head: { major: mark.major, minor: mark.minor + 1, patch: 0 },
+    }
   }
 
   return { form: 'exact', mark: parseMark(text) }

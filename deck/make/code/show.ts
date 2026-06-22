@@ -17,11 +17,17 @@ export function showBanner(): void {
   console.log('    seed seek              Check if decks are installed')
   console.log('    seed host              Publish to registry')
   console.log('')
+  console.log(chalk.yellow('  Start'))
+  console.log('    seed wake <name>       Scaffold a new project')
+  console.log('')
   console.log(chalk.yellow('  Build and Run'))
   console.log('    seed make              Build the project')
   console.log('    seed make --ride       Watch and rebuild')
   console.log('    seed boot              Start the app')
+  console.log('    seed feed              Dev server (hot reload)')
+  console.log('    seed work              Background compiler worker')
   console.log('    seed test              Run tests')
+  console.log('    seed time              Benchmark (or --cpu/--memory profile)')
   console.log('    seed walk              Start REPL')
   console.log('    seed wash              Clean build artifacts')
   console.log('')
@@ -34,6 +40,8 @@ export function showBanner(): void {
   console.log('    seed show              Show seed info')
   console.log('    seed show deck tree    Show dependency tree')
   console.log('    seed note              Show package info')
+  console.log('    seed fill              Print shell completion script')
+  console.log('    seed --version         Show the version number')
   console.log('')
   console.log(
     chalk.gray('  Run seed <verb> --hint for command-specific help'),
@@ -41,9 +49,9 @@ export function showBanner(): void {
   console.log('')
 }
 
-export function showInfo(): void {
+export function showInfo(version = '0.0.0'): void {
   console.log('')
-  console.log(chalk.green.bold('seed') + ' ' + chalk.gray('0.4.0'))
+  console.log(chalk.green.bold('seed') + ' ' + chalk.gray(version))
   console.log('')
   console.log(
     chalk.white('  Platform:  ') + os.platform() + ' ' + os.arch(),

@@ -86,12 +86,18 @@ function rustType(type: Type | undefined): string {
         : pascal(type.name)
     }
 
-    case 'function':
+    case 'function': {
       // a boxed trait object, not `impl Fn`: this is the one function type that works in every position -- a
       // parameter, a return, a struct field, AND a collection element (`Vec<Box<dyn Fn>>`, `HashMap<_, Box<dyn Fn>>`).
-      return `Box<dyn Fn(${type.params
-        .map(rustType)
-        .join(', ')}) -> ${rustType(type.result)}>`
+      const params = type.params.map(rustType).join(', ')
+      const result = rustType(type.result)
+
+      // an async function value returns a boxed, pinned future (Rust has no async `Fn` sugar): the callable yields
+      // `Pin<Box<dyn Future<Output = R>>>`, which the call site `.await`s. Matches the async-closure emission below.
+      return type.effects?.includes('async')
+        ? `Box<dyn Fn(${params}) -> std::pin::Pin<Box<dyn std::future::Future<Output = ${result}>>>>`
+        : `Box<dyn Fn(${params}) -> ${result}>`
+    }
     case 'number':
       return 'i64'
     case 'float':
@@ -431,6 +437,17 @@ export function emitRust(program: Program): string {
       case 'unary':
         return `${node.op}${expr(node.operand)}`
       case 'binary':
+        // string concatenation: Rust's `+` requires `String + &str`, so two owned `String`s (e.g. function-call
+        // results) would not compile. `format!` concatenates any Display operands uniformly, owned or borrowed.
+        if (
+          node.op === '+' &&
+          (node.left.type?.kind === 'string' ||
+            node.right.type?.kind === 'string' ||
+            node.type?.kind === 'string')
+        ) {
+          return `format!("{}{}", ${expr(node.left)}, ${expr(node.right)})`
+        }
+
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
 
       case 'call': {
@@ -560,7 +577,12 @@ export function emitRust(program: Program): string {
           .filter(Boolean)
           .join(' ')
 
-        return `Box::new(move |${params}| { ${body} })`
+        // an async closure becomes a plain `Fn` whose body is a pinned async block: calling it returns a future the
+        // caller `.await`s (Rust closures can't themselves be `async`). The `let`/parameter type annotation supplies
+        // the `Pin<Box<dyn Future>>` return so the concrete async block coerces to the boxed trait object.
+        return node.async
+          ? `Box::new(move |${params}| std::boxed::Box::pin(async move { ${body} }))`
+          : `Box::new(move |${params}| { ${body} })`
       }
 
       case 'conditional': {
@@ -717,8 +739,23 @@ export function emitRust(program: Program): string {
 
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
-      case 'let':
-        return `let mut ${vname(node.name)} = ${expr(node.init)};`
+      case 'let': {
+        // an async closure stored in a local needs its boxed-future type spelled out, so the concrete async block
+        // coerces to `Box<dyn Fn(..) -> Pin<Box<dyn Future>>>` and the parameter types are pinned down.
+        const ann =
+          node.init.form === 'closure' && node.init.async
+            ? `: ${rustType({
+                kind: 'function',
+                params: node.init.params.map(
+                  (p): Type => p.type ?? { kind: 'unknown' },
+                ),
+                result: node.init.result ?? { kind: 'unknown' },
+                effects: ['async'],
+              })}`
+            : ''
+
+        return `let mut ${vname(node.name)}${ann} = ${expr(node.init)};`
+      }
       case 'assign':
         return node.op === '='
           ? `${expr(node.target)} = ${expr(node.value)};`

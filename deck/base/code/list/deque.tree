@@ -9,7 +9,9 @@ load @cluesurf/base/code/maybe
 
 form deque
   head t
-  link items, like list
+  link items
+    like list
+      like t
 
   task push-back
     take self
@@ -32,6 +34,7 @@ form deque
     take self
     like maybe
       like t
+      like t
     fork test
       hook test
         call is-above
@@ -51,6 +54,7 @@ form deque
     take self
     like maybe
       like t
+      like t
     fork test
       hook test
         call is-above
@@ -69,6 +73,7 @@ form deque
     take self
     like maybe
       like t
+      like t
     send back
       call first
         read self/items
@@ -76,6 +81,7 @@ form deque
   task back
     take self
     like maybe
+      like t
       like t
     send back
       call last

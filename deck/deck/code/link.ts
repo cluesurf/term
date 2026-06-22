@@ -3,7 +3,7 @@ import path from 'path'
 import os from 'os'
 import { ResolutionMap, ResolvedDeck, Mark } from './form'
 import { showMark } from './mark'
-import { getFilePath, initStore } from './store'
+import { getFilePath, initStore, getStoreRoot } from './store'
 import { hashBuffer } from './hash'
 import { fetchTarball } from './fetch'
 import { verifyHash } from './hash'
@@ -337,4 +337,97 @@ export async function devUnlink(input: {
   }
 
   await fsp.rm(targetLink, { force: true })
+}
+
+// the global link registry lives at ~/.seed/link/<name>, a symlink to a package's working directory. `seed link` (no
+// argument) registers the current package there; `seed link <name>` symlinks a registered package into a project. This
+// is the two-step `npm link` model: register once globally, consume from any project.
+function globalLinkPath(fullName: string): string {
+  return path.join(getStoreRoot(), 'link', ...fullName.split('/'))
+}
+
+// register the package at `packageDir` in the global link registry, keyed by its manifest name. Returns the full name.
+export async function registerGlobalLink(input: {
+  packageDir: string
+}): Promise<string> {
+  const { loadManifest } = await import('./manifest')
+  const manifest = await loadManifest({ dir: input.packageDir })
+  const fullName = manifest.host
+    ? `@${manifest.host}/${manifest.name}`
+    : manifest.name
+
+  const target = globalLinkPath(fullName)
+  await fsp.mkdir(path.dirname(target), { recursive: true })
+  await fsp.rm(target, { force: true })
+  await fsp.symlink(path.resolve(input.packageDir), target)
+
+  return fullName
+}
+
+// remove a package from the global link registry.
+export async function unregisterGlobalLink(input: {
+  name: string
+}): Promise<void> {
+  await fsp.rm(globalLinkPath(input.name), { force: true })
+}
+
+// list the package names currently in the global link registry.
+export async function listGlobalLinks(): Promise<string[]> {
+  const root = path.join(getStoreRoot(), 'link')
+  const names: string[] = []
+
+  try {
+    const entries = await fsp.readdir(root, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('@')) {
+        const scope = path.join(root, entry.name)
+        const inner = await fsp.readdir(scope)
+
+        for (const child of inner) {
+          names.push(`${entry.name}/${child}`)
+        }
+      } else {
+        names.push(entry.name)
+      }
+    }
+  } catch {
+    // registry not created yet
+  }
+
+  return names
+}
+
+// symlink a globally-registered package into a project's `link/` directory. Returns false if the name is not registered.
+export async function consumeGlobalLink(input: {
+  root: string
+  name: string
+}): Promise<boolean> {
+  const source = globalLinkPath(input.name)
+
+  try {
+    await fsp.access(source)
+  } catch {
+    return false
+  }
+
+  const real = await fsp.realpath(source)
+  const linkDir = path.join(input.root, LINK_DIR)
+  const parts = input.name.split('/')
+
+  let targetLink: string
+
+  if (parts.length === 2) {
+    const scopeDir = path.join(linkDir, parts[0]!)
+    await fsp.mkdir(scopeDir, { recursive: true })
+    targetLink = path.join(scopeDir, parts[1]!)
+  } else {
+    await fsp.mkdir(linkDir, { recursive: true })
+    targetLink = path.join(linkDir, input.name)
+  }
+
+  await fsp.rm(targetLink, { force: true })
+  await fsp.symlink(real, targetLink)
+
+  return true
 }

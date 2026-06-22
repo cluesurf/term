@@ -198,8 +198,14 @@ function expr(node: Expression, asyncSet: Set<string>): Expression {
       return call
     }
 
-    case 'await':
-      return { ...node, expr: expr(node.expr, asyncSet) }
+    case 'await': {
+      // collapse `await (await x)` to a single await: a call already wrapped by mill's `wait true` would otherwise be
+      // re-wrapped here (the callee is async), and a doubled await is fatal on backends where the awaited value is a
+      // plain scalar (Rust `.await.await`).
+      const inner = expr(node.expr, asyncSet)
+
+      return inner.form === 'await' ? inner : { ...node, expr: inner }
+    }
     case 'binary':
       return {
         ...node,

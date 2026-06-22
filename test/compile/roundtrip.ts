@@ -11,6 +11,7 @@ import { parse } from '@cluesurf/make/code/parser/tree'
 import { mill } from '@cluesurf/make/code/compile/mill'
 import { resolve as resolveNames } from '@cluesurf/make/code/check/resolve'
 import { check } from '@cluesurf/make/code/check/infer'
+import { resolveAsync } from '@cluesurf/make/code/check/async-resolve'
 import { simplify } from '@cluesurf/make/code/ir/simplify'
 import { collectModules } from '@cluesurf/make/code/compile/load'
 import type { Source } from '@cluesurf/make/code/compile/load'
@@ -293,6 +294,165 @@ function runRust(
   }
 
   ok(name, spawnSync(exe).status, want)
+}
+
+// like frontEnd, but runs async resolution (the pass that marks functions/closures async and inserts the default awaits)
+// between type-checking and IR simplification, exactly as the real compile() driver does. Needed for any program that
+// uses `wait true` / async closures.
+function frontEndAsync(
+  text: string,
+  env?: 'rust' | 'swift' | 'kotlin' | 'node',
+): Program {
+  const resolver = env ? withNativeEnv(env, stdlib) : stdlib
+  const parsed = parse({ file: 'main.tree', text })
+
+  if (!parsed.ok) {throw new Error('parse failed')}
+
+  const built = mill(parsed.tree, 'main.tree')
+
+  if (!built.ok)
+    {throw new Error(
+      'mill failed: ' +
+        built.diagnostics.map(d => d.message).join(', '),
+    )}
+
+  const roots = new Set<string>()
+
+  for (const node of built.program)
+    {if (node.form === 'function') {roots.add(node.name)}}
+
+  resolveNames(built.program, 'main.tree')
+  check(built.program, 'main.tree')
+  resolveAsync(built.program)
+
+  void resolver
+
+  return simplify(built.program, roots)
+}
+
+// Rust async: append a tiny dependency-free `block_on` executor and exit with the awaited result. Proves the
+// async-closure lowering (`move |..| Box::pin(async move { .. })` + `Pin<Box<dyn Future>>` type) actually compiles
+// and runs on real rustc, not just that it has the right shape.
+function runRustAsync(
+  name: string,
+  program: Program,
+  callExpr: string,
+  want: number,
+): void {
+  if (skip_filtered(name)) {return}
+
+  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+
+  const blockOn = `
+use std::future::Future as _SeedFuture; use std::pin::Pin as _SeedPin;
+use std::task::{Context as _SeedCx, Poll as _SeedPoll, RawWaker as _SeedRW, RawWakerVTable as _SeedVT, Waker as _SeedWaker};
+fn seed_block_on<F: _SeedFuture>(f: F) -> F::Output {
+  fn no(_: *const ()) {} fn cl(_: *const ()) -> _SeedRW { _SeedRW::new(std::ptr::null(), &VT) }
+  static VT: _SeedVT = _SeedVT::new(cl, no, no, no);
+  let w = unsafe { _SeedWaker::from_raw(_SeedRW::new(std::ptr::null(), &VT)) };
+  let mut cx = _SeedCx::from_waker(&w); let mut f = Box::pin(f);
+  loop { match f.as_mut().poll(&mut cx) { _SeedPoll::Ready(v) => return v, _SeedPoll::Pending => {} } }
+}
+fn main() { std::process::exit((seed_block_on(${callExpr})) as i32); }
+`
+  const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
+  writeFileSync(file, `${emitRust(program)}\n${blockOn}`)
+
+  const exe = file.replace(/\.rs$/, '')
+
+  try {
+    execFileSync('rustc', ['-A', 'warnings', '--edition', '2021', file, '-o', exe], {
+      stdio: 'pipe',
+    })
+  } catch (e) {
+    fail++
+    console.log(
+      `FAIL  ${name}  (rustc error: ${String(
+        (e as { stderr?: Buffer }).stderr ?? e,
+      ).slice(0, 300)})`,
+    )
+
+    return
+  }
+
+  ok(name, spawnSync(exe).status, want)
+}
+
+// Swift async: a tiny semaphore + Task bridge drives the async entrypoint to completion and prints its result.
+function runSwiftAsync(
+  name: string,
+  program: Program,
+  callExpr: string,
+  want: number,
+): void {
+  if (skip_filtered(name)) {return}
+
+  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+
+  const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
+  const driver = `let _seedSem = DispatchSemaphore(value: 0)\nvar _seedOut = 0\nTask { _seedOut = await ${callExpr}; _seedSem.signal() }\n_seedSem.wait()\nprint(_seedOut)\n`
+  writeFileSync(file, `import Foundation\n${emitSwift(program)}\n${driver}`)
+
+  const exe = file.replace(/\.swift$/, '')
+
+  try {
+    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
+  } catch (e) {
+    fail++
+    console.log(
+      `FAIL  ${name}  (swiftc error: ${String(
+        (e as { stderr?: Buffer }).stderr ?? e,
+      ).slice(0, 300)})`,
+    )
+
+    return
+  }
+
+  ok(name, Number(execFileSync(exe).toString().trim()), want)
+}
+
+// Kotlin async: a hand-rolled `startCoroutine` driver runs the suspend entrypoint with no kotlinx.coroutines dependency
+// (our suspend functions never truly suspend, so the coroutine completes synchronously).
+function runKotlinAsync(
+  name: string,
+  program: Program,
+  callExpr: string,
+  want: number,
+): void {
+  if (skip_filtered(name)) {return}
+
+  if (!have('kotlinc') || !have('java'))
+    {return skipped(name, 'kotlinc/java not installed')}
+
+  const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
+  const driver = `import kotlin.coroutines.*\nfun <T> seedDrive(b: suspend () -> T): T { var r: T? = null; b.startCoroutine(object: Continuation<T>{ override val context = EmptyCoroutineContext; override fun resumeWith(x: Result<T>){ r = x.getOrThrow() } }); return r!! }\nfun main() { println(seedDrive { ${callExpr} }) }\n`
+  writeFileSync(
+    file,
+    hoistKotlinImports(`${driver}\n${emitKotlin(program)}`),
+  )
+
+  const jar = file.replace(/\.kt$/, '.jar')
+
+  try {
+    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
+      stdio: 'pipe',
+    })
+  } catch (e) {
+    fail++
+    console.log(
+      `FAIL  ${name}  (kotlinc error: ${String(
+        (e as { stderr?: Buffer }).stderr ?? e,
+      ).slice(0, 300)})`,
+    )
+
+    return
+  }
+
+  ok(
+    name,
+    Number(execFileSync('java', ['-jar', jar]).toString().trim()),
+    want,
+  )
 }
 
 // Rust file IO end to end: compile the synchronous native/rust/file module (which forwards to the linked `io`
@@ -1310,6 +1470,136 @@ task compute
             read n
             read seed
       code 10
+`
+
+// an ASYNC closure that awaits and CAPTURES an outer variable, invoked through a local binding. Exercises the
+// async-closure lowering on every backend: Rust `move |..| Box::pin(async move {..})` returning `Pin<Box<dyn Future>>`,
+// Swift `{ (x) async -> Int in .. }`, Kotlin `suspend (Long) -> Long`. run(3) -> f(7) -> delay(7 + 3) -> 10.
+const ASYNC_CLOSURE = `task delay
+  take n, like number
+  wait true
+  like number
+  send back, loan n
+
+task run
+  take seed, like number
+  like number
+  save f
+    task handler
+      take x, like number
+      wait true
+      like number
+      send back
+        call delay
+          call add
+            loan x
+            loan seed
+          wait true
+  send back
+    call f
+      code 7
+      wait true
+`
+
+// generic containers cross-backend: each is a `head t` form whose field is `list<t>` and whose pop/dequeue returns
+// `maybe<t>`. These exercise the full generic-container path on the strict backends (native `<T>` struct with a used
+// type parameter, mutation through the shared list handle, and a `maybe<t>`-returning method extracted via unwrap-or).
+// stack is LIFO: push 7, push 3, pop -> 3.
+const STACK_GENERIC = `load @cluesurf/base/code/list/stack
+  find stack
+
+task run
+  like number
+  save s
+    make stack
+      bind items
+        make list
+  call push
+    read s
+    code 7
+  call push
+    read s
+    code 3
+  send back
+    call unwrap-or
+      call pop
+        read s
+      code 0
+`
+
+// queue is FIFO: enqueue 7, enqueue 3, dequeue -> 7.
+const QUEUE_GENERIC = `load @cluesurf/base/code/list/queue
+  find queue
+
+task run
+  like number
+  save q
+    make queue
+      bind items
+        make list
+  call enqueue
+    read q
+    code 7
+  call enqueue
+    read q
+    code 3
+  send back
+    call unwrap-or
+      call dequeue
+        read q
+      code 0
+`
+
+// deque is double-ended: push-back 7, push-front 3 -> [3, 7], pop-back -> 7.
+const DEQUE_GENERIC = `load @cluesurf/base/code/list/deque
+  find deque
+
+task run
+  like number
+  save d
+    make deque
+      bind items
+        make list
+  call push-back
+    read d
+    code 7
+  call push-front
+    read d
+    code 3
+  send back
+    call unwrap-or
+      call pop-back
+        read d
+      code 0
+`
+
+// code-point decomposition: to-runes turns text into its list of Unicode scalar values, building each backend's own
+// list representation directly (so the result is a first-class list whose /length applies). "A😀b" is three code points
+// (the emoji is one astral scalar), so the count is 3 on every backend -- proving the list-return wrapper is solved.
+const RUNE_COUNT = `load @cluesurf/base/code/text/unicode
+  find to-runes
+
+task run
+  like number
+  save runes
+    call to-runes
+      text <A😀b>
+  send back
+    read runes/length
+`
+
+// round-trip: to-runes then from-runes reconstructs the original text, astral scalar included. from-runes is pure Seed
+// over the list's own iteration (folding each rune's one-character text), so it never touches a backend's list rep.
+const RUNE_ROUND = `load @cluesurf/base/code/text/unicode
+  find to-runes
+  find from-runes
+
+task compute
+  like text
+  send back
+    call from-runes
+      call to-runes
+        text <A😀b>
 `
 
 // generic trait-bounded dispatch on a native backend: a trait (`mask`) with two instances, and one generic function
@@ -2911,6 +3201,61 @@ function main(): void {
     fib,
     'findFibonacciViaLoop(10)',
     55,
+  )
+
+  // async closures on every backend: a closure that awaits + captures, driven to completion by each runtime. run(3) -> 10
+  const asyncClosure = frontEndAsync(ASYNC_CLOSURE)
+  runRustAsync(
+    'rust: async closure (await + capture) via Pin<Box<dyn Future>>',
+    asyncClosure,
+    'run(3)',
+    10,
+  )
+  runSwiftAsync(
+    'swift: async closure (await + capture)',
+    asyncClosure,
+    'run(3)',
+    10,
+  )
+  runKotlinAsync(
+    'kotlin: suspend closure (await + capture)',
+    asyncClosure,
+    'run(3)',
+    10,
+  )
+
+  // generic containers on every strict backend: stack (LIFO) -> 3, queue (FIFO) -> 7, deque (double-ended) -> 7.
+  // each fully compiles the `head t` struct + its `maybe<t>`-returning pop/dequeue, proving generics flow end to end.
+  for (const [label, prog, want] of [
+    ['stack', STACK_GENERIC, 3],
+    ['queue', QUEUE_GENERIC, 7],
+    ['deque', DEQUE_GENERIC, 7],
+  ] as const) {
+    const built = frontEnd(prog, true)
+    runRust(`rust: generic ${label}<T> (struct + maybe<t> pop)`, built, 'run()', want)
+    runSwift(`swift: generic ${label}<T> (struct + maybe<t> pop)`, built, 'run()', want)
+    runKotlin(`kotlin: generic ${label}<T> (struct + maybe<t> pop)`, built, 'run()', want)
+  }
+
+  // code-point runes on every backend: to-runes count ("A😀b" -> 3) and a to-runes/from-runes text round-trip.
+  const runeCount = frontEnd(RUNE_COUNT, true)
+  runRust('rust: to-runes code-point count (astral)', runeCount, 'run()', 3)
+  runSwift('swift: to-runes code-point count (astral)', runeCount, 'run()', 3)
+  runKotlin('kotlin: to-runes code-point count (astral)', runeCount, 'run()', 3)
+  runRustText(
+    'rust: to-runes/from-runes text round-trip',
+    frontEnd(RUNE_ROUND, true, 'rust'),
+    'A😀b',
+  )
+  runSwiftText(
+    'swift: to-runes/from-runes text round-trip',
+    frontEnd(RUNE_ROUND, true, 'swift'),
+    'A😀b',
+  )
+  runKotlinText(
+    'kotlin: to-runes/from-runes text round-trip',
+    frontEnd(RUNE_ROUND, true, 'kotlin'),
+    'A😀b',
   )
 
   // closures on every backend: a higher-order function (closure param) and a closure stored in a struct field

@@ -176,6 +176,149 @@ export function ringEqual(
   return addPoly(l, scalePoly(r, -1)).size === 0
 }
 
+// ---- ideal membership: prove L == R MODULO polynomial hypotheses (congruence over the ring) ----
+
+// total degree of a monomial key
+function totalDegree(key: string): number {
+  let degree = 0
+
+  for (const [, p] of monoEntries(key)) {
+    degree += p
+  }
+
+  return degree
+}
+
+// a degree-lexicographic order on monomials: higher total degree is "larger" (comes first); ties broken lexically. A
+// negative result means `a` is larger than `b`. Fixed and total, so reduction always picks a well-defined leading term.
+function monoCompare(a: string, b: string): number {
+  const da = totalDegree(a)
+  const db = totalDegree(b)
+
+  if (da !== db) {
+    return db - da
+  }
+
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+// the leading monomial of a polynomial under the degree-lex order, or null if the polynomial is zero
+function leadMonomial(poly: Poly): string | null {
+  let lead: string | null = null
+
+  for (const m of poly.keys()) {
+    if (lead === null || monoCompare(m, lead) < 0) {
+      lead = m
+    }
+  }
+
+  return lead
+}
+
+// divide monomial `dividend` by monomial `divisor`, returning the quotient key, or null if the divisor's powers do not
+// all fit inside the dividend (so the division is not exact within the monomial monoid)
+function monoDivide(dividend: string, divisor: string): string | null {
+  const out = monoPowers(dividend)
+
+  for (const [v, p] of monoPowers(divisor)) {
+    const have = out.get(v) ?? 0
+
+    if (have < p) {
+      return null
+    }
+
+    if (have === p) {
+      out.delete(v)
+    } else {
+      out.set(v, have - p)
+    }
+  }
+
+  return monoKey(out)
+}
+
+// decide L == R MODULO a set of equational hypotheses, each a polynomial identity `hl_i == hr_i`. Sound over the
+// integers (an integral domain): reduce the difference `d = L - R` by the hypothesis polynomials `g_i = hl_i - hr_i`,
+// each step replacing `d` with `leadCoeff(g)*d - c*(m/lead(g))*g` to kill a monomial `m` of `d`. Because every `g_i`
+// is zero under its hypothesis and `leadCoeff` is a nonzero integer, `d` reduces to the zero polynomial iff `L - R` is
+// zero modulo the hypotheses, hence `L == R`. Termination: each step removes the LARGEST reducible monomial and only
+// introduces strictly smaller ones, so the largest reducible monomial strictly decreases in the well-founded
+// degree-lex order (a step limit is a backstop). This is the algebraic case of congruence under hypotheses: it closes
+// conditional identities (e.g. rational well-definedness, where `a*d = a'*b` forces a cross-multiplied sum identity).
+export function ringEqualModulo(
+  left: Expression,
+  right: Expression,
+  hypotheses: [Expression, Expression][],
+): boolean {
+  const l = toPoly(left)
+  const r = toPoly(right)
+
+  if (!l || !r) {
+    return false
+  }
+
+  let difference = addPoly(l, scalePoly(r, -1))
+
+  if (difference.size === 0) {
+    return true
+  }
+
+  const generators: { lead: string; leadCoeff: number; poly: Poly }[] = []
+
+  for (const [hl, hr] of hypotheses) {
+    const a = toPoly(hl)
+    const b = toPoly(hr)
+
+    if (!a || !b) {
+      continue
+    }
+
+    const g = addPoly(a, scalePoly(b, -1))
+    const lead = leadMonomial(g)
+
+    if (lead !== null) {
+      generators.push({ lead, leadCoeff: g.get(lead)!, poly: g })
+    }
+  }
+
+  if (generators.length === 0) {
+    return false
+  }
+
+  for (let steps = 0; difference.size > 0 && steps < 10000; steps++) {
+    // the largest monomial of `difference` that some generator's lead divides, with that generator and the quotient
+    let target: { m: string; g: (typeof generators)[number]; q: string } | null =
+      null
+
+    for (const m of difference.keys()) {
+      for (const g of generators) {
+        const q = monoDivide(m, g.lead)
+
+        if (q !== null) {
+          if (target === null || monoCompare(m, target.m) < 0) {
+            target = { m, g, q }
+          }
+
+          break
+        }
+      }
+    }
+
+    if (target === null) {
+      return false // normal form reached, and it is not zero
+    }
+
+    const c = difference.get(target.m)!
+
+    difference = addPoly(
+      scalePoly(difference, target.g.leadCoeff),
+      scalePoly(mulPoly(new Map([[target.q, 1]]), target.g.poly), -c),
+    )
+  }
+
+  return difference.size === 0
+}
+
 // is a polynomial MANIFESTLY non-negative: a non-negative constant plus a sum of square monomials (every variable
 // power even, with a non-negative coefficient)? Sound: such a polynomial is at least zero for all integer values,
 // since each term is a non-negative coefficient times a perfect square. Incomplete (it does not search for a general

@@ -22,6 +22,7 @@ import {
 } from '@cluesurf/make/code/compile/backend'
 import { monomorphize } from '@cluesurf/make/code/ir/monomorphize'
 import { dropSafeHeapLocals } from '@cluesurf/make/code/ir/drop-safe'
+import { experimentalBanner } from '@cluesurf/make/code/compile/backend-registry'
 
 function mangle(name: string): string {
   return name.replace(/-/g, '_')
@@ -415,6 +416,7 @@ export function emitLlvm(input: Program): string {
   }
 
   return (
+    experimentalBanner('llvm', ';') +
     [
       ...RUNTIME_DECLS,
       '',
@@ -1232,7 +1234,7 @@ function emitFunction(
           result: node.result,
           body: node.body,
           span: node.span,
-          async: false,
+          async: node.async,
         } as Extract<Statement, { form: 'function' }>
 
         lifted.push(

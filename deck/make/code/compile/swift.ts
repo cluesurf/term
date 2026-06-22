@@ -346,10 +346,14 @@ export function emitSwift(program: Program): string {
           : pascal(type.name)
       }
 
-      case 'function':
+      case 'function': {
+        // an async function value is an `async` function type; the call site `await`s it.
+        const marker = type.effects?.includes('async') ? ' async' : ''
+
         return `(${type.params
           .map(swiftType)
-          .join(', ')}) -> ${swiftType(type.result)}`
+          .join(', ')})${marker} -> ${swiftType(type.result)}`
+      }
       case 'number':
         return 'Int'
       case 'float':
@@ -854,7 +858,6 @@ export function emitSwift(program: Program): string {
 
       case 'closure': {
         // a function literal as a Swift closure. The trailing `send back X` becomes the closure's value expression.
-        const params = node.params.map(p => camel(p.name)).join(', ')
         const last = node.body[node.body.length - 1]
         const lead = node.body
           .slice(0, -1)
@@ -868,7 +871,16 @@ export function emitSwift(program: Program): string {
               ? stmt(last, 0, bind)
               : ''
 
-        return `{ (${params}) in ${[...lead, tail]
+        // an async closure carries an explicit `(params) async -> Ret in` signature: Swift closures express async in
+        // the signature (there is no async-block form), and the explicit types let `let f = { ... }` infer the async
+        // function type without a separate annotation. The call site `await`s the result.
+        const signature = node.async
+          ? `(${node.params
+              .map(p => `${camel(p.name)}: ${swiftType(p.type)}`)
+              .join(', ')}) async -> ${swiftType(node.result)} in `
+          : `(${node.params.map(p => camel(p.name)).join(', ')}) in `
+
+        return `{ ${signature}${[...lead, tail]
           .filter(Boolean)
           .join('; ')} }`
       }

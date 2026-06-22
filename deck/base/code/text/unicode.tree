@@ -152,3 +152,55 @@ task normalize
       send back
         call to-nfkd
           read value
+
+# decompose text into its list of Unicode code points (runes), one number per scalar. The native expression on each
+# backend builds the platform's own list representation directly, so the result is a first-class `list` (its size / get
+# / push methods all apply) rather than a bare native array. This is the code-point counterpart of the byte view.
+bind to-runes
+  take value, like text
+  like list
+    like number
+  case node
+    text <Array.from($value, function (rune) { return rune.codePointAt(0) ?? 0 })>
+  case browser
+    text <Array.from($value, function (rune) { return rune.codePointAt(0) ?? 0 })>
+  case rust
+    text <std::rc::Rc::new(std::cell::RefCell::new($value.chars().map(|rune| rune as i64).collect::<Vec<i64>>()))>
+  case swift
+    text <SeedList<Int>($value.unicodeScalars.map { Int($0.value) })>
+  case kotlin
+    text <$value.codePoints().toArray().map { it.toLong() }.toMutableList()>
+
+# the one-character text for a single Unicode code point (an invalid code point yields the empty text). The inverse
+# building block of to-runes, used by from-runes.
+bind rune-to-text
+  take code, like number
+  like text
+  case node
+    text <String.fromCodePoint($code)>
+  case browser
+    text <String.fromCodePoint($code)>
+  case rust
+    text <char::from_u32($code as u32).map_or(String::new(), |rune| rune.to_string())>
+  case swift
+    text <(UnicodeScalar(Int($code)).map(String.init) ?? "")>
+  case kotlin
+    text <if (Character.isValidCodePoint($code.toInt())) String(Character.toChars($code.toInt())) else "">
+
+# rebuild text from a list of Unicode code points (the inverse of to-runes). Pure Seed over the list's own iteration, so
+# it never touches a backend's internal list representation: it folds each rune's one-character text onto the result.
+task from-runes
+  take runes
+    like list
+      like number
+  like text
+  save result, text <>
+  walk list, read runes
+    hook next
+      take site, name code
+      save result
+        call add
+          read result
+          call rune-to-text
+            read code
+  send back, read result

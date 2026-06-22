@@ -1178,6 +1178,7 @@ function matchesHypothesis(
   b: Value,
   hyps: [Value, Value][],
 ): boolean {
+  // fast path: a == b is directly one hypothesis, in either orientation
   for (const [l, r] of hyps) {
     if (
       (convert(level, a, l) && convert(level, b, r)) ||
@@ -1187,7 +1188,51 @@ function matchesHypothesis(
     }
   }
 
-  return false
+  if (hyps.length < 2) {
+    return false
+  }
+
+  // TRANSITIVE CLOSURE over hypothesis endpoints: each hypothesis `l == r` is an undirected edge, and two endpoints
+  // that are themselves convertible are the same node. `a` and `b` are equal under the hypotheses if some endpoint
+  // convertible to `a` reaches some endpoint convertible to `b` through that graph (a chain `a = .. = b`). This is the
+  // closure step that makes the hypothesis reasoning transitive (combined with the structural recursion in `convertMod`,
+  // which supplies congruence). Sound: every edge is a real equality, and transitivity of equality is valid. Bounded:
+  // the endpoint set is small (two per hypothesis) and the search visits each at most once.
+  const endpoints: Value[] = []
+
+  for (const [l, r] of hyps) {
+    endpoints.push(l, r)
+  }
+
+  const reached = new Array<boolean>(endpoints.length).fill(false)
+  const queue: number[] = []
+
+  endpoints.forEach((endpoint, i) => {
+    if (convert(level, a, endpoint)) {
+      reached[i] = true
+      queue.push(i)
+    }
+  })
+
+  while (queue.length > 0) {
+    const i = queue.shift()!
+    // the other end of the SAME hypothesis (endpoints are pushed in (l, r) pairs), plus any convertible endpoint
+    const partner = i % 2 === 0 ? i + 1 : i - 1
+
+    for (let j = 0; j < endpoints.length; j++) {
+      if (
+        !reached[j] &&
+        (j === partner || convert(level, endpoints[i]!, endpoints[j]!))
+      ) {
+        reached[j] = true
+        queue.push(j)
+      }
+    }
+  }
+
+  return endpoints.some(
+    (endpoint, i) => reached[i] && convert(level, b, endpoint),
+  )
 }
 
 function convertModSpine(

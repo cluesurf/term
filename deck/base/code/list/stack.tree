@@ -9,7 +9,9 @@ load @cluesurf/base/code/maybe
 
 form stack
   head t
-  link items, like list
+  link items
+    like list
+      like t
 
   task push
     take self
@@ -23,6 +25,7 @@ form stack
   task pop
     take self
     like maybe
+      like t
     fork test
       hook test
         call is-above
@@ -41,6 +44,7 @@ form stack
   task peek
     take self
     like maybe
+      like t
     send back
       call last
         read self/items

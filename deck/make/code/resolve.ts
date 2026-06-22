@@ -14,17 +14,40 @@ import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
 
-// resolve `@cluesurf/base/...` imports to the stdlib that ships with this package, if it can be found on disk
+// resolve `@cluesurf/base/...` imports to the stdlib that ships with this package, if it can be found on disk. The
+// stdlib is `deck/base` under the seed package root. We walk up from this module's directory looking for it, rather
+// than assuming a fixed depth, so it is found whether this code runs from source (deck/make/code) or from the bundled
+// CLI (host/line.js) -- the two sit at different depths under the package root.
 export function stdlibResolver(): Resolver | undefined {
   const here = dirname(fileURLToPath(import.meta.url))
-  const candidates = [
-    // base is a sub-package of the seed monorepo: deck/make/code -> ../../../deck/base (the seed root, then deck/base)
-    join(here, '..', '..', '..', 'deck', 'base'),
-    // legacy sibling location, kept as a fallback during the move
-    join(here, '..', '..', '..', '..', 'base.tree'),
-  ]
 
-  const base = candidates.find(c => existsSync(c))
+  let base: string | undefined
+  let dir = here
+
+  for (let depth = 0; depth < 10; depth++) {
+    // the canonical stdlib (deck/base/code) and the legacy sibling (base.tree/code)
+    for (const candidate of [
+      join(dir, 'deck', 'base'),
+      join(dir, 'base.tree'),
+    ]) {
+      if (existsSync(join(candidate, 'code'))) {
+        base = candidate
+        break
+      }
+    }
+
+    if (base) {
+      break
+    }
+
+    const parent = dirname(dir)
+
+    if (parent === dir) {
+      break
+    }
+
+    dir = parent
+  }
 
   if (!base) {
     return undefined
