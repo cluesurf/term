@@ -261,6 +261,9 @@ export type Statement =
       // the `like <type>` base of a transparent alias form (`form g-luint, like native-number`): a form with this base
       // and no fields/variants is an alias that unifies with its base. Undefined for ordinary forms.
       alias?: Type
+      // a PROPOSITIONAL TRUNCATION (hProp): declared with `mark prop`, any two inhabitants are equal (proof
+      // irrelevance). Its constructors are kept rigid (no reduction) and registered so `convert` equates them.
+      truncation?: boolean
       span: Span
     }
   // a trait: a named set of method signatures (mask)

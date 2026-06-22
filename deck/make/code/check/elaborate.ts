@@ -42,6 +42,7 @@ import {
   contextWithSignature,
   convertibleModulo,
   defineConstant,
+  registerTruncation,
   evaluate,
   freshMeta,
   infer,
@@ -96,6 +97,18 @@ function lambdas(count: number, body: Term): Term {
   }
 
   return term
+}
+
+// the head constant name of a (possibly applied) type term: peel `apply(.. apply(constant(T), a) ..)` to `T`. Used to
+// recognise a polymorphic inductive type (`stack natural`) by its type former (`stack`) in the induction machinery.
+function headConstantName(term: Term): string | undefined {
+  let head = term
+
+  while (head.tag === 'app') {
+    head = head.fun
+  }
+
+  return head.tag === 'const' ? head.name : undefined
 }
 
 // does a term have a FREE de Bruijn variable below `depth` (an index that escapes all its binders)? Used as a safety
@@ -282,8 +295,34 @@ function kernelTypeAt(
       return element ? apply(constant('Array'), element) : null
     }
 
+    case 'function': {
+      // a function type lowers to a (non-dependent) arrow chain `p_0 -> .. -> p_{n-1} -> result`. This lets a
+      // constructor carry a FUNCTION-typed field (`sup : (B -> W) -> W`), the shape of a general / infinitely-branching
+      // W-type. Each parameter sits one binder deeper than the previous; the result is below all of them.
+      const n = type.params.length
+      const result = kernelTypeAt(type.result, depth + n, generics, known)
+
+      if (!result) {
+        return null
+      }
+
+      let out: Term = result
+
+      for (let i = n - 1; i >= 0; i--) {
+        const param = kernelTypeAt(type.params[i]!, depth + i, generics, known)
+
+        if (!param) {
+          return null
+        }
+
+        out = arrow(param, out)
+      }
+
+      return out
+    }
+
     default:
-      return null // function / unknown / inference variable: not representable yet
+      return null // unknown / inference variable: not representable yet
   }
 }
 
@@ -640,12 +679,21 @@ export function elaborateReport(
       // m leading lambdas absorb the erased type parameters at both the constructor and the eliminator (ignored by the
       // body, whose indices count from the innermost, so they are unchanged). At a use site the erased witnesses are
       // applied and discarded, leaving the same reduct as the monomorphic case.
-      statement.variants.forEach((variant, i) => {
-        enumDefs.push({
-          name: ctorKey(statement.name, variant.name),
-          term: constructorEncoding(i, variant.fields.length, n, m),
+      // a PROPOSITIONAL TRUNCATION (`mark prop`, an hProp): its constructors are REGISTERED for proof irrelevance and
+      // kept RIGID (no computing definition), so a value `wrap x` does not reduce to a self-encoding lambda and the
+      // `convert` irrelevance rule fires on it (`wrap x == wrap y`). Ordinary types get their computing defs as usual.
+      if (statement.truncation) {
+        for (const variant of statement.variants) {
+          registerTruncation(ctorKey(statement.name, variant.name))
+        }
+      } else {
+        statement.variants.forEach((variant, i) => {
+          enumDefs.push({
+            name: ctorKey(statement.name, variant.name),
+            term: constructorEncoding(i, variant.fields.length, n, m),
+          })
         })
-      })
+      }
 
       const motive: Term = { tag: 'lam', body: variable(n + 2) } // \_. A
 
@@ -941,10 +989,35 @@ export function elaborateReport(
       }
 
       case 'call': {
-        if (
-          node.callee.form !== 'variable' ||
-          !functionType.has(node.callee.name)
-        ) {
+        if (node.callee.form !== 'variable') {
+          return null
+        }
+
+        // calling a LOCAL function-typed binding (a `take f, like task` parameter or a `let`-bound closure): apply its
+        // de Bruijn variable directly. A local shadows a global of the same name (mirrors the `variable` case), and it
+        // carries no erased generic witnesses and no signature to peel for argument-domain guidance -- the local's type
+        // already sits in the context, so the kernel types the application. This is what makes higher-order functions
+        // (map / fold / filter taking a callback) reduce, and free theorems over them provable.
+        const localLevel = scope.get(node.callee.name)
+
+        if (localLevel !== undefined) {
+          const headTerm = variable(context.level - localLevel - 1)
+          const localArgs: Term[] = []
+
+          for (const argument of node.args) {
+            const term = expr(argument, scope, context)
+
+            if (!term) {
+              return null
+            }
+
+            localArgs.push(term)
+          }
+
+          return apply(headTerm, ...localArgs)
+        }
+
+        if (!functionType.has(node.callee.name)) {
           return null
         }
 
@@ -964,8 +1037,16 @@ export function elaborateReport(
 
         while (pt?.tag === 'pi') {
           if (pt.mult !== 0) {
+            // a closed `const` parameter type, or a closed polymorphic applied type (`stack natural`), guides the
+            // argument's elaboration -- the latter lets a field-less constructor (`make empty`) resolve its erased
+            // type parameter from the expected type. A dependent (open) domain is left unguided.
+            const domain = pt.domain
+
             paramDomains.push(
-              pt.domain.tag === 'const' ? pt.domain : undefined,
+              domain.tag === 'const' ||
+                (domain.tag === 'app' && !hasFreeVar(domain))
+                ? domain
+                : undefined,
             )
           }
 
@@ -2733,11 +2814,19 @@ export function elaborateReport(
 
       const typeTerm = quote(context.level, typeValue)
 
-      if (typeTerm.tag !== 'const') {
+      // the induction variable's type is the inductive type constant, OR a polymorphic type former applied to its
+      // arguments (`apply(.. apply(constant(T), a) ..)`); peel the application spine to its head constant.
+      let typeHead: Term = typeTerm
+
+      while (typeHead.tag === 'app') {
+        typeHead = typeHead.fun
+      }
+
+      if (typeHead.tag !== 'const') {
         return false
       }
 
-      const variants = variantNames.get(typeTerm.name)
+      const variants = variantNames.get(typeHead.name)
 
       if (!variants || variants.length === 0) {
         return false
@@ -2768,6 +2857,12 @@ export function elaborateReport(
             env,
             apply(
               constant(ctorKey(recipe.enumName, recipe.variant)),
+              // a polymorphic datatype's constructor takes its erased type-parameter witnesses first; they are ignored
+              // by the constructor's reduction, so any closed type serves here as the induction rebuilds the value.
+              ...Array.from(
+                { length: typeFormerArity.get(recipe.enumName) ?? 0 },
+                () => TYPE0,
+              ),
               ...recipe.fieldLevels.map(fl =>
                 variable(ctx.level - fl - 1),
               ),
@@ -2868,14 +2963,15 @@ export function elaborateReport(
               ...rest,
               ...subFields
                 .map((f, j) => ({ field: f, level: subLevels[j]! }))
-                .filter(
-                  x =>
-                    x.field.type.tag === 'const' &&
-                    variantNames.has(x.field.type.name),
-                )
+                .filter(x => {
+                  // a recursive / inductive sub-field, recognised by its type FORMER (so a polymorphic `stack a` counts)
+                  const former = headConstantName(x.field.type)
+
+                  return former !== undefined && variantNames.has(former)
+                })
                 .map(x => ({
                   level: x.level,
-                  enumName: (x.field.type as { name: string }).name,
+                  enumName: headConstantName(x.field.type)!,
                 })),
             ]
 
@@ -2903,7 +2999,7 @@ export function elaborateReport(
 
       for (const variant of variants) {
         const fields =
-          variantFieldInfo.get(ctorKey(typeTerm.name, variant)) ?? []
+          variantFieldInfo.get(ctorKey(typeHead.name, variant)) ?? []
 
         const k = fields.length
 
@@ -2918,7 +3014,12 @@ export function elaborateReport(
         const consValue = evaluate(
           inner.env,
           apply(
-            constant(ctorKey(typeTerm.name, variant)),
+            constant(ctorKey(typeHead.name, variant)),
+            // a polymorphic constructor takes its erased type-parameter witnesses first (ignored by its reduction)
+            ...Array.from(
+              { length: typeFormerArity.get(typeHead.name) ?? 0 },
+              () => TYPE0,
+            ),
             ...fields.map((_, j) => variable(k - 1 - j)),
           ),
         )
@@ -2948,10 +3049,8 @@ export function elaborateReport(
         const hypotheses: [Value, Value][] = []
 
         fields.forEach((field, j) => {
-          if (
-            field.type.tag === 'const' &&
-            field.type.name === typeTerm.name
-          ) {
+          // a RECURSIVE field: its type former is this same inductive type (so a polymorphic `stack a` counts)
+          if (headConstantName(field.type) === typeHead.name) {
             const ihEnv = [...inner.env]
             ihEnv[subject] = inner.env[k - 1 - j]!
             hypotheses.push([
@@ -3050,7 +3149,7 @@ export function elaborateReport(
                 varLevel,
                 {
                   variant,
-                  enumName: typeTerm.name,
+                  enumName: typeHead.name,
                   fieldLevels: fields.map((_, j) => context.level + j),
                 },
               ],
@@ -3582,6 +3681,9 @@ export function elaborateReport(
     // an explicit proof present, the kernel validates that proof instead, so a bogus tactic is still caught.
     if (!hasProof && ringEqual(goal.left, goal.right)) {
       discharged.push(statement.span)
+      // a named ring identity becomes a citable lemma (and rewrite rule), so `cite` / `link` (calc chains) can use it,
+      // the same as an induction- or kernel-discharged hold. Sound: it is a proven universal equality.
+      recordLemmaRule(statement.name, goal, scope, context)
 
       return
     }
@@ -3598,6 +3700,7 @@ export function elaborateReport(
       ringEqualModulo(goal.left, goal.right, assumptions)
     ) {
       discharged.push(statement.span)
+      recordLemmaRule(statement.name, goal, scope, context)
 
       return
     }
@@ -3623,11 +3726,51 @@ export function elaborateReport(
     }
 
     try {
-      infer(context, left)
+      const leftType = infer(context, left).type
       infer(context, right)
 
       const leftValue = evaluate(context.env, left)
       const rightValue = evaluate(context.env, right)
+
+      // RECORD EXTENSIONALITY (eta / surjective pairing): two values of a record type are equal iff their projections
+      // agree field by field. Since a projection reduces on a constructed record, this discharges `x == make r (x.f1)
+      // (x.f2)` and any record equality whose fields are convertible. Sound: a record IS determined by its fields. This
+      // uses the goal's type, which is available here at the hold level (the kernel's `convert` is untyped). A record
+      // equality whose fields differ does NOT match, so it stays correctly unproven.
+      if (goal.op === '==') {
+        const recordName = headConstantName(
+          quote(context.level, leftType),
+        )
+        const recordInfo = recordName
+          ? recordFieldInfo.get(recordName)
+          : undefined
+
+        if (recordInfo && recordInfo.length > 0) {
+          const project = (value: Value, field: string): Value =>
+            evaluate(
+              context.env,
+              apply(
+                constant(`${recordName}__${field}`),
+                quote(context.level, value),
+              ),
+            )
+
+          const allFieldsAgree = recordInfo.every(f =>
+            areConvertible(
+              context.level,
+              project(leftValue, f.name),
+              project(rightValue, f.name),
+            ),
+          )
+
+          if (allFieldsAgree) {
+            discharged.push(statement.span)
+            recordLemmaRule(statement.name, goal, scope, context)
+
+            return
+          }
+        }
+      }
 
       // hypothesis-discharge (no induction): rewrite both sides by the path's `have` equations and check convertibility
       // modulo them. This proves the congruence / substitution laws (`a == b -> f a == f b`, transitivity of equality)
@@ -3738,13 +3881,29 @@ export function elaborateReport(
           })
         }
       } else if (verdict === 'fail') {
-        diagnostics.push(
-          diagnose('invalid-proof', {
-            file,
-            span: statement.span,
-            message: 'this proof does not establish the equality',
-          }),
-        )
+        // a `calm` / explicit tactic that did not close by definitional equality still succeeds if the goal is a
+        // commutative-ring identity (`add a b == add b a`) or holds modulo the path hypotheses, so `calm hold`
+        // robustly discharges a linear / ring law the user need not rewrite as a bare hold. Sound: `ringEqual` and
+        // `ringEqualModulo` are decision procedures, firing only on genuine identities.
+        if (
+          goal.op === '==' &&
+          (ringEqual(goal.left, goal.right) ||
+            (assumptions.length > 0 &&
+              ringEqualModulo(goal.left, goal.right, assumptions)))
+        ) {
+          discharged.push(statement.span)
+          // register it as a citable lemma too, so a ring identity proven with `calm hold` is reusable like one proven
+          // as a bare hold (consistent lemma registration across all sound discharge paths).
+          recordLemmaRule(statement.name, goal, scope, context)
+        } else {
+          diagnostics.push(
+            diagnose('invalid-proof', {
+              file,
+              span: statement.span,
+              message: 'this proof does not establish the equality',
+            }),
+          )
+        }
       }
       // 'open': leave it to the linear prover (checkHolds)
     } catch {

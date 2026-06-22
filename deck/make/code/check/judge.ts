@@ -246,8 +246,22 @@ export function defineConstant(name: string, value: Value): void {
   definition.set(name, value)
 }
 
+// constructors of a PROPOSITIONAL TRUNCATION (an hProp): any two applications of one are equal regardless of the proof
+// argument (proof irrelevance, "a mere proposition has at most one inhabitant"). Registered by the elaborator for a
+// truncation type's constructor; consulted by `convert`.
+const truncationConstructor = new Set<string>()
+
+export function registerTruncation(name: string): void {
+  truncationConstructor.add(name)
+}
+
+export function isTruncationConstructor(name: string): boolean {
+  return truncationConstructor.has(name)
+}
+
 export function resetDefinitions(): void {
   definition.clear()
+  truncationConstructor.clear()
 }
 
 // unfold a rigid constant that has a definition, replaying its spine onto the definition's value
@@ -1118,6 +1132,21 @@ function convert(level: number, a: Value, b: Value): boolean {
     }
 
     return convertSpine(level, a.spine, b.spine)
+  }
+
+  // PROOF IRRELEVANCE for a propositional truncation (hProp): two applications of a truncation constructor are equal
+  // regardless of the proof argument. The constructor is `squash : (0 A) -> A -> Squash A`, so the spine is
+  // [type-arg, .., proof]; compare everything BUT the last element (the proof). This makes `Squash A` a mere
+  // proposition (at most one inhabitant up to convertibility), the basis of "mere existence" without leaking a witness.
+  if (
+    a.v === 'rigid' &&
+    b.v === 'rigid' &&
+    a.name === b.name &&
+    truncationConstructor.has(a.name) &&
+    a.spine.length === b.spine.length &&
+    a.spine.length >= 1
+  ) {
+    return convertSpine(level, a.spine.slice(0, -1), b.spine.slice(0, -1))
   }
 
   // rigid constants: try the fast structural path first, then delta-unfold any transparent definition and retry

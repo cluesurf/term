@@ -226,6 +226,20 @@ function terminationVerdict(program: Program): Map<string, boolean> {
     return seen
   }
 
+  // the mutual-recursion group of `name`: every function mutually reachable with it (its strongly-connected component)
+  const sccOf = (name: string): Set<string> => {
+    const out = new Set<string>([name])
+    const forward = reaches(name)
+
+    for (const other of forward) {
+      if (other !== name && reaches(other).has(name)) {
+        out.add(other)
+      }
+    }
+
+    return out
+  }
+
   const verdict = new Map<string, boolean>()
 
   for (const [name, statement] of functions) {
@@ -234,13 +248,15 @@ function terminationVerdict(program: Program): Map<string, boolean> {
       continue
     }
 
+    // DIRECT recursion (the primary, pre-existing check): some single argument position strictly decreases on every
+    // SELF-call. Tried first, so a function verified this way keeps its prior verdict exactly (no regression).
     const paramNames = statement.params.map(p => p.name)
-    const calls: SelfCall[] = []
-    collectSelfCalls(statement.body, name, calls, variantFields)
+    const selfCalls: SelfCall[] = []
+    collectSelfCalls(statement.body, name, selfCalls, variantFields)
 
     let positions = new Set<number>(paramNames.map((_, i) => i))
 
-    for (const { args, memberOf } of calls) {
+    for (const { args, memberOf } of selfCalls) {
       const decreasing = new Set<number>()
 
       for (let i = 0; i < paramNames.length && i < args.length; i++) {
@@ -252,7 +268,70 @@ function terminationVerdict(program: Program): Map<string, boolean> {
       positions = new Set([...positions].filter(i => decreasing.has(i)))
     }
 
-    verdict.set(name, calls.length > 0 && positions.size > 0) // direct, decreasing recursion is verified
+    if (
+      selfCalls.length > 0 &&
+      (positions.size > 0 ||
+        lexicographicallyDescends(selfCalls, paramNames))
+    ) {
+      verdict.set(name, true)
+      continue
+    }
+
+    const scc = sccOf(name)
+
+    if (scc.size === 1) {
+      verdict.set(name, false) // direct recursion that does not descend: not verified
+      continue
+    }
+
+    // MUTUAL recursion (the SCC has more than one function, e.g. rose-tree count over a tree/forest pair). Sound
+    // criterion: there is a FIXED argument position p such that EVERY call within the group passes, at position p, a
+    // strict structural subterm of the CALLER's position-p argument. Then the structural size of the position-p
+    // argument strictly decreases on every step of the cycle, a well-founded measure, so the group terminates. A
+    // position where one call GROWS (no subterm) is rejected, which correctly rules out the size-constant loops.
+    type GroupCall = {
+      callerParams: string[]
+      args: Expression[]
+      memberOf: Map<string, string>
+    }
+
+    const groupCalls: GroupCall[] = []
+
+    for (const member of scc) {
+      const memberStatement = functions.get(member)!
+      const memberParams = memberStatement.params.map(p => p.name)
+      const calls: SelfCall[] = []
+      collectGroupCalls(memberStatement.body, scc, calls, variantFields)
+
+      for (const { args, memberOf } of calls) {
+        groupCalls.push({ callerParams: memberParams, args, memberOf })
+      }
+    }
+
+    const maxArity = Math.max(
+      ...[...scc].map(g => functions.get(g)!.params.length),
+    )
+
+    let terminates = false
+
+    for (let p = 0; p < maxArity && !terminates; p++) {
+      const everyCallDescendsAtP = groupCalls.every(
+        call =>
+          p < call.callerParams.length &&
+          p < call.args.length &&
+          strictlyDecreases(
+            call.args[p]!,
+            call.callerParams[p]!,
+            call.memberOf,
+          ),
+      )
+
+      if (groupCalls.length > 0 && everyCallDescendsAtP) {
+        terminates = true
+      }
+    }
+
+    verdict.set(name, terminates)
   }
 
   return verdict
@@ -342,6 +421,89 @@ function collectSelfCalls(
     body,
     (callee, args, memberOf) => {
       if (callee === name) {
+        out.push({ args, memberOf })
+      }
+    },
+    variantFields,
+  )
+}
+
+// LEXICOGRAPHIC termination (the foetus criterion): a recursive function terminates if its argument positions can be
+// ordered so that on every self-call the tuple strictly decreases lexicographically -- the first position that is not
+// EQUAL is strictly smaller, with no "unknown" (possible-increase) position above it. Greedy: repeatedly pick a
+// position that is `<`-or-`=` on every remaining call and `<` on at least one (it handles those calls, which descend at
+// it with all higher positions equal); the calls where it is `=` continue with the remaining positions. Sound, since a
+// lexicographic descent over the well-founded structural order cannot go forever. Subsumes the single-position check.
+function lexicographicallyDescends(
+  calls: SelfCall[],
+  paramNames: string[],
+): boolean {
+  if (calls.length === 0) {
+    return false
+  }
+
+  const classify = (call: SelfCall, p: number): '<' | '=' | '?' => {
+    const arg = call.args[p]
+
+    if (p >= paramNames.length || arg === undefined) {
+      return '?'
+    }
+
+    if (strictlyDecreases(arg, paramNames[p]!, call.memberOf)) {
+      return '<'
+    }
+
+    // the argument is the parameter passed UNCHANGED (a non-increase at this position)
+    if (arg.form === 'variable' && arg.name === paramNames[p]) {
+      return '='
+    }
+
+    return '?'
+  }
+
+  let remaining = calls.map((_, i) => i)
+  const usedPosition = new Set<number>()
+
+  while (remaining.length > 0) {
+    let chosen = -1
+
+    for (let p = 0; p < paramNames.length; p++) {
+      if (usedPosition.has(p)) {
+        continue
+      }
+
+      const noUnknown = remaining.every(ci => classify(calls[ci]!, p) !== '?')
+      const someStrict = remaining.some(ci => classify(calls[ci]!, p) === '<')
+
+      if (noUnknown && someStrict) {
+        chosen = p
+        break
+      }
+    }
+
+    if (chosen === -1) {
+      return false
+    }
+
+    usedPosition.add(chosen)
+    remaining = remaining.filter(ci => classify(calls[ci]!, chosen) !== '<')
+  }
+
+  return true
+}
+
+// calls to ANY function in `group` (a mutual-recursion SCC), keeping the call's argument terms and match-bindings, so
+// mutual structural recursion can be verified (the rose-tree `count-rose` <-> `count-forest` shape).
+function collectGroupCalls(
+  body: Statement[],
+  group: Set<string>,
+  out: SelfCall[],
+  variantFields: Map<string, string[]>,
+): void {
+  walkCalls(
+    body,
+    (callee, args, memberOf) => {
+      if (group.has(callee)) {
         out.push({ args, memberOf })
       }
     },

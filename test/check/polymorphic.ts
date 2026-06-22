@@ -159,5 +159,41 @@ rule depth-push-wrong
 `),
 )
 
+// 5. A FIELD-LESS constructor resolves its parameter from FIELD context: depth (push zero empty) = succ zero, where
+// `empty`'s element type is fixed by the enclosing `push`.
+ok(
+  'field-less constructor resolves in field context',
+  compiles(`${STACK}
+rule depth-singleton
+  show hold
+    call is-equal
+      call depth
+        make push
+          bind top
+            make zero
+          bind rest
+            make empty
+      make succ
+        bind prior
+          make zero
+  calm hold
+`),
+)
+
+// 6. A FIELD-LESS constructor (`empty`) as a BARE top-level argument resolves its type parameter from the called
+// function's parameter type: depth (empty) = zero, where `depth` takes a `stack natural`.
+ok(
+  'field-less constructor in bare argument position resolves',
+  compiles(`${STACK}
+rule depth-empty
+  show hold
+    call is-equal
+      call depth
+        make empty
+      make zero
+  calm hold
+`),
+)
+
 console.log(`\npolymorphic datatypes: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

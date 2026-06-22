@@ -2016,7 +2016,64 @@ export function mill(tree: RootNode, file: string): MillResult {
 
         const typeNode = likeGroup ? rest(likeGroup)[0] : undefined
         // honor the declared type (a first-class task type is parsed structurally), and detect a natural refinement
-        const type = likeGroup ? parseLikeType(likeGroup) : undefined
+        let type = likeGroup ? parseLikeType(likeGroup) : undefined
+
+        // type arguments to a polymorphic parameter given as `head <type>` children of the TAKE (siblings of the `like`
+        // group): `take s, like stack / head natural` makes `s` a `stack natural`. `parseLikeType` only sees the `like`
+        // group, so these take-level siblings are attached here, mirroring the `form x / head a` declaration.
+        if (type && type.kind === 'named') {
+          const headArgs = rest(statement)
+            .filter(
+              (n): n is GroupNode =>
+                n.kind === 'group' &&
+                n !== likeGroup &&
+                headName(n) === 'head' &&
+                rest(n)[0]?.kind === 'group',
+            )
+            .map(n => parseType(rest(n)[0]!))
+
+          if (headArgs.length > 0) {
+            type = { ...type, args: [...(type.args ?? []), ...headArgs] }
+          }
+        }
+
+        // a function-typed parameter written in the COMMA form (`take f, like task` then indented `take x, like nat` /
+        // `like nat`) puts the callback's own params/result at the TAKE level, as siblings of the `like task` group,
+        // rather than inside it -- so `parseLikeType` sees a param-less `() -> unit`. Reattach those siblings here,
+        // mirroring the `head <type>` reattachment above, so the comma form matches the indented form. Guarded on an
+        // empty param list, the indented form (where `parseLikeType` already found them) is left untouched.
+        if (
+          type &&
+          type.kind === 'function' &&
+          type.params.length === 0
+        ) {
+          const siblings = rest(statement).filter(
+            (n): n is GroupNode => n.kind === 'group' && n !== likeGroup,
+          )
+
+          const fnParams = siblings
+            .filter(n => headName(n) === 'take')
+            .map(take => {
+              const inner = rest(take).find(
+                (n): n is GroupNode =>
+                  n.kind === 'group' && headName(n) === 'like',
+              )
+
+              return inner ? parseLikeType(inner) : UNKNOWN
+            })
+
+          const resultLike = siblings.find(n => headName(n) === 'like')
+
+          if (fnParams.length > 0 || resultLike) {
+            type = {
+              ...type,
+              params: fnParams,
+              result: resultLike
+                ? parseLikeType(resultLike)
+                : type.result,
+            }
+          }
+        }
         const refine =
           typeNode?.kind === 'group' &&
           headName(typeNode) === 'natural-number'
@@ -2606,6 +2663,17 @@ export function mill(tree: RootNode, file: string): MillResult {
       }
     }
 
+    // `mark prop` declares a PROPOSITIONAL TRUNCATION (hProp): any two inhabitants are equal (proof irrelevance).
+    const truncation = parts
+      .slice(1)
+      .some(
+        child =>
+          child.kind === 'group' &&
+          headName(child) === 'mark' &&
+          rest(child)[0]?.kind === 'group' &&
+          headName(rest(child)[0] as GroupNode) === 'prop',
+      )
+
     return {
       form: 'record-type',
       name,
@@ -2613,6 +2681,7 @@ export function mill(tree: RootNode, file: string): MillResult {
       fields,
       variants,
       alias,
+      truncation,
       span,
     }
   }

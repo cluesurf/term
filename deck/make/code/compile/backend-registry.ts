@@ -62,7 +62,7 @@ export const BACKENDS: Record<string, BackendInfo> = {
     language: 'HVM',
     stability: 'experimental',
     limitations: [
-      'Interaction-combinator backend: consumes the pure linear lambda fragment (each binding used at most once). Imperative control flow and the heap runtime are not yet lowered.',
+      'The pure fragment is lowered: numbers, booleans, arithmetic / comparison, named-function calls, recursion, and value conditionals (an `if` becomes a numeric match). Strings, collections, records, stored closures, and loops are not yet lowered and are flagged with a SEED-UNSUPPORTED marker.',
     ],
   },
 }

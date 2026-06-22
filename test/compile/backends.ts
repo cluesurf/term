@@ -9,6 +9,7 @@ import { emitSwift } from '@cluesurf/make/code/compile/swift'
 import { emitKotlin } from '@cluesurf/make/code/compile/kotlin'
 import { emitWgsl } from '@cluesurf/make/code/compile/wgsl'
 import { emitLlvm } from '@cluesurf/make/code/compile/llvm'
+import { emitHvm } from '@cluesurf/make/code/compile/hvm'
 import type { Program } from '@cluesurf/make/code/compile/node'
 
 let pass = 0
@@ -247,6 +248,53 @@ task danger
     llvmStr.includes('call ptr @seed_str_concat') &&
       llvmStr.includes('ret ptr'),
     llvmStr,
+  )
+
+  // HVM: the recursive numeric fragment lowers to interaction-combinator definitions. Recursion is a self-reference to
+  // `@fibonacci`, the `fork test` becomes a numeric match `(λ{0: else; _: λ&c. then})(cond)`, and arithmetic / comparison
+  // map to HVM's native operators. This matches the canonical HVM fib idiom (see deck/fork-HVM4/test/fib_small.hvm).
+  const hvm = emitHvm(program)
+  ok(
+    'hvm: emits an @fibonacci definition with an auto-dup parameter',
+    hvm.includes('@fibonacci = λ&n.'),
+    hvm,
+  )
+  ok(
+    'hvm: recursion is a self-reference applied to a subtraction',
+    hvm.includes('@fibonacci((n - 1))') &&
+      hvm.includes('@fibonacci((n - 2))'),
+    hvm,
+  )
+  ok(
+    'hvm: the branch lowers to a numeric match on the comparison',
+    hvm.includes('λ{0:') && hvm.includes('})((n < 2))'),
+    hvm,
+  )
+  ok(
+    'hvm: addition lowers to the native operator',
+    /@fibonacci\(\(n - 1\)\) \+ @fibonacci\(\(n - 2\)\)/.test(hvm),
+    hvm,
+  )
+  ok(
+    'hvm: marked experimental in the emitted banner',
+    hvm.startsWith('// EXPERIMENTAL backend: HVM'),
+    hvm,
+  )
+
+  // a multi-argument arithmetic function becomes curried auto-dup lambdas with a native operator body
+  const adder = frontEnd(`task add-two
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call add
+      loan a
+      loan b
+`)
+  ok(
+    'hvm: a two-argument function curries auto-dup lambdas',
+    emitHvm(adder).includes('@add_two = λ&a. λ&b. (a + b)'),
+    emitHvm(adder),
   )
 
   console.log(`\nbackends: ${pass} pass, ${fail} fail`)
