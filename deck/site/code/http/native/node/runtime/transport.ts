@@ -70,6 +70,15 @@ const BINARY_TYPES = new Set([
   'wasm',
 ])
 
+// in dev, send `Cache-Control: no-store` on every response so the browser NEVER serves a stale `look.css` / `boot.js` /
+// page after a hot reload. Without it the browser heuristically caches CSS (no cache headers were sent), which made
+// edits appear not to take effect ("stale cache"). Production keeps normal caching (content-hashed asset names handle
+// busting there).
+const NO_STORE =
+  process.env.NODE_ENV !== 'production'
+    ? { 'Cache-Control': 'no-store' }
+    : {}
+
 const transport = {
   // build a listener around one handle: hono catches every request, converts it to our `request`, runs the handle
   // (which runs the trie router), and writes the returned `response` back. Sync or async handles both work.
@@ -92,15 +101,16 @@ const transport = {
         if (BINARY_TYPES.has(ext))
           return context.body(Buffer.from(out, 'base64') as never, status, {
             'Content-Type': assetType,
+            ...NO_STORE,
           })
-        return context.body(out, status, { 'Content-Type': assetType })
+        return context.body(out, status, { 'Content-Type': assetType, ...NO_STORE })
       }
       // serve an HTML body with the right content-type so a browser renders it (the response carries no headers, so the
       // shape of the body is the signal); JSON / plain text fall through to hono's default text/plain
       const head = out.trimStart().slice(0, 14).toLowerCase()
       if (head.startsWith('<!doctype') || head.startsWith('<html'))
-        return context.html(out, status)
-      return context.body(out, status)
+        return context.html(out, status, { ...NO_STORE })
+      return context.body(out, status, { ...NO_STORE })
     })
     let server: ReturnType<typeof honoServe> | null = null
     return {

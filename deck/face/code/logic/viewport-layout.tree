@@ -5,8 +5,9 @@
 # logic the Layout component feeds with the live `viewport-width` / `viewport-print` reads and applies reactively.
 #
 # Each React CSSProperties object becomes one inline-style string here (e.g. `display:flex;flex-direction:column`).
-# Width-dependent values (the >=1244 / >=888 middle columns, the bottom default middle) are computed from the numeric
-# width via `number-text` (number -> text) + string concat. The breakpoint ladder is exact:
+# Width-dependent values (the >=1244 / >=888 middle columns, the mobile middle) are computed from the numeric width via
+# `width-style` (number -> text + concat, done in the native shim so the numeric `add` builtin stays out of the string
+# path). The breakpoint ladder is exact:
 #   print            -> column, centered, full-width middle, sides hidden
 #   width >= 1536    -> fixed 1536 grid, 888 middle, 324 sides
 #   width >= 1244    -> flex grid (max 1536 / min 1244), middle = width-324-324 (max 888 / min 576), 324 sides
@@ -17,7 +18,7 @@
 #   else (mobile)    -> flex grid, middle centered (max 804, width) flex, sides hidden
 
 load ./native/text-format
-  find number-text
+  find width-style
 
 # the inline-style strings for the four shell parts, one per CSS object in the React layout
 form layout-style
@@ -26,21 +27,6 @@ form layout-style
   link middle, like text
   link left, like text
   link right, like text
-
-# build a `<property>:<number>px` inline-style fragment from a numeric pixel value
-task pixel-style
-  take property, like text
-  take value, like number
-  like text
-  send back
-    call add
-      call add
-        call add
-          read property
-          text <:>
-        call number-text
-          read value
-      text <px>
 
 # the 3-section layout style table. `width` is the live viewport width (pixels); `print` is the print flag.
 task get-layout-3-section
@@ -91,11 +77,10 @@ task get-layout-3-section
           bind container, text <display:flex;flex-direction:column>
           bind grid, text <display:flex;max-width:1536px;min-width:1244px;flex:1>
           bind middle
-            call add
+            call width-style
               text <max-width:888px;min-width:576px;>
-              call pixel-style
-                text <width>
-                read middle-width
+              read middle-width
+              text <>
           bind left, text <width:324px>
           bind right, text <width:324px>
   # width >= 1056: flex grid (min 1056 / max 1244), 576 middle flex, 240..324 sides flex
@@ -128,12 +113,9 @@ task get-layout-3-section
           bind container, text <display:flex;flex-direction:column>
           bind grid, text <display:flex;min-width:888px;flex:1>
           bind middle
-            call add
-              call add
-                text <max-width:888px;min-width:576px;>
-                call pixel-style
-                  text <width>
-                  read middle-width
+            call width-style
+              text <max-width:888px;min-width:576px;>
+              read middle-width
               text <;flex:1>
           bind left, text <width:324px;flex:1>
           bind right, text <display:none>
@@ -171,12 +153,9 @@ task get-layout-3-section
       bind container, text <display:flex;flex-direction:column>
       bind grid, text <display:flex;flex:1>
       bind middle
-        call add
-          call add
-            text <justify-content:center;max-width:804px;>
-            call pixel-style
-              text <width>
-              read width
+        call width-style
+          text <justify-content:center;max-width:804px;>
+          read width
           text <;flex:1>
       bind left, text <display:none>
       bind right, text <display:none>

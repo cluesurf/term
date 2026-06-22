@@ -58,15 +58,19 @@ const VOID = new Set([
   'wbr',
 ])
 
-function escapeText(value: string): string {
-  return value
+// coerce to string first: an attribute / text value may be a number (e.g. an `<img width>` bound to a numeric getter),
+// the way React accepts `width={256}`. String() keeps the serializer total instead of throwing on `.replace`.
+function escapeText(value: unknown): string {
+  return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 }
 
-function escapeAttr(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+function escapeAttr(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
 }
 
 type Element = {
@@ -108,12 +112,28 @@ function assetMap(): Record<string, string> | null {
   return manifest
 }
 
-// resolve a logical asset path to its public `/base/...` URL, applying the content-hashed name in production
+// the dev build id (build/__id, bumped on every rebuild) used as a `?v=` cache-buster, read fresh per request so a
+// rebuild changes the URL and the browser cannot serve a stale css/js even if it ignored Cache-Control.
+function buildVersion(): string {
+  try {
+    return readFileSync(join(process.cwd(), 'build', '__id'), 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
+
+// resolve a logical asset path to its public `/base/...` URL. Prod uses the content-hashed name (the manifest); dev
+// appends `?v=<build-id>` so an edit always wins over the browser cache.
 function assetUrl(logical: string): string {
   const map = assetMap()
   const resolved = (map && map[logical]) || logical
+  const base = `/base/${resolved}`
 
-  return `/base/${resolved}`
+  if (process.env.NODE_ENV !== 'production') {
+    return `${base}?v=${buildVersion()}`
+  }
+
+  return base
 }
 
 // the client bundle externalizes its third-party (npm) deps and loads them via a web-standard import map (so the app
