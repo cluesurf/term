@@ -511,8 +511,116 @@ function quadraticProves(expr: Expression): boolean {
 // `(a*a)*(b*b) >= 0`) OR a quadratic-fragment goal by positive-semidefiniteness (`quadraticProves`). Both are
 // assumption-free and sound over the reals / any ordered ring; together they discharge the common nonlinear `>= 0` /
 // `>` goals the linear prover cannot.
+// is a UNIVARIATE polynomial a perfect square q^2 (hence >= 0 everywhere)? This catches non-diagonal forms the
+// even-monomial test misses -- `x^4 - 2x^3 + 3x^2 - 2x + 1 = (x^2 - x + 1)^2` -- by recovering q from the top
+// coefficients and VERIFYING q^2 == p exactly (the verification is the soundness guarantee). Restricted to a single
+// variable with an integer square root; a non-perfect-square or multivariate polynomial declines (sound, incomplete).
+function univariatePerfectSquare(poly: Poly): boolean {
+  const variables = new Set<string>()
+
+  for (const key of poly.keys()) {
+    for (const v of monomialVars(key)) {
+      variables.add(v)
+    }
+  }
+
+  if (variables.size !== 1) {
+    return false // multivariate perfect squares need a full SOS / SDP search
+  }
+
+  const coefficientOfDegree = new Map<number, number>()
+  let degree = 0
+
+  for (const [key, coefficient] of poly) {
+    const d = monomialVars(key).length
+
+    coefficientOfDegree.set(d, coefficient)
+
+    if (coefficient !== 0 && d > degree) {
+      degree = d
+    }
+  }
+
+  if (degree < 2 || degree % 2 !== 0) {
+    return false
+  }
+
+  const c = (k: number): number => coefficientOfDegree.get(k) ?? 0
+  const d = degree / 2
+  const top = c(degree)
+  const root = Math.round(Math.sqrt(top))
+
+  if (top <= 0 || root * root !== top) {
+    return false // leading coefficient is not a positive perfect square
+  }
+
+  // recover q (degree d) from the top d+1 coefficients: coeff of x^(d+i) is 2 q[d] q[i] + (terms among q[i+1..d-1])
+  const q = new Array<number>(d + 1).fill(0)
+  q[d] = root
+
+  for (let i = d - 1; i >= 0; i--) {
+    let known = 0
+
+    for (let j = i + 1; j <= d - 1; j++) {
+      known += q[j]! * q[d + i - j]!
+    }
+
+    const numerator = c(d + i) - known
+
+    if (numerator % (2 * root) !== 0) {
+      return false // q would need a non-integer coefficient
+    }
+
+    q[i] = numerator / (2 * root)
+  }
+
+  // the remaining coefficients (x^0 .. x^(d-1)) must agree with q^2, or p is not q^2
+  for (let m = 0; m < d; m++) {
+    let sum = 0
+
+    for (let j = 0; j <= m; j++) {
+      sum += q[j]! * q[m - j]!
+    }
+
+    if (sum !== c(m)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+// a goal `L >= R` (or `R <= L`) whose difference is a univariate perfect square. A square is >= 0 but not strictly
+// > 0, so only the non-strict directions qualify.
+function perfectSquareProves(expr: Expression): boolean {
+  if (expr.form !== 'binary' || (expr.op !== '>=' && expr.op !== '<=')) {
+    return false
+  }
+
+  const upper = expr.op === '>=' ? expr.left : expr.right
+  const lower = expr.op === '>=' ? expr.right : expr.left
+  const high = expandPolynomial(upper)
+  const low = expandPolynomial(lower)
+
+  if (!high || !low) {
+    return false
+  }
+
+  const difference: Poly = new Map(high)
+
+  for (const [key, value] of low) {
+    difference.set(key, (difference.get(key) ?? 0) - value)
+  }
+
+  return univariatePerfectSquare(difference)
+}
+
 function nonlinearProves(expr: Expression): boolean {
-  return positivityProves(expr) || quadraticProves(expr)
+  return (
+    positivityProves(expr) ||
+    quadraticProves(expr) ||
+    perfectSquareProves(expr)
+  )
 }
 
 type Inequality = ReturnType<typeof atMost>

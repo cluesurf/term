@@ -811,31 +811,107 @@ export function elaborateReport(
           })
         })
 
-        // a (non-dependent) eliminator so `fork case` REDUCES on an indexed value:
-        //   match__T : (0 p..)(0 i_0..i_{l-1} : Index)(0 A : Type0) -> T p.. i.. -> branch_0 -> .. -> A
-        // The l index binders sit OUTSIDE the motive A, so every inner de Bruijn (A = var(n+1), A-in-branch =
-        // var(i+k), the computing-def body) is unchanged from the monomorphic case; only the branch-field depth and
-        // the subject gain the l index binders. The motive does NOT yet refine the index per branch -- that is the
-        // fully dependent eliminator -- but this makes pattern matching on an indexed family compute. A de Bruijn slip
-        // leaves the eliminator unregistered (so `fork case` declines), never unsound.
-        let indexed: Term = variable(n + 1) // result A
+        // the fully DEPENDENT eliminator, so `fork case` reduces on an indexed value AND the result type may refine
+        // per index. Telescope (levels): p_0..p_{m-1} (0..m-1, erased), P the motive (m), b_0..b_{n-1} (m+1..m+n),
+        // i_0..i_{l-1} (m+1+n..m+n+l), x (m+n+l+1); result P i.. x at depth m+n+l+2.
+        //   match__T : (0 p..) -> (P : (i..) -> T p.. i.. -> Type0)
+        //            -> (b_v : (fields_v) -> P <output index_v> (T_v p.. fields_v)) [per variant]
+        //            -> (i..) -> (x : T p.. i..) -> P i.. x
+        // The COMPUTING rule is the self-encoding itself: match P b.. i.. x = x P b.. (the indices are erased in the
+        // body). A de Bruijn slip leaves it unregistered, so `fork case` declines rather than misbehaving.
         let eliminatorSound = true
 
-        for (let i = n; i >= 1 && eliminatorSound; i--) {
-          const fields = statement.variants[i - 1]!.fields
-          const k = fields.length
-          let branch: Term = variable(i + k) // A inside branch i
+        // motive P : (i_0:I_0)..(i_{l-1}:I_{l-1}) -> (T p.. i..) -> Type0, built at depth m
+        const motiveIndexVars: Term[] = []
 
+        for (let t = 0; t < l; t++) {
+          motiveIndexVars.push(variable(l - t - 1)) // i_t at depth m+l
+        }
+
+        let motiveType: Term = arrow(
+          appliedSelf(m + l, motiveIndexVars),
+          TYPE0,
+        )
+
+        for (let t = l - 1; t >= 0; t--) {
+          motiveType = arrow(indexTypes[t]!, motiveType)
+        }
+
+        // branch types
+        const branchTypes: Term[] = []
+
+        for (let v = 0; v < n && eliminatorSound; v++) {
+          const variant = statement.variants[v]!
+          const k = variant.fields.length
+          const depthB = m + 1 + v // binders above b_v: p.., P, b_0..b_{v-1}
+          const resultDepth = depthB + k
+          const fieldScopeB = new Map(
+            variant.fields.map((f, j) => [f.name, depthB + j]),
+          )
+
+          // output index value terms (`vnil -> zero`, `vcons -> succ count`), at the branch result depth
+          const ivTerms: Term[] = []
+
+          for (let t = 0; t < l; t++) {
+            const ivExpr = variant.indexValues?.[t]
+            const ivt = ivExpr
+              ? indexTermAt(
+                  ivExpr,
+                  resultDepth,
+                  fieldScopeB,
+                  namedTypes,
+                  resolveIndexCtor,
+                )
+              : null
+
+            if (!ivt) {
+              eliminatorSound = false
+              break
+            }
+
+            ivTerms.push(ivt)
+          }
+
+          if (!eliminatorSound) {
+            break
+          }
+
+          // the constructor applied to its type-param witnesses and fields: T_v p.. f_0..f_{k-1}
+          let ctorTerm: Term = constant(
+            ctorKey(statement.name, variant.name),
+          )
+
+          for (let p = 0; p < m; p++) {
+            ctorTerm = apply(ctorTerm, variable(resultDepth - p - 1))
+          }
+
+          for (let j = 0; j < k; j++) {
+            ctorTerm = apply(
+              ctorTerm,
+              variable(resultDepth - (depthB + j) - 1),
+            )
+          }
+
+          // P <output index> (ctor ..)
+          let branch: Term = variable(resultDepth - m - 1) // P
+
+          for (const ivt of ivTerms) {
+            branch = apply(branch, ivt)
+          }
+
+          branch = apply(branch, ctorTerm)
+
+          // wrap the k field binders (a field may be indexed by an earlier one: `rest : T p.. count`)
           for (let j = k - 1; j >= 0; j--) {
-            const branchFieldLevels = new Map(
-              fields.slice(0, j).map((f, t) => [f.name, m + l + i + 1 + t]),
+            const preceding = new Map(
+              variant.fields.slice(0, j).map((f, i) => [f.name, depthB + i]),
             )
             const fieldType = kernelTypeAt(
-              fields[j]!.type,
-              m + l + i + 1 + j,
+              variant.fields[j]!.type,
+              depthB + j,
               dataGenerics,
               namedTypes,
-              branchFieldLevels,
+              preceding,
               resolveIndexCtor,
             )
 
@@ -847,41 +923,66 @@ export function elaborateReport(
             branch = arrow(fieldType, branch)
           }
 
-          indexed = arrow(branch, indexed)
+          branchTypes.push(branch)
         }
 
-        // the subject T p.. i.. at the subject binder's depth (m params + l indices + A above it)
-        const subjectIndexVars: Term[] = []
+        // assemble: result P i.. x at depth m+n+l+2
+        const resDepth = m + n + l + 2
+        let dependentElim: Term = variable(resDepth - m - 1) // P
 
         for (let t = 0; t < l; t++) {
-          subjectIndexVars.push(variable(l - t))
+          dependentElim = apply(
+            dependentElim,
+            variable(resDepth - (m + 1 + n + t) - 1), // i_t
+          )
         }
 
-        indexed = arrow(appliedSelf(m + l + 1, subjectIndexVars), indexed)
-        indexed = erasedPi(TYPE0, indexed) // (0 A : Type0)
+        dependentElim = apply(
+          dependentElim,
+          variable(resDepth - (m + 1 + n + l) - 1), // x
+        )
+
+        // wrap x : T p.. i.. at the subject depth
+        const subjDepth = m + 1 + n + l
+        const subjIndexVars: Term[] = []
+
+        for (let t = 0; t < l; t++) {
+          subjIndexVars.push(variable(subjDepth - (m + 1 + n + t) - 1))
+        }
+
+        dependentElim = arrow(
+          appliedSelf(subjDepth, subjIndexVars),
+          dependentElim,
+        )
 
         for (let t = l - 1; t >= 0; t--) {
-          indexed = erasedPi(indexTypes[t]!, indexed) // (0 i_t : Index)
+          dependentElim = arrow(indexTypes[t]!, dependentElim) // (i_t : I_t)
         }
 
-        indexed = withParams(indexed) // (0 p.. : Type0)
+        for (let v = n - 1; v >= 0; v--) {
+          dependentElim = arrow(branchTypes[v]!, dependentElim) // b_v
+        }
 
-        if (eliminatorSound && !hasFreeVar(indexed)) {
+        dependentElim = arrow(motiveType, dependentElim) // (P : ...)
+        dependentElim = withParams(dependentElim) // (0 p.. : Type0)
+
+        if (eliminatorSound && !hasFreeVar(dependentElim)) {
           dataSignature.push({
             name: `match__${statement.name}`,
-            type: indexed,
+            type: dependentElim,
           })
 
-          const indexedMotive: Term = { tag: 'lam', body: variable(n + 2) } // \_. A
-          let indexedBody: Term = apply(variable(n), indexedMotive) // x (\_. A)
+          // computing rule: match P b.. i.. x = x P b_0 .. b_{n-1}. From innermost: x=0, i_t=1..l, b_v=l+n-v, P=l+n+1.
+          let dependentBody: Term = variable(0) // x
+          dependentBody = apply(dependentBody, variable(l + n + 1)) // P
 
-          for (let j = 0; j < n; j++) {
-            indexedBody = apply(indexedBody, variable(n - 1 - j)) // b_0 .. b_{n-1}
+          for (let v = 0; v < n; v++) {
+            dependentBody = apply(dependentBody, variable(l + n - v)) // b_v
           }
 
           enumDefs.push({
             name: `match__${statement.name}`,
-            term: lambdas(m + l + n + 2, indexedBody),
+            term: lambdas(m + n + l + 2, dependentBody),
           })
         }
 
@@ -1847,6 +1948,32 @@ export function elaborateReport(
           }
 
           branches.push(term)
+        }
+
+        // an INDEXED family uses the DEPENDENT eliminator, whose shape is `(0 p..) (P) (branches) (i..) (x)`: the type
+        // witnesses lead, then the motive, the branches, the index arguments, and the subject last. The motive here is
+        // CONSTANT (`\i.. x. A`) -- a non-index-refining match -- built by re-quoting the result at the deeper level so
+        // its free variables stay correct under the l+1 new binders. (A future index-refining / convoy match would
+        // build a non-constant motive.) A non-indexed enum keeps the simpler `(0 p..) A x branches` eliminator.
+        const indexCount = typeFormerIndices.get(enumName!)?.length ?? 0
+
+        if (indexCount > 0) {
+          const typeWitnessCount = subjectTypeArgs.length - indexCount
+          const typeWitnesses = subjectTypeArgs.slice(0, typeWitnessCount)
+          const indexArguments = subjectTypeArgs.slice(typeWitnessCount)
+          const motive = lambdas(
+            indexCount + 1,
+            quote(context.level + indexCount + 1, resultValue),
+          )
+
+          return apply(
+            constant(`match__${enumName}`),
+            ...typeWitnesses,
+            motive,
+            ...branches,
+            ...indexArguments,
+            subject,
+          )
         }
 
         return apply(

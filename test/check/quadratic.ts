@@ -209,5 +209,61 @@ ok(
 `),
 )
 
+// 9. NON-DIAGONAL perfect-square SOS at degree 4: x^4 + x^2 >= 2x^3 is (x^2 - x)^2 >= 0. The difference has negative
+// (odd-power) cross terms, so the even-monomial / diagonal test misses it; recovering the square root q = x^2 - x and
+// verifying q^2 == difference proves it.
+ok(
+  'degree-4 perfect square: x^4 + x^2 >= 2x^3  ((x^2 - x)^2)',
+  proven(`rule perfect-square-quartic
+  mark x, like integer
+  show hold
+    call is-minimum
+      call add
+        call multiply
+          call multiply
+            read x
+            read x
+          call multiply
+            read x
+            read x
+        call multiply
+          read x
+          read x
+      call multiply
+        mark 2
+        call multiply
+          call multiply
+            read x
+            read x
+          read x
+  calm hold
+`),
+)
+
+// 10. SOUNDNESS CONTROL: x^4 >= 2x^3 (= x^4 - 2x^3) is NOT a square and is negative on (0, 2). Must not be proven.
+ok(
+  'non-square quartic is not proven (x^4 >= 2x^3)',
+  !proven(`rule not-a-square
+  mark x, like integer
+  show hold
+    call is-minimum
+      call multiply
+        call multiply
+          read x
+          read x
+        call multiply
+          read x
+          read x
+      call multiply
+        mark 2
+        call multiply
+          call multiply
+            read x
+            read x
+          read x
+  calm hold
+`),
+)
+
 console.log(`\nquadratic: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)
