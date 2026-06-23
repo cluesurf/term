@@ -13,11 +13,15 @@ import {
   watch,
 } from 'fs'
 import { build, buildSync, version as esbuildVersion } from 'esbuild'
+import { spawn } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { compile } from '@cluesurf/make/code/compile/compile'
 import {
   projectResolver,
   resolveTreeFile,
+  watchTreeFiles,
 } from '@cluesurf/call/code/make'
+import { printDiagnostics } from '@cluesurf/call/code/report'
 import { nativePrelude } from '@cluesurf/make/code/compile/native'
 import type { NativeEnv } from '@cluesurf/make/code/compile/native'
 import { hashText } from '@cluesurf/make/code/compile/cache'
@@ -32,7 +36,6 @@ import {
 import { toConstant } from '@cluesurf/make/code/compile/typescript'
 import { parse } from '@cluesurf/make/code/parser/tree'
 import type { GroupNode } from '@cluesurf/make/code/parser/tree'
-import { runCommand } from '@cluesurf/call/code/make'
 import {
   logStep,
   logGood,
@@ -255,10 +258,10 @@ async function buildClientBundle(opts: {
     )
 
     if (!result.ok) {
-      const first = result.diagnostics[0]
+      printDiagnostics(result.diagnostics)
       logFail(
-        `Client build failed: ${
-          first ? `${first.name}: ${first.message}` : 'unknown error'
+        `Client build failed: ${result.diagnostics.length} error${
+          result.diagnostics.length === 1 ? '' : 's'
         } (server SSR still served)`,
       )
 
@@ -628,22 +631,139 @@ export async function callBoot(input: {
       installRoot,
     )
 
-    const result = compile(
-      { file: entry, text: readFileSync(entry, 'utf8') },
-      { resolve, cache: projectCache(projectRoot), env },
-    )
+    // the server runs as a MANAGED CHILD process so the dev watcher can rebuild and restart it on an app-code edit. The
+    // port is chosen ONCE (here) so every restart re-binds the same address.
+    const port = input.port ?? (await findFreePort(BASE_PORT))
+    const serverCwd = appDir ?? projectRoot
+    const dev = process.env.NODE_ENV !== 'production'
 
-    if (!result.ok) {
-      const first = result.diagnostics[0]
-      logFail(
-        `Compile failed: ${
-          first ? `${first.name}: ${first.message}` : 'unknown error'
-        }`,
+    // ONE persistent cache, reused across every rebuild (exactly as `seed make --watch` does). It is the turborepo-style
+    // content-addressed store at `.seed/cache`: the in-memory layer survives across rebuilds in this process, and the
+    // disk layer survives across runs and machines (and a remote, via pull/push above). So an unchanged module reuses
+    // its parse + mill, and an unchanged graph returns its whole result instantly -- the same reuse `seed make` gets.
+    const cache = projectCache(projectRoot)
+
+    // build the app ONCE: compile the entry, (re)build the client bundle + styles, bundle to ESM, and write the server
+    // entry `run.mjs`. Returns its path, or null on a compile error (the rich diagnostics are printed and any running
+    // server is left up). This is the SAME incremental compile (shared `.seed/cache`) and the SAME diagnostic renderer
+    // (`report.ts`) that `seed make` uses; only the output step (esbuild bundle + server entry) differs.
+    const buildOnce = async (): Promise<string | null> => {
+      const result = compile(
+        { file: entry, text: readFileSync(entry, 'utf8') },
+        { resolve, cache, env },
       )
+
+      if (!result.ok) {
+        printDiagnostics(result.diagnostics)
+        logFail(
+          `Compile failed: ${result.diagnostics.length} error${
+            result.diagnostics.length === 1 ? '' : 's'
+          }`,
+        )
+
+        return null
+      }
+
+      // for an SSR server (the node host), also build the browser CLIENT bundle the rendered page loads, so the
+      // server-rendered HTML becomes interactive. The app must have a deck.tree root (appDir) to hold `build/`.
+      if (env === 'node' && appDir) {
+        const prod = process.env.NODE_ENV === 'production'
+        buildStyles(appDir)
+        await buildClientBundle({
+          entry,
+          appDir,
+          projectRoot,
+          installRoot,
+          prod,
+        })
+        // content-hash the cache-bust-critical assets and write the manifest the shell reads
+        hashAssets(path.join(appDir, 'build'), prod)
+        // bump the dev live-reload id (the client polls /base/__id and reloads when it changes)
+        writeBuildId(appDir)
+      }
+
+      // auto-prepend the native runtime shims this program docks. This is the prelude the build owns.
+      const prelude = nativePrelude(result.program, env, p =>
+        existsSync(p) ? readFileSync(p, 'utf8') : undefined,
+      )
+
+      const source = `${prelude}\n${result.typescript}`
+
+      const bundleConfig = {
+        bundle: true,
+        format: 'esm' as const,
+        platform:
+          env === 'browser' ? ('browser' as const) : ('node' as const),
+        packages: 'external' as const,
+      }
+
+      // incremental cache in `.seed/boot/<hash>`. The key folds in everything that can change the output.
+      const key = hashText(
+        [
+          BOOT_CACHE_EPOCH,
+          compilerVersion(),
+          env,
+          `esbuild@${esbuildVersion}`,
+          JSON.stringify(bundleConfig),
+          source,
+        ].join('\n'),
+      )
+
+      const out = path.join(projectRoot, '.seed', 'boot', key)
+      const bundle = path.join(out, 'app.mjs')
+
+      if (existsSync(bundle)) {
+        logGood(
+          `Cached ${path.relative(cwd, entry)} (.seed/boot/${key.slice(0, 8)})`,
+        )
+      } else {
+        mkdirSync(out, { recursive: true })
+        writeFileSync(path.join(out, 'app.ts'), source)
+        buildSync({
+          entryPoints: [path.join(out, 'app.ts')],
+          outfile: bundle,
+          ...bundleConfig,
+        })
+        logGood(
+          `Built ${path.relative(cwd, entry)} -> .seed/boot/${key.slice(0, 8)}`,
+        )
+      }
+
+      // link the CLI install's node_modules next to the bundle so ESM resolves the external bare specifiers
+      const bundleModules = path.join(out, 'node_modules')
+      const installModules = path.join(installRoot, 'node_modules')
+
+      if (!existsSync(bundleModules) && existsSync(installModules)) {
+        try {
+          symlinkSync(installModules, bundleModules, 'dir')
+        } catch {
+          // a pre-existing link or a race is fine
+        }
+      }
+
+      writeFileSync(
+        path.join(out, 'run.mjs'),
+        [
+          `import * as app from './app.mjs'`,
+          `const boot = app.boot ?? app.start ?? app.main`,
+          `if (!boot) { console.error('entry has no boot/start/main task'); process.exit(1) }`,
+          `const url = process.env.DATABASE_URL ?? ''`,
+          `const port = Number(process.env.PORT ?? ${port})`,
+          `await boot(url, port)`,
+          '',
+        ].join('\n'),
+      )
+
+      return path.join(out, 'run.mjs')
+    }
+
+    const runPath = await buildOnce()
+
+    if (!runPath) {
       process.exit(1)
     }
 
-    // push freshly-built artifacts to the remote (Tier 5), so the next machine / CI reuses them
+    // push freshly-built artifacts to the remote (Tier 5), once, after the first successful build
     if (input.remote) {
       try {
         const pushed = await pushRemoteCache(
@@ -654,9 +774,7 @@ export async function callBoot(input: {
 
         if (pushed) {
           console.log(
-            fade(
-              `  pushed ${pushed} cache artifacts to ${input.remote}`,
-            ),
+            fade(`  pushed ${pushed} cache artifacts to ${input.remote}`),
           )
         }
       } catch {
@@ -664,132 +782,82 @@ export async function callBoot(input: {
       }
     }
 
-    // for an SSR server (the node host), also build the browser CLIENT bundle the rendered page loads (`/base/boot.js`),
-    // so the server-rendered HTML becomes interactive. The app must have a deck.tree root (appDir) to hold `build/`.
-    if (env === 'node' && appDir) {
-      const prod = process.env.NODE_ENV === 'production'
-      // compile the app's look stylesheets to build/style/*.css (so `seed boot` needs no separate make step for CSS)
-      buildStyles(appDir)
-      await buildClientBundle({
-        entry,
-        appDir,
-        projectRoot,
-        installRoot,
-        prod,
-      })
-      // content-hash the cache-bust-critical assets (stylesheet + client bundle) and write the manifest the shell reads
-      hashAssets(path.join(appDir, 'build'), prod)
-      // seed the dev live-reload id (the client polls /base/__id and reloads when it changes)
-      writeBuildId(appDir)
-    }
-
-    // auto-prepend the native runtime shims this program docks (`<global:X>` -> its `runtime/X` sibling), so the
-    // platform driver wrappers are present without userland ever importing them. This is the prelude the build owns.
-    const prelude = nativePrelude(result.program, env, p =>
-      existsSync(p) ? readFileSync(p, 'utf8') : undefined,
-    )
-
-    const source = `${prelude}\n${result.typescript}`
-
-    // the bundle config (kept in one place so the cache key sees exactly what the build uses)
-    const bundleConfig = {
-      bundle: true,
-      format: 'esm' as const,
-      platform:
-        env === 'browser' ? ('browser' as const) : ('node' as const),
-      packages: 'external' as const,
-    }
-
-    // incremental cache in `.seed/boot/<hash>`. The key folds in everything that can change the output: the emitted
-    // source (which already reflects the compiler's behavior for this input), the target env, the bundler version, the
-    // bundler config, and a manual epoch. So a stale hit cannot survive a toolchain or config change. See
-    // note/research/repo/turborepo/07-lessons-for-seed.md.
-    const key = hashText(
-      [
-        BOOT_CACHE_EPOCH,
-        // the running compiler's content fingerprint: any change to the compiler invalidates the bundle, with no manual
-        // epoch bump. The single most important guard against a stale hit.
-        compilerVersion(),
-        env,
-        `esbuild@${esbuildVersion}`,
-        JSON.stringify(bundleConfig),
-        source,
-      ].join('\n'),
-    )
-
-    const out = path.join(projectRoot, '.seed', 'boot', key)
-    const bundle = path.join(out, 'app.mjs')
-
-    if (existsSync(bundle)) {
-      logGood(
-        `Cached ${path.relative(cwd, entry)} (.seed/boot/${key.slice(0, 8)})`,
-      )
-    } else {
-      mkdirSync(out, { recursive: true })
-      writeFileSync(path.join(out, 'app.ts'), source)
-      buildSync({
-        entryPoints: [path.join(out, 'app.ts')],
-        outfile: bundle,
-        ...bundleConfig,
-      })
-      logGood(
-        `Built ${path.relative(cwd, entry)} -> .seed/boot/${key.slice(0, 8)}`,
-      )
-    }
-
-    // the bundle keeps node packages (pg, hono, ...) external, so they are imported at runtime. ESM resolves bare
-    // specifiers from the importing file's location, not cwd or NODE_PATH, so link the CLI install's node_modules next
-    // to the bundle. An app with its own node_modules (a published install) keeps using its own.
-    const bundleModules = path.join(out, 'node_modules')
-    const installModules = path.join(installRoot, 'node_modules')
-
-    if (!existsSync(bundleModules) && existsSync(installModules)) {
-      try {
-        symlinkSync(installModules, bundleModules, 'dir')
-      } catch {
-        // a pre-existing link or a race is fine
-      }
-    }
-
-    // honor an explicit --port; otherwise scan for the first free port from 2400 up, so concurrent apps never collide
-    const port = input.port ?? (await findFreePort(BASE_PORT))
-    writeFileSync(
-      path.join(out, 'run.mjs'),
-      [
-        `import * as app from './app.mjs'`,
-        `const boot = app.boot ?? app.start ?? app.main`,
-        `if (!boot) { console.error('entry has no boot/start/main task'); process.exit(1) }`,
-        `const url = process.env.DATABASE_URL ?? ''`,
-        `const port = Number(process.env.PORT ?? ${port})`,
-        `await boot(url, port)`,
-        '',
-      ].join('\n'),
-    )
-
     logGood(`Serving on http://localhost:${port}`)
     console.log(fade(`  press ctrl-c to stop`))
 
-    // dev: hot-reload styles. Watch `site/style`, recompile look.css + bump the reload id on edit; the browser polls
-    // `/base/__id` and reloads with the new CSS (no manual refresh). Disabled in production.
-    const dev = process.env.NODE_ENV !== 'production'
+    // the server child: spawned now from the APP dir (where deck.tree + build/ live), killed + respawned by the dev
+    // watcher on an app-code rebuild.
+    let child: ChildProcess = spawn('node', [runPath], {
+      cwd: serverCwd,
+      stdio: 'inherit',
+    })
 
-    const stopWatch = dev && appDir ? watchStyles(appDir) : () => {}
+    // restart the server on a freshly-built entry: wait for the old process to fully EXIT (releasing the port) before
+    // binding the new one, so a restart never races into EADDRINUSE. If the child already exited on its own (a crash),
+    // there is nothing to wait for.
+    const restart = async (next: string): Promise<void> => {
+      if (child.exitCode === null && child.signalCode === null) {
+        await new Promise<void>(done => {
+          child.once('exit', () => done())
+          child.kill()
+        })
+      }
 
-    if (dev && appDir) {
-      console.log(fade(`  hot reload on (watching site/style)`))
+      child = spawn('node', [next], { cwd: serverCwd, stdio: 'inherit' })
     }
 
-    try {
-      // run the server from the APP dir (where the `deck.tree` + `build/` live), so the app resolves its own assets
-      // (`build/...` static files) relative to its own root rather than the link/cache `projectRoot`.
-      await runCommand({
-        cmd: 'node',
-        args: [path.join(out, 'run.mjs')],
-        cwd: appDir ?? projectRoot,
-        shell: false,
-      })
-    } finally {
-      stopWatch()
+    const stops: Array<() => void> = []
+
+    if (dev && appDir) {
+      // styles hot-reload (look.css -> bump reload id), as before
+      stops.push(watchStyles(appDir))
+
+      // APP-CODE hot reload: on a `.tree` edit anywhere in the app, recompile + rebundle + restart the server. This is
+      // the SAME debounced, no-overlap watcher (`watchTreeFiles`) that `seed make --watch` uses -- the recompilation
+      // machinery is shared, only the build step differs. A compile error keeps the running server up (diagnostics
+      // printed). Generated / dependency dirs are ignored.
+      const codeWatcher = watchTreeFiles(
+        appDir,
+        async name => {
+          logStep(`change in ${name}, rebuilding...`)
+          const next = await buildOnce()
+
+          if (next) {
+            await restart(next)
+            logGood('reloaded')
+          }
+        },
+        ['build/', '.seed/', 'node_modules/', 'host/'],
+      )
+      stops.push(() => codeWatcher.close())
+
+      console.log(fade('  hot reload on (watching app code + styles)'))
+    }
+
+    // keep the CLI alive; ctrl-c stops the watchers and the server child
+    const shutdown = (): void => {
+      for (const stop of stops) {
+        stop()
+      }
+
+      try {
+        child.kill()
+      } catch {
+        // already gone
+      }
+
+      process.exit(0)
+    }
+
+    process.on('SIGINT', shutdown)
+    process.on('SIGTERM', shutdown)
+
+    if (stops.length > 0) {
+      // dev: the watchers own the server child's lifecycle (rebuild -> restart), so stay alive until a signal
+      await new Promise<void>(() => {})
+    } else {
+      // production / no-watch: run until the server child exits, then return (matching a plain `node run.mjs`)
+      await new Promise<void>(done => child.once('exit', () => done()))
     }
   } catch (err) {
     logFail(formatError(err))

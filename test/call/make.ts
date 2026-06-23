@@ -69,8 +69,8 @@ writeFileSync(
 const fourth = compileProject(root)
 ok('a broken file is counted as failed', fourth.failed >= 1)
 ok(
-  'the diagnostic is a rich frame (header + caret), not a one-liner',
-  fourth.errors.some(e => e.includes('error[') && e.includes('^')),
+  'the diagnostic is a kink-style frame (header + caret), not a one-liner',
+  fourth.errors.some(e => e.includes('kink') && e.includes('site') && e.includes('^')),
   fourth.errors.join('\n'),
 )
 

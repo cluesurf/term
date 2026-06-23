@@ -1,11 +1,12 @@
-// Shared CLI diagnostic reporting. The compiler already has a rich, chalk-colored renderer (`render` in
-// parser/diagnostic.ts) that prints a rustc-style frame: a colored `error[name code]: message` header, a `--> file:line:col`
-// locator, and the offending source line with a caret underline. The CLI commands historically printed a flat one-liner
-// instead. This module wires the rich renderer into the CLI, reading each diagnostic's source from disk so the frame can
-// show context. Color follows `chalk.level` (auto-disabled when output is not a TTY).
+// Shared CLI diagnostic reporting. The compiler renders a diagnostic in the KINK style (`renderKink` in
+// parser/diagnostic.ts): a `.tree`-structured, chalk-colored frame -- a red `kink <message>` header, then gray
+// `code` / `name` / `host` / `site` / `call` keyword lines with their values in `<...>` (the same shape and tone scheme
+// as `@cluesurf/kink`), and the offending source line with a caret. The CLI commands historically printed a flat
+// one-liner instead. This module wires the kink renderer into the CLI, reading each diagnostic's source from disk so the
+// frame can show context. Color follows `chalk.level` (auto-disabled when output is not a TTY).
 
 import { readFileSync } from 'node:fs'
-import { render } from '@cluesurf/make/code/parser/diagnostic'
+import { renderKink } from '@cluesurf/make/code/parser/diagnostic'
 import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
 
 // the source lines of a diagnostic's file, read from disk. An optional `text` is used when the file is the one already
@@ -22,12 +23,12 @@ function sourceLines(diagnostic: Diagnostic, text?: string): string[] {
   }
 }
 
-// render ONE diagnostic into its rich, colored frame string (no trailing newline).
+// render ONE diagnostic into its kink-style, colored frame string (no trailing newline).
 export function renderDiagnostic(
   diagnostic: Diagnostic,
   text?: string,
 ): string {
-  return render(diagnostic, sourceLines(diagnostic, text))
+  return renderKink(diagnostic, sourceLines(diagnostic, text))
 }
 
 // print a diagnostic's rich frame to stderr (errors) or stdout (warnings), with a trailing blank line so consecutive
