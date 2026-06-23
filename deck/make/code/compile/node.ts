@@ -32,6 +32,10 @@ export type Type =
       params: Type[]
       result: Type
       effects?: string[]
+      // the parameters' surface NAMES (positionally aligned with `params`), when written. Lets a DEPENDENT function type
+      // resolve a later parameter that mentions an earlier one (`(m) -> lt m n -> acc` -- the second parameter refers to
+      // the first, `m`). Absent for an anonymous arrow.
+      paramNames?: (string | undefined)[]
     }
   | { kind: 'variable'; id: number }
 

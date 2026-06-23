@@ -277,7 +277,10 @@ task check-it
 `,
   )
 
-  // a non-linear hold (multiplication) is outside the fragment: a warning, not a false pass and not a hard error
+  // a non-linear hold the prover cannot decide is FLAGGED (a warning), not silently skipped and not a false pass. `n*n
+  // >= 1` is outside the linear fragment, is not non-negative everywhere (it is below 1 near the origin), and has real
+  // roots so the univariate Sturm route declines too -- so it is left as an unchecked hold rather than wrongly proven.
+  // (`n*n >= 0`, a genuine square non-negativity, IS proven now -- see positivity.ts -- so it would not test "flagged".)
   expectWarning(
     'non-linear hold is flagged, not silently skipped',
     `task nonlinear
@@ -287,7 +290,7 @@ task check-it
       call multiply
         loan n
         loan n
-      code 0
+      code 1
 `,
     'unchecked-hold',
   )

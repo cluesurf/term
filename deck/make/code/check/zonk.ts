@@ -29,6 +29,7 @@ export function zonk(type: Type, sub: Substitution): Type {
       params: t.params.map(p => zonk(p, sub)),
       result: zonk(t.result, sub),
       effects: t.effects,
+      paramNames: t.paramNames,
     }
   }
 
@@ -81,6 +82,7 @@ export function zonkGeneric(
       params: r.params.map(t => zonkGeneric(t, names, sub)),
       result: zonkGeneric(r.result, names, sub),
       effects: r.effects,
+      paramNames: r.paramNames,
     }
   }
 
@@ -135,6 +137,7 @@ export function substGenerics(
       params: type.params.map(p => substGenerics(p, map)),
       result: substGenerics(type.result, map),
       effects: type.effects,
+      paramNames: type.paramNames,
     }
   }
 

@@ -96,8 +96,14 @@ export function resolve(
   // exposes `p` in that branch)
   const variantFields = new Map<string, string[]>()
 
+  // datatype NAMES, so a type used as a first-class VALUE (`send back nat`, the decoder `El : U -> Type` of
+  // induction-recursion, or a container's positions) resolves rather than reading as an undefined name.
+  const typeNames = new Set<string>()
+
   for (const statement of program) {
     if (statement.form === 'record-type') {
+      typeNames.add(statement.name)
+
       for (const variant of statement.variants) {
         variantFields.set(
           variant.name,
@@ -142,6 +148,8 @@ export function resolve(
 
         if (binding) {
           node.binding = binding
+        } else if (typeNames.has(node.name)) {
+          // a type used as a first-class value -- no local binding, resolved as the type itself
         } else {
           const suggestion = nearest(node.name, known())
           diagnostics.push(

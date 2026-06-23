@@ -121,30 +121,35 @@ function normalize(ineq: Inequality): Norm {
     return holds ? { kind: 'true' } : { kind: 'false' }
   }
 
+  // OMEGA-style INTEGER TIGHTENING (Presburger completeness). The constraint is `Sigma + k (op) 0`, i.e. `Sigma <= b`
+  // with `b = -k` (non-strict) or `b = -k - 1` (strict, since the variables are integers). Every coefficient is an
+  // integer, so `Sigma` is always a multiple of `g = gcd(coefficients)`; therefore `Sigma <= b` is EXACTLY
+  // `Sigma <= g * floor(b / g)`. Tightening the bound this way and dividing through by `g` turns the constraint into
+  // the strongest integer-equivalent form -- which is what lets the prover decide divisibility (`2x = 3` becomes
+  // `x <= 1 AND x >= 2`, a contradiction, where Fourier-Motzkin over the rationals would accept `x = 1.5`). All
+  // constraints become non-strict.
   let g = 0
 
   for (const c of terms.values()) {
     g = wholeGcd(g, c)
   }
 
-  g = wholeGcd(g, k)
+  const bound = ineq.strict ? -k - 1 : -k
+  const tightened = Math.floor(bound / g)
 
-  if (g > 1) {
-    for (const [v, c] of terms) {
-      terms.set(v, c / g)
-    }
-
-    k = k / g
+  for (const [v, c] of terms) {
+    terms.set(v, c / g)
   }
+
+  k = -tightened
 
   const sorted = [...terms].sort((a, b) => (a[0] < b[0] ? -1 : 1))
   const key =
-    sorted.map(([v, c]) => `${v}:${c}`).join(',') +
-    `|${k}|${ineq.strict ? '<' : '<='}`
+    sorted.map(([v, c]) => `${v}:${c}`).join(',') + `|${k}|<=`
 
   return {
     kind: 'ineq',
-    ineq: { linear: { terms, constant: k }, strict: ineq.strict },
+    ineq: { linear: { terms, constant: k }, strict: false },
     key,
   }
 }
@@ -263,15 +268,19 @@ function unsatisfiable(ineqs: Inequality[]): boolean {
   // eliminate one variable per round, always the cheapest, until none remain (every constraint is pure-constant).
   // Each round removes exactly one variable, so this terminates in (number of variables) rounds.
   for (let vars = variables(system); vars.length > 0; ) {
-    // smart elimination order: pick the variable whose elimination creates the FEWEST new rows (its positive-count
-    // times negative-count), so the constraint set grows as slowly as possible. This is the standard heuristic that
-    // keeps Fourier-Motzkin tractable.
+    // elimination order: prefer a variable whose coefficient is +/-1 in EVERY constraint -- eliminating such a variable
+    // is integer-EXACT (the Fourier-Motzkin combination introduces no scaling, so no divisibility is lost). Eliminating
+    // a variable with a coefficient > 1 takes the rational "real shadow", which drops the integer (divisibility)
+    // information (`2x = y` would lose `2 | y`). So unit variables go first; among ties, and among non-unit variables,
+    // pick the cheapest (its positive-count times negative-count) to keep the row count down. This makes the procedure
+    // integer-complete whenever the system can be reduced to single-variable bounds by exact (unit) eliminations.
     let best = vars[0]!
-    let bestCost = Infinity
+    let bestKey = [Infinity, Infinity] // [non-unit?, cost]
 
     for (const v of vars) {
       let pos = 0
       let neg = 0
+      let unit = true
 
       for (const ineq of system) {
         const c = coeff(ineq, v)
@@ -281,12 +290,19 @@ function unsatisfiable(ineqs: Inequality[]): boolean {
         } else if (c < -1e-12) {
           neg++
         }
+
+        if (Math.abs(c) > 1e-12 && Math.abs(Math.abs(c) - 1) > 1e-9) {
+          unit = false
+        }
       }
 
-      const cost = pos * neg
+      const key = [unit ? 0 : 1, pos * neg]
 
-      if (cost < bestCost) {
-        bestCost = cost
+      if (
+        key[0]! < bestKey[0]! ||
+        (key[0] === bestKey[0] && key[1]! < bestKey[1]!)
+      ) {
+        bestKey = key
         best = v
       }
     }

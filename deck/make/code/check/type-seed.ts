@@ -73,6 +73,12 @@ export function makeSeedType(
         return { kind: 'named', name: type.name }
       }
 
+      // `type` is the UNIVERSE (the type of types): kept named, so a function may take or return one (`El : U -> type`,
+      // the decoder of a universe-as-data / induction-recursion) rather than inferring it as a fresh variable.
+      if (type.name === 'type') {
+        return { kind: 'named', name: 'type' }
+      }
+
       return sub.fresh() // an unrecognized name: infer it from usage rather than forcing a mismatch
     }
 
@@ -94,6 +100,7 @@ export function makeSeedType(
         params: type.params.map(p => seed(p, generics)),
         result: seed(type.result, generics),
         effects: type.effects,
+        paramNames: type.paramNames,
       }
     }
 

@@ -48,6 +48,7 @@ export function instantiateScheme(
         params: r.params.map(go),
         result: go(r.result),
         effects: r.effects,
+        paramNames: r.paramNames,
       }
     }
 

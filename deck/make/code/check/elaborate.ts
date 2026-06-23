@@ -116,6 +116,12 @@ function headConstantName(term: Term): string | undefined {
 // param index), skip the polymorphic encoding for that type and fall back to the opaque postulate, so a de Bruijn slip
 // degrades gracefully (the law just stays unproven) rather than crashing elaboration or unsoundly mis-typing.
 function hasFreeVar(term: Term, depth = 0): boolean {
+  // a null term reaches here when a field / constructor type could not be lowered (e.g. an unresolved value index in a
+  // non-indexed datatype). Treat it as "not closed" so the datatype degrades to an opaque postulate instead of crashing.
+  if (!term) {
+    return true
+  }
+
   switch (term.tag) {
     case 'var':
       return term.index >= depth
@@ -317,6 +323,12 @@ function kernelTypeAt(
       return constant('Unit')
 
     case 'named': {
+      // `type` is the UNIVERSE (Type0): the type of types. A function may take or return one (`El : U -> type`, the
+      // decoder of a universe-as-data / induction-recursion), and a value of type `type` is itself a type.
+      if (type.name === 'type') {
+        return TYPE0
+      }
+
       const position = generics.get(type.name)
 
       if (position !== undefined) {
@@ -383,16 +395,39 @@ function kernelTypeAt(
     }
 
     case 'function': {
-      // a function type lowers to a (non-dependent) arrow chain `p_0 -> .. -> p_{n-1} -> result`. This lets a
-      // constructor carry a FUNCTION-typed field (`sup : (B -> W) -> W`), the shape of a general / infinitely-branching
-      // W-type. Each parameter sits one binder deeper than the previous; the result is below all of them.
+      // a function type lowers to an arrow chain `p_0 -> .. -> p_{n-1} -> result`. This lets a constructor carry a
+      // FUNCTION-typed field (`sup : (B -> W) -> W`), the shape of a general / infinitely-branching W-type. Each
+      // parameter sits one binder deeper than the previous; the result is below all of them. When the function is
+      // DEPENDENT (a named parameter is mentioned by a LATER parameter or the result -- `(m) -> lt m n -> acc`), the
+      // earlier parameters are put in the value scope at their binder levels (`p` at `depth + p`), so those references
+      // resolve. The chain binds parameters outermost-first, so the de Bruijn lines up.
       const n = type.params.length
+      const names = type.paramNames ?? []
+
+      const scopeWith = (count: number): Map<string, number> => {
+        let scope = valueScope
+
+        for (let p = 0; p < count; p++) {
+          const name = names[p]
+
+          if (name) {
+            if (scope === valueScope) {
+              scope = new Map(valueScope)
+            }
+
+            scope.set(name, depth + p)
+          }
+        }
+
+        return scope
+      }
+
       const result = kernelTypeAt(
         type.result,
         depth + n,
         generics,
         known,
-        valueScope,
+        scopeWith(n),
         resolveCtor,
       )
 
@@ -408,7 +443,7 @@ function kernelTypeAt(
           depth + i,
           generics,
           known,
-          valueScope,
+          scopeWith(i),
           resolveCtor,
         )
 
@@ -561,6 +596,17 @@ export function elaborateReport(
 
   for (const statement of program) {
     if (statement.form === 'record-type') {
+      namedTypes.add(statement.name)
+    }
+
+    // a TYPE-RETURNING function (`el : univ -> type`, an induction-recursion decoder) is also a type FORMER: `el a` may
+    // appear in a type position (TYPE-LEVEL APPLICATION), where it applies the function to `a` and reduces to a type.
+    // Recognising it here lets a datatype constructor reference the decoder (`pi' : (a) -> (el a -> univ) -> univ`).
+    if (
+      statement.form === 'function' &&
+      statement.result?.kind === 'named' &&
+      statement.result.name === 'type'
+    ) {
       namedTypes.add(statement.name)
     }
   }
@@ -751,17 +797,27 @@ export function elaborateReport(
             variant.fields.slice(0, j).map((f, i) => [f.name, m + i]),
           )
 
-          ctorType = arrow(
-            kernelTypeAt(
-              variant.fields[j]!.type,
-              m + j,
-              dataGenerics,
-              namedTypes,
-              precedingFields,
-              resolveIndexCtor,
-            )!,
-            ctorType,
+          const fieldType = kernelTypeAt(
+            variant.fields[j]!.type,
+            m + j,
+            dataGenerics,
+            namedTypes,
+            precedingFields,
+            resolveIndexCtor,
           )
+
+          if (!fieldType) {
+            // a field type that cannot be lowered (e.g. an unresolved value index) leaves the datatype an opaque
+            // postulate rather than crashing the encoding on a null term.
+            sound = false
+            break
+          }
+
+          ctorType = arrow(fieldType, ctorType)
+        }
+
+        if (!sound) {
+          continue
         }
 
         ctorType = withParams(ctorType)
@@ -1072,12 +1128,18 @@ export function elaborateReport(
         let branch: Term = variable(i + k) // A inside branch i
 
         for (let j = k - 1; j >= 0; j--) {
+          // field j of branch i is at depth m + i + 1 + j, with the preceding fields (each at m + i + 1 + p) in scope,
+          // so a field type may reference an earlier sibling field. Closed field types are unaffected by the scope.
           branch = arrow(
             kernelTypeAt(
               fields[j]!.type,
               m + i + 1 + j,
               dataGenerics,
               namedTypes,
+              new Map(
+                fields.slice(0, j).map((g, p) => [g.name, m + i + 1 + p]),
+              ),
+              resolveIndexCtor,
             )!,
             branch,
           )
@@ -1110,9 +1172,21 @@ export function elaborateReport(
         variantToEnum.set(variant.name, owners)
         variantFieldInfo.set(
           ctorKey(statement.name, variant.name),
-          variant.fields.map(f => ({
+          variant.fields.map((f, j) => ({
             name: f.name,
-            type: kernelTypeAt(f.type, m, dataGenerics, namedTypes)!,
+            // field j is typed at depth m + j with the PRECEDING fields in scope, so a field type may reference an
+            // earlier sibling field (`step : (m) -> lt m n -> acc` references the field `n`). For a closed field type
+            // (the common case) the depth and scope are irrelevant, so existing non-indexed datatypes are unchanged.
+            type: kernelTypeAt(
+              f.type,
+              m + j,
+              dataGenerics,
+              namedTypes,
+              new Map(
+                variant.fields.slice(0, j).map((g, i) => [g.name, m + i]),
+              ),
+              resolveIndexCtor,
+            )!,
           })),
         )
       }
@@ -1169,6 +1243,10 @@ export function elaborateReport(
               depthB + j,
               dataGenerics,
               namedTypes,
+              // preceding fields in scope, so a field type may reference an earlier sibling -- including via a
+              // type-level application of a decoder (`val : el base`, the field of an induction-recursion constructor).
+              new Map(fields.slice(0, j).map((g, i) => [g.name, depthB + i])),
+              resolveIndexCtor,
             )
 
             if (!fieldType) {
@@ -1504,6 +1582,11 @@ export function elaborateReport(
         if (functionType.has(node.name)) {
           return constant(node.name)
         } // a nullary function used as a value
+
+        if (namedTypes.has(node.name)) {
+          return constant(node.name)
+        } // a TYPE used as a first-class value (its self-encoding constant) -- a function may RETURN a type (`El : U ->
+        // Type`, the decoder of induction-recursion) or carry one (a container's positions `P : S -> Type`).
 
         return null
       }
@@ -2403,10 +2486,26 @@ export function elaborateReport(
           )
         }
 
+        const resultTerm = quote(context.level, resultValue)
+
+        // a TYPE-returning match (the result IS the universe `type`, which lives in Type1): use the LARGE eliminator
+        // `matchType`, whose motive lands in Type1 so each branch may itself be a type. This is the decoder of a
+        // universe-as-data (`El : U -> type`, where `El natcode = nat`), the computational core of induction-recursion.
+        // The motive is constant (`\_. type`); the branch order is (motive, branches, subject).
+        if (resultTerm.tag === 'type') {
+          return apply(
+            constant(`matchType__${enumName}`),
+            ...subjectTypeArgs,
+            { tag: 'lam', body: resultTerm },
+            ...branches,
+            subject,
+          )
+        }
+
         return apply(
           constant(`match__${enumName}`),
           ...subjectTypeArgs,
-          quote(context.level, resultValue),
+          resultTerm,
           subject,
           ...branches,
         )
@@ -4771,7 +4870,9 @@ export function elaborateReport(
 
     // non-negativity by a sum-of-squares certificate: `E >= F` (or `F <= E`) holds for ALL values when E - F is a sum
     // of square monomials. This proves the non-linear inequality "every square is non-negative" and its kin (for any
-    // bound, not just zero) without induction.
+    // bound, not just zero) without induction. (The univariate real-arithmetic / Sturm route, and the inequality
+    // discharge in general, live in the linear prover `holds.ts`, which owns every comparison goal regardless of an
+    // attached `calm hold`.)
     if (!hasProof) {
       if (
         goal.op === '>=' &&

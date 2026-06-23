@@ -19,6 +19,18 @@ import {
   linear,
   proves,
 } from '@cluesurf/make/code/check/refine'
+import {
+  positiveEverywhere as sturmPositiveEverywhere,
+  nonNegativeEverywhere as sturmNonNegativeEverywhere,
+} from '@cluesurf/make/code/check/sturm'
+import {
+  bivariateNonNegative,
+  type Bivariate,
+} from '@cluesurf/make/code/check/cad'
+import {
+  nonNegativeEverywhereNvar,
+  nPoly,
+} from '@cluesurf/make/code/check/cad-nvar'
 
 let modCounter = 0
 
@@ -795,12 +807,314 @@ function sosProves(expr: Expression): boolean {
   return multivariateSOS(difference)
 }
 
+// ===== univariate real positivity via STURM (the one-dimensional CAD base case) =====
+
+// the single-variable coefficient list of a polynomial (`coeff[power]`), or null if it mentions more than one variable.
+// A monomial key is the variables joined by spaces, so its power is the number of parts and it is univariate when every
+// part is the same variable.
+function univariateCoefficients(poly: Poly): number[] | null {
+  let only: string | null = null
+  const byPower = new Map<number, number>()
+
+  for (const [key, coefficient] of poly) {
+    if (coefficient === 0) {
+      continue
+    }
+
+    const vars = monomialVars(key)
+
+    for (const v of vars) {
+      if (only === null) {
+        only = v
+      } else if (only !== v) {
+        return null
+      }
+    }
+
+    const power = vars.length
+    byPower.set(power, (byPower.get(power) ?? 0) + coefficient)
+  }
+
+  let degree = 0
+
+  for (const power of byPower.keys()) {
+    degree = Math.max(degree, power)
+  }
+
+  const coefficients: number[] = new Array(degree + 1).fill(0)
+
+  for (const [power, coefficient] of byPower) {
+    coefficients[power] = coefficient
+  }
+
+  return coefficients
+}
+
+// a goal `L > R` / `R < L` (strict) or `L >= R` / `R <= L` (non-strict) whose UNIVARIATE difference `L - R` is strictly
+// positive for all reals, decided exactly by Sturm's theorem (zero real roots and a positive sample). Strict positivity
+// implies the non-strict goal too, so one test covers both. This reaches positivity the sum-of-squares and quadratic
+// certificates miss -- e.g. `x^4 - 3x^2 + 3 > 0` (no real root, yet not a sum of square monomials) -- and is sound: a
+// polynomial with a genuine real root has zero `realRootCount` only when it has none, so it is never falsely certified.
+function sturmProves(expr: Expression): boolean {
+  if (expr.form !== 'binary') {
+    return false
+  }
+
+  let upper: Expression
+  let lower: Expression
+  let strict: boolean
+
+  switch (expr.op) {
+    case '>':
+      upper = expr.left
+      lower = expr.right
+      strict = true
+      break
+    case '>=':
+      upper = expr.left
+      lower = expr.right
+      strict = false
+      break
+    case '<':
+      upper = expr.right
+      lower = expr.left
+      strict = true
+      break
+    case '<=':
+      upper = expr.right
+      lower = expr.left
+      strict = false
+      break
+    default:
+      return false
+  }
+
+  const high = expandPolynomial(upper)
+  const low = expandPolynomial(lower)
+
+  if (!high || !low) {
+    return false
+  }
+
+  const difference: Poly = new Map(high)
+
+  for (const [key, value] of low) {
+    difference.set(key, (difference.get(key) ?? 0) - value)
+  }
+
+  const coefficients = univariateCoefficients(difference)
+
+  if (!coefficients) {
+    return false
+  }
+
+  // a STRICT goal (`>` / `<`) needs the difference strictly positive for all reals; a NON-STRICT goal (`>=` / `<=`)
+  // needs it non-negative everywhere, decided completely by the cell decomposition (so it also accepts the touching-zero
+  // cases like `(x-1)^2 (x-2)^2 >= 0` that strict positivity cannot, while still rejecting any polynomial that dips
+  // below zero).
+  return strict
+    ? sturmPositiveEverywhere(coefficients)
+    : sturmNonNegativeEverywhere(coefficients)
+}
+
+// the bivariate coefficient table of a polynomial (`table[i][j]` = coefficient of `var0^i var1^j`), or null if it does
+// not mention exactly two variables. A monomial key is the variables joined by spaces, so the power of each variable is
+// the count of its occurrences.
+function bivariateCoefficients(poly: Poly): Bivariate | null {
+  const vars: string[] = []
+
+  for (const [key, coefficient] of poly) {
+    if (coefficient === 0) {
+      continue
+    }
+
+    for (const v of monomialVars(key)) {
+      if (!vars.includes(v)) {
+        vars.push(v)
+      }
+    }
+  }
+
+  if (vars.length !== 2) {
+    return null
+  }
+
+  vars.sort()
+  const [v0, v1] = vars as [string, string]
+  const table: bigint[][] = []
+
+  for (const [key, coefficient] of poly) {
+    if (coefficient === 0) {
+      continue
+    }
+
+    let i = 0
+    let j = 0
+
+    for (const v of monomialVars(key)) {
+      if (v === v0) {
+        i++
+      } else {
+        j++
+      }
+    }
+
+    while (table.length <= i) {
+      table.push([])
+    }
+
+    const row = table[i]!
+
+    while (row.length <= j) {
+      row.push(0n)
+    }
+
+    row[j] = (row[j] ?? 0n) + BigInt(Math.round(coefficient))
+  }
+
+  return table
+}
+
+// a NON-STRICT goal `L >= R` / `R <= L` whose two-variable difference `L - R` is non-negative for ALL real values,
+// decided exactly by the bivariate cylindrical algebraic decomposition (`cad.ts`). This proves nonlinear positivity with
+// NO sum-of-squares certificate -- including the Motzkin polynomial `x^4 y^2 + x^2 y^4 - 3 x^2 y^2 + 1 >= 0`, which is
+// non-negative yet provably not a sum of squares, so the SOS / quadratic-form routes cannot reach it. Strict goals are
+// not handled here (the decision accepts the touching-zero cases, which are not strictly positive).
+function bivariateProves(expr: Expression): boolean {
+  if (expr.form !== 'binary') {
+    return false
+  }
+
+  let upper: Expression
+  let lower: Expression
+
+  switch (expr.op) {
+    case '>=':
+      upper = expr.left
+      lower = expr.right
+      break
+    case '<=':
+      upper = expr.right
+      lower = expr.left
+      break
+    default:
+      return false
+  }
+
+  const high = expandPolynomial(upper)
+  const low = expandPolynomial(lower)
+
+  if (!high || !low) {
+    return false
+  }
+
+  const difference: Poly = new Map(high)
+
+  for (const [key, value] of low) {
+    difference.set(key, (difference.get(key) ?? 0) - value)
+  }
+
+  const table = bivariateCoefficients(difference)
+
+  if (!table) {
+    return false
+  }
+
+  return bivariateNonNegative(table)
+}
+
+// a NON-STRICT goal `L >= R` / `R <= L` whose THREE-OR-MORE-variable difference is non-negative for all real values,
+// decided by the recursive n-variable cylindrical algebraic decomposition (`cad-nvar.ts`). This reaches multivariate
+// positivity with no sum-of-squares certificate -- including the trivariate Choi-Lam form. Gated to a modest variable
+// count and total degree, since the projection cost grows with both; larger goals are left to the other routes.
+function nvarProves(expr: Expression): boolean {
+  if (expr.form !== 'binary') {
+    return false
+  }
+
+  let upper: Expression
+  let lower: Expression
+
+  switch (expr.op) {
+    case '>=':
+      upper = expr.left
+      lower = expr.right
+      break
+    case '<=':
+      upper = expr.right
+      lower = expr.left
+      break
+    default:
+      return false
+  }
+
+  const high = expandPolynomial(upper)
+  const low = expandPolynomial(lower)
+
+  if (!high || !low) {
+    return false
+  }
+
+  const difference: Poly = new Map(high)
+
+  for (const [key, value] of low) {
+    difference.set(key, (difference.get(key) ?? 0) - value)
+  }
+
+  // collect the distinct variables and the total degree
+  const vars: string[] = []
+  let totalDegree = 0
+
+  for (const [key, coefficient] of difference) {
+    if (coefficient === 0) {
+      continue
+    }
+
+    const monomial = monomialVars(key)
+    totalDegree = Math.max(totalDegree, monomial.length)
+
+    for (const v of monomial) {
+      if (!vars.includes(v)) {
+        vars.push(v)
+      }
+    }
+  }
+
+  // bound the work: 3 to 4 variables, total degree up to 6 (covers Choi-Lam); anything larger is left unproven here
+  if (vars.length < 3 || vars.length > 4 || totalDegree > 6) {
+    return false
+  }
+
+  vars.sort()
+  const index = new Map(vars.map((v, i) => [v, i]))
+  const terms: [number[], bigint][] = []
+
+  for (const [key, coefficient] of difference) {
+    if (coefficient === 0) {
+      continue
+    }
+
+    const exps = new Array(vars.length).fill(0)
+
+    for (const v of monomialVars(key)) {
+      exps[index.get(v)!]++
+    }
+
+    terms.push([exps, BigInt(Math.round(coefficient))])
+  }
+
+  return nonNegativeEverywhereNvar(nPoly(terms), vars.length)
+}
+
 function nonlinearProves(expr: Expression): boolean {
   return (
     positivityProves(expr) ||
     quadraticProves(expr) ||
     perfectSquareProves(expr) ||
-    sosProves(expr)
+    sosProves(expr) ||
+    sturmProves(expr) ||
+    bivariateProves(expr) ||
+    nvarProves(expr)
   )
 }
 

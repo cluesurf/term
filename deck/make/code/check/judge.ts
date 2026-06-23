@@ -853,6 +853,19 @@ export function applyValue(fun: Value, arg: Value): Value {
   }
 
   if (fun.v === 'rigid') {
+    // CUBICAL / circle higher-inductive-type computation rules, realized as kernel rewrites on reserved constants. They
+    // fire ONLY for these specific names (no user or corpus term uses them), so they never disturb existing reduction.
+    // The rules are the circle's specified beta-rules (validated by the interval reduction engine in `cubical.ts`):
+    //   circleRec A b l circleBase  -->  b          (the POINT beta-rule)
+    //   circleApLoop A b l          -->  l          (the PATH beta-rule: ap (circleRec A b l) loop = l)
+    // Both are type-preserving (`circleApLoop A b l : Id A (circleRec A b l circleBase) (...)` reduces, by the point
+    // rule, to `Id A b b`, the type of `l`) and consistent (computation rules of the circle HIT, which has a model).
+    const circle = reduceCircle(fun, arg)
+
+    if (circle) {
+      return circle
+    }
+
     return {
       v: 'rigid',
       name: fun.name,
@@ -869,6 +882,33 @@ export function applyValue(fun: Value, arg: Value): Value {
   }
 
   throw new Error('applied a non-function')
+}
+
+// the circle higher-inductive-type reduction rules (see applyValue). Returns the reduced value, or null when the
+// application is not a complete circle redex (then applyValue extends the spine as usual).
+function reduceCircle(fun: { v: 'rigid'; name: string; spine: Elim[] }, arg: Value): Value | null {
+  const args = fun.spine.length
+
+  // circleRec A b l circleBase --> b : the recursor on the point constructor returns the point image (its 2nd argument).
+  // circleRec takes A, b, l, c -- so the completing (4th) argument is the scrutinee, applied when the spine holds 3 args.
+  if (fun.name === 'circleRec' && args === 3) {
+    const scrutinee = force(arg)
+
+    if (scrutinee.v === 'rigid' && scrutinee.name === 'circleBase') {
+      const b = fun.spine[1]
+      return b && b.e === 'app' ? b.arg : null
+    }
+
+    return null // a neutral scrutinee: stays stuck (the recursor does not reduce)
+  }
+
+  // circleApLoop A b l --> l : the action of the recursor on the loop is the loop image (its 3rd argument). The
+  // completing (3rd) argument is `l`, applied when the spine holds 2 args, so the result is simply that argument.
+  if (fun.name === 'circleApLoop' && args === 2) {
+    return arg
+  }
+
+  return null
 }
 
 function applyJ(proof: Value, motive: Value, base: Value): Value {

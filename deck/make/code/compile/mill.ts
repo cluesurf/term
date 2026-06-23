@@ -342,27 +342,37 @@ function parseLikeType(likeGroup: GroupNode): Type {
   const first = children[0]
 
   if (first?.kind === 'group' && headName(first) === 'task') {
-    const params = children
-      .filter(
-        (c): c is GroupNode =>
-          c.kind === 'group' && headName(c) === 'take',
+    const takes = children.filter(
+      (c): c is GroupNode =>
+        c.kind === 'group' && headName(c) === 'take',
+    )
+
+    const params = takes.map(take => {
+      const inner = rest(take).find(
+        (n): n is GroupNode =>
+          n.kind === 'group' && headName(n) === 'like',
       )
-      .map(take => {
-        const inner = rest(take).find(
-          (n): n is GroupNode =>
-            n.kind === 'group' && headName(n) === 'like',
-        )
 
-        const paramType = inner ? parseLikeType(inner) : UNKNOWN
+      const paramType = inner ? parseLikeType(inner) : UNKNOWN
 
-        // value-index `head <...>` siblings of this param's `like` group
-        const heads = rest(take).filter(
-          (n): n is GroupNode =>
-            n.kind === 'group' && n !== inner && headName(n) === 'head',
-        )
+      // value-index `head <...>` siblings of this param's `like` group
+      const heads = rest(take).filter(
+        (n): n is GroupNode =>
+          n.kind === 'group' && n !== inner && headName(n) === 'head',
+      )
 
-        return attachHeadArgs(paramType, heads)
-      })
+      return attachHeadArgs(paramType, heads)
+    })
+
+    // the parameters' surface names, so a DEPENDENT function type (`(m) -> lt m n -> acc`) can resolve a later
+    // parameter that references an earlier one.
+    const paramNames = takes.map(take => {
+      const nameNode = rest(take)[0]
+
+      return nameNode?.kind === 'group'
+        ? headName(nameNode)
+        : undefined
+    })
 
     const resultLike = children.find(
       (c): c is GroupNode =>
@@ -386,6 +396,10 @@ function parseLikeType(likeGroup: GroupNode): Type {
     }
 
     const type: Type = { kind: 'function', params, result }
+
+    if (paramNames.some(n => n !== undefined)) {
+      type.paramNames = paramNames
+    }
 
     if (effects.length > 0) {
       type.effects = effects

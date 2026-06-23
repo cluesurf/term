@@ -96,13 +96,14 @@ rule depth-wrong
 `),
 )
 
-// 3. the GENERIC accessibility recursor `wf-rec` -- the completion of well-founded recursion -- type-checks. It recurses
-// on `step y pf` (the sub-accessibility proof drawn from the matched `acc`), with the recursive call carried in a
-// continuation closure `\y pf. wf-rec f y (step y pf)`. Closures, dependent fields, and the field-descent credit make
-// this expressible and total.
-ok(
-  'generic accessibility recursor wf-rec type-checks',
-  compiles(`form nat
+// the GENERIC accessibility recursor `wf-rec` -- the completion of well-founded recursion -- and a concrete
+// accessibility witness `acc-zero`, so it can be EXECUTED end to end (not only type-checked). `acc` is the accessibility
+// predicate (its `step` field is a dependent function `(m) -> lt m n -> acc`), `acc-zero` is the witness for 0 (its step
+// ex-falsos on `lt m zero`), and `wf-rec f a` recurses on `step y pf` -- the sub-accessibility proof from the matched
+// `acc` -- carried in a continuation closure `\y pf. wf-rec f (step y pf)` passed to the step function `f`. This brings
+// together every piece built for it: dependent function types, the dependent ex-falso field, inline closures capturing
+// a dependent type, the higher-order call, and the field-descent termination credit.
+const ACC_REC = `form nat
   case zero
   case succ
     link prior, like nat
@@ -134,18 +135,52 @@ form lt
           read y
 
 form acc
-  head n, like nat
   case mkacc
-    link step, like task
-      take m, like nat
-      take pf, like lt
-        head
-          read m
-        head
-          read n
-      like acc
-        head
-          read m
+    link n, like nat
+    link step
+      like task
+        take m, like nat
+        take pf
+          like lt
+            head
+              read m
+            head
+              read n
+        like acc
+
+task acc-zero
+  like acc
+  send back
+    make mkacc
+      bind n
+        make zero
+      bind step
+        task s
+          take m, like nat
+          take pf
+            like lt
+              head
+                read m
+              head
+                make zero
+          like acc
+          fork case, read pf
+
+task const-zero
+  take x, like nat
+  take rec
+    like task
+      take y, like nat
+      take pf
+        like lt
+          head
+            read y
+          head
+            read x
+      like nat
+  like nat
+  send back
+    make zero
 
 task wf-rec
   take f
@@ -162,18 +197,15 @@ task wf-rec
                 read x
           like nat
       like nat
-  take x, like nat
-  take a
-    like acc
-      head
-        read x
+  take a, like acc
   like nat
   fork case, read a
     case mkacc
+      link n
       link step
       send back
         call f
-          read x
+          read n
           task cont
             take y, like nat
             take pf
@@ -181,15 +213,45 @@ task wf-rec
                 head
                   read y
                 head
-                  read x
+                  read n
             like nat
             send back
               call wf-rec
                 read f
-                read y
                 call step
                   read y
                   read pf
+`
+
+// 3. AUTOMATIC ACC: the generic recursor EXECUTES on a real accessibility witness -- wf-rec const-zero (acc-zero) == 0.
+ok(
+  'generic accessibility recursor wf-rec executes end-to-end: wf-rec const-zero (acc-zero) == 0',
+  compiles(`${ACC_REC}
+rule wfrec-ok
+  show hold
+    call is-equal
+      call wf-rec
+        read const-zero
+        call acc-zero
+      make zero
+  calm hold
+`),
+)
+
+// 4. SOUNDNESS CONTROL: wf-rec const-zero (acc-zero) is 0, not 1. The recursor's execution must compute the RIGHT value.
+ok(
+  'wrong wf-rec result is rejected (wf-rec const-zero (acc-zero) != 1)',
+  !compiles(`${ACC_REC}
+rule wfrec-wrong
+  show hold
+    call is-equal
+      call wf-rec
+        read const-zero
+        call acc-zero
+      make succ
+        bind prior
+          make zero
+  calm hold
 `),
 )
 
