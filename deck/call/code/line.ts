@@ -258,7 +258,9 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.option('ride', {
         type: 'boolean',
-        description: 'Watch and recompile',
+        alias: 'watch',
+        description:
+          'Watch files and recompile incrementally on every change',
       }),
     async argv => {
       await callMake({

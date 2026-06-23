@@ -8,6 +8,7 @@ import { compile } from '@cluesurf/make/code/compile/compile'
 import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
 import { editorResolver } from '@cluesurf/make/code/resolve'
 import { logGood, logFail, fade } from '@cluesurf/make/code/tint'
+import { printDiagnostic } from '@cluesurf/call/code/report'
 
 // the JSON shape an agent consumes: stable, workspace-relative, no machine paths or timestamps
 function toJson(
@@ -82,19 +83,8 @@ export async function callScan(input: {
   }
 
   for (const d of diagnostics) {
-    const where = `${path.relative(input.root, d.file)}:${
-      d.span.start.line + 1
-    }:${d.span.start.column + 1}`
-
-    const line = `${where}  ${d.name}: ${d.message}${
-      d.hint ? ` (${d.hint})` : ''
-    }`
-
-    if (d.severity === 'error') {
-      logFail(line)
-    } else {
-      console.log(fade(`  ${line}`))
-    }
+    // a rich, colored source frame (header + locator + caret), the same renderer the editor uses
+    printDiagnostic(d)
   }
 
   if (!result.ok) {
