@@ -1,0 +1,11 @@
+
+load @cluesurf/mill/code/base/find/mine
+  find db-find
+
+mine db-mesh
+  mine term, term mesh
+    mine term
+      slot mode
+    mine list
+      mine form, like db-find
+        slot find

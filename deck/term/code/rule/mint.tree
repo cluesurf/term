@@ -1,7 +1,0 @@
-
-load @cluesurf/term/code/rule/hold/mint
-  find hold
-
-mint rule
-  case hold, mint hold
-    slot hold

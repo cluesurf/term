@@ -1,0 +1,16 @@
+
+load @cluesurf/mill/code/book/code
+  find book-code
+
+mint code, like book-code
+  case lang
+    slot lang
+  case text
+    slot text
+  case tree
+    slot tree
+  hook make
+    make book-code
+      bind lang, read lang
+      bind text, read text
+      bind tree, read tree

@@ -1,0 +1,10 @@
+
+load @cluesurf/mill/code/book/walk
+  find book-walk
+
+mint walk, like book-walk
+  case link
+    slot link
+  hook make
+    make book-walk
+      bind link, read link

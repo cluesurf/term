@@ -1,0 +1,106 @@
+
+load @cluesurf/mill/code/code/bind/mine
+  find bind
+
+load @cluesurf/mill/code/code/seed/mine
+  find seed
+
+load @cluesurf/mill/code/code/make/mine
+  find make
+
+load @cluesurf/mill/code/base/hold/mine
+  find db-hold
+
+load @cluesurf/mill/code/base/send/mine
+  find db-send
+
+load @cluesurf/mill/code/base/bond/mine
+  find db-bond
+
+load @cluesurf/mill/code/base/find/mine
+  find db-find
+
+load @cluesurf/mill/code/code/tag/mine
+  find tag
+
+mine db-save
+  mine any
+    mine form, like db-save-row
+      slot row
+    mine form, like db-save-role
+      slot role
+
+mine db-save-row
+  mine term, term save
+    mine term, term row
+    mine maybe
+      mine term, term base
+        mine term
+          slot base
+    mine list
+      mine form, like make
+        slot make
+    mine list
+      mine form, like bind
+        slot bind
+    mine list
+      mine form, like db-hold
+        slot hold
+    mine list
+      mine form, like db-send
+        slot send
+    mine list
+      mine form, like db-bond
+        slot bond
+    mine maybe
+      mine form, like db-save-conflict
+        slot conflict
+    mine maybe
+      mine form, like db-find
+        slot find
+
+mine db-save-conflict
+  mine term, term hook
+    mine term, term conflict
+    mine maybe
+      mine term, term name
+        mine term
+          slot name
+    mine list
+      mine any
+        mine form, like bind
+          slot bind
+        mine form, like tag
+          slot tag
+
+mine db-save-role
+  mine term, term save
+    mine term, term role
+    mine maybe
+      mine term, term name
+        mine term
+          slot name
+    mine list
+      mine form, like db-save-role-task
+        slot task
+    mine maybe
+      mine term, term base
+        mine term
+          slot base
+        mine list
+          mine form, like db-save-role-link
+            slot link
+    mine maybe
+      mine term, term case
+        mine term
+          slot scope
+
+mine db-save-role-task
+  mine term, term task
+    mine term
+      slot name
+
+mine db-save-role-link
+  mine term, term link
+    mine term
+      slot name

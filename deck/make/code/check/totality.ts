@@ -136,6 +136,25 @@ function strictlyDecreases(
     )
   }
 
+  // a W-TYPE / function-field recursion: applying a FIELD obtained by matching the parameter (`kids` from a `node kids`,
+  // `step` from an `mkacc step`) yields a structural CHILD of the parameter. For an inductive type whose constructor
+  // carries a function-typed field, this child is strictly smaller -- the standard elimination principle for W-types and
+  // for accessibility (`Acc`), so recursing on it is well-founded. Sound because the type is inductive (no infinite
+  // value is finitely constructible, and a non-terminating producer is itself left opaque).
+  if (arg.form === 'call' && arg.callee.form === 'variable') {
+    const seen = new Set<string>()
+    let current: string | undefined = arg.callee.name
+
+    while (current !== undefined && !seen.has(current)) {
+      seen.add(current)
+      current = memberOf?.get(current)
+
+      if (current === paramName) {
+        return true
+      }
+    }
+  }
+
   if (
     arg.form === 'binary' &&
     arg.left.form === 'variable' &&
@@ -581,6 +600,12 @@ function walkCalls(
           visitExpression(node.otherwise)
         }
 
+        break
+      case 'closure':
+        // a self-call inside an inline function value (the continuation of a well-founded recursor, `\y pf. wf-rec f y
+        // (step y pf)`) is still a recursion. Walk the closure body with the SAME `memberOf`, so a field destructured in
+        // the enclosing match (`step` from `mkacc step`) is still seen as the parameter's child at the recursive call.
+        walkCalls(node.body, visit, variantFields, memberOf)
         break
       default:
         break

@@ -1,0 +1,55 @@
+
+# Grammar for the look (CSS-utility) DSL. A look sheet is a flat list of rules: `face <name>` utility classes (with
+# `have` declarations and `case` variant blocks) and `tone` theme-token blocks. The value of each `have` is a plain
+# seed expression (`text <...>`), so any CSS value passes through. Shared sub-grammar (seed) comes from the code
+# building-block mill by name. Mirrors the zone DSL grammar (../zone/mine).
+
+load @cluesurf/mill/code/code/seed/mine
+  find seed
+
+mine look
+  mine list
+    mine form, like look-rule
+      slot rule
+
+mine look-rule
+  mine any
+    mine form, like face-rule
+      slot face
+    mine form, like tone-rule
+      slot tone
+
+mine face-rule
+  mine term, term face
+    mine term
+      slot name
+    mine list
+      mine form, like look-have
+        slot have
+    mine list
+      mine form, like look-case
+        slot case
+
+mine look-have
+  mine term, term have
+    mine term
+      slot name
+    mine form, like seed
+      slot bond
+
+mine look-case
+  mine term, term case
+    mine term
+      slot name
+    mine list
+      mine form, like look-have
+        slot have
+
+mine tone-rule
+  mine term, term tone
+    mine maybe
+      mine term
+        slot name
+    mine list
+      mine form, like look-have
+        slot have

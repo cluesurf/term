@@ -1,0 +1,89 @@
+
+load @cluesurf/base/code/deck
+  find deck-deck
+
+load @cluesurf/mill/code/deck/deck/link/mint
+  find deck-link
+  find deck-term
+  find deck-deck
+
+load @cluesurf/mill/code/deck/deck/mind/mint
+  find deck-mind
+
+load @cluesurf/mill/code/deck/deck/host/mint
+  find deck-host
+
+load @cluesurf/mill/code/deck/deck/case/mint
+  find deck-case
+
+load @cluesurf/mill/code/deck/role/mint
+  find role
+
+load @cluesurf/mill/code/deck/load/mint
+  find load
+
+mint deck
+  case deck, mint deck-def
+    slot deck
+  case role, mint role
+    slot role
+  case load, mint load
+    slot load
+
+mint deck-def, like deck-deck
+  case name
+    slot name
+  case mark
+    slot mark
+  case head
+    slot head
+  case lock
+    slot lock
+  case sort
+    slot sort
+  case site
+    slot site
+  case view
+    slot view
+  case hide
+    slot hide
+  case task
+    slot task
+  case book
+    slot book
+  case role
+    slot role
+  case call
+    slot call
+  case term, mint deck-term
+    slot term
+  case mind, mint deck-mind
+    slot mind
+  case link, mint deck-link
+    slot link
+  case host, mint deck-host
+    slot host
+  case deck, mint deck-deck
+    slot deck
+  case case, mint deck-case
+    slot case
+  hook make
+    make deck-deck
+      bind name, read name
+      bind mark, read mark
+      bind head, read head
+      bind lock, read lock
+      bind sort, read sort
+      bind site, read site
+      bind view, read view
+      bind hide, read hide
+      bind task, read task
+      bind book, read book
+      bind role, read role
+      bind call, read call
+      bind term, read term
+      bind mind, read mind
+      bind link, read link
+      bind host, read host
+      bind deck, read deck
+      bind case, read case

@@ -1,0 +1,10 @@
+
+load @cluesurf/mill/code/book/date
+  find book-date
+
+mint date, like book-date
+  case value
+    slot value
+  hook make
+    make book-date
+      bind value, read value

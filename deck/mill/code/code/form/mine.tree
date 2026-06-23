@@ -1,0 +1,91 @@
+
+load @cluesurf/mill/code/code/head/mine
+  find head
+
+load @cluesurf/mill/code/code/like/mine
+  find like
+
+load @cluesurf/mill/code/code/form/link/mine
+  find link
+
+load @cluesurf/mill/code/code/form/case/mine
+  find case
+
+load @cluesurf/mill/code/code/task/mine
+  find task
+
+load @cluesurf/mill/code/code/hold/mine
+  find hold
+
+load @cluesurf/mill/code/code/hide/mine
+  find hide
+
+load @cluesurf/mill/code/code/fold/mine
+  find fold
+
+load @cluesurf/mill/code/code/note/mine
+  find note
+
+load @cluesurf/mill/code/code/tag/mine
+  find tag
+
+load @cluesurf/mill/code/code/call/mine
+  find call
+
+mine form
+  mine term, term form
+    mine term
+      slot name
+    mine list
+      mine form, like head
+        slot head
+    mine maybe
+      mine form, like like
+        slot like
+    mine list
+      mine form, like link
+        slot link
+    mine list
+      mine form, like case
+        slot case
+    mine list
+      mine form, like bond
+        slot bond
+    mine list
+      mine form, like rein
+        slot rein
+    mine list
+      mine form, like task
+        slot task
+    mine maybe
+      mine form, like hold
+        slot hold
+    mine maybe
+      mine form, like hide
+        slot hide
+    mine maybe
+      mine form, like fold
+        slot fold
+    mine maybe
+      mine form, like note
+        slot note
+    mine list
+      mine form, like tag
+        slot tag
+
+mine rein
+  mine term, term rein
+    mine term
+      slot task
+
+mine bond
+  mine term, term bond
+    mine term
+      slot name
+    mine maybe
+      mine term, term line
+        mine term
+          slot line
+    mine list
+      mine form, like call
+        slot call

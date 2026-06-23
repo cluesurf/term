@@ -1,0 +1,16 @@
+
+load @cluesurf/mill/code/code/seed/mine
+  find seed
+
+mine seed
+  mine list
+    mine form, like seed-def
+      slot seed
+
+mine seed-def
+  mine term, term seed
+    mine term
+      slot name
+    mine maybe
+      mine form, like seed
+        slot seed

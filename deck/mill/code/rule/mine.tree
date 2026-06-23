@@ -1,0 +1,8 @@
+
+load @cluesurf/mill/code/rule/hold/mine
+  find hold
+
+mine rule
+  mine list
+    mine form, like hold
+      slot hold

@@ -1,0 +1,23 @@
+
+load @cluesurf/mill/code/code/bind/mine
+  find bind
+
+load @cluesurf/mill/code/code/seed/mine
+  find seed
+
+tree callable
+  take kind
+  hook fuse
+    mine term
+      slot name
+    mine case
+      mine form, like wait
+    mine list
+      mine form, like bind
+        slot bind
+    mine maybe
+      mine form, like save
+        slot save
+    mine list
+      mine form, like hook
+        slot hook

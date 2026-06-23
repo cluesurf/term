@@ -1,0 +1,143 @@
+
+load @cluesurf/mill/code/code/call/mine
+  find call
+
+load @cluesurf/mill/code/code/like/mine
+  find like
+
+mine hold
+  mine term, term hold
+    mine term
+      slot name
+    mine list
+      mine form, like step
+        slot step
+
+mine step
+  mine any
+    mine form, like show
+      slot show
+    mine form, like mark
+      slot mark
+    mine form, like take
+      slot take
+    mine form, like have
+      slot have
+    mine form, like fold
+      slot fold
+    mine form, like case
+      slot case
+    mine form, like calm
+      slot calm
+    mine form, like melt
+      slot melt
+    mine form, like cite
+      slot cite
+    mine form, like find
+      slot find
+
+mine show
+  mine term, term show
+    mine form, like call
+      slot claim
+
+mine mark
+  mine term, term mark
+    mine term
+      slot name
+    mine form, like like
+      slot like
+
+mine fold
+  mine term, term fold
+    mine term
+      slot arg
+    mine list
+      mine form, like step
+        slot step
+
+mine case
+  mine term, term case
+    mine term
+      slot arg
+    mine list
+      mine form, like step
+        slot step
+
+mine melt
+  mine term, term melt
+    mine term
+      slot arg
+
+mine calm
+  mine term, term calm
+    mine term
+      slot arg
+
+mine cite
+  mine term, term cite
+    mine term
+      slot arg
+
+mine turn
+  mine term, term turn
+    mine term
+      slot arg
+
+mine take
+  mine term, term take
+    mine term
+      slot arg
+
+mine find
+  mine term, term find
+    mine term
+      slot arg
+
+mine self
+  mine term, term self
+    mine term
+      slot arg
+    mine list
+      mine form, like step
+        slot step
+
+mine seed
+  mine term, term seed
+    mine term
+      slot arg
+    mine list
+      mine form, like step
+        slot step
+
+mine rest
+  mine term, term rest
+    mine term
+      slot arg
+    mine list
+      mine form, like step
+        slot step
+
+mine weld
+  mine term, term weld
+    mine term
+      slot arg
+    mine list
+      mine form, like step
+        slot step
+
+mine link
+  mine term, term link
+    mine term
+      slot arg
+    mine list
+      mine form, like step
+        slot step
+
+mine have
+  mine term, term have
+    mine term
+      slot arg
+    mine list
+      mine form, like step
+        slot step

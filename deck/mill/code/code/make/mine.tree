@@ -1,0 +1,20 @@
+
+load @cluesurf/mill/code/code/bind/mine
+  find bind
+
+load @cluesurf/mill/code/code/save/mine
+  find save
+
+load @cluesurf/mill/code/code/turn/mine
+  find turn
+
+mine make
+  mine term, term make
+    mine term
+      slot name
+    mine list
+      mine form, like bind
+        slot bind
+    mine list
+      mine form, like save
+        slot save

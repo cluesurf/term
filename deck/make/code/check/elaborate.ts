@@ -601,6 +601,17 @@ export function elaborateReport(
   // a variant's `enum__variant` key -> the head constructor key of its FIRST output index (`vnil -> nat__zero`,
   // `vcons -> nat__succ`). Lets a match tell which constructors are reachable at a constructor-headed subject index.
   const variantIndexHead = new Map<string, string>()
+  // a variant's `enum__variant` key -> the SURFACE expression of its first output index (`vcons -> make succ / read count`).
+  // Re-elaborated against a constructor's bound fields, this refines the index variable during dependent induction so
+  // `fold v` over an indexed family proves a goal that mentions the index (the general ornament / vector laws).
+  const variantIndexExpr = new Map<string, Expression>()
+  // MULTI-INDEX inversion data. `familyIndexTypes`: enum -> the enum type NAME at each index position (or undefined for
+  // a non-enum index). `variantIndexHeads`: ctor key -> the output index head ctor at each position (or undefined when
+  // that position is not constructor-headed). Generalizes the single-index maps above so an empty match on a TWO-index
+  // family like `lt m zero` (ex-falso, nothing is below zero) elaborates to a computing term by discriminating on the
+  // pinned position.
+  const familyIndexTypes = new Map<string, (string | undefined)[]>()
+  const variantIndexHeads = new Map<string, (string | undefined)[]>()
 
   // resolve an enum variant used inside an index expression (`zero`, `succ`) to its `enum__variant` kernel key, so an
   // indexed family's constructor / field types name the SAME constant the value elaboration does. Single-owner only;
@@ -811,6 +822,29 @@ export function elaborateReport(
         )
         typeFormerArity.set(statement.name, m)
 
+        // MULTI-INDEX inversion data, recorded for every index position (used for ex-falso on a multi-index family).
+        if (l > 0) {
+          familyIndexTypes.set(
+            statement.name,
+            declaredIndices.map(ix =>
+              ix.type.kind === 'named'
+                ? (ix.type as { name: string }).name
+                : undefined,
+            ),
+          )
+
+          for (const variant of statement.variants) {
+            variantIndexHeads.set(
+              ctorKey(statement.name, variant.name),
+              (variant.indexValues ?? []).map(head =>
+                head?.form === 'record'
+                  ? resolveIndexCtor(head.name) ?? undefined
+                  : undefined,
+              ),
+            )
+          }
+        }
+
         // record the (single) index type name and each variant's output-index head, for inversion. Only when there is
         // exactly one index and it is a named (enum) type, and each variant's first output index is a constructor.
         if (l === 1 && declaredIndices[0]!.type.kind === 'named') {
@@ -821,6 +855,13 @@ export function elaborateReport(
 
           for (const variant of statement.variants) {
             const head = variant.indexValues?.[0]
+
+            if (head) {
+              variantIndexExpr.set(
+                ctorKey(statement.name, variant.name),
+                head,
+              )
+            }
 
             if (head?.form === 'record') {
               const resolved = resolveIndexCtor(head.name)
@@ -1467,6 +1508,95 @@ export function elaborateReport(
         return null
       }
 
+      case 'closure': {
+        // an inline function value (`task f / take .. like .. / like .. / <body>`) elaborated to a kernel LAMBDA from
+        // its OWN type annotations. Each parameter's declared type is lowered at the current depth with the preceding
+        // parameters AND the enclosing value scope available, so a DEPENDENT parameter type (`pf, like lt / head m /
+        // head n` -- where `m` is an earlier parameter and `n` is captured from the enclosing scope) resolves. This is
+        // what lets a higher-order constructor field -- the `step` of an accessibility proof -- or any callback be given
+        // a literal value, so the generic well-founded recursor is expressible. The body reuses `body(..)`.
+        let closureContext = context
+        let closureScope: Scope = scope
+        let closureValueScope: Map<string, number> = new Map(scope)
+        const noGenerics = new Map<string, number>()
+        let ok = true
+
+        for (const param of node.params) {
+          const paramTypeTerm = param.type
+            ? kernelTypeAt(
+                param.type,
+                closureContext.level,
+                noGenerics,
+                namedTypes,
+                closureValueScope,
+                resolveIndexCtor,
+              )
+            : null
+
+          if (!paramTypeTerm) {
+            ok = false
+            break
+          }
+
+          const paramTypeValue = evaluate(closureContext.env, paramTypeTerm)
+          closureScope = new Map(closureScope).set(
+            param.name,
+            closureContext.level,
+          )
+          closureValueScope = new Map(closureValueScope).set(
+            param.name,
+            closureContext.level,
+          )
+          closureContext = bind(closureContext, 'many', paramTypeValue)
+        }
+
+        if (!ok) {
+          return null
+        }
+
+        // the result type: the closure's declared `like`, else peeled from the expected function type when present.
+        let resultValue: Value | undefined
+        const resultTerm = node.result
+          ? kernelTypeAt(
+              node.result,
+              closureContext.level,
+              noGenerics,
+              namedTypes,
+              closureValueScope,
+              resolveIndexCtor,
+            )
+          : null
+
+        if (resultTerm) {
+          resultValue = evaluate(closureContext.env, resultTerm)
+        } else if (expected) {
+          let pit = quote(context.level, expected)
+
+          for (let i = 0; i < node.params.length && pit.tag === 'pi'; i++) {
+            pit = pit.codomain
+          }
+
+          resultValue = evaluate(closureContext.env, pit)
+        }
+
+        if (!resultValue) {
+          return null
+        }
+
+        const bodyTerm = body(
+          node.body,
+          closureScope,
+          closureContext,
+          resultValue,
+        )
+
+        if (!bodyTerm) {
+          return null
+        }
+
+        return lambdas(node.params.length, bodyTerm)
+      }
+
       case 'unary': {
         const operand = expr(node.operand, scope, context)
 
@@ -1872,9 +2002,10 @@ export function elaborateReport(
       }
 
       case 'let': {
-        if (head.mutable) {
-          return null
-        } // a reassignable binding is not a pure let; decline
+        // a `save` binding is parsed `mutable`, but it is a PURE let unless it is actually reassigned -- and a real
+        // reassignment puts an `assign` statement in the rest of the body, which this elaborator does not cover and so
+        // declines anyway. So treating it as a pure let here is sound: a non-reassigned `save` reduces (the task gets a
+        // computing definition); a reassigned one still falls out of the pure fragment at the `assign`.
 
         const value = expr(head.init, scope, context)
 
@@ -2020,27 +2151,49 @@ export function elaborateReport(
         // impossible index to `Unit` and the reachable one to the result type A. So a total `head` needs no empty case.
         const impossible = new Set<string>()
         let subjectIndexHead: string | undefined
+        // the index POSITION the inversion discriminates on: 0 for a single-index family, or the pinned, constructor-
+        // headed position of a multi-index family (`lt m zero` discriminates on position 1, the `zero`). Found as the
+        // first position where the subject index is constructor-headed and some variant's output head there differs.
+        let discrimPos = 0
 
-        if (indexCount === 1) {
-          const indexArgument =
-            subjectTypeArgs[subjectTypeArgs.length - 1]
-          let peeled: Term | undefined = indexArgument
+        if (indexCount > 0) {
+          const typeWitnessCount = subjectTypeArgs.length - indexCount
 
-          while (peeled && peeled.tag === 'app') {
-            peeled = peeled.fun
-          }
+          for (let pos = 0; pos < indexCount; pos++) {
+            const indexArgument = subjectTypeArgs[typeWitnessCount + pos]
+            let peeled: Term | undefined = indexArgument
 
-          if (peeled && peeled.tag === 'const') {
-            subjectIndexHead = peeled.name
+            while (peeled && peeled.tag === 'app') {
+              peeled = peeled.fun
+            }
+
+            if (!peeled || peeled.tag !== 'const') {
+              continue
+            }
+
+            const head = peeled.name
+            const impossibleHere = new Set<string>()
 
             for (const variant of order) {
-              const head2 = variantIndexHead.get(
+              const heads = variantIndexHeads.get(
                 ctorKey(enumName!, variant),
               )
+              const variantHead = heads?.[pos]
 
-              if (head2 && head2 !== subjectIndexHead) {
+              if (variantHead && variantHead !== head) {
+                impossibleHere.add(variant)
+              }
+            }
+
+            if (impossibleHere.size > 0) {
+              discrimPos = pos
+              subjectIndexHead = head
+
+              for (const variant of impossibleHere) {
                 impossible.add(variant)
               }
+
+              break
             }
           }
         }
@@ -2123,16 +2276,37 @@ export function elaborateReport(
           const typeWitnesses = subjectTypeArgs.slice(0, typeWitnessCount)
           const indexArguments = subjectTypeArgs.slice(typeWitnessCount)
 
-          // the motive. Without inversion it is CONSTANT (`\i.. x. A`). With inversion it is the DISCRIMINATOR
-          // `\i x. (match i: reachable head -> A, else -> Unit)`, built from the index type's eliminator so an
-          // impossible branch's type reduces to `Unit` and the result type reduces to A at the subject's index.
-          let motive: Term | null = lambdas(
-            indexCount + 1,
-            quote(context.level + indexCount + 1, resultValue),
-          )
+          // the motive `\i_0..i_{l-1} \x. A`. When the result A depends on a scrutinee index that is a VARIABLE, the
+          // motive ABSTRACTS over it: each such index argument variable is replaced by the matching motive binder, so a
+          // match whose result mentions an index -- the convoy form `match e : eq a b returning (P a -> P b)` -- types,
+          // and the branch (`refl`) is checked at `A[indices := c]`. A no-op when A mentions no index variable (the
+          // ordinary CONSTANT motive). With inversion this is overridden below by the discriminator motive.
+          const motiveDepth = context.level + indexCount + 1
+          let motiveBody = quote(motiveDepth, resultValue)
+          const motiveRefine = new Map<number, number>()
+
+          for (let t = 0; t < indexCount; t++) {
+            const indexArgument = indexArguments[t]
+
+            if (indexArgument && indexArgument.tag === 'var') {
+              const level = context.level - indexArgument.index - 1
+              // motive binder i_t sits at de Bruijn (indexCount - t) from the body (x is 0, i_{l-1} is 1, i_0 is l)
+              motiveRefine.set(motiveDepth - level - 1, indexCount - t)
+            }
+          }
+
+          if (motiveRefine.size > 0) {
+            motiveBody = substituteVars(motiveBody, motiveRefine)
+          }
+
+          let motive: Term | null = lambdas(indexCount + 1, motiveBody)
 
           if (useInversion) {
-            const indexType = familyIndexType.get(enumName!)
+            // discriminate on the index TYPE at the pinned position (`discrimPos`): single-index uses position 0; a
+            // multi-index family like `lt m zero` discriminates on the `zero` at position 1. The motive sends the
+            // subject's head there to the result type and every other constructor to `Unit`, so impossible branches
+            // type-check as `Unit` and an entirely-empty match (ex-falso) still produces a computing term.
+            const indexType = familyIndexTypes.get(enumName!)?.[discrimPos]
             const indexVariants = indexType
               ? variantNames.get(indexType)
               : undefined
@@ -2141,17 +2315,58 @@ export function elaborateReport(
 
             if (indexType && indexVariants) {
               const indexBranches: Term[] = []
+              const motiveBinders = indexCount + 1
+
+              // the constructor-headed subject index AT discrimPos, peeled to its constructor arguments, so the
+              // reachable branch can map each argument variable to the index constructor's field (DEPENDENT refinement).
+              const subjectIndexArg = indexArguments[discrimPos]
+              const subjectIndexArgs: Term[] = []
+              {
+                let peeled: Term | undefined = subjectIndexArg
+                while (peeled && peeled.tag === 'app') {
+                  subjectIndexArgs.unshift(peeled.arg)
+                  peeled = peeled.fun
+                }
+              }
 
               for (const indexVariant of indexVariants) {
                 const indexCtor = ctorKey(indexType, indexVariant)
                 const fieldCount = (
                   variantFieldInfo.get(indexCtor) ?? []
                 ).length
-                // under the motive's `\i \x` (2 binders) and this index-branch's `fieldCount` field lambdas
-                let leaf: Term =
-                  indexCtor === subjectIndexHead
-                    ? quote(context.level + 2 + fieldCount, resultValue)
-                    : constant('Unit')
+
+                // under the motive's `\i_0..i_{l-1} \x` (indexCount + 1 binders) and this branch's `fieldCount` fields
+                let leaf: Term
+                if (indexCtor === subjectIndexHead) {
+                  const leafDepth =
+                    context.level + motiveBinders + fieldCount
+                  const refine = new Map<number, number>()
+
+                  for (
+                    let w = 0;
+                    w < subjectIndexArgs.length && w < fieldCount;
+                    w++
+                  ) {
+                    const a = subjectIndexArgs[w]!
+
+                    if (a.tag === 'var') {
+                      const level = context.level - a.index - 1
+                      const fieldLevel = context.level + motiveBinders + w
+                      refine.set(
+                        leafDepth - level - 1,
+                        leafDepth - fieldLevel - 1,
+                      )
+                    }
+                  }
+
+                  leaf = quote(leafDepth, resultValue)
+
+                  if (refine.size > 0) {
+                    leaf = substituteVars(leaf, refine)
+                  }
+                } else {
+                  leaf = constant('Unit')
+                }
 
                 for (let w = 0; w < fieldCount; w++) {
                   leaf = { tag: 'lam', body: leaf }
@@ -2160,21 +2375,17 @@ export function elaborateReport(
                 indexBranches.push(leaf)
               }
 
-              // P = \i. \x. matchType__<indexType> (\_.Type0) <indexBranches> i. The LARGE eliminator lands in Type1,
-              // so this discriminator returns a Type0; its argument order is (motive, branches, subject), and i is
-              // variable(1) under the \i \x binders.
-              motive = {
-                tag: 'lam',
-                body: {
-                  tag: 'lam',
-                  body: apply(
-                    constant(`matchType__${indexType}`),
-                    { tag: 'lam', body: TYPE0 },
-                    ...indexBranches,
-                    variable(1),
-                  ),
-                },
-              }
+              // P = \i_0..i_{l-1} \x. matchType__<indexType> (\_.Type0) <branches> i_{discrimPos}. i_{discrimPos} sits at
+              // de Bruijn (indexCount - discrimPos) under the motive binders (x is 0, i_{l-1} is 1, i_0 is l).
+              motive = lambdas(
+                motiveBinders,
+                apply(
+                  constant(`matchType__${indexType}`),
+                  { tag: 'lam', body: TYPE0 },
+                  ...indexBranches,
+                  variable(indexCount - discrimPos),
+                ),
+              )
             }
           }
 
@@ -2395,12 +2606,21 @@ export function elaborateReport(
           for (const branch of statement.branches) {
             check(ctx, need(expr(branch.cond, sc, ctx)), BOOLEAN_VALUE)
 
-            // an equation guard (`have a == b`) is assumed true inside its branch
+            // an equation guard (`have a == b`, a branch condition `a == b`) is assumed true inside its branch. Both
+            // the binary `==` form and the surface `call is-equal a b` form (how a `have` equality is written) count,
+            // so a `have` antecedent licenses substitution (`a == b -> f a == f b`, the content of `subst` / `J`).
             const branchAssumptions = [...assumptions]
             const cond = branch.cond
 
             if (cond.form === 'binary' && cond.op === '==') {
               branchAssumptions.push([cond.left, cond.right])
+            } else if (
+              cond.form === 'call' &&
+              cond.callee.form === 'variable' &&
+              cond.callee.name === 'is-equal' &&
+              cond.args.length === 2
+            ) {
+              branchAssumptions.push([cond.args[0]!, cond.args[1]!])
             }
 
             checkCommands(
@@ -2542,6 +2762,44 @@ export function elaborateReport(
   // cited lemma against the goal.
   // collect the free de Bruijn variable indices of a (closed-context) term. Used to decide which variables a generalized
   // induction hypothesis quantifies over.
+  // replace free de Bruijn variables per `map` (keys + values are indices in the depth-0 frame), respecting binders. Used
+  // to REFINE a dependent match's result type: at an index constructor's branch the scrutinee index is destructured, so
+  // each index-argument variable becomes the corresponding constructor field (`vecnat n` at subject index `succ n`
+  // becomes `vecnat p` under the `succ p` branch). A no-op when the result mentions none of those variables.
+  function substituteVars(
+    term: Term,
+    map: Map<number, number>,
+    depth = 0,
+  ): Term {
+    switch (term.tag) {
+      case 'var': {
+        const base = term.index - depth
+
+        if (base >= 0 && map.has(base)) {
+          return { tag: 'var', index: map.get(base)! + depth }
+        }
+
+        return term
+      }
+      case 'app':
+        return {
+          tag: 'app',
+          fun: substituteVars(term.fun, map, depth),
+          arg: substituteVars(term.arg, map, depth),
+        }
+      case 'lam':
+        return { tag: 'lam', body: substituteVars(term.body, map, depth + 1) }
+      case 'pi':
+        return {
+          ...term,
+          domain: substituteVars(term.domain, map, depth),
+          codomain: substituteVars(term.codomain, map, depth + 1),
+        }
+      default:
+        return term
+    }
+  }
+
   function freeVarIndices(
     term: Term,
     depth = 0,
@@ -3525,6 +3783,10 @@ export function elaborateReport(
       const buildSplitEnv = (
         ctx: Context,
         subst: Map<number, Recipe>,
+        // dependent induction over an indexed family: after rebuilding the induction variable from its constructor, also
+        // refine the family's index variable to that constructor's output index (`vcons -> succ count`), evaluated in the
+        // rebuilt env so it tracks any further field split. This lets a goal that mentions the index close per case.
+        indexRefine?: { level: number; term: Term },
       ): Value[] => {
         const env = [...ctx.env]
         const levels = [...subst.keys()].sort((a, b) => b - a) // deepest (highest level) first
@@ -3548,6 +3810,13 @@ export function elaborateReport(
           )
         }
 
+        if (indexRefine) {
+          env[ctx.level - indexRefine.level - 1] = evaluate(
+            env,
+            indexRefine.term,
+          )
+        }
+
         return env
       }
 
@@ -3564,6 +3833,7 @@ export function elaborateReport(
           holes: Set<number>
         }[] = [],
         ihLevel = -1,
+        indexRefine?: { level: number; term: Term },
       ): boolean => {
         const [lt, rt] = elaborateGoalSides(
           goal.left,
@@ -3576,7 +3846,7 @@ export function elaborateReport(
           return false
         }
 
-        const env = buildSplitEnv(ctx, subst)
+        const env = buildSplitEnv(ctx, subst, indexRefine)
 
         // the generalized IH was quoted at one context level; only apply it where that level still holds (the no-split
         // attempt). Once a field is split, the context grows and the indices no longer align, so it is dropped there.
@@ -3660,6 +3930,9 @@ export function elaborateReport(
                 newSplit,
                 hyps,
                 depth - 1,
+                [],
+                -1,
+                indexRefine,
               )
             ) {
               allClosed = false
@@ -3675,6 +3948,34 @@ export function elaborateReport(
         return false
       }
 
+      // dependent induction over an indexed family: find the index variable to refine per constructor. Only when the
+      // induction variable's type is `T <var>` carrying a SINGLE value index that is a plain variable (the common
+      // length-indexed / vector shape). The refinement then substitutes that variable to each variant's output index in
+      // the case goal, and to each recursive field's own index in the induction hypothesis. Any other shape leaves
+      // `indexRefineLevel = -1`, so non-indexed `fold` is untouched.
+      let indexRefineLevel = -1
+
+      {
+        const idxCount = typeFormerIndices.get(typeHead.name)?.length ?? 0
+        const paramCount = typeFormerArity.get(typeHead.name) ?? 0
+
+        if (idxCount === 1) {
+          const spine: Term[] = []
+          let head2: Term = typeTerm
+
+          while (head2.tag === 'app') {
+            spine.unshift(head2.arg)
+            head2 = head2.fun
+          }
+
+          const idxArg = spine[paramCount]
+
+          if (idxArg && idxArg.tag === 'var') {
+            indexRefineLevel = context.level - idxArg.index - 1
+          }
+        }
+      }
+
       for (const variant of variants) {
         const fields =
           variantFieldInfo.get(ctorKey(typeHead.name, variant)) ?? []
@@ -3684,8 +3985,14 @@ export function elaborateReport(
         // extend the context with one fresh free variable per field of this constructor
         let inner = context
 
+        // each field's TYPE as a value in the frame where the preceding fields are bound; a recursive field's type
+        // carries its own index (`rest : vecnat count`), read back below to refine the index in that field's hypothesis.
+        const fieldTypeValues: Value[] = []
+
         for (const field of fields) {
-          inner = bind(inner, 'many', evaluate(inner.env, field.type))
+          const fieldTypeValue = evaluate(inner.env, field.type)
+          fieldTypeValues.push(fieldTypeValue)
+          inner = bind(inner, 'many', fieldTypeValue)
         }
 
         // the constructor applied to its fresh field variables (field j sits at de Bruijn index k-1-j in `inner`)
@@ -3716,9 +4023,40 @@ export function elaborateReport(
 
         const subject = index + k
 
+        // this variant's output-index expression (`vcons -> succ count`), elaborated against the freshly bound fields, so
+        // the index variable can be refined to it in the case goal and (via `buildSplitEnv`) through any further split.
+        let indexRefine: { level: number; term: Term } | undefined
+
+        if (indexRefineLevel >= 0) {
+          const idxExpr = variantIndexExpr.get(
+            ctorKey(typeHead.name, variant),
+          )
+
+          if (idxExpr) {
+            const fieldScope = new Map(scope)
+
+            fields.forEach((f, j) =>
+              fieldScope.set(f.name, context.level + j),
+            )
+
+            const idxTerm = expr(idxExpr, fieldScope, inner)
+
+            if (idxTerm) {
+              indexRefine = { level: indexRefineLevel, term: idxTerm }
+            }
+          }
+        }
+
         // the case goal: substitute the induction variable with the constructor, through the environment
         const caseEnv = [...inner.env]
         caseEnv[subject] = consValue
+
+        if (indexRefine) {
+          caseEnv[inner.level - indexRefine.level - 1] = evaluate(
+            caseEnv,
+            indexRefine.term,
+          )
+        }
 
         const caseLeft = evaluate(caseEnv, leftTerm)
         const caseRight = evaluate(caseEnv, rightTerm)
@@ -3731,6 +4069,29 @@ export function elaborateReport(
           if (headConstantName(field.type) === typeHead.name) {
             const ihEnv = [...inner.env]
             ihEnv[subject] = inner.env[k - 1 - j]!
+
+            // refine the index variable to this recursive field's OWN index (`rest : vecnat count` -> index `count`), so
+            // the hypothesis is stated at the right index. Read it back from the field's type value.
+            if (indexRefineLevel >= 0) {
+              const fieldTypeTerm = quote(inner.level, fieldTypeValues[j]!)
+              const fieldSpine: Term[] = []
+              let fieldHead: Term = fieldTypeTerm
+
+              while (fieldHead.tag === 'app') {
+                fieldSpine.unshift(fieldHead.arg)
+                fieldHead = fieldHead.fun
+              }
+
+              const fieldIdx = fieldSpine[fieldSpine.length - 1]
+
+              if (fieldIdx) {
+                ihEnv[inner.level - indexRefineLevel - 1] = evaluate(
+                  ihEnv,
+                  fieldIdx,
+                )
+              }
+            }
+
             hypotheses.push([
               evaluate(ihEnv, leftTerm),
               evaluate(ihEnv, rightTerm),
@@ -3837,6 +4198,7 @@ export function elaborateReport(
             2,
             generalIH,
             inner.level,
+            indexRefine,
           )
         ) {
           return false
@@ -4263,6 +4625,88 @@ export function elaborateReport(
     // Sound by the kernel's observational equality (Id at a function type IS the pointwise identity), so the pointwise
     // proof IS the function-equality proof. Discharges a NON-definitional function equality (e.g. two recursive
     // definitions of the same function) that `calm` cannot.
+    // `auto` / firstorder: discharge the goal by rewriting BOTH sides with EVERY proven lemma (the hint database is
+    // `lemmaRules`) to a fixed point, then checking convertibility (which also runs computation). Additive and SOUND --
+    // it only uses already-proven equalities and definitional reduction, so it can never prove a falsehood; it just
+    // automates "cite each lemma + calm" with a depth-bounded search, so the user need not name the lemmas.
+    if (tactic?.head === 'auto' && goal.form === 'binary' && goal.op === '==') {
+      const rules = [...lemmaRules.values()]
+      const [l, r] = elaborateGoalSides(
+        goal.left,
+        goal.right,
+        scope,
+        context,
+      )
+
+      if (l && r) {
+        try {
+          // BACKTRACKING firstorder search: from the left side, apply each known lemma as a SINGLE rewrite (depth-
+          // bounded) and check whether the result is convertible to the right side (convertibility also runs
+          // computation, so it subsumes `calm`). A single rewrite per step avoids the non-termination of a symmetric
+          // lemma like commutativity (rewriting BOTH sides to a fixed point would oscillate). Sound: every step is a
+          // proven equality or a reduction, so a closed goal is genuinely true.
+          const rhs = evaluate(context.env, r)
+          const closes = (term: Term): boolean =>
+            areConvertible(
+              context.level,
+              evaluate(context.env, term),
+              rhs,
+            )
+
+          let frontier: Term[] = [
+            quote(context.level, evaluate(context.env, l)),
+          ]
+          const seen = new Set<string>()
+          let closed = false
+
+          for (let depth = 0; depth <= 3 && !closed; depth++) {
+            const next: Term[] = []
+
+            for (const term of frontier) {
+              if (closes(term)) {
+                closed = true
+                break
+              }
+
+              for (const rule of rules) {
+                const rewritten = rewriteOnce(term, rule)
+
+                if (rewritten) {
+                  const key = JSON.stringify(rewritten)
+
+                  if (!seen.has(key)) {
+                    seen.add(key)
+                    next.push(rewritten)
+                  }
+                }
+              }
+            }
+
+            frontier = next.slice(0, 64)
+          }
+
+          if (closed) {
+            discharged.push(statement.span)
+            recordLemmaRule(statement.name, goal, scope, context)
+            return
+          }
+        } catch {
+          // fall through to the diagnostic below
+        }
+      }
+
+      diagnostics.push(
+        diagnose('invalid-proof', {
+          file,
+          span: statement.span,
+          message:
+            'auto could not close the goal by rewriting with the known lemmas and computing',
+        }),
+      )
+
+      return
+    }
+
     if (
       tactic?.head === 'melt' &&
       tactic.arg &&

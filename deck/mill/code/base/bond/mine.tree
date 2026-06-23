@@ -1,0 +1,19 @@
+
+load @cluesurf/mill/code/base/hold/mine
+  find db-hold
+
+mine db-bond
+  mine term, term bond
+    mine term
+      slot name
+    mine maybe
+      mine term, term name
+        mine term
+          slot alias
+    mine maybe
+      mine term, term like
+        mine term
+          slot kind
+    mine list
+      mine form, like db-hold
+        slot hold

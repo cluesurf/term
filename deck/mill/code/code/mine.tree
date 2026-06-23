@@ -1,0 +1,142 @@
+
+load @cluesurf/mill/code/code/form/mine
+  find form
+
+load @cluesurf/mill/code/code/task/mine
+  find task
+
+load @cluesurf/mill/code/code/call/mine
+  find call
+
+load @cluesurf/mill/code/code/hook/mine
+  find hook
+
+load @cluesurf/mill/code/seed/seed/mine
+  find host
+
+load @cluesurf/mill/code/code/load/mine
+  find load
+
+load @cluesurf/mill/code/code/dock/mine
+  find dock
+
+load @cluesurf/mill/code/code/test/mine
+  find test
+
+load @cluesurf/mill/code/code/hold/mine
+  find hold
+
+load @cluesurf/mill/code/code/suit/mine
+  find suit
+
+load @cluesurf/mill/code/code/mask/mine
+  find mask
+
+load @cluesurf/mill/code/code/wear/mine
+  find wear
+
+load @cluesurf/mill/code/code/bear/mine
+  find bear
+
+load @cluesurf/mill/code/code/book/mine
+  find book
+
+load @cluesurf/mill/code/code/tree/mine
+  find tree
+
+load @cluesurf/mill/code/code/kink/mine
+  find kink
+
+load @cluesurf/mill/code/code/fuse/mine
+  find fuse
+
+load @cluesurf/mill/code/code/tree/beam/mine
+  find beam
+
+load @cluesurf/mill/code/code/tree/slot/mine
+  find slot
+
+load @cluesurf/mill/code/code/note/mine
+  find note
+
+load @cluesurf/mill/code/code/halt/mine
+  find halt
+
+load @cluesurf/mill/code/code/save/mine
+  find save
+
+load @cluesurf/mill/code/code/seed/mine
+  find seed
+
+load @cluesurf/mill/code/code/lace/mine
+  find lace
+
+load @cluesurf/mill/code/code/cast/mine
+  find cast
+
+load @cluesurf/mill/code/code/tune/mine
+  find tune
+
+load @cluesurf/mill/code/code/view/mine
+  find view
+
+load @cluesurf/mill/code/code/zone/mine
+  find zone
+
+mine code
+  mine list
+    mine any
+      mine form, like form
+        slot form
+      mine form, like task
+        slot task
+      mine form, like call
+        slot call
+      mine form, like hook
+        slot hook
+      mine form, like host
+        slot host
+      mine form, like load
+        slot load
+      mine form, like dock
+        slot dock
+      mine form, like test
+        slot test
+      mine form, like hold
+        slot hold
+      mine form, like suit
+        slot suit
+      mine form, like mask
+        slot mask
+      mine form, like wear
+        slot wear
+      mine form, like bear
+        slot bear
+      mine form, like book
+        slot book
+      mine form, like tree
+        slot tree
+      mine form, like kink
+        slot kink
+      mine form, like fuse
+        slot fuse
+      mine form, like beam
+        slot beam
+      mine form, like slot
+        slot slot
+      mine form, like note
+        slot note
+      mine form, like halt
+        slot halt
+      mine form, like save
+        slot save
+      mine form, like seed
+        slot seed
+      mine form, like lace
+        slot lace
+      mine form, like cast
+        slot cast
+      mine form, like tune
+        slot tune
+      mine form, like view
+        slot view

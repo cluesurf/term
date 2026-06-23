@@ -1,0 +1,27 @@
+
+load @cluesurf/mill/code/book/host
+  find book-host
+  find book-host-bind
+
+mint host, like book-host
+  case name
+    slot name
+  case bind, mint host-bind
+    slot bind
+  hook make
+    make book-host
+      bind name, read name
+      bind bind, read bind
+
+mint host-bind, like book-host-bind
+  case name
+    slot name
+  case size
+    slot size
+  case unit
+    slot unit
+  hook make
+    make book-host-bind
+      bind name, read name
+      bind size, read size
+      bind unit, read unit

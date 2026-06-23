@@ -28,7 +28,7 @@
       {
         "id": "tree",
         "aliases": ["Seed", "Tree", "tree"],
-        "extensions": [".tree", ".seed"],
+        "extensions": [".tree"],
         "configuration": "./text/bind.json"
       },
       {

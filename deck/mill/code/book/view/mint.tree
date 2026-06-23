@@ -1,0 +1,21 @@
+
+load @cluesurf/mill/code/book/view
+  find book-view
+  find book-draw
+
+mint view, like book-view
+  case path
+    slot path
+  case name
+    slot name
+  hook make
+    make book-view
+      bind path, read path
+      bind name, read name
+
+mint draw, like book-draw
+  case name
+    slot name
+  hook make
+    make book-draw
+      bind name, read name

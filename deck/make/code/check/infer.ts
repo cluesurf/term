@@ -71,7 +71,10 @@ export function check(
   const enums = new Map<string, Set<string>>()
   // for an indexed family: enum name -> (variant -> the head name of its first output index, e.g. `vnil -> zero`,
   // `vcons -> succ`). Lets a match on a constructor-headed index omit the variants that cannot occur there.
-  const familyVariantIndexHead = new Map<string, Map<string, string>>()
+  const familyVariantIndexHead = new Map<
+    string,
+    Map<string, (string | undefined)[]>
+  >()
   const variantEnum = new Map<string, string>()
   // a variant's surface name -> every enum that declares it. An overloaded constructor (a name shared by two enums,
   // e.g. `minus` on both `pole` and `spin`) is typed leniently here (a fresh variable) and resolved by the kernel,
@@ -111,11 +114,17 @@ export function check(
           set.add(variant.name)
           variantEnum.set(variant.name, statement.name)
 
-          // record this variant's output-index head (for inversion's exhaustiveness relaxation)
-          const indexValue = variant.indexValues?.[0]
+          // record this variant's output-index head AT EVERY index position (for inversion's exhaustiveness relaxation).
+          // A position is `undefined` when that index is not constructor-headed (a variable / computed); a variant is
+          // impossible at a subject index only where BOTH sides are constructor-headed and the heads differ. Covering
+          // every position (not just the first) makes a multi-index family like `lt a b` invertible (e.g. `lt m zero`
+          // is empty, since both constructors' second index is `succ ..`).
+          const heads = (variant.indexValues ?? []).map(iv =>
+            iv?.form === 'record' ? iv.name : undefined,
+          )
 
-          if (indexValue?.form === 'record') {
-            indexHeads.set(variant.name, indexValue.name)
+          if (heads.some(h => h !== undefined)) {
+            indexHeads.set(variant.name, heads)
           }
 
           const owners = variantOwners.get(variant.name) ?? []
@@ -1025,19 +1034,37 @@ export function check(
             // INVERSION: when the subject is an indexed family at a CONSTRUCTOR-headed index (`vec (succ n)`), the
             // variants whose output-index head differs are IMPOSSIBLE there and may be omitted (the kernel fills them).
             const indexHeads = familyVariantIndexHead.get(subjectType.name)
-            const subjectIndexHead =
-              subjectType.valueArgs?.[0]?.form === 'record'
-                ? subjectType.valueArgs[0].name
-                : undefined
+            const subjectHeads = (subjectType.valueArgs ?? []).map(va =>
+              va?.form === 'record' ? va.name : undefined,
+            )
 
             const reachable = (v: string): boolean => {
-              if (!indexHeads || !subjectIndexHead) {
+              if (!indexHeads) {
                 return true // not an inverted match: every variant is required
               }
 
-              const head = indexHeads.get(v)
+              const heads = indexHeads.get(v)
 
-              return head === undefined || head === subjectIndexHead
+              if (!heads) {
+                return true
+              }
+
+              // impossible only where SOME index position is constructor-headed on both the variant's output and the
+              // subject, and the two heads differ (no-confusion). Any other position imposes no constraint.
+              for (let i = 0; i < heads.length; i++) {
+                const variantHead = heads[i]
+                const subjectHead = subjectHeads[i]
+
+                if (
+                  variantHead !== undefined &&
+                  subjectHead !== undefined &&
+                  variantHead !== subjectHead
+                ) {
+                  return false
+                }
+              }
+
+              return true
             }
 
             const missing = [...variants].filter(

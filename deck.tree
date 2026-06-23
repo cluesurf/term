@@ -1,4 +1,4 @@
-deck @cluesurf/seed
+deck @cluesurf/term
   head <A TreeCode Programming Framework>
   mark <0.0.1>
   sort tool

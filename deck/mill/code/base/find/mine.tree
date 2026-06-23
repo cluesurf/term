@@ -1,0 +1,104 @@
+
+load @cluesurf/mill/code/base/send/mine
+  find db-send
+
+load @cluesurf/mill/code/base/hold/mine
+  find db-hold
+
+load @cluesurf/mill/code/base/bond/mine
+  find db-bond
+
+load @cluesurf/mill/code/base/sort/mine
+  find db-sort
+
+load @cluesurf/mill/code/base/fold/mine
+  find db-fold
+
+load @cluesurf/mill/code/base/miss/mine
+  find db-miss
+
+load @cluesurf/mill/code/base/lone/mine
+  find db-lone
+
+load @cluesurf/mill/code/base/has/mine
+  find db-has
+
+load @cluesurf/mill/code/base/mesh/mine
+  find db-mesh
+
+load @cluesurf/mill/code/base/over/mine
+  find db-over
+
+load @cluesurf/mill/code/base/db-with/mine
+  find db-with
+  find db-with-loop
+
+load @cluesurf/mill/code/code/take/mine
+  find take
+
+load @cluesurf/mill/code/code/meet/mine
+  find meet
+
+load @cluesurf/mill/code/code/bind/mine
+  find bind
+
+load @cluesurf/mill/code/code/tag/mine
+  find tag
+
+mine db-find
+  mine term, term find
+    mine term
+      slot name
+    mine maybe
+      mine term, term base
+        mine term
+          slot base
+    mine list
+      mine form, like take
+        slot take
+    mine list
+      mine form, like db-send
+        slot send
+    mine list
+      mine form, like db-hold
+        slot hold
+    mine list
+      mine form, like meet
+        slot meet
+    mine list
+      mine form, like db-bond
+        slot bond
+    mine list
+      mine form, like db-sort
+        slot sort
+    mine maybe
+      mine form, like db-fold
+        slot fold
+    mine maybe
+      mine term, term size
+        mine number
+          slot size
+    mine maybe
+      mine form, like bind
+        slot offset
+    mine maybe
+      mine form, like db-miss
+        slot miss
+    mine maybe
+      mine form, like db-lone
+        slot lone
+    mine maybe
+      mine form, like db-has
+        slot has
+    mine maybe
+      mine form, like db-with
+        slot with
+    mine maybe
+      mine form, like db-with-loop
+        slot with-loop
+    mine maybe
+      mine form, like db-mesh
+        slot mesh
+    mine list
+      mine form, like tag
+        slot tag

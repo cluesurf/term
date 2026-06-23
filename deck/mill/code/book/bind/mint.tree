@@ -1,0 +1,47 @@
+
+load @cluesurf/mill/code/book/bind
+  find book-bind
+  find book-bind-mind
+  find book-bind-cite
+
+mint bind, like book-bind
+  case kind
+    slot kind
+  case mind, mint bind-mind
+    slot mind
+  case cite, mint bind-cite
+    slot cite
+  hook make
+    make book-bind
+      bind kind, read kind
+      bind mind, read mind
+      bind cite, read cite
+
+mint bind-mind, like book-bind-mind
+  case key
+    slot key
+  case name
+    slot name
+  hook make
+    make book-bind-mind
+      bind key, read key
+      bind name, read name
+
+mint bind-cite, like book-bind-cite
+  case key
+    slot key
+  case date
+    slot date
+  case name
+    slot name
+  case site
+    slot site
+  case mind
+    slot mind
+  hook make
+    make book-bind-cite
+      bind key, read key
+      bind date, read date
+      bind name, read name
+      bind site, read site
+      bind mind, read mind

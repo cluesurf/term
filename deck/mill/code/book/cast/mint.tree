@@ -1,0 +1,16 @@
+
+load @cluesurf/mill/code/book/cast
+  find book-cast
+
+mint cast, like book-cast
+  case kind
+    slot kind
+  case size
+    slot size
+  case unit
+    slot unit
+  hook make
+    make book-cast
+      bind kind, read kind
+      bind size, read size
+      bind unit, read unit

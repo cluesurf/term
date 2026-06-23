@@ -1,0 +1,64 @@
+
+load @cluesurf/mill/code/code/head/mine
+  find head
+
+load @cluesurf/mill/code/code/take/mine
+  find take
+
+load @cluesurf/mill/code/code/like/mine
+  find like
+
+load @cluesurf/mill/code/code/note/mine
+  find note
+
+load @cluesurf/mill/code/code/seed/mine
+  find seed
+
+mine flow
+  mine list
+    mine form, like flow-def
+      slot flow
+
+mine flow-def
+  mine term, term flow
+    mine term
+      slot name
+    mine list
+      mine form, like head
+        slot head
+    mine list
+      mine form, like take
+        slot take
+    mine maybe
+      mine form, like like
+        slot like
+    mine list
+      mine form, like flow-child
+        slot child
+    mine maybe
+      mine form, like note
+        slot note
+
+mine flow-child
+  mine any
+    mine form, like flow-node
+      slot node
+    mine form, like flow-bind
+      slot bind
+
+mine flow-node
+  mine term
+    slot name
+    mine list
+      mine form, like flow-bind
+        slot bind
+    mine list
+      mine form, like flow-child
+        slot child
+
+mine flow-bind
+  mine term, term bind
+    mine term
+      slot name
+    mine form, like seed
+      slot seed

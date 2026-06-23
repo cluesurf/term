@@ -1,8 +1,0 @@
-
-load @cluesurf/term/code/code/seed/mine
-  find seed
-
-mine bust
-  mine term, term bust
-    mine form, like seed
-      slot seed

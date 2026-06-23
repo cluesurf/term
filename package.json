@@ -12,7 +12,8 @@
     "test": "vitest run",
     "lint": "bash task/lint.sh",
     "format": "prettier --write \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
-    "host": "pnpm make && npm publish --access=public"
+    "host": "pnpm make && npm publish --access=public",
+    "install:all": "pnpm install && (cd deck/base && pnpm install) && (cd deck/deck && pnpm install) && (cd deck/term && pnpm install) && (cd deck/flow/editor/vscode && pnpm install)"
   },
   "prettier": "@cluesurf/wash/flow.json",
   "dependencies": {

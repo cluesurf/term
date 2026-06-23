@@ -1,0 +1,27 @@
+
+load @cluesurf/mill/code/lock/link
+  find lock-link
+  find lock-link-load
+
+mint link, like lock-link
+  case name
+    slot name
+  case hash
+    slot hash
+  case load, mint link-load
+    slot load
+  hook make
+    make lock-link
+      bind name, read name
+      bind hash, read hash
+      bind load, read load
+
+mint link-load, like lock-link-load
+  case path
+    slot path
+  case mark
+    slot mark
+  hook make
+    make lock-link-load
+      bind path, read path
+      bind mark, read mark

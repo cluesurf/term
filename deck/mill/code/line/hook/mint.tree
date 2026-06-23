@@ -1,0 +1,23 @@
+
+load @cluesurf/mill/code/code/call/mint
+  find call
+
+mint dock-hook
+  case boot, mint dock-hook-boot
+    slot boot
+  case halt, mint dock-hook-halt
+    slot halt
+
+mint dock-hook-boot
+  case call, mint call
+    slot call
+  hook make
+    make dock-hook-boot
+      bind call, read call
+
+mint dock-hook-halt
+  case call, mint call
+    slot call
+  hook make
+    make dock-hook-halt
+      bind call, read call

@@ -1,0 +1,177 @@
+
+load @cluesurf/mill/code/code/call/mint
+  find call
+
+load @cluesurf/mill/code/code/like/mint
+  find like
+
+mint hold, like hold
+  case name
+    slot name
+  case step, mint step
+    slot step
+  hook make
+    make hold
+      bind name, read name
+      bind step, read step
+
+mint step
+  case show, mint show
+    slot show
+  case mark, mint mark
+    slot mark
+  case take, mint take
+    slot take
+  case have, mint have
+    slot have
+  case fold, mint fold
+    slot fold
+  case case, mint case
+    slot case
+  case calm, mint calm
+    slot calm
+  case melt, mint melt
+    slot melt
+  case cite, mint cite
+    slot cite
+  case find, mint find
+    slot find
+
+mint show, like show
+  case claim, mint call
+    slot claim
+  hook make
+    make show
+      bind claim, read claim
+
+mint mark, like mark
+  case name
+    slot name
+  case like, mint like
+    slot like
+  hook make
+    make mark
+      bind name, read name
+      bind like, read like
+
+mint fold, like fold
+  case arg
+    slot arg
+  case step, mint step
+    slot step
+  hook make
+    make fold
+      bind arg, read arg
+      bind step, read step
+
+mint case, like case
+  case arg
+    slot arg
+  case step, mint step
+    slot step
+  hook make
+    make case
+      bind arg, read arg
+      bind step, read step
+
+mint melt, like melt
+  case arg
+    slot arg
+  hook make
+    make melt
+      bind arg, read arg
+
+mint calm, like calm
+  case arg
+    slot arg
+  hook make
+    make calm
+      bind arg, read arg
+
+mint cite, like cite
+  case arg
+    slot arg
+  hook make
+    make cite
+      bind arg, read arg
+
+mint turn, like turn
+  case arg
+    slot arg
+  hook make
+    make turn
+      bind arg, read arg
+
+mint take, like take
+  case arg
+    slot arg
+  hook make
+    make take
+      bind arg, read arg
+
+mint find, like find
+  case arg
+    slot arg
+  hook make
+    make find
+      bind arg, read arg
+
+mint self, like self
+  case arg
+    slot arg
+  case step, mint step
+    slot step
+  hook make
+    make self
+      bind arg, read arg
+      bind step, read step
+
+mint seed, like seed
+  case arg
+    slot arg
+  case step, mint step
+    slot step
+  hook make
+    make seed
+      bind arg, read arg
+      bind step, read step
+
+mint rest, like rest
+  case arg
+    slot arg
+  case step, mint step
+    slot step
+  hook make
+    make rest
+      bind arg, read arg
+      bind step, read step
+
+mint weld, like weld
+  case arg
+    slot arg
+  case step, mint step
+    slot step
+  hook make
+    make weld
+      bind arg, read arg
+      bind step, read step
+
+mint link, like link
+  case arg
+    slot arg
+  case step, mint step
+    slot step
+  hook make
+    make link
+      bind arg, read arg
+      bind step, read step
+
+mint have, like have
+  case arg
+    slot arg
+  case step, mint step
+    slot step
+  hook make
+    make have
+      bind arg, read arg
+      bind step, read step

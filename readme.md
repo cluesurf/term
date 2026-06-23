@@ -11,10 +11,10 @@
 </p>
 
 <h3 align='center'>
-  seed
+  term
 </h3>
 <p align='center'>
-  A Keystone Artifact θ
+  A Semantic Keystone Ψ
 </p>
 
 <br/>
@@ -23,7 +23,7 @@
 
 ## Introduction
 
-Seed is a programming framework built on a simple, indentation-based
+Term is a programming framework built on a simple, indentation-based
 syntax (the [tree](https://github.com/cluesurf/tree) format). You write
 the logic once, and one source compiles to idiomatic Rust, TypeScript,
 Kotlin, and Swift, so the same program runs in the browser, on Node, on
@@ -39,10 +39,10 @@ Android means learning four toolchains, maintaining four codebases, and
 watching them drift apart. The logic is the same. The plumbing is not.
 
 Dart, through Flutter, has a comparable multi-platform reach but
-different goals: Seed emits each platform's native idioms rather than
+different goals: Term emits each platform's native idioms rather than
 shipping one runtime, and puts a formal type system and proof checker at
 the center. Kind is the closer relative on that side, a dependently
-typed language with a small core, while Seed aims more squarely at
+typed language with a small core, while Term aims more squarely at
 building real cross-platform applications.
 
 You write the usual types, classes, functions, and data models. Beyond
@@ -83,12 +83,12 @@ client takeover, and hot module reload.
 
 This repository is a monorepo. Each part of the ecosystem is a deck (a
 package) under `deck/`, and the decks reference each other by name
-(`@cluesurf/<deck>/code/...`), linked locally through `seed link`.
+(`@cluesurf/<deck>/code/...`), linked locally through `term link`.
 
 | Deck                                                      | Purpose                                                                                   |
 | --------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [`@cluesurf/make`](./deck/make)                           | The compiler: parse, mill, resolve, check, emit                                           |
-| [`@cluesurf/call`](./deck/call)                           | The CLI: `seed make`, `seed test`, `seed serve`, and more                                 |
+| [`@cluesurf/call`](./deck/call)                           | The CLI: `term make`, `term test`, `term serve`, and more                                 |
 | [`@cluesurf/flow`](./deck/flow)                           | The language server (LSP over stdio)                                                      |
 | [`@cluesurf/deck`](./deck/deck)                           | The package manager: install, link, lockfile, store                                       |
 | [`@cluesurf/base`](./deck/base)                           | The standard library, written in `.tree`                                                  |
@@ -129,23 +129,23 @@ reuses the same analysis for diagnostics, hover, and go-to-definition.
 ## Installation
 
 ```
-pnpm add @cluesurf/seed -g
+pnpm add @cluesurf/term -g
 ```
 
 ## Getting Started
 
 ```bash
 # Compile a project
-seed make
+term make
 
 # Run in dev mode (watch + hot reload)
-seed flow
+term flow
 
 # Add a package
-seed deck save <package>
+term deck save <package>
 
 # Run tests
-seed test
+term test
 ```
 
 ## Example

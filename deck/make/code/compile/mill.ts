@@ -240,6 +240,103 @@ function parseType(node: Node): Type {
 
 // the type written by a `like` group. Usually `like <name>`, but for a first-class function it is `like task` with
 // `take` params and a `like` result as further children of the SAME like group (siblings of the `task` node).
+// a MODULE-LEVEL value-index expression parser for the `head <...>` arguments on a type (a function param / result, or
+// the indented `like T / head / <expr>` form). Handles the index forms that reach the kernel's `indexTermAt`: a variable
+// (`read n` -> `pathExpression`) and a constructor (`make zero`, `make succ / bind prior / <expr>` -> a `record`, fields
+// parsed recursively). This mirrors the subset of the nested `toExpression` that indices use, at module scope.
+function parseIndexHeadExpression(node: GroupNode): Expression | undefined {
+  const head = headName(node)
+  const span = spanOf(node)
+
+  if (head === 'read') {
+    const target = rest(node)[0]
+    const name = target?.kind === 'group' ? headName(target) : undefined
+
+    return name ? pathExpression(name, span) : undefined
+  }
+
+  if (head === 'make') {
+    const target = rest(node)[0]
+    const name = target?.kind === 'group' ? headName(target) : undefined
+
+    if (!name) {
+      return undefined
+    }
+
+    const fields: { name: string; value: Expression }[] = []
+
+    for (const child of rest(node)) {
+      if (child.kind !== 'group' || headName(child) !== 'bind') {
+        continue
+      }
+
+      const fieldName =
+        rest(child)[0]?.kind === 'group'
+          ? headName(rest(child)[0] as GroupNode)
+          : undefined
+      const valueNode = rest(child)[1]
+
+      if (fieldName && valueNode?.kind === 'group') {
+        const value = parseIndexHeadExpression(valueNode)
+
+        if (value) {
+          fields.push({ name: fieldName, value })
+        }
+      }
+    }
+
+    return { form: 'record', name, fields, span }
+  }
+
+  return undefined
+}
+
+// attach `head <...>` groups to a NAMED type as value-index / type arguments. The fifth and final `head`->valueArgs
+// site: a function type's parameter and result types. A value head (`head / read a`) is a VALUE index; a bare type name
+// (`head a`) is a type argument. Without this an indexed type inside a function type loses its indices (a function
+// `vecnat a -> vecnat b` parses as `vecnat -> vecnat`, where bare `vecnat` is `nat -> Type0`, not a type).
+function attachHeadArgs(type: Type, headGroups: GroupNode[]): Type {
+  if (type.kind !== 'named') {
+    return type
+  }
+
+  const headTypeArgs: Type[] = []
+  const headValueArgs: Expression[] = []
+
+  for (const group of headGroups) {
+    const arg = rest(group)[0]
+
+    if (arg?.kind !== 'group') {
+      continue
+    }
+
+    if (isValueExpressionHead(headName(arg))) {
+      const expression = parseIndexHeadExpression(arg)
+
+      if (expression) {
+        headValueArgs.push(expression)
+      }
+    } else {
+      headTypeArgs.push(parseType(arg))
+    }
+  }
+
+  let out = type
+
+  if (headTypeArgs.length > 0) {
+    out = { ...out, args: [...(out.args ?? []), ...headTypeArgs] }
+  }
+
+  if (headValueArgs.length > 0) {
+    out = {
+      ...out,
+      valueArgs: [...(out.valueArgs ?? []), ...headValueArgs],
+    }
+  }
+
+  return out
+}
+
 function parseLikeType(likeGroup: GroupNode): Type {
   const children = rest(likeGroup)
   const first = children[0]
@@ -256,7 +353,15 @@ function parseLikeType(likeGroup: GroupNode): Type {
             n.kind === 'group' && headName(n) === 'like',
         )
 
-        return inner ? parseLikeType(inner) : UNKNOWN
+        const paramType = inner ? parseLikeType(inner) : UNKNOWN
+
+        // value-index `head <...>` siblings of this param's `like` group
+        const heads = rest(take).filter(
+          (n): n is GroupNode =>
+            n.kind === 'group' && n !== inner && headName(n) === 'head',
+        )
+
+        return attachHeadArgs(paramType, heads)
       })
 
     const resultLike = children.find(
@@ -264,6 +369,8 @@ function parseLikeType(likeGroup: GroupNode): Type {
         c.kind === 'group' && headName(c) === 'like',
     )
 
+    // the result type's own `head` children (the indented `like vecnat / head / read b` form) are attached by the
+    // recursive `parseLikeType(resultLike)` itself (the named-type path below), so no second attachment is needed here.
     const result = resultLike ? parseLikeType(resultLike) : UNIT
     // effect annotations on the callback: `wait true` marks it async, `bust` marks it throwing
     const effects: string[] = []
@@ -337,9 +444,22 @@ function parseLikeType(likeGroup: GroupNode): Type {
         )
         .map(parseLikeType)
 
-      if (args.length > 0) {
-        return { kind: 'named', name: base.name, args }
-      }
+      let named: Type =
+        args.length > 0 ? { kind: 'named', name: base.name, args } : base
+
+      // value-index / type `head <...>` CHILDREN of this like group (the indented form `like lt / head / read m /
+      // head / make zero` makes `lt m zero`). The comma form attaches them at the take/field level; this covers the
+      // indented form for every parseLikeType caller (function params, closure params, nested types).
+      const heads = children
+        .slice(1)
+        .filter(
+          (c): c is GroupNode =>
+            c.kind === 'group' && headName(c) === 'head',
+        )
+
+      named = attachHeadArgs(named, heads)
+
+      return named
     }
 
     return base
@@ -689,9 +809,54 @@ export function mill(tree: RootNode, file: string): MillResult {
               n.kind === 'group' && headName(n) === 'like',
           )
 
+          let paramType = likeGroup ? parseLikeType(likeGroup) : undefined
+
+          // value-index / type arguments given as `head <...>` siblings of the `like` group, as the task-param and rule
+          // binder parsers do: `take pf, like lt / head / read m / head / make zero` makes `pf : lt m zero`. Without this
+          // a dependent closure parameter loses its indices, so an indexed-family match in the body cannot invert.
+          if (paramType && paramType.kind === 'named') {
+            const headChildren = rest(child).filter(
+              (n): n is GroupNode =>
+                n.kind === 'group' &&
+                n !== likeGroup &&
+                headName(n) === 'head' &&
+                rest(n)[0]?.kind === 'group',
+            )
+
+            const headTypeArgs: Type[] = []
+            const headValueArgs: Expression[] = []
+
+            for (const n of headChildren) {
+              const arg = rest(n)[0] as GroupNode
+
+              if (isValueExpressionHead(headName(arg))) {
+                headValueArgs.push(toExpression(arg, new Set<string>()))
+              } else {
+                headTypeArgs.push(parseType(arg))
+              }
+            }
+
+            if (headTypeArgs.length > 0) {
+              paramType = {
+                ...paramType,
+                args: [...(paramType.args ?? []), ...headTypeArgs],
+              }
+            }
+
+            if (headValueArgs.length > 0) {
+              paramType = {
+                ...paramType,
+                valueArgs: [
+                  ...(paramType.valueArgs ?? []),
+                  ...headValueArgs,
+                ],
+              }
+            }
+          }
+
           params.push(
-            likeGroup
-              ? { name: paramName, type: parseLikeType(likeGroup) }
+            paramType
+              ? { name: paramName, type: paramType }
               : { name: paramName },
           )
         }
@@ -1311,6 +1476,7 @@ export function mill(tree: RootNode, file: string): MillResult {
             'fork',
             'hint',
             'turn',
+            'auto',
           ])
 
           const ruleParams: {
@@ -1368,9 +1534,48 @@ export function mill(tree: RootNode, file: string): MillResult {
                 ? ('natural' as const)
                 : undefined
 
+            let type = parseLikeType(likeGroup)
+
+            // value-index / type arguments given as `head <...>` siblings of the `like` group, exactly as the task-param
+            // parser does: `mark v, like vecnat / head / read n` makes `v : vecnat n`. Without this the index is dropped
+            // and `fold v` cannot refine it (the general indexed-family / vector laws).
+            if (type && type.kind === 'named') {
+              const headChildren = rest(part).filter(
+                (n): n is GroupNode =>
+                  n.kind === 'group' &&
+                  n !== likeGroup &&
+                  headName(n) === 'head' &&
+                  rest(n)[0]?.kind === 'group',
+              )
+
+              const headTypeArgs: Type[] = []
+              const headValueArgs: Expression[] = []
+
+              for (const n of headChildren) {
+                const arg = rest(n)[0] as GroupNode
+
+                if (isValueExpressionHead(headName(arg))) {
+                  headValueArgs.push(toExpression(arg, new Set<string>()))
+                } else {
+                  headTypeArgs.push(parseType(arg))
+                }
+              }
+
+              if (headTypeArgs.length > 0) {
+                type = { ...type, args: [...(type.args ?? []), ...headTypeArgs] }
+              }
+
+              if (headValueArgs.length > 0) {
+                type = {
+                  ...type,
+                  valueArgs: [...(type.valueArgs ?? []), ...headValueArgs],
+                }
+              }
+            }
+
             return {
               name: pname,
-              type: parseLikeType(likeGroup),
+              type,
               ...(refine ? { refine } : {}),
             }
           }
@@ -2166,6 +2371,9 @@ export function mill(tree: RootNode, file: string): MillResult {
         n.kind === 'group' && headName(n) === 'like',
     )
 
+    // the result type's own `head <...>` value-index children (the indented `like eq / head / read a / head / read b`
+    // form) are now attached by `parseLikeType` itself, so a task returning an indexed `eq n n` / `vecnat n` is typed
+    // correctly without a second attachment here (which would DOUBLE the indices).
     let resultType = resultLike ? parseLikeType(resultLike) : undefined
 
     if (!resultType) {
@@ -2657,6 +2865,42 @@ export function mill(tree: RootNode, file: string): MillResult {
             type = {
               ...type,
               valueArgs: [...(type.valueArgs ?? []), ...valueArgs],
+            }
+          }
+        }
+
+        // a FUNCTION-typed field written in the comma form (`link step, like task` then indented `take m / take pf /
+        // like acc`) puts the function's own params + result as SIBLINGS of the `like task` group, so `parseLikeType`
+        // sees a param-less `() -> unit`. Reattach them, mirroring the task-param comma-form handling, so a higher-order
+        // constructor field (the `step` of an accessibility proof) has its real `(nat, lt) -> acc` type.
+        if (type.kind === 'function' && type.params.length === 0) {
+          const siblings = inner.filter(
+            (n): n is GroupNode =>
+              n.kind === 'group' &&
+              n !== likeGroup &&
+              n !== fieldNode,
+          )
+
+          const fnParams = siblings
+            .filter(n => headName(n) === 'take')
+            .map(take => {
+              const innerLike = rest(take).find(
+                (n): n is GroupNode =>
+                  n.kind === 'group' && headName(n) === 'like',
+              )
+
+              return innerLike ? parseLikeType(innerLike) : UNKNOWN
+            })
+
+          const resultLike = siblings.find(n => headName(n) === 'like')
+
+          if (fnParams.length > 0 || resultLike) {
+            type = {
+              ...type,
+              params: fnParams,
+              result: resultLike
+                ? parseLikeType(resultLike)
+                : type.result,
             }
           }
         }
