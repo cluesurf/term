@@ -517,6 +517,129 @@ function main(): void {
     )
   }
 
+  // L031: returning a boolean literal from each fork branch is just the condition
+  {
+    const redundant = `task f\n  take c, like boolean\n  like boolean\n  fork test\n    hook test, read c\n    hook hold\n      send back, wave true\n    hook miss\n      send back, wave false\n`
+    const fs = findings(redundant).filter(f => f.code === 'L031')
+    ok(
+      'L031 flags `if c { true } else { false }`',
+      fs.length === 1,
+      JSON.stringify(findings(redundant)),
+    )
+    ok(
+      'L031 fix returns the condition directly',
+      fs[0]?.fix?.text === 'send back, read c',
+      JSON.stringify(fs[0]?.fix),
+    )
+
+    const real = `task f\n  take c, like boolean\n  like number\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 2\n`
+    ok(
+      'L031 leaves non-boolean returns alone',
+      findings(real).filter(f => f.code === 'L031').length === 0,
+      real,
+    )
+
+    // the fix collapses the fork and the result still parses
+    const fixed = applyFixes(redundant, findings(redundant))
+    ok(
+      'L031 fix re-parses cleanly without the fork',
+      parse({ file: 'x.tree', text: fixed }).ok &&
+        !fixed.includes('fork test'),
+      JSON.stringify(fixed),
+    )
+  }
+
+  // L032: a value-position conditional with boolean-literal arms is just the condition
+  {
+    const redundant = `task f\n  take c, like boolean\n  like boolean\n  save r\n    fork test\n      hook test, read c\n      hook hold, wave true\n      hook miss, wave false\n  send back, read r\n`
+    const fs = findings(redundant).filter(f => f.code === 'L032')
+    ok(
+      'L032 flags a `c ? true : false` conditional',
+      fs.length === 1,
+      JSON.stringify(findings(redundant)),
+    )
+    ok(
+      'L032 fix uses the bare condition',
+      fs[0]?.fix?.text === 'read c',
+      JSON.stringify(fs[0]?.fix),
+    )
+
+    const real = `task f\n  take c, like boolean\n  like number\n  save r\n    fork test\n      hook test, read c\n      hook hold, code 1\n      hook miss, code 2\n  send back, read r\n`
+    ok(
+      'L032 leaves non-boolean arms alone',
+      findings(real).filter(f => f.code === 'L032').length === 0,
+      real,
+    )
+  }
+
+  // L033: a negated equality is clearer as the opposite comparison
+  {
+    const negated = `task f\n  take a, like number\n  take b, like number\n  like boolean\n  send back\n    fork lack\n      call is-equal\n        read a\n        read b\n`
+    ok(
+      'L033 flags `!(a == b)`',
+      findings(negated).filter(f => f.code === 'L033').length === 1,
+      JSON.stringify(findings(negated)),
+    )
+
+    const plain = `task f\n  take a, like boolean\n  like boolean\n  send back\n    fork lack\n      read a\n`
+    ok(
+      'L033 leaves a plain negation alone',
+      findings(plain).filter(f => f.code === 'L033').length === 0,
+      plain,
+    )
+  }
+
+  // L034: comparing a size to zero reads as an emptiness check
+  {
+    const sized = `task f\n  take items, like list\n  like boolean\n  send back\n    call is-equal\n      call size, read items\n      code 0\n`
+    ok(
+      'L034 flags `size(items) == 0`',
+      findings(sized).filter(f => f.code === 'L034').length === 1,
+      JSON.stringify(findings(sized)),
+    )
+
+    const plain = `task f\n  take a, like number\n  like boolean\n  send back\n    call is-equal\n      read a\n      code 0\n`
+    ok(
+      'L034 leaves a plain `a == 0` alone',
+      findings(plain).filter(f => f.code === 'L034').length === 0,
+      plain,
+    )
+  }
+
+  // L035: a fork case with no arms handles nothing
+  {
+    const empty = `form color\n  case red\n  case green\n\ntask f\n  take c, like color\n  fork case, read c\n`
+    ok(
+      'L035 flags an empty fork case',
+      findings(empty).filter(f => f.code === 'L035').length === 1,
+      JSON.stringify(findings(empty)),
+    )
+
+    const full = `form color\n  case red\n  case green\n\ntask f\n  take c, like color\n  like text\n  fork case, read c\n    case red\n      send back, text <a>\n    case green\n      send back, text <b>\n`
+    ok(
+      'L035 leaves a populated fork case alone',
+      findings(full).filter(f => f.code === 'L035').length === 0,
+      full,
+    )
+  }
+
+  // L036: a map literal with a duplicate key
+  {
+    const dup = `save m\n  make find\n    save a, code 1\n    save b, code 2\n    save a, code 3\n`
+    ok(
+      'L036 flags a duplicated map key',
+      findings(dup).filter(f => f.code === 'L036').length === 1,
+      JSON.stringify(findings(dup)),
+    )
+
+    const distinct = `save m\n  make find\n    save a, code 1\n    save b, code 2\n`
+    ok(
+      'L036 leaves distinct keys alone',
+      findings(distinct).filter(f => f.code === 'L036').length === 0,
+      distinct,
+    )
+  }
+
   console.log(`\nlint: ${pass} pass, ${fail} fail`)
 }
 

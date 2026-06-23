@@ -335,6 +335,14 @@ export function emitRust(program: Program): string {
   // shim hands back a plain `Vec`) is wrapped in the seed list's Rc<RefCell> handle to match the declared return type
   let fnReturnsArray = false
 
+  // MOVE ON LAST USE (the Perceus / linearity insight, realized in Rust). The owned-value style clones every variable
+  // argument so a later use is never moved away. But a variable read EXACTLY ONCE in the whole function -- and not
+  // inside a loop or a nested closure (where the single read re-executes) -- can be MOVED at that use instead of cloned:
+  // there is no later use to invalidate, so the Rust borrow checker always accepts it. This eliminates the clone (a deep
+  // copy for `String`, a refcount bump for an `Rc` collection) in the common single-use case. It is conservative: when
+  // in any doubt the value is still cloned, so the output always compiles. Recomputed per function body.
+  let moveArgs = new Set<string>()
+
   const isNativeCall = (node: Expression): boolean => {
     if (node.form !== 'call' || node.callee.form !== 'member') {
       return false
@@ -476,13 +484,25 @@ export function emitRust(program: Program): string {
         // move it away. Cloning a non-function variable / field argument is transparent here -- every collection is an
         // `Rc` (a cheap shared handle), every struct derives `Clone`, scalars are `Copy` -- and frees callers from
         // manual ownership juggling. A closure is function-typed (`Box<dyn Fn>`, not `Clone`), so it passes unchanged.
-        const argList = node.args.map(a =>
-          (a.form === 'variable' || a.form === 'member') &&
-          a.type &&
-          a.type.kind !== 'function'
+        // MOVE ON LAST USE: a bare variable read exactly once in the function (and not in a loop or closure) is moved at
+        // this use instead of cloned -- there is no later use to invalidate, so the borrow checker accepts it, and the
+        // clone (a deep `String` copy or an `Rc` refcount bump) is saved.
+        const argList = node.args.map(a => {
+          if (
+            a.form === 'variable' &&
+            a.type &&
+            a.type.kind !== 'function' &&
+            moveArgs.has(a.name)
+          ) {
+            return expr(a)
+          }
+
+          return (a.form === 'variable' || a.form === 'member') &&
+            a.type &&
+            a.type.kind !== 'function'
             ? `${expr(a)}.clone()`
-            : expr(a),
-        )
+            : expr(a)
+        })
 
         const args = argList.join(', ')
 
@@ -573,9 +593,15 @@ export function emitRust(program: Program): string {
           .filter(p => mutated.has(p.name))
           .map(p => `let mut ${vname(p.name)} = ${vname(p.name)};`)
 
+        // inside a closure body, the move-on-last-use set of the enclosing function does not apply (a captured variable
+        // cannot be moved out of an `Fn`, and a shadowing closure-local of the same name has different liveness), so
+        // clone everything here -- the conservative, always-correct choice.
+        const outerMoveArgs = moveArgs
+        moveArgs = new Set<string>()
         const body = [...shadows, ...node.body.map(s => stmt(s, 0))]
           .filter(Boolean)
           .join(' ')
+        moveArgs = outerMoveArgs
 
         // an async closure becomes a plain `Fn` whose body is a pinned async block: calling it returns a future the
         // caller `.await`s (Rust closures can't themselves be `async`). The `let`/parameter type annotation supplies
@@ -1055,12 +1081,15 @@ export function emitRust(program: Program): string {
 
         const previousReturnsArray = fnReturnsArray
         fnReturnsArray = node.result?.kind === 'array'
+        const previousMoveArgs = moveArgs
+        moveArgs = moveOnLastUse(node.body)
 
         const bodyText = [...shadows, block(node.body, d + 1)]
           .filter(Boolean)
           .join('\n')
 
         fnReturnsArray = previousReturnsArray
+        moveArgs = previousMoveArgs
 
         const asyncMark = node.async ? 'async ' : ''
 
@@ -1213,6 +1242,147 @@ export function emitRust(program: Program): string {
 }
 
 // names reassigned anywhere in a body (a reassigned parameter needs a `let mut` shadow)
+// MOVE-ON-LAST-USE analysis. A variable that is read EXACTLY ONCE across the whole function body, where that single
+// read is NOT inside a loop or a nested closure, can be moved at that read instead of cloned (no later use can be
+// invalidated, so the borrow checker always accepts the move). Returns the set of such variable names. `reads` counts
+// every `variable` occurrence (any nesting); `restricted` counts the ones inside a loop or closure body. A name is
+// move-eligible when `reads === 1 && restricted === 0`. Conservative by construction: anything else keeps cloning.
+function moveOnLastUse(body: Statement[]): Set<string> {
+  const reads = new Map<string, number>()
+  const restricted = new Map<string, number>()
+
+  const bump = (name: string, inLoopOrClosure: boolean): void => {
+    reads.set(name, (reads.get(name) ?? 0) + 1)
+
+    if (inLoopOrClosure) {
+      restricted.set(name, (restricted.get(name) ?? 0) + 1)
+    }
+  }
+
+  const walkExpr = (node: Expression, restrict: boolean): void => {
+    switch (node.form) {
+      case 'variable':
+        bump(node.name, restrict)
+        break
+      case 'call':
+        walkExpr(node.callee, restrict)
+        node.args.forEach(a => walkExpr(a, restrict))
+        break
+      case 'member':
+        walkExpr(node.target, restrict)
+        break
+      case 'binary':
+        walkExpr(node.left, restrict)
+        walkExpr(node.right, restrict)
+        break
+      case 'unary':
+        walkExpr(node.operand, restrict)
+        break
+      case 'await':
+        walkExpr(node.expr, restrict)
+        break
+      case 'array':
+        node.items.forEach(i => walkExpr(i, restrict))
+        break
+      case 'record':
+        node.fields.forEach(f => walkExpr(f.value, restrict))
+        break
+      case 'map':
+        node.entries.forEach(e => {
+          walkExpr(e.key, restrict)
+          walkExpr(e.value, restrict)
+        })
+        break
+      case 'conditional':
+        node.branches.forEach(b => {
+          walkExpr(b.cond, restrict)
+          walkExpr(b.value, restrict)
+        })
+
+        if (node.otherwise) {
+          walkExpr(node.otherwise, restrict)
+        }
+
+        break
+      case 'closure':
+        // a nested closure body: its reads re-execute on every call (and a captured variable cannot be moved out of a
+        // `Fn`), so they are restricted (never move-eligible)
+        walkBody(node.body, true)
+        break
+      default:
+        break
+    }
+  }
+
+  const walkBody = (stmts: Statement[], restrict: boolean): void => {
+    for (const s of stmts) {
+      switch (s.form) {
+        case 'let':
+          walkExpr(s.init, restrict)
+          break
+        case 'assign':
+          walkExpr(s.value, restrict)
+          walkExpr(s.target, restrict)
+          break
+        case 'expression':
+          walkExpr(s.expr, restrict)
+          break
+        case 'return':
+          if (s.value) {
+            walkExpr(s.value, restrict)
+          }
+
+          break
+        case 'throw':
+          walkExpr(s.value, restrict)
+          break
+        case 'if':
+          s.branches.forEach(b => {
+            walkExpr(b.cond, restrict)
+            walkBody(b.body, restrict)
+          })
+
+          if (s.otherwise) {
+            walkBody(s.otherwise, restrict)
+          }
+
+          break
+        case 'while':
+          walkExpr(s.cond, true)
+          walkBody(s.body, true)
+          break
+        case 'for-each':
+          walkExpr(s.iterable, restrict)
+          walkBody(s.body, true)
+          break
+        case 'match':
+          walkExpr(s.subject, restrict)
+          s.cases.forEach(c => walkBody(c.body, restrict))
+
+          if (s.otherwise) {
+            walkBody(s.otherwise, restrict)
+          }
+
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  walkBody(body, false)
+
+  const out = new Set<string>()
+
+  for (const [name, count] of reads) {
+    if (count === 1 && (restricted.get(name) ?? 0) === 0) {
+      out.add(name)
+    }
+  }
+
+  return out
+}
+
 function reassigned(body: Statement[], into: Set<string>): void {
   for (const s of body) {
     switch (s.form) {

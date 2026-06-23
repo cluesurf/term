@@ -41,6 +41,12 @@ import { noNegatedCondition } from '@cluesurf/make/code/lint/rules/no-negated-co
 import { noLonelyIf } from '@cluesurf/make/code/lint/rules/no-lonely-if'
 import { consistentReturn } from '@cluesurf/make/code/lint/rules/consistent-return'
 import { noUselessReturn } from '@cluesurf/make/code/lint/rules/no-useless-return'
+import { noRedundantBoolean } from '@cluesurf/make/code/lint/rules/no-redundant-boolean'
+import { noRedundantConditional } from '@cluesurf/make/code/lint/rules/no-redundant-conditional'
+import { noNegatedEquality } from '@cluesurf/make/code/lint/rules/no-negated-equality'
+import { preferIsEmpty } from '@cluesurf/make/code/lint/rules/prefer-is-empty'
+import { noEmptyForkCase } from '@cluesurf/make/code/lint/rules/no-empty-fork-case'
+import { noDuplicateMapKey } from '@cluesurf/make/code/lint/rules/no-duplicate-map-key'
 
 // the line-length limit enforced by the formatter and the max-line-length lint rule (L019)
 const MAX_LINE_LENGTH = 84
@@ -72,6 +78,12 @@ export const RULES: Rule[] = [
   noLonelyIf,
   consistentReturn,
   noUselessReturn,
+  noRedundantBoolean,
+  noRedundantConditional,
+  noNegatedEquality,
+  preferIsEmpty,
+  noEmptyForkCase,
+  noDuplicateMapKey,
 ]
 
 export type LintConfig = {
