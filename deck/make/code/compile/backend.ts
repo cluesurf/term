@@ -125,7 +125,7 @@ export function exhausted(node: never): never {
   )
 }
 
-// A target that cannot express a form (a GPU shader cannot throw; bare LLVM has no managed map) emits this marker
+// A target that cannot express a form (a GPU shader cannot throw; the HVM pure fragment has no stored closures) emits this marker
 // instead of silently dropping or miscompiling the construct. The marker is a comment in the target's syntax, so the
 // generated source still parses but the gap is visible and greppable (SEED-UNSUPPORTED), never silent.
 export function unsupported(

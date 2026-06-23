@@ -1,4 +1,4 @@
-// Backend tests: the recursive Fibonacci compiles to LLVM IR, Swift, Kotlin, and WGSL with the expected shape.
+// Backend tests: the recursive Fibonacci compiles to Swift, Kotlin, WGSL, and HVM with the expected shape.
 // Run: npx tsx test/compile/backends.ts
 
 import { parse } from '@cluesurf/make/code/parser/tree'
@@ -8,7 +8,6 @@ import { check } from '@cluesurf/make/code/check/infer'
 import { emitSwift } from '@cluesurf/make/code/compile/swift'
 import { emitKotlin } from '@cluesurf/make/code/compile/kotlin'
 import { emitWgsl } from '@cluesurf/make/code/compile/wgsl'
-import { emitLlvm } from '@cluesurf/make/code/compile/llvm'
 import { emitHvm } from '@cluesurf/make/code/compile/hvm'
 import type { Program } from '@cluesurf/make/code/compile/node'
 
@@ -105,25 +104,9 @@ function main(): void {
       wgsl.includes('fibonacci('),
   )
 
-  const llvm = emitLlvm(program)
-  ok(
-    'llvm: define',
-    llvm.includes('define i64 @fibonacci(i64 %n)'),
-    llvm,
-  )
-  ok(
-    'llvm: comparison + branch',
-    llvm.includes('icmp slt i64') && llvm.includes('br i1'),
-  )
-  ok(
-    'llvm: call + ret',
-    llvm.includes('call i64 @fibonacci(i64') &&
-      llvm.includes('ret i64'),
-  )
-
   // Richer forms: an algebraic data type with a field, a `match`, field access, record construction, and a throw.
-  // The general-purpose targets (Swift, Kotlin) must lower every form; the restricted targets (LLVM, WGSL) must emit
-  // an explicit SEED-UNSUPPORTED marker for forms outside their fragment, never silently drop them.
+  // The general-purpose targets (Swift, Kotlin) must lower every form; the restricted target (WGSL) must emit
+  // an explicit SEED-UNSUPPORTED marker for forms outside its fragment, never silently drop them.
   const rich = frontEnd(`form box
   head t
   case full
@@ -202,19 +185,7 @@ task danger
     ko,
   )
 
-  // restricted targets: explicit markers, no silent drop, while still emitting the numeric functions they can
-  const llvmRich = emitLlvm(rich)
-  ok(
-    'llvm: marks forms outside its fragment',
-    llvmRich.includes('SEED-UNSUPPORTED'),
-    llvmRich,
-  )
-  ok(
-    'llvm: still emits the numeric function',
-    llvmRich.includes('define i64 @danger'),
-    llvmRich,
-  )
-
+  // restricted target: explicit markers, no silent drop, while still emitting the numeric functions it can
   const wgslRich = emitWgsl(rich)
   ok(
     'wgsl: marks forms outside its fragment',
@@ -225,29 +196,6 @@ task danger
     'wgsl: still emits the numeric function',
     wgslRich.includes('fn danger'),
     wgslRich,
-  )
-
-  // LLVM strings: a string-returning function is typed as a pointer and lowered through the managed runtime
-  const strings = frontEnd(
-    'task greeting\n  like text\n  send back\n    call add\n      text <hi >\n      text <there>\n',
-  )
-
-  const llvmStr = emitLlvm(strings)
-  ok(
-    'llvm: declares the string runtime',
-    llvmStr.includes('declare ptr @seed_str_concat(ptr, ptr)'),
-    llvmStr,
-  )
-  ok(
-    'llvm: string literals are module constants',
-    llvmStr.includes('private unnamed_addr constant'),
-    llvmStr,
-  )
-  ok(
-    'llvm: concatenation lowers to the runtime, returning a pointer',
-    llvmStr.includes('call ptr @seed_str_concat') &&
-      llvmStr.includes('ret ptr'),
-    llvmStr,
   )
 
   // HVM: the recursive numeric fragment lowers to interaction-combinator definitions. Recursion is a self-reference to

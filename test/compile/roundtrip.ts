@@ -1,4 +1,4 @@
-// Round-trip tests: emit each native backend, compile it with the REAL toolchain (swiftc / kotlinc / clang), run the
+// Round-trip tests: emit each native backend, compile it with the REAL toolchain (swiftc / kotlinc / cargo (rust) / hvm), run the
 // binary, and assert the result matches the interpreter's. This proves the backends emit code that actually compiles
 // and computes correctly, not just code of the right shape. Each backend is gated on its toolchain being installed;
 // a missing toolchain is reported as skipped, never a failure. Run: npx tsx test/compile/roundtrip.ts
@@ -24,10 +24,8 @@ import {
   emitKotlin,
   hoistKotlinImports,
 } from '@cluesurf/make/code/compile/kotlin'
-import { emitLlvm } from '@cluesurf/make/code/compile/llvm'
 import { emitRust } from '@cluesurf/make/code/compile/rust'
 import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
-import { LLVM_RUNTIME_RUST } from '@cluesurf/make/code/compile/llvm-runtime'
 import type { Program } from '@cluesurf/make/code/compile/node'
 import { readFileSync, existsSync } from 'node:fs'
 
@@ -218,43 +216,6 @@ function runKotlin(
     Number(execFileSync('java', ['-jar', jar]).toString().trim()),
     want,
   )
-}
-
-// LLVM: append a main that returns the function result as the process exit code, assemble + run with clang
-function runLlvm(
-  name: string,
-  program: Program,
-  mangledCall: string,
-  want: number,
-): void {
-  if (skip_filtered(name)) {return}
-
-  if (!have('clang')) {return skipped(name, 'clang not installed')}
-
-  const file = join(dir, `${name.replace(/\W/g, '')}.ll`)
-  const main = `\ndefine i32 @main() {\n  %r = call i64 ${mangledCall}\n  %t = trunc i64 %r to i32\n  ret i32 %t\n}\n`
-  writeFileSync(file, emitLlvm(program) + main)
-
-  const exe = file.replace(/\.ll$/, '')
-
-  try {
-    execFileSync(
-      'clang',
-      ['-Wno-override-module', '-x', 'ir', file, '-o', exe],
-      { stdio: 'pipe' },
-    )
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (clang error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(name, spawnSync(exe).status, want)
 }
 
 // compile emitted Rust with rustc and run it, asserting the exit code
@@ -1086,303 +1047,6 @@ function runKotlinConsole(
   ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
 }
 
-// the clang -arch that matches the Rust runtime's host (rustc here targets x86_64; clang cross-compiles to it)
-function rustcArch(): string | undefined {
-  try {
-    const host =
-      /host:\s*(\S+)/.exec(
-        execFileSync('rustc', ['-vV']).toString(),
-      )?.[1] ?? ''
-
-    if (host.startsWith('x86_64')) {return 'x86_64'}
-
-    if (host.startsWith('aarch64') || host.startsWith('arm64'))
-      {return 'arm64'}
-  } catch {
-    // fall through
-  }
-
-  return undefined
-}
-
-// LLVM + the Rust runtime: emit IR, append a `main` that prints the string the function returns, compile the Rust
-// runtime to a staticlib, link it with clang, run, and check stdout
-function runLlvmRust(
-  name: string,
-  program: Program,
-  mangledCall: string,
-  want: string,
-): void {
-  if (skip_filtered(name)) {return}
-
-  if (!have('clang') || !have('rustc'))
-    {return skipped(name, 'clang/rustc not installed')}
-
-  const arch = rustcArch()
-
-  if (!arch)
-    {return skipped(name, 'could not determine the rust host arch')}
-
-  const rs = join(dir, `${name.replace(/\W/g, '')}.rs`)
-  const lib = join(dir, `lib${name.replace(/\W/g, '')}.a`)
-  writeFileSync(rs, LLVM_RUNTIME_RUST)
-
-  try {
-    execFileSync(
-      'rustc',
-      [
-        '--edition',
-        '2021',
-        '--crate-type',
-        'staticlib',
-        '-O',
-        rs,
-        '-o',
-        lib,
-      ],
-      { stdio: 'pipe' },
-    )
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (rustc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  const file = join(dir, `${name.replace(/\W/g, '')}.ll`)
-  const main = `\ndefine i32 @main() {\n  %r = call ptr ${mangledCall}\n  call void @seed_print_str(ptr %r)\n  ret i32 0\n}\n`
-  writeFileSync(file, emitLlvm(program) + main)
-
-  const exe = file.replace(/\.ll$/, '')
-
-  try {
-    execFileSync(
-      'clang',
-      [
-        '-arch',
-        arch,
-        '-Wno-override-module',
-        '-x',
-        'ir',
-        file,
-        '-x',
-        'none',
-        lib,
-        '-o',
-        exe,
-      ],
-      { stdio: 'pipe' },
-    )
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (clang error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(name, execFileSync(exe).toString().trim(), want)
-}
-
-// like runLlvmRust but for an i64-returning entry: link the Rust runtime (so the seed_list_* heap ops resolve) and
-// assert the process exit code. Used for the list ops, whose handles live in the runtime.
-function runLlvmRustExit(
-  name: string,
-  program: Program,
-  mangledCall: string,
-  want: number,
-): void {
-  if (skip_filtered(name)) {return}
-
-  if (!have('clang') || !have('rustc'))
-    {return skipped(name, 'clang/rustc not installed')}
-
-  const arch = rustcArch()
-
-  if (!arch)
-    {return skipped(name, 'could not determine the rust host arch')}
-
-  const rs = join(dir, `${name.replace(/\W/g, '')}.rs`)
-  const lib = join(dir, `lib${name.replace(/\W/g, '')}.a`)
-  writeFileSync(rs, LLVM_RUNTIME_RUST)
-
-  try {
-    execFileSync(
-      'rustc',
-      [
-        '--edition',
-        '2021',
-        '--crate-type',
-        'staticlib',
-        '-O',
-        rs,
-        '-o',
-        lib,
-      ],
-      { stdio: 'pipe' },
-    )
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (rustc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  const file = join(dir, `${name.replace(/\W/g, '')}.ll`)
-  const main = `\ndefine i32 @main() {\n  %r = call i64 ${mangledCall}\n  %t = trunc i64 %r to i32\n  ret i32 %t\n}\n`
-  writeFileSync(file, emitLlvm(program) + main)
-
-  const exe = file.replace(/\.ll$/, '')
-
-  try {
-    execFileSync(
-      'clang',
-      [
-        '-arch',
-        arch,
-        '-Wno-override-module',
-        '-x',
-        'ir',
-        file,
-        '-x',
-        'none',
-        lib,
-        '-o',
-        exe,
-      ],
-      { stdio: 'pipe' },
-    )
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (clang error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(name, spawnSync(exe).status, want)
-}
-
-// a string-returning function: a literal concatenation, lowered to the runtime's seed_str_concat
-const GREETING = `task greeting\n  like text\n  send back\n    call add\n      text <hello >\n      text <world>\n`
-
-// a list reaching LLVM: build a list, push three integers, read element 1 (at) and the length (count). 20 + 3 = 23.
-// Exercises the seed_list_* heap runtime (new / push / at / length) -- the imperative integer-list capability.
-const LIST_LLVM = `load @cluesurf/base/code/list
-  find list
-  find push
-  find get
-  find count
-
-task compute
-  like number
-  save xs
-    make list
-  call push
-    read xs
-    code 10
-  call push
-    read xs
-    code 20
-  call push
-    read xs
-    code 30
-  save n
-    call get
-      read xs
-      code 1
-  send back
-    call add
-      read n
-      call count
-        read xs
-`
-
-// a map on LLVM: build a hash, set two keys plus a duplicate, read the size. The seed_map_* runtime canonicalizes keys
-// by value, so 1 -> ... twice counts once: size is 2. Exercises seed_map_new / set / size.
-const HASH_LLVM = `load @cluesurf/base/code/hash
-  find hash
-
-task compute
-  like number
-  save m
-    make find
-  call set
-    read m
-    code 1
-    code 100
-  call set
-    read m
-    code 2
-    code 200
-  call set
-    read m
-    code 1
-    code 300
-  send back
-    call size
-      read m
-`
-
-// a list through the closure-taking ops on LLVM: [1,2,3] -> map(*2) -> [2,4,6] -> reduce(+, 0) -> 12. The list
-// runtime calls each closure back per element (its { code, env } passed as two pointers).
-const LIST_FOLD_LLVM = `load @cluesurf/base/code/list
-  find list
-  find push
-  find map
-  find reduce
-
-task compute
-  like number
-  save xs
-    make list
-  call push
-    read xs
-    code 1
-  call push
-    read xs
-    code 2
-  call push
-    read xs
-    code 3
-  save doubled
-    call map
-      read xs
-      task double
-        take item, like number
-        like number
-        send back
-          call multiply
-            read item
-            code 2
-  send back
-    call reduce
-      read doubled
-      task add-up
-        take total, like number
-        take item, like number
-        like number
-        send back
-          call add
-            read total
-            read item
-      code 0
-`
-
 // an iterative Fibonacci: mutation + a while loop (the scalar imperative fragment every native backend supports)
 // a higher-order function: a closure passed as a Box<dyn Fn> param and called twice. apply-twice(double, 5) = 20.
 const CLOSURE = `task apply-twice
@@ -1654,8 +1318,8 @@ task run
       read b
 `
 
-// a sum type (variant / enum) on LLVM: build a tagged value, match on it, read the payload. `make full` is tag 0 with
-// payload 7; the match reads the tag, takes the `full` arm, returns the payload -> 7. (Tagged union { i64, i64 }.)
+// a sum type (variant / enum): build a tagged value, match on it, read the payload. `make full` is tag 0 with
+// payload 7; the match reads the tag, takes the `full` arm, returns the payload -> 7.
 const VARIANT = `form box
   case full
     link value, like number
@@ -1691,7 +1355,7 @@ task compute
 `
 
 // a value-position conditional (a `fork` used as the returned value) with an else-if chain: grade(70) takes the second
-// branch -> 2. On llvm this lowers to a result alloca written from each arm's block, loaded at the merge (no phi).
+// branch -> 2.
 const VALUE_COND = `task grade
   take n, like number
   like number
@@ -1713,8 +1377,8 @@ const VALUE_COND = `task grade
         code 3
 `
 
-// a generic function reaching a monomorphic backend: identity<t> called at a number. LLVM has no type parameters, so
-// monomorphization must specialize identity at i64 and rewrite the call, or the function would be dropped. compute -> 42.
+// a generic function reaching a monomorphic backend: identity<t> called at a number. A monomorphic backend has no type
+// parameters, so monomorphization must specialize identity at the number type and rewrite the call. compute -> 42.
 const GENERIC = `task identity
   head t
   take x, like t
@@ -1729,8 +1393,7 @@ task compute
       code 42
 `
 
-// a plain record reaching LLVM: build a struct, pass it by value, read a field. LLVM lowers it to a first-class
-// %struct value (insertvalue to build, extractvalue to read) -- no heap. compute -> 35.
+// a plain record: build a struct, pass it by value, read a field. compute -> 35.
 const RECORD = `form point
   link x, like number
   link y, like number
@@ -3069,79 +2732,6 @@ function runRustExpr(
 
 function main(): void {
   const fib = frontEnd(FIB)
-  runLlvm(
-    'llvm: iterative fibonacci (mutation + while)',
-    fib,
-    '@find_fibonacci_via_loop(i64 10)',
-    55,
-  )
-  // llvm sum type: build a variant, match on the tag, read the payload -> 7 (tagged union { tag, payload })
-  runLlvm(
-    'llvm: variant build + match + payload read (tagged union)',
-    frontEnd(VARIANT),
-    '@compute()',
-    7,
-  )
-  // llvm float: 7.0 / 2.0 == 3.5 via `fdiv double` + `fcmp oeq double` (not integer division)
-  runLlvm(
-    'llvm: float arithmetic + comparison (double)',
-    frontEnd(
-      'task compute\n  like boolean\n  send back\n    call is-equal\n      call divide\n        7.0\n        2.0\n      3.5\n',
-    ),
-    '@compute()',
-    1,
-  )
-  // llvm value-position conditional: grade(70) -> 2 through the else-if chain (result alloca + branch blocks, no phi)
-  runLlvm(
-    'llvm: value-position conditional (fork as a value)',
-    frontEnd(VALUE_COND),
-    '@grade(i64 70)',
-    2,
-  )
-  // llvm monomorphization: a generic identity specialized at i64 and called -> 42 (generic would be dropped otherwise)
-  runLlvm(
-    'llvm: monomorphized generic function',
-    frontEnd(GENERIC),
-    '@compute()',
-    42,
-  )
-  // llvm record: a struct built (insertvalue), passed by value, and a field read (extractvalue) -> 35
-  runLlvm(
-    'llvm: record build + field read (first-class struct)',
-    frontEnd(RECORD),
-    '@compute()',
-    35,
-  )
-  // llvm list: build an integer list, push, read element 1 + length through the seed_list_* heap runtime -> 23
-  runLlvmRustExit(
-    'llvm + rust runtime: integer list build + at + count',
-    frontEnd(LIST_LLVM, true),
-    '@compute()',
-    23,
-  )
-  // llvm closure: a closure capturing an outer variable, passed to a higher-order fn and called indirectly. The env is
-  // a seed_list of captured words, so the runtime is linked. compute(7) = adder(10) with captured seed 7 -> 17.
-  runLlvmRustExit(
-    'llvm + rust runtime: closure capture via indirect call',
-    frontEnd(CAPTURE),
-    '@compute(i64 7)',
-    17,
-  )
-  // llvm list closure ops: map then reduce, the runtime calling each closure back per element. [1,2,3]*2 summed -> 12
-  runLlvmRustExit(
-    'llvm + rust runtime: list map + reduce (closure callbacks)',
-    frontEnd(LIST_FOLD_LLVM, true),
-    '@compute()',
-    12,
-  )
-  // llvm map: set two distinct keys + one duplicate, then read the size -> 2 (verifies the seed_map_* heap runtime and
-  // that keys are compared by value, so the duplicate key does not grow the map).
-  runLlvmRustExit(
-    'llvm + rust runtime: map set (dedup) + size',
-    frontEnd(HASH_LLVM, true),
-    '@compute()',
-    2,
-  )
   runRust(
     'rust: iterative fibonacci (mutation + while)',
     fib,
@@ -3182,12 +2772,6 @@ function main(): void {
     'kotlin: generic trait-bounded dispatch (interface + overrides)',
     frontEnd(TRAIT_GENERIC),
     'run()',
-    16,
-  )
-  runLlvm(
-    'llvm: generic trait-bounded dispatch (monomorphized to instance calls)',
-    frontEnd(TRAIT_GENERIC),
-    '@run()',
     16,
   )
   runSwift(
@@ -3294,14 +2878,6 @@ function main(): void {
     maybe,
     'demo()',
     48,
-  )
-
-  // LLVM with the managed Rust runtime: strings as pointers, concatenation + printing through the linked staticlib
-  runLlvmRust(
-    'llvm + rust runtime: string concat + print',
-    frontEnd(GREETING),
-    '@greeting()',
-    'hello world',
   )
 
   // native file IO running for real on each compiled toolchain: write + read a temp file through the emitted code +

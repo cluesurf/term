@@ -6,9 +6,9 @@
 export type BackendStability = 'stable' | 'experimental'
 
 export type BackendInfo = {
-  // the target name as written on the command line / passed to the emitter (`rust`, `llvm`, ...)
+  // the target name as written on the command line / passed to the emitter (`rust`, `wgsl`, ...)
   name: string
-  // the human-facing language / format name (`Rust`, `LLVM IR`, ...)
+  // the human-facing language / format name (`Rust`, `WGSL`, ...)
   language: string
   stability: BackendStability
   // for an experimental backend, the specific things that do not work yet; empty for a stable one
@@ -39,15 +39,6 @@ export const BACKENDS: Record<string, BackendInfo> = {
     language: 'Kotlin',
     stability: 'stable',
     limitations: [],
-  },
-  llvm: {
-    name: 'llvm',
-    language: 'LLVM IR',
-    stability: 'experimental',
-    limitations: [
-      'Strings compare by content through the runtime; a total string ordering (sort / min / max over text) is not yet wired.',
-      'Collections, closures, and async require the linked Rust runtime; the numeric and scalar imperative fragment is the most complete path.',
-    ],
   },
   wgsl: {
     name: 'wgsl',
@@ -91,7 +82,7 @@ export function experimentalNotice(name: string): string[] {
 }
 
 // the experimental notice as a comment block in the target language's own comment syntax, ready to prepend to emitted
-// source. `prefix` is the line-comment marker (`;` for LLVM IR, `//` for WGSL). Empty string for a stable backend.
+// source. `prefix` is the line-comment marker (`//` for WGSL). Empty string for a stable backend.
 export function experimentalBanner(name: string, prefix: string): string {
   const notice = experimentalNotice(name)
 

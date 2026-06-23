@@ -4,7 +4,7 @@
 // lower to HVM's native operators; an `if` / value-conditional lowers to a numeric match `(λ{0: else; _: λx. then})(cond)`;
 // a call lowers to `@callee(args)`. Recursion is just a self-reference to `@name`. Forms outside this fragment (strings,
 // collections, closures stored in data, records, loops) are flagged with a SEED-UNSUPPORTED marker, exactly like the
-// LLVM and WGSL backends. Run monomorphization first so a generic call resolves to a concrete definition. Pure,
+// WGSL backend. Run monomorphization first so a generic call resolves to a concrete definition. Pure,
 // browser-safe. Experimental: see backend-registry.ts.
 
 import type {

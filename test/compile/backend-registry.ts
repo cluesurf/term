@@ -1,12 +1,11 @@
 // Backend registry test: the stability registry is the single source of truth for which backends are production-ready
-// and which are experimental, and the experimental backends (LLVM, WGSL) stamp their output with a banner stating why.
+// and which are experimental, and the experimental backends (WGSL, HVM) stamp their output with a banner stating why.
 // Run: npx tsx test/compile/backend-registry.ts
 
 import { parse } from '@cluesurf/make/code/parser/tree'
 import { mill } from '@cluesurf/make/code/compile/mill'
 import { resolve } from '@cluesurf/make/code/check/resolve'
 import { check } from '@cluesurf/make/code/check/infer'
-import { emitLlvm } from '@cluesurf/make/code/compile/llvm'
 import { emitWgsl } from '@cluesurf/make/code/compile/wgsl'
 import {
   BACKENDS,
@@ -56,8 +55,8 @@ for (const name of ['typescript', 'rust', 'swift', 'kotlin']) {
   ok(`${name} lists no limitations`, backendInfo(name)?.limitations.length === 0)
 }
 
-// llvm, wgsl, hvm are experimental and each documents at least one concrete limitation
-for (const name of ['llvm', 'wgsl', 'hvm']) {
+// wgsl, hvm are experimental and each documents at least one concrete limitation
+for (const name of ['wgsl', 'hvm']) {
   ok(`${name} is experimental`, isExperimentalBackend(name))
   ok(
     `${name} documents limitations`,
@@ -72,8 +71,8 @@ for (const name of ['llvm', 'wgsl', 'hvm']) {
 
 // the documented limitations name the headline constraints
 ok(
-  'llvm notice mentions string ordering',
-  experimentalNotice('llvm').some(l => l.toLowerCase().includes('ordering')),
+  'hvm notice mentions the pure fragment',
+  experimentalNotice('hvm').some(l => l.toLowerCase().includes('fragment')),
 )
 ok(
   'wgsl notice mentions numeric-only',
@@ -85,8 +84,8 @@ ok(
 // a stable backend has no banner; an experimental one uses the requested comment prefix
 ok('stable backend has empty banner', experimentalBanner('rust', '//') === '')
 ok(
-  'llvm banner uses the ; comment prefix',
-  experimentalBanner('llvm', ';').startsWith('; EXPERIMENTAL backend: LLVM IR'),
+  'hvm banner uses the // comment prefix',
+  experimentalBanner('hvm', '//').startsWith('// EXPERIMENTAL backend: HVM'),
 )
 ok(
   'wgsl banner uses the // comment prefix',
@@ -109,10 +108,6 @@ const DOUBLE = `task double
       read n
 `
 const program = frontEnd(DOUBLE)
-ok(
-  'emitted LLVM begins with the experimental banner',
-  emitLlvm(program).startsWith('; EXPERIMENTAL backend: LLVM IR'),
-)
 ok(
   'emitted WGSL begins with the experimental banner',
   emitWgsl(program).startsWith('// EXPERIMENTAL backend: WGSL'),

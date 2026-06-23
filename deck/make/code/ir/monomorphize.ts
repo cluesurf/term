@@ -1,7 +1,8 @@
 // Monomorphization: specialize each generic function at the concrete types it is called with, then drop the
-// generic originals. Native targets (LLVM, Swift, Kotlin, GPU) have no type parameters, so every call must resolve
-// to a concrete function. The instantiation is read off the (now fully resolved) argument types. The TypeScript
-// backend keeps generics, so this pass is optional and runs only ahead of the monomorphic backends. See
+// generic originals. The monomorphic targets (WGSL on the GPU, HVM) have no type parameters, so every call must resolve
+// to a concrete function. The instantiation is read off the (now fully resolved) argument types. The TypeScript, Rust,
+// Swift, and Kotlin backends keep generics natively, so this pass is optional and runs only ahead of the monomorphic
+// backends. See
 // note/research/vibe/computation/plans/05-ir.md. Pure and browser-safe.
 
 import type {
