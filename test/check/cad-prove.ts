@@ -53,7 +53,7 @@ function render(e: E, indent: number): string {
   const pad = ' '.repeat(indent)
 
   if (e.k === 'lit') {
-    return `${pad}mark ${e.n}`
+    return `${pad}code ${e.n}`
   }
 
   if (e.k === 'var') {
@@ -72,7 +72,7 @@ function goal(
 ): string {
   const decls = vars.map(v => `  mark ${v}, like integer`).join('\n')
 
-  return `rule ${rule}\n${decls}\n  show hold\n    call ${cmp}\n${render(lhs, 6)}\n      mark 0\n  calm hold\n`
+  return `rule ${rule}\n${decls}\n  show hold\n    call ${cmp}\n${render(lhs, 6)}\n      code 0\n  calm hold\n`
 }
 
 const x2 = mul(x, x)

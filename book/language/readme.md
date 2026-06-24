@@ -66,10 +66,11 @@ Every head you will meet, grouped by job. Each has its own page.
 | `tree` | define a template (macro) | [templates](templates.md) |
 | `fuse` | instantiate a template | [templates](templates.md) |
 | `bust` | throw an error | [errors](errors.md) |
-| `mark` | a literal, or a modifier (`note async`, `note private`) | [primitives](primitives.md) |
-| `wave` | a boolean literal (`true` / `false`) | [primitives](primitives.md) |
+| `mark` | a modifier (`mark private`) or a rule's universal binder (`mark x, like T`) | [primitives](primitives.md), [math](../math/readme.md) |
+| `note` | an annotation on a task or call (`note async`, `note private`) | [functions](functions.md) |
 | `text` | a string literal | [primitives](primitives.md) |
-| `code` | a raw numeric literal | [primitives](primitives.md) |
+| `code` | the number literal, every base, plus `code true` / `code false` | [primitives](primitives.md) |
+| `true` / `false` | a boolean literal | [primitives](primitives.md) |
 | `rule` | a named proof | [math](../math/readme.md) |
 | `show hold` | state a claim to prove inside a `rule` | [math](../math/readme.md) |
 | `hold` | a proof obligation / constraint on a task | [math](../math/readme.md) |
@@ -81,12 +82,13 @@ Logging is not a keyword. You print with the standard library: `call info` / `ca
 | Literal | Writes | Is |
 | --- | --- | --- |
 | string | `text <hello>` | text |
-| integer | `code 42` | a whole number |
-| boolean | `true` / `false` | a boolean |
-| raw number | `code 0` | a bare numeric code (used where a tag/count is wanted) |
+| number | `code 42` | a whole number |
+| number | `code -7` / `code 1.5` | negative and decimal |
+| number | `code 0x1f` / `code 0b1010` / `code 0o17` / `code 0u0041` | hex / binary / octal / unicode |
+| boolean | `true` / `false` | a boolean (also `code true` / `code false`) |
 | nothing | `void` | the unit / no value |
 
-A string's content sits between `<` and `>`, so quotes are never needed: `text <it's "fine">`.
+`code` is the single number literal. It carries every base and sign. A string's content sits between `<` and `>`, so quotes are never needed: `text <it's "fine">`.
 
 ## Reading values vs. naming things
 

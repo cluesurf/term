@@ -45,7 +45,7 @@ ok(
       call multiply
         read x
         read x
-      mark 0
+      code 0
   calm hold
 `),
 )
@@ -65,7 +65,7 @@ ok(
         call multiply
           read y
           read y
-      mark 0
+      code 0
   calm hold
 `),
 )
@@ -81,7 +81,7 @@ ok(
       call multiply
         read x
         read x
-      mark 0
+      code 0
   calm hold
 `),
 )
@@ -98,7 +98,7 @@ ok(
       call multiply
         read x
         read y
-      mark 0
+      code 0
   calm hold
 `),
 )

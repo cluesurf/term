@@ -1,149 +1,248 @@
+# Arbitrary-precision integers (bignum): integers with no width limit, for cryptography, exact counting, and money. Each
+# backend uses its own bignum: JS `BigInt`, rust `num-bigint`, kotlin `java.math.BigInteger`. (Swift's stdlib has no
+# bignum; that backend needs a package decision before it can build this module.) The value lives in the opaque `dock`
+# handle and every operation is one native expression -- no per-op logic here, just the platform's bignum arithmetic.
 
-form integer
-  task abs
-    like integer
+# the platform's bignum value, held opaque
+dock type
+  load <any>, name big-handle
 
+bind do-from-text
+  take value, like text
+  like big-handle
+  case node
+    text <BigInt($value)>
+  case browser
+    text <BigInt($value)>
+  case rust
+    load <num_bigint::BigInt>
+    load <std::str::FromStr>
+    text <num_bigint::BigInt::from_str(&$value).unwrap()>
+  case kotlin
+    text <java.math.BigInteger($value)>
+
+bind do-from-number
+  take value, like number
+  like big-handle
+  case node
+    text <BigInt($value)>
+  case browser
+    text <BigInt($value)>
+  case rust
+    text <num_bigint::BigInt::from($value)>
+  case kotlin
+    text <java.math.BigInteger.valueOf($value)>
+
+bind do-to-text
+  take value, like big-handle
+  like text
+  case node
+    text <$value.toString()>
+  case browser
+    text <$value.toString()>
+  case rust
+    text <$value.to_string()>
+  case kotlin
+    text <$value.toString()>
+
+bind do-add
+  take a, like big-handle
+  take b, like big-handle
+  like big-handle
+  case node
+    text <$a + $b>
+  case browser
+    text <$a + $b>
+  case rust
+    text <&$a + &$b>
+  case kotlin
+    text <$a.add($b)>
+
+bind do-subtract
+  take a, like big-handle
+  take b, like big-handle
+  like big-handle
+  case node
+    text <$a - $b>
+  case browser
+    text <$a - $b>
+  case rust
+    text <&$a - &$b>
+  case kotlin
+    text <$a.subtract($b)>
+
+bind do-multiply
+  take a, like big-handle
+  take b, like big-handle
+  like big-handle
+  case node
+    text <$a * $b>
+  case browser
+    text <$a * $b>
+  case rust
+    text <&$a * &$b>
+  case kotlin
+    text <$a.multiply($b)>
+
+bind do-divide
+  take a, like big-handle
+  take b, like big-handle
+  like big-handle
+  case node
+    text <$a / $b>
+  case browser
+    text <$a / $b>
+  case rust
+    text <&$a / &$b>
+  case kotlin
+    text <$a.divide($b)>
+
+bind do-remainder
+  take a, like big-handle
+  take b, like big-handle
+  like big-handle
+  case node
+    text <$a % $b>
+  case browser
+    text <$a % $b>
+  case rust
+    text <&$a % &$b>
+  case kotlin
+    text <$a.remainder($b)>
+
+bind do-negate
+  take value, like big-handle
+  like big-handle
+  case node
+    text <-$value>
+  case browser
+    text <-$value>
+  case rust
+    text <-&$value>
+  case kotlin
+    text <$value.negate()>
+
+bind do-compare
+  take a, like big-handle
+  take b, like big-handle
+  like number
+  case node
+    text <$a < $b ? -1 : ($a > $b ? 1 : 0)>
+  case browser
+    text <$a < $b ? -1 : ($a > $b ? 1 : 0)>
+  case rust
+    text <$a.cmp(&$b) as i64>
+  case kotlin
+    text <$a.compareTo($b).toLong()>
+
+# an arbitrary-precision integer
+form big-integer
+  link dock, like big-handle
+
+  # the decimal text of this integer
+  task text
+    take self
+    like text
+    send back
+      call do-to-text
+        read self/dock
+
+  # this integer plus another
   task add
-    take head, like integer
-    like integer
+    take self
+    take other, like big-integer
+    like big-integer
+    send back
+      make big-integer
+        bind dock
+          call do-add
+            read self/dock
+            read other/dock
 
-  task and
-    take head, like integer
-    like integer
-
-  task and-not
-    take head, like integer
-    like integer
-
-  task bit-count
-    like i32
-
-  task bit-length
-    like i32
-
-  task clear-bit
-    take head, like i32
-    like integer
-
-  task compare-to
-    take head, like integer
-    like i32
-
-  task divide
-    take head, like integer
-    like integer
-
-  task divide-and-remainder
-    take head, like integer
-    like list, like integer
-
-  task equals
-    take head, like integer
-    like bool
-
-  task flip-bit
-    take head, like i32
-    like integer
-
-  task gcd
-    take head, like integer
-    like integer
-
-  task get-lowest-set-bit
-    like i32
-
-  task hash-code
-    like i32
-
-  task is-probable-prime
-    take head, like i32
-    like bool
-
-  task max
-    take head, like integer
-    like integer
-
-  task min
-    take head, like integer
-    like integer
-
-  task mod
-    take head, like integer
-    like integer
-
-  task mod-inverse
-    take head, like integer
-    like integer
-
-  task mod-pow
-    take head, like integer
-    take param2, like integer
-    like integer
-
-  task multiply
-    take head, like integer
-    like integer
-
-  task negate
-    like integer
-
-  task next-probable-prime
-    like integer
-
-  task not
-    like integer
-
-  task or
-    take head, like integer
-    like integer
-
-  task pow
-    take head, like i32
-    like integer
-
-  task remainder
-    take head, like integer
-    like integer
-
-  task set-bit
-    take head, like i32
-    like integer
-
-  task shift-left
-    take head, like i32
-    like integer
-
-  task shift-right
-    take head, like i32
-    like integer
-
-  task signum
-    like i32
-
+  # this integer minus another
   task subtract
-    take head, like integer
-    like integer
+    take self
+    take other, like big-integer
+    like big-integer
+    send back
+      make big-integer
+        bind dock
+          call do-subtract
+            read self/dock
+            read other/dock
 
-  task test-bit
-    take head, like i32
-    like bool
+  # this integer times another
+  task multiply
+    take self
+    take other, like big-integer
+    like big-integer
+    send back
+      make big-integer
+        bind dock
+          call do-multiply
+            read self/dock
+            read other/dock
 
-  task to-byte-array
-    like list, like i8
+  # this integer divided by another (truncating toward zero)
+  task divide
+    take self
+    take other, like big-integer
+    like big-integer
+    send back
+      make big-integer
+        bind dock
+          call do-divide
+            read self/dock
+            read other/dock
 
-  task to-string
-    like text
+  # the remainder of dividing this integer by another
+  task remainder
+    take self
+    take other, like big-integer
+    like big-integer
+    send back
+      make big-integer
+        bind dock
+          call do-remainder
+            read self/dock
+            read other/dock
 
-  task to-string
-    take head, like i32
-    like text
+  # the negation of this integer
+  task negate
+    take self
+    like big-integer
+    send back
+      make big-integer
+        bind dock
+          call do-negate
+            read self/dock
 
-  task xor
-    take head, like integer
-    like integer
+  # -1, 0, or 1 as this integer is less than, equal to, or greater than another
+  task compare
+    take self
+    take other, like big-integer
+    like number
+    send back
+      call do-compare
+        read self/dock
+        read other/dock
 
-  task byte-value
-    like i8
+# parse a big integer from its decimal text (may be hundreds of digits, with an optional leading minus)
+task make-big-integer
+  take value, like text
+  like big-integer
+  send back
+    make big-integer
+      bind dock
+        call do-from-text
+          read value
 
-  task short-value
-    like i16
+# a big integer from a platform number
+task big-from-number
+  take value, like number
+  like big-integer
+  send back
+    make big-integer
+      bind dock
+        call do-from-number
+          read value

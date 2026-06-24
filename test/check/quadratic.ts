@@ -46,9 +46,9 @@ ok(
         call multiply
           read x
           read x
-        mark 1
+        code 1
       call multiply
-        mark 2
+        code 2
         read x
   calm hold
 `),
@@ -65,8 +65,8 @@ ok(
         call multiply
           read x
           read x
-        mark 1
-      mark 0
+        code 1
+      code 0
   calm hold
 `),
 )
@@ -83,7 +83,7 @@ ok(
         read x
         read x
       call multiply
-        mark 2
+        code 2
         read x
   calm hold
 `),
@@ -99,7 +99,7 @@ ok(
       call multiply
         read x
         read x
-      mark 0
+      code 0
   calm hold
 `),
 )
@@ -121,7 +121,7 @@ ok(
           read b
           read b
       call multiply
-        mark 2
+        code 2
         call multiply
           read a
           read b
@@ -145,7 +145,7 @@ ok(
           read b
           read b
       call multiply
-        mark 3
+        code 3
         call multiply
           read a
           read b
@@ -177,7 +177,7 @@ ok(
           call multiply
             read b
             read b
-      mark 0
+      code 0
   calm hold
 `),
 )
@@ -230,7 +230,7 @@ ok(
           read x
           read x
       call multiply
-        mark 2
+        code 2
         call multiply
           call multiply
             read x
@@ -255,7 +255,7 @@ ok(
           read x
           read x
       call multiply
-        mark 2
+        code 2
         call multiply
           call multiply
             read x
@@ -291,7 +291,7 @@ ok(
             read b
             read b
       call multiply
-        mark 2
+        code 2
         call multiply
           call multiply
             read a
@@ -328,7 +328,7 @@ ok(
             read b
             read b
       call multiply
-        mark 3
+        code 3
         call multiply
           call multiply
             read a

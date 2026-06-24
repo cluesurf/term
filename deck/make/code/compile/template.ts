@@ -559,6 +559,20 @@ function expandTop(node: Node, ctx: Context): Node[] {
     return []
   }
 
+  // a `host <name> / term <a> / term <b>` block is a compile-time enumeration consumed by meta-loops (see
+  // collectEnumerations). It carries no runtime value, so drop it after expansion. A runtime constant
+  // (`host x, code 10`) has no `term` children and is left untouched.
+  if (head === 'host') {
+    const items = rest(node).slice(1)
+
+    if (
+      items.length > 0 &&
+      items.every(n => n.kind === 'group' && headName(n) === 'term')
+    ) {
+      return []
+    }
+  }
+
   const nodes: Node[] = []
 
   for (const child of node.nodes) {

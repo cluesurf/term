@@ -1775,7 +1775,7 @@ task compute
   like boolean
   save server
     call listen
-      mark 47924
+      code 47924
       text <127.0.0.1>
       false
       text <>
@@ -1784,7 +1784,7 @@ task compute
   save client
     call connect
       text <127.0.0.1>
-      mark 47924
+      code 47924
       false
       wait true
   save peer
@@ -1825,19 +1825,19 @@ task compute
   like boolean
   save receiver
     call open
-      mark 48001
+      code 48001
       text <127.0.0.1>
       wait true
   save sender
     call open
-      mark 48002
+      code 48002
       text <127.0.0.1>
       wait true
   call send
     read sender
     text <hello>
     text <127.0.0.1>
-    mark 48001
+    code 48001
     wait true
   save message
     call receive

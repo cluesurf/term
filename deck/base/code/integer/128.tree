@@ -1,8 +1,34 @@
+# Signed and unsigned 128-bit integers. 128 bits exceeds the platform integer everywhere (and 2^53 on JavaScript), so a
+# 128-bit value is held as a `big` (arbitrary-precision) integer rather than a native number. Arithmetic is therefore the
+# exact `big` arithmetic; this module adds the width bounds. (rust has a native i128/u128, but routing 128-bit through
+# `big` keeps one portable representation across every backend.) For unbounded integers use `big` directly.
 
-form i128
-  fuse integer
-    bind self-type, like i128
-    bind actual-type, like i128
-    bind unsigned-type, like u128
-    bind bits, size 128
-    bind bits-minus-one, size 127
+load @cluesurf/base/code/integer/big
+  find big-integer
+  find make-big-integer
+
+# the i128 range, as big integers
+task i128-minimum-value
+  like big-integer
+  send back
+    call make-big-integer
+      text <-170141183460469231731687303715884105728>
+
+task i128-maximum-value
+  like big-integer
+  send back
+    call make-big-integer
+      text <170141183460469231731687303715884105727>
+
+# the u128 range, as big integers
+task u128-minimum-value
+  like big-integer
+  send back
+    call make-big-integer
+      text <0>
+
+task u128-maximum-value
+  like big-integer
+  send back
+    call make-big-integer
+      text <340282366920938463463374607431768211455>

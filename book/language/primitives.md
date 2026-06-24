@@ -11,10 +11,24 @@ Maps to: primitive literals and scalar types in any language (string, int, bool,
 | Literal | You write | Is | Example |
 | --- | --- | --- | --- |
 | string | `text <...>` | a piece of text | `text <hello>` |
-| integer | `mark N` | a whole number | `code 42` |
+| number | `code N` | any number, every base | `code 42` |
 | boolean | `true` / `false` | true or false | `true` |
-| raw number | `code N` | a bare numeric code | `code 0` |
+| boolean | `code true` / `code false` | the same boolean, spelled long | `code false` |
 | nothing | `void` | the unit, no value | `void` |
+
+`code` is the one number literal. It carries every kind of number: positive, negative, decimal, and the four radix forms.
+
+| You write | Is |
+| --- | --- |
+| `code 42` | a whole number |
+| `code -7` | a negative number |
+| `code 1.5` | a decimal (a float) |
+| `code 0x1f` | hex (31) |
+| `code 0b1010` | binary (10) |
+| `code 0o17` | octal (15) |
+| `code 0u0041` | a unicode codepoint (the letter `A`) |
+
+There is no separate integer keyword. `code` is the whole literal surface for numbers.
 
 ### Scalar types
 
@@ -25,17 +39,9 @@ These are the names you put after `like` to annotate a value.
 | text | `like text` | a string | `text <>` |
 | number | `like number` | a signed integer (the platform int) | `code 0` |
 | nat | `like nat` | a non-negative whole number | `code 0` |
+| float | `like float` | a decimal number | `code 0.0` |
 | boolean | `like boolean` | a `true` / `false` | `false` |
 | void | `like void` | the unit, no value | `void` |
-
-### The two kinds of number literal
-
-| You write | Use it for |
-| --- | --- |
-| `mark N` | an ordinary integer value in your program (counts, ids, amounts) |
-| `code N` | a bare numeric code where a tag, index, or count is wanted (loop bounds, raw positions) |
-
-Both produce a whole number. `mark` reads as "an integer value," `code` reads as "a raw count or position." The stdlib uses `code 0` and `code 1` for loop starts and seeds, and `mark N` for ordinary values.
 
 ## Strings
 
@@ -49,32 +55,32 @@ text <it's "fine">
 
 The empty string is `text <>`.
 
-## Integers
+## Numbers
 
-An integer literal is `mark` followed by the number.
+A number literal is `code` followed by the number. The same keyword covers every base and sign.
 
 ```tree
 code 0
 code 42
-code 1000
+code -7
+code 1.5
+code 0x1f      # hex, 31
+code 0b1010    # binary, 10
+code 0o17      # octal, 15
+code 0u0041    # unicode codepoint, the letter A
 ```
 
-A bare count or position is `code`:
-
-```tree
-code 0
-code 1
-```
-
-Both are whole numbers of type `number`. There is one integer type. Term does not split numbers into `u8`, `i32`, `u64`, and so on. You write `like number` and the compiler maps it to each platform's native integer (i64 on Rust, Int on Kotlin, Long where needed).
+A whole `code N` has type `number`. Term does not split integers into `u8`, `i32`, `u64`, and so on. You write `like number` and the compiler maps it to each platform's native integer (i64 on Rust, Int on Kotlin, Long where needed). A decimal like `code 1.5` is a `float`. The radix forms (`0x`, `0b`, `0o`, `0u`) are whole numbers written in another base, so they are still `number`.
 
 ## Booleans
 
-A boolean value is `true` or `false`.
+A boolean value is `true` or `false`. You can also spell them `code true` and `code false`, which mean exactly the same thing.
 
 ```tree
 true
 false
+code true
+code false
 ```
 
 The boolean type is `like boolean`. In a condition you pass the boolean value straight through, you do not compare it to `true`:

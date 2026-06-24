@@ -162,6 +162,22 @@ async function main(): Promise<void> {
   eq('f64 add is the native double', f64.f64Add(0.1, 0.2), 0.1 + 0.2)
   eq('f64 divide is the native double', f64.f64Divide(1, 4), 0.25)
 
+  // arbitrary-precision integers via native bignum (BigInt on node)
+  const big = await load('integer/big.tree')
+  const a = big.makeBigInteger('123456789012345678901234567890')
+  const b = big.makeBigInteger('987654321')
+  eq(
+    'big-integer exact multiply (30-digit x 9-digit)',
+    big.bigIntegerText(big.bigIntegerMultiply(a, b)),
+    (123456789012345678901234567890n * 987654321n).toString(),
+  )
+  eq(
+    'big-integer divide truncates',
+    big.bigIntegerText(big.bigIntegerDivide(a, b)),
+    (123456789012345678901234567890n / 987654321n).toString(),
+  )
+  eq('big-integer compare a > b', big.bigIntegerCompare(a, b), 1)
+
   console.log(`\nnumerics: ${pass} pass, ${fail} fail`)
 }
 

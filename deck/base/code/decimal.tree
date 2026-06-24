@@ -1,0 +1,182 @@
+# Arbitrary-precision decimals: exact base-10 fractions, for money and any value where binary float rounding is wrong
+# (0.1 + 0.2 must be 0.3). A decimal is a `big` integer mantissa with a scale (digits after the point), so 12.34 is
+# mantissa 1234, scale 2. The mantissa carries unlimited precision; the arithmetic is pure Seed over `big` plus powers of
+# ten, so it is one portable implementation on every backend (no native decimal type needed). Parsing and formatting --
+# the only text work -- are a one-line native expression per backend.
+
+load @cluesurf/base/code/integer/big
+  find big-integer
+  find make-big-integer
+
+load @cluesurf/base/code/text/string
+  find repeat
+  find concat
+
+load @cluesurf/base/code/math
+  find maximum
+
+# the digits of `value` with the point removed, as a big integer (12.34 -> 1234, -0.5 -> -5)
+bind do-mantissa
+  take value, like text
+  like text
+  case node
+    text <$value.replace(".", "")>
+  case browser
+    text <$value.replace(".", "")>
+  case rust
+    text <$value.replace(".", "")>
+  case kotlin
+    text <$value.replace(".", "")>
+
+# the number of digits after the point in `value` (12.34 -> 2, 12 -> 0)
+bind do-scale
+  take value, like text
+  like number
+  case node
+    text <($value.split(".")[1] || "").length>
+  case browser
+    text <($value.split(".")[1] || "").length>
+  case rust
+    text <$value.split('.').nth(1).map(|f| f.len() as i64).unwrap_or(0)>
+  case kotlin
+    text <($value.substringAfter(".", "")).length.toLong()>
+
+# format a mantissa's digits with the point inserted `scale` places from the right (1234, 2 -> "12.34"; 5, 2 -> "0.05")
+bind do-format
+  take digits, like text
+  take scale, like number
+  like text
+  case node
+    text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s); while (d.length <= sc) d = "0" + d; var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
+  case browser
+    text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s); while (d.length <= sc) d = "0" + d; var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
+
+# ten raised to `power`, as a big integer (used to align two decimals to a common scale)
+task power-of-ten
+  take power, like number
+  like big-integer
+  send back
+    call make-big-integer
+      call concat
+        text <1>
+        call repeat
+          text <0>
+          read power
+
+# a decimal: an exact base-10 number as a big-integer mantissa scaled by `scale` digits
+form decimal
+  link mantissa, like big-integer
+  link scale, like number
+
+  # the mantissa rescaled to `target` digits after the point (target must be >= the current scale)
+  task at-scale
+    take self
+    take target, like number
+    like big-integer
+    send back
+      call multiply
+        read self/mantissa
+        call power-of-ten
+          call subtract
+            read target
+            read self/scale
+
+  # this decimal as text (12.34)
+  task text
+    take self
+    like text
+    send back
+      call do-format
+        call text
+          read self/mantissa
+        read self/scale
+
+  # this decimal plus another (the result keeps the larger of the two scales)
+  task add
+    take self
+    take other, like decimal
+    like decimal
+    save common
+      call maximum
+        read self/scale
+        read other/scale
+    send back
+      make decimal
+        bind mantissa
+          call add
+            call at-scale
+              read self
+              read common
+            call at-scale
+              read other
+              read common
+        bind scale, read common
+
+  # this decimal minus another
+  task subtract
+    take self
+    take other, like decimal
+    like decimal
+    save common
+      call maximum
+        read self/scale
+        read other/scale
+    send back
+      make decimal
+        bind mantissa
+          call subtract
+            call at-scale
+              read self
+              read common
+            call at-scale
+              read other
+              read common
+        bind scale, read common
+
+  # this decimal times another (scales add)
+  task multiply
+    take self
+    take other, like decimal
+    like decimal
+    send back
+      make decimal
+        bind mantissa
+          call multiply
+            read self/mantissa
+            read other/mantissa
+        bind scale
+          call add
+            read self/scale
+            read other/scale
+
+  # -1, 0, or 1 as this decimal is less than, equal to, or greater than another
+  task compare
+    take self
+    take other, like decimal
+    like number
+    save common
+      call maximum
+        read self/scale
+        read other/scale
+    send back
+      call compare
+        call at-scale
+          read self
+          read common
+        call at-scale
+          read other
+          read common
+
+# parse a decimal from its text (12.34, -0.5, 1000)
+task make-decimal
+  take value, like text
+  like decimal
+  send back
+    make decimal
+      bind mantissa
+        call make-big-integer
+          call do-mantissa
+            read value
+      bind scale
+        call do-scale
+          read value

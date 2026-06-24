@@ -83,14 +83,12 @@ const TYPE_NAME: Record<string, Type> = {
 }
 
 // signature annotation keywords that decorate a `host`/`save` declaration rather than supplying its value:
-// `name <X>` (foreign / display name), `like <T>` (type), `flex` (variadic), `rank` (receiver type), plus the
-// generic / output markers. Filtered out so an annotation is never mistaken for the assigned value expression.
-// `mark` is deliberately absent: it is the integer-literal keyword (`mark 42`), so `save total, mark 0` assigns 0.
+// `name <X>` (foreign / display name), `like <T>` (type), plus the generic / output markers. Filtered out so an
+// annotation is never mistaken for the assigned value expression. `mark` is deliberately absent: it is a modifier
+// keyword (`mark private`) and a rule binder, never a value, while `code` is, so `save total, code 0` assigns 0.
 const HOST_ANNOTATION = new Set([
   'name',
   'like',
-  'flex',
-  'rank',
   'head',
   'note',
   'free',
@@ -525,8 +523,9 @@ const VALUE_EXPRESSION_HEADS = new Set([
   'read',
   'make',
   'call',
-  'mark',
-  'wave',
+  'code',
+  'true',
+  'false',
 ])
 
 function isValueExpressionHead(name: string | undefined): boolean {
@@ -779,13 +778,6 @@ export function mill(tree: RootNode, file: string): MillResult {
         return pathExpression(name ?? '', span)
       }
 
-      case 'wave': {
-        const value = args[0]
-        const flag =
-          value?.kind === 'group' ? headName(value) : undefined
-
-        return { form: 'boolean', value: flag === 'true', span }
-      }
 
       // boolean conjunction / disjunction: `meet and / <a> / <b> / ...` folds its operands with `&&`, `meet or` with
       // `||`. The operands are the children after the `and` / `or` marker. (The `call and` / `call or` builtin forms
@@ -1324,15 +1316,12 @@ export function mill(tree: RootNode, file: string): MillResult {
       switch (keyword) {
         case 'take':
         case 'like':
-        case 'flex':
         case 'head':
         case 'wear':
         case 'wait':
         // `name <X>` is a foreign / display-name annotation (the JS name a binding maps to), never an executable
         // statement. Without this it would fall to the default case and mill as a bare `name` variable reference.
-        // `rank` likewise annotates a receiver's type and is not executable.
         case 'name':
-        case 'rank':
           break
 
         case 'save': {
@@ -2549,11 +2538,10 @@ export function mill(tree: RootNode, file: string): MillResult {
     const resultType = parseTaskResult(body)
     const scope = new Set<string>(params.map(p => p.name))
     // signature nodes describe the task; they are not executable body statements. `head` (generics), `take` (params),
-    // the bare `like` (result type), `free` (named output), `mark` (modifiers like `mark async`/`mark private`), and
-    // `note` (documentation) are all consumed here, so only real statements (send back, save, call, fork, ...) remain.
-    // `name <X>` is the task's foreign / display name (the JS method name a generated binding maps to), not an
-    // executable statement. `flex` marks a variadic / optional parameter. `rank` annotates a receiver's type
-    // (`rank self / like array / like s`). All are signature annotations, never executable.
+    // the bare `like` (result type), `free` (named output), `mark` (modifiers like `mark private`), and `note`
+    // (`note async` / `note private` / documentation) are all consumed here, so only real statements (send back,
+    // save, call, fork, ...) remain. `name <X>` is the task's foreign / display name (the JS method name a generated
+    // binding maps to), not an executable statement. All are signature annotations, never executable.
     const SIGNATURE = new Set([
       'head',
       'take',
@@ -2562,8 +2550,6 @@ export function mill(tree: RootNode, file: string): MillResult {
       'mark',
       'note',
       'name',
-      'flex',
-      'rank',
     ])
 
     const executable = body.filter(
@@ -3309,7 +3295,7 @@ export function mill(tree: RootNode, file: string): MillResult {
           }
         }
 
-        // default value: `bind 3000` / `bind <hello>` / `bind wave true`
+        // default value: `bind 3000` / `bind <hello>` / `bind true` / `bind code false`
         const bindGroup = rest(child).find(
           (n): n is GroupNode =>
             n.kind === 'group' && headName(n) === 'bind',
@@ -3322,12 +3308,15 @@ export function mill(tree: RootNode, file: string): MillResult {
             take.fallback = valNode.value
           } else if (valNode?.kind === 'text') {
             take.fallback = textOf(valNode)
-          } else if (
-            valNode?.kind === 'group' &&
-            headName(valNode) === 'wave'
-          ) {
-            take.fallback =
-              headName(rest(valNode)[0] as GroupNode) === 'true'
+          } else if (valNode?.kind === 'group') {
+            const word = headName(valNode)
+
+            if (word === 'true' || word === 'false') {
+              take.fallback = word === 'true'
+            } else if (word === 'code') {
+              take.fallback =
+                headName(rest(valNode)[0] as GroupNode) === 'true'
+            }
           }
         }
 

@@ -2,7 +2,7 @@
 
 A template generates code at compile time. Define one with `tree`, give it parameters with `take`, and write its output under `hook fuse`. Instantiate it with `fuse`. Templates exist to remove repetition: write the shape once, stamp it out many times.
 
-Maps to: a Rust macro, a C++ template, a code generator. The expansion happens during compilation, so there is zero runtime cost.
+Maps to: a Rust macro, a C++ template, a code generator. The expansion happens during compilation, so there is zero runtime cost. Expanded code is type-checked like everything else, so a template that emits a type error is caught at the fuse site.
 
 ## Cheatsheet
 
@@ -11,7 +11,12 @@ Maps to: a Rust macro, a C++ template, a code generator. The expansion happens d
 | `tree <name>` | define a template |
 | `take <param>` | declare a template parameter |
 | `hook fuse` | the body the template emits |
+| `hook bind` | an alternate emit body (used when fusing into a binding position) |
 | `fuse <name>` | instantiate a template |
+| `bind <param>, <value>` | pass a named argument to a `fuse` |
+| `fuse read <param>` | resolve the template name from a parameter (dynamic fuse) |
+| `slot <name>` | an injection point inside a template body |
+| `beam <name>` | at the fuse site, the block of code injected at the matching `slot` |
 | `{param}` | compile-time substitution of a parameter inside the body |
 | `{{name}}` | runtime string interpolation (left untouched by expansion) |
 
@@ -24,7 +29,6 @@ A template's `take` parameters are names, not typed values. The body under `hook
 ```tree
 tree doubler
   take name
-
   hook fuse
     task double-{name}
       take n, like number
@@ -35,11 +39,11 @@ tree doubler
 
 ## Instantiating
 
-`fuse` stamps out the body with the argument bound.
+`fuse` stamps out the body. Pass each parameter with `bind`.
 
 ```tree
 fuse doubler
-  read int
+  bind name, int
 ```
 
 That expands to:
@@ -52,65 +56,60 @@ task double-int
     call multiply, read n, code 2
 ```
 
+The `tree` definition itself is removed after expansion. Only the emitted code remains.
+
 ## Multiple parameters
 
-List a `take` per parameter. Each becomes a `{param}` hole.
+List a `take` per parameter, and a `bind` per argument. Each becomes a `{param}` hole.
 
 ```tree
 tree accessor
   take name
-  take kind
-
+  take type
   hook fuse
     task get-{name}
-      take self
-      like {kind}
+      like {type}
     task set-{name}
-      take self
-      take value, like {kind}
-```
+      take value, like {type}
 
-```tree
 fuse accessor
-  read width
-  read number
+  bind name, age
+  bind type, number
 ```
 
-## Using a template inside a form
+This emits `get-age` (returning a `number`) and `set-age` (taking a `number` value).
 
-A `fuse` placed inside a `form` body emits its output as members of that form. This is the standard way to give a record a family of parallel accessors without repeating them.
+## Slots and beams: injecting a block
+
+A `{param}` hole fills in a single name. A `slot` fills in a whole block of code. Mark the injection point in the body with `slot <name>`, then supply the block at the fuse site with `beam <name>` and its children.
 
 ```tree
-host interval
-  term year
-  term month
-  term day
-
-tree interval-accessor
+tree wrapper
   take name
-
   hook fuse
-    task get-{name}
-      take self
-      like number
-    task add-{name}s
-      take self
-      take value, like number
+    form {name}
+      slot fields
 
-form date
-  link year, like number
-  link month, like number
-  link day, like number
-
-  fuse define-each, read interval
-    read interval-accessor
+fuse wrapper
+  bind name, point
+  beam fields
+    link x, like number
+    link y, like number
 ```
 
-`define-each` walks the `interval` list and fuses `interval-accessor` once per entry, so `date` gets `get-year`, `add-years`, `get-month`, and so on. Defining the shape once keeps the form rich and free of copy-paste.
+The `beam fields` block is injected where `slot fields` sits, inside the substituted form name. The result:
+
+```tree
+form point
+  link x, like number
+  link y, like number
+```
+
+Use slots when a template wraps a body it does not know in advance: a record shell whose members vary, a handler whose steps the caller supplies.
 
 ## Removing repetition
 
-Whenever a block of definitions differs only by a name or a type, lift it into a `tree` and `fuse` it per case. The before-and-after below collapses three near-identical tasks into one template.
+Whenever a block of definitions differs only by a name or a type, lift it into a `tree` and `fuse` it per case. The before-and-after below collapses near-identical tasks into one template.
 
 Before:
 
@@ -133,23 +132,55 @@ After:
 ```tree
 tree is-color
   take name
-  take code
-
+  take tag
   hook fuse
     task is-{name}
       take self
       like boolean
       send back
-        call is-equal, read self, mark {code}
+        call is-equal, read self, code {tag}
 
 fuse is-color
-  read red
-  read 0
+  bind name, red
+  bind tag, 0
 
 fuse is-color
-  read green
-  read 1
+  bind name, green
+  bind tag, 1
 ```
+
+`code {tag}` substitutes the number argument into a `code` literal, so the first fuse emits `code 0` and the second `code 1`.
+
+## A compile-time loop over an enumeration
+
+A `host` block declares a compile-time list of names. A template can walk that list and fuse another template once per item. `fuse read <param>` resolves the inner template name from a parameter, and `{name}` substitutes the item.
+
+```tree
+host suit
+  term hearts
+  term spades
+
+tree make-flag
+  take name
+  hook bind
+    task is-{name}
+      like boolean
+
+tree each
+  take items
+  take maker
+  hook fuse
+    walk list, read items
+      hook step
+        take item
+        fuse read maker
+          read item
+
+fuse each, read suit
+  read make-flag
+```
+
+`fuse each` runs at compile time. It walks `suit` and fuses `make-flag` for each entry, generating `is-hearts` and `is-spades`. This is how you give a form a family of parallel members without writing each one. Defining the shape once keeps the code rich and free of copy-paste.
 
 ## Compile-time versus runtime interpolation
 
@@ -165,7 +196,6 @@ A single brace is filled while the template expands. A double brace survives exp
 ```tree
 tree greeter
   take lang
-
   hook fuse
     task greet-{lang}
       take name, like text
@@ -174,7 +204,7 @@ tree greeter
         text <hello {{name}} in {lang}>
 ```
 
-Fusing with `read english` produces a task `greet-english` whose body still holds `{{name}}` for the runtime to substitute.
+Fusing with `bind lang, english` produces a task `greet-english` whose body still holds `{{name}}` for the runtime to substitute.
 
 ## See also
 

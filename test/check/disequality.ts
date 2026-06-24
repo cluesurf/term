@@ -34,8 +34,8 @@ ok(
     call is-unequal
       call add
         read n
-        mark 1
-      mark 0
+        code 1
+      code 0
   calm hold
 `),
 )
@@ -50,7 +50,7 @@ ok(
       read n
       call add
         read n
-        mark 1
+        code 1
   calm hold
 `),
 )
@@ -64,7 +64,7 @@ ok(
   show hold
     call is-unequal
       read n
-      mark 0
+      code 0
   calm hold
 `),
 )
@@ -78,8 +78,8 @@ ok(
     call is-unequal
       call add
         read n
-        mark 1
-      mark 0
+        code 1
+      code 0
   calm hold
 `),
 )
@@ -96,12 +96,12 @@ ok(
     call is-unequal
       call add
         call multiply
-          mark 2
+          code 2
           read a
         call multiply
-          mark 4
+          code 4
           read b
-      mark 3
+      code 3
   calm hold
 `),
 )
@@ -117,12 +117,12 @@ ok(
     call is-unequal
       call add
         call multiply
-          mark 2
+          code 2
           read a
         call multiply
-          mark 4
+          code 4
           read b
-      mark 6
+      code 6
   calm hold
 `),
 )

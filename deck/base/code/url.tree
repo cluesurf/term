@@ -1,2 +1,174 @@
+# URL parsing: split a URL into its parts (scheme, host, port, path, query, fragment) through the platform's own URL
+# parser, in one native expression per backend (no runtime shim): JS `URL`, rust the `url` crate, swift `URLComponents`,
+# kotlin `java.net.URI`. The parsed URL lives in the opaque `dock` handle; each component reads off it. A relative URL is
+# resolved against `base` (default `http://localhost`), so a server can parse a bare request target like `/users?id=1`.
 
-# URL
+# the platform's parsed-URL object, held opaque
+dock type
+  load <any>, name url-handle
+
+# parse `href` (resolved against `base`) into the platform's URL object
+bind do-parse
+  take href, like text
+  take base, like text
+  like url-handle
+  case node
+    text <new URL($href, $base)>
+  case browser
+    text <new URL($href, $base)>
+  case rust
+    load <url::Url>
+    text <url::Url::parse($base).unwrap().join(&$href).unwrap()>
+  case swift
+    load <Foundation>
+    text <URLComponents(url: URL(string: $href, relativeTo: URL(string: $base))!, resolvingAgainstBaseURL: true)!>
+  case kotlin
+    text <java.net.URI($base).resolve($href)>
+
+bind do-scheme
+  take handle, like url-handle
+  like text
+  case node
+    text <$handle.protocol.replace(":", "")>
+  case browser
+    text <$handle.protocol.replace(":", "")>
+  case rust
+    text <$handle.scheme().to_string()>
+  case swift
+    text <$handle.scheme ?? "">
+  case kotlin
+    text <$handle.scheme ?: "">
+
+bind do-host
+  take handle, like url-handle
+  like text
+  case node
+    text <$handle.hostname>
+  case browser
+    text <$handle.hostname>
+  case rust
+    text <$handle.host_str().unwrap_or("").to_string()>
+  case swift
+    text <$handle.host ?? "">
+  case kotlin
+    text <$handle.host ?: "">
+
+bind do-port
+  take handle, like url-handle
+  like text
+  case node
+    text <$handle.port>
+  case browser
+    text <$handle.port>
+  case rust
+    text <$handle.port().map(|p| p.to_string()).unwrap_or_default()>
+  case swift
+    text <$handle.port.map { String($0) } ?? "">
+  case kotlin
+    text <if ($handle.port == -1) "" else $handle.port.toString()>
+
+bind do-path
+  take handle, like url-handle
+  like text
+  case node
+    text <$handle.pathname>
+  case browser
+    text <$handle.pathname>
+  case rust
+    text <$handle.path().to_string()>
+  case swift
+    text <$handle.path>
+  case kotlin
+    text <$handle.path ?: "">
+
+bind do-query
+  take handle, like url-handle
+  like text
+  case node
+    text <$handle.search.replace("?", "")>
+  case browser
+    text <$handle.search.replace("?", "")>
+  case rust
+    text <$handle.query().unwrap_or("").to_string()>
+  case swift
+    text <$handle.query ?? "">
+  case kotlin
+    text <$handle.query ?: "">
+
+bind do-fragment
+  take handle, like url-handle
+  like text
+  case node
+    text <$handle.hash.replace("#", "")>
+  case browser
+    text <$handle.hash.replace("#", "")>
+  case rust
+    text <$handle.fragment().unwrap_or("").to_string()>
+  case swift
+    text <$handle.fragment ?? "">
+  case kotlin
+    text <$handle.fragment ?: "">
+
+# a parsed URL: its parts read off the opaque platform object
+form url
+  link dock, like url-handle
+
+  # the scheme without the trailing colon (`https`, `http`, `ftp`)
+  task scheme
+    take self
+    like text
+    send back
+      call do-scheme
+        read self/dock
+
+  # the host name (no port)
+  task host
+    take self
+    like text
+    send back
+      call do-host
+        read self/dock
+
+  # the port as text, or empty when the URL uses the scheme default
+  task port
+    take self
+    like text
+    send back
+      call do-port
+        read self/dock
+
+  # the path, beginning with `/`
+  task path
+    take self
+    like text
+    send back
+      call do-path
+        read self/dock
+
+  # the query string without the leading `?`
+  task query
+    take self
+    like text
+    send back
+      call do-query
+        read self/dock
+
+  # the fragment without the leading `#`
+  task fragment
+    take self
+    like text
+    send back
+      call do-fragment
+        read self/dock
+
+# parse a URL. A relative `href` resolves against `base` (default `http://localhost`).
+task make-url
+  take href, like text
+  take base, like text, fall text <http://localhost>
+  like url
+  send back
+    make url
+      bind dock
+        call do-parse
+          read href
+          read base

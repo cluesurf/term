@@ -1,10 +1,7 @@
-# The test library. A test is a meta object: a name and a work that runs and reports whether it held. `run` executes a list of tests, prints each result, and returns a tally. Assertions (`want` and its named forms) return a boolean. Tests are ordinary Seed, so the compiler handles them with no special case. See note/library/seed/test-dsl.md.
+# The test library. A test is a meta object: a name and a work that runs and reports whether it held. `case` builds one, `run` executes a list of them, prints each result, and returns a tally. Assertions return a boolean: `want` for equality, `deny` for inequality. Every other check is an ordinary operator call (`is-above`, `is-below`, `contains`) returned directly. Tests are ordinary Term, so the compiler handles them with no special case. See note/library/seed/test-dsl.md.
 
 load @cluesurf/base/code/console
   find log
-
-load @cluesurf/base/code/text
-  find contains
 
 # the meta object a test block constructs: a name and the work that returns whether it passed
 
@@ -33,27 +30,7 @@ task case
       bind name, read name
       bind work, read work
 
-# the convenience form for a pure equality test: name plus the two values. It captures got and expect now and compares them when run. Use `case` with a closure when a test needs setup or ordering.
-
-task check
-  head t
-  take name, like text
-  take got, like t
-  take expect, like t
-  like test
-  send back
-    make test
-      bind name, read name
-      bind work
-        task work
-          note async
-          like boolean
-          send back
-            call is-equal
-              read got
-              read expect
-
-# assertions: each returns whether it held, so a work ends with `send back, call want ...`
+# assertions: each returns whether it held, so a work ends with `send back, call want ...`. `want` checks equality, `deny` checks inequality. Ordered and contains checks use the ordinary operators directly: `want got, expect, call is-above ...` is just `send back, call is-above`.
 
 task want
   head t
@@ -64,20 +41,6 @@ task want
     call is-equal
       read got
       read expect
-
-task want-true
-  take got, like boolean
-  like boolean
-  send back, read got
-
-task want-text
-  take got, like text
-  take part, like text
-  like boolean
-  send back
-    call contains
-      read got
-      read part
 
 # the negation of want: got and expect must differ
 
@@ -92,34 +55,6 @@ task deny
         read got
         read expect
       false
-
-task want-false
-  take got, like boolean
-  like boolean
-  send back
-    call is-equal
-      read got
-      false
-
-# ordered comparisons: got must be strictly above or below the bound
-
-task want-over
-  take got, like number
-  take bound, like number
-  like boolean
-  send back
-    call is-above
-      read got
-      read bound
-
-task want-under
-  take got, like number
-  take bound, like number
-  like boolean
-  send back
-    call is-below
-      read got
-      read bound
 
 # run a list of tests, print each name and result, return a pass/fail tally
 

@@ -82,8 +82,6 @@ const SIGNATURE_HEADS = new Set([
   'free',
   'like',
   'mark',
-  'rank',
-  'flex',
   'hold',
 ])
 

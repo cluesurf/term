@@ -1,19 +1,53 @@
+# HTTP/HTTPS server: the clean uniform interface over each backend's server library (node http/https, rust hyper, swift
+# NIO, kotlin ktor), selected at build time and hidden. `start` binds a port and runs `handler` for every request (a
+# `request` in, a `response` out); `stop` shuts it down. Async on every target. For declarative routing, the `dock`
+# routing DSL (`hook </path>`) lowers to a `route(host, path)` dispatcher you hand to `start` as the handler.
 
+load @cluesurf/base/code/native/network/server
+  find do-start
+  find do-stop
+
+load @cluesurf/base/code/network/server/request
+  find request
+
+load @cluesurf/base/code/network/server/response
+  find response
+
+# a running server: the platform server object lives in the opaque `dock` handle, plus the bound host and port
 form server
   link dock, mark private
   link host, like text
   link port, like size
 
+# start a server on `port` that answers every request with `handler` (a request in, a response out). With `secure`, it
+# serves HTTPS using the PEM `certificate` and `key`. Returns the running server, which `stop` shuts down.
 task start
   note async
   take port, like size
   take host, like text, fall text <0.0.0.0>
-  take handler, like task
-  take secure, like bool, fall false
-  take certificate, like text, need false
-  take key, like text, need false
+  take handler
+    like task
+      take request, like request
+      like response
+  take secure, like boolean, fall wave false
+  take certificate, like text, fall text <>
+  take key, like text, fall text <>
   like server
+  send back
+    call do-start
+      read port
+      read host
+      read handler
+      read secure
+      read certificate
+      read key
+      wait true
 
+# stop a running server, releasing its port
 task stop
   note async
   take server, like server
+  like void
+  call do-stop
+    read server
+    wait true

@@ -1,12 +1,34 @@
+# An HTTP response a server handler returns: a status code and a text body (headers default to empty at the wire). The
+# constructors cover the common answers: `make-ok` for 200 with a body, `make-status` for a bare status code.
 
 form response
   link status, like size
-  link headers, like hash
   link body, like text
-  link dock, mark private
 
+# 200 OK with a text body
+task make-ok
+  take body, like text
+  like response
+  send back
+    make response
+      bind status, code 200
+      bind body, read body
+
+# a status code with an empty body (404, 500, 204, ...)
+task make-status
+  take status, like size
+  like response
+  send back
+    make response
+      bind status, read status
+      bind body, text <>
+
+# a response with an explicit status and body
 task make
   take status, like size, fall 200
-  take headers, like hash, need false
-  take body, like text, need false
+  take body, like text, fall text <>
   like response
+  send back
+    make response
+      bind status, read status
+      bind body, read body

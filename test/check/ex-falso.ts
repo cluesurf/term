@@ -33,14 +33,14 @@ const deadBranch = (rhs: number) => `task branch
     hook test
       call is-equal
         call multiply
-          mark 2
+          code 2
           read a
         mark ${rhs}
     hook hold
       hold
         call is-equal
           read a
-          mark 999
+          code 999
       send back
         make zero
     hook miss
