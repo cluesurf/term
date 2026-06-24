@@ -8,7 +8,7 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/cluesurf/seed.git"
+    "url": "https://github.com/cluesurf/term.git"
   },
   "engines": {
     "vscode": "^1.84.0"
