@@ -11,16 +11,16 @@ test <one second is a thousand milliseconds>
     call is-equal
       call to-milliseconds
         call from-seconds
-          mark 1
-      mark 1000
+          code 1
+      code 1000
 
 test <two minutes is a hundred and twenty seconds>
   want hold
     call is-equal
       call to-seconds
         call from-minutes
-          mark 2
-      mark 120
+          code 2
+      code 120
 
 test <plus sums two spans>
   want hold
@@ -28,10 +28,10 @@ test <plus sums two spans>
       call to-seconds
         call plus
           call from-seconds
-            mark 30
+            code 30
           call from-seconds
-            mark 12
-      mark 42
+            code 12
+      code 42
 
 test <minus takes one span from another>
   want hold
@@ -39,10 +39,10 @@ test <minus takes one span from another>
       call to-seconds
         call minus
           call from-seconds
-            mark 50
+            code 50
           call from-seconds
-            mark 8
-      mark 42
+            code 8
+      code 42
 
 test <negate of a negate is the original>
   want hold
@@ -51,8 +51,8 @@ test <negate of a negate is the original>
         call negate
           call negate
             call from-seconds
-              mark 5
-      mark 5
+              code 5
+      code 5
 
 test <absolute of a negative span is positive>
   want hold
@@ -61,11 +61,11 @@ test <absolute of a negative span is positive>
         call absolute
           call negate
             call from-seconds
-              mark 7
-      mark 7
+              code 7
+      code 7
 
 test <a zero span reports is-zero>
   want hold
     call is-zero
       call from-milliseconds
-        mark 0
+        code 0

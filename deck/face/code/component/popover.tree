@@ -3,7 +3,7 @@
 # parts are thin views that bind its reactive fields (the Zag "connect" model). The consumer creates one controller
 # (`make-disclosure`) and passes it to both the trigger and the content as `control`:
 #
-#   save panel, call make-disclosure / bind start, wave false
+#   save panel, call make-disclosure / bind start, false
 #   zone popover-trigger / bind control, read panel / text <Open>
 #   zone popover-content / bind control, read panel / ...
 #

@@ -915,7 +915,7 @@ task sample
       bind age
         3.0
       bind active
-        wave true
+        true
   send back
     call encode
       read p

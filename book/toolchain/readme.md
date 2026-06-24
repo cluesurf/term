@@ -103,7 +103,7 @@ term seek               # confirm everything is installed
 term seek --audit       # plus known vulnerabilities
 term host               # publish to the registry
 term host --dry         # rehearse the publish without uploading
-term move mark 3        # bump the patch version
+term move code 3        # bump the patch version
 ```
 
 ## Explore and inspect

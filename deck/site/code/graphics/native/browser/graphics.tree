@@ -48,8 +48,8 @@ task size
   host gl, like web-gl-rendering-context-base
     read pane/handle
   call gl/viewport
-    mark 0
-    mark 0
+    code 0
+    code 0
     read width
     read height
 
@@ -185,19 +185,19 @@ task draw
     read gl/array-buffer
     read verts/handle
   call gl/enable-vertex-attrib-array
-    mark 0
+    code 0
   call gl/vertex-attrib-pointer
-    mark 0
-    mark 2
+    code 0
+    code 2
     read gl/float
-    wave false
-    mark 0
-    mark 0
+    false
+    code 0
+    code 0
   host mode
     call mode-code
       read gl
       read kind
   call gl/draw-arrays
     read mode
-    mark 0
+    code 0
     read count

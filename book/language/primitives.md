@@ -11,8 +11,8 @@ Maps to: primitive literals and scalar types in any language (string, int, bool,
 | Literal | You write | Is | Example |
 | --- | --- | --- | --- |
 | string | `text <...>` | a piece of text | `text <hello>` |
-| integer | `mark N` | a whole number | `mark 42` |
-| boolean | `wave true` / `wave false` | true or false | `wave true` |
+| integer | `mark N` | a whole number | `code 42` |
+| boolean | `true` / `false` | true or false | `true` |
 | raw number | `code N` | a bare numeric code | `code 0` |
 | nothing | `void` | the unit, no value | `void` |
 
@@ -23,9 +23,9 @@ These are the names you put after `like` to annotate a value.
 | Type | You write | Holds | Default value |
 | --- | --- | --- | --- |
 | text | `like text` | a string | `text <>` |
-| number | `like number` | a signed integer (the platform int) | `mark 0` |
-| nat | `like nat` | a non-negative whole number | `mark 0` |
-| boolean | `like boolean` | a `wave true` / `wave false` | `wave false` |
+| number | `like number` | a signed integer (the platform int) | `code 0` |
+| nat | `like nat` | a non-negative whole number | `code 0` |
+| boolean | `like boolean` | a `true` / `false` | `false` |
 | void | `like void` | the unit, no value | `void` |
 
 ### The two kinds of number literal
@@ -54,9 +54,9 @@ The empty string is `text <>`.
 An integer literal is `mark` followed by the number.
 
 ```tree
-mark 0
-mark 42
-mark 1000
+code 0
+code 42
+code 1000
 ```
 
 A bare count or position is `code`:
@@ -70,14 +70,14 @@ Both are whole numbers of type `number`. There is one integer type. Term does no
 
 ## Booleans
 
-A boolean value is `wave true` or `wave false`.
+A boolean value is `true` or `false`.
 
 ```tree
-wave true
-wave false
+true
+false
 ```
 
-The boolean type is `like boolean`. In a condition you pass the boolean value straight through, you do not compare it to `wave true`:
+The boolean type is `like boolean`. In a condition you pass the boolean value straight through, you do not compare it to `true`:
 
 ```tree
 fork test
@@ -86,7 +86,7 @@ fork test
   hook miss, send back, text <off>
 ```
 
-Inside the `boolean` form itself the two shapes are `case true` and `case false`. That is the definition. As a value you always write `wave true` / `wave false`. See [structures](structures.md) for the form, [operators](operators.md) for `and` / `or` / `not`.
+Inside the `boolean` form itself the two shapes are `case true` and `case false`. That is the definition. As a value you always write `true` / `false`. See [structures](structures.md) for the form, [operators](operators.md) for `and` / `or` / `not`.
 
 ## Void
 
@@ -110,23 +110,21 @@ task report
   take name, like text
   take count, like number
   like text
-  host loud, wave true
+  host loud, true
   fork test
     hook test, read loud
-    hook hold, show, text <reporting>
+    hook hold, call write-line, text <reporting>
   send back
     call join
       read name
       text < x >
       read count
 
-task main
-  like number
-  call write-line
-    call report
-      text <widget>
-      mark 7
-  send back, code 0
+# the module body runs: no main task
+call write-line
+  call report
+    text <widget>
+    code 7
 ```
 
-`name` is `text`, `count` is `number`, `loud` is `boolean`, the bracketed strings are `text` literals, `mark 7` is an integer, and `code 0` is the raw exit code. See [variables](variables.md) for `save` and `host`, and [functions](functions.md) for `task` and `send back`.
+`name` is `text`, `count` is `number`, `loud` is `boolean`, the bracketed strings are `text` literals, and `code 7` is an integer. See [variables](variables.md) for `save` and `host`, and [functions](functions.md) for `task` and `send back`.

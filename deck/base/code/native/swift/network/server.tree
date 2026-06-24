@@ -13,7 +13,7 @@ task start
   take port, like size
   take host, like text, fall text <0.0.0.0>
   take handler, like task
-  take secure, like bool, fall wave false
+  take secure, like bool, fall false
   take certificate, like text, need false
   take key, like text, need false
 
@@ -113,7 +113,7 @@ task start
             text <contentContext>
             call nw-connection/content-context/final-message
             text <isComplete>
-            wave true
+            true
             text <completion>
             call nw-connection/send-completion/content-processed
               task on-done

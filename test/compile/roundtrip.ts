@@ -1344,7 +1344,7 @@ task compute
   like number
   save b
     call make-box
-      wave true
+      true
   fork case, read b
     case full
       send back
@@ -1777,7 +1777,7 @@ task compute
     call listen
       mark 47924
       text <127.0.0.1>
-      wave false
+      false
       text <>
       text <>
       wait true
@@ -1785,7 +1785,7 @@ task compute
     call connect
       text <127.0.0.1>
       mark 47924
-      wave false
+      false
       wait true
   save peer
     call accept
@@ -2009,7 +2009,7 @@ task compute
   call unlock
     read guard
     wait true
-  send back, wave true
+  send back, true
 `
 // directory make plus metadata: make a directory then confirm is-directory reports it. Exercises the io shim's
 // dir-make and is-directory on each platform (rust std::fs, swift FileManager, kotlin java.io.File).
@@ -2391,7 +2391,7 @@ task compute
             3.0
         text <active>
         call from-boolean
-          wave true
+          true
   save j
     call parse
       read built

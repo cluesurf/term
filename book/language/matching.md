@@ -54,9 +54,9 @@ task radius-or-zero
     case circle
       send back, read s/radius
     case square
-      send back, mark 0
+      send back, code 0
     case point
-      send back, mark 0
+      send back, code 0
 ```
 
 The `link` form binds the field to a local name inside the branch, so you write `read radius` instead of `read s/radius`:
@@ -71,12 +71,12 @@ task area
       send back
         call multiply
           call multiply, read radius, read radius
-          mark 3
+          code 3
     case square
       link side
       send back, call multiply, read side, read side
     case point
-      send back, mark 0
+      send back, code 0
 ```
 
 Both styles are valid. Use `link` when binding reads cleaner. Use `read s/field` when you want to be explicit about the source.
@@ -109,9 +109,9 @@ task is-red
   like boolean
   fork case, read c
     case red
-      send back, wave true
+      send back, true
     case else
-      send back, wave false
+      send back, false
 ```
 
 Only use `case else` when the remaining variants genuinely share one outcome. Listing each variant keeps the match honest when the type later grows a new case.
@@ -126,12 +126,12 @@ task small-fib
   like number
   fork case, read n
     case zero
-      send back, mark 0
+      send back, code 0
     case succ
       link pred
       fork case, read pred
         case zero
-          send back, mark 1
+          send back, code 1
         case succ
           link prev
           send back

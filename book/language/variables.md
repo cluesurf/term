@@ -8,8 +8,8 @@ Maps to: `let` (mutable), `const` (constant), field access, and a borrow (`&x` i
 
 | Head | Job | Example |
 | --- | --- | --- |
-| `save x, <value>` | declare a mutable local, or reassign an existing one | `save count, mark 0` |
-| `host x, <value>` | declare a constant (cannot be reassigned) | `host limit, mark 100` |
+| `save x, <value>` | declare a mutable local, or reassign an existing one | `save count, code 0` |
+| `host x, <value>` | declare a constant (cannot be reassigned) | `host limit, code 100` |
 | `read x` | use the value of a variable | `read count` |
 | `read x/field` | reach into a nested field via `/` | `read user/email` |
 | `read x/a/b` | reach deeper, one step per `/` | `read config/host/port` |
@@ -28,7 +28,7 @@ Quick rules:
 `save name, <value>` introduces a mutable local. The value can be a literal or a longer expression on the next indented line.
 
 ```tree
-save count, mark 0
+save count, code 0
 save greeting, text <hello>
 
 save total
@@ -42,11 +42,11 @@ save total
 To change a variable, `save` it again with the same name. This is the same head, no new keyword.
 
 ```tree
-save count, mark 0
+save count, code 0
 save count
   call add
     read count
-    mark 1
+    code 1
 ```
 
 A common shape is accumulating into a `save`d total inside a loop:
@@ -73,9 +73,9 @@ See [loops](loops.md) for the loop shape.
 `host name, <value>` declares a value that never changes. Use it for limits, names, and any value fixed for the life of the program.
 
 ```tree
-host limit, mark 100
+host limit, code 100
 host app-name, text <term>
-host enabled, wave true
+host enabled, true
 ```
 
 Reassigning a `host` is rejected by the compiler. If you need to change the value over time, use `save`. See [constants](constants.md) for compile-time folding and module-level constants.
@@ -155,11 +155,11 @@ An inner block may shadow a name from an outer block. The inner name is used wit
 ```tree
 task scope-demo
   like number
-  save x, mark 1
+  save x, code 1
   fork test
-    hook test, wave true
+    hook test, true
     hook hold
-      save x, mark 2
+      save x, code 2
       call write-line, read x
   send back, read x
 ```

@@ -97,7 +97,7 @@ task helper
   take n, like number
   like number
   send back
-    call multiply, read n, mark 2
+    call multiply, read n, code 2
 ```
 
 A private name is callable from its own module but is not importable by `find` elsewhere.
@@ -139,7 +139,7 @@ load ./math
   find square
 
 call write-line
-  call square, mark 5
+  call square, code 5
 ```
 
 `app.tree` can import `square` but not `cube`, since `cube` is `private`. Note there is no `main` task. The module body runs top to bottom.

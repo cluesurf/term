@@ -9,30 +9,30 @@ load @cluesurf/base/code/atomic
 test <increase adds and returns the new value>
   save cell
     call make-atomic
-      mark 10
+      code 10
   save after
     call increase
       read cell
-      mark 5
+      code 5
   want hold
     call and
       call is-equal
         read after
-        mark 15
+        code 15
       call is-equal
         call load
           read cell
-        mark 15
+        code 15
 
 test <store overwrites the value>
   save cell
     call make-atomic
-      mark 0
+      code 0
   call store
     read cell
-    mark 42
+    code 42
   want hold
     call is-equal
       call load
         read cell
-      mark 42
+      code 42

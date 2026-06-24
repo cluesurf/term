@@ -57,4 +57,4 @@ task handle
           bind status, code 404
           bind headers, make find
           bind body, text <Not Found>
-          bind dock, wave true
+          bind dock, true

@@ -8,42 +8,42 @@ test <from-numbers is less when left is below right>
   want hold
     call is-less
       call from-numbers
-        mark 1
-        mark 2
+        code 1
+        code 2
 
 test <from-numbers is equal for equal values>
   want hold
     call is-equal
       call from-numbers
-        mark 5
-        mark 5
+        code 5
+        code 5
 
 test <from-numbers is greater when left is above right>
   want hold
     call is-greater
       call from-numbers
-        mark 9
-        mark 2
+        code 9
+        code 2
 
 test <reverse flips less into greater>
   want hold
     call is-greater
       call reverse
         call from-numbers
-          mark 1
-          mark 2
+          code 1
+          code 2
 
 test <reverse keeps equal as equal>
   want hold
     call is-equal
       call reverse
         call from-numbers
-          mark 4
-          mark 4
+          code 4
+          code 4
 
 test <a less ordering does not report greater>
   want miss
     call is-greater
       call from-numbers
-        mark 1
-        mark 2
+        code 1
+        code 2

@@ -175,13 +175,13 @@ task negate-true
   like boolean
   send back
     call not
-      wave true
+      true
 
 task negate-false
   like boolean
   send back
     call not
-      wave false
+      false
 `
 
 // dock: a native module binding (FFI). `node:path` is pure + deterministic, so we can run it.

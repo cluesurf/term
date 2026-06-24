@@ -16,23 +16,23 @@ test <pop returns the smallest pushed value>
         make list
   call push
     read h
-    mark 5
+    code 5
   call push
     read h
-    mark 3
+    code 3
   call push
     read h
-    mark 8
+    code 8
   call push
     read h
-    mark 1
+    code 1
   want hold
     call is-equal
       call unwrap-or
         call pop
           read h
-        mark 0
-      mark 1
+        code 0
+      code 1
 
 test <successive pops come out in sorted order>
   save h
@@ -41,16 +41,16 @@ test <successive pops come out in sorted order>
         make list
   call push
     read h
-    mark 9
+    code 9
   call push
     read h
-    mark 2
+    code 2
   call push
     read h
-    mark 7
+    code 7
   call push
     read h
-    mark 4
+    code 4
   call pop
     read h
   want hold
@@ -58,8 +58,8 @@ test <successive pops come out in sorted order>
       call unwrap-or
         call pop
           read h
-        mark 0
-      mark 4
+        code 0
+      code 4
 
 test <peek shows the minimum without removing it>
   save h
@@ -68,17 +68,17 @@ test <peek shows the minimum without removing it>
         make list
   call push
     read h
-    mark 6
+    code 6
   call push
     read h
-    mark 2
+    code 2
   call peek
     read h
   want hold
     call is-equal
       call count
         read h
-      mark 2
+      code 2
 
 test <count tracks the size>
   save h
@@ -87,18 +87,18 @@ test <count tracks the size>
         make list
   call push
     read h
-    mark 1
+    code 1
   call push
     read h
-    mark 2
+    code 2
   call push
     read h
-    mark 3
+    code 3
   want hold
     call is-equal
       call count
         read h
-      mark 3
+      code 3
 
 test <a fresh heap is empty>
   save h
@@ -119,5 +119,5 @@ test <pop on an empty heap is none>
       call unwrap-or
         call pop
           read h
-        mark 99
-      mark 99
+        code 99
+      code 99

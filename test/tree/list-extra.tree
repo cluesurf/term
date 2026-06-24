@@ -12,61 +12,61 @@ test <set writes an element at an index>
   save xs
     make list
   call xs/push
-    mark 10
+    code 10
   call xs/push
-    mark 20
+    code 20
   call set
     read xs
-    mark 1
-    mark 99
+    code 1
+    code 99
   want hold
     call is-equal
       call get
         read xs
-        mark 1
-      mark 99
+        code 1
+      code 99
 
 test <clear empties the list>
   save xs
     make list
   call xs/push
-    mark 1
+    code 1
   call xs/push
-    mark 2
+    code 2
   call clear
     read xs
   want hold
     call is-equal
       call size
         read xs
-      mark 0
+      code 0
 
 test <copy keeps the same elements>
   save xs
     make list
   call xs/push
-    mark 7
+    code 7
   call xs/push
-    mark 8
+    code 8
   want hold
     call is-equal
       call size
         call copy
           read xs
-      mark 2
+      code 2
 
 test <copy is independent of the original>
   save xs
     make list
   call xs/push
-    mark 1
+    code 1
   save ys
     call copy
       read xs
   call xs/push
-    mark 2
+    code 2
   want hold
     call is-equal
       call size
         read ys
-      mark 1
+      code 1

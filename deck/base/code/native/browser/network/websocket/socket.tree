@@ -50,7 +50,7 @@ task stream
 
   save raw, read socket/dock
   save queue, make list
-  save done, wave false
+  save done, false
 
   save on-message
     task handle-message
@@ -64,11 +64,11 @@ task stream
   save on-error
     task handle-error
       take error
-      save done, wave true
+      save done, true
 
   save on-close
     task handle-close
-      save done, wave true
+      save done, true
 
   save raw/onmessage, read on-message
   save raw/onerror, read on-error

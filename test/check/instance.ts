@@ -65,7 +65,7 @@ form thing
   wear comparison
     task is-equal
       take self
-      send back, wave true
+      send back, true
 
 task run
   take a, like thing

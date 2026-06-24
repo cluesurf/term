@@ -15,14 +15,14 @@ test <rune-count counts code points>
     call is-equal
       call rune-count
         text <café>
-      mark 4
+      code 4
 
 test <byte-count counts utf-8 bytes>
   want hold
     call is-equal
       call byte-count
         text <café>
-      mark 5
+      code 5
 
 test <NFD decomposition adds a code point>
   save decomposed
@@ -32,7 +32,7 @@ test <NFD decomposition adds a code point>
     call is-equal
       call rune-count
         read decomposed
-      mark 5
+      code 5
 
 test <a decomposed accent is one grapheme, two runes>
   save decomposed
@@ -43,11 +43,11 @@ test <a decomposed accent is one grapheme, two runes>
       call is-equal
         call grapheme-count
           read decomposed
-        mark 1
+        code 1
       call is-equal
         call rune-count
           read decomposed
-        mark 2
+        code 2
 
 test <NFC recomposes back to four code points>
   save composed
@@ -58,7 +58,7 @@ test <NFC recomposes back to four code points>
     call is-equal
       call rune-count
         read composed
-      mark 4
+      code 4
 
 test <normalize verb with a dynamic form decomposes>
   save form
@@ -69,4 +69,4 @@ test <normalize verb with a dynamic form decomposes>
         call normalize
           text <café>
           read form
-      mark 5
+      code 5

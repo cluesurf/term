@@ -149,7 +149,7 @@ task add-route
   save node, read root
   save specs
     make list
-  save index, mark 0
+  save index, code 0
   walk list, read segments
     hook next
       take site, name segment
@@ -175,7 +175,7 @@ task add-route
                 bind name
                   call param-name-of
                     read segment
-                bind rest, wave true
+                bind rest, true
           save node, read child
           halt
         hook miss
@@ -202,7 +202,7 @@ task add-route
                     bind name
                       call param-name-of
                         read segment
-                    bind rest, wave false
+                    bind rest, false
               save node, read child
             hook miss
               save existing
@@ -223,7 +223,7 @@ task add-route
       save index
         call add
           read index
-          mark 1
+          code 1
   call set
     read node/handlers
     read method
@@ -276,7 +276,7 @@ task find-node
       save next
         call add
           read index
-          mark 1
+          code 1
       save static-child
         call get
           read node/static
@@ -294,9 +294,9 @@ task find-node
             case some
               send back, read via
             case none
-              mark 0
+              code 0
         case none
-          mark 0
+          code 0
       # 2. :param child (narrowing works on a variable subject, so bind the maybe first)
       save param-child
         read node/param
@@ -312,9 +312,9 @@ task find-node
             case some
               send back, read via
             case none
-              mark 0
+              code 0
         case none
-          mark 0
+          code 0
       # 3. catch-all (least specific): consumes the remaining path
       save wild-child
         read node/wildcard
@@ -328,7 +328,7 @@ task find-node
               read wild-node/handlers
               read method
         case none
-          mark 0
+          code 0
       # nothing matched at this node
       send back
         make none
@@ -378,7 +378,7 @@ task handle-request
       read server/root
       read request/method
       read segments
-      mark 0
+      code 0
   fork case, read found
     case some
       save params
@@ -393,5 +393,5 @@ task handle-request
     case none
       send back
         make response
-          bind status, mark 404
+          bind status, code 404
           bind body, text <not found>

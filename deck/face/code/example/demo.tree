@@ -25,7 +25,7 @@ zone demo
   take host, like view
   save panel
     call make-disclosure
-      bind start, wave false
+      bind start, false
   zone popover
     zone popover-trigger
       bind control, read panel

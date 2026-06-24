@@ -26,4 +26,4 @@ task make
             read body
           hook miss
             text <>
-      bind dock, wave true
+      bind dock, true

@@ -93,7 +93,7 @@ task area
       send back
         call multiply
           call multiply, read radius, read radius
-          mark 3
+          code 3
     case square
       link side
       send back

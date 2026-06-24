@@ -47,7 +47,7 @@ save now
 # write
 call write-signal
   bind self, read count
-  bind value, mark 5
+  bind value, code 5
 ```
 
 A write inside a click handler, reading the old value to increment:
@@ -62,7 +62,7 @@ task bump
       call add
         call read-signal
           bind self, read count
-        mark 1
+        code 1
 ```
 
 Any `read` in a [zone](components.md) bound to that signal updates when it changes. Nothing else re-renders.
@@ -94,7 +94,7 @@ save doubled
         call multiply
           call read-signal
             bind self, read count
-          mark 2
+          code 2
 ```
 
 ## Batching
@@ -107,10 +107,10 @@ call batch
     task many
       call write-signal
         bind self, read first
-        bind value, mark 1
+        bind value, code 1
       call write-signal
         bind self, read second
-        bind value, mark 2
+        bind value, code 2
 ```
 
 ## Untracked reads and mount

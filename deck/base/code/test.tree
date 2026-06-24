@@ -91,7 +91,7 @@ task deny
       call is-equal
         read got
         read expect
-      wave false
+      false
 
 task want-false
   take got, like boolean
@@ -99,7 +99,7 @@ task want-false
   send back
     call is-equal
       read got
-      wave false
+      false
 
 # ordered comparisons: got must be strictly above or below the bound
 

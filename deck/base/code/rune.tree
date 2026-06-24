@@ -81,7 +81,7 @@ form rune
           call is-equal
             read self/code
             code 32
-        wave false
+        false
 
   # any Unicode letter (general category L)
   task is-letter

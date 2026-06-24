@@ -34,7 +34,7 @@ task replace
   take value, like text
   take search, like text
   take replacement, like text
-  take all, like bool, fall wave false
+  take all, like bool, fall false
 
   fork test, name all
     hook true

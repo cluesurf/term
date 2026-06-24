@@ -719,13 +719,29 @@ export function mill(tree: RootNode, file: string): MillResult {
     const span = spanOf(group)
 
     switch (keyword) {
-      // `code` is the literal keyword (`code 1`, hex `code 0xaa12`); `mark` is the retired spelling kept working for
-      // now so the existing stdlib and tests still compile while sources migrate to `code`.
-      case 'code':
-      case 'mark':
-        return args[0]
-          ? toExpression(args[0], scope)
+      // `code` is the universal literal: numbers (`code 1`, `code -1.2`, hex `code 0xaa12`, binary `code 0b1010`,
+      // octal `code 0o17`, unicode `code 0u1234`) and the booleans `code true` / `code false`.
+      case 'code': {
+        const arg = args[0]
+
+        if (arg?.kind === 'group') {
+          const word = headName(arg)
+
+          if (word === 'true' || word === 'false') {
+            return { form: 'boolean', value: word === 'true', span }
+          }
+        }
+
+        return arg
+          ? toExpression(arg, scope)
           : { form: 'integer', value: 0, span }
+      }
+
+      // bare boolean literals: `true` / `false` (and the equivalent `code true` / `code false`)
+      case 'true':
+        return { form: 'boolean', value: true, span }
+      case 'false':
+        return { form: 'boolean', value: false, span }
       // the host null literal: `null`, for the dynamic / host boundary
       case 'null':
         return { form: 'null', span }

@@ -6,7 +6,7 @@ task make
   note async
   take from, like text
   take to, like text
-  take hard, like bool, fall wave false
+  take hard, like bool, fall false
 
   fork test, name hard
     hook true

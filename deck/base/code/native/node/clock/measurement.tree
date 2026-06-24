@@ -8,7 +8,7 @@ load ../../shared/clock/measurement
 task start
   save now
     call get
-      bind precise, wave true
+      bind precise, true
   send back
     make mark
       bind start, read now
@@ -17,7 +17,7 @@ task read
   take m, like mark
   save now
     call get
-      bind precise, wave true
+      bind precise, true
   fork case, read m
     case mark, base start
       send back

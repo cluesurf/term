@@ -10,7 +10,7 @@ Maps to: type annotations plus generics and trait bounds in Rust / Swift / TypeS
 | --- | --- |
 | `like number` | a number |
 | `like text` | a string |
-| `like boolean` | a boolean (`wave true` / `wave false`) |
+| `like boolean` | a boolean (`true` / `false`) |
 | `like nat` | a natural number (`0, 1, 2, ...`), used for indices and proofs |
 | `like void` | the unit type, no useful value |
 | `like user` | the form named `user` (any form name works) |
@@ -40,7 +40,7 @@ task rename
   call write-line, read name
 ```
 
-`number` covers integers and reals. `text` is a string. `boolean` is `wave true` or `wave false`. `void` is the unit, returned by a task that does work but yields nothing useful. `nat` is a natural number used where a value must be a non-negative whole count, including index positions and the math pages.
+`number` covers integers and reals. `text` is a string. `boolean` is `true` or `false`. `void` is the unit, returned by a task that does work but yields nothing useful. `nat` is a natural number used where a value must be a non-negative whole count, including index positions and the math pages.
 
 ```tree
 task count-down

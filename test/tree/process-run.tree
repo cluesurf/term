@@ -23,7 +23,7 @@ test <run echo exits with code zero>
   want hold
     call is-equal
       read result/code
-      mark 0
+      code 0
 
 test <run echo captures the output>
   save argument-list

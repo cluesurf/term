@@ -1,6 +1,6 @@
 
 task get
-  take precise, like bool, fall wave false
+  take precise, like bool, fall false
 
   fork test, read precise
     hook true

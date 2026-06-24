@@ -51,7 +51,7 @@ task copy
   note async
   take from, like text
   take to, like text
-  take deep, like bool, fall wave false
+  take deep, like bool, fall false
 
   fork test, name deep
     hook true
@@ -60,7 +60,7 @@ task copy
         read from
         read to
         make options
-          bind recursive, wave true
+          bind recursive, true
         halt kink
     hook false
       call fs-promise/copy-file
@@ -83,14 +83,14 @@ task move
 task remove
   note async
   take path, like text
-  take deep, like bool, fall wave false
+  take deep, like bool, fall false
 
   call fs-promise/rm
     note async
     read path
     make options
       bind recursive, read deep
-      bind force, wave true
+      bind force, true
     halt kink
 
 task test
@@ -105,7 +105,7 @@ task test
 
   fork test, call is-null, read kind
     hook true
-      send back, wave true
+      send back, true
 
   save stats
     call fs-promise/stat
@@ -128,12 +128,12 @@ task test
       send back
         call stats/is-symbolic-link
 
-  send back, wave true
+  send back, true
 
 task watch
   note async
   take path, like text
-  take deep, like bool, fall wave false
+  take deep, like bool, fall false
 
   call fs/watch
     read path

@@ -27,7 +27,7 @@ task tone-encode
       text <>
   save out
     make list
-  save count, mark 0
+  save count, code 0
   walk list, read chars
     hook next
       take site, name ch
@@ -35,17 +35,17 @@ task tone-encode
         hook test
           call is-equal
             read count
-            mark 4
+            code 4
         hook hold
           call push
             bind list, read out
             bind item, text <->
-          save count, mark 0
+          save count, code 0
       save i
         call index-of
           read hex-alpha
           read ch
-          mark 0
+          code 0
       call push
         bind list, read out
         bind item
@@ -55,7 +55,7 @@ task tone-encode
       save count
         call add
           read count
-          mark 1
+          code 1
   send back
     call join
       read out

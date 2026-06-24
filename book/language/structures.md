@@ -41,7 +41,7 @@ save alice
   make user
     bind name, text <alice>
     bind email, text <alice@site.com>
-    bind age, mark 30
+    bind age, code 30
 ```
 
 Read a field with the `/` member form: `read alice/email`.
@@ -64,7 +64,7 @@ form shape
 ```tree
 save a
   make circle
-    bind radius, mark 4
+    bind radius, code 4
 
 save b, make point
 ```
@@ -233,10 +233,10 @@ Nested construction nests `make` under a `bind`:
 make node
   bind left
     make leaf
-      bind value, mark 1
+      bind value, code 1
   bind right
     make leaf
-      bind value, mark 2
+      bind value, code 2
 ```
 
 When a constructed value is returned, it goes on the line below `send back`, never inline with `bind` children:

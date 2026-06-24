@@ -30,7 +30,7 @@ tree doubler
       take n, like number
       like number
       send back
-        call multiply, read n, mark 2
+        call multiply, read n, code 2
 ```
 
 ## Instantiating
@@ -49,7 +49,7 @@ task double-int
   take n, like number
   like number
   send back
-    call multiply, read n, mark 2
+    call multiply, read n, code 2
 ```
 
 ## Multiple parameters
@@ -119,13 +119,13 @@ task is-red
   take self
   like boolean
   send back
-    call is-equal, read self, mark 0
+    call is-equal, read self, code 0
 
 task is-green
   take self
   like boolean
   send back
-    call is-equal, read self, mark 1
+    call is-equal, read self, code 1
 ```
 
 After:

@@ -73,7 +73,7 @@ Nouns are types, verbs are functions. `read` takes the value it acts on as its f
 - Identifiers in source are kebab-case: `read-file`, `environment-variable`, `command-flag`.
 - The compiler maps kebab to each backend's idiom. `read-file` becomes `readFile` on Node, `read_file` in Rust.
 - Reaching into a host module keeps kebab and maps the same way: `call fs/read-file` lowers to `fs.readFile`.
-- A constant declared with `host` is still kebab in source. `host max-size, mark 1024`.
+- A constant declared with `host` is still kebab in source. `host max-size, code 1024`.
 
 ## File and folder layout
 

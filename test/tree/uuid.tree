@@ -11,5 +11,5 @@ test <version4 has the version digit 4 at index fourteen>
     call is-equal
       call char-at
         call version4
-        mark 14
+        code 14
       text <4>

@@ -63,7 +63,7 @@ form walk
             like maybe
             walk test
               hook test
-                wave true
+                true
               hook step
                 save item
                   call self/pull
@@ -172,7 +172,7 @@ form walk
       make list
     walk test
       hook test
-        wave true
+        true
       hook step
         save item
           call self/pull
@@ -191,7 +191,7 @@ form walk
     save total, code 0
     walk test
       hook test
-        wave true
+        true
       hook step
         save item
           call self/pull
@@ -219,7 +219,7 @@ form walk
     save total, read start
     walk test
       hook test
-        wave true
+        true
       hook step
         save item
           call self/pull
@@ -243,7 +243,7 @@ form walk
     like maybe
     walk test
       hook test
-        wave true
+        true
       hook step
         save item
           call self/pull
@@ -270,7 +270,7 @@ form walk
         take item, like t
     walk test
       hook test
-        wave true
+        true
       hook step
         save item
           call self/pull
@@ -291,7 +291,7 @@ form walk
     like boolean
     walk test
       hook test
-        wave true
+        true
       hook step
         save item
           call self/pull
@@ -302,9 +302,9 @@ form walk
                 call keep
                   read item/value
               hook hold
-                send back, wave true
+                send back, true
           case none
-            send back, wave false
+            send back, false
 
   # whether every element passes the predicate
   task is-all
@@ -316,7 +316,7 @@ form walk
     like boolean
     walk test
       hook test
-        wave true
+        true
       hook step
         save item
           call self/pull
@@ -327,9 +327,9 @@ form walk
                 call keep
                   read item/value
               hook miss
-                send back, wave false
+                send back, false
           case none
-            send back, wave true
+            send back, true
 
 # a walk over a list, front to back
 task from-list

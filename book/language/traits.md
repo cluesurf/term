@@ -158,7 +158,7 @@ task largest
             send back, read item
           hook miss
             send back, read best
-      call get, read items, mark 0
+      call get, read items, code 0
 ```
 
 Multiple bounds: repeat `need` under the same `head`.

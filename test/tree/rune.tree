@@ -18,78 +18,78 @@ test <the digit five is an ascii digit>
   want hold
     call is-ascii-digit
       call make-rune
-        mark 53
+        code 53
 
 test <the letter A is not a digit>
   want miss
     call is-ascii-digit
       call make-rune
-        mark 65
+        code 65
 
 test <lowercase a is an ascii letter>
   want hold
     call is-ascii-letter
       call make-rune
-        mark 97
+        code 97
 
 test <A is uppercase>
   want hold
     call is-ascii-upper
       call make-rune
-        mark 65
+        code 65
 
 test <a is lowercase>
   want hold
     call is-ascii-lower
       call make-rune
-        mark 97
+        code 97
 
 test <space is ascii whitespace>
   want hold
     call is-ascii-whitespace
       call make-rune
-        mark 32
+        code 32
 
 test <a letter is not whitespace>
   want miss
     call is-ascii-whitespace
       call make-rune
-        mark 65
+        code 65
 
 test <accented e is a Unicode letter>
   want hold
     call is-letter
       call make-rune
-        mark 233
+        code 233
 
 test <accented e is not a number>
   want miss
     call is-number
       call make-rune
-        mark 233
+        code 233
 
 test <uppercase A is uppercase>
   want hold
     call is-uppercase
       call make-rune
-        mark 65
+        code 65
 
 test <to-uppercase of a maps to A>
   save up
     call to-uppercase
       call make-rune
-        mark 97
+        code 97
   want hold
     call is-equal
       read up/code
-      mark 65
+      code 65
 
 test <to-lowercase of A maps to a>
   save down
     call to-lowercase
       call make-rune
-        mark 65
+        code 65
   want hold
     call is-equal
       read down/code
-      mark 97
+      code 97

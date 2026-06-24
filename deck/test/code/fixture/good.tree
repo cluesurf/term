@@ -4,4 +4,4 @@ task triple
   send back
     call multiply
       read n
-      mark 3
+      code 3

@@ -9,19 +9,19 @@ form boolean
     fork test
       hook test, read self
       hook hold, send back, read other
-      hook miss, send back, wave false
+      hook miss, send back, false
   task or
     take self
     take other, like boolean
     like boolean
     fork test
       hook test, read self
-      hook hold, send back, wave true
+      hook hold, send back, true
       hook miss, send back, read other
   task not
     take self
     like boolean
     fork test
       hook test, read self
-      hook hold, send back, wave false
-      hook miss, send back, wave true
+      hook hold, send back, false
+      hook miss, send back, true

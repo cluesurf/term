@@ -23,9 +23,9 @@ task place
       read reference
       read panel
       read placement
-      mark 8
-      wave true
-      wave true
+      code 8
+      true
+      true
 
 # anchor with explicit middleware config (offset distance in px, flip, shift). Returns the cleanup task.
 task place-with

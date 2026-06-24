@@ -65,10 +65,10 @@ form thing
   wear comparison
     task is-equal
       take self
-      send back, wave true
+      send back, true
     task is-not-equal
       take self
-      send back, wave false
+      send back, false
 `,
     'interface Comparison',
   )
@@ -82,7 +82,7 @@ form thing
   wear comparison
     task is-equal
       take self
-      send back, wave true
+      send back, true
 `,
     'incomplete-instance',
   )
@@ -107,10 +107,10 @@ suit shape
   wear comparison
     task is-equal
       take self
-      send back, wave true
+      send back, true
     task is-not-equal
       take self
-      send back, wave false
+      send back, false
 `,
   )
 
@@ -156,18 +156,18 @@ suit shape
   wear comparison
     task is-equal
       take self
-      send back, wave true
+      send back, true
     task is-not-equal
       take self
-      send back, wave false
+      send back, false
 suit shape
   wear comparison
     task is-equal
       take self
-      send back, wave true
+      send back, true
     task is-not-equal
       take self
-      send back, wave false
+      send back, false
 `,
     'duplicate-instance',
   )

@@ -15,20 +15,20 @@ test <to-maybe on okay is some of the value>
       call unwrap-or
         call to-maybe
           make okay
-            bind value, mark 7
-        mark 0
-      mark 7
+            bind value, code 7
+        code 0
+      code 7
 
 test <to-maybe on okay is some>
   want hold
     call is-some
       call to-maybe
         make okay
-          bind value, mark 1
+          bind value, code 1
 
 test <to-maybe on error is none>
   want miss
     call is-some
       call to-maybe
         make error
-          bind value, mark 9
+          bind value, code 9

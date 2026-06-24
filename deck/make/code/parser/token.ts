@@ -115,7 +115,7 @@ const PATTERN: Record<TokenKind, RegExp> = {
   [TokenKind.Comma]: /, */y,
   [TokenKind.Comment]: /#(?: +[^\n]+)?/y,
   [TokenKind.Decimal]: /-?\d+\.\d+/y,
-  [TokenKind.Radix]: /0[xXbBoO]\w+/y,
+  [TokenKind.Radix]: /0[xXbBoOuU]\w+/y,
   [TokenKind.Newline]: /\n/y,
   // a `{` opens an interpolation ONLY when an identifier follows (`{name}`); otherwise it is a literal brace. This lets
   // a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3}>`) without escaping, while `{name}`

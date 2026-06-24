@@ -40,14 +40,14 @@ task match
     hook miss
       call manager/create-directory
         bind at-path, text <.seed/snapshot>
-        bind with-intermediate-directories, wave true
+        bind with-intermediate-directories, true
       save data
         call serialize
           bind value, read value
           bind format, read format
       call data/write
         bind to-file, read path
-        bind atomically, wave true
+        bind atomically, true
         bind encoding, term utf8
       send back
 
@@ -96,7 +96,7 @@ task update
 
   call manager/create-directory
     bind at-path, text <.seed/snapshot>
-    bind with-intermediate-directories, wave true
+    bind with-intermediate-directories, true
 
   save data
     call serialize
@@ -105,5 +105,5 @@ task update
 
   call data/write
     bind to-file, read path
-    bind atomically, wave true
+    bind atomically, true
     bind encoding, term utf8

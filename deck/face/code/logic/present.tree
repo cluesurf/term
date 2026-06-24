@@ -55,9 +55,9 @@ task presence-mounted
             bind self, read self/phase
           text <gone>
       hook hold
-        wave false
+        false
       hook miss
-        wave true
+        true
 
 # the data-state ("open"/"closed") for the enter/exit CSS animation
 task presence-state

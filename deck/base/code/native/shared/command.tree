@@ -76,9 +76,9 @@ task command-result-is-okay
   take r, like command-result
   fork case, read r
     hook okay, base command, base flags, base arguments
-      send back, wave true
+      send back, true
     hook error, base errors
-      send back, wave false
+      send back, false
 
 task command-result-command
   take r, like command-result

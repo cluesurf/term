@@ -85,7 +85,7 @@ task list-handler
       wait true
   send back
     make response
-      bind status, mark 200
+      bind status, code 200
       bind body
         call posts-json
           read posts
@@ -108,7 +108,7 @@ task get-handler
       wait true
   send back
     make response
-      bind status, mark 200
+      bind status, code 200
       bind body
         call post-json
           read p
@@ -164,7 +164,7 @@ task seed-sample
     hook test
       call is-equal
         read posts/length
-        mark 0
+        code 0
     hook hold
       call create-post
         text <hello-seed>

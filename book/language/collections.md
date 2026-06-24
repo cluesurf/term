@@ -86,7 +86,7 @@ A `form` literally named `list` is the native array. `make list` produces a nati
 Both forms work and mean the same thing:
 
 ```tree
-call get, read items, mark 0     # function form
+call get, read items, code 0     # function form
 read items/get                   # member form, when the call takes only self
 ```
 
@@ -100,12 +100,12 @@ Build a list, then push and read elements. `make list` on its own is the empty l
 host items
   make list
 
-call push, read items, mark 1
-call push, read items, mark 2
-call push, read items, mark 3
+call push, read items, code 1
+call push, read items, code 2
+call push, read items, code 3
 
 host first
-  call get, read items, mark 0      # 1
+  call get, read items, code 0      # 1
 
 host count
   call size, read items             # 3
@@ -115,7 +115,7 @@ host count
 
 ```tree
 host head
-  call first, read items            # make some / bind value, mark 1
+  call first, read items            # make some / bind value, code 1
 ```
 
 ### Transforming
@@ -135,7 +135,7 @@ task double-all
         take n, like number
         like number
         send back
-          call multiply, read n, mark 2
+          call multiply, read n, code 2
 
 task total
   take xs
@@ -150,7 +150,7 @@ task total
         like number
         send back
           call add, read running, read n
-      mark 0
+      code 0
 ```
 
 `sum` is the same fold built in: `call sum, read xs`.
@@ -176,14 +176,14 @@ The map type is built with `make find`. Keys and values are generic.
 host ages
   make find
 
-call set, read ages, text <ada>, mark 36
-call set, read ages, text <bob>, mark 41
+call set, read ages, text <ada>, code 36
+call set, read ages, text <bob>, code 41
 
 host one
-  call get, read ages, text <ada>          # make some / bind value, mark 36
+  call get, read ages, text <ada>          # make some / bind value, code 36
 
 host backup
-  call get-or-default, read ages, text <eve>, mark 0   # 0
+  call get-or-default, read ages, text <eve>, code 0   # 0
 ```
 
 `get` returns a `maybe`, so a missing key is `none` rather than a crash. Iterate by walking the `keys` list.
@@ -195,7 +195,7 @@ walk list
     take site, name key
     call write-line, read key
     call write-line
-      call get-or-default, read ages, read key, mark 0
+      call get-or-default, read ages, read key, code 0
 ```
 
 `merge` folds another map into this one, and `clear` empties it.
@@ -270,10 +270,10 @@ Build one by nesting `make cons`, ending in `make nil`.
 ```tree
 host one-two
   make cons
-    bind item, mark 1
+    bind item, code 1
     bind more
       make cons
-        bind item, mark 2
+        bind item, code 2
         bind more
           make nil
 ```
@@ -286,12 +286,12 @@ task length
   like number
   fork case, read xs
     case nil
-      send back, mark 0
+      send back, code 0
     case cons
       link more
       send back
         call add
-          mark 1
+          code 1
           call length, read more
 ```
 

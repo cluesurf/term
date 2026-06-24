@@ -12,45 +12,45 @@ test <power raises a base to an exponent>
   want hold
     call is-equal
       call power
-        mark 2
-        mark 10
-      mark 1024
+        code 2
+        code 10
+      code 1024
 
 test <absolute makes a negative positive>
   want hold
     call is-equal
       call absolute
         mark -5
-      mark 5
+      code 5
 
 test <minimum picks the smaller>
   want hold
     call is-equal
       call minimum
-        mark 7
-        mark 3
-      mark 3
+        code 7
+        code 3
+      code 3
 
 test <maximum picks the larger>
   want hold
     call is-equal
       call maximum
-        mark 7
-        mark 3
-      mark 7
+        code 7
+        code 3
+      code 7
 
 test <square-root of a perfect square>
   want hold
     call is-equal
       call square-root
-        mark 144
-      mark 12
+        code 144
+      code 12
 
 test <clamp holds a value to a range>
   want hold
     call is-equal
       call clamp
-        mark 15
-        mark 0
-        mark 10
-      mark 10
+        code 15
+        code 0
+        code 10
+      code 10

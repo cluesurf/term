@@ -45,7 +45,7 @@ task handle
   like response
   send back
     make response
-      bind status, mark 200
+      bind status, code 200
       bind body, text <ok>
 ```
 
@@ -58,7 +58,7 @@ dock /health
   task get
     send back
       make response
-        bind status, mark 200
+        bind status, code 200
         bind body, text <ok>
 ```
 
@@ -174,7 +174,7 @@ dock /users/:id
           bind text, text <user not found>
     send back
       make response
-        bind status, mark 200
+        bind status, code 200
         bind body
           call to-json, read user
 ```

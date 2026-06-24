@@ -11,19 +11,19 @@ load @cluesurf/base/code/text
 test <udp datagram round-trips>
   save receiver
     call open
-      mark 48001
+      code 48001
       text <127.0.0.1>
       wait true
   save sender
     call open
-      mark 48002
+      code 48002
       text <127.0.0.1>
       wait true
   call send
     read sender
     text <hello>
     text <127.0.0.1>
-    mark 48001
+    code 48001
     wait true
   save message
     call receive

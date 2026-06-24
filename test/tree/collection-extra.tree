@@ -27,8 +27,8 @@ test <get-or-default returns the fallback for a missing key>
       call get-or-default
         read m
         text <nope>
-        mark 42
-      mark 42
+        code 42
+      code 42
 
 test <get-or-default returns the stored value when present>
   save m
@@ -36,14 +36,14 @@ test <get-or-default returns the stored value when present>
   call set
     read m
     text <a>
-    mark 7
+    code 7
   want hold
     call is-equal
       call get-or-default
         read m
         text <a>
-        mark 0
-      mark 7
+        code 0
+      code 7
 
 test <clear empties the map>
   save m
@@ -51,14 +51,14 @@ test <clear empties the map>
   call set
     read m
     text <a>
-    mark 1
+    code 1
   call clear
     read m
   want hold
     call is-equal
       call size
         read m
-      mark 0
+      code 0
 
 test <merge copies entries from another map>
   save a
@@ -66,13 +66,13 @@ test <merge copies entries from another map>
   call set
     read a
     text <x>
-    mark 1
+    code 1
   save b
     make find
   call set
     read b
     text <y>
-    mark 2
+    code 2
   call merge
     read a
     read b
@@ -81,8 +81,8 @@ test <merge copies entries from another map>
       call get-or-default
         read a
         text <y>
-        mark 0
-      mark 2
+        code 0
+      code 2
 
 test <intersection keeps shared items>
   save a
@@ -91,27 +91,27 @@ test <intersection keeps shared items>
         make find
   call insert
     read a
-    mark 1
+    code 1
   call insert
     read a
-    mark 2
+    code 2
   save b
     make set
       bind items
         make find
   call insert
     read b
-    mark 2
+    code 2
   call insert
     read b
-    mark 3
+    code 3
   want hold
     call is-equal
       call size
         call intersection
           read a
           read b
-      mark 1
+      code 1
 
 test <symmetric-difference keeps items in exactly one set>
   save a
@@ -120,27 +120,27 @@ test <symmetric-difference keeps items in exactly one set>
         make find
   call insert
     read a
-    mark 1
+    code 1
   call insert
     read a
-    mark 2
+    code 2
   save b
     make set
       bind items
         make find
   call insert
     read b
-    mark 2
+    code 2
   call insert
     read b
-    mark 3
+    code 3
   want hold
     call is-equal
       call size
         call symmetric-difference
           read a
           read b
-      mark 2
+      code 2
 
 test <is-subset holds when every item is contained>
   save a
@@ -149,17 +149,17 @@ test <is-subset holds when every item is contained>
         make find
   call insert
     read a
-    mark 1
+    code 1
   save b
     make set
       bind items
         make find
   call insert
     read b
-    mark 1
+    code 1
   call insert
     read b
-    mark 2
+    code 2
   want hold
     call is-subset
       read a
@@ -172,17 +172,17 @@ test <is-superset is the converse of is-subset>
         make find
   call insert
     read a
-    mark 1
+    code 1
   call insert
     read a
-    mark 2
+    code 2
   save b
     make set
       bind items
         make find
   call insert
     read b
-    mark 1
+    code 1
   want hold
     call is-superset
       read a

@@ -109,10 +109,10 @@ function main(): void {
 
   // L006: a fork test whose condition is a boolean literal is constant control flow
   {
-    const text = `fork test\n  hook test, wave true\n  hook hold\n    send back, code 1\n`
+    const text = `fork test\n  hook test, true\n  hook hold\n    send back, code 1\n`
     const fs = findings(text).filter(f => f.code === 'L006')
     ok(
-      'L006 flags a constant `wave true` condition',
+      'L006 flags a constant `true` condition',
       fs.length === 1,
       JSON.stringify(findings(text)),
     )
@@ -318,9 +318,9 @@ function main(): void {
 
   // L017: comparison to a boolean literal
   {
-    const cmp = `task f\n  take x, like boolean\n  like boolean\n  send back\n    call is-equal\n      read x\n      wave true\n`
+    const cmp = `task f\n  take x, like boolean\n  like boolean\n  send back\n    call is-equal\n      read x\n      true\n`
     ok(
-      'L017 flags `x == wave true`',
+      'L017 flags `x == true`',
       findings(cmp).filter(f => f.code === 'L017').length === 1,
       JSON.stringify(findings(cmp)),
     )
@@ -462,13 +462,13 @@ function main(): void {
     ).length === 1,
   )
 
-  // L017 fix: `x == wave true` -> `x`
+  // L017 fix: `x == true` -> `x`
   {
-    const text = `task f\n  take x, like boolean\n  like boolean\n  send back\n    call is-equal\n      read x\n      wave true\n`
+    const text = `task f\n  take x, like boolean\n  like boolean\n  send back\n    call is-equal\n      read x\n      true\n`
     const fixed = applyFixes(text, findings(text))
     ok(
       'L017 fix collapses `x == true` to `x`',
-      !fixed.includes('is-equal') && !fixed.includes('wave true'),
+      !fixed.includes('is-equal') && !fixed.includes('true'),
       JSON.stringify(fixed),
     )
   }
@@ -519,7 +519,7 @@ function main(): void {
 
   // L031: returning a boolean literal from each fork branch is just the condition
   {
-    const redundant = `task f\n  take c, like boolean\n  like boolean\n  fork test\n    hook test, read c\n    hook hold\n      send back, wave true\n    hook miss\n      send back, wave false\n`
+    const redundant = `task f\n  take c, like boolean\n  like boolean\n  fork test\n    hook test, read c\n    hook hold\n      send back, true\n    hook miss\n      send back, false\n`
     const fs = findings(redundant).filter(f => f.code === 'L031')
     ok(
       'L031 flags `if c { true } else { false }`',
@@ -551,7 +551,7 @@ function main(): void {
 
   // L032: a value-position conditional with boolean-literal arms is just the condition
   {
-    const redundant = `task f\n  take c, like boolean\n  like boolean\n  save r\n    fork test\n      hook test, read c\n      hook hold, wave true\n      hook miss, wave false\n  send back, read r\n`
+    const redundant = `task f\n  take c, like boolean\n  like boolean\n  save r\n    fork test\n      hook test, read c\n      hook hold, true\n      hook miss, false\n  send back, read r\n`
     const fs = findings(redundant).filter(f => f.code === 'L032')
     ok(
       'L032 flags a `c ? true : false` conditional',

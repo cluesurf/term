@@ -6,7 +6,7 @@ form writer
 task create
   note async
   take path, like text
-  take append, like bool, fall wave false
+  take append, like bool, fall false
   like writer
 
 task write

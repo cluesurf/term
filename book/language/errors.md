@@ -47,7 +47,7 @@ task safe-divide
   like number
   fork test
     hook test
-      call is-equal, read b, mark 0
+      call is-equal, read b, code 0
     hook hold
       bust
         text <division by zero>
@@ -121,8 +121,8 @@ Throw it by constructing and busting in one place.
 
 ```tree
 bust parse-error
-  bind line, mark 12
-  bind column, mark 4
+  bind line, code 12
+  bind column, code 4
   bind note
     text <unexpected token>
 ```

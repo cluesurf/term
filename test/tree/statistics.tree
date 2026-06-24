@@ -14,31 +14,31 @@ test <total sums the list>
   save xs
     make list
   call xs/push
-    mark 1
+    code 1
   call xs/push
-    mark 2
+    code 2
   call xs/push
-    mark 3
+    code 3
   want hold
     call is-equal
       call total
         read xs
-      mark 6
+      code 6
 
 test <mean is the integer average>
   save xs
     make list
   call xs/push
-    mark 2
+    code 2
   call xs/push
-    mark 4
+    code 4
   call xs/push
-    mark 6
+    code 6
   want hold
     call is-equal
       call mean
         read xs
-      mark 4
+      code 4
 
 test <mean of an empty list is zero>
   save xs
@@ -47,49 +47,49 @@ test <mean of an empty list is zero>
     call is-equal
       call mean
         read xs
-      mark 0
+      code 0
 
 test <least finds the minimum>
   save xs
     make list
   call xs/push
-    mark 5
+    code 5
   call xs/push
-    mark 2
+    code 2
   call xs/push
-    mark 8
+    code 8
   want hold
     call is-equal
       call least
         read xs
-      mark 2
+      code 2
 
 test <greatest finds the maximum>
   save xs
     make list
   call xs/push
-    mark 5
+    code 5
   call xs/push
-    mark 2
+    code 2
   call xs/push
-    mark 8
+    code 8
   want hold
     call is-equal
       call greatest
         read xs
-      mark 8
+      code 8
 
 test <span is greatest minus least>
   save xs
     make list
   call xs/push
-    mark 5
+    code 5
   call xs/push
-    mark 2
+    code 2
   call xs/push
-    mark 8
+    code 8
   want hold
     call is-equal
       call span
         read xs
-      mark 6
+      code 6

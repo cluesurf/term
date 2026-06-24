@@ -28,18 +28,18 @@ form result
     like boolean
     fork case, read self
       case okay
-        send back, wave true
+        send back, true
       case error
-        send back, wave false
+        send back, false
 
   task is-error
     take self
     like boolean
     fork case, read self
       case okay
-        send back, wave false
+        send back, false
       case error
-        send back, wave true
+        send back, true
 
   task unwrap-or
     take self

@@ -10,18 +10,18 @@ form maybe
     like boolean
     fork case, read self
       case some
-        send back, wave true
+        send back, true
       case none
-        send back, wave false
+        send back, false
 
   task is-none
     take self
     like boolean
     fork case, read self
       case some
-        send back, wave false
+        send back, false
       case none
-        send back, wave true
+        send back, true
 
   task unwrap-or
     take self

@@ -5,11 +5,11 @@ dock load
 task open
   note async
   take path, like text
-  take read, like bool, fall wave true
-  take write, like bool, fall wave false
-  take create, like bool, fall wave false
-  take append, like bool, fall wave false
-  take clear, like bool, fall wave false
+  take read, like bool, fall true
+  take write, like bool, fall false
+  take create, like bool, fall false
+  take append, like bool, fall false
+  take clear, like bool, fall false
 
   save flags, text <r>
 

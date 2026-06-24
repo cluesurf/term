@@ -98,7 +98,7 @@ task get-post
   save r
     call get
       read rows
-      mark 0
+      code 0
   send back
     call post-of
       read r

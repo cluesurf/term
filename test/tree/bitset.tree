@@ -19,11 +19,11 @@ test <set then has finds the bit>
         make list
   call set
     read b
-    mark 5
+    code 5
   want hold
     call has
       read b
-      mark 5
+      code 5
 
 test <an unset bit is absent>
   save b
@@ -32,11 +32,11 @@ test <an unset bit is absent>
         make list
   call set
     read b
-    mark 5
+    code 5
   want miss
     call has
       read b
-      mark 6
+      code 6
 
 test <bits across word boundaries are independent>
   save b
@@ -45,14 +45,14 @@ test <bits across word boundaries are independent>
         make list
   call set
     read b
-    mark 1
+    code 1
   call set
     read b
-    mark 40
+    code 40
   want hold
     call has
       read b
-      mark 40
+      code 40
 
 test <count is the number of set bits>
   save b
@@ -61,18 +61,18 @@ test <count is the number of set bits>
         make list
   call set
     read b
-    mark 1
+    code 1
   call set
     read b
-    mark 40
+    code 40
   call set
     read b
-    mark 5
+    code 5
   want hold
     call is-equal
       call count
         read b
-      mark 3
+      code 3
 
 test <clear removes a set bit>
   save b
@@ -81,14 +81,14 @@ test <clear removes a set bit>
         make list
   call set
     read b
-    mark 5
+    code 5
   call clear
     read b
-    mark 5
+    code 5
   want miss
     call has
       read b
-      mark 5
+      code 5
 
 test <toggle twice restores the bit to unset>
   save b
@@ -97,14 +97,14 @@ test <toggle twice restores the bit to unset>
         make list
   call toggle
     read b
-    mark 10
+    code 10
   call toggle
     read b
-    mark 10
+    code 10
   want miss
     call has
       read b
-      mark 10
+      code 10
 
 test <a fresh bitset is empty>
   save b

@@ -18,7 +18,7 @@ task join
   take separator, like text
   like text
   save out, text <>
-  save first, wave true
+  save first, true
   walk list
     read items
     hook next
@@ -28,7 +28,7 @@ task join
           read first
         hook hold
           save out, read item
-          save first, wave false
+          save first, false
         hook miss
           save out
             call concat
@@ -47,7 +47,7 @@ task count-occurrences
   save from, code 0
   walk test
     hook test
-      wave true
+      true
     hook step
       save found
         call index-of

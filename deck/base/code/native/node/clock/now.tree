@@ -3,7 +3,7 @@ dock load
   load <perf_hooks>, name perf
 
 task get
-  take precise, like bool, fall wave false
+  take precise, like bool, fall false
 
   fork test, read precise
     hook test

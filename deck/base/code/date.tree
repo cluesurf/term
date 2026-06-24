@@ -1,40 +1,64 @@
+# Date: the current moment and the calendar view of a UTC timestamp. The timestamp (epoch milliseconds) is the portable
+# value -- `calendar` formats, parses, and shifts it, and `duration` measures spans. This module adds the current moment
+# (`now`) and conveniences that decompose it, so an app rarely touches the raw timestamp. Everything is UTC; name a zone
+# with `timezone` for wall-clock time.
 
-# Date and time.
+load @cluesurf/base/code/time
+  find now
 
-load @cluesurf/base/code/mixin/each
-  find define-each
+load @cluesurf/base/code/calendar
+  find to-parts
+  find format
+  find year
+  find month
+  find day
+  find weekday
+  find date-parts
 
-host interval
-  term year
-  term month
-  term day
-  term hour
-  term minute
-  term second
+# the current moment as epoch milliseconds (UTC)
+task now-millis
+  like number
+  send back
+    call now
 
-tree interval-accessor
-  take name
+# the current moment decomposed into year / month / day / hour / minute / second / weekday (UTC)
+task now-parts
+  like date-parts
+  send back
+    call to-parts
+      call now
 
-  hook bind
-    task get-{name}
-      like integer
+# the current moment as an ISO 8601 text (2026-06-23T12:34:56.000Z)
+task now-text
+  like text
+  send back
+    call format
+      call now
 
-    task set-{name}
-      take value, like integer
+# the current calendar year (UTC)
+task current-year
+  like integer
+  send back
+    call year
+      call now
 
-    task add-{name}s
-      take value, like integer
+# the current month, 1 (January) through 12 (December)
+task current-month
+  like integer
+  send back
+    call month
+      call now
 
-form date
-  link year, like integer
-  link month, like integer
-  link day, like integer
-  link hour, like integer
-  link minute, like integer
-  link second, like integer
+# the current day of the month, 1 through 31
+task current-day
+  like integer
+  send back
+    call day
+      call now
 
-  fuse define-each, read interval
-    read interval-accessor
-
-task now
-  like date
+# the current day of the week, 0 (Sunday) through 6 (Saturday)
+task current-weekday
+  like integer
+  send back
+    call weekday
+      call now

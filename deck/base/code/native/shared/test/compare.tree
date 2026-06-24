@@ -10,7 +10,7 @@ task deep-equal
         bind a, read a
         bind b, read b
     hook hold
-      send back, wave true
+      send back, true
 
   fork test
     hook test
@@ -32,7 +32,7 @@ task deep-equal
             bind a, read size-a
             bind b, read size-b
         hook miss
-          send back, wave false
+          send back, false
       save i, code 0
       walk test
         hook test
@@ -55,14 +55,14 @@ task deep-equal
           fork test
             hook test, read eq
             hook miss
-              send back, wave false
+              send back, false
           save i
             call add
               bind a, read i
               bind b, code 1
-      send back, wave true
+      send back, true
 
-  send back, wave false
+  send back, false
 
 task contains-text
   take text, like text
@@ -81,14 +81,14 @@ task contains-text
         bind a, read search-size
         bind b, code 0
     hook hold
-      send back, wave true
+      send back, true
   fork test
     hook test
       call is-above
         bind a, read search-size
         bind b, read text-size
     hook hold
-      send back, wave false
+      send back, false
   save i, code 0
   save limit
     call add
@@ -117,12 +117,12 @@ task contains-text
             bind a, read slice
             bind b, read search
         hook hold
-          send back, wave true
+          send back, true
       save i
         call add
           bind a, read i
           bind b, code 1
-  send back, wave false
+  send back, false
 
 task contains-list
   take list
@@ -149,9 +149,9 @@ task contains-list
             bind a, read item
             bind b, read value
         hook hold
-          send back, wave true
+          send back, true
       save i
         call add
           bind a, read i
           bind b, code 1
-  send back, wave false
+  send back, false

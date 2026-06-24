@@ -75,7 +75,7 @@ task is-even
   like boolean
   send back
     call is-equal
-      call modulo, read n, mark 2
+      call modulo, read n, code 2
       code 0
 ```
 
@@ -98,12 +98,12 @@ task clamp-low
 The full set covers strict and inclusive comparisons:
 
 ```tree
-call is-equal, read x, mark 0      # x == 0
-call is-unequal, read x, mark 0    # x != 0
-call is-above, read x, mark 0      # x > 0
-call is-below, read x, mark 0      # x < 0
-call is-minimum, read x, mark 0    # x >= 0
-call is-maximum, read x, mark 0    # x <= 0
+call is-equal, read x, code 0      # x == 0
+call is-unequal, read x, code 0    # x != 0
+call is-above, read x, code 0      # x > 0
+call is-below, read x, code 0      # x < 0
+call is-minimum, read x, code 0    # x >= 0
+call is-maximum, read x, code 0    # x <= 0
 ```
 
 ## Boolean logic
@@ -129,7 +129,7 @@ You can also call them member-style on a value, which reads like a method:
 call ready/and, read warm
 ```
 
-This is the same `and` task, with `ready` as the value it acts on. See [primitives](primitives.md) for the `wave true` / `wave false` literals and [structures](structures.md) for the `boolean` form.
+This is the same `and` task, with `ready` as the value it acts on. See [primitives](primitives.md) for the `true` / `false` literals and [structures](structures.md) for the `boolean` form.
 
 ## Chaining with `link`
 

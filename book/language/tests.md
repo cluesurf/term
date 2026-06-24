@@ -56,8 +56,8 @@ task test-add
   send back
     call check
       text <add two and three>
-      call add, mark 2, mark 3
-      mark 5
+      call add, code 2, code 3
+      code 5
 ```
 
 `call check` returns a `test` meta object. The first argument is the name, the second is the value you got, the third is what you expect.
@@ -82,11 +82,11 @@ task test-list-push
         save items
           make list
         call items/push
-          mark 42
+          code 42
         send back
           call want
             call items/size
-            mark 1
+            code 1
 ```
 
 `case` takes the name and the work. The work builds a list, pushes to it, and asserts the size is one with `want`. The work returns the boolean that `want` produced.
@@ -105,16 +105,16 @@ task test-asserts
         note async
         like boolean
         # equality and its negation
-        save a, call want, mark 4, mark 4
-        save b, call deny, mark 4, mark 5
+        save a, call want, code 4, code 4
+        save b, call deny, code 4, code 5
         # booleans
-        save c, call want-true, wave true
-        save d, call want-false, wave false
+        save c, call want-true, true
+        save d, call want-false, false
         # text containment
         save e, call want-text, text <hello world>, text <world>
         # ordered bounds
-        save f, call want-over, mark 10, mark 3
-        save g, call want-under, mark 3, mark 10
+        save f, call want-over, code 10, code 3
+        save g, call want-under, code 3, code 10
         send back
           read a
 ```

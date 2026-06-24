@@ -12,25 +12,25 @@ test <max returns the first when it is larger>
   want hold
     call is-equal
       call maximum
-        mark 7
-        mark 3
-      mark 7
+        code 7
+        code 3
+      code 7
 
 test <max returns the second when it is larger>
   want hold
     call is-equal
       call maximum
-        mark 3
-        mark 7
-      mark 7
+        code 3
+        code 7
+      code 7
 
 test <max at equal inputs returns that value>
   want hold
     call is-equal
       call maximum
-        mark 5
-        mark 5
-      mark 5
+        code 5
+        code 5
+      code 5
 
 # --- min: result is the smaller of the two inputs ---
 
@@ -38,16 +38,16 @@ test <min returns the smaller>
   want hold
     call is-equal
       call minimum
-        mark 7
-        mark 3
-      mark 3
+        code 7
+        code 3
+      code 3
 
 test <min handles negatives>
   want hold
     call is-equal
       call minimum
         mark -2
-        mark 4
+        code 4
       mark -2
 
 # --- abs: result is the non-negative magnitude (abs = max(a, -a)) ---
@@ -57,21 +57,21 @@ test <abs of a negative is its magnitude>
     call is-equal
       call absolute
         mark -5
-      mark 5
+      code 5
 
 test <abs of a positive is itself>
   want hold
     call is-equal
       call absolute
-        mark 5
-      mark 5
+        code 5
+      code 5
 
 test <abs of zero is zero>
   want hold
     call is-equal
       call absolute
-        mark 0
-      mark 0
+        code 0
+      code 0
 
 # --- clamp: result is held within [low, high] ---
 
@@ -80,24 +80,24 @@ test <clamp below the low bound returns the low bound>
     call is-equal
       call clamp
         mark -3
-        mark 0
-        mark 10
-      mark 0
+        code 0
+        code 10
+      code 0
 
 test <clamp above the high bound returns the high bound>
   want hold
     call is-equal
       call clamp
-        mark 42
-        mark 0
-        mark 10
-      mark 10
+        code 42
+        code 0
+        code 10
+      code 10
 
 test <clamp inside the range returns the value>
   want hold
     call is-equal
       call clamp
-        mark 6
-        mark 0
-        mark 10
-      mark 6
+        code 6
+        code 0
+        code 10
+      code 6

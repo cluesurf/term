@@ -76,7 +76,7 @@ task run-tests
 
   call handle2/truncate
     wait true
-    bind len, mark 5
+    bind len, code 5
 
   call handle2/close
     wait true

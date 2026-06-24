@@ -56,7 +56,7 @@ make request
 
 ```tree
 make response
-  bind status, mark 200
+  bind status, code 200
   bind body, text <ok>
 ```
 

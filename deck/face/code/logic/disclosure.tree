@@ -49,14 +49,14 @@ task open-disclosure
   take self, like signal
   call write-signal
     bind self, read self
-    bind value, wave true
+    bind value, true
 
 # close it
 task close-disclosure
   take self, like signal
   call write-signal
     bind self, read self
-    bind value, wave false
+    bind value, false
 
 # toggle it
 task toggle-disclosure
@@ -71,6 +71,6 @@ task toggle-disclosure
         hook test
           read now
         hook hold
-          wave false
+          false
         hook miss
-          wave true
+          true

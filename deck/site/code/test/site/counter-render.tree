@@ -23,7 +23,7 @@ task counter
 
   save count
     call make-signal
-      bind value, mark 0
+      bind value, code 0
 
   save root
     call element
@@ -40,7 +40,7 @@ task counter
             call add
               call read-signal
                 bind self, read count
-              mark 1
+              code 1
 
   call mount
     bind host, read root

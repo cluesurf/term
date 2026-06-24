@@ -55,7 +55,7 @@ dock /auth/login
         bind user, read user
     send back
       make response
-        bind status, mark 200
+        bind status, code 200
         bind body
           call to-json
             make session
@@ -91,7 +91,7 @@ dock /auth/register
         bind password-hash, read hash
     send back
       make response
-        bind status, mark 201
+        bind status, code 201
         bind body
           call to-json, read user
 ```
@@ -122,7 +122,7 @@ dock /me
         read payload/sub
     send back
       make response
-        bind status, mark 200
+        bind status, code 200
         bind body
           call to-json, read user
 ```
@@ -142,7 +142,7 @@ dock /dashboard
       hook hold
         send back
           make response
-            bind status, mark 302
+            bind status, code 302
             bind body, text </login>
     send back
       call render-dashboard, read session/user
@@ -178,7 +178,7 @@ dock /auth/google/callback
         bind user, read user
     send back
       make response
-        bind status, mark 302
+        bind status, code 302
         bind body, text </dashboard>
 ```
 

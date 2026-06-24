@@ -5,7 +5,7 @@ dock load
 task read
   note async
   take path, like text
-  take follow, like bool, fall wave true
+  take follow, like bool, fall true
 
   save stats
     fork test, name follow

@@ -10,33 +10,33 @@ form ordering
     like boolean
     fork case, read self
       case less
-        send back, wave true
+        send back, true
       case equal
-        send back, wave false
+        send back, false
       case greater
-        send back, wave false
+        send back, false
 
   task is-equal
     take self
     like boolean
     fork case, read self
       case equal
-        send back, wave true
+        send back, true
       case less
-        send back, wave false
+        send back, false
       case greater
-        send back, wave false
+        send back, false
 
   task is-greater
     take self
     like boolean
     fork case, read self
       case greater
-        send back, wave true
+        send back, true
       case less
-        send back, wave false
+        send back, false
       case equal
-        send back, wave false
+        send back, false
 
   # flip the direction: less becomes greater, greater becomes less, equal stays. Turns an ascending comparator into a descending one.
   task reverse

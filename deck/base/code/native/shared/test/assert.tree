@@ -38,7 +38,7 @@ task assert
               call make-failure
                 bind name, read ctx/name
                 bind message, text <Expected truthy value>
-                bind expected, wave true
+                bind expected, true
                 bind actual, read value
       send back
 
@@ -93,7 +93,7 @@ task assert
         bind a, read form
         bind b, text <contains>
     hook hold
-      save has, wave false
+      save has, false
       fork test
         hook test
           call is-text

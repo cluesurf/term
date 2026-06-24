@@ -6,7 +6,7 @@ dock load
 task list
   note async
   take path, like text
-  take deep, like bool, fall wave false
+  take deep, like bool, fall false
 
   fork test, name deep
     hook true
@@ -32,7 +32,7 @@ task list-deep
       note async
       read base
       make options
-        bind with-file-types, wave true
+        bind with-file-types, true
       halt kink
 
   save result, make list
@@ -75,7 +75,7 @@ task make
     note async
     read path
     make options
-      bind recursive, wave true
+      bind recursive, true
     halt kink
 
 task walk
@@ -108,7 +108,7 @@ task walk-step
       note async
       read current
       make options
-        bind with-file-types, wave true
+        bind with-file-types, true
       halt kink
 
   walk list

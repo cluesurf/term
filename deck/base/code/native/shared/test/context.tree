@@ -15,7 +15,7 @@ task make
       bind name, read name
       bind failures
         make list
-      bind skipped, wave false
+      bind skipped, false
       bind start-time, read start-time
 
 task set
@@ -43,7 +43,7 @@ task is-passed
       fork test
         hook test, read skipped
         hook hold
-          send back, wave false
+          send back, false
       save count
         call list-size
           bind list, read failures
@@ -53,15 +53,15 @@ task is-passed
             bind a, read count
             bind b, code 0
         hook hold
-          send back, wave true
+          send back, true
         hook miss
-          send back, wave false
+          send back, false
 
 task skip
   take ctx, like context
   fork case, read ctx
     case context, base name, base failures, base skipped, base start-time
-      save skipped, wave true
+      save skipped, true
 
 task count
   take ctx, like context

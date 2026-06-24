@@ -24,7 +24,7 @@ zone counter
       hook test
         call is-above
           read app/count
-          mark 10
+          code 10
       hook hold
         zone span
           text <high>

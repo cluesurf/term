@@ -240,7 +240,7 @@ const BAD_ASSIGN = `task wrong-assign
   take n, like number
   like number
   save total, code 0
-  save total, wave true
+  save total, true
   send back total
 `
 

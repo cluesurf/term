@@ -64,7 +64,7 @@ task run-tests
   fork test
     call is-above
       bind a, read stats/size
-      bind b, mark 0
+      bind b, code 0
     hook true
       call console/log
         bind msg, text <pass: stat-size>
@@ -128,7 +128,7 @@ task run-tests
   call fs-promise/chmod
     wait true
     bind path, read fp
-    bind mode, mark 420
+    bind mode, code 420
 
   save after-stats
     call fs-promise/stat
@@ -138,12 +138,12 @@ task run-tests
   save mode
     call bit-and
       bind a, read after-stats/mode
-      bind b, mark 511
+      bind b, code 511
 
   fork test
     call is-equal
       bind a, read mode
-      bind b, mark 420
+      bind b, code 420
     hook true
       call console/log
         bind msg, text <pass: chmod>

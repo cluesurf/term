@@ -16,7 +16,7 @@ task open
   send back
     make surface
       bind handle
-        mark 0
+        code 0
 
 task size
   take pane, like surface
@@ -38,7 +38,7 @@ task make-shader
   send back
     make shader
       bind handle
-        mark 0
+        code 0
 
 task make-program
   take pane, like surface
@@ -48,7 +48,7 @@ task make-program
   send back
     make program
       bind handle
-        mark 0
+        code 0
 
 task make-buffer
   take pane, like surface
@@ -57,7 +57,7 @@ task make-buffer
   send back
     make gpu-buffer
       bind handle
-        mark 0
+        code 0
 
 task draw
   take pane, like surface

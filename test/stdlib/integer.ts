@@ -143,7 +143,26 @@ async function main(): Promise<void> {
   eq('u32 maximum is 4294967295', u.u32MaximumValue(), 4294967295)
   eq('u8 is-negative is always false', u.u8IsNegative(200), false)
 
-  console.log(`\nsized integers: ${pass} pass, ${fail} fail`)
+  // 64-bit: the native platform integer (no masking)
+  const i64 = await load('integer/64.tree')
+  eq('i64 add (native)', i64.i64Add(1000000000, 2000000000), 3000000000)
+  eq('i64 negate', i64.i64Negate(42), -42)
+  eq('i64 minimum bound', i64.i64MinimumValue(), -9223372036854775808)
+  eq('u64 minimum is 0', i64.u64MinimumValue(), 0)
+
+  // floats: f32 rounds every result to single precision; f64 is the native double
+  const f32 = await load('float/32.tree')
+  eq(
+    'f32 add rounds to single precision',
+    f32.f32Add(0.1, 0.2),
+    Math.fround(0.1 + 0.2),
+  )
+  eq('f32 multiply rounds', f32.f32Multiply(1.1, 1.1), Math.fround(1.1 * 1.1))
+  const f64 = await load('float/64.tree')
+  eq('f64 add is the native double', f64.f64Add(0.1, 0.2), 0.1 + 0.2)
+  eq('f64 divide is the native double', f64.f64Divide(1, 4), 0.25)
+
+  console.log(`\nnumerics: ${pass} pass, ${fail} fail`)
 }
 
 main()

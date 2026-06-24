@@ -221,7 +221,7 @@ task good
   host table
     make find
       save alice, code 1
-      save bob, wave true
+      save bob, true
   send back table
 `,
     'type-mismatch',

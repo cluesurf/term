@@ -2,7 +2,7 @@
 # Accordion — headless, behavior-complete. Each item is a shared `disclosure` controller (logic/disclosure); the parts
 # bind its reactive fields. The consumer makes one controller per item:
 #
-#   save faq1, call make-disclosure / bind start, wave false
+#   save faq1, call make-disclosure / bind start, false
 #   zone accordion-item / bind control, read faq1
 #     zone accordion-trigger / bind control, read faq1 / text <Question>
 #     zone accordion-content / bind control, read faq1 / text <Answer>

@@ -13,17 +13,17 @@ load @cluesurf/base/code/text
 test <loopback echo round-trips a message>
   save server
     call listen
-      mark 47923
+      code 47923
       text <127.0.0.1>
-      wave false
+      false
       text <>
       text <>
       wait true
   save client
     call connect
       text <127.0.0.1>
-      mark 47923
-      wave false
+      code 47923
+      false
       wait true
   save peer
     call accept

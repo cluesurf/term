@@ -67,7 +67,7 @@ Every head you will meet, grouped by job. Each has its own page.
 | `fuse` | instantiate a template | [templates](templates.md) |
 | `bust` | throw an error | [errors](errors.md) |
 | `mark` | a literal, or a modifier (`note async`, `note private`) | [primitives](primitives.md) |
-| `wave` | a boolean literal (`wave true` / `wave false`) | [primitives](primitives.md) |
+| `wave` | a boolean literal (`true` / `false`) | [primitives](primitives.md) |
 | `text` | a string literal | [primitives](primitives.md) |
 | `code` | a raw numeric literal | [primitives](primitives.md) |
 | `rule` | a named proof | [math](../math/readme.md) |
@@ -81,8 +81,8 @@ Logging is not a keyword. You print with the standard library: `call info` / `ca
 | Literal | Writes | Is |
 | --- | --- | --- |
 | string | `text <hello>` | text |
-| integer | `mark 42` | a whole number |
-| boolean | `wave true` / `wave false` | a boolean |
+| integer | `code 42` | a whole number |
+| boolean | `true` / `false` | a boolean |
 | raw number | `code 0` | a bare numeric code (used where a tag/count is wanted) |
 | nothing | `void` | the unit / no value |
 

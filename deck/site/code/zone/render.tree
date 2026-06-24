@@ -210,8 +210,8 @@ task each-keyed
             save k
               call key
                 bind item, read item
-            save found, mark 0
-            save i, mark 0
+            save found, code 0
+            save i, code 0
             walk list, read keys
               hook next
                 take site, name old-key
@@ -224,24 +224,24 @@ task each-keyed
                     save found
                       call add
                         read i
-                        mark 1
+                        code 1
                 save i
                   call add
                     read i
-                    mark 1
+                    code 1
             save node
               fork test
                 hook test
                   call is-above
                     read found
-                    mark 0
+                    code 0
                 hook hold
                   call get
                     bind self, read nodes
                     bind index
                       call subtract
                         read found
-                        mark 1
+                        code 1
                 hook miss
                   call build
                     bind item, read item
@@ -252,11 +252,11 @@ task each-keyed
               bind list, read next-nodes
               bind item, read node
         # remove old nodes whose key is no longer present
-        save j, mark 0
+        save j, code 0
         walk list, read keys
           hook next
             take site, name old-key
-            save still, mark 0
+            save still, code 0
             walk list, read next-keys
               hook next
                 take site, name nk
@@ -269,12 +269,12 @@ task each-keyed
                     save still
                       call add
                         read still
-                        mark 1
+                        code 1
             fork test
               hook test
                 call is-equal
                   read still
-                  mark 0
+                  code 0
               hook hold
                 call remove
                   bind node
@@ -284,7 +284,7 @@ task each-keyed
             save j
               call add
                 read j
-                mark 1
+                code 1
         # re-append the current nodes in order (append moves an existing node to the end, fixing order)
         walk list, read next-nodes
           hook next

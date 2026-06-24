@@ -282,10 +282,11 @@ export function buildEvents(tokens: TokenList): EventResult {
   function radix(token: Token) {
     startContent()
 
-    const found = /^0([xXbBoO])([0-9a-fA-F]+)/.exec(token.text)
+    const found = /^0([xXbBoOuU])([0-9a-fA-F]+)/.exec(token.text)
 
     if (found) {
       const base = found[1]!.toLowerCase()
+      // 0x / 0u are hex (0u is a unicode code point, value = the code point), 0b binary, 0o octal
       const radixValue = base === 'b' ? 2 : base === 'o' ? 8 : 16
       events.push({
         kind: EventKind.Radix,

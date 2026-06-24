@@ -47,9 +47,9 @@ load @cluesurf/base/code/plain-date
 # new year's day, 2026
 host new-year
   call from-parts
-    mark 2026
-    mark 1
-    mark 1
+    code 2026
+    code 1
+    code 1
 ```
 
 `from-parts` takes the three components in order. The result is an ordinary `plain-date` value, so you can read its fields with `/`.
@@ -68,7 +68,7 @@ Shift a date by a number of days with `add-days`. A negative count moves backwar
 host next-day
   call add-days
     read new-year
-    mark 1
+    code 1
 
 # a week earlier
 host last-week
@@ -103,12 +103,12 @@ host weekday
 
 host leap
   call is-leap-year
-    mark 2028            # true
+    code 2028            # true
 
 host february-length
   call days-in-month
-    mark 2028
-    mark 2               # 29
+    code 2028
+    code 2               # 29
 ```
 
 ## Durations
@@ -125,9 +125,9 @@ load @cluesurf/base/code/duration
 host shift
   call plus
     call from-hours
-      mark 8
+      code 8
     call from-minutes
-      mark 30
+      code 30
 
 host as-minutes
   call to-minutes

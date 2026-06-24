@@ -2,7 +2,7 @@
 # Switch — headless, behavior-complete. A toggle backed by the shared `disclosure` controller (on = open). The consumer
 # passes one controller:
 #
-#   save wifi, call make-disclosure / bind start, wave false
+#   save wifi, call make-disclosure / bind start, false
 #   zone switch / bind control, read wifi
 #
 # role=switch + reactive data-state (checked/unchecked, derived from disclosure-state mapped on) drive a11y + the CSS

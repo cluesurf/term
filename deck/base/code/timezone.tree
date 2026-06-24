@@ -1,0 +1,65 @@
+# Time zones: the wall-clock view of a UTC instant in a named IANA zone (Europe/Paris, America/New_York, ...). The one
+# native primitive is the zone's UTC offset at an instant, which each backend reads from its own zone database in a
+# single expression (no runtime shim): JS Intl, swift TimeZone, kotlin java.time.ZoneId, rust chrono-tz. Everything else
+# is pure arithmetic on the epoch-millisecond timestamp plus `calendar`'s decomposition, so the local wall-clock parts
+# fall out by shifting the instant by the offset and reading it as UTC.
+
+load @cluesurf/base/code/calendar
+  find to-parts
+  find date-parts
+
+# the zone's offset from UTC, in minutes, at the given instant (positive east of UTC; accounts for daylight saving)
+bind offset-minutes
+  take millis, like number
+  take zone, like text
+  like number
+  case node
+    text <(new Date(new Date($millis).toLocaleString("en-US", { timeZone: $zone })).getTime() - new Date(new Date($millis).toLocaleString("en-US", { timeZone: "UTC" })).getTime()) / 60000>
+  case browser
+    text <(new Date(new Date($millis).toLocaleString("en-US", { timeZone: $zone })).getTime() - new Date(new Date($millis).toLocaleString("en-US", { timeZone: "UTC" })).getTime()) / 60000>
+  case swift
+    load <Foundation>
+    text <Double(TimeZone(identifier: $zone)?.secondsFromGMT(for: Date(timeIntervalSince1970: Double($millis) / 1000.0)) ?? 0) / 60.0>
+  case kotlin
+    text <(java.time.ZoneId.of($zone).rules.getOffset(java.time.Instant.ofEpochMilli($millis)).totalSeconds / 60).toLong()>
+  case rust
+    load <chrono::Offset>
+    load <chrono::TimeZone>
+    text <$zone.parse::<chrono_tz::Tz>().unwrap().offset_from_utc_datetime(&chrono::DateTime::from_timestamp_millis($millis).unwrap().naive_utc()).fix().local_minus_utc() as i64 / 60>
+
+# the wall-clock instant in `zone`: the UTC timestamp shifted by the zone offset, so reading it as UTC yields local time
+task local-millis
+  take millis, like number
+  take zone, like text
+  like number
+  send back
+    call add
+      read millis
+      call multiply
+        call offset-minutes
+          read millis
+          read zone
+        code 60000
+
+# the local wall-clock year / month / day / hour / minute / second in `zone`
+task local-parts
+  take millis, like number
+  take zone, like text
+  like date-parts
+  send back
+    call to-parts
+      call local-millis
+        read millis
+        read zone
+
+# the zone's offset from UTC in whole hours at the given instant
+task offset-hours
+  take millis, like number
+  take zone, like text
+  like number
+  send back
+    call divide
+      call offset-minutes
+        read millis
+        read zone
+      code 60

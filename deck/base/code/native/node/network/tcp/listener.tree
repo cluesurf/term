@@ -20,7 +20,7 @@ task do-accept
       bind dock, read raw
       bind host, read listener/host
       bind port, read listener/port
-      bind secure, wave false
+      bind secure, false
 
 task do-close-listener
   note async

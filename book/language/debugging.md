@@ -43,7 +43,7 @@ task charge
     hook test
       call is-below
         read amount
-        mark 0
+        code 0
     hook hold
       call warn
         text <amount is negative>

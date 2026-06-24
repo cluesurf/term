@@ -128,6 +128,6 @@ task has-focus
             bind self, read self
           text <>
       hook hold
-        wave false
+        false
       hook miss
-        wave true
+        true

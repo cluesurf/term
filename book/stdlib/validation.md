@@ -76,7 +76,7 @@ The caller inspects the result instead of guarding against a bad value everywher
 host safe-age
   call unwrap-or
     call check-age
-      mark 30
+      code 30
     code 0
 ```
 

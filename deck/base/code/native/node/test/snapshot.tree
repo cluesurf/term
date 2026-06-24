@@ -28,13 +28,13 @@ task match
       bind name, read name
       bind format, read format
 
-  save exists, wave true
+  save exists, true
   save raw, text <>
   call fs/access
     note async
     bind path, read path
     halt kink
-      save exists, wave false
+      save exists, false
 
   fork test
     hook test, read exists
@@ -48,7 +48,7 @@ task match
         bind path, text <.seed/snapshot>
         bind options
           make object
-            bind recursive, wave true
+            bind recursive, true
         halt kink
       save data
         call serialize
@@ -107,7 +107,7 @@ task update
     bind path, text <.seed/snapshot>
     bind options
       make object
-        bind recursive, wave true
+        bind recursive, true
     halt kink
 
   save data

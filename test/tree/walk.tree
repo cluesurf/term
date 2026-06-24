@@ -57,27 +57,27 @@ test <count of a three-element list is three>
   save xs
     make list
   call xs/push
-    mark 1
+    code 1
   call xs/push
-    mark 2
+    code 2
   call xs/push
-    mark 3
+    code 3
   want hold
     call is-equal
       call count
         call from-list
           read xs
-      mark 3
+      code 3
 
 test <map then fold doubles and sums>
   save xs
     make list
   call xs/push
-    mark 1
+    code 1
   call xs/push
-    mark 2
+    code 2
   call xs/push
-    mark 3
+    code 3
   want hold
     call is-equal
       call fold
@@ -85,21 +85,21 @@ test <map then fold doubles and sums>
           call from-list
             read xs
           read double
-        mark 0
+        code 0
         read add-up
-      mark 12
+      code 12
 
 test <filter keeps the even elements>
   save xs
     make list
   call xs/push
-    mark 1
+    code 1
   call xs/push
-    mark 2
+    code 2
   call xs/push
-    mark 3
+    code 3
   call xs/push
-    mark 4
+    code 4
   want hold
     call is-equal
       call count
@@ -107,7 +107,7 @@ test <filter keeps the even elements>
           call from-list
             read xs
           read is-even
-      mark 2
+      code 2
 
 test <take bounds an infinite count-from>
   want hold
@@ -115,22 +115,22 @@ test <take bounds an infinite count-from>
       call fold
         call take
           call count-from
-            mark 10
-            mark 5
-          mark 3
-        mark 0
+            code 10
+            code 5
+          code 3
+        code 0
         read add-up
-      mark 45
+      code 45
 
 test <find returns the first matching element>
   save xs
     make list
   call xs/push
-    mark 1
+    code 1
   call xs/push
-    mark 2
+    code 2
   call xs/push
-    mark 3
+    code 3
   want hold
     call is-equal
       call unwrap-or
@@ -138,16 +138,16 @@ test <find returns the first matching element>
           call from-list
             read xs
           read over-one
-        mark 0
-      mark 2
+        code 0
+      code 2
 
 test <is-any detects a matching element>
   save xs
     make list
   call xs/push
-    mark 1
+    code 1
   call xs/push
-    mark 9
+    code 9
   want hold
     call is-any
       call from-list

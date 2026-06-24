@@ -11,38 +11,38 @@ test <bitwise-and keeps shared bits>
   want hold
     call is-equal
       call bitwise-and
-        mark 6
-        mark 3
-      mark 2
+        code 6
+        code 3
+      code 2
 
 test <bitwise-or unions bits>
   want hold
     call is-equal
       call bitwise-or
-        mark 6
-        mark 1
-      mark 7
+        code 6
+        code 1
+      code 7
 
 test <bitwise-exclusive-or flips differing bits>
   want hold
     call is-equal
       call bitwise-exclusive-or
-        mark 5
-        mark 3
-      mark 6
+        code 5
+        code 3
+      code 6
 
 test <shift-left multiplies by powers of two>
   want hold
     call is-equal
       call shift-left
-        mark 1
-        mark 4
-      mark 16
+        code 1
+        code 4
+      code 16
 
 test <shift-right divides by powers of two>
   want hold
     call is-equal
       call shift-right
-        mark 16
-        mark 2
-      mark 4
+        code 16
+        code 2
+      code 4

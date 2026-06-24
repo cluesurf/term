@@ -2,7 +2,7 @@
 # Checkbox — headless, behavior-complete. Backed by the shared `disclosure` controller (checked = open). The consumer
 # passes one controller:
 #
-#   save agree, call make-disclosure / bind start, wave false
+#   save agree, call make-disclosure / bind start, false
 #   zone checkbox / bind control, read agree
 #
 # role=checkbox + reactive data-state (checked/unchecked) + aria-checked; click toggles. The indicator (check mark)

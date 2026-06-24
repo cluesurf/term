@@ -207,7 +207,7 @@ task listen-document
   like task
   send back
     task drop
-      save skip, mark 0
+      save skip, code 0
 
 # no floating-ui positioning on the server. Returns a no-op cleanup so callers register cleanup uniformly.
 task anchor
@@ -220,7 +220,7 @@ task anchor
   like task
   send back
     task drop
-      save skip, mark 0
+      save skip, code 0
 
 # routing glue on the server: the path comes from the request (the server boot passes it), so these are stubs. A server
 # boot dispatches per request rather than reading globals; the same `route(host, path)` dispatcher is reused.

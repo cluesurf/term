@@ -25,9 +25,9 @@ form linked-list
     like boolean
     fork case, read self
       case empty
-        send back, wave true
+        send back, true
       case node
-        send back, wave false
+        send back, false
 
   task head
     take self

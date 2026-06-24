@@ -18,7 +18,7 @@ form set
     call set
       read self/items
       read item
-      wave true
+      true
     send back, read self
 
   task has
@@ -205,7 +205,7 @@ form set
       like set
         like t
     like boolean
-    save ok, wave true
+    save ok, true
     walk list
       call to-list
         read self
@@ -217,7 +217,7 @@ form set
               read other
               read item
           hook miss
-            save ok, wave false
+            save ok, false
     send back, read ok
 
   # is-superset: every item of other is also in self

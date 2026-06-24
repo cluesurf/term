@@ -40,7 +40,7 @@ rule my-claim
 | `call is-minimum` | left ≥ right | `(xy − z)² ≥ 0` |
 | `call is-maximum` | left ≤ right | `n ≤ n + 1` |
 
-Inside the comparison you build the two sides with the ordinary value heads you already know: `call add`, `call multiply`, `call subtract`, `make succ`, `read x`, `mark 0`. A claim is just a comparison of two expressions.
+Inside the comparison you build the two sides with the ordinary value heads you already know: `call add`, `call multiply`, `call subtract`, `make succ`, `read x`, `code 0`. A claim is just a comparison of two expressions.
 
 ### Tactics (the line that discharges the claim)
 
@@ -64,10 +64,10 @@ task safe-step
     call is-minimum
       call add
         read n
-        mark 1
-      mark 1
+        code 1
+      code 1
   send back
-    call add, read n, mark 1
+    call add, read n, code 1
 ```
 
 The `hold` says `n + 1 ≥ 1`. The compiler decides it once and for all `n`, before the task ever runs. A claim that did not hold for some `n` would be a compile error here, not a runtime surprise.
@@ -152,9 +152,9 @@ rule no-solution
   show hold
     call is-unequal
       call multiply
-        mark 2
+        code 2
         read x
-      mark 3
+      code 3
   calm hold
 ```
 
@@ -179,12 +179,12 @@ rule quartic-positive
               read x
               read x
           call multiply
-            mark 3
+            code 3
             call multiply
               read x
               read x
-        mark 3
-      mark 0
+        code 3
+      code 0
   calm hold
 ```
 
@@ -208,7 +208,7 @@ rule square-nonneg
             read x
             read y
           read z
-      mark 0
+      code 0
   calm hold
 ```
 

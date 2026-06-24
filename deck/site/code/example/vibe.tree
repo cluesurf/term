@@ -28,14 +28,14 @@ task render
   take pane, like surface
   call size
     read pane
-    mark 640
-    mark 640
+    code 640
+    code 640
   call clear
     read pane
-    mark 0
-    mark 0
-    mark 0
-    mark 1
+    code 0
+    code 0
+    code 0
+    code 1
   save vertex
     call make-shader
       read pane

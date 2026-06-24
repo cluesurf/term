@@ -58,12 +58,12 @@ task host
         hook hold
           send back
             make response
-              bind status, mark 1
+              bind status, code 1
               bind body, read target
         hook miss
           send back
             make response
-              bind status, mark 200
+              bind status, code 200
               bind body
                 call page-shell
                   call serialize
@@ -84,12 +84,12 @@ task host
         hook hold
           send back
             make response
-              bind status, mark 200
+              bind status, code 200
               bind body, read found/body
         hook miss
           send back
             make response
-              bind status, mark 404
+              bind status, code 404
               bind body, text <>
   save routes
     make list

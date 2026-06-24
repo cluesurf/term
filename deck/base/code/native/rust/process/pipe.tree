@@ -20,7 +20,7 @@ task connect
   save buf, make list
     code 8192
 
-  walk test, wave true
+  walk test, true
     hook step
       save n
         call stdout/read

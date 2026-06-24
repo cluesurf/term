@@ -33,7 +33,7 @@ zone login-form
     link password, like text
       need true
       mill text
-        bind min, mark 8
+        bind min, code 8
 
   hook submit
     call login
@@ -48,15 +48,15 @@ form profile
   link name, like text
     need true
     mill text
-      bind min, mark 2
-      bind max, mark 100
+      bind min, code 2
+      bind max, code 100
   link age, like number
     mill integer
-      bind min, mark 0
-      bind max, mark 150
+      bind min, code 0
+      bind max, code 150
   link agree, like boolean
     need true
-    base wave false
+    base false
   link role, like text
     base text <member>
     mill enum
@@ -92,7 +92,7 @@ task mill-username
       call has-space, read value
     hook hold
       send back, text <username must not contain spaces>
-  send back, wave true
+  send back, true
 
 zone profile-form
   take host, like view
@@ -110,9 +110,9 @@ form settings
   link theme, like text
     base text <light>
   link page-size, like number
-    base mark 20
+    base code 20
   link notify, like boolean
-    base wave true
+    base true
 ```
 
 ## Reading state and errors

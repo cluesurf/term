@@ -199,7 +199,7 @@ task compute
   send back
     meet and
       read x
-      wave true
+      true
 `,
     '&&',
   )
@@ -211,7 +211,7 @@ task compute
   send back
     meet or
       read x
-      wave false
+      false
 `,
     '||',
   )
@@ -282,7 +282,7 @@ task compute
   send back
     call is-equal
       read x
-      wave true
+      true
 `,
     'return x',
   )
@@ -294,7 +294,7 @@ task compute
   send back
     call is-equal
       read x
-      wave false
+      false
 `,
     'return !x',
   )

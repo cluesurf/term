@@ -49,15 +49,15 @@ task grade
   like text
   fork test
     hook test
-      call is-minimum, read score, mark 90
+      call is-minimum, read score, code 90
     hook hold
       send back, text <A>
     hook test
-      call is-minimum, read score, mark 80
+      call is-minimum, read score, code 80
     hook hold
       send back, text <B>
     hook test
-      call is-minimum, read score, mark 70
+      call is-minimum, read score, code 70
     hook hold
       send back, text <C>
     hook miss
@@ -74,12 +74,12 @@ This reads as: if `>= 90` then A, else if `>= 80` then B, else if `>= 70` then C
 task check
   take value, like number
   like boolean
-  save valid, wave true
+  save valid, true
   fork test
     hook test
       call is-below, read value, code 0
     hook hold
-      save valid, wave false
+      save valid, false
   send back, read valid
 ```
 
@@ -94,13 +94,13 @@ fork test
   hook miss, send back, text <off>
 ```
 
-This is the same block as the indented form, just compressed. Notice `hook test, read flag`: a boolean variable is passed straight through as the condition. You do not compare it to `wave true`. The value `read flag` is already a `boolean`. The stdlib's `boolean` form uses exactly this shape:
+This is the same block as the indented form, just compressed. Notice `hook test, read flag`: a boolean variable is passed straight through as the condition. You do not compare it to `true`. The value `read flag` is already a `boolean`. The stdlib's `boolean` form uses exactly this shape:
 
 ```tree
 fork test
   hook test, read self
   hook hold, send back, read other
-  hook miss, send back, wave false
+  hook miss, send back, false
 ```
 
 ## Conditions built from comparisons
@@ -118,8 +118,8 @@ task in-range
       call and
         call is-minimum, read x, read low
         call is-below, read x, read high
-    hook hold, send back, wave true
-    hook miss, send back, wave false
+    hook hold, send back, true
+    hook miss, send back, false
 ```
 
 The `and` call produces one boolean from two comparisons, and that boolean is the `hook test` condition. You can nest `or` and `not` the same way to express any condition you need.

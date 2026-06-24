@@ -10,7 +10,7 @@ Maps to: functions, methods, and closures in Rust / Swift / TypeScript.
 | --- | --- | --- |
 | `task name` | define a function | `task add` |
 | `take p` | declare a parameter | `take left, like number` |
-| `take p` + `base v` | parameter with a default value | `take step, like number` then `base mark 1` |
+| `take p` + `base v` | parameter with a default value | `take step, like number` then `base code 1` |
 | `take self` | the receiver of a method | `take self` |
 | `like T` | the return type | `like number` |
 | `send back, v` | return a value | `send back, read total` |
@@ -83,12 +83,12 @@ Give a parameter a default with a `base` child holding a literal. Callers may om
 task step-up
   take value, like number
   take step, like number
-    base mark 1
+    base code 1
   like number
   send back, call add, read value, read step
 ```
 
-`call step-up, read n` uses the default `1`. `call step-up, read n, mark 5` overrides it.
+`call step-up, read n` uses the default `1`. `call step-up, read n, code 5` overrides it.
 
 ## Return type (`like`) and return value (`send back`)
 
@@ -125,7 +125,7 @@ save total
   call add, read x, read y
 
 save best
-  call clamp, read raw, mark 0, mark 100
+  call clamp, read raw, code 0, code 100
 ```
 
 Nested calls compose by nesting `call` blocks:
@@ -133,8 +133,8 @@ Nested calls compose by nesting `call` blocks:
 ```tree
 send back
   call add
-    call multiply, read x, mark 2
-    mark 1
+    call multiply, read x, code 2
+    code 1
 ```
 
 Call a method on a value with the `/` member form. The value is the receiver, the rest are positional arguments.
@@ -157,12 +157,12 @@ form counter
     like counter
     send back
       make counter
-        bind value, call add, read self/value, mark 1
+        bind value, call add, read self/value, code 1
 
   task is-zero
     take self
     like boolean
-    send back, call is-equal, read self/value, mark 0
+    send back, call is-equal, read self/value, code 0
 ```
 
 Call them member-style on a value: `call c/bump` and `call c/is-zero`. See [structures](structures.md) for how forms are defined.
@@ -212,13 +212,13 @@ task factorial
   take n, like number
   like number
   fork test
-    hook test, call is-maximum, read n, mark 1
-    hook hold, send back, mark 1
+    hook test, call is-maximum, read n, code 1
+    hook hold, send back, code 1
     hook miss
       send back
         call multiply
           read n
-          call factorial, call subtract, read n, mark 1
+          call factorial, call subtract, read n, code 1
 ```
 
 ## Async and visibility
@@ -243,7 +243,7 @@ task helper
   note private
   take n, like number
   like number
-  send back, call multiply, read n, mark 2
+  send back, call multiply, read n, code 2
 ```
 
 See [types](types.md) for the type vocabulary these examples lean on, [structures](structures.md) for forms and `make`, and [matching](matching.md) for `fork case`.

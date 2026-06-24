@@ -126,7 +126,7 @@ form heap
             save i, code 0
             walk test
               hook test
-                wave true
+                true
               hook step
                 save left
                   call add

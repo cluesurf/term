@@ -35,7 +35,7 @@ task make-api
             like response
             send back
               make response
-                bind status, mark 200
+                bind status, code 200
                 bind body, text <ok>
 
   call push
@@ -51,7 +51,7 @@ task make-api
             like response
             send back
               make response
-                bind status, mark 200
+                bind status, code 200
                 bind body
                   call unwrap-or
                     call get
@@ -72,7 +72,7 @@ task make-api
             like response
             send back
               make response
-                bind status, mark 200
+                bind status, code 200
                 bind body
                   call unwrap-or
                     call get

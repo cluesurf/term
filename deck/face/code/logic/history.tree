@@ -120,9 +120,9 @@ task can-undo
           call read-signal
             bind self, read self/past
       hook hold
-        wave false
+        false
       hook miss
-        wave true
+        true
 
 task can-redo
   take self, like history
@@ -134,6 +134,6 @@ task can-redo
           call read-signal
             bind self, read self/future
       hook hold
-        wave false
+        false
       hook miss
-        wave true
+        true

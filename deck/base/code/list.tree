@@ -405,7 +405,7 @@ form list
           hook test
             call is-equal
               read seen
-              wave false
+              false
           hook hold
             call out/push
               read value

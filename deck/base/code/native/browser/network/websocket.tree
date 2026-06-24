@@ -34,4 +34,4 @@ task connect
       bind dock, read raw
       bind url, read url
       bind protocol, read raw/protocol
-      bind ready, wave true
+      bind ready, true

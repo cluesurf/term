@@ -16,17 +16,17 @@ test <push-back then pop-front gives FIFO order>
         make list
   call push-back
     read d
-    mark 1
+    code 1
   call push-back
     read d
-    mark 2
+    code 2
   want hold
     call is-equal
       call unwrap-or
         call pop-front
           read d
-        mark 0
-      mark 1
+        code 0
+      code 1
 
 test <push-front then pop-front gives LIFO order>
   save d
@@ -35,17 +35,17 @@ test <push-front then pop-front gives LIFO order>
         make list
   call push-front
     read d
-    mark 1
+    code 1
   call push-front
     read d
-    mark 2
+    code 2
   want hold
     call is-equal
       call unwrap-or
         call pop-front
           read d
-        mark 0
-      mark 2
+        code 0
+      code 2
 
 test <pop-back removes from the back>
   save d
@@ -54,17 +54,17 @@ test <pop-back removes from the back>
         make list
   call push-back
     read d
-    mark 1
+    code 1
   call push-back
     read d
-    mark 2
+    code 2
   want hold
     call is-equal
       call unwrap-or
         call pop-back
           read d
-        mark 0
-      mark 2
+        code 0
+      code 2
 
 test <count reflects the number of items>
   save d
@@ -73,15 +73,15 @@ test <count reflects the number of items>
         make list
   call push-back
     read d
-    mark 7
+    code 7
   call push-front
     read d
-    mark 8
+    code 8
   want hold
     call is-equal
       call count
         read d
-      mark 2
+      code 2
 
 test <a fresh deque is empty>
   save d
@@ -102,5 +102,5 @@ test <pop-front on an empty deque is none>
       call unwrap-or
         call pop-front
           read d
-        mark 99
-      mark 99
+        code 99
+      code 99

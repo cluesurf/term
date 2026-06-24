@@ -69,8 +69,8 @@ task sum
 task count-up
   like void
   walk size
-    bind base, mark 0
-    bind head, mark 10
+    bind base, code 0
+    bind head, code 10
     take i
     hook next
       call write-line, read i
@@ -84,7 +84,7 @@ task triangle
   like number
   save total, code 0
   walk size
-    bind base, mark 1
+    bind base, code 1
     bind head, read n
     take i
     hook next
@@ -108,7 +108,7 @@ task count-down
     hook hold
       call write-line, read at
       save at
-        call subtract, read at, mark 1
+        call subtract, read at, code 1
 ```
 
 The loop runs while `at` is above zero. Each pass shows `at` then decreases it, so the test eventually fails and the loop ends. A while-loop is the right tool when the number of iterations is not known up front and depends on values computed inside the loop.

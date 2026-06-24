@@ -42,8 +42,8 @@ form react-flags
 
 host flags
   make react-flags
-    bind batching, wave false
-    bind paused, wave false
+    bind batching, false
+    bind paused, false
     bind queue
       make list
 
@@ -96,13 +96,13 @@ task make-effect
   save own
     make effect
       bind run, read run
-      bind live, wave true
+      bind live, true
   # register the effect to the innermost open scope, if any, so it can be disposed with that scope
   fork test
     hook test
       call is-empty, read owners
     hook hold
-      save skip, mark 0
+      save skip, code 0
     hook miss
       save top
         call get
@@ -110,7 +110,7 @@ task make-effect
           bind index
             call subtract
               read owners/length
-              mark 1
+              code 1
       call push
         bind list, read top/effects
         bind item, read own
@@ -127,7 +127,7 @@ task on-cleanup
     hook test
       call is-empty, read owners
     hook hold
-      save skip, mark 0
+      save skip, code 0
     hook miss
       save top
         call get
@@ -135,7 +135,7 @@ task on-cleanup
           bind index
             call subtract
               read owners/length
-              mark 1
+              code 1
       call push
         bind list, read top/cleanups
         bind item, read run
@@ -155,7 +155,7 @@ task run-effect
       call pop
         bind list, read running
     hook miss
-      save skip, mark 0
+      save skip, code 0
 
 # open a new ownership scope and return its handle; effects and cleanups created until it closes register to it
 task open-scope
@@ -183,7 +183,7 @@ task dispose-scope
   walk list, read scope/effects
     hook next
       take site, name member
-      save member/live, wave false
+      save member/live, false
   walk list, read scope/cleanups
     hook next
       take site, name run
@@ -230,18 +230,18 @@ task track
     hook test
       read flags/paused
     hook hold
-      save skip, mark 0
+      save skip, code 0
     hook miss
       fork test
         hook test
           call is-empty, read running
         hook hold
-          save skip, mark 0
+          save skip, code 0
         hook miss
           save index
             call subtract
               read running/length
-              mark 1
+              code 1
           save current
             call get
               bind self, read running
@@ -253,9 +253,9 @@ task track
 # run all signal writes in `body` as one update pass: queued effects fire once after body completes, not per write
 task batch
   take body, like task
-  save flags/batching, wave true
+  save flags/batching, true
   call body
-  save flags/batching, wave false
+  save flags/batching, false
   save queued, read flags/queue
   save flags/queue
     make list
@@ -272,14 +272,14 @@ task untrack
     like task
       like t
   like t
-  save flags/paused, wave true
+  save flags/paused, true
   save result, call body
-  save flags/paused, wave false
+  save flags/paused, false
   send back, read result
 
 # run `body` once, untracked, for post-setup side effects (Solid onMount). Does not re-run on signal change.
 task on-mount
   take body, like task
-  save flags/paused, wave true
+  save flags/paused, true
   call body
-  save flags/paused, wave false
+  save flags/paused, false

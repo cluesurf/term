@@ -94,7 +94,7 @@ Go back or forward through history:
 ```tree
 task go-back
   call navigate
-    bind back, wave true
+    bind back, true
 ```
 
 ## Guards and redirects
