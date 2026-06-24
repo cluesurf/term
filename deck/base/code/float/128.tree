@@ -1,6 +1,16 @@
+# 128-bit floating point (IEEE 754 quad, ~34 decimal digits). No backend in this set has a portable native quad: JS and
+# swift have only f64, kotlin only Double, and rust's f128 is unstable. So this module routes "quad precision" to the
+# exact-base-10 `decimal` (unbounded mantissa), which is more than 34 digits of precision and portable everywhere. Use a
+# native f128 directly on a backend that gains one; for exact decimal precision today, this is the answer.
 
-host max
-host min
+load @cluesurf/base/code/decimal
+  find big-decimal
+  find make-big-decimal
 
-form f128
-  # A 128-bit floating point type with 34 digits of decimal precision.
+# a quad-precision (here: exact arbitrary-precision base-10) float from its text
+task make-quad
+  take value, like text
+  like big-decimal
+  send back
+    call make-big-decimal
+      read value

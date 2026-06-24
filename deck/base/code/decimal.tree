@@ -7,6 +7,10 @@
 load @cluesurf/base/code/integer/big
   find big-integer
   find make-big-integer
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
 
 load @cluesurf/base/code/text/string
   find repeat
@@ -47,9 +51,9 @@ bind do-format
   take scale, like number
   like text
   case node
-    text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s); while (d.length <= sc) d = "0" + d; var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
+    text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s).padStart(sc + 1, "0"); var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
   case browser
-    text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s); while (d.length <= sc) d = "0" + d; var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
+    text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s).padStart(sc + 1, "0"); var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
 
 # ten raised to `power`, as a big integer (used to align two decimals to a common scale)
 task power-of-ten
@@ -64,7 +68,7 @@ task power-of-ten
           read power
 
 # a decimal: an exact base-10 number as a big-integer mantissa scaled by `scale` digits
-form decimal
+form big-decimal
   link mantissa, like big-integer
   link scale, like number
 
@@ -74,7 +78,7 @@ form decimal
     take target, like number
     like big-integer
     send back
-      call multiply
+      call big-multiply
         read self/mantissa
         call power-of-ten
           call subtract
@@ -94,16 +98,16 @@ form decimal
   # this decimal plus another (the result keeps the larger of the two scales)
   task add
     take self
-    take other, like decimal
-    like decimal
+    take other, like big-decimal
+    like big-decimal
     save common
       call maximum
         read self/scale
         read other/scale
     send back
-      make decimal
+      make big-decimal
         bind mantissa
-          call add
+          call big-add
             call at-scale
               read self
               read common
@@ -115,16 +119,16 @@ form decimal
   # this decimal minus another
   task subtract
     take self
-    take other, like decimal
-    like decimal
+    take other, like big-decimal
+    like big-decimal
     save common
       call maximum
         read self/scale
         read other/scale
     send back
-      make decimal
+      make big-decimal
         bind mantissa
-          call subtract
+          call big-subtract
             call at-scale
               read self
               read common
@@ -136,12 +140,12 @@ form decimal
   # this decimal times another (scales add)
   task multiply
     take self
-    take other, like decimal
-    like decimal
+    take other, like big-decimal
+    like big-decimal
     send back
-      make decimal
+      make big-decimal
         bind mantissa
-          call multiply
+          call big-multiply
             read self/mantissa
             read other/mantissa
         bind scale
@@ -152,14 +156,14 @@ form decimal
   # -1, 0, or 1 as this decimal is less than, equal to, or greater than another
   task compare
     take self
-    take other, like decimal
+    take other, like big-decimal
     like number
     save common
       call maximum
         read self/scale
         read other/scale
     send back
-      call compare
+      call big-compare
         call at-scale
           read self
           read common
@@ -168,11 +172,11 @@ form decimal
           read common
 
 # parse a decimal from its text (12.34, -0.5, 1000)
-task make-decimal
+task make-big-decimal
   take value, like text
-  like decimal
+  like big-decimal
   send back
-    make decimal
+    make big-decimal
       bind mantissa
         call make-big-integer
           call do-mantissa

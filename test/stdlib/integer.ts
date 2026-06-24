@@ -178,6 +178,33 @@ async function main(): Promise<void> {
   )
   eq('big-integer compare a > b', big.bigIntegerCompare(a, b), 1)
 
+  // arbitrary-precision decimals (exact base-10, no binary float rounding) via a BigInt-scaled fixed-point
+  const dec = await load('decimal.tree')
+  eq(
+    'decimal 0.1 + 0.2 = 0.3 exactly (no 0.30000000000000004)',
+    dec.bigDecimalText(
+      dec.bigDecimalAdd(dec.makeBigDecimal('0.1'), dec.makeBigDecimal('0.2')),
+    ),
+    '0.3',
+  )
+  eq(
+    'decimal 1.00 - 0.99 = 0.01',
+    dec.bigDecimalText(
+      dec.bigDecimalSubtract(
+        dec.makeBigDecimal('1.00'),
+        dec.makeBigDecimal('0.99'),
+      ),
+    ),
+    '0.01',
+  )
+  eq(
+    'decimal 2.5 * 4 = 10.0 (scales add)',
+    dec.bigDecimalText(
+      dec.bigDecimalMultiply(dec.makeBigDecimal('2.5'), dec.makeBigDecimal('4')),
+    ),
+    '10.0',
+  )
+
   console.log(`\nnumerics: ${pass} pass, ${fail} fail`)
 }
 

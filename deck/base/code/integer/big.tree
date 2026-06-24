@@ -246,3 +246,47 @@ task big-from-number
       bind dock
         call do-from-number
           read value
+
+# free-function arithmetic, for other modules to call without colliding with the platform `add` / `multiply` intrinsics
+# (a method `add` on a big-integer shares its bare name with the number intrinsic; these distinct names disambiguate).
+task big-add
+  take a, like big-integer
+  take b, like big-integer
+  like big-integer
+  send back
+    make big-integer
+      bind dock
+        call do-add
+          read a/dock
+          read b/dock
+
+task big-subtract
+  take a, like big-integer
+  take b, like big-integer
+  like big-integer
+  send back
+    make big-integer
+      bind dock
+        call do-subtract
+          read a/dock
+          read b/dock
+
+task big-multiply
+  take a, like big-integer
+  take b, like big-integer
+  like big-integer
+  send back
+    make big-integer
+      bind dock
+        call do-multiply
+          read a/dock
+          read b/dock
+
+task big-compare
+  take a, like big-integer
+  take b, like big-integer
+  like number
+  send back
+    call do-compare
+      read a/dock
+      read b/dock
