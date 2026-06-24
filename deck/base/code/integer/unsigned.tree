@@ -1,0 +1,22 @@
+# Unsigned 8-, 16-, and 32-bit integers (u8 / u16 / u32): values from 0 to the width maximum. Same template as the
+# signed widths with a sign bit of 0, so the sign-extension step is the identity and values stay non-negative.
+
+load @cluesurf/base/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find bitwise-not
+  find shift-left
+  find shift-right
+
+load @cluesurf/base/code/maybe
+  find maybe
+  find some
+  find none
+
+load @cluesurf/base/code/integer/n
+  find integer
+
+fuse integer, u8, 255, 0, 0, 255
+fuse integer, u16, 65535, 0, 0, 65535
+fuse integer, u32, 4294967295, 0, 0, 4294967295

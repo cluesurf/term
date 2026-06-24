@@ -1,8 +1,19 @@
+# Signed 16-bit integer: values -32768 to 32767. See `n` for the operation template.
 
-form i16
-  fuse integer
-    bind self-type, like i16
-    bind actual-type, like i16
-    bind unsigned-type, like u16
-    bind bits, size 16
-    bind bits-minus-one, size 15
+load @cluesurf/base/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find bitwise-not
+  find shift-left
+  find shift-right
+
+load @cluesurf/base/code/maybe
+  find maybe
+  find some
+  find none
+
+load @cluesurf/base/code/integer/n
+  find integer
+
+fuse integer, i16, 65535, 32768, -32768, 32767

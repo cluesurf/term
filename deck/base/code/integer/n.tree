@@ -1,170 +1,345 @@
+# Fixed-width integers (signed and unsigned) as one template. A sized integer is a plain `number` held within its width:
+# every operation reduces its result back into range with `((value & mask) ^ sign) - sign`, where `sign` is the width's
+# sign bit for a signed type and `0` for an unsigned one (so the same masking yields both). Wrapping, checked, and
+# saturating arithmetic all build on that, so the whole tower is the platform's native number + bitwise operations -- one
+# implementation for every backend, no per-width native code and no runtime shim. Each width fuses this once, passing its
+# name, mask, sign bit, and bounds. See `8` / `16` / `32` (signed) and `unsigned` (u8 / u16 / u32).
 
-load ../8
-  find i8
+load @cluesurf/base/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find bitwise-not
+  find shift-left
+  find shift-right
+
+load @cluesurf/base/code/maybe
+  find maybe
+  find some
+  find none
 
 tree integer
-  take size, like i8
+  take name
+  take mask
+  take sign
+  take min
+  take max
 
   hook fuse
-    form i{{size}}
-      task seek-add
-        take a, like i{{size}}
-        take b, like i{{size}}
-        fuse free-result, like i{{size}}
+    # constrain a number to this width: mask to the low bits, then sign-extend (a no-op when sign is 0, i.e. unsigned).
+    # This is the one primitive every other operation funnels through.
+    task {name}-wrap
+      take value, like number
+      like number
+      send back
+        call subtract
+          call bitwise-exclusive-or
+            call bitwise-and
+              read value
+              code {mask}
+            code {sign}
+          code {sign}
 
-      task seek-add-signed
-        take a, like i{{size}}
-        take b, like i{{size}}
+    # build a value of this width from any number (an out-of-range input wraps in)
+    task {name}-from-number
+      take value, like number
+      like number
+      send back
+        call {name}-wrap
+          read value
 
-      task seek-divide-base
-        take a, like i{{size}}
-        take b, like i{{size}}
+    # the smallest and largest representable values
+    task {name}-minimum-value
+      like number
+      send back
+        code {min}
 
-      task seek-divide-head
-        take a, like i{{size}}
-        take b, like i{{size}}
+    task {name}-maximum-value
+      like number
+      send back
+        code {max}
 
-      task seek-divide-euclid
-        take a, like i{{size}}
-        take b, like i{{size}}
-      task seek-fall
-        take a, like i{{size}}
-        take base, like i{{size}}
+    # wrapping arithmetic: an overflowing result wraps around the width, like hardware
+    task {name}-add
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call add
+            read a
+            read b
 
-      task seek-fall-10
-        take a, like i{{size}}
+    task {name}-subtract
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call subtract
+            read a
+            read b
 
-      task seek-fall-2
-        take a, like i{{size}}
+    task {name}-multiply
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call multiply
+            read a
+            read b
 
-      task seek-multiply
-        take a, like i{{size}}
-        take b, like i{{size}}
+    task {name}-negate
+      take a, like number
+      like number
+      send back
+        call {name}-wrap
+          call subtract
+            code 0
+            read a
 
-      task seek-get-next-multiple-of
+    # bitwise (the result is re-wrapped so an unsigned type stays in range and a signed one keeps its sign)
+    task {name}-bitwise-and
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call bitwise-and
+            read a
+            read b
 
-      task seek-get-next-power-of-two
-      task seek-rise
-      task seek-remainder
-      task seek-remainder-euclid
-      task seek-shift-base
-      task seek-shift-head
-      task seek-subtract
-      task seek-unsign
+    task {name}-bitwise-or
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call bitwise-or
+            read a
+            read b
 
-      # checked
-      task checked-add
-        take a, like i{{size}}
-        take b, like i{{size}}
-        like maybe, like i{{size}}
+    task {name}-bitwise-exclusive-or
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call bitwise-exclusive-or
+            read a
+            read b
 
-      task checked-add-signed
-        take a, like i{{size}}
-        take b, like i{{size}}
-        like maybe, like i{{size}}
+    task {name}-bitwise-not
+      take a, like number
+      like number
+      send back
+        call {name}-wrap
+          call bitwise-not
+            read a
 
-      task checked-divide
-        take a, like i{{size}}
-        take b, like i{{size}}
-        like maybe, like i{{size}}
+    task {name}-shift-left
+      take a, like number
+      take count, like number
+      like number
+      send back
+        call {name}-wrap
+          call shift-left
+            read a
+            read count
 
-      task checked-divide-euclid
-        take a, like i{{size}}
-        take b, like i{{size}}
-        like maybe, like i{{size}}
+    task {name}-shift-right
+      take a, like number
+      take count, like number
+      like number
+      send back
+        call {name}-wrap
+          call shift-right
+            read a
+            read count
 
-      task checked-fall
-        take a, like i{{size}}
-        take base, like i{{size}}
-        like maybe, like i{{size}}
+    # predicates
+    task {name}-is-negative
+      take a, like number
+      like boolean
+      send back
+        call is-below
+          read a
+          code 0
 
-      task checked-fall-10
-      task checked-fall-2
-      task checked-multiply
-        take a, like i{{size}}
-        take b, like i{{size}}
-        like maybe, like i{{size}}
+    task {name}-is-positive
+      take a, like number
+      like boolean
+      send back
+        call is-above
+          read a
+          code 0
 
-      task checked-negate
-      task checked-get-next-multiple-of
-      task checked-get-next-power-of-two
-      task checked-rise
-      task checked-remainder
-      task checked-remainder-euclid
-      task checked-shift-base
-      task checked-shift-head
-      task checked-subtract
-      task checked-unsign
+    task {name}-is-zero
+      take a, like number
+      like boolean
+      send back
+        call is-equal
+          read a
+          code 0
 
-      # clamped
-      task clamped-add
-      task clamped-add-signed
-      task clamped-divide
-      task clamped-divide-euclid
-      task clamped-fall
-      task clamped-fall-10
-      task clamped-fall-2
-      task clamped-multiply
-      task clamped-negate
-      task clamped-get-next-multiple-of
-      task clamped-get-next-power-of-two
-      task clamped-rise
-      task clamped-remainder
-      task clamped-remainder-euclid
-      task clamped-shift-base
-      task clamped-shift-head
-      task clamped-subtract
-      task clamped-unsign
+    # checked arithmetic: the exact result when it fits the width, otherwise none
+    task {name}-checked-add
+      take a, like number
+      take b, like number
+      like maybe
+        like number
+      save sum
+        call add
+          read a
+          read b
+      fork test
+        hook test
+          call is-equal
+            call {name}-wrap
+              read sum
+            read sum
+        hook hold
+          send back
+            make some
+              bind value
+                read sum
+        hook miss
+          send back
+            make none
 
-      task wrapping-add
-      task wrapping-add-signed
-      task wrapping-divide
-      task wrapping-divide-euclid
-      task wrapping-fall
-      task wrapping-fall-10
-      task wrapping-fall-2
-      task wrapping-multiply
-      task wrapping-negate
-      task wrapping-get-next-multiple-of
-      task wrapping-get-next-power-of-two
-      task wrapping-rise
-      task wrapping-remainder
-      task wrapping-remainder-euclid
-      task wrapping-shift-base
-      task wrapping-shift-head
-      task wrapping-subtract
-      task wrapping-unsign
+    task {name}-checked-subtract
+      take a, like number
+      take b, like number
+      like maybe
+        like number
+      save diff
+        call subtract
+          read a
+          read b
+      fork test
+        hook test
+          call is-equal
+            call {name}-wrap
+              read diff
+            read diff
+        hook hold
+          send back
+            make some
+              bind value
+                read diff
+        hook miss
+          send back
+            make none
 
-      # unchecked
-      task unchecked-add
-        note unsafe
-      task unchecked-multiply
-        note unsafe
-      task unchecked-shift-base
-        note unsafe
-      task unchecked-shift-head
-        note unsafe
-      task unchecked-subtract
-        note unsafe
+    task {name}-checked-multiply
+      take a, like number
+      take b, like number
+      like maybe
+        like number
+      save product
+        call multiply
+          read a
+          read b
+      fork test
+        hook test
+          call is-equal
+            call {name}-wrap
+              read product
+            read product
+        hook hold
+          send back
+            make some
+              bind value
+                read product
+        hook miss
+          send back
+            make none
 
-      task add-test-and-roll
-      task add-signed-test-and-roll
-      task divide-test-and-roll
-      task divide-euclid-test-and-roll
-      task fall-test-and-roll
-      task fall-10-test-and-roll
-      task fall-2-test-and-roll
-      task multiply-test-and-roll
-      task negate-test-and-roll
-      task get-next-multiple-of-test-and-roll
-      task get-next-power-of-two-test-and-roll
-      task rise-test-and-roll
-      task remainder-test-and-roll
-      task remainder-euclid-test-and-roll
-      task shift-base-test-and-roll
-      task shift-head-test-and-roll
-      task subtract-test-and-roll
-      task unsign-test-and-roll
+    # saturating arithmetic: an overflowing result clamps to the nearest bound instead of wrapping
+    task {name}-saturating-add
+      take a, like number
+      take b, like number
+      like number
+      save sum
+        call add
+          read a
+          read b
+      fork test
+        hook test
+          call is-above
+            read sum
+            code {max}
+        hook hold
+          send back
+            code {max}
+        hook miss
+          fork test
+            hook test
+              call is-below
+                read sum
+                code {min}
+            hook hold
+              send back
+                code {min}
+            hook miss
+              send back
+                read sum
 
-      task is-negative
-      task is-positive
+    task {name}-saturating-subtract
+      take a, like number
+      take b, like number
+      like number
+      save diff
+        call subtract
+          read a
+          read b
+      fork test
+        hook test
+          call is-above
+            read diff
+            code {max}
+        hook hold
+          send back
+            code {max}
+        hook miss
+          fork test
+            hook test
+              call is-below
+                read diff
+                code {min}
+            hook hold
+              send back
+                code {min}
+            hook miss
+              send back
+                read diff
+
+    task {name}-saturating-multiply
+      take a, like number
+      take b, like number
+      like number
+      save product
+        call multiply
+          read a
+          read b
+      fork test
+        hook test
+          call is-above
+            read product
+            code {max}
+        hook hold
+          send back
+            code {max}
+        hook miss
+          fork test
+            hook test
+              call is-below
+                read product
+                code {min}
+            hook hold
+              send back
+                code {min}
+            hook miss
+              send back
+                read product

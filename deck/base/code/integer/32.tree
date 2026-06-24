@@ -1,8 +1,19 @@
+# Signed 32-bit integer: values -2147483648 to 2147483647. See `n` for the operation template.
 
-form i32
-  fuse integer
-    bind self-type, like i32
-    bind actual-type, like i32
-    bind unsigned-type, like u32
-    bind bits, size 32
-    bind bits-minus-one, size 31
+load @cluesurf/base/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find bitwise-not
+  find shift-left
+  find shift-right
+
+load @cluesurf/base/code/maybe
+  find maybe
+  find some
+  find none
+
+load @cluesurf/base/code/integer/n
+  find integer
+
+fuse integer, i32, 4294967295, 2147483648, -2147483648, 2147483647

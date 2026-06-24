@@ -1,10 +1,10 @@
 {
-  "name": "@cluesurf/seed",
+  "name": "@cluesurf/term",
   "main": "./host/index.js",
   "type": "module",
   "version": "2.0.0",
   "bin": {
-    "seed": "./host/line.js"
+    "term": "./host/line.js"
   },
   "scripts": {
     "make": "npx esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --outfile=host/line.js --banner:js='#!/usr/bin/env node'",

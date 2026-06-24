@@ -1,8 +1,114 @@
+# Signed and unsigned 64-bit integers. 64 bits is the platform's native integer width (`number` is i64 on the compiled
+# backends), so arithmetic is the native number arithmetic and wraps at 64 bits there. The masking the smaller widths use
+# does not apply (a 64-bit mask exceeds the range), so these expose the native operations plus the width bounds and
+# predicates. On JavaScript a `number` is a 64-bit float, so values beyond 2^53 lose precision -- use `big` for exact
+# arbitrary-precision integers.
 
-form i64
-  fuse integer
-    bind self-type, like i64
-    bind actual-type, like i64
-    bind unsigned-type, like u64
-    bind bits, size 64
-    bind bits-minus-one, size 63
+# the i64 range
+task i64-minimum-value
+  like number
+  send back
+    code -9223372036854775808
+
+task i64-maximum-value
+  like number
+  send back
+    code 9223372036854775807
+
+# native arithmetic (wraps at 64 bits on the compiled backends)
+task i64-add
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call add
+      read a
+      read b
+
+task i64-subtract
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call subtract
+      read a
+      read b
+
+task i64-multiply
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call multiply
+      read a
+      read b
+
+task i64-negate
+  take a, like number
+  like number
+  send back
+    call subtract
+      code 0
+      read a
+
+task i64-is-negative
+  take a, like number
+  like boolean
+  send back
+    call is-below
+      read a
+      code 0
+
+task i64-is-positive
+  take a, like number
+  like boolean
+  send back
+    call is-above
+      read a
+      code 0
+
+task i64-is-zero
+  take a, like number
+  like boolean
+  send back
+    call is-equal
+      read a
+      code 0
+
+# the u64 range. Values are held as a native number; the maximum is exact only on the compiled backends.
+task u64-minimum-value
+  like number
+  send back
+    code 0
+
+task u64-maximum-value
+  like number
+  send back
+    code 18446744073709551615
+
+task u64-add
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call add
+      read a
+      read b
+
+task u64-subtract
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call subtract
+      read a
+      read b
+
+task u64-multiply
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call multiply
+      read a
+      read b

@@ -125,8 +125,8 @@ function suggestCommand(input: string): string | undefined {
 const root = process.cwd()
 
 const cli = yargs(hideBin(process.argv))
-  .scriptName('seed')
-  .usage('Usage: seed <verb> [objects] [options]')
+  .scriptName('term')
+  .usage('Usage: term <verb> [objects] [options]')
   .option('hint', {
     alias: 'h',
     type: 'boolean',
@@ -145,7 +145,8 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.positional('name', {
         type: 'string',
-        description: 'Project name (a new directory); omit for current directory',
+        description:
+          'Project name (a new directory); omit for current directory',
       }),
     async argv => {
       await callWake({
@@ -231,7 +232,8 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.option('audit', {
         type: 'boolean',
-        description: 'Report known security vulnerabilities in dependencies',
+        description:
+          'Report known security vulnerabilities in dependencies',
       }),
     async argv => {
       await callSeek({ root, audit: argv.audit })
@@ -448,7 +450,7 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'halt',
-    'Stop running seed boot servers (all, or specific --port list)',
+    'Stop running term boot servers (all, or specific --port list)',
     yargs =>
       yargs.option('port', {
         alias: 'p',
@@ -698,15 +700,15 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('runs', {
           type: 'number',
-          description: 'Fuzz inputs per seed',
+          description: 'Fuzz inputs per term',
         })
-        .option('seeds', {
+        .option('terms', {
           type: 'number',
-          description: 'Distinct fuzz seeds',
+          description: 'Distinct fuzz terms',
         })
         .option('fuzz-timeout', {
           type: 'number',
-          description: 'Watchdog seconds per fuzz seed',
+          description: 'Watchdog seconds per fuzz term',
         })
         .option('json', {
           type: 'boolean',
@@ -717,7 +719,7 @@ const cli = yargs(hideBin(process.argv))
         root,
         glob: argv.glob,
         runs: argv.runs,
-        seeds: argv.seeds,
+        terms: argv.terms,
         fuzzTimeout: argv.fuzzTimeout,
         json: argv.json,
       })
@@ -787,12 +789,12 @@ async function main(): Promise<void> {
     if (suggestion) {
       logFail(
         `Unknown command "${cmd}". Did you mean ${warn(
-          `seed ${suggestion}`,
+          `term ${suggestion}`,
         )}?`,
       )
     } else {
       logFail(
-        `Unknown command "${cmd}". Run "seed" for a list of commands.`,
+        `Unknown command "${cmd}". Run "term" for a list of commands.`,
       )
     }
 

@@ -79,6 +79,20 @@ reactive in the fine-grained style, updating the DOM directly through
 signals rather than diffing a virtual DOM, with server-side rendering,
 client takeover, and hot module reload.
 
+## The book
+
+A complete, example-first guide lives in [`book/`](book/readme.md). It is
+a tree of short cheatsheet pages: each one opens with a reference of every
+keyword, command, or operator in its topic, then shows the `.tree` you
+write to use it, with a note on how it maps to ideas you already know.
+
+Start with [the syntax model](book/language/readme.md), then read what you
+need: the [language](book/language/readme.md) (functions, forms, matching,
+loops, traits, templates, modules, and more), [proofs](book/math/readme.md),
+the [standard library](book/stdlib/readme.md), the
+[web framework](book/web/readme.md), [command-line apps](book/cli/readme.md),
+and the [`term` toolchain](book/toolchain/readme.md).
+
 ## Packages
 
 This repository is a monorepo. Each part of the ecosystem is a deck (a

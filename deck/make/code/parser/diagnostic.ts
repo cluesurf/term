@@ -391,23 +391,14 @@ export function renderKink(
   const out: string[] = []
 
   const word = diagnostic.severity === 'warning' ? 'warn' : 'kink'
-  // title: the keyword, then the message in <...>
+  // title: the keyword, then the message in <...>. Order, most-relevant first: the message, then where it is (site +
+  // source frame), then the human note, then the machine-facing name and code.
   out.push(
     `${accent(word)} ${wrap(
       '<',
       accent(paint.bold(diagnostic.message)),
     )}`,
   )
-  out.push(
-    `  ${paint.dim('code')} ${wrap(
-      '<',
-      paint.cyan(toHex(diagnostic.code)),
-    )}`,
-  )
-  out.push(
-    `  ${paint.dim('name')} ${wrap('<', paint.dim(diagnostic.name))}`,
-  )
-  out.push(`  ${paint.dim('host')} ${paint.dim('seed')}`) // host has no brackets, by design
 
   diagnostic.markers.forEach((marker, i) => {
     const here = marker.span
@@ -449,6 +440,16 @@ export function renderKink(
       `  ${paint.dim('note')} ${wrap('<', paint.dim(diagnostic.hint))}`,
     )
   }
+
+  out.push(
+    `  ${paint.dim('name')} ${wrap('<', paint.dim(diagnostic.name))}`,
+  )
+  out.push(
+    `  ${paint.dim('code')} ${wrap(
+      '<',
+      paint.cyan(toHex(diagnostic.code)),
+    )}`,
+  )
 
   return out.join('\n')
 }

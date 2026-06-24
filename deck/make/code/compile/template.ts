@@ -12,6 +12,7 @@
 import type {
   ChunkNode,
   GroupNode,
+  IntegerNode,
   InterpolationNode,
   NameNode,
   Node,
@@ -29,6 +30,79 @@ const ZERO_SPAN: Span = {
 
 function chunkToken(text: string): Token {
   return { kind: TokenKind.Name, span: ZERO_SPAN, text }
+}
+
+// a bare integer node carrying `value`, so a numeric `{param}` interpolated into a value position (`code {mask}`)
+// mills as the integer literal it stands for rather than an undefined name.
+function integerNode(value: number): IntegerNode {
+  return {
+    kind: 'integer',
+    value,
+    token: { kind: TokenKind.Integer, span: ZERO_SPAN, text: String(value) },
+  }
+}
+
+function nameNodeOf(text: string): NameNode {
+  return {
+    kind: 'name',
+    parts: [{ kind: 'chunk', text, token: chunkToken(text) }],
+  }
+}
+
+// `read <name>` as a group, the runtime variable read a non-parameter `{x}` interpolation lowers to (outer-scope value)
+function readGroup(name: string): GroupNode {
+  return {
+    kind: 'group',
+    nodes: [nameNodeOf('read'), { kind: 'group', nodes: [nameNodeOf(name)] }],
+  }
+}
+
+// a numeric string is interpolated as an integer literal (so it works in `code`/value positions), everything else as a name
+function isNumeric(text: string): boolean {
+  return /^-?\d+$/.test(text)
+}
+
+// if `node` is a bare interpolation wrapper -- a group whose only child is a name made of one `{param}` -- return that
+// param name. This is the `{x}` standalone form (`code {mask}`, `call f / {x}`), distinct from `i{size}` (a name with a
+// literal chunk) which substitutes textually in place.
+function bareInterpParam(node: Node): string | undefined {
+  if (node.kind !== 'group' || node.nodes.length !== 1) {
+    return undefined
+  }
+
+  const only = node.nodes[0]
+
+  if (
+    only?.kind !== 'name' ||
+    only.parts.length !== 1 ||
+    only.parts[0]?.kind !== 'interpolation'
+  ) {
+    return undefined
+  }
+
+  return interpolationName(only.parts[0])
+}
+
+// resolve a standalone `{param}` interpolation node. A bound numeric param becomes an integer literal; an unbound one
+// (from outer / runtime scope) becomes `read param`. A bound non-numeric param returns undefined so the caller's normal
+// name substitution handles it (keeping the wrapper, e.g. `case {col}` -> `case e0`).
+function transformInterp(
+  node: Node,
+  subs: Map<string, string>,
+): Node | undefined {
+  const param = bareInterpParam(node)
+
+  if (param === undefined) {
+    return undefined
+  }
+
+  if (!subs.has(param)) {
+    return readGroup(param)
+  }
+
+  const value = subs.get(param)!
+
+  return isNumeric(value) ? integerNode(value === '' ? 0 : Number(value)) : undefined
 }
 
 function nameText(name: NameNode): string {
@@ -293,23 +367,21 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
   let positional = 0
 
   for (const node of args.slice(1)) {
-    if (node.kind !== 'group') {
-      continue
-    }
-
-    const head = headName(node)
+    const head = node.kind === 'group' ? headName(node) : undefined
 
     if (
       head !== 'bind' &&
       head !== 'beam' &&
       positional < template.params.length
     ) {
+      // a positional argument: a group (`size 8`, a bare name), or a bare literal (`8`, a number / text node). Both
+      // resolve to their string value, so `fuse sized, 8, 255` binds size = "8", mask = "255".
       subs.set(
         template.params[positional]!,
         resolveValue(node, ctx.subs),
       )
       positional++
-    } else if (head === 'bind') {
+    } else if (head === 'bind' && node.kind === 'group') {
       const inner = rest(node)
       const param =
         inner[0]?.kind === 'group' ? headName(inner[0]) : undefined
@@ -317,7 +389,7 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
       if (param) {
         subs.set(param, resolveValue(inner[1], ctx.subs))
       }
-    } else if (head === 'beam') {
+    } else if (head === 'beam' && node.kind === 'group') {
       const inner = rest(node)
       const beamName =
         inner[0]?.kind === 'group' ? headName(inner[0]) : undefined
@@ -396,6 +468,15 @@ function expandBody(nodes: Node[], ctx: Context): Node[] {
 
   for (const node of nodes) {
     if (node.kind === 'group') {
+      // a standalone `{param}` interpolation: a numeric param becomes an integer literal, an unbound one becomes a
+      // runtime `read param`; a bound non-numeric param falls through to ordinary name substitution below.
+      const interp = transformInterp(node, ctx.subs)
+
+      if (interp) {
+        out.push(interp)
+        continue
+      }
+
       const head = headName(node)
 
       if (head === 'slot') {
@@ -458,6 +539,14 @@ function expandBody(nodes: Node[], ctx: Context): Node[] {
 function expandTop(node: Node, ctx: Context): Node[] {
   if (node.kind !== 'group') {
     return [node]
+  }
+
+  // a standalone `{x}` in ordinary (non-template) code is a runtime variable read from the surrounding scope. With no
+  // template parameters in scope here, it always lowers to `read x` (the compile-time cases happen inside `expandBody`).
+  const interp = transformInterp(node, ctx.subs)
+
+  if (interp) {
+    return [interp]
   }
 
   const head = headName(node)
