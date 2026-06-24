@@ -1,6 +1,73 @@
+# 32-bit floating point (IEEE 754 single, ~7 decimal digits). Held as the platform float; every operation rounds its
+# result to 32-bit precision through the native single-precision cast, so the value stays a genuine f32. The rounding is
+# a one-line native expression per backend (no runtime shim): JS `Math.fround`, rust `as f32 as f64`, swift `Float`,
+# kotlin `toFloat`.
 
-host max
-host min
+# round a value to the nearest 32-bit float (the building block of every f32 operation)
+bind f32-round
+  take value, like decimal
+  like decimal
+  case node
+    text <Math.fround($value)>
+  case browser
+    text <Math.fround($value)>
+  case rust
+    text <($value as f32) as f64>
+  case swift
+    text <Double(Float($value))>
+  case kotlin
+    text <$value.toFloat().toDouble()>
 
-form f32
-  # A 32-bit floating point type with 7 digits of decimal precision.
+# the largest finite magnitude of a 32-bit float (the smallest finite is its negation)
+bind f32-maximum-value
+  like decimal
+  case node
+    text <3.4028234663852886e38>
+  case browser
+    text <3.4028234663852886e38>
+  case rust
+    text <f32::MAX as f64>
+  case swift
+    text <Double(Float.greatestFiniteMagnitude)>
+  case kotlin
+    text <Float.MAX_VALUE.toDouble()>
+
+task f32-add
+  take a, like decimal
+  take b, like decimal
+  like decimal
+  send back
+    call f32-round
+      call add
+        read a
+        read b
+
+task f32-subtract
+  take a, like decimal
+  take b, like decimal
+  like decimal
+  send back
+    call f32-round
+      call subtract
+        read a
+        read b
+
+task f32-multiply
+  take a, like decimal
+  take b, like decimal
+  like decimal
+  send back
+    call f32-round
+      call multiply
+        read a
+        read b
+
+task f32-divide
+  take a, like decimal
+  take b, like decimal
+  like decimal
+  send back
+    call f32-round
+      call divide
+        read a
+        read b

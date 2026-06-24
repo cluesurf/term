@@ -129,20 +129,16 @@ Collect tests into a list and hand it to `run`. It executes each, prints the res
 load @cluesurf/base/code/test
   find run
 
-task main
-  note async
-  like number
-  save tests
-    make list
-  call tests/push
-    call test-add
-  call tests/push
-    call test-list-push
-  save tally
-    call run
-      read tests
-      wait true
-  send back, mark 0
+# the module body runs the suite: no main task
+save tests
+  make list
+call tests/push
+  call test-add
+call tests/push
+  call test-list-push
+call run
+  read tests
+  wait true
 ```
 
 `run` is async, so the call carries `wait true`. See [async](async.md) for `wait`.

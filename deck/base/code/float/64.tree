@@ -1,6 +1,53 @@
+# 64-bit floating point (IEEE 754 double, ~15 decimal digits). This is the platform float (`decimal`), so arithmetic is
+# the native double arithmetic with no rounding step. The richer transcendental and rounding operations live in the
+# `float` module; this module provides the width's bounds and the basic operations under the f64 name.
 
-host max
-host min
+# the largest finite magnitude of a 64-bit float (the smallest finite is its negation)
+bind f64-maximum-value
+  like decimal
+  case node
+    text <Number.MAX_VALUE>
+  case browser
+    text <Number.MAX_VALUE>
+  case rust
+    text <f64::MAX>
+  case swift
+    text <Double.greatestFiniteMagnitude>
+  case kotlin
+    text <Double.MAX_VALUE>
 
-form f64
-  # A 64-bit floating point type with 15 digits of decimal precision.
+task f64-add
+  take a, like decimal
+  take b, like decimal
+  like decimal
+  send back
+    call add
+      read a
+      read b
+
+task f64-subtract
+  take a, like decimal
+  take b, like decimal
+  like decimal
+  send back
+    call subtract
+      read a
+      read b
+
+task f64-multiply
+  take a, like decimal
+  take b, like decimal
+  like decimal
+  send back
+    call multiply
+      read a
+      read b
+
+task f64-divide
+  take a, like decimal
+  take b, like decimal
+  like decimal
+  send back
+    call divide
+      read a
+      read b

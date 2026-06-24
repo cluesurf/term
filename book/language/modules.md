@@ -134,18 +134,15 @@ task cube
 ```
 
 ```tree
-# main.tree
+# app.tree
 load ./math
   find square
 
-task main
-  like number
-  call write-line
-    call square, mark 5
-  send back, mark 0
+call write-line
+  call square, mark 5
 ```
 
-`main` can import `square` but not `cube`, since `cube` is `private`.
+`app.tree` can import `square` but not `cube`, since `cube` is `private`. Note there is no `main` task. The module body runs top to bottom.
 
 ## See also
 

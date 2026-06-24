@@ -129,12 +129,10 @@ task greet
       text <hello, >
       read name
 
-task main
-  like number
-  host who, text <world>
-  call info
-    call greet, read who
-  send back, mark 0
+# the module body is the program: top-level statements run top to bottom
+host who, text <world>
+call info
+  call greet, read who
 ```
 
-Read top to bottom: `greet` takes a `name`, returns `text`, and sends back the two strings joined. `main` declares a constant `who`, logs the greeting with `info` (loaded from the standard library), and returns `0`. Every other page is this same shape with a different head.
+Read top to bottom: `greet` takes a `name`, returns `text`, and sends back the two strings joined. Then the module body runs. It declares a constant `who` and logs the greeting with `info` (loaded from the standard library). There is no `main` function. The top-level statements are the program. Every other page is this same shape with a different head.
