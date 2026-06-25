@@ -1,3 +1,5 @@
+# An HTTP request a server handler receives: the method, the full target, its parsed path and query, the headers, and the
+# body text. The handler routes on `method` / `path` and reads the payload with `read`.
 
 form request
   link method, like text
@@ -5,10 +7,12 @@ form request
   link path, like text
   link query, like text
   link headers, like hash
+  link body, like text
   link dock, mark private
 
+# the request body as text
 task read
-  note async
   take request, like request
-  take format, like text, fall text <text>
   like text
+  send back
+    read request/body

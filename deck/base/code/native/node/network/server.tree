@@ -14,6 +14,21 @@ load @cluesurf/base/code/network/server/request
 load @cluesurf/base/code/network/server/response
   find response
 
+# run the server on (host, port). On node `serve` is fire-and-forget: the listening http.Server holds the event loop open
+# so the process stays alive, matching the blocking accept loop the compiled backends run.
+task do-serve
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  like void
+  call runtime/serve
+    read port
+    read host
+    read handler
+
 task do-start
   note async
   take port, like size

@@ -2,7 +2,7 @@
 # constructors cover the common answers: `make-ok` for 200 with a body, `make-status` for a bare status code.
 
 form response
-  link status, like size
+  link status, like number
   link body, like text
 
 # 200 OK with a text body
@@ -16,7 +16,7 @@ task make-ok
 
 # a status code with an empty body (404, 500, 204, ...)
 task make-status
-  take status, like size
+  take status, like number
   like response
   send back
     make response
@@ -25,7 +25,7 @@ task make-status
 
 # a response with an explicit status and body
 task make
-  take status, like size, fall 200
+  take status, like number, fall 200
   take body, like text, fall text <>
   like response
   send back

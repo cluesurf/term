@@ -6,6 +6,7 @@
 load @cluesurf/base/code/native/network/server
   find do-start
   find do-stop
+  find do-serve
 
 load @cluesurf/base/code/network/server/request
   find request
@@ -17,7 +18,7 @@ load @cluesurf/base/code/network/server/response
 form server
   link dock, mark private
   link host, like text
-  link port, like size
+  link port, like number
 
 # start a server on `port` that answers every request with `handler` (a request in, a response out). With `secure`, it
 # serves HTTPS using the PEM `certificate` and `key`. Returns the running server, which `stop` shuts down.
@@ -51,3 +52,19 @@ task stop
   call do-stop
     read server
     wait true
+
+# run a server on `port` that answers every request with `handler`, blocking for the life of the process: the entry
+# point of a server binary. On node the server runs on the event loop (the process stays alive); on the compiled
+# backends this runs the blocking accept loop directly. The portable way to stand up a server.
+task serve
+  take port, like size
+  take host, like text, fall text <0.0.0.0>
+  take handler
+    like task
+      take request, like request
+      like response
+  like void
+  call do-serve
+    read port
+    read host
+    read handler

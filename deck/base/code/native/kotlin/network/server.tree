@@ -1,18 +1,18 @@
-# rust HTTP server: forwards to the linked server runtime shim (a blocking std::net accept loop, no async runtime). The
-# shim reads each request, hands a normalized request to the seed handler, and writes the response. Internal: reached
-# only through the public network/server API.
+# kotlin HTTP server: forwards to the linked server runtime shim (the JDK com.sun.net.httpserver). The shim reads each
+# request, hands a normalized request to the seed handler, and writes the response. Internal: reached only through the
+# public network/server API.
 
 dock load
   load <global:server>, name runtime
+
+load @cluesurf/base/code/network/server
+  find server
 
 load @cluesurf/base/code/network/server/request
   find request
 
 load @cluesurf/base/code/network/server/response
   find response
-
-load @cluesurf/base/code/network/server
-  find server
 
 # run the server on (host, port), blocking for the life of the process (the entry point of a server binary)
 task do-serve
@@ -28,8 +28,8 @@ task do-serve
     read host
     read handler
 
-# the start / stop pair maps onto the same blocking accept loop: `start` serves (and so does not return on this backend,
-# unlike node's event-loop server), `stop` is a no-op. Most rust server binaries use `serve` directly.
+# start / stop map onto the same server: start serves (and so blocks on this backend), stop is a no-op. Most kotlin
+# server binaries use `serve` directly.
 task do-start
   note async
   take port, like size

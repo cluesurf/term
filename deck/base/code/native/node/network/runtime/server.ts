@@ -69,4 +69,10 @@ const server = {
   // stop a running server, resolving when its port is released
   stop: (raw: http.Server): Promise<void> =>
     new Promise(resolve => raw.close(() => resolve())),
+
+  // start a server and keep the process alive (node's http.Server holds the event loop open while listening). The
+  // portable `serve` entry point: fire-and-forget on node, a blocking accept loop on the compiled backends.
+  serve: (port: number, host: string, handler: Handler): void => {
+    void server.start(port, host, handler, false, '', '')
+  },
 }
