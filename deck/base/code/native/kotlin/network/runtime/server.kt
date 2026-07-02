@@ -22,6 +22,9 @@ object runtime {
         0L,
       )
       val response = handler(request)
+      for (header in response.headers) {
+        exchange.responseHeaders.add(header.name, header.value)
+      }
       val bytes = response.body.toByteArray(Charsets.UTF_8)
       exchange.sendResponseHeaders(response.status.toInt(), bytes.size.toLong())
       exchange.responseBody.use { it.write(bytes) }

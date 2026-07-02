@@ -49,10 +49,19 @@ mod runtime {
             };
 
             let response = handler(request);
+
+            // the handler's headers, one CRLF-terminated line each, ahead of the framing headers
+            let mut header_block = String::new();
+            for header in response.headers.borrow().iter() {
+                header_block
+                    .push_str(&format!("{}: {}\r\n", header.name, header.value));
+            }
+
             let payload = format!(
-                "HTTP/1.1 {} OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 {} OK\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n{}",
                 response.status,
                 response.body.len(),
+                header_block,
                 response.body
             );
             let _ = stream.write_all(payload.as_bytes());

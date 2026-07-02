@@ -1,8 +1,17 @@
-# An HTTP response a server handler returns: a status code and a text body (headers default to empty at the wire). The
-# constructors cover the common answers: `make-ok` for 200 with a body, `make-status` for a bare status code.
+# An HTTP response a server handler returns: a status code, a list of headers, and a text body. The constructors cover the
+# common answers: `make-ok` for 200 with a body, `make-status` for a bare status code. `with-header` adds one header and
+# returns the response, so several calls chain to build a multi-header response (repeats allowed, e.g. multiple set-cookie).
+
+# one response header: a name and its value, kept as an ordered list so duplicates (set-cookie, ...) survive
+form header
+  link name, like text
+  link value, like text
 
 form response
   link status, like number
+  link headers
+    like list
+      like header
   link body, like text
 
 # 200 OK with a text body
@@ -12,6 +21,8 @@ task make-ok
   send back
     make response
       bind status, code 200
+      bind headers
+        make list
       bind body, read body
 
 # a status code with an empty body (404, 500, 204, ...)
@@ -21,6 +32,8 @@ task make-status
   send back
     make response
       bind status, read status
+      bind headers
+        make list
       bind body, text <>
 
 # a response with an explicit status and body
@@ -31,4 +44,30 @@ task make
   send back
     make response
       bind status, read status
+      bind headers
+        make list
       bind body, read body
+
+# add a header (name, value) and return the response, so calls chain to set several headers (duplicate names allowed)
+task with-header
+  take response, like response
+  take name, like text
+  take value, like text
+  like response
+  call response/headers/push
+    make header
+      bind name, read name
+      bind value, read value
+  send back
+    read response
+
+# set the content-type header, the most common single header
+task with-content-type
+  take response, like response
+  take kind, like text
+  like response
+  send back
+    call with-header
+      read response
+      text <content-type>
+      read kind

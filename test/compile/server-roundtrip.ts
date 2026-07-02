@@ -173,14 +173,22 @@ function waitForPort(port: number, timeoutMs = 8000): Promise<void> {
 function get(
   port: number,
   path: string,
-): Promise<{ status: number; body: string }> {
+): Promise<{
+  status: number
+  body: string
+  headers: http.IncomingHttpHeaders
+}> {
   return new Promise((resolve, reject) => {
     http
       .get(`http://127.0.0.1:${port}${path}`, r => {
         let body = ''
         r.on('data', c => (body += c))
         r.on('end', () =>
-          resolve({ status: r.statusCode ?? 0, body }),
+          resolve({
+            status: r.statusCode ?? 0,
+            body,
+            headers: r.headers,
+          }),
         )
       })
       .on('error', reject)
@@ -194,6 +202,7 @@ const SERVER = (port: number): string => `load @cluesurf/base/code/network/serve
 load @cluesurf/base/code/network/server/response
   find response
   find make-ok
+  find with-header
 
 task boot
   like void
@@ -204,8 +213,11 @@ task boot
       take req
       like response
       send back
-        call make-ok
-          read req/path
+        call with-header
+          call make-ok
+            read req/path
+          text <x-seed>
+          text <ok>
 `
 
 async function rustServer(): Promise<void> {
@@ -256,6 +268,11 @@ async function rustServer(): Promise<void> {
     const echo = await get(port, '/hello/world?x=1')
     ok(name, echo.body, '/hello/world')
     ok('rust: compiled server returns 200', echo.status, 200)
+    ok(
+      'rust: response carries the handler-set header',
+      echo.headers['x-seed'],
+      'ok',
+    )
   } catch (e) {
     fail++
     console.log(`FAIL  ${name}  (request error: ${String(e)})`)
@@ -311,6 +328,11 @@ async function kotlinServer(): Promise<void> {
     const echo = await get(port, '/hello/world?x=1')
     ok(name, echo.body, '/hello/world')
     ok('kotlin: compiled server returns 200', echo.status, 200)
+    ok(
+      'kotlin: response carries the handler-set header',
+      echo.headers['x-seed'],
+      'ok',
+    )
   } catch (e) {
     fail++
     console.log(`FAIL  ${name}  (request error: ${String(e)})`)
@@ -362,6 +384,11 @@ async function swiftServer(): Promise<void> {
     const echo = await get(port, '/hello/world?x=1')
     ok(name, echo.body, '/hello/world')
     ok('swift: compiled server returns 200', echo.status, 200)
+    ok(
+      'swift: response carries the handler-set header',
+      echo.headers['x-seed'],
+      'ok',
+    )
   } catch (e) {
     fail++
     console.log(`FAIL  ${name}  (request error: ${String(e)})`)

@@ -16,7 +16,7 @@ type SeedRequest = {
 
 type SeedResponse = {
   status?: number
-  headers?: Record<string, string>
+  headers?: Array<{ name: string; value: string }>
   body?: string
 }
 
@@ -53,7 +53,12 @@ const server = {
           }
 
           Promise.resolve(handler(request)).then(out => {
-            res.writeHead(out.status ?? 200, out.headers ?? {})
+            // flatten the ordered header list to node's raw [name, value, ...] form, preserving order and duplicates
+            const raw: string[] = []
+            for (const header of out.headers ?? []) {
+              raw.push(header.name, header.value)
+            }
+            res.writeHead(out.status ?? 200, raw)
             res.end(out.body ?? '')
           })
         })

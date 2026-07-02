@@ -52,7 +52,11 @@ enum runtime {
         dock: 0
       )
       let response = handler(request)
-      let payload = "HTTP/1.1 \(response.status) OK\r\nContent-Length: \(response.body.utf8.count)\r\nConnection: close\r\n\r\n\(response.body)"
+      var headerBlock = ""
+      for header in response.headers.data {
+        headerBlock += "\(header.name): \(header.value)\r\n"
+      }
+      let payload = "HTTP/1.1 \(response.status) OK\r\nContent-Length: \(response.body.utf8.count)\r\n\(headerBlock)Connection: close\r\n\r\n\(response.body)"
       let bytes = Array(payload.utf8)
       _ = bytes.withUnsafeBytes { raw in
         write(client, raw.baseAddress, bytes.count)

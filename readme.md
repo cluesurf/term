@@ -140,6 +140,41 @@ The CLI ([call](./deck/call)) drives the whole pipeline and ships a dev
 server with hot module reload. The language server ([flow](./deck/flow))
 reuses the same analysis for diagnostics, hover, and go-to-definition.
 
+## Toward Optimal Programs
+
+The goal with Term is to iterate and refine code toward maximal
+performance while keeping it clearly readable on the other end. These
+have always been treated as a trade-off: you write it the way you want
+to read it, or you contort it into the shape the machine wants. Term is
+built on the premise that they are two representations of one meaning,
+and that the translation between them is the compiler's job, not the
+author's.
+
+With AI in the loop, that translation becomes an almost automated
+process. You write the program as you want to read it. An agent then
+iterates on the lowering: profiling the emitted Rust, TypeScript,
+Kotlin, or Swift, trying alternative specializations, measuring, and
+keeping what wins. Because the type system fixes the meaning precisely,
+every rewrite can be checked against the source for equivalence, so the
+loop can run unattended without drifting from what you wrote. The proof
+kernel makes this stronger than testing: a transformation is not just
+plausible, it is verified.
+
+Compilers already do this within a fixed budget of built-in passes. The
+difference is that the search no longer has to stop where the pass
+list ends. Optimization becomes an open-ended refinement process that
+accumulates: each program converges toward the best known lowering for
+its targets, and improvements found for one program feed back into the
+shared patterns used by all of them. The readable source stays the
+single artifact you maintain. Everything below it is regenerated,
+re-verified, and only ever gets faster.
+
+The end state is that the performance ceiling of a Term program is the
+performance ceiling of the hardware, not of the author's willingness to
+write unreadable code. You describe the program once, clearly, and the
+toolchain carries it the rest of the way to essentially optimal
+machine behavior on every platform it touches.
+
 ## Installation
 
 ```
