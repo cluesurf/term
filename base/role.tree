@@ -2,8 +2,8 @@ load @term/code
   find code
   find book
 
-role book, take ~/book/**/*.tree, miss ~/book/**/{{view}}/**/*.tree
+role book, bind ~/book/**/*.tree, miss ~/book/**/{{view}}/**/*.tree
 
 role code
-  take ~/code/**/*.tree
-  take ~/book/**/{{view}}/**/*.tree
+  bind ~/code/**/*.tree
+  bind ~/book/**/{{view}}/**/*.tree

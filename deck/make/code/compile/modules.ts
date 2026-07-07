@@ -214,6 +214,7 @@ function definedNames(
 ): { values: Map<string, string>; types: Map<string, string> } {
   const values = new Map<string, string>()
   const types = new Map<string, string>()
+  console.error(`[DBG-CALL] definedNames program.length=${program.length}`)
 
   for (const statement of program) {
     const file = origin?.get(statement) ?? ENTRY
@@ -225,6 +226,19 @@ function definedNames(
       statement.form === 'mask'
     ) {
       types.set(statement.name, file)
+    }
+
+    // [DBG] trace registration of the render/dom helpers of interest
+    if (
+      'name' in statement &&
+      /attribute|element|listen|dynamic|append/i.test(
+        (statement as { name: string }).name ?? '',
+      )
+    ) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[DBG-DEF] name=${(statement as { name: string }).name} form=${statement.form} file=${file}`,
+      )
     }
   }
 

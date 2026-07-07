@@ -228,15 +228,43 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'seek',
-    'Check if packages are installed correctly (--audit for security advisories)',
+    'Check if packages are installed correctly (--audit for the security scan)',
     yargs =>
-      yargs.option('audit', {
-        type: 'boolean',
-        description:
-          'Report known security vulnerabilities in dependencies',
-      }),
+      yargs
+        .option('audit', {
+          type: 'boolean',
+          description:
+            'Security scan: audit dependencies against the advisory database',
+        })
+        .option('code', {
+          type: 'boolean',
+          description:
+            'Also run the static code scan (dangerous native imports, taint) over the project',
+        })
+        .option('sarif', {
+          type: 'string',
+          description:
+            'Write a SARIF 2.1.0 report to this path (for GitHub code scanning)',
+        })
+        .option('format', {
+          type: 'string',
+          choices: ['human', 'json', 'sarif'],
+          description: 'Console output format (default human)',
+        })
+        .option('fix', {
+          type: 'boolean',
+          description:
+            'Rewrite deck.tree to the safe dependency versions',
+        }),
     async argv => {
-      await callSeek({ root, audit: argv.audit })
+      await callSeek({
+        root,
+        audit: argv.audit,
+        code: argv.code,
+        sarif: argv.sarif,
+        format: argv.format as 'human' | 'json' | 'sarif' | undefined,
+        fix: argv.fix,
+      })
     },
   )
   .command(

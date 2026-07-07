@@ -21,6 +21,7 @@ load ../dom/native/dom
 load @term/base/code/list
   find list
   find push
+  find get
 
 load ./reactive
   find make-effect

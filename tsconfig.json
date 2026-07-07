@@ -23,6 +23,7 @@
       "@/*": ["./*"],
       "@cluesurf/make/*": ["./deck/make/*"],
       "@cluesurf/call/*": ["./deck/call/*"],
+      "@cluesurf/scan/*": ["./deck/scan/*"],
       "@cluesurf/test/*": ["./deck/test/*"],
       "@cluesurf/flow/*": ["./deck/flow/*"],
       "@cluesurf/deck.tree": ["./deck/deck/code/index"]
@@ -31,6 +32,7 @@
   "include": [
     "deck/make/code/**/*.ts",
     "deck/call/code/**/*.ts",
+    "deck/scan/code/**/*.ts",
     "deck/flow/code/**/*.ts"
   ],
   "exclude": ["node_modules", "host", "test", "deck/**/host"]

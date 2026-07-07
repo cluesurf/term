@@ -5,6 +5,9 @@
 
 load @term/base/code/list
   find list
+  find push
+  find filter
+  find find
 
 load @term/base/code/maybe
   find maybe

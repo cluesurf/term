@@ -89,24 +89,26 @@ async function installResolved(input: {
     config: input.config,
   })
 
-  // verify integrity
+  // verify integrity. The registry declares the digest algorithm in
+  // the integrity prefix (`sha256-…` or `sha512-…`), so verify with
+  // THAT algorithm rather than assuming sha512 (the term.surf registry
+  // stores sha256). Accept hex or base64 encoding (npm uses base64,
+  // this registry uses hex).
   if (resolved.hash) {
-    const expected = resolved.hash.replace(/^sha512-/, '')
-    const actual = await hashBuffer({ data: tarball })
-    // npm uses base64-encoded sha512, we use hex
-    // try hex comparison first, then base64
-    const actualBase64 =
-      tarball.length > 0
-        ? (await import('crypto'))
-            .createHash('sha512')
-            .update(tarball)
-            .digest('base64')
-        : ''
+    const parsed = /^(sha256|sha512)-(.+)$/.exec(resolved.hash)
+    const algo = parsed ? parsed[1]! : 'sha512'
+    const expected = parsed ? parsed[2]! : resolved.hash
+    const crypto = await import('crypto')
+    const actualHex = crypto.createHash(algo).update(tarball).digest('hex')
+    const actualBase64 = crypto
+      .createHash(algo)
+      .update(tarball)
+      .digest('base64')
 
-    if (actual !== expected && actualBase64 !== expected) {
+    if (actualHex !== expected && actualBase64 !== expected) {
       throw new Error(
         `Integrity check failed for ${resolved.name}@${showMark(resolved.mark)}. ` +
-          `Expected ${expected}, got ${actual}`,
+          `Expected ${resolved.hash}, got ${algo}-${actualHex}`,
       )
     }
   }

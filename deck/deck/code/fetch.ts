@@ -46,7 +46,9 @@ export async function fetchPackageMeta(input: {
 
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch ${input.name}: ${response.status} ${response.statusText}`,
+      `Failed to fetch ${input.name}: ` +
+        `${response.status} ${response.statusText}\n  GET ${url}` +
+        (await readErrorBody(response)),
     )
   }
 
@@ -71,13 +73,27 @@ export async function fetchTarball(input: {
 
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch tarball: ${response.status} ${response.statusText}`,
+      `Failed to fetch tarball: ` +
+        `${response.status} ${response.statusText}\n  GET ${input.url}` +
+        (await readErrorBody(response)),
     )
   }
 
   const arrayBuffer = await response.arrayBuffer()
 
   return Buffer.from(arrayBuffer)
+}
+
+// Read a failed response's body (truncated) so network errors carry the
+// server's explanation, not just the status line. Never throws.
+async function readErrorBody(response: Response): Promise<string> {
+  try {
+    const body = await response.text()
+
+    return body ? `\n  response: ${body.slice(0, 1000)}` : ''
+  } catch {
+    return ''
+  }
 }
 
 export function getVersionList(input: {

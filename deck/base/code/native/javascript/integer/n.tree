@@ -7,7 +7,7 @@ load @term/base/code/shared/result
 load @term/base/code/javascript/integer/8
   find i8
 
-load @term/native/code/javascript/native
+load @term/base/code/native/javascript/native
   find native-number
   find add
   find subtract

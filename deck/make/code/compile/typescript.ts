@@ -1020,6 +1020,18 @@ export function emitTypeScript(
     }
   })
 
+  // [DBG]
+  const DBG_RE = /^(attribute|set-attribute|element|create-element|event|listen|dynamic|append)$/
+  program.forEach(node => {
+    if ('name' in node && DBG_RE.test((node as { name: string }).name)) {
+      const n = node as { name: string }
+      // eslint-disable-next-line no-console
+      console.error(
+        `[DBG-TS] ${node.form}:${n.name} kept=${node.form !== 'native' && lastIndex.get(`${node.form}:${n.name}`) === emittable.indexOf(node as Statement)}`,
+      )
+    }
+  })
+
   const lines = emittable
     .filter(
       (node, i) =>

@@ -256,8 +256,24 @@ export async function publishDeck(input: {
   })
 
   if (!response.ok) {
+    // Surface the server's error body (not just the status line) so a
+    // failed publish is debuggable. The registry returns a JSON error
+    // payload; include it verbatim along with the target URL.
+    let detail = ''
+
+    try {
+      const body = await response.text()
+
+      if (body) {
+        detail = `\n  response: ${body.slice(0, 1000)}`
+      }
+    } catch {
+      // body already consumed or unreadable
+    }
+
     throw new Error(
-      `Publish failed: ${response.status} ${response.statusText}`,
+      `Publish failed for ${fullName}@${markStr}: ` +
+        `${response.status} ${response.statusText}\n  PUT ${url}${detail}`,
     )
   }
 

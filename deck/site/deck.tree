@@ -1,3 +1,5 @@
 
 deck @term/site
-  mark <0.0.2>
+  mark <0.0.4>
+  link @term/base, mark <0.0.x>
+  link @term/bind, mark <0.0.x>

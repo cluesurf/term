@@ -56,6 +56,24 @@ function stashMeta(name: string, content: string): void {
   }
 }
 
+// The lowered route dispatcher calls `setTitle` / `setMeta` / `setProxy` at the
+// top level (from a route's `seed title` / `seed description` / proxy
+// directives). On the browser these resolve to the dom's own tasks; on the
+// server the node dom's task emissions are not linked into the boot bundle, so
+// provide them here as top-level helpers that drain into the SSR <head> via the
+// stash. The route references them, so the bundler retains them.
+function setTitle(title: string): void {
+  stashTitle(title)
+}
+
+function setMeta(name: string, content: string): void {
+  stashMeta(name, content)
+}
+
+function setProxy(url: string): void {
+  stashProxy(url)
+}
+
 const VOID = new Set([
   'area',
   'base',
