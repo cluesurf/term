@@ -113,7 +113,13 @@ export type StoreConfig = {
 }
 
 export type FetchConfig = {
+  // the fallback registry used for any package whose scope has no
+  // explicit mapping in `scopeRegistries` (defaults to npmjs.org)
   registry: string
+  // per-scope registry overrides, npm's `@scope:registry` mechanism.
+  // keyed by scope including the leading `@` (e.g. `@term`). the term
+  // registry (`@term` -> https://base.term.surf) is wired by default.
+  scopeRegistries?: Record<string, string>
   concurrency: number
   offline: boolean
 }

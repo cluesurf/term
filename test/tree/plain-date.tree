@@ -1,6 +1,6 @@
 note <Tests for plain-date: proleptic-Gregorian day-number conversion, leap years, month lengths, day-of-week, and day arithmetic across boundaries.>
 
-load @cluesurf/base/code/plain-date
+load @term/base/code/plain-date
   find plain-date
   find from-parts
   find from-day-number

@@ -1,11 +1,11 @@
 
-load @cluesurf/mill/code/base/hold/mine
+load @term/mill/code/base/hold/mine
   find db-hold
 
-load @cluesurf/mill/code/base/has/mine
+load @term/mill/code/base/has/mine
   find db-has
 
-load @cluesurf/mill/code/code/meet/mine
+load @term/mill/code/code/meet/mine
   find meet
 
 mine db-miss

@@ -4,7 +4,7 @@
 # seed expression (`text <...>`), so any CSS value passes through. Shared sub-grammar (seed) comes from the code
 # building-block mill by name. Mirrors the zone DSL grammar (../zone/mine).
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
 mine look

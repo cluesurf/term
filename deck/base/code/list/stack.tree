@@ -1,10 +1,10 @@
 
 # Stack (LIFO), backed by the native array.
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
 
 form stack

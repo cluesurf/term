@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/native/shared/test/assert
+load @term/base/code/native/shared/test/assert
   find assert
   find deny
   find mark-skip

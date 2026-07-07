@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/code/bind/mine
+load @term/mill/code/code/bind/mine
   find bind
 
 mine dock-mill

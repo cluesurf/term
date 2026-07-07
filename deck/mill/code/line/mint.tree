@@ -1,11 +1,11 @@
 
-load @cluesurf/mill/code/code/call/mint
+load @term/mill/code/code/call/mint
   find call
 
-load @cluesurf/mill/code/code/fuse/mint
+load @term/mill/code/code/fuse/mint
   find fuse
 
-load @cluesurf/mill/code/code/save/mint
+load @term/mill/code/code/save/mint
   find save
 
 mint dock

@@ -1,10 +1,10 @@
 
-load @cluesurf/base/code/native/shared/test/mock
+load @term/base/code/native/shared/test/mock
   find make as shared-make
   find read as shared-read
   find reset as shared-reset
 
-load @cluesurf/base/code/test/mock
+load @term/base/code/test/mock
   find mock
 
 task make

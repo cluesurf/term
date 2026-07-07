@@ -1,25 +1,25 @@
 
-load @cluesurf/base/code/deck
+load @term/base/code/deck
   find deck-deck
 
-load @cluesurf/mill/code/deck/deck/link/mint
+load @term/mill/code/deck/deck/link/mint
   find deck-link
   find deck-term
   find deck-deck
 
-load @cluesurf/mill/code/deck/deck/mind/mint
+load @term/mill/code/deck/deck/mind/mint
   find deck-mind
 
-load @cluesurf/mill/code/deck/deck/host/mint
+load @term/mill/code/deck/deck/host/mint
   find deck-host
 
-load @cluesurf/mill/code/deck/deck/case/mint
+load @term/mill/code/deck/deck/case/mint
   find deck-case
 
-load @cluesurf/mill/code/deck/role/mint
+load @term/mill/code/deck/role/mint
   find role
 
-load @cluesurf/mill/code/deck/load/mint
+load @term/mill/code/deck/load/mint
   find load
 
 mint deck

@@ -3,4 +3,4 @@
 # abstract transport, which the build rewrites to the target env's impl (node hono, rust axum, ...) via the native-env
 # mechanism. The matching stays in the uniform router (`http/http`); only this transport differs per backend.
 
-bear @cluesurf/site/code/http/native/serve
+bear @term/site/code/http/native/serve

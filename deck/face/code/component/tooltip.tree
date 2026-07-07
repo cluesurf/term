@@ -3,9 +3,9 @@
 # (open / closed) for fade theming. Parts: tooltip (root), tooltip-trigger, tooltip-content. role=tooltip for a11y.
 # Positioning + open-delay are behavioral add-ons; the parts are the themeable structure.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 

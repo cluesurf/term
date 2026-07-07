@@ -5,7 +5,7 @@
 # Postgres -> JSON -> back. Userland imports only clean framework paths and never names a driver.
 #
 # Layout (application folder convention):
-#   back/post   repository: the `post` model + create/list/get over @cluesurf/site/code/base/db
+#   back/post   repository: the `post` model + create/list/get over @term/site/code/base/db
 #   hook/blog   API: routes (`GET /posts`, `GET /posts/:id`) + the `boot` entry (connect, seed-if-empty, serve)
 #   face/blog   frontend: the DOM app
 #

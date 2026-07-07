@@ -1,29 +1,29 @@
 
-load @cluesurf/mill/code/code/tag/mine
+load @term/mill/code/code/tag/mine
   find tag
 
-load @cluesurf/mill/code/code/bind/mine
+load @term/mill/code/code/bind/mine
   find bind
 
-load @cluesurf/mill/code/code/need/mine
+load @term/mill/code/code/need/mine
   find need
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
-load @cluesurf/mill/code/code/take/mine
+load @term/mill/code/code/take/mine
   find take
 
-load @cluesurf/mill/code/base/hold/mine
+load @term/mill/code/base/hold/mine
   find db-hold
 
-load @cluesurf/mill/code/base/send/mine
+load @term/mill/code/base/send/mine
   find db-send
 
-load @cluesurf/mill/code/base/bond/mine
+load @term/mill/code/base/bond/mine
   find db-bond
 
-load @cluesurf/mill/code/base/fold/mine
+load @term/mill/code/base/fold/mine
   find db-fold
 
 mine db-make

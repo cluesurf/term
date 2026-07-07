@@ -1,35 +1,35 @@
 
-load @cluesurf/mill/code/code/head/mine
+load @term/mill/code/code/head/mine
   find head
 
-load @cluesurf/mill/code/code/like/mine
+load @term/mill/code/code/like/mine
   find like
 
-load @cluesurf/mill/code/code/form/link/mine
+load @term/mill/code/code/form/link/mine
   find link
 
-load @cluesurf/mill/code/code/form/case/mine
+load @term/mill/code/code/form/case/mine
   find case
 
-load @cluesurf/mill/code/code/task/mine
+load @term/mill/code/code/task/mine
   find task
 
-load @cluesurf/mill/code/code/hold/mine
+load @term/mill/code/code/hold/mine
   find hold
 
-load @cluesurf/mill/code/code/hide/mine
+load @term/mill/code/code/hide/mine
   find hide
 
-load @cluesurf/mill/code/code/fold/mine
+load @term/mill/code/code/fold/mine
   find fold
 
-load @cluesurf/mill/code/code/note/mine
+load @term/mill/code/code/note/mine
   find note
 
-load @cluesurf/mill/code/code/tag/mine
+load @term/mill/code/code/tag/mine
   find tag
 
-load @cluesurf/mill/code/code/call/mine
+load @term/mill/code/code/call/mine
   find call
 
 mine form

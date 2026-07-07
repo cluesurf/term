@@ -1,6 +1,6 @@
 note <Text message-passing channel: a value sent is buffered and returned by the next receive, so send-then-receive in one task works.>
 
-load @cluesurf/base/code/channel
+load @term/base/code/channel
   find make-channel
   find send
   find receive

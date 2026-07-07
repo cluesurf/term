@@ -1,15 +1,15 @@
 # Text utilities built on the string primitives: `join` concatenates a list of strings with a separator, `count-occurrences` counts non-overlapping matches of a substring. Pure (over `concat` / `index-of`), so they lower to every backend.
 
-load @cluesurf/base/code/text/string
+load @term/base/code/text/string
   find concat
 
-load @cluesurf/base/code/text
+load @term/base/code/text
   find index-of
   find char-at
   find substring
   find contains
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
 # join the items into one string, placing the separator between each

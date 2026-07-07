@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/slot
+load @term/base/code/slot
   find code-slot
 
 mint slot, like code-slot

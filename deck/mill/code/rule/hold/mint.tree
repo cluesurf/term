@@ -1,8 +1,8 @@
 
-load @cluesurf/mill/code/code/call/mint
+load @term/mill/code/code/call/mint
   find call
 
-load @cluesurf/mill/code/code/like/mint
+load @term/mill/code/code/like/mint
   find like
 
 mint hold, like hold

@@ -1,4 +1,4 @@
 
-deck @cluesurf/call
+deck @term/call
   bear ./code
-  mark <0.0.1>
+  mark <0.0.2>

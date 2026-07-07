@@ -9,20 +9,20 @@ dock load
   load <global:assets>, name files
   mark native
 
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find create-element
   find serialize
   find page-shell
   find proxy-target
-load @cluesurf/site/code/http/http
+load @term/site/code/http/http
   find request
   find response
   find route
   find route-server
-load @cluesurf/site/code/http/serve
+load @term/site/code/http/serve
   find serve
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find push
 

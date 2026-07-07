@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/seed
+load @term/base/code/seed
   find seed-def
 
 mint seed

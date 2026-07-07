@@ -6,7 +6,7 @@
 # the row block translated by `offset`; scroll position comes from a scroll listener, size from observe-size. Pure
 # math — no DOM, testable in isolation.
 
-load @cluesurf/base/code/math
+load @term/base/code/math
   find round-down
   find round-up
   find minimum

@@ -1,6 +1,6 @@
 note <Tests for complex numbers: addition, multiplication, conjugate, magnitude. Parts are read directly as value/real and value/imaginary.>
 
-load @cluesurf/base/code/complex
+load @term/base/code/complex
   find complex
   find make-complex
   find plus

@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/tune
+load @term/base/code/tune
   find tune-def
   find tune-child
   find tune-node

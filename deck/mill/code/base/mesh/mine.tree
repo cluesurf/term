@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/base/find/mine
+load @term/mill/code/base/find/mine
   find db-find
 
 mine db-mesh

@@ -3,9 +3,9 @@
 # can size the indicator from CSS ([data-slot=progress-indicator] width keyed off the value, or a CSS var). Parts:
 # progress (the bar), progress-indicator (the fill).
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 

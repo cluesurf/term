@@ -3,16 +3,16 @@
 # nested `zone` elements, literal `text`, dynamic `read`, a `slot` outlet, `fork` conditionals, `walk` loops, and
 # `save` computed locals. Shared sub-grammars (take, like, seed, bind) come from the code building-block mills.
 
-load @cluesurf/mill/code/code/take/mine
+load @term/mill/code/code/take/mine
   find take
 
-load @cluesurf/mill/code/code/like/mine
+load @term/mill/code/code/like/mine
   find like
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
-load @cluesurf/mill/code/code/bind/mine
+load @term/mill/code/code/bind/mine
   find bind
 
 mine zone

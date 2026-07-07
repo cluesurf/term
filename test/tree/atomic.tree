@@ -1,6 +1,6 @@
 note <Atomic integer cell: make, increase (atomic add returning the new value), load, store.>
 
-load @cluesurf/base/code/atomic
+load @term/base/code/atomic
   find make-atomic
   find load
   find store

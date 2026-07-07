@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/base/kink
+load @term/base/code/base/kink
   find kink
 
 task test

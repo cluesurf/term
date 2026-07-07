@@ -47,6 +47,12 @@ export function instantiate(
   }
 
   const subst = (type: Type): Type => {
+    // a declared generic freshens by its raw id, before consulting the substitution: even if body checking solved
+    // the generic against some metavariable, each call site must still get its own fresh copy
+    if (type.kind === 'variable' && map.has(type.id)) {
+      return map.get(type.id)!
+    }
+
     const r = sub.resolve(type)
 
     if (r.kind === 'variable') {

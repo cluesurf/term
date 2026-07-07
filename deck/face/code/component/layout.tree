@@ -1,5 +1,5 @@
 
-# Layout — the Seed port of @cluesurf/face's three-section shell (Layout + the use-viewport / use-viewport-layout
+# Layout — the Seed port of @term/face's three-section shell (Layout + the use-viewport / use-viewport-layout
 # system). It creates the viewport signal, derives the responsive style table from it, and applies the inline-style
 # strings reactively to the container / grid / middle divs. The page fills the middle `slot`; clue.surf registers no
 # sidebars, so the left / right rails stay empty (their style strings still resolve, but no content mounts in them).
@@ -9,9 +9,9 @@
 # the effect to width / print), runs get-layout-3-section, and returns that region's string. On resize / print the
 # signal writes, the effects re-run, and the three divs restyle -- the faithful runtime of the React hook + Layout.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 load ../logic/viewport

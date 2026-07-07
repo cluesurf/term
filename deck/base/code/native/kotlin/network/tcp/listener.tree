@@ -3,7 +3,7 @@
 dock load
   load <global:tcp>, name tcp
 
-load @cluesurf/base/code/network/tcp
+load @term/base/code/network/tcp
   find listener
   find connection
 

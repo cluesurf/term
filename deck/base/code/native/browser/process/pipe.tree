@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/process
+load @term/base/code/process
   find child
 
 task connect

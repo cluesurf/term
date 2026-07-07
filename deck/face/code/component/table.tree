@@ -2,9 +2,9 @@
 # Table — headless. The root is the native <table> (use `zone table` directly with a class); these are the part
 # components (distinct names so they don't self-collide). Parts: table-header (thead), table-body (tbody), table-footer
 # (tfoot), table-row (tr), table-head (th), table-cell (td), table-caption (caption).
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 

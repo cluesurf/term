@@ -1,10 +1,10 @@
 
-# The blog example: a self-contained app package that consumes the @cluesurf/site framework.
+# The blog example: a self-contained app package that consumes the @term/site framework.
 
-deck @cluesurf/blog
+deck @term/blog
   mark <0.0.1>
 
-load @cluesurf/site
+load @term/site
   mark <0.0.x>
 
 # the entry `seed boot` runs (its `boot` task): the Postgres-backed HTTP API

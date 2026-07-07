@@ -1,7 +1,7 @@
 
 # Singly linked list: a recursive immutable list (empty | node value next).
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
 
 form linked-list

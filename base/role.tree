@@ -1,4 +1,4 @@
-load @cluesurf/code
+load @term/code
   find code
   find book
 

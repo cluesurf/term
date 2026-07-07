@@ -1,11 +1,11 @@
 
-load @cluesurf/mill/code/base/hold/mine
+load @term/mill/code/base/hold/mine
   find db-hold
 
-load @cluesurf/mill/code/base/send/mine
+load @term/mill/code/base/send/mine
   find db-send
 
-load @cluesurf/mill/code/code/tag/mine
+load @term/mill/code/code/tag/mine
   find tag
 
 mine db-toss

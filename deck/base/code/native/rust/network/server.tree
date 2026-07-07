@@ -5,13 +5,13 @@
 dock load
   load <global:server>, name runtime
 
-load @cluesurf/base/code/network/server/request
+load @term/base/code/network/server/request
   find request
 
-load @cluesurf/base/code/network/server/response
+load @term/base/code/network/server/response
   find response
 
-load @cluesurf/base/code/network/server
+load @term/base/code/network/server
   find server
 
 # run the server on (host, port), blocking for the life of the process (the entry point of a server binary)

@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/base/hold/mine
+load @term/mill/code/base/hold/mine
   find db-hold
 
 mine db-bond

@@ -2,7 +2,7 @@
 # Browser host: mount the matched page on the document body, then re-render on navigation (back/forward + intercepted
 # same-origin link clicks). The client side of the env-abstracted `host`. `port` is ignored in the browser.
 
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find page-body
   find page-path

@@ -1,8 +1,8 @@
 
-load @cluesurf/mill/code/code/need/mine
+load @term/mill/code/code/need/mine
   find need
 
-load @cluesurf/mill/code/code/fall/mine
+load @term/mill/code/code/fall/mine
   find fall
 
 mine head

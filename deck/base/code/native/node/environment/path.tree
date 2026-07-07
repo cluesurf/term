@@ -1,10 +1,10 @@
 
-load @cluesurf/bind/code/node/os
+load @term/bind/code/node/os
   find platform
   find homedir
   find tmpdir
 
-load @cluesurf/bind/code/node/process
+load @term/bind/code/node/process
   find process
 
 task get

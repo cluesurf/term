@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/list
+load @term/mill/code/book/list
   find book-list
   find book-list-mesh
   find book-list-mesh-line

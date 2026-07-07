@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/case
+load @term/base/code/case
   find head
   find base
   find list

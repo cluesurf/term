@@ -1,14 +1,14 @@
 
-load @cluesurf/mill/code/code/line/mine
+load @term/mill/code/code/line/mine
   find line
 
-load @cluesurf/mill/code/code/base/mine
+load @term/mill/code/code/base/mine
   find base
 
-load @cluesurf/mill/code/code/tool/flow/mine
+load @term/mill/code/code/tool/flow/mine
   find flow
 
-load @cluesurf/mill/code/code/task/mine
+load @term/mill/code/code/task/mine
   find task
 
 mine hook

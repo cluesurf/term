@@ -1,11 +1,11 @@
 
-load @cluesurf/mill/code/code/like/mine
+load @term/mill/code/code/like/mine
   find like
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
-load @cluesurf/mill/code/code/tag/mine
+load @term/mill/code/code/tag/mine
   find tag
 
 mine link

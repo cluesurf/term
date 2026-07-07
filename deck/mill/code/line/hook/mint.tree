@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/code/call/mint
+load @term/mill/code/code/call/mint
   find call
 
 mint dock-hook

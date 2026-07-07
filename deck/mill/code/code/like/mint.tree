@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/like
+load @term/base/code/like
   find like
   find or
   find and

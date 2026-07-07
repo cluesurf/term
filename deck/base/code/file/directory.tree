@@ -1,7 +1,7 @@
 
 # Directory operations: make, remove, and existence. The clean uniform interface, the per-env native implementation is selected at build time and hidden. make is recursive, remove is recursive, both best effort so the API stays total.
 
-load @cluesurf/base/code/native/file/directory
+load @term/base/code/native/file/directory
   find directory-make
   find directory-remove
   find directory-exists

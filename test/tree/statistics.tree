@@ -1,13 +1,13 @@
 note <Tests for statistics over a list of numbers. A list is built by pushing elements (no literal syntax).>
 
-load @cluesurf/base/code/statistics
+load @term/base/code/statistics
   find total
   find mean
   find least
   find greatest
   find span
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
 test <total sums the list>

@@ -1,6 +1,6 @@
 # Cryptographic digests (one-way hashes). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/digest`). Input and output stay in the currency types.
 
-load @cluesurf/base/code/native/cryptography/digest
+load @term/base/code/native/cryptography/digest
   find digest-sha256
   find digest-sha512
   find digest-md5

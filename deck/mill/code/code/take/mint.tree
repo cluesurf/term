@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/take
+load @term/base/code/take
   find take
   find take-value
 

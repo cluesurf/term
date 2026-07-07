@@ -1,6 +1,6 @@
 # Keyed-hash message authentication (HMAC). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/hmac`). Input and output stay in the currency types.
 
-load @cluesurf/base/code/native/cryptography/hmac
+load @term/base/code/native/cryptography/hmac
   find hmac-sha256
   find hmac-sha512
 

@@ -8,7 +8,7 @@
 # caller registers it with on-cleanup so tracking stops and listeners detach when the overlay closes. `place-with`
 # exposes the full knobs (offset distance, flip, shift) for callers that need them.
 
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find anchor
 

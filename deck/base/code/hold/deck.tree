@@ -1,5 +1,5 @@
 
-load @cluesurf/base
+load @term/base
   find deck
 
 form deck, wear deck

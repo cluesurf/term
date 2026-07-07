@@ -5,13 +5,13 @@ load ./state
 load ./error
   find error
 
-load @cluesurf/base/code/result
+load @term/base/code/result
   find result
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
 form parser

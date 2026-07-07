@@ -1,5 +1,5 @@
 
-# The @cluesurf/blog app index. A small full-stack example on @cluesurf/site: a Postgres-backed posts API plus a DOM
+# The @term/blog app index. A small full-stack example on @term/site: a Postgres-backed posts API plus a DOM
 # frontend, laid out in the application folder convention.
 #
 #   back/post   the repository (post model + queries over the abstract db)

@@ -1,15 +1,15 @@
 
 # Posts: the data model plus a repository over the platform-agnostic database API. This is userland — it imports only
-# the abstract `@cluesurf/site/code/base/db` (query / run / field), never the Postgres driver or any native module.
+# the abstract `@term/site/code/base/db` (query / run / field), never the Postgres driver or any native module.
 
-load @cluesurf/site/code/base/db
+load @term/site/code/base/db
   find connect
   find query
   find run
   find field
   find row
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find push
 

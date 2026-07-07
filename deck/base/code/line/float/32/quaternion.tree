@@ -1,6 +1,6 @@
 # Quaternion: a rotation as (x, y, z, w), 32-bit floats. Pure float math, with the algorithms taken from gl-matrix (the canonical reference). `times` is the Hamilton product (named `times` because `multiply` is the number primitive), `conjugate` negates the vector part, `length` / `normalize` give the unit quaternion, `from-axis-angle` builds a rotation, `slerp` does spherical linear interpolation.
 
-load @cluesurf/base/code/float
+load @term/base/code/float
   find square-root
   find sine
   find cosine

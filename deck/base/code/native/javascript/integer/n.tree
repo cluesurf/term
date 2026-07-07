@@ -1,13 +1,13 @@
 
-load @cluesurf/base/code/shared/result
+load @term/base/code/shared/result
   find free-result
   find is-below-or-return-error
   find is-minimally-or-return-error
 
-load @cluesurf/base/code/javascript/integer/8
+load @term/base/code/javascript/integer/8
   find i8
 
-load @cluesurf/native/code/javascript/native
+load @term/native/code/javascript/native
   find native-number
   find add
   find subtract

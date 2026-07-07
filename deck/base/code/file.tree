@@ -1,7 +1,7 @@
 
 # File system operations. The platform implementation is selected at build time and hidden behind this API.
 
-load @cluesurf/base/code/native/file
+load @term/base/code/native/file
   find read-file
   find write-file
   find read-file-bytes

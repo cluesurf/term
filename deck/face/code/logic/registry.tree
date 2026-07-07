@@ -4,12 +4,12 @@
 # registry holds them all; the palette enumerates them, shortcuts resolve through them, undo records them. Pure logic
 # (a signal over a list of actions), the Zag-model behavior core. See note/seed/face-interaction-system.md.
 
-load @cluesurf/site/code/zone/reactive
+load @term/site/code/zone/reactive
   find signal
   find make-signal
   find read-signal
   find write-signal
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
 # a named verb. `scope` is one of cell | row | list | section | surface | global. `run` is the impl.

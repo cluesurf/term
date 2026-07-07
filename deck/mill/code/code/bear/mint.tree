@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/bear
+load @term/base/code/bear
   find bear
 
 mint bear

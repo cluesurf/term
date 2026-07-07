@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/tune
+load @term/base/code/tune
   find tune
 
 mint tune

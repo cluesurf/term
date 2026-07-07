@@ -4,7 +4,7 @@ dock load
   load <std::io::Read>, name read-trait
   load <std::io::Write>, name write-trait
 
-load @cluesurf/base/code/process
+load @term/base/code/process
   find child
 
 task wait

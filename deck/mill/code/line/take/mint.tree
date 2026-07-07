@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/code/seed/mint
+load @term/mill/code/code/seed/mint
   find seed
 
 mint dock-take

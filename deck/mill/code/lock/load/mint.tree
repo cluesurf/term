@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/lock/load
+load @term/mill/code/lock/load
   find lock-load
 
 mint load, like lock-load

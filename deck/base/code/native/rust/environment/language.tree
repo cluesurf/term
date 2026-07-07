@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/environment/language
+load @term/base/code/environment/language
   find locale
 
 task read

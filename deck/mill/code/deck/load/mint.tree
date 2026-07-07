@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/import
+load @term/base/code/import
   find import
   find import-reference
 

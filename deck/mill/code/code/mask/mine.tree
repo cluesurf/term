@@ -1,7 +1,7 @@
-load @cluesurf/mill/code/code/head/mine
+load @term/mill/code/code/head/mine
   find head
 
-load @cluesurf/mill/code/code/task/mine
+load @term/mill/code/code/task/mine
   find task
 
 mine mask

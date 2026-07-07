@@ -1,8 +1,8 @@
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
 
-load @cluesurf/base/code/side
+load @term/base/code/side
   find side
 
 form list

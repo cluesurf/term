@@ -130,8 +130,9 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // (`24`, `24-3`) is unaffected.
   [TokenKind.Integer]: /-?\d+(?=\b)(?!-[a-zA-Z])/y,
   // a chunk runs over literal text, including a `{` that does not open an interpolation (not followed by an
-  // identifier) and any `}`; it stops at `>` (close), `\` (escape), or an interpolation-opening `{`.
-  [TokenKind.Chunk]: /(?:\\[<>{}]|\{+(?![a-zA-Z_])|[^>{\\])+/y,
+  // identifier) and any `}`; it stops at `>` (close), `\` (escape), or an interpolation-opening `{`. Escapes cover
+  // the delimiters (`\<` `\>` `\{` `\}`) and the standard characters (`\n` `\r` `\t` `\\`); the mill unescapes.
+  [TokenKind.Chunk]: /(?:\\[<>{}nrt\\]|\{+(?![a-zA-Z_])|[^>{\\])+/y,
 }
 
 export function tokenize(source: {

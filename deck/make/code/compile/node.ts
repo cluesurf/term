@@ -253,6 +253,10 @@ export type Statement =
       // Lets dead-code detection flag an unreferenced private function as truly dead (a public one might be called
       // from outside this compilation).
       private?: boolean
+      // separate compilation: a signature-only declaration standing in for a function another unit defines. Its body
+      // is empty and is neither checked nor emitted; dependents type-check against stubs instead of dependency
+      // bodies, so a body-only edit in a dependency never re-checks its dependents. See code/compile/stub.ts.
+      stub?: boolean
       method?: { form: string; name: string }
       span: Span
     }

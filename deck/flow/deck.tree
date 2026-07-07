@@ -1,5 +1,5 @@
 
-deck @cluesurf/flow
+deck @term/flow
   bear ./code
-  mark <0.0.1>
-  link @cluesurf/make, mark <0.0.x>
+  mark <0.0.2>
+  link @term/make, mark <0.0.x>

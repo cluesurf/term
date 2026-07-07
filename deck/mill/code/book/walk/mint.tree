@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/walk
+load @term/mill/code/book/walk
   find book-walk
 
 mint walk, like book-walk

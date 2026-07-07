@@ -4,22 +4,22 @@
 # child, so a lookup is O(path-depth) regardless of how many routes are registered. Params are resolved by index after
 # a match (clean backtracking). The transport (`serve`) delegates to native per env. See book/site/routes.md.
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find push
   find get
   find join
   find drop-first
 
-load @cluesurf/base/code/hash
+load @term/base/code/hash
   find hash
   find set
   find has
 
-load @cluesurf/base/code/text
+load @term/base/code/text
   find split
 
-load @cluesurf/base/code/text/string
+load @term/base/code/text/string
   find starts-with
   find replace
 

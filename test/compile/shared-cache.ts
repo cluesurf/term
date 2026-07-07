@@ -33,7 +33,7 @@ const resolve = (p: string): Source | undefined =>
   p === '@shared/lib' ? lib : undefined
 
 const entry = (n: number): string =>
-  `load @shared/lib\n  find lib-value\n\ntask run\n  like number\n  send back\n    call add\n      call lib-value\n      mark ${n}\n`
+  `load @shared/lib\n  find lib-value\n\ntask run\n  like number\n  send back\n    call add\n      call lib-value\n      code ${n}\n`
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-shared-'))
 const shared = path.join(root, 'shared-store')

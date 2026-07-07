@@ -6,7 +6,7 @@ load ./context
 load ./compare
   find deep-equal
 
-load @cluesurf/base/code/native/shared/test
+load @term/base/code/native/shared/test
   find make-failure
 
 task resolve

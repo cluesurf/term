@@ -1,8 +1,8 @@
 
-load @cluesurf/mill/code/code/bind/mine
+load @term/mill/code/code/bind/mine
   find bind
 
-load @cluesurf/mill/code/code/wait/mine
+load @term/mill/code/code/wait/mine
   find wait
 
 mine hold

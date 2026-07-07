@@ -3,24 +3,24 @@
 # node target the transport is hono (via @hono/node-server); the matching stays in the uniform `handle-request`. The test
 # starts this on a port and fetches it over real HTTP, proving hono-as-transport + trie-as-matcher end to end.
 
-load @cluesurf/site/code/http/http
+load @term/site/code/http/http
   find request
   find response
   find route
   find server
   find route-server
 
-load @cluesurf/site/code/http/serve
+load @term/site/code/http/serve
   find serve
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find push
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find unwrap-or
 
-load @cluesurf/base/code/hash
+load @term/base/code/hash
   find get
 
 task build-app

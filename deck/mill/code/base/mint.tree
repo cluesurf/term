@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/base
+load @term/base/code/base
   find base-move
   find base-move-next
   find base-move-back

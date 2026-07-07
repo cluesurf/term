@@ -4,12 +4,12 @@
 # Ported from mesh/deck/belt/code/tool/tone.ts (the encode half). Used for content-hashed asset names
 # (`/base/look-<tone>.css`, cutting-edge cache-busting) and opaque ids. A 16-hex-char input -> `4-4-4-4` (16 letters).
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find push
   find join
 
-load @cluesurf/base/code/text
+load @term/base/code/text
   find char-at
   find index-of
   find split

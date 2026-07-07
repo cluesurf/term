@@ -1,48 +1,48 @@
 
-load @cluesurf/mill/code/base/send/mine
+load @term/mill/code/base/send/mine
   find db-send
 
-load @cluesurf/mill/code/base/hold/mine
+load @term/mill/code/base/hold/mine
   find db-hold
 
-load @cluesurf/mill/code/base/bond/mine
+load @term/mill/code/base/bond/mine
   find db-bond
 
-load @cluesurf/mill/code/base/sort/mine
+load @term/mill/code/base/sort/mine
   find db-sort
 
-load @cluesurf/mill/code/base/fold/mine
+load @term/mill/code/base/fold/mine
   find db-fold
 
-load @cluesurf/mill/code/base/miss/mine
+load @term/mill/code/base/miss/mine
   find db-miss
 
-load @cluesurf/mill/code/base/lone/mine
+load @term/mill/code/base/lone/mine
   find db-lone
 
-load @cluesurf/mill/code/base/has/mine
+load @term/mill/code/base/has/mine
   find db-has
 
-load @cluesurf/mill/code/base/mesh/mine
+load @term/mill/code/base/mesh/mine
   find db-mesh
 
-load @cluesurf/mill/code/base/over/mine
+load @term/mill/code/base/over/mine
   find db-over
 
-load @cluesurf/mill/code/base/db-with/mine
+load @term/mill/code/base/db-with/mine
   find db-with
   find db-with-loop
 
-load @cluesurf/mill/code/code/take/mine
+load @term/mill/code/code/take/mine
   find take
 
-load @cluesurf/mill/code/code/meet/mine
+load @term/mill/code/code/meet/mine
   find meet
 
-load @cluesurf/mill/code/code/bind/mine
+load @term/mill/code/code/bind/mine
   find bind
 
-load @cluesurf/mill/code/code/tag/mine
+load @term/mill/code/code/tag/mine
   find tag
 
 mine db-find

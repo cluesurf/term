@@ -1,0 +1,449 @@
+# CSV (RFC 4180). Pure over the text primitives, so it lowers to every backend with no native shim: quoted fields
+# (delimiters and newlines inside quotes, doubled quotes as a literal quote), CRLF and LF records, and a custom
+# delimiter (tab gives TSV). `parse` yields the rows as a list of lists of text; `stringify` writes them back,
+# quoting a field only when it needs it.
+
+load @term/base/code/text
+  find char-at
+  find char-code-at
+  find contains
+
+load @term/base/code/text/string
+  find concat
+
+load @term/base/code/list
+  find list
+
+# parse comma-separated text into rows of fields
+task parse
+  take input, like text
+  like list
+  send back
+    call parse-with
+      read input
+      text <,>
+
+# parse with an explicit one-character delimiter (tab for TSV)
+task parse-with
+  take input, like text
+  take delimiter, like text
+  like list
+  save rows
+    make list
+  save row
+    make list
+  save field, text <>
+  save quoted, false
+  save pending, false
+  save index, code 0
+  walk test
+    hook test
+      call is-below
+        read index
+        read input/length
+    hook hold
+      save glyph
+        call char-at
+          read input
+          read index
+      save glyph-code
+        call char-code-at
+          read input
+          read index
+      fork test
+        hook test
+          read quoted
+        hook hold
+          # inside quotes: a doubled quote is a literal quote, a single quote closes, anything else is content
+          fork test
+            hook test
+              call is-equal
+                read glyph-code
+                code 34
+            hook hold
+              fork test
+                hook test
+                  call is-quote-at
+                    read input
+                    call add
+                      read index
+                      code 1
+                hook hold
+                  save field
+                    call concat
+                      read field
+                      text <">
+                  save index
+                    call add
+                      read index
+                      code 2
+                hook miss
+                  save quoted, false
+                  save index
+                    call add
+                      read index
+                      code 1
+            hook miss
+              save field
+                call concat
+                  read field
+                  read glyph
+              save index
+                call add
+                  read index
+                  code 1
+        hook miss
+          fork test
+            hook test
+              call is-equal
+                read glyph-code
+                code 34
+            hook hold
+              # an opening quote (RFC quotes whole fields; a quote mid-field is kept as content)
+              fork test
+                hook test
+                  call is-equal
+                    read field
+                    text <>
+                hook hold
+                  save quoted, true
+                  save pending, true
+                  save index
+                    call add
+                      read index
+                      code 1
+                hook miss
+                  save field
+                    call concat
+                      read field
+                      read glyph
+                  save index
+                    call add
+                      read index
+                      code 1
+            hook miss
+              fork test
+                hook test
+                  call is-equal
+                    read glyph
+                    read delimiter
+                hook hold
+                  call push
+                    read row
+                    read field
+                  save field, text <>
+                  save pending, true
+                  save index
+                    call add
+                      read index
+                      code 1
+                hook miss
+                  fork test
+                    hook test
+                      call is-newline
+                        read glyph-code
+                    hook hold
+                      call push
+                        read row
+                        read field
+                      call push
+                        read rows
+                        read row
+                      save row
+                        make list
+                      save field, text <>
+                      save pending, false
+                      # a CR followed by LF is one record end
+                      fork test
+                        hook test
+                          call is-crlf-at
+                            read input
+                            read index
+                        hook hold
+                          save index
+                            call add
+                              read index
+                              code 2
+                        hook miss
+                          save index
+                            call add
+                              read index
+                              code 1
+                    hook miss
+                      save field
+                        call concat
+                          read field
+                          read glyph
+                      save pending, true
+                      save index
+                        call add
+                          read index
+                          code 1
+  # the final record (no trailing newline): flush when it has any content
+  fork test
+    hook test
+      call last-row-live
+        read field
+        read row
+        read pending
+    hook hold
+      call push
+        read row
+        read field
+      call push
+        read rows
+        read row
+  send back
+    read rows
+
+# is the character at the index a quote? (false past the end)
+task is-quote-at
+  mark private
+  take input, like text
+  take index, like number
+  like boolean
+  fork test
+    hook test
+      call is-below
+        read index
+        read input/length
+    hook hold
+      send back
+        call is-equal
+          call char-code-at
+            read input
+            read index
+          code 34
+    hook miss
+      send back, false
+
+# LF or CR ends a record
+task is-newline
+  mark private
+  take glyph-code, like number
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read glyph-code
+        code 10
+    hook hold
+      send back, true
+    hook miss
+      send back
+        call is-equal
+          read glyph-code
+          code 13
+
+# a CR at the index followed by an LF (the two-character record end)
+task is-crlf-at
+  mark private
+  take input, like text
+  take index, like number
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        call char-code-at
+          read input
+          read index
+        code 13
+    hook hold
+      send back
+        call is-quoteless-lf-at
+          read input
+          call add
+            read index
+            code 1
+    hook miss
+      send back, false
+
+task is-quoteless-lf-at
+  mark private
+  take input, like text
+  take index, like number
+  like boolean
+  fork test
+    hook test
+      call is-below
+        read index
+        read input/length
+    hook hold
+      send back
+        call is-equal
+          call char-code-at
+            read input
+            read index
+          code 10
+    hook miss
+      send back, false
+
+# does the last (unterminated) record carry anything worth flushing?
+task last-row-live
+  mark private
+  take field, like text
+  take row, like list
+  take pending, like boolean
+  like boolean
+  fork test
+    hook test
+      read pending
+    hook hold
+      send back, true
+    hook miss
+      fork test
+        hook test
+          call is-above
+            read field/length
+            code 0
+        hook hold
+          send back, true
+        hook miss
+          send back
+            call is-above
+              call size
+                read row
+              code 0
+
+# write rows back to comma-separated text (LF records, fields quoted only when needed)
+task stringify
+  take rows, like list
+  like text
+  send back
+    call stringify-with
+      read rows
+      text <,>
+
+# write rows with an explicit delimiter
+task stringify-with
+  take rows, like list
+  take delimiter, like text
+  like text
+  save out, text <>
+  save first-row, true
+  walk list
+    read rows
+    hook next
+      take site, name row
+      fork test
+        hook test
+          read first-row
+        hook hold
+          save first-row, false
+        hook miss
+          save out
+            call concat
+              read out
+              text <\n>
+      save first-field, true
+      walk list
+        read row
+        hook next
+          take site, name field
+          fork test
+            hook test
+              read first-field
+            hook hold
+              save first-field, false
+            hook miss
+              save out
+                call concat
+                  read out
+                  read delimiter
+          save out
+            call concat
+              read out
+              call encode-field
+                read field
+                read delimiter
+  send back
+    read out
+
+# quote a field when it contains the delimiter, a quote, or a record end; double any quotes inside
+task encode-field
+  mark private
+  take field, like text
+  take delimiter, like text
+  like text
+  fork test
+    hook test
+      call needs-quoting
+        read field
+        read delimiter
+    hook hold
+      save quoted-body, text <>
+      save index, code 0
+      walk test
+        hook test
+          call is-below
+            read index
+            read field/length
+        hook hold
+          save glyph
+            call char-at
+              read field
+              read index
+          fork test
+            hook test
+              call is-equal
+                call char-code-at
+                  read field
+                  read index
+                code 34
+            hook hold
+              save quoted-body
+                call concat
+                  read quoted-body
+                  text <"">
+            hook miss
+              save quoted-body
+                call concat
+                  read quoted-body
+                  read glyph
+          save index
+            call add
+              read index
+              code 1
+      send back
+        call concat
+          call concat
+            text <">
+            read quoted-body
+          text <">
+    hook miss
+      send back
+        read field
+
+task needs-quoting
+  mark private
+  take field, like text
+  take delimiter, like text
+  like boolean
+  fork test
+    hook test
+      call contains
+        read field
+        read delimiter
+    hook hold
+      send back, true
+    hook miss
+      fork test
+        hook test
+          call contains
+            read field
+            text <">
+        hook hold
+          send back, true
+        hook miss
+          fork test
+            hook test
+              call contains
+                read field
+                text <\n>
+            hook hold
+              send back, true
+            hook miss
+              send back
+                call contains
+                  read field
+                  text <\r>

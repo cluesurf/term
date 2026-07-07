@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/back
+load @term/base/code/back
   find back
 
 mint back

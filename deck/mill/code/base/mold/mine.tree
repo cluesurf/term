@@ -1,17 +1,17 @@
 
-load @cluesurf/mill/code/code/bind/mine
+load @term/mill/code/code/bind/mine
   find bind
 
-load @cluesurf/mill/code/code/need/mine
+load @term/mill/code/code/need/mine
   find need
 
-load @cluesurf/mill/code/code/tag/mine
+load @term/mill/code/code/tag/mine
   find tag
 
-load @cluesurf/mill/code/base/hold/mine
+load @term/mill/code/base/hold/mine
   find db-hold
 
-load @cluesurf/mill/code/base/db-make/mine
+load @term/mill/code/base/db-make/mine
   find db-make-link
 
 mine db-mold

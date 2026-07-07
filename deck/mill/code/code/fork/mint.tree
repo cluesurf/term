@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/fork
+load @term/base/code/fork
   find fork-test
   find fork-test-pair
   find fork-miss

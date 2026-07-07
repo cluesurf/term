@@ -1,8 +1,8 @@
 
-# Builder for the zone (component) DSL: map the parsed slots onto the zone AST forms in @cluesurf/base/code/zone.
+# Builder for the zone (component) DSL: map the parsed slots onto the zone AST forms in @term/base/code/zone.
 # Shared builders (take, like, seed, bind) come from the code building-block mills by name.
 
-load @cluesurf/base/code/zone
+load @term/base/code/zone
   find zone-def
   find zone-element
   find zone-seed

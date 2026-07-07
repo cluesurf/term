@@ -2,9 +2,9 @@
 # Navigation menu — headless. A site nav with expandable sections. Parts: navigation-menu, navigation-menu-list,
 # navigation-menu-item, navigation-menu-trigger, navigation-menu-content, navigation-menu-link. Section open/close is
 # a shared disclosure controller.
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 load ../logic/disclosure

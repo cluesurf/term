@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/lace
+load @term/base/code/lace
   find lace
   find walk
   find test

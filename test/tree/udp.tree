@@ -1,11 +1,11 @@
 note <UDP loopback over the public sockets API: open two datagram sockets, send a message from one to the other, receive it. Verifies the opaque per-backend socket handle round-trips through the socket form and that receive returns the datagram with its sender.>
 
-load @cluesurf/base/code/network/udp
+load @term/base/code/network/udp
   find open
   find send
   find receive
 
-load @cluesurf/base/code/text
+load @term/base/code/text
   find contains
 
 test <udp datagram round-trips>

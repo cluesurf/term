@@ -1,18 +1,18 @@
 
-# Browser host globals, declared once and typed through @cluesurf/bind so their methods dispatch. Import these instead
+# Browser host globals, declared once and typed through @term/bind so their methods dispatch. Import these instead
 # of repeating `host x, name <Y>` in every task. Each emits an alias to the real global (`const page = document`), and
 # the compiler drops it when unused. Add new globals here as the framework needs them.
 
-load @cluesurf/bind/code/browser/dom/document
+load @term/bind/code/browser/dom/document
   find document
 
-load @cluesurf/bind/code/browser/dom/window
+load @term/bind/code/browser/dom/window
   find window
 
-load @cluesurf/bind/code/browser/dom/location
+load @term/bind/code/browser/dom/location
   find location
 
-load @cluesurf/bind/code/browser/dom/history
+load @term/bind/code/browser/dom/history
   find history
 
 # the page's document

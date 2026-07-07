@@ -3,9 +3,9 @@
 # breadcrumb-list (ol), breadcrumb-item (li), breadcrumb-link (a), breadcrumb-page (current, span), breadcrumb-separator
 # (li). aria wires it up; theme via data-slot.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 

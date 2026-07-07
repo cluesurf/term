@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/hook
+load @term/base/code/hook
   find hook
 
 mint hook, like hook

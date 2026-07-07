@@ -3,10 +3,10 @@
 # element record (tag, text, attributes, styles, classes, children, listeners, parent), so the full DOM API works
 # without a browser: build a tree, mutate it, fire stored listeners, remove and replace nodes. Conforms to ../../dom.
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
 
 load ../../view

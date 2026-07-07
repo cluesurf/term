@@ -1,6 +1,6 @@
 note <Functional tests for the text module. `want hold` asserts the body is true, `want miss` asserts it is false. The predicate (is-equal, contains, starts-with) is the call inside.>
 
-load @cluesurf/base/code/text
+load @term/base/code/text
   find to-upper-case
   find trim
   find contains

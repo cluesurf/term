@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/mask
+load @term/base/code/mask
   find mask
 
 mint mask

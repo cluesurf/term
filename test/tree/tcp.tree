@@ -1,13 +1,13 @@
 note <TCP loopback echo over the public sockets API: listen, connect, accept, then exchange ping / pong across the live connection. Verifies the opaque per-backend handle (the platform socket) round-trips through the connection / listener forms, and that read / write / accept dispatch as connection / listener methods.>
 
-load @cluesurf/base/code/network/tcp
+load @term/base/code/network/tcp
   find connect
   find listen
   find read
   find write
   find accept
 
-load @cluesurf/base/code/text
+load @term/base/code/text
   find contains
 
 test <loopback echo round-trips a message>

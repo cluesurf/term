@@ -1,7 +1,7 @@
 
 # Set: a collection of unique values, backed by the native map for O(1) membership.
 
-load @cluesurf/base/code/hash
+load @term/base/code/hash
   find hash
 
 form set

@@ -2,10 +2,10 @@
 # Badge — headless, ported from shadcn (badge.tsx). A small inline label. The `variant` is exposed as a data attribute
 # so a theme targets [data-slot=badge][data-variant=...]; no baked styling. Children via slot.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
   find text
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 

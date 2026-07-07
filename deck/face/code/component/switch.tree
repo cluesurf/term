@@ -8,9 +8,9 @@
 # role=switch + reactive data-state (checked/unchecked, derived from disclosure-state mapped on) drive a11y + the CSS
 # thumb slide; aria-checked tracks the boolean; click toggles. Parts: switch (root button) + switch-thumb.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 load ../logic/disclosure

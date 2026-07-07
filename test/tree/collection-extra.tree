@@ -1,12 +1,12 @@
 note <Tests for the newly completed hash and set methods: hash get-or-default/clear/merge/entries, set intersection/clear/symmetric-difference/is-subset/is-superset.>
 
-load @cluesurf/base/code/hash
+load @term/base/code/hash
   find hash
   find get-or-default
   find clear
   find merge
 
-load @cluesurf/base/code/set
+load @term/base/code/set
   find set
   find insert
   find size
@@ -15,7 +15,7 @@ load @cluesurf/base/code/set
   find is-subset
   find is-superset
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find size
 

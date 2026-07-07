@@ -6,7 +6,7 @@ dock type
 dock load
   load <global:mutex>, name mutex
 
-load @cluesurf/base/code/mutex
+load @term/base/code/mutex
   find mutex
 
 task do-make

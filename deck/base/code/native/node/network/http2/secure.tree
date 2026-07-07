@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/node/network/http2/shared
+load @term/base/code/node/network/http2/shared
   take tree server
   take tree make-server
 

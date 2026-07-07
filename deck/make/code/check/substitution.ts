@@ -83,7 +83,20 @@ export class Substitution {
     }
 
     if (x.kind === 'variable') {
-      if (y.kind === 'variable' && y.id === x.id) {
+      if (y.kind === 'variable') {
+        if (y.id === x.id) {
+          return true
+        }
+
+        // bind the younger variable to the older one: a callee's freshly instantiated metavariable must never
+        // solve an enclosing signature's generic, or later instantiations of that signature resolve through the
+        // stale binding and every call site shares one variable (the forwarding-bounded-generic bug)
+        if (y.id > x.id) {
+          this.bindings.set(y.id, x)
+        } else {
+          this.bindings.set(x.id, y)
+        }
+
         return true
       }
 
@@ -93,7 +106,7 @@ export class Substitution {
 
       this.bindings.set(x.id, y)
 
-      if (span && y.kind !== 'variable') {
+      if (span) {
         this.origin.set(x.id, { span, type: y })
       }
 

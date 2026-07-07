@@ -9,9 +9,9 @@
 # A trigger reflects `data-state` active/inactive (reactive) + `aria-selected`, and selects on click; the content
 # mounts only while its value is selected. Parts: tabs, tabs-list, tabs-trigger, tabs-content.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 load ../logic/selection

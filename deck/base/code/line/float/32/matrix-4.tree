@@ -1,10 +1,10 @@
 # Matrix-4x4: a 4x4 32-bit-float matrix, stored row-major in a 16-element list. Pure float math. `get` reads a cell, `times` is the matrix product (named `times` because `multiply` is the number primitive), `identity-matrix-4` is the identity, `transform` applies the matrix to a 4D vector. Index math `row * 4 + column` addresses the flat backing list.
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find get
 
-load @cluesurf/base/code/line/float/32/vector-4
+load @term/base/code/line/float/32/vector-4
   find vector-4
   find make-vector-4
 

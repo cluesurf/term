@@ -48,7 +48,7 @@ const helper: Source = {
 }
 
 function entryText(constant: number): string {
-  return `load @app/helper\n  find triple\n\ntask run\n  like number\n  back\n    call triple\n      mark ${constant}\n`
+  return `load @app/helper\n  find triple\n\ntask run\n  like number\n  back\n    call triple\n      code ${constant}\n`
 }
 
 const resolve = (path: string): Source | undefined =>

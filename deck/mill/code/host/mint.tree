@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/host
+load @term/base/code/host
   find host-form
   find host-task
   find host-hook

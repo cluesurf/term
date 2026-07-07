@@ -258,16 +258,23 @@ const cli = yargs(hideBin(process.argv))
     'make',
     'Build/compile the project',
     yargs =>
-      yargs.option('ride', {
-        type: 'boolean',
-        alias: 'watch',
-        description:
-          'Watch files and recompile incrementally on every change',
-      }),
+      yargs
+        .option('ride', {
+          type: 'boolean',
+          alias: 'watch',
+          description:
+            'Watch files and recompile incrementally on every change',
+        })
+        .option('separate', {
+          type: 'boolean',
+          description:
+            'Separate compilation: per-module artifacts, dependents check against interfaces (early cutoff)',
+        }),
     async argv => {
       await callMake({
         root,
         ride: argv.ride,
+        separate: argv.separate,
       })
     },
   )

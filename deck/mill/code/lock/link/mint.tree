@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/lock/link
+load @term/mill/code/lock/link
   find lock-link
   find lock-link-load
 

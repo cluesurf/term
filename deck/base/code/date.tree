@@ -3,10 +3,10 @@
 # (`now`) and conveniences that decompose it, so an app rarely touches the raw timestamp. Everything is UTC; name a zone
 # with `timezone` for wall-clock time.
 
-load @cluesurf/base/code/time
+load @term/base/code/time
   find now
 
-load @cluesurf/base/code/calendar
+load @term/base/code/calendar
   find to-parts
   find format
   find year

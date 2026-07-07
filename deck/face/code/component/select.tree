@@ -5,9 +5,9 @@
 # currently trips a generic-signal inference limit; passing the value controller through the consumer sidesteps it).
 # Parts: select, select-trigger, select-value, select-content, select-item, select-group, select-label.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 load ../logic/disclosure

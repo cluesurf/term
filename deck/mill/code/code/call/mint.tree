@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/call
+load @term/base/code/call
   find call
   find hook
 

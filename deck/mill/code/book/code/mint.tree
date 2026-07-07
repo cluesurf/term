@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/code
+load @term/mill/code/book/code
   find book-code
 
 mint code, like book-code

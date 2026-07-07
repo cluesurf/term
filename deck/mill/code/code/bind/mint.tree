@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/bind
+load @term/base/code/bind
   find bind
 
 mint bind, like bind

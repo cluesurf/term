@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/case-type
+load @term/base/code/case-type
   find case-type
 
 mint case-type, like case-type

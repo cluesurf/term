@@ -1,5 +1,5 @@
 
-# Browser graphics impl: delegates to WebGL2 through @cluesurf/bind. Conforms to the abstract API in ../graphics. The
+# Browser graphics impl: delegates to WebGL2 through @term/bind. Conforms to the abstract API in ../graphics. The
 # surface handle is opaque (an erased WebGL2 context), so each task re-types it to the bind context form and calls the
 # method with member syntax (`call gl/clear`). bind's methods are JS-`this`-style, so the receiver is the member
 # target and the args are the method's params; the emitter lowers `gl.clear(...)`. Constants are `link` fields on the
@@ -12,10 +12,10 @@
 load ../../../dom/native/global
   find page
 
-load @cluesurf/bind/code/browser/dom/web-gl-rendering-context-base
+load @term/bind/code/browser/dom/web-gl-rendering-context-base
   find web-gl-rendering-context-base
 
-load @cluesurf/bind/code/browser/dom/web-gl-rendering-context-overloads
+load @term/bind/code/browser/dom/web-gl-rendering-context-overloads
   find web-gl-rendering-context-overloads
 
 load ../../surface

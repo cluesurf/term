@@ -1,6 +1,6 @@
 # browser subprocess runner. Internal: reached only through the public run API.
 
-load @cluesurf/base/code/process/run
+load @term/base/code/process/run
   find run-result
 
 dock load

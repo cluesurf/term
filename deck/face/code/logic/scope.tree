@@ -4,7 +4,7 @@
 # inner -> outer and runs the first action whose scope is active, so one keystroke is unambiguous (e.g. "delete" hits
 # the focused cell if any, else the selection, else nothing). Pure logic, the Zag-model behavior core.
 
-load @cluesurf/site/code/zone/reactive
+load @term/site/code/zone/reactive
   find signal
   find make-signal
   find read-signal

@@ -1,10 +1,10 @@
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
-load @cluesurf/mill/code/code/bind/mine
+load @term/mill/code/code/bind/mine
   find bind
 
-load @cluesurf/mill/code/code/tool/hook
+load @term/mill/code/code/tool/hook
   find hook
 
 mine walk

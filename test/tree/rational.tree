@@ -1,6 +1,6 @@
 note <Tests for exact rational arithmetic: reduction, addition, multiplication, equality, negation.>
 
-load @cluesurf/base/code/rational
+load @term/base/code/rational
   find rational
   find make-rational
   find plus

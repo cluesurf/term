@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
 mine halt

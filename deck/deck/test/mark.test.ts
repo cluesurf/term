@@ -106,14 +106,80 @@ describe('parseMarkHold', () => {
     }
   })
 
-  it('parses caret constraint', () => {
+  it('parses caret constraint as a precise band', () => {
+    // the npm rule: ^1.2.3 allows >=1.2.3 <2.0.0, so the lower bound is the version itself (1.0.0 must NOT match)
     const hold = parseMarkHold('^1.2.3')
-    expect(hold).toEqual({ form: 'wild', major: 1 })
+    expect(hold).toEqual({
+      form: 'band',
+      base: { major: 1, minor: 2, patch: 3 },
+      head: { major: 2, minor: 0, patch: 0 },
+    })
   })
 
-  it('parses tilde constraint', () => {
+  it('parses leading-zero caret locking the minor', () => {
+    // ^0.2.3 locks the left-most non-zero element: >=0.2.3 <0.3.0
+    const hold = parseMarkHold('^0.2.3')
+    expect(hold).toEqual({
+      form: 'band',
+      base: { major: 0, minor: 2, patch: 3 },
+      head: { major: 0, minor: 3, patch: 0 },
+    })
+  })
+
+  it('parses double-zero caret locking the patch', () => {
+    // ^0.0.3 is exactly >=0.0.3 <0.0.4
+    const hold = parseMarkHold('^0.0.3')
+    expect(hold).toEqual({
+      form: 'band',
+      base: { major: 0, minor: 0, patch: 3 },
+      head: { major: 0, minor: 0, patch: 4 },
+    })
+  })
+
+  it('parses tilde constraint as a precise band', () => {
+    // the npm rule: ~1.2.3 allows >=1.2.3 <1.3.0 (patch movement within the minor)
     const hold = parseMarkHold('~1.2.3')
-    expect(hold).toEqual({ form: 'wild', major: 1, minor: 2 })
+    expect(hold).toEqual({
+      form: 'band',
+      base: { major: 1, minor: 2, patch: 3 },
+      head: { major: 1, minor: 3, patch: 0 },
+    })
+  })
+
+  it('caret band excludes versions below its base', () => {
+    expect(
+      markMatch(
+        { major: 1, minor: 0, patch: 0 },
+        parseMarkHold('^1.2.3'),
+      ),
+    ).toBe(false)
+    expect(
+      markMatch(
+        { major: 1, minor: 9, patch: 9 },
+        parseMarkHold('^1.2.3'),
+      ),
+    ).toBe(true)
+    expect(
+      markMatch(
+        { major: 2, minor: 0, patch: 0 },
+        parseMarkHold('^1.2.3'),
+      ),
+    ).toBe(false)
+  })
+
+  it('tilde band stays within the minor', () => {
+    expect(
+      markMatch(
+        { major: 1, minor: 2, patch: 9 },
+        parseMarkHold('~1.2.3'),
+      ),
+    ).toBe(true)
+    expect(
+      markMatch(
+        { major: 1, minor: 3, patch: 0 },
+        parseMarkHold('~1.2.3'),
+      ),
+    ).toBe(false)
   })
 })
 

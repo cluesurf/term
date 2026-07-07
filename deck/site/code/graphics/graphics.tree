@@ -3,5 +3,5 @@
 # the abstract native graphics API, which the build rewrites to the target platform's impl (browser WebGPU/WebGL, or
 # the server stub) through the native-env mechanism. Render code is thus platform-agnostic. Mirrors ../dom/dom.
 
-bear @cluesurf/site/code/graphics/surface
-bear @cluesurf/site/code/graphics/native/graphics
+bear @term/site/code/graphics/surface
+bear @term/site/code/graphics/native/graphics

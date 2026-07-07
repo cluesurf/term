@@ -5,7 +5,7 @@
 # reach "gone". Reused by every overlay for exit animations. Pure logic (one text signal — avoids the mixed-type
 # signal-unification limit a boolean+text pair would hit).
 
-load @cluesurf/site/code/zone/reactive
+load @term/site/code/zone/reactive
   find signal
   find make-signal
   find read-signal

@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/flow
+load @term/mill/code/book/flow
   find book-flow
 
 mint flow, like book-flow

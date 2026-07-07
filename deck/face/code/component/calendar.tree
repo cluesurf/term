@@ -3,9 +3,9 @@
 # handler, and reactive `state` (selected/today/outside) for theming. Date math (which days, month nav) is the
 # consumer's (or a future date controller); these are the themeable, a11y-wired grid. Parts: calendar, calendar-header,
 # calendar-title, calendar-nav, calendar-grid, calendar-row, calendar-cell, calendar-day.
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 load ../logic/selection

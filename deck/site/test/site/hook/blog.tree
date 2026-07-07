@@ -1,6 +1,6 @@
 
 # The blog HTTP API: the full backend loop. Routes are matched by the uniform trie router; each handler queries Postgres
-# through the abstract `post` repository (which uses only `@cluesurf/site/code/base/db`, never the driver) and returns
+# through the abstract `post` repository (which uses only `@term/site/code/base/db`, never the driver) and returns
 # JSON. The transport is hono on node. This is userland: it imports the clean framework paths, no native modules.
 
 load ../back/post
@@ -10,28 +10,28 @@ load ../back/post
   find list-posts
   find get-post
 
-load @cluesurf/site/code/base/db
+load @term/site/code/base/db
   find run
 
-load @cluesurf/site/code/http/http
+load @term/site/code/http/http
   find request
   find response
   find route
   find server
   find route-server
 
-load @cluesurf/site/code/http/serve
+load @term/site/code/http/serve
   find serve
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find push
   find join
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find unwrap-or
 
-load @cluesurf/base/code/hash
+load @term/base/code/hash
   find get
 
 # one post as a JSON object

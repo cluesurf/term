@@ -1,6 +1,6 @@
 note <Tests for rune predicates: ASCII (pure) plus full Unicode (native-powered) letter / number / case predicates and case mapping, addressed by code point.>
 
-load @cluesurf/base/code/rune
+load @term/base/code/rune
   find rune
   find make-rune
   find is-ascii-digit

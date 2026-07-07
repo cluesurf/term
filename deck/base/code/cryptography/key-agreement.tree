@@ -1,10 +1,10 @@
 # Key agreement (X25519 ECDH). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/key-agreement`). Input and output stay in the currency types.
 
-load @cluesurf/base/code/native/cryptography/key-agreement
+load @term/base/code/native/cryptography/key-agreement
   find make-key-pair-bytes
   find compute-shared-secret
 
-load @cluesurf/base/code/bytes
+load @term/base/code/bytes
   find slice
 
 form exchange-pair

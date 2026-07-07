@@ -1,9 +1,9 @@
 # The iterator (walk): a lazy pull-based sequence. A `walk` holds one `pull` closure that returns the next element as a `maybe` (`none` ends the sequence). Sources build a walk over a backing collection; lazy adapters (map / filter / take / drop / enumerate) wrap a source walk in a new pull; terminal sinks (collect / fold / count / find / each / any / all) drive the pull to exhaustion. State that must persist across pulls (a cursor, a counter) lives in a one-element list used as a mutable box, so the whole protocol is pure Seed and lowers to every backend.
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find get
   find set

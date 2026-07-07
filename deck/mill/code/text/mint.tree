@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/text
+load @term/base/code/text
   find text-def
 
 mint text

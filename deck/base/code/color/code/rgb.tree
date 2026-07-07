@@ -1,11 +1,11 @@
 
-load @cluesurf/base/code/mixin/each
+load @term/base/code/mixin/each
   find define-each
 
-load @cluesurf/base/code/mixin/access
+load @term/base/code/mixin/access
   find access
 
-load @cluesurf/base/code/color
+load @term/base/code/color
   find space
 
 form rgb

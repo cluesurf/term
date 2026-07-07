@@ -1,5 +1,5 @@
 
-load @cluesurf/base
+load @term/base
   take face array
     save face native-array
 

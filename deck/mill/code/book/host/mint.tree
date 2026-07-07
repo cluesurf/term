@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/host
+load @term/mill/code/book/host
   find book-host
   find book-host-bind
 

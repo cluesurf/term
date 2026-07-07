@@ -1,32 +1,32 @@
 
-load @cluesurf/mill/code/code/head/mine
+load @term/mill/code/code/head/mine
   find head
 
-load @cluesurf/mill/code/code/take/mine
+load @term/mill/code/code/take/mine
   find take
 
-load @cluesurf/mill/code/code/like/mine
+load @term/mill/code/code/like/mine
   find like
 
-load @cluesurf/mill/code/code/note/mine
+load @term/mill/code/code/note/mine
   find note
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
-load @cluesurf/mill/code/base/find/mine
+load @term/mill/code/base/find/mine
   find db-find
 
-load @cluesurf/mill/code/base/db-make/mine
+load @term/mill/code/base/db-make/mine
   find db-make
 
-load @cluesurf/mill/code/base/db-mold/mine
+load @term/mill/code/base/db-mold/mine
   find db-mold
 
-load @cluesurf/mill/code/base/db-save/mine
+load @term/mill/code/base/db-save/mine
   find db-save
 
-load @cluesurf/mill/code/base/toss/mine
+load @term/mill/code/base/toss/mine
   find db-toss
 
 mine base

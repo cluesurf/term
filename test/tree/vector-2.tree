@@ -1,6 +1,6 @@
 note <Tests for 2D vectors: plus, dot, cross (scalar), length.>
 
-load @cluesurf/base/code/line/float/32/vector-2
+load @term/base/code/line/float/32/vector-2
   find vector-2
   find make-vector-2
   find plus

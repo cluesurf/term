@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/deck
+load @term/base/code/deck
   find deck-deck-link
   find deck-deck-term
   find deck-deck-deck

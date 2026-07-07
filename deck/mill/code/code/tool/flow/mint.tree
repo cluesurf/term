@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/flow
+load @term/base/code/flow
   find flow
   find show
   find dive

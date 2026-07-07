@@ -59,13 +59,27 @@ export function pruneToReachable(
   // index prunable definitions by name (a name may have several: overloads)
   const defsByName = new Map<string, Statement[]>()
 
+  const index = (name: string, statement: Statement): void => {
+    const list = defsByName.get(name)
+
+    if (list) {list.push(statement)}
+    else {defsByName.set(name, [statement])}
+  }
+
   for (const statement of program) {
     if (PRUNABLE.has(statement.form)) {
-      const name = (statement as { name: string }).name
-      const list = defsByName.get(name)
+      index((statement as { name: string }).name, statement)
 
-      if (list) {list.push(statement)}
-      else {defsByName.set(name, [statement])}
+      // a form's method is DEFINED under its mangled name (`<form>_<method>`) but CALLED bare (`call get / ...`)
+      // until the checker's receiver dispatch runs -- which is AFTER this prune. So a reached bare method name must
+      // keep every form's method of that name: (1) the used implementation survives, and (2) the checker's
+      // "exactly one form owns this method" dispatch heuristic sees the same owner set as the unpruned program,
+      // so shaking never changes how a call resolves.
+      const method = (statement as { method?: { name: string } }).method
+
+      if (method) {
+        index(method.name, statement)
+      }
     }
   }
 

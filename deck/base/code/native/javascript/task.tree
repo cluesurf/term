@@ -1,8 +1,8 @@
 
-load @cluesurf/base
+load @term/base
   find form task
 
-load @cluesurf/base
+load @term/base
   find face function
     save face native-function
 

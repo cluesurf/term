@@ -620,13 +620,22 @@ export function mill(tree: RootNode, file: string): MillResult {
       case 'text':
         return {
           form: 'string',
-          // unescape the literal's escape sequences (`\<` `\>` `\{` `\}`): the lexer keeps the backslash in the chunk so
-          // the bracket is content, not a delimiter; the semantic string is the unescaped form. This lets a native bind
-          // expression carry an arrow (`=>` / `->`) or a stray `>` as `\>` without closing the `text <...>` literal.
+          // unescape the literal's escape sequences: the delimiters (`\<` `\>` `\{` `\}`, kept in the chunk so the
+          // bracket is content, not a delimiter) and the standard characters (`\n` `\r` `\t` `\\`). This lets a
+          // native bind expression carry an arrow (`=>` / `->`) or a stray `>` as `\>` without closing the
+          // `text <...>` literal, and a plain program build newlines and tabs without a native helper.
           value: node.parts
             .map(p => (p.kind === 'chunk' ? p.text : ''))
             .join('')
-            .replace(/\\([<>{}])/g, '$1'),
+            .replace(/\\([<>{}nrt\\])/g, (_, ch: string) =>
+              ch === 'n'
+                ? '\n'
+                : ch === 'r'
+                  ? '\r'
+                  : ch === 't'
+                    ? '\t'
+                    : ch,
+            ),
           span,
         }
       case 'group':

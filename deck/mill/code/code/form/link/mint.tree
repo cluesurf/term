@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/link
+load @term/base/code/link
   find link
   find link-take
 

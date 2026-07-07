@@ -1,11 +1,11 @@
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
-load @cluesurf/mill/code/base/over/mine
+load @term/mill/code/base/over/mine
   find db-over
 
-load @cluesurf/mill/code/base/fork-hook/mine
+load @term/mill/code/base/fork-hook/mine
   find db-send-fork-hook
 
 mine db-send

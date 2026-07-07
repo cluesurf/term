@@ -1,26 +1,26 @@
 
-load @cluesurf/mill/code/line/take/mine
+load @term/mill/code/line/take/mine
   find dock-take
 
-load @cluesurf/mill/code/line/seed/mine
+load @term/mill/code/line/seed/mine
   find dock-seed
 
-load @cluesurf/mill/code/line/show/mine
+load @term/mill/code/line/show/mine
   find dock-show
 
-load @cluesurf/mill/code/line/send/mine
+load @term/mill/code/line/send/mine
   find dock-send
 
-load @cluesurf/mill/code/line/hook/mine
+load @term/mill/code/line/hook/mine
   find dock-hook
 
-load @cluesurf/mill/code/code/call/mine
+load @term/mill/code/code/call/mine
   find call
 
-load @cluesurf/mill/code/code/fuse/mine
+load @term/mill/code/code/fuse/mine
   find fuse
 
-load @cluesurf/mill/code/code/save/mine
+load @term/mill/code/code/save/mine
   find save
 
 mine dock

@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/load
+load @term/mill/code/book/load
   find book-load
   find book-load-find
 

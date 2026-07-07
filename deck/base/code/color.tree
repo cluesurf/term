@@ -1,7 +1,7 @@
 
 # https://github.com/Evercoder/culori
 
-load @cluesurf/base/code/mixin/each
+load @term/base/code/mixin/each
   find define-each
 
 fuse define-each, read space

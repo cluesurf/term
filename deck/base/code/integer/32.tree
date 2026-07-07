@@ -1,6 +1,6 @@
 # Signed 32-bit integer: values -2147483648 to 2147483647. See `n` for the operation template.
 
-load @cluesurf/base/code/bit
+load @term/base/code/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or
@@ -8,12 +8,12 @@ load @cluesurf/base/code/bit
   find shift-left
   find shift-right
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
   find some
   find none
 
-load @cluesurf/base/code/integer/n
+load @term/base/code/integer/n
   find integer
 
 fuse integer, i32, 4294967295, 2147483648, -2147483648, 2147483647

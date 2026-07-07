@@ -1,6 +1,6 @@
 # Signed 8-bit integer: values -128 to 127. Operations wrap, check, or saturate at that range. See `n` for the template.
 
-load @cluesurf/base/code/bit
+load @term/base/code/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or
@@ -8,12 +8,12 @@ load @cluesurf/base/code/bit
   find shift-left
   find shift-right
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
   find some
   find none
 
-load @cluesurf/base/code/integer/n
+load @term/base/code/integer/n
   find integer
 
 fuse integer, i8, 255, 128, -128, 127

@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/suit
+load @term/base/code/suit
   find suit
 
 mint suit

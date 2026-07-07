@@ -1,5 +1,5 @@
 
-load @cluesurf/bind/code/node/process
+load @term/bind/code/node/process
   find process
 
 task get

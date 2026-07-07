@@ -4,7 +4,7 @@
 # a subtree on a reactive condition; `each` renders a reactive list; `mount` attaches a built tree to a host. All host
 # work goes through the platform-agnostic dom API, so this logic is identical on browser and server.
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
 load ../dom/native/dom
@@ -18,7 +18,7 @@ load ../dom/native/dom
   find replace
   find remove
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find push
 

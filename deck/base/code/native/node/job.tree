@@ -8,7 +8,7 @@ dock type
 dock load
   load <global:job>, name job
 
-load @cluesurf/base/code/task
+load @term/base/code/task
   find handle
 
 task do-spawn

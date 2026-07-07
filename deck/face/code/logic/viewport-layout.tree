@@ -1,5 +1,5 @@
 
-# Viewport layout — the pure 3-section responsive style table, ported 1:1 from @cluesurf/face's use-viewport-layout
+# Viewport layout — the pure 3-section responsive style table, ported 1:1 from @term/face's use-viewport-layout
 # `get-layout-3-section` (useViewportLayout3Section). Given the viewport width + print flag it returns the inline-style
 # strings for the four shell parts (container, grid, middle, left, right) at every breakpoint. No DOM, no signals: pure
 # logic the Layout component feeds with the live `viewport-width` / `viewport-print` reads and applies reactively.

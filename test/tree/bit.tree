@@ -1,6 +1,6 @@
 note <Tests for bitwise operations. Operands stay within 32 bits so node (JS 32-bit bitwise) agrees with the compiled backends.>
 
-load @cluesurf/base/code/bit
+load @term/base/code/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or

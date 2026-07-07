@@ -10,7 +10,7 @@ load ./compare
   find contains-text
   find contains-list
 
-load @cluesurf/base/code/native/shared/test
+load @term/base/code/native/shared/test
   find make-failure
 
 task assert

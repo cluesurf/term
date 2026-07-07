@@ -1,6 +1,6 @@
 # Run a subprocess to completion and capture its result. The clean uniform interface; each backend wraps its platform process API (node child_process, rust std::process::Command, swift Process, kotlin ProcessBuilder), selected at build time. Async, because a subprocess runs over time. `run-result` carries the exit code plus whatever the process wrote to standard output and standard error.
 
-load @cluesurf/base/code/native/process/run
+load @term/base/code/native/process/run
   find do-run
 
 # the outcome of a finished subprocess

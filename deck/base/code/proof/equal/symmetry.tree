@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/proof/equal
+load @term/base/code/proof/equal
   find equal
 
 rule symmetry

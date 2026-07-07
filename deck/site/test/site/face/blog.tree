@@ -1,20 +1,20 @@
 # A minimal blog as a zone (view component): a title input, a body textarea, an "Add post" button, and a reactive
 # list of posts. State is a signal holding the list. Clicking Add reads the inputs (by ref), appends a post, and
 # clears the inputs; writing the signal re-renders the list. Everything goes through the platform-agnostic dom +
-# reactive runtime, so the same component runs in the browser (via @cluesurf/bind) or against the in-memory tree.
+# reactive runtime, so the same component runs in the browser (via @term/bind) or against the in-memory tree.
 
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find get-value
   find set-value
 
-load @cluesurf/site/code/zone/reactive
+load @term/site/code/zone/reactive
   find signal
   find make-signal
   find read-signal
   find write-signal
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
   find push
 

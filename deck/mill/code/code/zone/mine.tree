@@ -1,17 +1,17 @@
 
-load @cluesurf/mill/code/code/take/mine
+load @term/mill/code/code/take/mine
   find take
 
-load @cluesurf/mill/code/code/hook/mine
+load @term/mill/code/code/hook/mine
   find hook
 
-load @cluesurf/mill/code/code/view/mine
+load @term/mill/code/code/view/mine
   find view
 
-load @cluesurf/mill/code/code/tune/mine
+load @term/mill/code/code/tune/mine
   find tune
 
-load @cluesurf/mill/code/code/note/mine
+load @term/mill/code/code/note/mine
   find note
 
 mine zone

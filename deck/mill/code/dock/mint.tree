@@ -1,8 +1,8 @@
 
-# Builder for the dock (routing + CLI) DSL: map parsed slots onto the dock AST forms in @cluesurf/base/code/dock.
+# Builder for the dock (routing + CLI) DSL: map parsed slots onto the dock AST forms in @term/base/code/dock.
 # Handlers (`call`) build the clean seed-call value form. Shared builders (take, bind, seed) come from the code mills.
 
-load @cluesurf/base/code/dock
+load @term/base/code/dock
   find dock
   find dock-task
   find dock-zone
@@ -10,7 +10,7 @@ load @cluesurf/base/code/dock
   find dock-send
   find dock-hook
 
-load @cluesurf/base/code/seed
+load @term/base/code/seed
   find seed-call
 
 mint dock

@@ -1,4 +1,4 @@
 
-deck @cluesurf/make
+deck @term/make
   bear ./code
-  mark <0.0.1>
+  mark <0.0.2>

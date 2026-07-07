@@ -1,6 +1,6 @@
 # Rational: an exact fraction (numerator over denominator) of integers. Pure and cross-backend: every operation is integer multiply / add / subtract plus a greatest-common-divisor reduction, and the only divisions are exact (the gcd divides both terms), so the result is identical on every backend. The combiners are named `plus` / `minus` / `times` / `divided-by` because `add` / `subtract` / `multiply` / `divide` are the number arithmetic primitives.
 
-load @cluesurf/base/code/math
+load @term/base/code/math
   find greatest-common-divisor
   find absolute
 

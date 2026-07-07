@@ -1,4 +1,4 @@
-load @cluesurf/mill/code/code/wear/mine
+load @term/mill/code/code/wear/mine
   find wear
 
 mine suit

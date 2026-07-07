@@ -1,17 +1,17 @@
 
-load @cluesurf/mill/code/code/head/mine
+load @term/mill/code/code/head/mine
   find head
 
-load @cluesurf/mill/code/code/take/mine
+load @term/mill/code/code/take/mine
   find take
 
-load @cluesurf/mill/code/code/like/mine
+load @term/mill/code/code/like/mine
   find like
 
-load @cluesurf/mill/code/code/note/mine
+load @term/mill/code/code/note/mine
   find note
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
 mine component

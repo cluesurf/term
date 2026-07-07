@@ -5,12 +5,12 @@
 # document handler). Reused by popover, dialog, dropdown-menu, context-menu, hover-card, select, sheet, drawer. The
 # behavior core for dismissal.
 
-load @cluesurf/site/code/zone/reactive
+load @term/site/code/zone/reactive
   find signal
   find on-cleanup
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find listen-document
-load @cluesurf/bind/code/browser/dom/keyboard-event
+load @term/bind/code/browser/dom/keyboard-event
   find keyboard-event
 load ./disclosure
   find close-disclosure

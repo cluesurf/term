@@ -7,6 +7,7 @@ import { loadManifest } from './manifest'
 import { hashFile } from './hash'
 import { showMark } from './mark'
 import { fetchPackageMeta } from './fetch'
+import { resolveRegistry } from './name'
 
 const execFileAsync = promisify(execFile)
 
@@ -228,8 +229,13 @@ export async function publishDeck(input: {
     return
   }
 
-  // upload to registry
-  const url = `${input.config.registry}/${fullName}/-/${manifest.name}-${markStr}.tgz`
+  // upload to registry (scope-routed: @term/* -> base.term.surf)
+  const registry = resolveRegistry({
+    name: fullName,
+    registry: input.config.registry,
+    scopeRegistries: input.config.scopeRegistries,
+  })
+  const url = `${registry}/${fullName}/-/${manifest.name}-${markStr}.tgz`
 
   // read auth token
   const authToken = await loadAuthToken()

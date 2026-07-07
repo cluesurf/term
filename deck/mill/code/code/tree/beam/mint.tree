@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/beam
+load @term/base/code/beam
   find code-beam
   find code-beam-body
 

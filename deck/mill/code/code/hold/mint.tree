@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/hold
+load @term/base/code/hold
   find hold
   find hold-hook
 

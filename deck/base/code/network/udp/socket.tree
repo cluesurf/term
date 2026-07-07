@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/network/udp
+load @term/base/code/network/udp
   find socket
 
 form datagram

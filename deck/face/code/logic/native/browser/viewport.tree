@@ -1,9 +1,9 @@
 
-# Browser viewport: read window.innerWidth/innerHeight and listen for resize via @cluesurf/bind. Conforms to
+# Browser viewport: read window.innerWidth/innerHeight and listen for resize via @term/bind. Conforms to
 # ../viewport. The handler is bridged through the gradual `any` for addEventListener's listener union (it is a real
 # function at runtime), the way the dom's `listen` does.
 
-load @cluesurf/bind/code/browser/dom/window
+load @term/bind/code/browser/dom/window
   find window
 
 host frame, name <window>

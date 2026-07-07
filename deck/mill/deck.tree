@@ -1,4 +1,4 @@
 
-deck @cluesurf/mill
+deck @term/mill
   head <The Term DSL Library>
-  mark <0.0.1>
+  mark <0.0.2>

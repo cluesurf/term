@@ -1,8 +1,8 @@
 
 # Input group — headless. Wraps an input with addons (prefix/suffix). Parts: input-group, input-group-addon.
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 

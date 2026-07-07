@@ -1,10 +1,10 @@
 
 # Deque (double-ended queue), backed by the native array. Push and pop at either end. Pops return `maybe` so an empty deque is total, never a fault.
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
 
 form deque

@@ -1,6 +1,6 @@
 
-deck @cluesurf/base
+deck @term/base
   bear ./code
   test ./test
-  mark <0.0.1>
-  link @cluesurf/case, mark <0.0.x>
+  mark <0.0.2>
+  link @term/case, mark <0.0.x>

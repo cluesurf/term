@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/network/http
+load @term/base/code/network/http
   find response
 
 task read

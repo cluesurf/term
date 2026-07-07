@@ -4,7 +4,7 @@
 # ten, so it is one portable implementation on every backend (no native decimal type needed). Parsing and formatting --
 # the only text work -- are a one-line native expression per backend.
 
-load @cluesurf/base/code/integer/big
+load @term/base/code/integer/big
   find big-integer
   find make-big-integer
   find big-add
@@ -12,11 +12,11 @@ load @cluesurf/base/code/integer/big
   find big-multiply
   find big-compare
 
-load @cluesurf/base/code/text/string
+load @term/base/code/text/string
   find repeat
   find concat
 
-load @cluesurf/base/code/math
+load @term/base/code/math
   find maximum
 
 # the digits of `value` with the point removed, as a big integer (12.34 -> 1234, -0.5 -> -5)

@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/make
+load @term/base/code/make
   find make
 
 mint make

@@ -1,6 +1,6 @@
 note <Tests for the ordering module. `from-numbers` builds a three-way ordering; the predicates and `reverse` read and flip it.>
 
-load @cluesurf/base/code/ordering
+load @term/base/code/ordering
   find ordering
   find from-numbers
 

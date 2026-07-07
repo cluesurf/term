@@ -1,12 +1,12 @@
 note <Tests for the binary min-heap. push/pop keep the smallest value at the root regardless of insertion order.>
 
-load @cluesurf/base/code/list/heap
+load @term/base/code/list/heap
   find heap
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find unwrap-or
 
 test <pop returns the smallest pushed value>

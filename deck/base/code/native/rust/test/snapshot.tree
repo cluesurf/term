@@ -3,19 +3,19 @@ dock load
   load <std::fs>, name fs
   load <std::path::Path>, name path
 
-load @cluesurf/base/code/native/shared/test/snapshot
+load @term/base/code/native/shared/test/snapshot
   find resolve
   find serialize
   find deserialize
 
-load @cluesurf/base/code/native/shared/test/context
+load @term/base/code/native/shared/test/context
   find get
   find fail
 
-load @cluesurf/base/code/native/shared/test
+load @term/base/code/native/shared/test
   find make-failure
 
-load @cluesurf/base/code/native/shared/test/compare
+load @term/base/code/native/shared/test/compare
   find deep-equal
 
 task match

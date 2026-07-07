@@ -1,5 +1,5 @@
 
-# Browser DOM impl: delegates to the real DOM through @cluesurf/bind. Conforms to the abstract API in ../dom. The
+# Browser DOM impl: delegates to the real DOM through @term/bind. Conforms to the abstract API in ../dom. The
 # `view` handle is opaque (an erased host node), so each task re-types it to the bind form that owns the method it
 # needs (document / element / node / child-node) and calls the method with member syntax (`call made/set-attribute`).
 # bind's methods are JS-`this`-style, so the receiver is the member target and the args are exactly the method's
@@ -11,22 +11,22 @@ load ../global
   find place
   find past
 
-load @cluesurf/bind/code/browser/dom/element
+load @term/bind/code/browser/dom/element
   find element
 
-load @cluesurf/bind/code/browser/dom/element-css-inline-style
+load @term/bind/code/browser/dom/element-css-inline-style
   find element-css-inline-style
 
-load @cluesurf/bind/code/browser/dom/html-or-svg-element
+load @term/bind/code/browser/dom/html-or-svg-element
   find html-or-svg-element
 
-load @cluesurf/bind/code/browser/dom/node
+load @term/bind/code/browser/dom/node
   find node
 
-load @cluesurf/bind/code/browser/dom/child-node
+load @term/bind/code/browser/dom/child-node
   find child-node
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
 
 load ../../view

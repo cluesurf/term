@@ -1,11 +1,11 @@
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
-load @cluesurf/base/code/mark/8
+load @term/base/code/mark/8
   find mark-8
 
-load @cluesurf/base/code/text/code/utf-8
+load @term/base/code/text/code/utf-8
   find text-utf-8
 
 task allocate

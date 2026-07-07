@@ -1,6 +1,6 @@
 note <Tests for quaternions: Hamilton product with identity, conjugate, length, normalize, from-axis-angle, slerp.>
 
-load @cluesurf/base/code/line/float/32/quaternion
+load @term/base/code/line/float/32/quaternion
   find quaternion
   find make-quaternion
   find times

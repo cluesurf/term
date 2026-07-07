@@ -1,6 +1,6 @@
 note <Mutual-exclusion lock: lock waits until free, unlock releases it, so lock-unlock-lock-unlock in one task succeeds.>
 
-load @cluesurf/base/code/mutex
+load @term/base/code/mutex
   find make-mutex
   find lock
   find unlock

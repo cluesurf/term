@@ -1,15 +1,15 @@
 # TCP sockets. The clean uniform interface; each backend wraps its platform networking (node net / tls, rust tokio, swift Network / POSIX, kotlin java.net) behind this API, selected at build time. `connection` is a live duplex stream to a peer, with read / write / close methods; `listener` accepts incoming connections. The platform socket lives in the opaque `dock` handle, typed per backend. Every operation is async, since networking runs over time.
 
-load @cluesurf/base/code/native/network/tcp
+load @term/base/code/native/network/tcp
   find do-connect
   find do-listen
 
-load @cluesurf/base/code/native/network/tcp/connection
+load @term/base/code/native/network/tcp/connection
   find do-read
   find do-write
   find do-close-stream
 
-load @cluesurf/base/code/native/network/tcp/listener
+load @term/base/code/native/network/tcp/listener
   find do-accept
   find do-close-listener
 

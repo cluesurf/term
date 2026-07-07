@@ -1,8 +1,8 @@
 
-load @cluesurf/mill/code/code/base/mine
+load @term/mill/code/code/base/mine
   find base
 
-load @cluesurf/mill/code/code/tool/flow/mine
+load @term/mill/code/code/tool/flow/mine
   find flow
 
 tree hook

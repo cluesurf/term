@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/void
+load @term/base/code/void
   find void
 
 form decidable

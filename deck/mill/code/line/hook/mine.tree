@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/code/call/mine
+load @term/mill/code/code/call/mine
   find call
 
 mine dock-hook

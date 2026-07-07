@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/rule/hold/mint
+load @term/mill/code/rule/hold/mint
   find hold
 
 mint rule

@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/meet
+load @term/base/code/meet
   find meet
 
 mint meet

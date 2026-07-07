@@ -11,9 +11,9 @@
 # `data-state` (open/closed) so a theme animates it in CSS. No baked styling; positioning is added via logic/position
 # (floating-ui). Parts: popover, popover-trigger, popover-content.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 load ../logic/disclosure

@@ -1,13 +1,13 @@
 note <Tests for running a subprocess to completion: exit code and captured output.>
 
-load @cluesurf/base/code/process/run
+load @term/base/code/process/run
   find run
   find run-result
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
-load @cluesurf/base/code/text
+load @term/base/code/text
   find contains
 
 test <run echo exits with code zero>

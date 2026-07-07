@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/fuse
+load @term/base/code/fuse
   find code-fuse
   find code-fuse-bind
 

@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/base/result
+load @term/base/code/base/result
   find result
 
 form error

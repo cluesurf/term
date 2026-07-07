@@ -1,6 +1,6 @@
 note <Verification tests in Seed, for the functions the verify engine (deck/test) synthesizes and proves: max, min, abs, clamp. Each test asserts a point of the function's specification at a boundary input. The engine proves these over the whole bounded domain; here they are the same specs as idiomatic .tree tests, in the style of math.tree. `want hold` means the predicate body must be true.>
 
-load @cluesurf/base/code/math
+load @term/base/code/math
   find maximum
   find minimum
   find absolute

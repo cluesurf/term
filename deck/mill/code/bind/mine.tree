@@ -1,11 +1,11 @@
 
-load @cluesurf/mill/code/code/head/mine
+load @term/mill/code/code/head/mine
   find head
 
-load @cluesurf/mill/code/code/like/mine
+load @term/mill/code/code/like/mine
   find like
 
-load @cluesurf/mill/code/code/note/mine
+load @term/mill/code/code/note/mine
   find note
 
 mine bind

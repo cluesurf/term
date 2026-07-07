@@ -6,7 +6,7 @@ dock type
 dock load
   load <global:atomic>, name atomic
 
-load @cluesurf/base/code/atomic
+load @term/base/code/atomic
   find atomic
 
 task do-make

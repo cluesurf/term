@@ -11,9 +11,9 @@
 # computeFit (the JS fitter the block / block-css / virtual variants reuse) lives in logic/grid; it is verified to match
 # shared.ts exactly. block-cq itself needs no fitter -- the browser does the column math from the `@container` rules.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 

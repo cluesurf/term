@@ -1,11 +1,11 @@
 
-load @cluesurf/base/code/deck
+load @term/base/code/deck
   find deck-deck-case
 
-load @cluesurf/mill/code/deck/deck/link/mint
+load @term/mill/code/deck/deck/link/mint
   find deck-link
 
-load @cluesurf/mill/code/deck/deck/host/mint
+load @term/mill/code/deck/deck/host/mint
   find deck-host
 
 mint deck-case, like deck-deck-case

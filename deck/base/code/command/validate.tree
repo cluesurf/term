@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/command
+load @term/base/code/command
   find result
 
 task check

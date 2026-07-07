@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/mind
+load @term/mill/code/book/mind
   find book-mind
 
 mint mind, like book-mind

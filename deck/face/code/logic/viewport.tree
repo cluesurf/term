@@ -1,5 +1,5 @@
 
-# Viewport hook — the Seed port of @cluesurf/face's `use-viewport`. A signal holding a `{width, height, print}` record,
+# Viewport hook — the Seed port of @term/face's `use-viewport`. A signal holding a `{width, height, print}` record,
 # seeded from the current window size and kept in sync by listeners: a resize listener refreshes width + height, and
 # print listeners flip `print` on `beforeprint` / `afterprint` (the browser native also toggles the `print-mode` body
 # class, matching the React hook). Both listeners detach via on-cleanup when the owning scope is disposed (the Solid
@@ -12,7 +12,7 @@ load ./native/viewport
   find current-height
   find listen-resize
   find listen-print
-load @cluesurf/site/code/zone/reactive
+load @term/site/code/zone/reactive
   find signal
   find make-signal
   find read-signal

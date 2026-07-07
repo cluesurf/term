@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/read
+load @term/base/code/read
   find read
 
 mint read

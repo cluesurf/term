@@ -5,7 +5,7 @@ dock load
   load <libc>
   load <signal_hook>, name signal-hook
 
-load @cluesurf/base/code/process/current
+load @term/base/code/process/current
   find process-info
 
 task read

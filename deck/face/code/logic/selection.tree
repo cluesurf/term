@@ -6,7 +6,7 @@
 # The controller IS a text signal. `make-selection` creates it; a part marks itself active with `is-selected` /
 # `selection-state` (reactive `data-state` -> "active"/"inactive") and selects on `hook click, call select-value`.
 
-load @cluesurf/site/code/zone/reactive
+load @term/site/code/zone/reactive
   find signal
   find make-signal
   find read-signal

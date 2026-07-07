@@ -1,10 +1,10 @@
 note <Tests for result conversions. to-maybe drops the error channel: okay becomes some, error becomes none.>
 
-load @cluesurf/base/code/result
+load @term/base/code/result
   find result
   find to-maybe
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
   find is-some
   find unwrap-or

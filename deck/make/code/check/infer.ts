@@ -1149,6 +1149,11 @@ export function check(
   function checkFunction(
     node: Extract<Statement, { form: 'function' }>,
   ): void {
+    // a separate-compilation stub carries only its signature: the body was checked in its owning unit
+    if (node.stub) {
+      return
+    }
+
     const signature = functions.get(node.name)!
     // the generics of this function carry their declared `need` bounds, available to discharge bounded calls
     currentBounds = [...signature.bounds].map(([id, mask]) => ({
@@ -1394,6 +1399,12 @@ export function check(
     for (const statement of body) {
       switch (statement.form) {
         case 'let':
+          // the let's own annotation must zonk too: a local inferred at a generic's type keeps a raw inference
+          // variable otherwise, and a backend rendering the annotation cannot map it to the declared generic name
+          if (statement.type) {
+            statement.type = zonkGeneric(statement.type, names)
+          }
+
           visitExpression(statement.init)
           break
         case 'assign':

@@ -1,86 +1,86 @@
 
-load @cluesurf/mill/code/code/form/mine
+load @term/mill/code/code/form/mine
   find form
 
-load @cluesurf/mill/code/code/task/mine
+load @term/mill/code/code/task/mine
   find task
 
-load @cluesurf/mill/code/code/call/mine
+load @term/mill/code/code/call/mine
   find call
 
-load @cluesurf/mill/code/code/hook/mine
+load @term/mill/code/code/hook/mine
   find hook
 
-load @cluesurf/mill/code/seed/seed/mine
+load @term/mill/code/seed/seed/mine
   find host
 
-load @cluesurf/mill/code/code/load/mine
+load @term/mill/code/code/load/mine
   find load
 
-load @cluesurf/mill/code/code/dock/mine
+load @term/mill/code/code/dock/mine
   find dock
 
-load @cluesurf/mill/code/code/test/mine
+load @term/mill/code/code/test/mine
   find test
 
-load @cluesurf/mill/code/code/hold/mine
+load @term/mill/code/code/hold/mine
   find hold
 
-load @cluesurf/mill/code/code/suit/mine
+load @term/mill/code/code/suit/mine
   find suit
 
-load @cluesurf/mill/code/code/mask/mine
+load @term/mill/code/code/mask/mine
   find mask
 
-load @cluesurf/mill/code/code/wear/mine
+load @term/mill/code/code/wear/mine
   find wear
 
-load @cluesurf/mill/code/code/bear/mine
+load @term/mill/code/code/bear/mine
   find bear
 
-load @cluesurf/mill/code/code/book/mine
+load @term/mill/code/code/book/mine
   find book
 
-load @cluesurf/mill/code/code/tree/mine
+load @term/mill/code/code/tree/mine
   find tree
 
-load @cluesurf/mill/code/code/kink/mine
+load @term/mill/code/code/kink/mine
   find kink
 
-load @cluesurf/mill/code/code/fuse/mine
+load @term/mill/code/code/fuse/mine
   find fuse
 
-load @cluesurf/mill/code/code/tree/beam/mine
+load @term/mill/code/code/tree/beam/mine
   find beam
 
-load @cluesurf/mill/code/code/tree/slot/mine
+load @term/mill/code/code/tree/slot/mine
   find slot
 
-load @cluesurf/mill/code/code/note/mine
+load @term/mill/code/code/note/mine
   find note
 
-load @cluesurf/mill/code/code/halt/mine
+load @term/mill/code/code/halt/mine
   find halt
 
-load @cluesurf/mill/code/code/save/mine
+load @term/mill/code/code/save/mine
   find save
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
-load @cluesurf/mill/code/code/lace/mine
+load @term/mill/code/code/lace/mine
   find lace
 
-load @cluesurf/mill/code/code/cast/mine
+load @term/mill/code/code/cast/mine
   find cast
 
-load @cluesurf/mill/code/code/tune/mine
+load @term/mill/code/code/tune/mine
   find tune
 
-load @cluesurf/mill/code/code/view/mine
+load @term/mill/code/code/view/mine
   find view
 
-load @cluesurf/mill/code/code/zone/mine
+load @term/mill/code/code/zone/mine
   find zone
 
 mine code

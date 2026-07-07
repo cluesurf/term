@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/fuse
+load @term/mill/code/book/fuse
   find book-fuse
 
 mint fuse, like book-fuse

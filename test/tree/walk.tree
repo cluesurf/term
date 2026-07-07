@@ -1,6 +1,6 @@
 note <Tests for the iterator (walk): sources, lazy adapters (map/filter/take), terminal sinks (count/fold/find/is-any), and a bounded infinite source.>
 
-load @cluesurf/base/code/walk
+load @term/base/code/walk
   find walk
   find from-list
   find count-from
@@ -12,10 +12,10 @@ load @cluesurf/base/code/walk
   find find
   find is-any
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find unwrap-or
 
 task double

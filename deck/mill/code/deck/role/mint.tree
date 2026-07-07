@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/deck/role
+load @term/mill/code/deck/role
   find deck-role
   find deck-role-take
   find deck-role-miss

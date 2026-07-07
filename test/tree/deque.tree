@@ -1,12 +1,12 @@
 note <Tests for the deque (double-ended queue). Push and pop at both ends; pops return maybe, unwrapped with a fallback.>
 
-load @cluesurf/base/code/list/deque
+load @term/base/code/list/deque
   find deque
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find unwrap-or
 
 test <push-back then pop-front gives FIFO order>

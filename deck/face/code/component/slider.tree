@@ -3,9 +3,9 @@
 # slider-track, slider-range (the filled portion), slider-thumb (role=slider, focusable). Theme positions the range +
 # thumb from the value in CSS.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 

@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/zone
+load @term/base/code/zone
   find zone-def
 
 mint zone

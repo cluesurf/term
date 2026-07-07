@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/film
+load @term/mill/code/book/film
   find book-film
   find book-film-bind
 

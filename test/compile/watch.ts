@@ -35,7 +35,7 @@ const resolve = (path: string): Source | undefined =>
 
 const entry = (constant: number): Source => ({
   file: 'entry.tree',
-  text: `load @app/helper\n  find triple\n\ntask run\n  like number\n  send back\n    call triple\n      mark ${constant}\n`,
+  text: `load @app/helper\n  find triple\n\ntask run\n  like number\n  send back\n    call triple\n      code ${constant}\n`,
 })
 
 const compiler = new IncrementalCompiler(resolve)

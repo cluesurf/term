@@ -1,8 +1,8 @@
 
-load @cluesurf/base/code/network/websocket
+load @term/base/code/network/websocket
   find socket
 
-load @cluesurf/base/code/network/websocket/socket
+load @term/base/code/network/websocket/socket
   find message
 
 task send

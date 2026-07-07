@@ -5,7 +5,7 @@
 # implementation for every backend, no per-width native code and no runtime shim. Each width fuses this once, passing its
 # name, mask, sign bit, and bounds. See `8` / `16` / `32` (signed) and `unsigned` (u8 / u16 / u32).
 
-load @cluesurf/base/code/bit
+load @term/base/code/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or
@@ -13,7 +13,7 @@ load @cluesurf/base/code/bit
   find shift-left
   find shift-right
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find maybe
   find some
   find none

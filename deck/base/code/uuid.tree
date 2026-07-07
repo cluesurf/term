@@ -1,6 +1,6 @@
 # UUID generation. The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/uuid`). Input and output stay in the currency types.
 
-load @cluesurf/base/code/native/uuid
+load @term/base/code/native/uuid
   find generate-v4
 
 task version4

@@ -2,9 +2,9 @@
 # Sidebar — headless. A collapsible app sidebar. The collapse state is a shared disclosure controller (open = expanded);
 # the trigger toggles it. Parts: sidebar (root, reactive data-state expanded/collapsed), sidebar-trigger, sidebar-
 # header, sidebar-content, sidebar-footer, sidebar-group, sidebar-menu, sidebar-menu-item.
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 load ../logic/disclosure

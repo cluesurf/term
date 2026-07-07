@@ -1,5 +1,5 @@
 
-load @cluesurf/mill/code/book/date
+load @term/mill/code/book/date
   find book-date
 
 mint date, like book-date

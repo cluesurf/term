@@ -1,8 +1,8 @@
 
-load @cluesurf/mill/code/code/head/mine
+load @term/mill/code/code/head/mine
   find head
 
-load @cluesurf/mill/code/seed/seed/mine
+load @term/mill/code/seed/seed/mine
   find host
 
 mine tune

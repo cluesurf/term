@@ -1,7 +1,7 @@
 
 # Ordered set: unique values in insertion order, backed by the native array.
 
-load @cluesurf/base/code/list
+load @term/base/code/list
   find list
 
 form ordered-set

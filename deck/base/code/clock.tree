@@ -1,7 +1,7 @@
 
 # Clock: current time and delays. Platform implementation is selected at build time and hidden behind this API.
 
-load @cluesurf/base/code/native/clock
+load @term/base/code/native/clock
   find current-time
   find delay
 

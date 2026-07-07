@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/shared/hash
+load @term/base/code/shared/hash
   take task hash-djb2-xor
     save task hash
 

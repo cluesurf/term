@@ -10,10 +10,10 @@ load ../../http/http
   find server
   find route-server
 
-load @cluesurf/base/code/maybe
+load @term/base/code/maybe
   find unwrap-or
 
-load @cluesurf/base/code/hash
+load @term/base/code/hash
   find get
 
 task make-api

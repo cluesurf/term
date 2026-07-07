@@ -1,4 +1,4 @@
-deck @cluesurf/term
+deck @term/term
   head <A TreeCode Programming Framework>
   mark <0.0.1>
   sort tool
@@ -19,7 +19,7 @@ deck @cluesurf/term
   deck ./deck/site
   deck ./deck/term
   deck ./deck/deck
-  link @cluesurf/bind, mark <0.0.x>
+  link @term/bind, mark <0.0.x>
   task ./task
   # the task loader
   book ./book

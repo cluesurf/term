@@ -1,7 +1,7 @@
 
 # Look: the CSS-utility AST. A look sheet is a flat list of rules. Each rule is either a `face` (a utility class with
 # declarations and variant cases) or a `tone` (a block of theme tokens). The grammar lives in
-# @cluesurf/term/code/code/look/mine, the builder in .../mint. A separate static-output compiler lowers this AST to a
+# @term/term/code/code/look/mine, the builder in .../mint. A separate static-output compiler lowers this AST to a
 # plain CSS stylesheet at build time (Tailwind-style, zero runtime). The headless components carry `class` +
 # `data-slot`/`data-state`, so `face ... / case <state>` themes them with no runtime work.
 

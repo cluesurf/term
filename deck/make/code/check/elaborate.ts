@@ -1458,6 +1458,10 @@ export function elaborateReport(
   const functionType = new Map<string, Term>()
   const functionGenerics = new Map<string, number>() // function name -> number of leading type parameters
   const representable = new Set<string>()
+  // the context levels of the CURRENT function's erased generic binders, while its body elaborates. A generic call
+  // in the body mints its type metas abstracted over these (contextual metavariables), so a meta can solve to the
+  // enclosing generic itself (a bounded generic FORWARDING to another bounded generic) without a scope escape.
+  let enclosingGenericLevels: number[] = []
 
   for (const statement of program) {
     if (statement.form !== 'function') {
@@ -1551,6 +1555,28 @@ export function elaborateReport(
   const BOOLEAN_VALUE = evaluate([], boolean)
   const isUnitValue = (value: Value): boolean => isUnit(quote(0, value))
   type Scope = Map<string, number> // surface name -> the context level at which it was bound
+
+  // a fresh type metavariable for one erased generic argument at a call site. Inside a generic function's body the
+  // meta is abstracted over the enclosing generic binders and applied to them (a contextual metavariable), so
+  // pattern unification can solve it TO an enclosing generic (the forwarding case) by inverting the spine.
+  function contextualTypeMeta(context: Context): Term {
+    if (enclosingGenericLevels.length === 0) {
+      return freshMeta(TYPE0_VALUE)
+    }
+
+    let pi: Term = TYPE0
+
+    for (let i = 0; i < enclosingGenericLevels.length; i++) {
+      pi = erasedPi(TYPE0, pi)
+    }
+
+    return apply(
+      freshMeta(evaluate([], pi)),
+      ...enclosingGenericLevels.map(l =>
+        variable(context.level - l - 1),
+      ),
+    )
+  }
 
   // elaborate an expression to a kernel term in the given context, or null if out of the covered fragment
   function expr(
@@ -1764,7 +1790,8 @@ export function elaborateReport(
         const localLevel = scope.get(node.callee.name)
 
         if (localLevel !== undefined) {
-          const headTerm = variable(context.level - localLevel - 1)
+          const localIndex = context.level - localLevel - 1
+          const headTerm = variable(localIndex)
           const localArgs: Term[] = []
 
           for (const argument of node.args) {
@@ -1777,7 +1804,29 @@ export function elaborateReport(
             localArgs.push(term)
           }
 
-          return apply(headTerm, ...localArgs)
+          // a GENERIC function value bound to a local (`host id / read identity`) carries leading erased universe
+          // binders; calling it must supply one type witness per binder, exactly as the named generic-call path
+          // does, or the kernel sees a value where a Type is expected. Each witness is a contextual metavariable,
+          // so let-generalization holds: every call site solves its own copy.
+          const witnesses: Term[] = []
+
+          let peeled = context.types[localIndex]
+            ? whnf(context.types[localIndex]!)
+            : undefined
+
+          while (
+            peeled &&
+            peeled.v === 'pi' &&
+            peeled.mult === 0 &&
+            whnf(peeled.domain).v === 'type'
+          ) {
+            witnesses.push(contextualTypeMeta(context))
+            peeled = whnf(
+              closeOver(peeled.codomain, neutralVar(context.level)),
+            )
+          }
+
+          return apply(headTerm, ...witnesses, ...localArgs)
         }
 
         if (!functionType.has(node.callee.name)) {
@@ -1788,7 +1837,7 @@ export function elaborateReport(
         // arguments by unification (the type witnesses are erased, multiplicity 0)
         const typeArguments = Array.from(
           { length: functionGenerics.get(node.callee.name) ?? 0 },
-          () => freshMeta(TYPE0_VALUE),
+          () => contextualTypeMeta(context),
         )
 
         // peel the function's value-parameter types (skipping the erased generic binders) so an overloaded-constructor
@@ -2517,14 +2566,16 @@ export function elaborateReport(
   }
 
   // check an explicit proof of `left == right`. 'ok' = proved, 'fail' = an explicit tactic that did not work,
-  // 'open' = no proof or a tactic not yet supported (the linear prover then gets a chance). Implemented tactics:
+  // 'open' = no proof or a tactic not yet supported (the linear prover then gets a chance), 'bad' = the proof
+  // REFERENCES something that does not exist (a cite of an unknown lemma): a hard error no fallback may rescue,
+  // since the goal being otherwise provable cannot make a dangling reference valid. Implemented tactics:
   // `melt` / `calm` (definitional equality) and `cite` (a previously proven lemma of the same equality).
   function checkProof(
     proof: Proof[] | undefined,
     level: number,
     left: Value,
     right: Value,
-  ): 'ok' | 'fail' | 'open' {
+  ): 'ok' | 'fail' | 'open' | 'bad' {
     if (!proof || proof.length === 0) {
       return areConvertible(level, left, right) ? 'ok' : 'open'
     }
@@ -2565,7 +2616,7 @@ export function elaborateReport(
         const lemma = tactic.arg ? lemmas.get(tactic.arg) : undefined
 
         if (!lemma) {
-          return 'fail'
+          return 'bad'
         }
 
         // a cited lemma must state the same equality, in either orientation (== is symmetric)
@@ -2581,7 +2632,7 @@ export function elaborateReport(
         const lemma = tactic.arg ? lemmas.get(tactic.arg) : undefined
 
         if (!lemma) {
-          return 'fail'
+          return 'bad'
         }
 
         return lemma.left === here.right && lemma.right === here.left
@@ -2607,7 +2658,7 @@ export function elaborateReport(
           const lemma = lemmas.get(step.arg)
 
           if (!lemma) {
-            return 'fail'
+            return 'bad'
           }
 
           eqs.push(lemma)
@@ -5103,6 +5154,16 @@ export function elaborateReport(
             rhs: quote(context.level, rightValue),
           })
         }
+      } else if (verdict === 'bad') {
+        // a dangling reference (citing a lemma that does not exist) is a hard error: the goal being otherwise
+        // provable cannot rescue a proof built on a name that names nothing
+        diagnostics.push(
+          diagnose('invalid-proof', {
+            file,
+            span: statement.span,
+            message: 'this proof cites a lemma that does not exist',
+          }),
+        )
       } else if (verdict === 'fail') {
         // a `calm` / explicit tactic that did not close by definitional equality still succeeds if the goal is a
         // commutative-ring identity (`add a b == add b a`) or holds modulo the path hypotheses, so `calm hold`
@@ -5137,7 +5198,10 @@ export function elaborateReport(
   for (const statement of program) {
     if (
       statement.form !== 'function' ||
-      !representable.has(statement.name)
+      !representable.has(statement.name) ||
+      // a separate-compilation stub has no body to elaborate: its signature is already registered above (so calls
+      // against it kernel-check), and its body was verified in its owning unit
+      statement.stub
     ) {
       continue
     }
@@ -5153,12 +5217,15 @@ export function elaborateReport(
       functionType.get(statement.name)!,
     )
 
+    const genericLevels: number[] = []
+
     for (let i = 0; i < statement.generics.length; i++) {
       if (remaining.v !== 'pi') {
         break
       }
 
       const witness = neutralVar(context.level)
+      genericLevels.push(context.level)
       const domain = remaining.domain
       const codomain = remaining.codomain
       context = bind(context, remaining.mult, domain)
@@ -5182,6 +5249,8 @@ export function elaborateReport(
     const resultValue = remaining
     // first try a pure term (proof-relevant); if the body is outside the pure fragment, type-check it as effectful
     // commands. Either way the kernel is the authority for the expression types.
+    enclosingGenericLevels = genericLevels
+
     const term = body(statement.body, scope, context, resultValue)
 
     try {
@@ -5221,6 +5290,8 @@ export function elaborateReport(
         )
       }
       // Decline (unrepresentable) or any other error: leave this function to the surface checker, no diagnostic
+    } finally {
+      enclosingGenericLevels = []
     }
   }
 

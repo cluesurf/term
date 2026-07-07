@@ -1,6 +1,6 @@
 import { FetchConfig, Mark, RegistryPackageMeta } from './form'
 import { parseMark } from './mark'
-import { toRegistryName } from './name'
+import { resolveRegistry, DEFAULT_SCOPE_REGISTRIES } from './name'
 
 const DEFAULT_REGISTRY = 'https://registry.npmjs.org'
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -13,6 +13,7 @@ const metaCache = new Map<
 export function makeDefaultFetchConfig(): FetchConfig {
   return {
     registry: DEFAULT_REGISTRY,
+    scopeRegistries: { ...DEFAULT_SCOPE_REGISTRIES },
     concurrency: 16,
     offline: false,
   }
@@ -32,8 +33,13 @@ export async function fetchPackageMeta(input: {
     return cached.data
   }
 
-  const registryName = toRegistryName({ name: input.name })
-  const url = `${input.config.registry}/${registryName}`
+  const registry = resolveRegistry({
+    name: input.name,
+    registry: input.config.registry,
+    scopeRegistries: input.config.scopeRegistries,
+  })
+  // native scoped name, no `.tree` suffix: `${registry}/@term/base`
+  const url = `${registry}/${input.name}`
   const response = await fetch(url, {
     headers: { Accept: 'application/json' },
   })

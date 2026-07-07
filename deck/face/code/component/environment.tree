@@ -1,14 +1,14 @@
 
-# Environment — the Seed port of @cluesurf/face's `Environment`. In React it is the client-runtime wrapper: a provider
+# Environment — the Seed port of @term/face's `Environment`. In React it is the client-runtime wrapper: a provider
 # stack (settings, query client, fonts, toast, layout-slot registry) around the responsive Layout, plus optional
 # trailing hosts (Toast / ScrollRestoration / Scripts). In Seed the providers are not applicable (the reactive runtime
 # has no React context tree, signals are imported directly, SSR is the dom native), so the meaningful piece is the
 # viewport + Layout: Environment just wraps the page in Layout, which owns the viewport signal and the responsive
 # three-section shell. The page fills Layout's middle `slot` through this one.
 
-load @cluesurf/site/code/zone/render
+load @term/site/code/zone/render
   find element
-load @cluesurf/site/code/dom/dom
+load @term/site/code/dom/dom
   find view
   find append
 load ./layout

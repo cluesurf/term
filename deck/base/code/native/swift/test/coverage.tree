@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/test/coverage
+load @term/base/code/test/coverage
   find coverage
   find file-coverage
 

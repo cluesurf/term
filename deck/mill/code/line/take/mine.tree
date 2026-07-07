@@ -1,8 +1,8 @@
 
-load @cluesurf/mill/code/code/seed/mine
+load @term/mill/code/code/seed/mine
   find seed
 
-load @cluesurf/mill/code/line/mill/mine
+load @term/mill/code/line/mill/mine
   find dock-mill
 
 mine dock-take

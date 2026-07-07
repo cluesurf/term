@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/wear
+load @term/base/code/wear
   find wear
 
 mint wear

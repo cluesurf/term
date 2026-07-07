@@ -1,5 +1,5 @@
 
-# The look mill: the CSS-utility DSL. Grammar in ./mine, builder in ./mint, AST forms in @cluesurf/base/code/look. A
+# The look mill: the CSS-utility DSL. Grammar in ./mine, builder in ./mint, AST forms in @term/base/code/look. A
 # separate static-output compiler lowers the AST to a plain CSS stylesheet at build time.
 
 mill look

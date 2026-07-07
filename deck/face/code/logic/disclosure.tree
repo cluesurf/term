@@ -8,7 +8,7 @@
 # shows its content with `fork` on `disclosure-open`, sets `data-state` from `disclosure-state` (reactive, so CSS can
 # animate open/close), and toggles from a `hook click, call toggle-disclosure`.
 
-load @cluesurf/site/code/zone/reactive
+load @term/site/code/zone/reactive
   find signal
   find make-signal
   find read-signal

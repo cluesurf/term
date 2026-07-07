@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/form
+load @term/base/code/form
   find form
   find bond
 

@@ -3,4 +3,4 @@
 # re-exports the abstract native db module, which the build rewrites to the target's impl (`native/node/db`, a
 # Postgres-backed impl) via the native-env mechanism.
 
-bear @cluesurf/site/code/base/native/db
+bear @term/site/code/base/native/db

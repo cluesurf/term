@@ -914,6 +914,10 @@ export function emitTypeScript(
   // `make some` may not itself define `maybe`, so without this its variant constructors would lose their `form` tag.
   options?: { hmr?: boolean; variants?: Set<string>; env?: string },
 ): string {
+  // separate-compilation stubs are typing context only: their owning unit emits the real definition, and the
+  // per-module import wiring reconnects references. They must never be emitted here.
+  program = program.filter(s => !(s.form === 'function' && s.stub))
+
   // lower `hook` web routes to a `route(host, path)` dispatcher + a `boot(url, port)` that hands it to the env-
   // abstracted `host` (browser mount / node SSR server). The browser build auto-runs boot; the node build exports it
   // for `seed boot`. A no-op when there are no routes.

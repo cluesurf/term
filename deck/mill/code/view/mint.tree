@@ -1,5 +1,5 @@
 
-load @cluesurf/base/code/view
+load @term/base/code/view
   find view-def
   find view-child
   find view-node
