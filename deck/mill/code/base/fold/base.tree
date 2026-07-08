@@ -1,4 +1,0 @@
-
-mill db-fold
-  bind mine, load ./mine
-  bind mint, load ./mint

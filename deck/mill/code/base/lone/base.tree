@@ -1,4 +1,0 @@
-
-mill db-lone
-  bind mine, load ./mine
-  bind mint, load ./mint

@@ -32,3 +32,33 @@ form deck-mark
   case band
     link base, like text
     link head, like text
+
+form deck-hold
+  # Registry manifest: a published deck's flat file listing with placement.
+  # Head `deck @scope/name`; `mark` pins the ref with its commit `hash` nested.
+  # Small packages list `file` entries directly; large ones list `shard`
+  # entries (a content-defined sitemap index), each a sub-manifest of files.
+  link name, like text
+  link mark, like text
+  link hash, like text
+  link file, list deck-file
+  link shard, list deck-shard
+
+form deck-file
+  # One file entry in a registry manifest: `link <path>`. `base` (the pack it
+  # is grouped in, with `site` the byte offset) is absent for a loose object,
+  # which is the default. `size` is the byte length (also the pack-slice length).
+  link name, like text
+  link hash, like text
+  link size, like text
+  link mime, like text
+  link base, like text
+  link site, like text
+
+form deck-shard
+  # One shard in a large manifest's index: `base <shard-hash>` with the path
+  # range it covers (`foot` first, `head` last) and its `size` (file count).
+  link hash, like text
+  link foot, like text
+  link head, like text
+  link size, like text

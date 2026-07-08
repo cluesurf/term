@@ -13,8 +13,13 @@
 
 import { createHash } from 'crypto'
 
-/** The object kinds that get their own domain-separated address space. */
-export type ObjectKind = 'chunk' | 'blob' | 'tree' | 'commit'
+/**
+ * The object kinds that get their own domain-separated address space.
+ * `pack` is a storage/transport container (a solid-compressed bundle of
+ * many small blobs, see note/term/registry/17); it is content-addressed by
+ * its compressed bytes but is not part of the Merkle DAG.
+ */
+export type ObjectKind = 'chunk' | 'blob' | 'tree' | 'commit' | 'pack'
 
 const ID_PREFIX = 'sha256:'
 

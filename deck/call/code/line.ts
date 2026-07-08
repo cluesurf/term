@@ -14,6 +14,7 @@ import { callMind } from '@cluesurf/call/code/mind'
 import { callTest } from '@cluesurf/call/code/test'
 import { callTime } from '@cluesurf/call/code/time'
 import { callBoot } from '@cluesurf/call/code/boot'
+import { callCast } from '@cluesurf/call/code/cast'
 import { callHalt } from '@cluesurf/call/code/halt'
 import { callFeed } from '@cluesurf/call/code/feed'
 import { callWork } from '@cluesurf/call/code/work'
@@ -43,6 +44,7 @@ const COMMANDS = [
   'test',
   'time',
   'boot',
+  'cast',
   'halt',
   'feed',
   'work',
@@ -480,6 +482,29 @@ const cli = yargs(hideBin(process.argv))
         env: argv.env as never,
         remote: argv.remote,
         remoteToken: argv['remote-token'],
+      })
+    },
+  )
+  .command(
+    'cast [entry]',
+    'Build an SSR app into a deployable Cloudflare Worker (work/index.ts + build/)',
+    yargs =>
+      yargs
+        .positional('entry', {
+          type: 'string',
+          description:
+            'Entry .tree module (defaults to deck.tree boot)',
+        })
+        .option('target', {
+          type: 'string',
+          description: 'Deploy target (cloudflare)',
+          default: 'cloudflare',
+        }),
+    async argv => {
+      await callCast({
+        root,
+        entry: argv.entry,
+        target: argv.target,
       })
     },
   )

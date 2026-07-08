@@ -1,0 +1,32 @@
+
+# Cloudflare Workers HTTP transport. Unlike the node transport (which binds a socket via hono +
+# @hono/node-server), a Worker never listens: `serve` returns a Web-standard fetch handler and the
+# Workers runtime invokes it per request. The `<global:transport>` shim's `create-fetch` wraps the
+# uniform router (`handle-request`) in that handler; the matching + dispatch stay in the
+# platform-agnostic `handle-request`, exactly as on node. The emitted Worker entry re-exports the
+# returned handler as `export default`.
+
+dock load
+  load <global:transport>, name runtime
+  mark native
+
+load ../../http
+  find server
+  find request
+  find response
+  find handle-request
+
+task serve
+  take server, like server
+  take port, like u16
+
+  send back
+    call runtime/create-fetch
+      bind handle
+        task on-request
+          take incoming, like request
+          like response
+          send back
+            call handle-request
+              read server
+              read incoming

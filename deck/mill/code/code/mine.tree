@@ -11,7 +11,7 @@ load @term/mill/code/code/call/mine
 load @term/mill/code/code/hook/mine
   find hook
 
-load @term/mill/code/seed/seed/mine
+load @term/mill/code/code/seed/seed/mine
   find host
 
 load @term/mill/code/code/load/mine

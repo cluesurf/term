@@ -53,10 +53,18 @@ export async function publishPackage(input: {
   // 3. negotiate: ask the registry which objects it is missing
   const missing = await input.registry.findMissing(ids)
 
-  // 4. upload only the missing objects
-  for (const id of missing) {
-    const bytes = await input.local.get(id)
-    await input.registry.putObject({ id, bytes })
+  // 4. upload the missing objects, in bounded-concurrency batches (each PUT is
+  // a network round trip, so serial upload is far too slow for large packages)
+  const CONCURRENCY = 24
+
+  for (let i = 0; i < missing.length; i += CONCURRENCY) {
+    const batch = missing.slice(i, i + CONCURRENCY)
+    await Promise.all(
+      batch.map(async id => {
+        const bytes = await input.local.get(id)
+        await input.registry.putObject({ id, bytes })
+      }),
+    )
   }
 
   // 5. sign the commit id and publish (create version or move branch)

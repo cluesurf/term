@@ -177,17 +177,21 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
 
   // the boot: hand the dispatcher + port to the env-abstracted `host`. The browser `host` mounts on the body and
   // listens for navigation; the node `host` starts an HTTP server that SSR-renders each request through the same
-  // `route`. One API, two impls -- the native-env mechanism picks which. Signature is `boot(url, port)` so `seed boot`
+  // `route`. One API, three impls -- the native-env mechanism picks which. Signature is `boot(url, port)` so `seed boot`
   // (which calls `app.boot(url, port)`) runs the server entry directly.
-  //   function boot(url, port) { host(route, port) }
+  //   function boot(url, port) { return host(route, port) }
+  // `boot` RETURNS whatever `host` returns: node/browser return nothing (harmless), but the Cloudflare host returns a
+  // Web fetch handler, which the emitted Worker entry re-exports as `export default`. So one boot serves every target.
   const boot: Statement = {
     form: 'function',
     name: 'boot',
     params: [{ name: 'url' }, { name: 'port' }],
     body: [
-      exprStatement(
-        call('host', [variable('route'), variable('port')]),
-      ),
+      {
+        form: 'return',
+        value: call('host', [variable('route'), variable('port')]),
+        span,
+      },
     ],
     generics: [],
     span,

@@ -1,0 +1,84 @@
+
+# Cloudflare Workers host: the SSR server as a Web fetch handler. Renders every page request through
+# the SAME `route(host, path)` dispatcher as node -- build a fresh in-memory root, run `route` into
+# it, serialize to HTML, wrap in the document shell -- but returns a fetch handler instead of binding
+# a socket. The one client/server/edge seam: browser mounts, node listens, this exports a handler. The
+# app author writes none of it; the native-env mechanism picks this impl for the cloudflare target and
+# the app's generated `boot(url, port)` returns whatever `host` returns, so the emitted Worker entry
+# re-exports it as `export default`.
+#
+# Static assets are NOT routed here: the Worker's transport delegates `/base/**` to the ASSETS binding
+# before dispatch (a Worker has no filesystem), so this host registers only the page catch-all `/**`.
+
+load @term/site/code/dom/dom
+  find view
+  find create-element
+  find serialize
+  find page-shell
+  find proxy-target
+load @term/site/code/http/http
+  find request
+  find response
+  find route
+  find route-server
+load @term/site/code/http/serve
+  find serve
+load @term/base/code/list
+  find list
+  find push
+
+task host
+  take route
+    like task
+      take host, like view
+      take path, like text
+  take port, like u16
+  # the catch-all handler: SSR-render the requested path through `route`
+  save render-request
+    task handle
+      take request, like request
+      take params, like hash
+      like response
+      save root
+        call create-element
+          text <div>
+      call route
+        read root
+        read request/path
+      # a resource route may have stashed a proxy source during dispatch (e.g. /vibe.pdf). Signal the
+      # transport to fetch + stream that URL through this origin (status 1 = proxy). Otherwise render.
+      save target
+        call proxy-target
+      fork test
+        hook test
+          call is-unequal
+            read target
+            text <>
+        hook hold
+          send back
+            make response
+              bind status, code 1
+              bind body, read target
+        hook miss
+          send back
+            make response
+              bind status, code 200
+              bind body
+                call page-shell
+                  call serialize
+                    read root
+  save routes
+    make list
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </**>
+        bind handle, read render-request
+  # return the fetch handler the Worker runtime invokes; `boot` returns this, the entry re-exports it
+  send back
+    call serve
+      call route-server
+        read routes
+      read port

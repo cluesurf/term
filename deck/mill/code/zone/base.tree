@@ -1,6 +1,0 @@
-
-# The zone mill: the component (view) DSL. Grammar in ./mine, builder in ./mint, AST forms in @term/base/code/zone.
-
-mill zone
-  bind mine, load ./mine
-  bind mint, load ./mint

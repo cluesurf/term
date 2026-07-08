@@ -329,6 +329,7 @@ function documentShell(
       '<!doctype html><html lang="en"><head>' +
       '<meta charset="utf-8">' +
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '<link rel="icon" href="/base/logo.svg">' +
       `<title>${escapeText(title)}</title>` +
       tags.join('') +
       `<link rel="stylesheet" href="${styleHref}">` +
@@ -353,6 +354,7 @@ function documentShell(
     '  <head>',
     '    <meta charset="utf-8">',
     '    <meta name="viewport" content="width=device-width, initial-scale=1">',
+    '    <link rel="icon" href="/base/logo.svg">',
     `    <title>${escapeText(title)}</title>`,
     ...tags.map(tag => `    ${tag}`),
     `    <link rel="stylesheet" href="${styleHref}">`,

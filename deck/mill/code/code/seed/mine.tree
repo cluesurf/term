@@ -1,68 +1,16 @@
 
+load @term/mill/code/code/seed/mine
+  find seed
+
 mine seed
-  mine any
-    mine form, like text
-      slot text
-    mine form, like mark
-      slot mark
-    mine form, like wave
-      slot wave
-    mine form, like read
-      slot read
-    mine form, like link
-      slot link
-    mine form, like move
-      slot move
-    mine form, like loan
-      slot loan
-    mine form, like cite
-      slot cite
-    mine form, like make
-      slot make
-    mine form, like call
-      slot call
-    mine form, like task
-      slot task
-    mine form, like form
-      slot form
-    mine form, like meet
-      slot meet
+  mine list
+    mine form, like seed-def
+      slot seed
 
-mine text
-  mine text
-    slot text
-
-mine mark
-  mine term, term mark
+mine seed-def
+  mine term, term seed
     mine term
-      slot value
-
-mine wave
-  mine term, term wave
-    mine term
-      slot value
-
-mine read
-  mine term, term read
-    mine path
-      slot road
-
-mine link
-  mine term, term link
-    mine path
-      slot road
-
-mine move
-  mine term, term move
-    mine path
-      slot road
-
-mine loan
-  mine term, term loan
-    mine path
-      slot road
-
-mine cite
-  mine term, term cite
-    mine path
-      slot road
+      slot name
+    mine maybe
+      mine form, like seed
+        slot seed

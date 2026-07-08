@@ -1,7 +1,0 @@
-
-mint db-has
-  case find, mint db-find
-    slot find
-  hook make
-    make db-has
-      bind find, read find

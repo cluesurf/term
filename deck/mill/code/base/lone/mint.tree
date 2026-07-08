@@ -1,4 +1,0 @@
-
-mint db-lone
-  hook make
-    make db-lone

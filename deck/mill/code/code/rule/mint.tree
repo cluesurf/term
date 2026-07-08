@@ -1,0 +1,7 @@
+
+load @term/mill/code/code/rule/hold/mint
+  find hold
+
+mint rule
+  case hold, mint hold
+    slot hold

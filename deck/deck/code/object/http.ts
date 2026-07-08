@@ -71,13 +71,17 @@ export function httpRegistry(input: {
     },
 
     async putObject(obj: { id: string; bytes: Buffer }): Promise<void> {
+      // Send as a Blob. A Uint8Array / Buffer body fails on Node 24 undici with
+      // `slice on a detached ArrayBuffer` (the readFile Buffer's pooled
+      // ArrayBuffer is detached mid-request); a Blob copies the bytes and
+      // transfers cleanly.
       const response = await fetch(objectUrl(obj.id), {
         method: 'PUT',
         headers: {
           'content-type': 'application/octet-stream',
           ...authHeaders,
         },
-        body: new Uint8Array(obj.bytes),
+        body: new Blob([obj.bytes]),
       })
 
       if (!response.ok) {

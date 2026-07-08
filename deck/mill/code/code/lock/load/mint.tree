@@ -1,0 +1,16 @@
+
+load @term/mill/code/code/lock/load
+  find lock-load
+
+mint load, like lock-load
+  case path
+    slot path
+  case mark
+    slot mark
+  case lock
+    slot lock
+  hook make
+    make lock-load
+      bind path, read path
+      bind mark, read mark
+      bind lock, read lock

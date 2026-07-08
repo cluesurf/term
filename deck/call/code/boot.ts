@@ -168,7 +168,7 @@ export function findEntry(
 }
 
 // the app package directory: the nearest ancestor (of the entry, else cwd) holding a `deck.tree` manifest
-function findAppDir(start: string): string | undefined {
+export function findAppDir(start: string): string | undefined {
   let dir = start
 
   for (;;) {
@@ -241,7 +241,7 @@ function loadHostEnv(appDir: string): string[] {
 // reactive runtime (signals / effects / events) keeps it live, with no second server round-trip. Cached on a content
 // hash of the emitted source + toolchain, so an unchanged app reuses the prior bundle. Best-effort: a client-build
 // failure logs and returns (SSR still serves without it) rather than failing the whole boot.
-async function buildClientBundle(opts: {
+export async function buildClientBundle(opts: {
   entry: string
   appDir: string
   projectRoot: string
@@ -406,7 +406,7 @@ function toneEncode(text: string): string {
 // hashed URLs, so a deploy busts every cache automatically (the name changes with the bytes). DEV writes no manifest
 // and uses the stable names, so a refresh always shows the latest. Idempotent: a prior run's hashed copies + manifest
 // are removed first, so re-runs (and a dev run after a prod run) start from a clean canonical set.
-function hashAssets(buildDir: string, prod: boolean): void {
+export function hashAssets(buildDir: string, prod: boolean): void {
   const manifestFile = path.join(buildDir, 'asset-manifest.json')
 
   // clear any prior manifest and the hashed files it named, so stale hashed copies never accumulate or get re-hashed
@@ -478,7 +478,7 @@ function hashAssets(buildDir: string, prod: boolean): void {
 
 // the dev live-reload build id: the client polls `/base/__id` and reloads when it changes. Bumped on boot and on every
 // hot style rebuild, so an edit shows in the browser with no manual refresh. A timestamp is enough (monotonic + unique).
-function writeBuildId(appDir: string): void {
+export function writeBuildId(appDir: string): void {
   try {
     const buildDir = path.join(appDir, 'build')
     mkdirSync(buildDir, { recursive: true })
@@ -491,7 +491,7 @@ function writeBuildId(appDir: string): void {
 // recompile every look stylesheet (`site/style/*.tree`) to `build/style/*.css`, then bump the reload id. Look files are
 // self-contained (only `face` / `tone` / `base` statements), so they compile with no resolver. This is what makes
 // `seed boot` self-sufficient (no separate make step for CSS) and what the dev watcher calls on each style edit.
-function buildStyles(appDir: string): void {
+export function buildStyles(appDir: string): void {
   const styleDir = path.join(appDir, 'site', 'style')
 
   if (!existsSync(styleDir)) {

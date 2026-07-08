@@ -39,6 +39,36 @@ import type {
   Statement,
 } from '@cluesurf/make/code/compile/node'
 
+// The render-runtime helpers that `lowerZones` (compile/zone-lower.ts)
+// synthesizes calls to when it lowers a `zone` component. Because that
+// lowering runs after the reachability prune, these must be pinned as roots
+// whenever a program contains a zone, or they get shaken out and dangle. The
+// prune follows references, so pinning the render helpers keeps the dom
+// primitives (set-attribute, append, ...) they call, transitively.
+const ZONE_RENDER_RUNTIME: string[] = [
+  'element',
+  'text',
+  'attribute',
+  'bind-attribute',
+  'event',
+  'dynamic',
+  'dynamic-view',
+  'show',
+  'each',
+  'each-keyed',
+  'gate',
+  'mount',
+  'portal',
+  'append',
+  'remove',
+  'replace',
+  'open-scope',
+  'close-scope',
+  'make-signal',
+  'read-signal',
+  'dispose-scope',
+]
+
 export type CompileResult =
   | {
       ok: true
@@ -294,7 +324,24 @@ export function compileProgram(
   // only on the reachable program. Needs `roots` (the entry's public surface)
   // to know the starting points. See code/ir/prune.ts.
   if (treeShake && roots) {
-    program = pruneToReachable(program, roots)
+    // Zone lowering (further below) rewrites `zone` components into calls to
+    // the render runtime (element / text / attribute / dynamic / event /
+    // append / show / each / ...). That lowering runs AFTER this prune, so the
+    // helpers are not yet referenced by the still-unlowered zones and would be
+    // pruned as unreachable, then dangle at runtime. When the program contains
+    // any zone, pin the render-runtime helpers as roots so they, and
+    // transitively the dom primitives they call, survive the shake.
+    let pruneRoots = roots
+
+    if (program.some(statement => statement.form === 'zone')) {
+      pruneRoots = new Set(roots)
+
+      for (const helper of ZONE_RENDER_RUNTIME) {
+        pruneRoots.add(helper)
+      }
+    }
+
+    program = pruneToReachable(program, pruneRoots)
   }
 
   // formal type checking: the surface pass (gradual bidirectional inference) annotates the AST with types

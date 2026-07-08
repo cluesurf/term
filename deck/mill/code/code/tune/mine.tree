@@ -2,7 +2,7 @@
 load @term/mill/code/code/head/mine
   find head
 
-load @term/mill/code/seed/seed/mine
+load @term/mill/code/code/seed/seed/mine
   find host
 
 mine tune

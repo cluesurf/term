@@ -1,5 +1,0 @@
-
-mine db-fold
-  mine term, term fold
-    mine read-path
-      slot name
