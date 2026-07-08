@@ -1,8 +1,8 @@
 
-# Grammar for the look (CSS-utility) DSL. A look sheet is a flat list of rules: `face <name>` utility classes (with
-# `have` declarations and `case` variant blocks) and `tone` theme-token blocks. The value of each `have` is a plain
-# seed expression (`text <...>`), so any CSS value passes through. Shared sub-grammar (seed) comes from the code
-# building-block mill by name. Mirrors the zone DSL grammar (../zone/mine).
+# Grammar for the look (CSS) DSL (book/language/css.md). A look sheet is a flat list of rules: `face <name>` utility
+# classes, `base style` selector rules, `base font-face` / `base media` / `base container` at-rules, and `tone` theme
+# blocks. The value of each `have` is a plain seed expression, so any CSS value passes through. Shared sub-grammar
+# (seed) comes from the code building-block mill by name. Mirrors the zone DSL grammar (../zone/mine).
 
 load @term/mill/code/code/seed/mine
   find seed
@@ -16,9 +16,16 @@ mine look-rule
   mine any
     mine form, like face-rule
       slot face
+    mine form, like style-rule
+      slot style
+    mine form, like font-face-rule
+      slot font
+    mine form, like media-rule
+      slot media
     mine form, like tone-rule
       slot tone
 
+# `face <name>` with `have` declarations and `case` variant blocks
 mine face-rule
   mine term, term face
     mine term
@@ -30,6 +37,68 @@ mine face-rule
       mine form, like look-case
         slot case
 
+# `base style` -> a selector rule: `find` elements (the selector), then `have` declarations
+mine style-rule
+  mine term, term base
+    mine term, term style
+      mine list
+        mine form, like look-element
+          slot find
+      mine list
+        mine form, like look-have
+          slot have
+
+# one element in a selector, `find <tag>` or `link <tag>`: its tag, an optional `like` combinator, its `have`
+# qualifiers, and nested combined `link` elements
+mine look-element
+  mine any
+    mine term, term find
+      mine term
+        slot name
+      mine list
+        mine form, like look-have
+          slot have
+      mine list
+        mine form, like look-element
+          slot link
+    mine term, term link
+      mine term
+        slot name
+      mine maybe
+        mine term, term like
+          mine term
+            slot like
+      mine list
+        mine form, like look-have
+          slot have
+      mine list
+        mine form, like look-element
+          slot link
+
+# `base font-face` -> an @font-face block of declarations
+mine font-face-rule
+  mine term, term base
+    mine term, term font-face
+      mine list
+        mine form, like look-have
+          slot have
+
+# `base media` (or `base container`) -> the feature conditions (`have`) then the nested rules
+mine media-rule
+  mine term, term base
+    mine any
+      mine term, term media
+        slot kind
+      mine term, term container
+        slot kind
+    mine list
+      mine form, like look-have
+        slot have
+    mine list
+      mine form, like look-rule
+        slot rule
+
+# `have <property>, <value>` -> one CSS declaration, or (inside a `find`/`link`) one selector qualifier
 mine look-have
   mine term, term have
     mine term
@@ -37,6 +106,7 @@ mine look-have
     mine form, like seed
       slot bond
 
+# `case <variant>` -> a variant block (hover / focus / dark / md / open / ...) with its own declarations
 mine look-case
   mine term, term case
     mine term
@@ -45,6 +115,7 @@ mine look-case
       mine form, like look-have
         slot have
 
+# `tone base` (or `tone dark`) -> theme tokens emitted as :root (or .dark) custom properties
 mine tone-rule
   mine term, term tone
     mine maybe

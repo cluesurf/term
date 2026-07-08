@@ -1,9 +1,10 @@
 
-# Look: the CSS-utility AST. A look sheet is a flat list of rules. Each rule is either a `face` (a utility class with
-# declarations and variant cases) or a `tone` (a block of theme tokens). The grammar lives in
-# @term/term/code/code/look/mine, the builder in .../mint. A separate static-output compiler lowers this AST to a
-# plain CSS stylesheet at build time (Tailwind-style, zero runtime). The headless components carry `class` +
-# `data-slot`/`data-state`, so `face ... / case <state>` themes them with no runtime work.
+# Look: the CSS AST (book/language/css.md). A look sheet is a flat list of rules: a `face` utility class, a `base style`
+# selector rule, a `base font-face` / `base media` / `base container` at-rule, or a `tone` theme-token block. The
+# grammar lives in the self-hosted mill at deck/mill/code/look/mine, the printer in .../mint. A separate static-output
+# compiler (deck/make/code/compile/look-css) lowers this AST to a plain CSS stylesheet at build time (Tailwind-style,
+# zero runtime). The headless components carry `class` + `data-slot`/`data-state`, so `face ... / case <state>` themes
+# them with no runtime work.
 
 load ./term
   find term
@@ -11,9 +12,12 @@ load ./term
 load ./seed
   find seed
 
-# one entry in a look sheet: a utility class or a theme-token block
+# one entry in a look sheet
 form look-rule
   case face, like face-rule
+  case style, like style-rule
+  case font, like font-face-rule
+  case media, like media-rule
   case tone, like tone-rule
 
 # `face <name>` with `have` declarations and `case` variants
@@ -22,8 +26,33 @@ form face-rule
   link have, list look-have
   link case, list look-case
 
-# `have <property>, <value>` -> one CSS declaration. The value is a plain text expression (`text <...>`), so any
-# gradient, calc(), var(), or shorthand passes through verbatim.
+# `base style` -> a selector rule. `find` is the selector (one entry per top-level element in the selector list);
+# `have` is the declaration block.
+form style-rule
+  link find, list look-element
+  link have, list look-have
+
+# one element in a selector: a tag (`main`, `any` -> `*`), its qualifiers (id / class / attr / state / part / ...),
+# an optional combinator (`like child`/`next`/`after`; absent = descendant), and nested combined elements (`link`).
+form look-element
+  link name, like term
+  link like, like term
+  link have, list look-have
+  link link, list look-element
+
+# `base font-face` -> an @font-face block of declarations
+form font-face-rule
+  link have, list look-have
+
+# `base media` (or `base container`) -> an at-rule. `kind` is `media` or `container`; the `have` children are its
+# feature conditions, `rule` its nested style rules.
+form media-rule
+  link kind, like term
+  link have, list look-have
+  link rule, list look-rule
+
+# `have <property>, <value>` -> one CSS declaration, or (inside a `find`/`link`) one selector qualifier. The value is a
+# seed expression: bare text, `<...>`, a `tint <space>, ...` color, a child value list, or nested `have <fn>` calls.
 form look-have
   link name, like term
   link bond, like seed
@@ -33,7 +62,7 @@ form look-case
   link name, like term
   link have, list look-have
 
-# `tone` (or `tone dark`) -> theme tokens emitted as :root (or .dark) custom properties. `name` is the optional scope.
+# `tone base` (or `tone dark`) -> theme tokens emitted as :root (or .dark) custom properties. `name` is the scope.
 form tone-rule
   link name, like term
   link have, list look-have

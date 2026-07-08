@@ -1,10 +1,14 @@
 
-# Builder for the look (CSS-utility) DSL: map the parsed slots onto the look AST forms in @term/base/code/look.
+# Builder for the look (CSS) DSL: map the parsed slots onto the look AST forms in @term/base/code/look.
 # The shared builder (seed) comes from the code building-block mill by name. Mirrors the zone DSL builder
 # (../zone/mint).
 
 load @term/base/code/look
   find face-rule
+  find style-rule
+  find look-element
+  find font-face-rule
+  find media-rule
   find look-have
   find look-case
   find tone-rule
@@ -19,6 +23,12 @@ mint look
 mint look-rule
   case face, mint face-rule
     slot face
+  case style, mint style-rule
+    slot style
+  case font, mint font-face-rule
+    slot font
+  case media, mint media-rule
+    slot media
   case tone, mint tone-rule
     slot tone
 
@@ -34,6 +44,52 @@ mint face-rule, like face-rule
       bind name, read name
       bind have, read have
       bind case, read case
+
+mint style-rule, like style-rule
+  case find, mint look-element
+    slot find
+  case have, mint look-have
+    slot have
+  hook make
+    make style-rule
+      bind find, read find
+      bind have, read have
+
+mint look-element, like look-element
+  case name
+    slot name
+  case like
+    slot like
+  case have, mint look-have
+    slot have
+  case link, mint look-element
+    slot link
+  hook make
+    make look-element
+      bind name, read name
+      bind like, read like
+      bind have, read have
+      bind link, read link
+
+mint font-face-rule, like font-face-rule
+  case have, mint look-have
+    slot have
+  hook make
+    make font-face-rule
+      bind have, read have
+
+mint media-rule, like media-rule
+  case kind
+    slot kind
+  case have, mint look-have
+    slot have
+  case rule, mint look-rule
+    slot rule
+  hook make
+    make media-rule
+      bind kind, read kind
+      bind have, read have
+      bind rule, read rule
 
 mint look-have, like look-have
   case name
