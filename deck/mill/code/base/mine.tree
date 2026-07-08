@@ -1,0 +1,73 @@
+
+# The registry-manifest grammar: parses a published deck's flat file listing
+# (note/term/registry/17). Head `deck @scope/name`; `mark` pins the ref with
+# its commit `hash` nested. A small package lists `link` file entries; a large
+# one lists `base` shard entries (a content-defined sitemap index), each a
+# sub-manifest. Targets the deck-hold / deck-file / deck-shard AST forms in
+# @term/base/code/deck.
+
+mine hold
+  mine term, term deck
+    mine text
+      slot name
+    mine maybe
+      mine term, term mark
+        mine text
+          slot mark
+        mine maybe
+          mine term, term hash
+            mine text
+              slot hash
+    mine list
+      mine form, like hold-file
+        slot file
+    mine list
+      mine form, like hold-shard
+        slot shard
+
+# one file entry: `link <path>` with its content hash, size, optional mime, and
+# optional pack placement (`base <pack-hash>` with a nested `site <offset>`).
+# No `base` means a loose object, the default.
+mine hold-file
+  mine term, term link
+    mine text
+      slot name
+    mine maybe
+      mine term, term hash
+        mine text
+          slot hash
+    mine maybe
+      mine term, term size
+        mine text
+          slot size
+    mine maybe
+      mine term, term mime
+        mine text
+          slot mime
+    mine maybe
+      mine term, term base
+        mine text
+          slot base
+        mine maybe
+          mine term, term site
+            mine text
+              slot site
+
+# one shard entry in a large manifest's index: `base <shard-hash>` with the
+# path range it covers (`foot` first, `head` last) and its `size` (file count).
+mine hold-shard
+  mine term, term base
+    mine text
+      slot hash
+    mine maybe
+      mine term, term foot
+        mine text
+          slot foot
+    mine maybe
+      mine term, term head
+        mine text
+          slot head
+    mine maybe
+      mine term, term size
+        mine text
+          slot size

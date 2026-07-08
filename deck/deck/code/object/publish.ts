@@ -16,6 +16,37 @@ import { Registry, PublishTarget } from './registry'
 import { signId, Keypair } from './sign'
 import { ChunkParams } from './chunk'
 import { TreeParams } from './model'
+import { buildPacks, Pack, PackInput } from './pack'
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, ms))
+
+/**
+ * Upload one pack, retrying on transient network failure with exponential
+ * backoff. A large publish is many packs; retrying per pack means one flaky
+ * request re-sends a single pack, never aborting the whole run (the failure
+ * mode that kept the ~90k-object bind publish from ever completing).
+ */
+async function uploadPack(
+  registry: Registry,
+  pack: Pack,
+  tries = 5,
+): Promise<void> {
+  let lastError: unknown
+
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    try {
+      await registry.putPack({ id: pack.id, bytes: pack.bytes })
+
+      return
+    } catch (error) {
+      lastError = error
+      await sleep(300 * 2 ** attempt)
+    }
+  }
+
+  throw lastError
+}
 
 export async function publishPackage(input: {
   dir: string
@@ -31,7 +62,12 @@ export async function publishPackage(input: {
   deps?: Record<string, string>
   params?: ChunkParams
   treeParams?: TreeParams
-}): Promise<{ commitId: string; ref: string; uploaded: number }> {
+}): Promise<{
+  commitId: string
+  ref: string
+  uploaded: number
+  packs: number
+}> {
   // 1. build the commit into the local content store
   const { commitId } = await buildCommit({
     dir: input.dir,
@@ -53,18 +89,27 @@ export async function publishPackage(input: {
   // 3. negotiate: ask the registry which objects it is missing
   const missing = await input.registry.findMissing(ids)
 
-  // 4. upload the missing objects, in bounded-concurrency batches (each PUT is
-  // a network round trip, so serial upload is far too slow for large packages)
-  const CONCURRENCY = 24
+  // 4. bundle the missing objects into content-defined packs and upload each
+  // pack in one request (hundreds of objects), retried independently. Sorting
+  // by id makes the pack cuts content-defined, so unchanged regions produce
+  // identical packs the registry already has and never re-sends. This is the
+  // fix for large packages: ~90k object PUTs become a few hundred pack POSTs
+  // (see note/term/registry/17).
+  const packInputs: PackInput[] = []
 
-  for (let i = 0; i < missing.length; i += CONCURRENCY) {
-    const batch = missing.slice(i, i + CONCURRENCY)
-    await Promise.all(
-      batch.map(async id => {
-        const bytes = await input.local.get(id)
-        await input.registry.putObject({ id, bytes })
-      }),
-    )
+  for (const id of missing) {
+    packInputs.push({ id, path: id, bytes: await input.local.get(id) })
+  }
+
+  packInputs.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+
+  const { packs } = buildPacks({ blobs: packInputs })
+
+  const CONCURRENCY = 12
+
+  for (let i = 0; i < packs.length; i += CONCURRENCY) {
+    const batch = packs.slice(i, i + CONCURRENCY)
+    await Promise.all(batch.map(pack => uploadPack(input.registry, pack)))
   }
 
   // 5. sign the commit id and publish (create version or move branch)
@@ -77,5 +122,10 @@ export async function publishPackage(input: {
     key: input.keypair.publicKey,
   })
 
-  return { commitId, ref: res.ref, uploaded: missing.length }
+  return {
+    commitId,
+    ref: res.ref,
+    uploaded: missing.length,
+    packs: packs.length,
+  }
 }

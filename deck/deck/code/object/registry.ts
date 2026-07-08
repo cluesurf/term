@@ -20,6 +20,7 @@ import { ObjectStore } from './store'
 import { RefStore } from './refs'
 import { commitClosure, buildManifest, Manifest } from './graph'
 import { verifyId } from './sign'
+import { openPack } from './pack'
 
 /** How a commit is being published: as an immutable version, or onto a branch. */
 export type PublishTarget =
@@ -36,6 +37,14 @@ export type Ref =
 export type Registry = {
   findMissing(ids: string[]): Promise<string[]>
   putObject(input: { id: string; bytes: Buffer }): Promise<void>
+  /**
+   * Upload a pack: a solid-compressed bundle of many objects (note/term/
+   * registry/17). The server unpacks it, verifies each object against its
+   * id, and stores it. One request carries hundreds of objects, so a large
+   * package publishes in a few hundred pack requests instead of ~90k object
+   * PUTs, and one failed pack retries alone instead of aborting the run.
+   */
+  putPack(input: { id: string; bytes: Buffer }): Promise<void>
   getObject(id: string): Promise<Buffer>
   hasObject(id: string): Promise<boolean>
   resolve(input: { package: string; ref: Ref }): Promise<string>
@@ -88,6 +97,32 @@ export async function acceptObject(input: {
   }
 
   await input.store.put({ id: input.id, bytes: input.bytes })
+}
+
+/**
+ * Accept a pack: decompress it, then verify and store every object it holds
+ * (each still self-verifies against its own id, so the pack is only a
+ * container and cannot smuggle a wrong object). This is the server side of
+ * the batched pack upload; objects land in the store exactly as if they had
+ * been PUT one by one.
+ */
+export async function acceptPack(input: {
+  store: ObjectStore
+  bytes: Buffer
+}): Promise<number> {
+  const open = openPack(input.bytes)
+
+  for (const entry of open.toc) {
+    await acceptObject({
+      store: input.store,
+      id: entry.id,
+      bytes: Buffer.from(
+        open.body.subarray(entry.site, entry.site + entry.size),
+      ),
+    })
+  }
+
+  return open.toc.length
 }
 
 /** Resolve a ref to a commit id. */
@@ -227,6 +262,10 @@ export function directRegistry(input: {
         id: obj.id,
         bytes: obj.bytes,
       })
+    },
+
+    putPack: async pack => {
+      await acceptPack({ store: input.store, bytes: pack.bytes })
     },
 
     getObject: id => input.store.get(id),

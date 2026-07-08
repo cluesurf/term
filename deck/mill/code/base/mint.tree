@@ -1,0 +1,67 @@
+
+# The registry-manifest printer: serializes a deck-hold AST back to the flat
+# `.tree` form (note/term/registry/17), the inverse of ./mine. One meaning for
+# `base` throughout: "grouped inside the object with this hash" — a pack for a
+# `link`, a shard at the top level.
+
+load @term/base/code/deck
+  find deck-hold
+  find deck-file
+  find deck-shard
+
+mint hold, like deck-hold
+  case name
+    slot name
+  case mark
+    slot mark
+  case hash
+    slot hash
+  case file, mint hold-file
+    slot file
+  case shard, mint hold-shard
+    slot shard
+  hook make
+    make deck-hold
+      bind name, read name
+      bind mark, read mark
+      bind hash, read hash
+      bind file, read file
+      bind shard, read shard
+
+mint hold-file, like deck-file
+  case name
+    slot name
+  case hash
+    slot hash
+  case size
+    slot size
+  case mime
+    slot mime
+  case base
+    slot base
+  case site
+    slot site
+  hook make
+    make deck-file
+      bind name, read name
+      bind hash, read hash
+      bind size, read size
+      bind mime, read mime
+      bind base, read base
+      bind site, read site
+
+mint hold-shard, like deck-shard
+  case hash
+    slot hash
+  case foot
+    slot foot
+  case head
+    slot head
+  case size
+    slot size
+  hook make
+    make deck-shard
+      bind hash, read hash
+      bind foot, read foot
+      bind head, read head
+      bind size, read size

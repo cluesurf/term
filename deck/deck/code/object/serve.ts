@@ -17,6 +17,7 @@ import { RefStore } from './refs'
 import {
   ScopeKeys,
   acceptObject,
+  acceptPack,
   resolveRef,
   publishCommit,
   Ref,
@@ -70,8 +71,22 @@ export function serveRegistry(input: {
       const url = new URL(req.url ?? '/', 'http://localhost')
       const parts = url.pathname.split('/').filter(Boolean)
 
-      // /object/:id  (GET, HEAD, PUT)
-      if (parts[0] === 'object' && parts[1]) {
+      // POST /package-objects/mutate!  <object bytes>  (id in x-object-id header)
+      if (
+        req.method === 'POST' &&
+        parts[0] === 'package-objects' &&
+        parts[1] === 'mutate!'
+      ) {
+        const id = decodeURIComponent(String(req.headers['x-object-id'] ?? ''))
+        const bytes = await readBody(req)
+        await acceptObject({ store: input.store, id, bytes })
+        sendJson(res, 200, { ok: true })
+
+        return
+      }
+
+      // GET / HEAD /package-objects/:id
+      if (parts[0] === 'package-objects' && parts[1]) {
         const id = decodeURIComponent(parts.slice(1).join('/'))
 
         if (req.method === 'HEAD') {
@@ -99,21 +114,13 @@ export function serveRegistry(input: {
 
           return
         }
-
-        if (req.method === 'PUT') {
-          const bytes = await readBody(req)
-          await acceptObject({ store: input.store, id, bytes })
-          sendJson(res, 200, { ok: true })
-
-          return
-        }
       }
 
-      // POST /publish/negotiate  { ids } -> { missing }
+      // POST /packages/verify!  { ids } -> { missing }  (the delta handshake)
       if (
         req.method === 'POST' &&
-        parts[0] === 'publish' &&
-        parts[1] === 'negotiate'
+        parts[0] === 'packages' &&
+        parts[1] === 'verify!'
       ) {
         const body = JSON.parse((await readBody(req)).toString('utf8')) as {
           ids: string[]
@@ -124,11 +131,26 @@ export function serveRegistry(input: {
         return
       }
 
-      // POST /publish/commit  { package, target, commit, sig, key } -> { ok, ref }
+      // POST /packages/bundle!  <pack bytes> -> { ok, stored }
+      // Unpack a batched pack: verify + store each object it holds. One
+      // request carries hundreds of objects (see note/term/registry/17).
       if (
         req.method === 'POST' &&
-        parts[0] === 'publish' &&
-        parts[1] === 'commit'
+        parts[0] === 'packages' &&
+        parts[1] === 'bundle!'
+      ) {
+        const bytes = await readBody(req)
+        const stored = await acceptPack({ store: input.store, bytes })
+        sendJson(res, 200, { ok: true, stored })
+
+        return
+      }
+
+      // POST /packages/commit!  { package, target, commit, sig, key } -> { ok, ref }
+      if (
+        req.method === 'POST' &&
+        parts[0] === 'packages' &&
+        parts[1] === 'commit!'
       ) {
         const body = JSON.parse((await readBody(req)).toString('utf8'))
         const result = await publishCommit({
@@ -146,13 +168,20 @@ export function serveRegistry(input: {
         return
       }
 
-      // GET /resolve?package&ref -> { commit }
-      if (req.method === 'GET' && parts[0] === 'resolve') {
-        const pkg = url.searchParams.get('package')
+      // GET /packages/@scope/:name/commit?<ref>    -> { commit }
+      // GET /packages/@scope/:name/manifest?<ref>  -> Manifest
+      if (
+        req.method === 'GET' &&
+        parts[0] === 'packages' &&
+        parts[1]?.startsWith('@') &&
+        parts[2] &&
+        parts[3]
+      ) {
+        const pkg = `${parts[1]}/${parts[2]}`
         const ref = queryRef(url)
 
-        if (!pkg || !ref) {
-          sendJson(res, 400, { error: 'package and a ref are required' })
+        if (!ref) {
+          sendJson(res, 400, { error: 'a ref is required' })
 
           return
         }
@@ -162,40 +191,28 @@ export function serveRegistry(input: {
           package: pkg,
           ref,
         })
-        sendJson(res, 200, { commit })
 
-        return
-      }
-
-      // GET /manifest?package&ref -> Manifest
-      if (req.method === 'GET' && parts[0] === 'manifest') {
-        const pkg = url.searchParams.get('package')
-        const ref = queryRef(url)
-
-        if (!pkg || !ref) {
-          sendJson(res, 400, { error: 'package and a ref are required' })
+        if (parts[3] === 'commit') {
+          sendJson(res, 200, { commit })
 
           return
         }
 
-        const commit = await resolveRef({
-          refs: input.refs,
-          package: pkg,
-          ref,
-        })
-        const manifest = await buildManifest({
-          commitId: commit,
-          ref:
-            ref.kind === 'version'
-              ? ref.version
-              : ref.kind === 'branch'
-                ? ref.branch
-                : ref.commit,
-          store: input.store,
-        })
-        sendJson(res, 200, manifest)
+        if (parts[3] === 'manifest') {
+          const manifest = await buildManifest({
+            commitId: commit,
+            ref:
+              ref.kind === 'version'
+                ? ref.version
+                : ref.kind === 'branch'
+                  ? ref.branch
+                  : ref.commit,
+            store: input.store,
+          })
+          sendJson(res, 200, manifest)
 
-        return
+          return
+        }
       }
 
       res.writeHead(404)

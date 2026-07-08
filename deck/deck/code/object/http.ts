@@ -51,11 +51,16 @@ export function httpRegistry(input: {
     : {}
 
   const objectUrl = (id: string): string =>
-    `${base}/object/${encodeURIComponent(id)}`
+    `${base}/package-objects/${encodeURIComponent(id)}`
+
+  // a package is `@scope/name`; its slash is a path separator, so it is not
+  // percent-encoded (the scope + name are already URL-safe)
+  const packageUrl = (pkg: string, sub: string): string =>
+    `${base}/packages/${pkg}/${sub}`
 
   return {
     async findMissing(ids: string[]): Promise<string[]> {
-      const response = await fetch(`${base}/publish/negotiate`, {
+      const response = await fetch(`${base}/packages/verify!`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ids }),
@@ -75,10 +80,13 @@ export function httpRegistry(input: {
       // `slice on a detached ArrayBuffer` (the readFile Buffer's pooled
       // ArrayBuffer is detached mid-request); a Blob copies the bytes and
       // transfers cleanly.
-      const response = await fetch(objectUrl(obj.id), {
-        method: 'PUT',
+      // POST the object bytes to the mutate action; the object's id rides a
+      // header (the server verifies the bytes hash to it under some kind).
+      const response = await fetch(`${base}/package-objects/mutate!`, {
+        method: 'POST',
         headers: {
           'content-type': 'application/octet-stream',
+          'x-object-id': obj.id,
           ...authHeaders,
         },
         body: new Blob([obj.bytes]),
@@ -87,6 +95,28 @@ export function httpRegistry(input: {
       if (!response.ok) {
         throw new Error(
           `put object ${obj.id} failed: ${response.status}${await readError(response)}`,
+        )
+      }
+    },
+
+    async putPack(pack: { id: string; bytes: Buffer }): Promise<void> {
+      // A pack POSTs its compressed bytes; the server unpacks + stores each
+      // contained object. The pack id rides a header so the server can verify
+      // the bytes and dedup. Blob body for the same Node 24 undici reason as
+      // putObject above.
+      const response = await fetch(`${base}/packages/bundle!`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/octet-stream',
+          'x-pack-id': pack.id,
+          ...authHeaders,
+        },
+        body: new Blob([pack.bytes]),
+      })
+
+      if (!response.ok) {
+        throw new Error(
+          `put pack ${pack.id} failed: ${response.status}${await readError(response)}`,
         )
       }
     },
@@ -110,7 +140,7 @@ export function httpRegistry(input: {
     },
 
     async resolve(args: { package: string; ref: Ref }): Promise<string> {
-      const url = `${base}/resolve?package=${encodeURIComponent(args.package)}&${refQuery(args.ref)}`
+      const url = `${packageUrl(args.package, 'commit')}?${refQuery(args.ref)}`
       const response = await fetch(url)
 
       if (!response.ok) {
@@ -129,7 +159,7 @@ export function httpRegistry(input: {
       sig: string
       key: string
     }): Promise<{ ok: true; ref: string }> {
-      const response = await fetch(`${base}/publish/commit`, {
+      const response = await fetch(`${base}/packages/commit!`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...authHeaders },
         body: JSON.stringify(args),
@@ -145,7 +175,7 @@ export function httpRegistry(input: {
     },
 
     async manifest(args: { package: string; ref: Ref }): Promise<Manifest> {
-      const url = `${base}/manifest?package=${encodeURIComponent(args.package)}&${refQuery(args.ref)}`
+      const url = `${packageUrl(args.package, 'manifest')}?${refQuery(args.ref)}`
       const response = await fetch(url)
 
       if (!response.ok) {
