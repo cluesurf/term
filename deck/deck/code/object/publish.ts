@@ -69,6 +69,11 @@ export async function publishPackage(input: {
   packs: number
 }> {
   // 1. build the commit into the local content store
+  const t0 = Date.now()
+  const since = (): string => `${((Date.now() - t0) / 1000).toFixed(1)}s`
+  const log = (message: string): void =>
+    console.error(`  [publish ${input.package}] ${message} (${since()})`)
+
   const { commitId } = await buildCommit({
     dir: input.dir,
     package: input.package,
@@ -81,13 +86,16 @@ export async function publishPackage(input: {
     params: input.params,
     treeParams: input.treeParams,
   })
+  log('built commit')
 
   // 2. compute the commit's full object closure
   const closure = await commitClosure({ commitId, store: input.local })
   const ids = Array.from(closure)
+  log(`closure = ${ids.length} objects`)
 
   // 3. negotiate: ask the registry which objects it is missing
   const missing = await input.registry.findMissing(ids)
+  log(`${missing.length} missing on registry`)
 
   // 4. bundle the missing objects into content-defined packs and upload each
   // pack in one request (hundreds of objects), retried independently. Sorting
@@ -104,12 +112,17 @@ export async function publishPackage(input: {
   packInputs.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
   const { packs } = buildPacks({ blobs: packInputs })
+  const packBytes = packs.reduce((sum, pack) => sum + pack.bytes.length, 0)
+  log(
+    `packed into ${packs.length} packs, ${(packBytes / 1024 / 1024).toFixed(1)} MB gzipped`,
+  )
 
   const CONCURRENCY = 12
 
   for (let i = 0; i < packs.length; i += CONCURRENCY) {
     const batch = packs.slice(i, i + CONCURRENCY)
     await Promise.all(batch.map(pack => uploadPack(input.registry, pack)))
+    log(`uploaded ${Math.min(i + CONCURRENCY, packs.length)}/${packs.length} packs`)
   }
 
   // 5. sign the commit id and publish (create version or move branch)

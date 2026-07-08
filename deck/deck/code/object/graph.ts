@@ -95,12 +95,17 @@ export type Manifest = {
   files: ManifestFile[]
 }
 
-/** Recursively flatten a tree into a sorted flat file list. */
-export async function flattenTree(input: {
+// one file's identity before its size is looked up
+type FileRef = { path: string; blob: string; mode: 'file' | 'exec' }
+
+// Walk the tree collecting every file's (path, blob id, mode) WITHOUT reading
+// blob objects; subtrees walk concurrently while the flat list keeps the
+// original depth-first order.
+async function collectFiles(input: {
   treeId: string
   store: ObjectStore
   prefix?: string
-}): Promise<ManifestFile[]> {
+}): Promise<FileRef[]> {
   const prefix = input.prefix ?? ''
   const entries = await readDirEntries({
     nodeId: input.treeId,
@@ -112,28 +117,61 @@ export async function flattenTree(input: {
     throw new Error(`invalid tree ${input.treeId}: ${reason}`)
   }
 
-  const files: ManifestFile[] = []
-
-  for (const entry of entries) {
+  const parts: (FileRef[] | Promise<FileRef[]>)[] = entries.map(entry => {
     const childPath = prefix ? `${prefix}/${entry.name}` : entry.name
 
     if (entry.kind === 'tree') {
-      files.push(
-        ...(await flattenTree({
-          treeId: entry.id,
-          store: input.store,
-          prefix: childPath,
-        })),
-      )
-    } else {
-      const blob = await readJson<Blob>(input.store, entry.id)
-      files.push({
-        path: childPath,
-        blob: entry.id,
-        size: blob.size,
-        mode: entry.mode === 'exec' ? 'exec' : 'file',
+      return collectFiles({
+        treeId: entry.id,
+        store: input.store,
+        prefix: childPath,
       })
     }
+
+    return [
+      {
+        path: childPath,
+        blob: entry.id,
+        mode: entry.mode === 'exec' ? 'exec' : 'file',
+      },
+    ]
+  })
+
+  return (await Promise.all(parts)).flat()
+}
+
+const SIZE_READ_CONCURRENCY = 100
+
+/**
+ * Flatten a tree into a sorted flat file list. The tree is walked to collect
+ * file refs (concurrent by subtree, depth-first order preserved), then blob
+ * sizes are read in bounded parallel batches — turning ~93k serial reads
+ * (which time out) into a fast concurrent pass.
+ */
+export async function flattenTree(input: {
+  treeId: string
+  store: ObjectStore
+  prefix?: string
+}): Promise<ManifestFile[]> {
+  const refs = await collectFiles(input)
+  const files: ManifestFile[] = new Array(refs.length)
+
+  for (let i = 0; i < refs.length; i += SIZE_READ_CONCURRENCY) {
+    const batch = refs.slice(i, i + SIZE_READ_CONCURRENCY)
+    const sizes = await Promise.all(
+      batch.map(ref =>
+        readJson<Blob>(input.store, ref.blob).then(blob => blob.size),
+      ),
+    )
+
+    batch.forEach((ref, j) => {
+      files[i + j] = {
+        path: ref.path,
+        blob: ref.blob,
+        size: sizes[j]!,
+        mode: ref.mode,
+      }
+    })
   }
 
   return files

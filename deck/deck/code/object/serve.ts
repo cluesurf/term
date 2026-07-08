@@ -168,8 +168,8 @@ export function serveRegistry(input: {
         return
       }
 
-      // GET /packages/@scope/:name/commit?<ref>    -> { commit }
-      // GET /packages/@scope/:name/manifest?<ref>  -> Manifest
+      // GET /packages/@scope/:name/references      -> { versions, branches }
+      // GET /packages/@scope/:name/files?commit=... -> Manifest (immutable per commit)
       if (
         req.method === 'GET' &&
         parts[0] === 'packages' &&
@@ -178,35 +178,32 @@ export function serveRegistry(input: {
         parts[3]
       ) {
         const pkg = `${parts[1]}/${parts[2]}`
-        const ref = queryRef(url)
 
-        if (!ref) {
-          sendJson(res, 400, { error: 'a ref is required' })
-
-          return
-        }
-
-        const commit = await resolveRef({
-          refs: input.refs,
-          package: pkg,
-          ref,
-        })
-
-        if (parts[3] === 'commit') {
-          sendJson(res, 200, { commit })
+        if (parts[3] === 'references') {
+          const versions = await input.refs.listVersions(pkg)
+          const branches = await input.refs.listBranches(pkg)
+          sendJson(res, 200, { versions, branches })
 
           return
         }
 
-        if (parts[3] === 'manifest') {
+        if (parts[3] === 'files') {
+          const ref = queryRef(url)
+
+          if (!ref) {
+            sendJson(res, 400, { error: 'a ref is required' })
+
+            return
+          }
+
+          const commit = await resolveRef({
+            refs: input.refs,
+            package: pkg,
+            ref,
+          })
           const manifest = await buildManifest({
             commitId: commit,
-            ref:
-              ref.kind === 'version'
-                ? ref.version
-                : ref.kind === 'branch'
-                  ? ref.branch
-                  : ref.commit,
+            ref: commit,
             store: input.store,
           })
           sendJson(res, 200, manifest)

@@ -58,21 +58,74 @@ export function httpRegistry(input: {
   const packageUrl = (pkg: string, sub: string): string =>
     `${base}/packages/${pkg}/${sub}`
 
+  // resolve a ref to a commit id. A commit ref is identity; a version/branch is
+  // looked up in the package's `references` (which carry each ref's commit id),
+  // so there is no separate resolve endpoint.
+  const resolveRef = async (pkg: string, ref: Ref): Promise<string> => {
+    if (ref.kind === 'commit') {
+      return ref.commit
+    }
+
+    const response = await fetch(packageUrl(pkg, 'references'))
+
+    if (!response.ok) {
+      throw new Error(
+        `resolve failed: ${response.status}${await readError(response)}`,
+      )
+    }
+
+    const refs = (await response.json()) as {
+      versions: { version: string; commit: string }[]
+      branches: { branch: string; commit: string }[]
+    }
+
+    if (ref.kind === 'version') {
+      const found = refs.versions.find(v => v.version === ref.version)
+
+      if (!found) {
+        throw new Error(`no such version ${pkg}@${ref.version}`)
+      }
+
+      return found.commit
+    }
+
+    const found = refs.branches.find(b => b.branch === ref.branch)
+
+    if (!found) {
+      throw new Error(`no such branch ${pkg}#${ref.branch}`)
+    }
+
+    return found.commit
+  }
+
   return {
     async findMissing(ids: string[]): Promise<string[]> {
-      const response = await fetch(`${base}/packages/verify!`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      })
+      // Batch the id list into small POSTs. A big package (bind is ~93k ids
+      // ≈ 7 MB) in one request drops the socket over a slow uplink; ~8k ids
+      // (~0.5 MB) per request is robust and still few round trips.
+      const BATCH = 8000
+      const missing: string[] = []
 
-      if (!response.ok) {
-        throw new Error(
-          `negotiate failed: ${response.status}${await readError(response)}`,
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const chunk = ids.slice(i, i + BATCH)
+        const response = await fetch(`${base}/packages/verify!`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ids: chunk }),
+        })
+
+        if (!response.ok) {
+          throw new Error(
+            `negotiate failed: ${response.status}${await readError(response)}`,
+          )
+        }
+
+        missing.push(
+          ...((await response.json()) as { missing: string[] }).missing,
         )
       }
 
-      return ((await response.json()) as { missing: string[] }).missing
+      return missing
     },
 
     async putObject(obj: { id: string; bytes: Buffer }): Promise<void> {
@@ -140,16 +193,7 @@ export function httpRegistry(input: {
     },
 
     async resolve(args: { package: string; ref: Ref }): Promise<string> {
-      const url = `${packageUrl(args.package, 'commit')}?${refQuery(args.ref)}`
-      const response = await fetch(url)
-
-      if (!response.ok) {
-        throw new Error(
-          `resolve failed: ${response.status}${await readError(response)}`,
-        )
-      }
-
-      return ((await response.json()) as { commit: string }).commit
+      return resolveRef(args.package, args.ref)
     },
 
     async publishCommit(args: {
@@ -175,7 +219,10 @@ export function httpRegistry(input: {
     },
 
     async manifest(args: { package: string; ref: Ref }): Promise<Manifest> {
-      const url = `${packageUrl(args.package, 'manifest')}?${refQuery(args.ref)}`
+      // resolve to the immutable commit first, then fetch the file list by
+      // commit — a commit's files never change, so that URL edge-caches forever
+      const commit = await resolveRef(args.package, args.ref)
+      const url = `${packageUrl(args.package, 'files')}?commit=${encodeURIComponent(commit)}`
       const response = await fetch(url)
 
       if (!response.ok) {
