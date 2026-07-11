@@ -7,7 +7,7 @@
 <br/>
 
 <p align='center'>
-  <img src='https://github.com/cluesurf/seed/blob/make/view/seed3.png?raw=true' height='192'>
+  <img src='https://github.com/cluesurf/term/blob/make/view/term.svg?raw=true' height='256'>
 </p>
 
 <h3 align='center'>
@@ -100,8 +100,8 @@ kernel makes this stronger than testing: a transformation is not just
 plausible, it is verified.
 
 Compilers already do this within a fixed budget of built-in passes. The
-difference is that the search no longer has to stop where the pass
-list ends. Optimization becomes an open-ended refinement process that
+difference is that the search no longer has to stop where the pass list
+ends. Optimization becomes an open-ended refinement process that
 accumulates: each program converges toward the best known lowering for
 its targets, and improvements found for one program feed back into the
 shared patterns used by all of them. The readable source stays the
@@ -111,22 +111,25 @@ re-verified, and only ever gets faster.
 The end state is that the performance ceiling of a Term program is the
 performance ceiling of the hardware, not of the author's willingness to
 write unreadable code. You describe the program once, clearly, and the
-toolchain carries it the rest of the way to essentially optimal
-machine behavior on every platform it touches.
+toolchain carries it the rest of the way to essentially optimal machine
+behavior on every platform it touches.
 
 ## The book
 
-A complete, example-first guide lives in [`book/`](book/readme.md). It is
-a tree of short cheatsheet pages: each one opens with a reference of every
-keyword, command, or operator in its topic, then shows the `.tree` you
-write to use it, with a note on how it maps to ideas you already know.
+A complete, example-first guide lives in [`book/`](book/readme.md). It
+is a tree of short cheatsheet pages: each one opens with a reference of
+every keyword, command, or operator in its topic, then shows the `.tree`
+you write to use it, with a note on how it maps to ideas you already
+know.
 
-Start with [the syntax model](book/language/readme.md), then read what you
-need: the [language](book/language/readme.md) (functions, forms, matching,
-loops, traits, templates, modules, and more), [proofs](book/math/readme.md),
-the [standard library](book/stdlib/readme.md), the
-[web framework](book/web/readme.md), [command-line apps](book/cli/readme.md),
-and the [`term` toolchain](book/toolchain/readme.md).
+Start with [the syntax model](book/language/readme.md), then read what
+you need: the [language](book/language/readme.md) (functions, forms,
+matching, loops, traits, templates, modules, and more),
+[proofs](book/math/readme.md), the
+[standard library](book/stdlib/readme.md), the
+[web framework](book/web/readme.md),
+[command-line apps](book/cli/readme.md), and the
+[`term` toolchain](book/toolchain/readme.md).
 
 ## Packages
 

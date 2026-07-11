@@ -1,0 +1,578 @@
+
+# Text-visibility machine — the full per-instance font-loading fade / cross-fade state machine, ported 1:1 from the
+# React typography stack (mesh/deck/face/code/hook/use-text.ts + component/type/text.tsx + shared.tsx). Every text node
+# that renders through the Type component drives its own copy of this: it hides until its font status is known, then
+# either snaps to the real font (warm cache / very fast), fades the real font in, or fades a metric-matched fallback in
+# and later cross-fades to the real font when it arrives -- all with real inline opacity + a CSS opacity transition,
+# never a coarse class toggle. The registry (font-ready) supplies the shared per-family status signal, first-ask
+# reference, and the fallback deadline; this file is the phase machine + the render shell that paints the node.
+#
+# Seven phases (identical to use-text.ts), encoded as integer codes so every reactive cell shares one element type
+# (signal<number>) -- the reactive `read-signal` is monomorphic per module, so mixing a signal<string> phase with the
+# signal<number> transition would not type; a numeric phase keeps them uniform:
+#   0 hidden            opacity 0, fallback class, no transition   (the start; waiting to learn the font status)
+#   1 real-fade-in      opacity 0 -> settled, real class, fade     (real font ready between snap floor and fade ceiling)
+#   2 real              opacity settled, real class, no transition (committed to the real font)
+#   3 fallback-fade-in  opacity 0 -> 1, fallback class, fade       (real missed the deadline / errored)
+#   4 fallback          opacity 1, fallback class, no transition   (committed to the fallback)
+#   5 crossfade-out     opacity 1 -> 0, fallback class, fade       (real arrived late; fading the fallback out)
+#   6 crossfade-in      opacity 0 -> settled, real class, fade     (then fading the real font in)
+#
+# Triggers (use-text's T1 / T2 / T3):
+#   T1 deadline            while hidden, at first-ask + fade-in ceiling, reveal the fallback (fallback-fade-in)
+#   T2 ready-while-hidden  real font terminal while hidden -> snap (< snap floor) or real-fade-in; error -> fallback
+#   T3 ready-while-fallback real font ready while showing the fallback, within the late-arrival window -> cross-fade
+#                          (D1 fallback still fading -> reverse over the elapsed time; D2 settled -> standard fade)
+# The transitionend walker advances real-fade-in / fallback-fade-in / crossfade-out / crossfade-in as each opacity
+# transition completes, guarded on propertyName === 'opacity' so a color transition never advances the machine.
+
+load @term/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+  find make-effect
+load @term/site/code/dom/dom
+  find view
+  find set-style
+  find add-class
+  find remove-class
+  find listen-event
+load ./font-ready
+  find subscribe-font
+  find subscribe-font-deadline
+  find font-watch
+load ./native/text-format
+  find opacity-text
+  find duration-text
+  find now-ms
+  find font-class-text
+
+# canonical timing contract (shared.tsx defaults), all milliseconds: below the snap floor a fade reads as flicker, so
+# commit with no transition; past the ceiling reveal the fallback; the real font still cross-fades if it lands within
+# the late-arrival window measured from when the fallback fade-in started.
+host snap-threshold
+  like number
+  code 160
+host fade-in-threshold
+  like number
+  code 1000
+host late-arrival-window
+  like number
+  code 16000
+host fade-duration
+  like number
+  code 200
+
+# phase codes (see the header). Named constants so the machine reads close to the React phase names.
+host phase-hidden
+  like number
+  code 0
+host phase-real-fade-in
+  like number
+  code 1
+host phase-real
+  like number
+  code 2
+host phase-fallback-fade-in
+  like number
+  code 3
+host phase-fallback
+  like number
+  code 4
+host phase-crossfade-out
+  like number
+  code 5
+host phase-crossfade-in
+  like number
+  code 6
+
+# the display opacity for a phase: 0 while hidden / fading the fallback out, 1 while the fallback is up, else the
+# caller's settled opacity (the real phases honour a ghost-text / muted-caption opacity prop).
+task phase-opacity
+  take phase, like number
+  take settled, like number
+  like number
+  fork test
+    hook test
+      meet or
+        call is-equal
+          read phase
+          read phase-hidden
+        call is-equal
+          read phase
+          read phase-crossfade-out
+    hook hold
+      send back, code 0
+    hook miss
+      fork test
+        hook test
+          meet or
+            call is-equal
+              read phase
+              read phase-fallback-fade-in
+            call is-equal
+              read phase
+              read phase-fallback
+        hook hold
+          send back, code 1
+        hook miss
+          send back, read settled
+
+# does this phase paint the fallback class (vs the real class)? true for hidden / fallback-fade-in / fallback /
+# crossfade-out, false for real-fade-in / real / crossfade-in.
+task phase-fallback-face
+  take phase, like number
+  like boolean
+  send back
+    meet or
+      call is-equal
+        read phase
+        read phase-hidden
+      call is-equal
+        read phase
+        read phase-fallback-fade-in
+      call is-equal
+        read phase
+        read phase-fallback
+      call is-equal
+        read phase
+        read phase-crossfade-out
+
+# is the fallback being shown as a PLACEHOLDER for an incoming real render (hidden / fallback-fade-in / crossfade-out),
+# rather than the committed final face? placeholder phases add the `-waiting` class so the stylesheet can metric-match
+# the fallback to the real font's advance widths and keep prose wrapping identical across the swap.
+task phase-placeholder
+  take phase, like number
+  like boolean
+  send back
+    meet or
+      call is-equal
+        read phase
+        read phase-hidden
+      call is-equal
+        read phase
+        read phase-fallback-fade-in
+      call is-equal
+        read phase
+        read phase-crossfade-out
+
+# the font class for a family + suffix: `font-<Family>` (real), `font-<Family>-fallback`, `font-<Family>-waiting`.
+# Delegates to the format shim (string concat + whitespace strip), matching React's buildFontClassName.
+task font-class
+  take family, like text
+  take suffix, like text
+  like text
+  send back
+    call font-class-text
+      read family
+      read suffix
+
+# the render shell (derivePhaseRender + text.tsx applied to the node): write the phase's opacity, the opacity
+# transition ONLY while a fade is in flight (steady state clears it so it never shadows other CSS transitions), and the
+# phase's font class (dropping the three known class tokens first, then adding the current choice + any -waiting mark).
+task apply-render
+  take node, like view
+  take phase, like number
+  take trans, like number
+  take opacity, like number
+  take real-cls, like text
+  take fallback-cls, like text
+  take waiting-cls, like text
+  call set-style
+    bind node, read node
+    bind property, text <opacity>
+    bind value
+      call opacity-text
+        call phase-opacity
+          read phase
+          read opacity
+  fork test
+    hook test
+      call is-above
+        read trans
+        code 0
+    hook hold
+      call set-style
+        bind node, read node
+        bind property, text <transition-property>
+        bind value, text <opacity>
+      call set-style
+        bind node, read node
+        bind property, text <transition-duration>
+        bind value
+          call duration-text
+            read trans
+      call set-style
+        bind node, read node
+        bind property, text <transition-timing-function>
+        bind value, text <ease>
+    hook miss
+      call set-style
+        bind node, read node
+        bind property, text <transition-property>
+        bind value, text <>
+      call set-style
+        bind node, read node
+        bind property, text <transition-duration>
+        bind value, text <>
+      call set-style
+        bind node, read node
+        bind property, text <transition-timing-function>
+        bind value, text <>
+  call remove-class
+    bind node, read node
+    bind name, read real-cls
+  call remove-class
+    bind node, read node
+    bind name, read fallback-cls
+  call remove-class
+    bind node, read node
+    bind name, read waiting-cls
+  fork test
+    hook test
+      call phase-fallback-face
+        read phase
+    hook hold
+      call add-class
+        bind node, read node
+        bind name, read fallback-cls
+      fork test
+        hook test
+          call phase-placeholder
+            read phase
+        hook hold
+          call add-class
+            bind node, read node
+            bind name, read waiting-cls
+        hook miss
+          save skip, code 0
+    hook miss
+      call add-class
+        bind node, read node
+        bind name, read real-cls
+
+# drive one text node's visibility. Called from the Type component with the built span, its font family, and the settled
+# opacity. Everything is inlined here (the effects + handlers close over the per-instance signals, matching gate-font's
+# shape) so no signal crosses a task boundary: subscribe the family, create the phase machine, install the paint effect,
+# make the mount decision (warm cache -> snap / short fade straight to real; cold -> hidden + the T1 / T2 / T3 triggers),
+# and wire the transitionend walker. The effects register to the current render scope, disposed when the node unmounts.
+task drive-visibility
+  take node, like view
+  take family, like text
+  take opacity, like number, fall 1
+  save watch
+    call subscribe-font
+      read family
+  save phase-cell
+    call make-signal
+      bind value, read phase-hidden
+  save trans-cell
+    call make-signal
+      bind value, code 0
+  save fallback-at
+    call make-signal
+      bind value, code 0
+  save real-cls
+    call font-class
+      read family
+      text <>
+  save fallback-cls
+    call font-class
+      read family
+      text <-fallback>
+  save waiting-cls
+    call font-class
+      read family
+      text <-waiting>
+  # paint effect: re-apply the render shell whenever phase / trans changes (reads both signals, so it re-runs on each).
+  call make-effect
+    bind run
+      task paint
+        save phase
+          call read-signal
+            bind self, read phase-cell
+        save trans
+          call read-signal
+            bind self, read trans-cell
+        call apply-render
+          bind node, read node
+          bind phase, read phase
+          bind trans, read trans
+          bind opacity, read opacity
+          bind real-cls, read real-cls
+          bind fallback-cls, read fallback-cls
+          bind waiting-cls, read waiting-cls
+  # mount decision: warm cache commits straight to the real font (snap under the floor, else a quick fade-in); a cold
+  # family stays hidden and installs the three triggers.
+  fork test
+    hook test
+      read watch/instant
+    hook hold
+      save elapsed
+        call subtract
+          call now-ms
+          read watch/first-ask
+      fork test
+        hook test
+          call is-below
+            read elapsed
+            read snap-threshold
+        hook hold
+          call write-signal
+            bind self, read trans-cell
+            bind value, code 0
+          call write-signal
+            bind self, read phase-cell
+            bind value, read phase-real
+        hook miss
+          call write-signal
+            bind self, read trans-cell
+            bind value, read fade-duration
+          call write-signal
+            bind self, read phase-cell
+            bind value, read phase-real-fade-in
+    hook miss
+      # T1 deadline: while still hidden at first-ask + ceiling, stamp the fallback-fade start and reveal the fallback.
+      call subscribe-font-deadline
+        bind family, read family
+        bind threshold, read fade-in-threshold
+        bind handler
+          task on-deadline
+            save phase-d
+              call read-signal
+                bind self, read phase-cell
+            fork test
+              hook test
+                call is-equal
+                  read phase-d
+                  read phase-hidden
+              hook hold
+                call write-signal
+                  bind self, read fallback-at
+                  bind value
+                    call now-ms
+                call write-signal
+                  bind self, read trans-cell
+                  bind value, read fade-duration
+                call write-signal
+                  bind self, read phase-cell
+                  bind value, read phase-fallback-fade-in
+              hook miss
+                save skip-d, code 0
+      # T2 ready-while-hidden: terminal status while hidden -> snap / real-fade-in on ready, fallback on error.
+      call make-effect
+        bind run
+          task check-ready
+            save status-h
+              call read-signal
+                bind self, read watch/signal
+            save phase-h
+              call read-signal
+                bind self, read phase-cell
+            fork test
+              hook test
+                meet and
+                  call is-unequal
+                    read status-h
+                    text <pending>
+                  call is-equal
+                    read phase-h
+                    read phase-hidden
+              hook hold
+                save elapsed-h
+                  call subtract
+                    call now-ms
+                    read watch/first-ask
+                fork test
+                  hook test
+                    call is-equal
+                      read status-h
+                      text <ready>
+                  hook hold
+                    fork test
+                      hook test
+                        call is-below
+                          read elapsed-h
+                          read snap-threshold
+                      hook hold
+                        call write-signal
+                          bind self, read trans-cell
+                          bind value, code 0
+                        call write-signal
+                          bind self, read phase-cell
+                          bind value, read phase-real
+                      hook miss
+                        call write-signal
+                          bind self, read trans-cell
+                          bind value, read fade-duration
+                        call write-signal
+                          bind self, read phase-cell
+                          bind value, read phase-real-fade-in
+                  hook miss
+                    call write-signal
+                      bind self, read fallback-at
+                      bind value
+                        call now-ms
+                    call write-signal
+                      bind self, read trans-cell
+                      bind value, read fade-duration
+                    call write-signal
+                      bind self, read phase-cell
+                      bind value, read phase-fallback-fade-in
+              hook miss
+                save skip-h, code 0
+      # T3 ready-while-fallback: real font loaded while the fallback shows, within the late-arrival window -> cross-fade.
+      # D1 (fallback still fading in) reverses over the elapsed fade time, floored at 1ms; D2 (settled) standard fade.
+      call make-effect
+        bind run
+          task check-late
+            save status-l
+              call read-signal
+                bind self, read watch/signal
+            save phase-l
+              call read-signal
+                bind self, read phase-cell
+            fork test
+              hook test
+                meet and
+                  call is-equal
+                    read status-l
+                    text <ready>
+                  meet or
+                    call is-equal
+                      read phase-l
+                      read phase-fallback
+                    call is-equal
+                      read phase-l
+                      read phase-fallback-fade-in
+              hook hold
+                save started-l
+                  call read-signal
+                    bind self, read fallback-at
+                save since-l
+                  call subtract
+                    call now-ms
+                    read started-l
+                fork test
+                  hook test
+                    call is-maximum
+                      read since-l
+                      read late-arrival-window
+                  hook hold
+                    fork test
+                      hook test
+                        call is-equal
+                          read phase-l
+                          read phase-fallback-fade-in
+                      hook hold
+                        save capped-l
+                          fork test
+                            hook test
+                              call is-below
+                                read since-l
+                                read fade-duration
+                            hook hold
+                              read since-l
+                            hook miss
+                              read fade-duration
+                        save reverse-l
+                          fork test
+                            hook test
+                              call is-below
+                                read capped-l
+                                code 1
+                            hook hold
+                              code 1
+                            hook miss
+                              read capped-l
+                        call write-signal
+                          bind self, read trans-cell
+                          bind value, read reverse-l
+                        call write-signal
+                          bind self, read phase-cell
+                          bind value, read phase-crossfade-out
+                      hook miss
+                        call write-signal
+                          bind self, read trans-cell
+                          bind value, read fade-duration
+                        call write-signal
+                          bind self, read phase-cell
+                          bind value, read phase-crossfade-out
+                  hook miss
+                    save skip-l2, code 0
+              hook miss
+                save skip-l, code 0
+  # transitionend phase walker: advance as each opacity transition completes, guarded on propertyName === 'opacity'.
+  call listen-event
+    bind node, read node
+    bind event, text <transitionend>
+    bind handler
+      task on-end
+        take event, like any
+        save prop
+          read event/property-name
+        fork test
+          hook test
+            call is-equal
+              read prop
+              text <opacity>
+          hook hold
+            save phase-e
+              call read-signal
+                bind self, read phase-cell
+            fork test
+              hook test
+                call is-equal
+                  read phase-e
+                  read phase-real-fade-in
+              hook hold
+                call write-signal
+                  bind self, read trans-cell
+                  bind value, code 0
+                call write-signal
+                  bind self, read phase-cell
+                  bind value, read phase-real
+              hook miss
+                fork test
+                  hook test
+                    call is-equal
+                      read phase-e
+                      read phase-fallback-fade-in
+                  hook hold
+                    call write-signal
+                      bind self, read trans-cell
+                      bind value, code 0
+                    call write-signal
+                      bind self, read phase-cell
+                      bind value, read phase-fallback
+                  hook miss
+                    fork test
+                      hook test
+                        call is-equal
+                          read phase-e
+                          read phase-crossfade-out
+                      hook hold
+                        call write-signal
+                          bind self, read trans-cell
+                          bind value, read fade-duration
+                        call write-signal
+                          bind self, read phase-cell
+                          bind value, read phase-crossfade-in
+                      hook miss
+                        fork test
+                          hook test
+                            call is-equal
+                              read phase-e
+                              read phase-crossfade-in
+                          hook hold
+                            call write-signal
+                              bind self, read trans-cell
+                              bind value, code 0
+                            call write-signal
+                              bind self, read phase-cell
+                              bind value, read phase-real
+                          hook miss
+                            save skip-e2, code 0
+          hook miss
+            save skip-e, code 0

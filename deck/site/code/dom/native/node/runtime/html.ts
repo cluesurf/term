@@ -179,10 +179,33 @@ function assetUrl(logical: string): string {
 // needs no local install of its browser deps). The build writes `build/import-map.json`; the shell inlines it as an
 // `<script type="importmap">` BEFORE the module script (an import map must precede the first module that uses it). No
 // deps -> no tag. Read once, memoized.
+//
+// Two sources, in order: (1) a baked-in constant `globalThis.__SEED_IMPORT_MAP__`, which the Cloudflare cast injects at
+// build time (a Worker has no filesystem, so `readFileSync` below would throw and emit nothing -- the client bundle
+// then fails on the first bare specifier and no hydration runs); (2) the on-disk `build/import-map.json`, read on the
+// node SSR path (`term feed` / `term boot`), which has a real filesystem. The baked constant wins when present.
 let importMapTag: string | undefined
+
+function importMapMarkup(parsed: {
+  imports?: Record<string, string>
+}): string {
+  return parsed.imports && Object.keys(parsed.imports).length
+    ? `<script type="importmap">${JSON.stringify(parsed)}</script>`
+    : ''
+}
 
 function importMapScript(): string {
   if (importMapTag !== undefined) {
+    return importMapTag
+  }
+
+  // baked-in map (Cloudflare Worker): no filesystem, so the cast writes the parsed import map here as a constant.
+  const baked = (globalThis as Record<string, unknown>)
+    .__SEED_IMPORT_MAP__ as { imports?: Record<string, string> } | undefined
+
+  if (baked) {
+    importMapTag = importMapMarkup(baked)
+
     return importMapTag
   }
 
@@ -192,10 +215,7 @@ function importMapScript(): string {
       imports?: Record<string, string>
     }
 
-    importMapTag =
-      parsed.imports && Object.keys(parsed.imports).length
-        ? `<script type="importmap">${JSON.stringify(parsed)}</script>`
-        : ''
+    importMapTag = importMapMarkup(parsed)
   } catch {
     importMapTag = ''
   }

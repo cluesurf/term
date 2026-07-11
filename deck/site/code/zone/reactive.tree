@@ -57,18 +57,20 @@ task make-signal
       bind observers
         make list
 
+# self / value are `like any` (gradual) rather than a generic `signal<t>`: the checker does not instantiate an
+# imported generic fresh per call, so a `signal<t>` self would monomorphize to whichever element type is read / written
+# first (e.g. the string font-status signal), then reject a signal of any other element (a numeric phase / transition
+# signal). `any` keeps the reactive primitives usable across every signal element type in one program.
 task read-signal
-  head t
-  take self, like signal
-  like t
+  take self, like any
+  like any
   call track
     bind signal, read self
   send back, read self/value
 
 task write-signal
-  head t
-  take self, flex true
-  take value, like t
+  take self, like any
+  take value, like any
   save self/value, read value
   # snapshot the observers and clear them, so effects re-subscribe fresh when they re-run (no growth mid-iteration)
   save subscribers, read self/observers

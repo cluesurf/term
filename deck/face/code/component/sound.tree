@@ -1,0 +1,28 @@
+
+# Sound — an audio clip (a recording of a word, phrase, or phoneme), rendered as a playable figure with a caption. A
+# reusable widget a package document embeds; the audio is a package artifact uploaded through the upload widget.
+# Headless (data-slot hooks). Props:
+#   src   -> the audio URL (an uploaded artifact)
+#   label -> the caption (e.g. the word being pronounced)
+
+load @term/site/code/zone/render
+  find element
+  find text
+load @term/site/code/dom/dom
+  find view
+  find append
+
+zone sound
+  take host, like view
+  take src
+  take label
+  zone figure
+    bind data-slot, text <sound>
+    zone audio
+      bind data-slot, text <sound-audio>
+      bind controls, text <true>
+      bind src, read src
+    zone figcaption
+      bind data-slot, text <sound-label>
+      read
+        read label

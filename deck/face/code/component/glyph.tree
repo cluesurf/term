@@ -1,0 +1,30 @@
+
+# Glyph — a single glyph of a constructed script, shown large with its name. A reusable widget a package document
+# embeds (and the atom the glyph editor produces). Headless (data-slot hooks). Props:
+#   symbol -> the glyph itself (a Unicode character, or applied via a script font through `class`)
+#   name   -> the glyph's name / transliteration
+#   class  -> extra classes (e.g. the script's font family)
+
+load @term/site/code/zone/render
+  find element
+  find text
+load @term/site/code/dom/dom
+  find view
+  find append
+
+zone glyph
+  take host, like view
+  take class
+  take symbol
+  take name
+  zone div
+    bind data-slot, text <glyph>
+    bind class, read class
+    zone div
+      bind data-slot, text <glyph-symbol>
+      read
+        read symbol
+    zone div
+      bind data-slot, text <glyph-name>
+      read
+        read name

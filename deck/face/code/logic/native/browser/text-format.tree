@@ -17,3 +17,31 @@ task width-style
       read before
       read value
       read after
+
+task opacity-text
+  take value, like number
+  like text
+  send back
+    call format/opacity
+      read value
+
+task duration-text
+  take value, like number
+  like text
+  send back
+    call format/duration
+      read value
+
+task now-ms
+  like number
+  send back
+    call format/now
+
+task font-class-text
+  take family, like text
+  take suffix, like text
+  like text
+  send back
+    call format/font-class
+      read family
+      read suffix

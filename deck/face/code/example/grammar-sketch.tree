@@ -1,0 +1,52 @@
+
+# An example package document: a grammar sketch. This is what a `.tree` document's `body` looks like — one `document`
+# zone composing the reusable linguistic widgets over data the document receives (in a real package the data comes
+# from the query modules). It proves the document format: a document is a standardized DOM tree of components, not
+# free-form markup. Props are the data the widgets render:
+#   sounds  -> the phoneme inventory (list of { symbol, label })
+#   columns -> the paradigm's column headers (list of { label })
+#   rows    -> the paradigm's rows (list of { label, cells })
+#   words   -> an interlinear example (list of { form, gloss })
+
+load @term/site/code/zone/render
+  find element
+  find text
+load @term/site/code/dom/dom
+  find view
+  find append
+load ../component/document
+  find document
+load ../component/phoneme-chart
+  find phoneme-chart
+load ../component/paradigm
+  find paradigm
+load ../component/gloss
+  find gloss
+
+zone grammar-sketch
+  take host, like view
+  take sounds
+  take columns
+  take rows
+  take words
+  zone document
+    bind title, text <A Grammar Sketch>
+    zone section
+      bind data-slot, text <document-section>
+      zone h2
+        text <Sounds>
+      zone phoneme-chart
+        bind sounds, read sounds
+    zone section
+      bind data-slot, text <document-section>
+      zone h2
+        text <Noun inflection>
+      zone paradigm
+        bind columns, read columns
+        bind rows, read rows
+    zone section
+      bind data-slot, text <document-section>
+      zone h2
+        text <Example>
+      zone gloss
+        bind words, read words

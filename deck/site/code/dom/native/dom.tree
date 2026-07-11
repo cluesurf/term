@@ -58,6 +58,15 @@ task listen
   take handler
     like task
 
+# like `listen`, but the handler receives the DOM event (typed `any`, bridged through gradual). Used where the handler
+# needs to inspect the event -- e.g. a transitionend guarded on `propertyName === 'opacity'`.
+task listen-event
+  take node, like view
+  take event, like text
+  take handler
+    like task
+      take event, like any
+
 task listen-document
   take event, like text
   take handler
@@ -127,6 +136,29 @@ task observe-size
 task measure-width
   take node, like view
   like number
+
+# is a font family loaded + paintable right now (synchronous). true on the server. the FOUC typography gate uses
+# this fast path to render warm-cached fonts at full opacity with no hidden frame.
+task check-font
+  take family, like text
+  like boolean
+
+# resolve a font family's load status, calling `handler` once with a terminal status ('ready' | 'error' |
+# 'timeout'). browser-only; server / SSR never calls the handler (the client re-render drives the gate).
+task watch-font
+  take family, like text
+  take handler
+    like task
+      take status, like text
+
+# fallback deadline: call `handler` once when `firstAsk + threshold` ms elapses for this family, regardless of load
+# status, so the text-visibility machine reveals the fallback face if the real font stalls. one shared timer per
+# family (measured from the family's first ask). browser-only; SSR never fires (the client re-render drives the gate).
+task watch-deadline
+  take family, like text
+  take threshold, like number
+  take handler
+    like task
 
 task append
   take parent, like view

@@ -13,3 +13,25 @@ task width-style
   take value, like number
   take after, like text
   like text
+
+# a numeric opacity as text ("0" / "0.7" / "1"), for the inline `opacity` the text-visibility machine writes per phase
+task opacity-text
+  take value, like number
+  like text
+
+# a transition-duration fragment as text ("200ms"), for the inline transition the text-visibility machine writes mid-fade
+task duration-text
+  take value, like number
+  like text
+
+# current monotone time in ms. The text-visibility machine measures its snap / fade / late-arrival windows from this
+# (and the family's first-ask stamp, taken the same way). In the format shim so it stays off the broken base/clock path.
+task now-ms
+  like number
+
+# the font class token for a family + suffix ("font-CrowMark" / "font-CrowMark-fallback" / "font-CrowMark-waiting").
+# String concat + whitespace strip in the shim, since the `add` builtin is numeric (not kernel-checked for strings).
+task font-class-text
+  take family, like text
+  take suffix, like text
+  like text

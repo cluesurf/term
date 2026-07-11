@@ -35,6 +35,8 @@ load ../../view
 dock load
   load <global:resize>, name resize
   load <global:position>, name position
+  load <global:fontset>, name fontset
+  load <global:title>, name title
   mark native
 
 task create-element
@@ -83,7 +85,7 @@ task set-style
   call made/style/set-property
     read property
     read value
-    make none
+    text <>
 
 task focus
   take node, like view
@@ -103,16 +105,35 @@ task add-class
   take name, like text
   host made, like element
     read node/handle
-  call made/class-list/add
-    read name
+  # skip an empty token -- a classList never holds one, and DOMTokenList.add('') throws. Matches React building the
+  # className with clsx, which filters falsy class names before they reach the element.
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <>
+    hook hold
+      save skip, code 0
+    hook miss
+      call made/class-list/add
+        read name
 
 task remove-class
   take node, like view
   take name, like text
   host made, like element
     read node/handle
-  call made/class-list/remove
-    read name
+  # skip an empty token -- DOMTokenList.remove('') throws; there is nothing to remove anyway.
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <>
+    hook hold
+      save skip, code 0
+    hook miss
+      call made/class-list/remove
+        read name
 
 task listen
   take node, like view
@@ -123,6 +144,23 @@ task listen
     read node/handle
   # bind's addEventListener wants its EventListener union; the handler is a real function at runtime, so bridge it
   # through the gradual `any` (it is passed straight through, never structurally matched)
+  host listener, like any
+    read handler
+  call made/add-event-listener
+    read event
+    read listener
+    make none
+
+# like `listen`, but the handler is typed to receive the DOM event. addEventListener already passes the event at
+# runtime; this variant just declares it so a handler can read `event/property-name` (the transitionend guard).
+task listen-event
+  take node, like view
+  take event, like text
+  take handler
+    like task
+      take event, like any
+  host made, like element
+    read node/handle
   host listener, like any
     read handler
   call made/add-event-listener
@@ -186,10 +224,13 @@ task page-path
   like text
   send back, read place/pathname
 
-# set the document title (document.title = ...)
+# set the document title. Delegates to the `<global:title>` runtime (`document.title = ...`) rather than a `.tree`
+# member-assignment (`save page/title`), which the compiler drops -- leaving `setTitle` undefined and crashing the
+# client. A method call into the runtime compiles cleanly and the cast prepends the runtime.
 task set-title
   take title, like text
-  save page/title, read title
+  call title/set
+    read title
 
 # a resource route's proxy: on the client, do a FULL navigation to the current path so the server fetches + streams the
 # asset (the page URL stays put, e.g. /vibe.pdf). proxy-target reports nothing -- the navigation already happened.
@@ -201,54 +242,16 @@ task proxy-target
   like text
   send back, text <>
 
-# upsert a SEO meta tag live (SPA navigation): reuse the existing element for this key if present, else create one and
-# append it to <head>. og:* / article:* use `property`, the rest use `name` (matching the SSR shell). String pieces are
-# joined with `add` (the `+` builtin concatenates text).
+# upsert a SEO meta tag live (SPA navigation). Delegates to the `<global:title>` runtime, which reuses the existing
+# element for this key if present else creates + appends it (og:* / article:* -> `property`, the rest -> `name`). The
+# upsert lives in the runtime rather than a `.tree` body full of member calls + string concat (which the compiler
+# mishandles); a method call compiles cleanly.
 task set-meta
   take name, like text
   take content, like text
-  save attr, like text
-    fork test
-      hook test
-        call name/starts-with
-          text <og:>
-      hook hold
-        text <property>
-      hook miss
-        text <name>
-  save selector, like text
-    call add
-      call add
-        call add
-          call add
-            text <meta[>
-            read attr
-          text <=">
-        read name
-      text <"]>
-  save existing, like any
-    call page/head/query-selector
-      read selector
-  fork test
-    hook test
-      read existing
-    hook hold
-      call existing/set-attribute
-        text <content>
-        read content
-    hook miss
-      save tag, like any
-        call page/create-element
-          text <meta>
-          make none
-      call tag/set-attribute
-        read attr
-        read name
-      call tag/set-attribute
-        text <content>
-        read content
-      call page/head/append-child
-        read tag
+  call title/set-meta
+    read name
+    read content
 
 # the app mount host (document body), wrapped as a view
 task page-body
@@ -321,6 +324,38 @@ task measure-width
   host made, like element
     read node/handle
   send back, read made/client-width
+
+# is this font family loaded + paintable right now? synchronous (document.fonts.check). true on warm cache so the
+# FOUC gate can render at full opacity with no hidden frame. the font-ready registry uses this for the fast path.
+task check-font
+  take family, like text
+  like boolean
+  send back
+    call fontset/check
+      read family
+
+# resolve this font family's load status, calling `handler` once with a terminal status ('ready' | 'error' |
+# 'timeout') -- 'timeout' after a hard 2s deadline so text is never hidden forever. wraps document.fonts.load.
+task watch-font
+  take family, like text
+  take handler
+    like task
+      take status, like text
+  call fontset/watch
+    read family
+    read handler
+
+# fallback deadline via the fontset runtime's shared per-family timer (document.fonts has no such notion; the timer +
+# subscriber bookkeeping lives in the runtime shim, matching check / watch)
+task watch-deadline
+  take family, like text
+  take threshold, like number
+  take handler
+    like task
+  call fontset/deadline
+    read family
+    read threshold
+    read handler
 
 task append
   take parent, like view

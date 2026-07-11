@@ -1,0 +1,24 @@
+
+# An example query module. A package holds two kinds of `.tree` file: documents (which compose widgets) and query
+# modules (which read the word.surf base API). A query module is a Term `task`. This one, `nouns`, returns a
+# project's nouns by calling the base client's language-word filter, which a document binds a `paradigm` or `gloss`
+# widget to. The base client is docked as a host module (`dock load`), so the call lowers to a base API call
+# (`wordApi.filterLanguageWords({ project, role: 'noun' })`) on each backend. Wiring the docked handle to a live,
+# authenticated base client is the remaining binding; the query shape and its lowering are shown here.
+
+dock load
+  load <@cluesurf/base/word>, name word-api
+
+# the base filter this query builds: the project scope and the grammatical role
+form noun-query
+  link project, like text
+  link role, like text
+
+task nouns
+  take project, like text
+  like dynamic
+  send back
+    call word-api/filter-language-words
+      make noun-query
+        bind project, read project
+        bind role, text <noun>

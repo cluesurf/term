@@ -1,0 +1,31 @@
+
+# Phoneme chart — the sound inventory of a constructed language as a grid of phoneme cells. A reusable widget a
+# package document embeds. Headless (data-slot hooks, style via CSS). Props:
+#   sounds -> list of { symbol, label }; `symbol` is the IPA / script glyph, `label` the description (e.g. "voiced
+#             bilabial nasal"). Group and lay out via CSS on [data-slot=phoneme-chart].
+
+load @term/site/code/zone/render
+  find element
+  find text
+load @term/site/code/dom/dom
+  find view
+  find append
+
+zone phoneme-chart
+  take host, like view
+  take sounds
+  zone div
+    bind data-slot, text <phoneme-chart>
+    walk list, read sounds
+      hook next
+        take site, name sound
+        zone div
+          bind data-slot, text <phoneme>
+          zone span
+            bind data-slot, text <phoneme-symbol>
+            read
+              read sound/symbol
+          zone span
+            bind data-slot, text <phoneme-label>
+            read
+              read sound/label

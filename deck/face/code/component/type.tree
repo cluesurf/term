@@ -16,27 +16,31 @@
 #   class  -> extra classes merged in (React `className`)
 #   style  -> inline-style passthrough (React `style`), bound straight to the style attribute
 #
-# Simplified vs React (documented for parity): the seven-phase font-loading fade / cross-fade state machine in
-# use-text.ts (hidden -> real-fade-in / fallback-fade-in -> crossfade-* -> real, with snap / fade-in / late-arrival
-# windows) is collapsed to "render the real font immediately." The structure and every prop are preserved, so static
-# text is functionally identical: the steady state of the React machine (transitionMs === 0, real font shown) IS this
-# render. What is dropped is only the transient fallback-then-swap animation while a web font streams in, plus the
-# `opacity`/`processor`/`script`-inheritance/`registerTextProcessor` runtime, which need the registry + signals layer.
+# Font-loading visibility machine (full parity with React): each `text` node drives its own seven-phase fade /
+# cross-fade state machine via `drive-visibility` (logic/text-visibility) -- it hides until the font status is known,
+# then snaps / fades the real font in, or fades a metric-matched fallback in and cross-fades to the real font when it
+# arrives, all with real inline opacity + a CSS opacity transition and a transitionend phase walker. The span is named
+# (`name text-node`) so the machine gets its node; the `opacity` prop is the settled opacity the real phases honour
+# (ghost text / muted captions). font / size / weight / leading / color / style / class remain as before (data-attrs
+# the theme maps + the inline-style / class passthroughs); the machine only owns opacity, the opacity transition, and
+# the real-vs-fallback font class (added on top of the passthrough class via classList, non-clobbering).
 #
-# Other parts (unchanged from the prior partial port, all pure CSS keyed off data-attrs): balanced (text-wrap:
-# balance), truncated (line-clamp to data-lines), fitted (scale text to fill its box; the measurement loop is a noted
-# dom-primitive follow-up).
+# Other parts (unchanged, all pure CSS keyed off data-attrs): balanced (text-wrap: balance), truncated (line-clamp to
+# data-lines), fitted (scale text to fill its box; the measurement loop is a noted dom-primitive follow-up).
 
 load @term/site/code/zone/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
+load ../logic/text-visibility
+  find drive-visibility
 
 # base typography core — React `<TypeText>` with the default `span` tag. The font / size / weight / leading / color
 # props ride as data attributes the theme maps to the exact CSS values (see lookClasses); `style` is the React inline-
-# style passthrough; `direction` is the `dir` attribute.
-zone text
+# style passthrough; `direction` is the `dir` attribute. Named `text-span` (not `text`) so it never shadows the render
+# runtime's `text` primitive (create-text); the per-tag variants below follow the same `text-<tag>` scheme.
+zone text-span
   take host, like view
   take class
   take font
@@ -46,7 +50,9 @@ zone text
   take color
   take direction
   take style
+  take opacity
   zone span
+    name text-node
     bind data-slot, text <text>
     bind data-font, read font
     bind data-size, read size
@@ -56,6 +62,11 @@ zone text
     bind dir, read direction
     bind style, read style
     bind class, read class
+    save setup
+      call drive-visibility
+        bind node, read text-node
+        bind family, read font
+        bind opacity, read opacity
     slot
 
 # heading-tag variants — React `<TypeText tag="h1">` etc. Same typography contract, different rendered element. The
@@ -70,7 +81,9 @@ zone text-h1
   take color
   take direction
   take style
+  take opacity
   zone h1
+    name text-node
     bind data-slot, text <text>
     bind data-font, read font
     bind data-size, read size
@@ -80,6 +93,11 @@ zone text-h1
     bind dir, read direction
     bind style, read style
     bind class, read class
+    save setup
+      call drive-visibility
+        bind node, read text-node
+        bind family, read font
+        bind opacity, read opacity
     slot
 
 zone text-h2
@@ -92,7 +110,9 @@ zone text-h2
   take color
   take direction
   take style
+  take opacity
   zone h2
+    name text-node
     bind data-slot, text <text>
     bind data-font, read font
     bind data-size, read size
@@ -102,6 +122,11 @@ zone text-h2
     bind dir, read direction
     bind style, read style
     bind class, read class
+    save setup
+      call drive-visibility
+        bind node, read text-node
+        bind family, read font
+        bind opacity, read opacity
     slot
 
 zone text-h3
@@ -114,7 +139,9 @@ zone text-h3
   take color
   take direction
   take style
+  take opacity
   zone h3
+    name text-node
     bind data-slot, text <text>
     bind data-font, read font
     bind data-size, read size
@@ -124,6 +151,11 @@ zone text-h3
     bind dir, read direction
     bind style, read style
     bind class, read class
+    save setup
+      call drive-visibility
+        bind node, read text-node
+        bind family, read font
+        bind opacity, read opacity
     slot
 
 zone text-p
@@ -136,7 +168,9 @@ zone text-p
   take color
   take direction
   take style
+  take opacity
   zone p
+    name text-node
     bind data-slot, text <text>
     bind data-font, read font
     bind data-size, read size
@@ -146,6 +180,11 @@ zone text-p
     bind dir, read direction
     bind style, read style
     bind class, read class
+    save setup
+      call drive-visibility
+        bind node, read text-node
+        bind family, read font
+        bind opacity, read opacity
     slot
 
 # anchor-tag variant — React `<TypeText tag="a" href=...>`. Adds the href / target / rel passthroughs from the React
@@ -160,10 +199,12 @@ zone text-a
   take color
   take direction
   take style
+  take opacity
   take href
   take target
   take rel
   zone a
+    name text-node
     bind data-slot, text <text>
     bind data-font, read font
     bind data-size, read size
@@ -176,6 +217,11 @@ zone text-a
     bind target, read target
     bind rel, read rel
     bind class, read class
+    save setup
+      call drive-visibility
+        bind node, read text-node
+        bind family, read font
+        bind opacity, read opacity
     slot
 
 # balanced wrapping — the theme applies `text-wrap: balance` on [data-slot=balanced]. Pure CSS, fully headless.

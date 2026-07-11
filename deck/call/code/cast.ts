@@ -140,7 +140,19 @@ export async function callCast(input: {
     const prelude = nativePrelude(result.program, env, p =>
       existsSync(p) ? readFileSync(p, 'utf8') : undefined,
     )
-    const source = `${prelude}\n${result.typescript}`
+
+    // bake the client bundle's import map into the SSR shell. The document shell (`<global:html>`) inlines an
+    // `<script type="importmap">` before the module script so the browser can resolve the client bundle's externalized
+    // npm deps (floating-ui, ...) from the CDN. On node SSR the shell reads `build/import-map.json` off disk, but a
+    // Worker has no filesystem, so that read throws and no import map is emitted -- leaving the client unable to load.
+    // Injecting the parsed map as a `globalThis` constant here makes the shell emit it with no runtime file read.
+    const importMapFile = path.join(appDir, 'build', 'import-map.json')
+    const importMapJson = existsSync(importMapFile)
+      ? readFileSync(importMapFile, 'utf8')
+      : '{"imports":{}}'
+    const bakedImportMap = `globalThis.__SEED_IMPORT_MAP__ = ${importMapJson};\n`
+
+    const source = `${bakedImportMap}${prelude}\n${result.typescript}`
 
     const workDir = path.join(appDir, 'work')
     mkdirSync(workDir, { recursive: true })

@@ -1,0 +1,4 @@
+
+deck @term/scan
+  bear ./code
+  mark <0.0.2>

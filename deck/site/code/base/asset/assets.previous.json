@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "generated_at": "2026-05-14T08:30:47.416Z",
+  "host": "https://site.clue.surf",
+  "assets": {
+    "/CrowMark.otf": {
+      "previous": [
+        {
+          "code": "kmhzssvdcsffkvfsktrvnrmczswkmmvxvhrxslvtdznlfknbwdvxlfdtszvdmhcs",
+          "link": "https://site.clue.surf/kmhzssvdcsffkvfsktrvnrmczswkmmvxvhrxslvtdznlfknbwdvxlfdtszvdmhcs.otf",
+          "hash": "kmhzssvdcsffkvfsktrvnrmczswkmmvxvhrxslvtdznlfknbwdvxlfdtszvdmhcs",
+          "superseded_at": "2026-05-14T08:10:17.102Z"
+        }
+      ]
+    }
+  }
+}

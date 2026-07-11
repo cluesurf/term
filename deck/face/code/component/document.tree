@@ -1,0 +1,31 @@
+
+# Document — the wrapper a package document's `.tree` source composes inside. It renders a titled article whose body
+# is a `slot` the document fills with prose and the linguistic widgets (paradigm, phoneme-chart, gloss, specimen,
+# glyph, sound). This is the standardized DOM-tree shell: every package document is one `document` zone holding a
+# tree of reusable components. Headless (data-slot hooks). Props:
+#   title -> the document heading
+#   class -> extra classes on the article
+
+load @term/site/code/zone/render
+  find element
+  find text
+load @term/site/code/dom/dom
+  find view
+  find append
+
+zone document
+  take host, like view
+  take class
+  take title
+  zone article
+    bind data-slot, text <document>
+    bind class, read class
+    zone header
+      bind data-slot, text <document-header>
+      zone h1
+        bind data-slot, text <document-title>
+        read
+          read title
+    zone div
+      bind data-slot, text <document-body>
+      slot

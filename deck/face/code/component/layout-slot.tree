@@ -1,0 +1,91 @@
+
+# Layout-slot registry: the Seed port of @cluesurf/face's `useLayoutSlot` / layout-slot manager (React version at
+# mesh/deck/face/code/manager/layout-slot). A module-scoped reactive registry of the eight layout regions -- the six
+# chrome cells (top / bottom x left / center / right) plus the two sidebars (left / right). A page registers a
+# component into a region; the Layout's `region` outlet renders it. The zone runtime is a single app instance (one page
+# mounted at a time), so a module signal per region IS the registry -- no React context, and reactivity replaces
+# React's page-renders-before-chrome-reads ordering (a region re-renders the instant a page registers into it). Each
+# region is its own signal, so registering one region only re-renders that region (fine-grained, Solid-style). One
+# generic `set-slot` writes any region; one generic `region` outlet renders any region -- both parameterized by the
+# region signal, so there is no per-region boilerplate beyond the signals themselves.
+
+load @term/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+load @term/site/code/zone/render
+  find element
+  find dynamic-view
+load @term/site/code/dom/dom
+  find view
+  find append
+
+# the empty default: a region with nothing registered builds nothing into its host.
+task empty-chrome
+  take host, like view
+  save skip, code 0
+
+# make a region signal defaulting to the empty chrome.
+task make-region
+  like signal
+  send back
+    call make-signal
+      bind value, read empty-chrome
+
+# the eight regions (module-scoped registry): the six chrome cells + the two sidebars.
+host slot-top-left
+  call make-region
+host slot-top-center
+  call make-region
+host slot-top-right
+  call make-region
+host slot-bottom-left
+  call make-region
+host slot-bottom-center
+  call make-region
+host slot-bottom-right
+  call make-region
+host slot-left
+  call make-region
+host slot-right
+  call make-region
+
+# register a component into a region (last registration wins) -- the `useLayoutSlot(region, Component)` port. `slot` is
+# the region signal (e.g. `slot-top-left`); `view` is the component to render there.
+task set-slot
+  take slot, like signal
+  take view
+    like task
+      take host, like view
+  call write-signal
+    bind self, read slot
+    bind value, read view
+
+# clear a region back to empty -- the `useLayoutSlot(region, false)` port.
+task clear-slot
+  take slot, like signal
+  call write-signal
+    bind self, read slot
+    bind value, read empty-chrome
+
+# the `<Region>` outlet: render a region's registered component into `host`, reactively. `dynamic-view` re-runs
+# `source` whenever the slot signal changes: it reads the slot (subscribing), builds the current component into a fresh
+# fragment, and returns it, so registering / clearing / overriding a region swaps its rendered view with no wiring.
+zone region
+  take host, like view
+  take slot, like signal
+  call dynamic-view
+    bind host, read host
+    bind source
+      task build
+        like view
+        host chrome
+          call read-signal
+            bind self, read slot
+        save frag
+          call element
+            bind tag, text <seed-fragment>
+        call chrome
+          bind host, read frag
+        send back, read frag

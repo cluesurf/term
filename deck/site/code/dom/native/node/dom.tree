@@ -200,6 +200,15 @@ task listen
         bind event, read event
         bind handle, read handler
 
+# no transitionend on the server (nothing paints, nothing transitions); the client re-render attaches the real
+# listener. no-op so the abstract API is satisfied on both platforms.
+task listen-event
+  take node, like view
+  take event, like text
+  take handler
+    like task
+      take event, like any
+
 # no document on the server — global listeners are a browser-only concern. Returns a no-op remover so callers can
 # register cleanup uniformly across platforms.
 task listen-document
@@ -295,6 +304,28 @@ task measure-width
   take node, like view
   like number
   send back, code 0
+
+# server has no FontFaceSet: report fonts ready (SSR markup is thrown away + re-rendered on the client, which
+# drives the real gate) so a stray server-side call never hides text.
+task check-font
+  take family, like text
+  like boolean
+  send back, true
+
+# no font loading on the server; the client re-render subscribes for real. no-op (never calls the handler).
+task watch-font
+  take family, like text
+  take handler
+    like task
+      take status, like text
+
+# no timers driving the SSR gate: the server render is thrown away + re-rendered on the client, which installs the
+# real deadline. no-op (never calls the handler).
+task watch-deadline
+  take family, like text
+  take threshold, like number
+  take handler
+    like task
 
 task append
   take parent, like view

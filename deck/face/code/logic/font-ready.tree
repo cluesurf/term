@@ -1,0 +1,191 @@
+
+# Font-ready registry — the core of the FOUC-prevention typography layer. Tracks, per font family, whether the real
+# font is loaded + paintable, as a shared reactive signal so a text node can hide until its font is ready and then
+# reveal without a flash of the fallback face. One cell per family, shared across every text node, so a font load
+# wakes only the readers of THAT family (not the whole page).
+#
+# Faithful to the non-negotiable contract (note/platform/plan/text-component-optimization.md goals 1-3): never show
+# the fallback before the real font loads, except after a hard timeout (the 2s deadline lives in the native
+# `watch-font` runtime); render warm-cached fonts instantly with no hidden frame (the synchronous `check-font` fast
+# path); skip the fade when the font was already there (the `instant` flag). The full seven-phase late-arrival
+# crossfade in the React `use-text` is intentionally reduced here to hidden -> (snap | fade-in) -> real, plus the
+# timeout fallback, which covers those three goals for single-font sites like form.surf.
+
+load @term/site/code/zone/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+  find make-effect
+load @term/site/code/dom/dom
+  find check-font
+  find watch-font
+  find watch-deadline
+  find add-class
+  find remove-class
+load ./native/text-format
+  find now-ms
+load @term/base/code/list
+  find list
+  find push
+
+# a per-family cell: the shared status signal ('pending' | 'ready' | 'error'), whether the family was already loaded
+# synchronously at the first ask (warm cache -- text renders at full opacity with no fade), and the first-ask perf
+# timestamp (ms). The first ask is the shared time reference every text node of this family measures its snap /
+# fade-in windows from, so late-mounting nodes ride the same clock rather than each carrying its own.
+form font-cell
+  link family, like text
+  link signal, like signal
+  link instant, like boolean
+  link first-ask, like number
+
+# what `subscribe-font` hands back to a text node: the status signal to gate opacity on, the instant flag that decides
+# snap (no transition) vs fade-in when the status is `ready`, and the family's first-ask timestamp.
+form font-watch
+  link signal, like signal
+  link instant, like boolean
+  link first-ask, like number
+
+# module-scope: one cell per font family, shared across the whole document.
+host font-cells
+  make list
+
+# map a native terminal status to the shared signal's value: only `ready` shows the real font; `error` / `timeout`
+# reveal the fallback (text must not stay hidden forever).
+task settle-status
+  take status, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read status
+        text <ready>
+    hook hold
+      send back, text <ready>
+    hook miss
+      send back, text <error>
+
+# subscribe to a family's load status. idempotent per family: the first caller creates the shared signal and (for a
+# cold load) starts the native watch; later callers share the same signal. returns the status signal + instant flag.
+task subscribe-font
+  take family, like text
+  like font-watch
+  # already registered? share the existing family cell (same signal, instant flag, and first-ask reference).
+  walk list, read font-cells
+    hook next
+      take site, name cell
+      fork test
+        hook test
+          call is-equal
+            read cell/family
+            read family
+        hook hold
+          send back
+            make font-watch
+              bind signal, read cell/signal
+              bind instant, read cell/instant
+              bind first-ask, read cell/first-ask
+  # new family: stamp the shared first-ask timestamp, then check whether it is already paintable (warm cache).
+  save ask
+    call now-ms
+  save ready, like boolean
+    call check-font
+      read family
+  save state, like text
+    fork test
+      hook test
+        read ready
+      hook hold
+        text <ready>
+      hook miss
+        text <pending>
+  save cell-signal
+    call make-signal
+      bind value, read state
+  call push
+    bind list, read font-cells
+    bind item
+      make font-cell
+        bind family, read family
+        bind signal, read cell-signal
+        bind instant, read ready
+        bind first-ask, read ask
+  # cold load: watch the real font, then flip the shared signal (waking only this family's readers).
+  fork test
+    hook test
+      read ready
+    hook hold
+      save skip, code 0
+    hook miss
+      call watch-font
+        bind family, read family
+        bind handler
+          task on-status
+            take status, like text
+            call write-signal
+              bind self, read cell-signal
+              bind value
+                call settle-status
+                  read status
+  send back
+    make font-watch
+      bind signal, read cell-signal
+      bind instant, read ready
+      bind first-ask, read ask
+
+# subscribe to the shared per-family fallback deadline. `handler` fires once when `first-ask + threshold` ms elapses
+# (regardless of load status), so a text node that has stayed hidden past the ceiling can reveal the fallback face.
+# One shared timer per family lives in the native runtime (measured from the family's first ask), so every node of the
+# family wakes on the same tick. Delegates straight to the dom's `watch-deadline`.
+task subscribe-font-deadline
+  take family, like text
+  take threshold, like number
+  take handler
+    like task
+  call watch-deadline
+    read family
+    read threshold
+    read handler
+
+# gate a rendered node's visibility on its font family, preventing FOUC. Warm cache (instant): leave the node
+# visible, nothing to do. Cold load: add class `fout-hidden` (CSS renders it opacity 0, keeping layout so there is
+# no jitter), then, once the family resolves, swap to `fout-shown` (CSS fades opacity 0 -> 1 over 200ms). Uses
+# add-class / remove-class so other classes on the node are untouched. The site's stylesheet supplies the two rules:
+#   .fout-hidden { opacity: 0 }
+#   .fout-shown  { opacity: 1; transition: opacity 200ms ease }
+# The effect is owned by the current render scope, so it is disposed when the node unmounts.
+task gate-font
+  take node, like view
+  take family, like text
+  save watch
+    call subscribe-font
+      read family
+  fork test
+    hook test
+      read watch/instant
+    hook hold
+      save skip, code 0
+    hook miss
+      call add-class
+        bind node, read node
+        bind name, text <fout-hidden>
+      call make-effect
+        bind run
+          task tick
+            save status
+              call read-signal
+                bind self, read watch/signal
+            fork test
+              hook test
+                call is-equal
+                  read status
+                  text <pending>
+              hook hold
+                save skip, code 0
+              hook miss
+                call remove-class
+                  bind node, read node
+                  bind name, text <fout-hidden>
+                call add-class
+                  bind node, read node
+                  bind name, text <fout-shown>

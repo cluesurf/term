@@ -1,0 +1,23 @@
+
+# Specimen — a script specimen: sample text rendered in a constructed writing system's font. A reusable widget a
+# package document embeds, and the way a published script surfaces inside grammar sketches and lessons. Headless.
+# Props:
+#   sample -> the text to render in the script
+#   class  -> extra classes, used to apply the script's @font-face family (the font is a package artifact)
+
+load @term/site/code/zone/render
+  find element
+  find text
+load @term/site/code/dom/dom
+  find view
+  find append
+
+zone specimen
+  take host, like view
+  take class
+  take sample
+  zone div
+    bind data-slot, text <specimen>
+    bind class, read class
+    read
+      read sample
