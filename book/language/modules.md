@@ -22,10 +22,10 @@ Inside a `load`, use `find` to select names. Never use `take` there. `take` is f
 A `load` with indented `find` lines brings in the named exports.
 
 ```tree
-load @cluesurf/base/code/list
+load @cluesurf/seed/code/list
   find list
 
-load @cluesurf/base/code/maybe
+load @cluesurf/seed/code/maybe
   find maybe
   find unwrap-or
 ```
@@ -33,7 +33,7 @@ load @cluesurf/base/code/maybe
 Import under a different local name with `name`.
 
 ```tree
-load @cluesurf/base/code/list
+load @cluesurf/seed/code/list
   find list, name array
 ```
 
@@ -49,7 +49,7 @@ A path is either a package path or a relative path.
 
 | Form | Resolves to |
 | --- | --- |
-| `@cluesurf/base/code/list` | the `list` module in the `@cluesurf/base` package |
+| `@cluesurf/seed/code/list` | the `list` module in the `@cluesurf/seed` package |
 | `./helpers` | `helpers.tree`, then `helpers/base.tree` |
 | `./types/user` | `types/user.tree`, then `types/user/base.tree` |
 
@@ -79,7 +79,7 @@ deck @cluesurf/my-lib
   mark <0.0.1>
   lock apache-2
 
-  link @cluesurf/base, mark <0.0.x>
+  link @cluesurf/seed, mark <0.0.x>
 
   book ./book
   task ./task

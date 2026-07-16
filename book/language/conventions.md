@@ -112,7 +112,7 @@ See [native](native.md) for how the public file and the per-platform files fit t
 A `load` names a package and a path inside it. Use `find` (never `take`) to pull names out of a load.
 
 ```tree
-load @cluesurf/base/code/file
+load @cluesurf/seed/code/file
   find read
   find write
 ```
@@ -122,7 +122,7 @@ A path without an extension resolves in order: `name.tree`, then `name/base.tree
 When three or more imports share a prefix, nest them. For one or two, keep them flat.
 
 ```tree
-load @cluesurf/base/code/code
+load @cluesurf/seed/code/code
   load /head, find head
   load /like, find like
 ```

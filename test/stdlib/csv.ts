@@ -13,7 +13,7 @@ import type { Source } from '@cluesurf/make/code/compile/load'
 const baseTree = join(process.cwd(), 'deck', 'base')
 
 const stdlib = (p: string): Source | undefined => {
-  const pre = '@cluesurf/base/'
+  const pre = '@cluesurf/seed/'
 
   if (!p.startsWith(pre)) {
     return undefined

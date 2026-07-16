@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { withNativeEnv, nativePrelude } from '@cluesurf/make/code/compile/native'
 const baseTree=join(process.cwd(),'deck','base')
-const stdlib=(p:string):any=>{const pre='@cluesurf/base/';if(!p.startsWith(pre))return undefined;const f=join(baseTree,p.slice(pre.length)+'.tree');return existsSync(f)?{file:f,text:readFileSync(f,'utf8')}:undefined}
-const readRuntime=(p:string):any=>{if(existsSync(p))return readFileSync(p,'utf8');const pre='@cluesurf/base/';if(!p.startsWith(pre))return undefined;const f=join(baseTree,p.slice(pre.length));return existsSync(f)?readFileSync(f,'utf8'):undefined}
+const stdlib=(p:string):any=>{const pre='@cluesurf/seed/';if(!p.startsWith(pre))return undefined;const f=join(baseTree,p.slice(pre.length)+'.tree');return existsSync(f)?{file:f,text:readFileSync(f,'utf8')}:undefined}
+const readRuntime=(p:string):any=>{if(existsSync(p))return readFileSync(p,'utf8');const pre='@cluesurf/seed/';if(!p.startsWith(pre))return undefined;const f=join(baseTree,p.slice(pre.length));return existsSync(f)?readFileSync(f,'utf8'):undefined}
 // URL parsing test: compile the real base.tree url module and run it, asserting the parsed components and relative
 // resolution. Native URL delegation (one expression per backend, no shim). Run: npx tsx test/stdlib/url.ts
 async function main(){

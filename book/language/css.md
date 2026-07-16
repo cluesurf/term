@@ -448,4 +448,4 @@ tone dark
 
 ## Implementation
 
-The grammar is a self-hosted mill at `deck/mill/code/look/` (`mine` parses the tree into the look AST, `mint` prints it back). The AST forms live in `@cluesurf/base/code/look`. A static-output pass lowers that AST to a `.css` string at build time — no runtime, Tailwind-style JIT for `face` classes (only used classes are emitted; `base` / at-rule blocks always emit).
+The grammar is a self-hosted mill at `deck/mill/code/look/` (`mine` parses the tree into the look AST, `mint` prints it back). The AST forms live in `@cluesurf/seed/code/look`. A static-output pass lowers that AST to a `.css` string at build time — no runtime, Tailwind-style JIT for `face` classes (only used classes are emitted; `base` / at-rule blocks always emit).

@@ -61,7 +61,7 @@ function scanImports(text: string): ImportScan {
   return { paths, hasZone }
 }
 
-// resolve an import path (e.g. `@cluesurf/base/code/maybe`) from the importing file to its source, or undefined
+// resolve an import path (e.g. `@cluesurf/seed/code/maybe`) from the importing file to its source, or undefined
 export type Resolver = (
   importPath: string,
   fromFile: string,

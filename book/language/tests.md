@@ -23,7 +23,7 @@ The whole assertion surface is two words: `want` for equality, `deny` for inequa
 Import the test library:
 
 ```tree
-load @cluesurf/base/code/test
+load @cluesurf/seed/code/test
   find case
   find want
   find deny
@@ -42,10 +42,10 @@ term test parser     # only tests whose name contains "parser"
 `case` takes a name and a work. The work is an async task returning a boolean. End it with a `want` call.
 
 ```tree
-load @cluesurf/base/code/test
+load @cluesurf/seed/code/test
   find case
   find want
-load @cluesurf/base/code/math
+load @cluesurf/seed/code/math
   find add
 
 task test-add
@@ -69,7 +69,7 @@ task test-add
 When a test needs steps before the assertion, put them in the work before the final `want`.
 
 ```tree
-load @cluesurf/base/code/test
+load @cluesurf/seed/code/test
   find case
   find want
 
@@ -127,7 +127,7 @@ task test-asserts
 Collect tests into a list and hand it to `run`. It executes each, prints the result, and returns a tally of passes and failures.
 
 ```tree
-load @cluesurf/base/code/test
+load @cluesurf/seed/code/test
   find run
 
 # the module body runs the suite: no main task

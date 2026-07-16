@@ -48,7 +48,7 @@ A `maybe` is `some` (a value) or `none` (absence). Use it when failure needs no 
 The simplest validator is a `task` whose return type is `result`. On success it builds an `okay`, on failure an `error` with a reason.
 
 ```tree
-load @cluesurf/base/code/result
+load @cluesurf/seed/code/result
   find result
 
 task check-age
@@ -125,7 +125,7 @@ Each step is `okay` or `error`. The first `error` short-circuits the chain.
 When a value's absence is normal and needs no message, use `maybe`. `filter` turns a present value into `none` when it fails a test.
 
 ```tree
-load @cluesurf/base/code/maybe
+load @cluesurf/seed/code/maybe
   find maybe
 
 task even-or-none

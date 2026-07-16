@@ -15,7 +15,7 @@ const base = join(here, '..', '..', 'deck', 'base')
 const codeDir = join(base, 'code')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {return undefined}
 

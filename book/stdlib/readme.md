@@ -1,12 +1,12 @@
 # The standard library
 
-`@cluesurf/base` is the library that ships in the box. It is written in Term itself, in `.tree` files under `code/`, so every module reads like the code in the rest of this book. Each module is one type or one small family of functions. You bring a module in with `load` and use what it exposes.
+`@cluesurf/seed` is the library that ships in the box. It is written in Term itself, in `.tree` files under `code/`, so every module reads like the code in the rest of this book. Each module is one type or one small family of functions. You bring a module in with `load` and use what it exposes.
 
 Maps to: Rust's `std`, Go's standard library, the JavaScript built-ins plus a curated set of helpers.
 
 ## The modules
 
-Every module lives at `@cluesurf/base/code/<name>`. Load the form or task you need with `find`.
+Every module lives at `@cluesurf/seed/code/<name>`. Load the form or task you need with `find`.
 
 | Module | Path | What it gives you |
 | --- | --- | --- |
@@ -39,10 +39,10 @@ Reference-style detail pages: [datetime](datetime.md), [validation](validation.m
 A `load` block names a package path, then `find` names each thing to pull in. Use `find`, never `take`, inside a `load`.
 
 ```tree
-load @cluesurf/base/code/list
+load @cluesurf/seed/code/list
   find list
 
-load @cluesurf/base/code/maybe
+load @cluesurf/seed/code/maybe
   find maybe
   find unwrap-or
 ```
@@ -52,10 +52,10 @@ After that, the names are in scope. A method on a form is called by name (`call 
 ## A first taste
 
 ```tree
-load @cluesurf/base/code/list
+load @cluesurf/seed/code/list
   find list
 
-load @cluesurf/base/code/statistics
+load @cluesurf/seed/code/statistics
   find mean
 
 # the average of a list of numbers

@@ -12,7 +12,7 @@ Maps to: FFI / platform bindings, `import` of a host module, conditional compila
 | `load <node:fs/promises>, name fs` | bind host module `fs/promises` as `fs` |
 | `load <global:json>, name json` | bind a global host object as `json` |
 | `call fs/read-file` | call `readFile` on the bound module |
-| `load @cluesurf/base/code/native/file` | load the platform-dispatched native layer |
+| `load @cluesurf/seed/code/native/file` | load the platform-dispatched native layer |
 | `note async` | mark a native wrapper async (most host IO is) |
 | `mark native` | mark a task as backed by a host implementation |
 | `mark platform, name x` | gate a definition to platform `x` |
@@ -85,13 +85,13 @@ Capabilities that exist on every host (files, time, crypto) follow one shape so 
 2. **Native wrapper** in `code/native/<platform>/<x>.tree`. One file per host, each `dock load`-ing that host's module.
 3. **Runtime shim** in `code/native/<platform>/runtime/<x>.ext` when the host needs glue beyond a direct call.
 
-The public file imports `@cluesurf/base/code/native/<x>` by name. The compiler resolves that import to the native file for the target it is building, so the public file never names a platform.
+The public file imports `@cluesurf/seed/code/native/<x>` by name. The compiler resolves that import to the native file for the target it is building, so the public file never names a platform.
 
 The public layer:
 
 ```tree
 # code/file.tree
-load @cluesurf/base/code/native/file
+load @cluesurf/seed/code/native/file
   find read-file
   find write-file
 

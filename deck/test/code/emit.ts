@@ -99,7 +99,7 @@ export function emitSeed(task: SeedTask): string {
   const uses = new Set<string>()
   mathUses(task.body, uses)
   if (uses.size > 0) {
-    lines.push('load @cluesurf/base/code/math')
+    lines.push('load @cluesurf/seed/code/math')
     for (const fn of [...uses].sort()) lines.push(`${INDENT}find ${fn}`)
     lines.push('')
   }

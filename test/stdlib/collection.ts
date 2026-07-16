@@ -21,7 +21,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -81,7 +81,7 @@ async function load(
   >
 }
 
-const HASH = `load @cluesurf/base/code/hash
+const HASH = `load @cluesurf/seed/code/hash
   find hash
 
 task build
@@ -115,7 +115,7 @@ task values-of
       call build
 `
 
-const SET = `load @cluesurf/base/code/set
+const SET = `load @cluesurf/seed/code/set
   find set
 
 task set-a
@@ -182,7 +182,7 @@ task difference-list
         call set-b
 `
 
-const RANGE = `load @cluesurf/base/code/range
+const RANGE = `load @cluesurf/seed/code/range
   find range
 
 task list-of

@@ -40,7 +40,7 @@ import type { Program } from '@cluesurf/make/code/compile/node'
 const baseTree = join(process.cwd(), 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -58,7 +58,7 @@ const readRuntime = (path: string): string | undefined => {
     return readFileSync(path, 'utf8')
   }
 
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -196,10 +196,10 @@ function get(
 }
 
 // the Seed server program: serve on PORT, echoing the request path (so a fetch proves method/path parsing + the handler)
-const SERVER = (port: number): string => `load @cluesurf/base/code/network/server
+const SERVER = (port: number): string => `load @cluesurf/seed/code/network/server
   find serve
 
-load @cluesurf/base/code/network/server/response
+load @cluesurf/seed/code/network/server/response
   find response
   find make-ok
   find with-header

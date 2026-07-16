@@ -143,7 +143,7 @@ package) under `deck/`, and the decks reference each other by name
 | [`@cluesurf/call`](./deck/call)                           | The CLI: `term make`, `term test`, `term serve`, and more                                 |
 | [`@cluesurf/flow`](./deck/flow)                           | The language server (LSP over stdio)                                                      |
 | [`@cluesurf/deck`](./deck/deck)                           | The package manager: install, link, lockfile, store                                       |
-| [`@cluesurf/base`](./deck/base)                           | The standard library, written in `.tree`                                                  |
+| [`@cluesurf/seed`](./deck/base)                           | The standard library, written in `.tree`                                                  |
 | [`@cluesurf/site`](./deck/site)                           | App framework: reactive zones, DOM, render runtime                                        |
 | [`@cluesurf/term`](./deck/term)                           | The 4-letter term vocabulary that backs the DSLs                                          |
 | [`@cluesurf/form`](https://github.com/cluesurf/form.tree) | Math and physics as kernel-proven `.tree` proofs (algebra, quantum, geometry, relativity) |

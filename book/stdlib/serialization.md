@@ -6,7 +6,7 @@ Maps to: `JSON.parse` / `JSON.stringify`, or `serde_json` on Rust.
 
 ## Cheatsheet
 
-All tasks live in `@cluesurf/base/code/json`.
+All tasks live in `@cluesurf/seed/code/json`.
 
 ### Parse and print
 
@@ -47,7 +47,7 @@ The reader side and the builder side mirror each other. Field accessors read a t
 Parse the text once, then read each field with the typed accessor. `field-text`, `field-number`, and `field-boolean` combine the field lookup and the coercion, so the common case is one call per field.
 
 ```tree
-load @cluesurf/base/code/json
+load @cluesurf/seed/code/json
   find parse
   find field-text
   find field-number
@@ -81,7 +81,7 @@ Given `{"name":"ada","age":36}`, `read-user` produces a typed `user`.
 Walk into nested objects with `get-field` and into arrays with `get-item`, then coerce at the leaf.
 
 ```tree
-load @cluesurf/base/code/json
+load @cluesurf/seed/code/json
   find parse
   find get-field
   find get-item
@@ -110,7 +110,7 @@ task first-label
 To serialize, assemble a dynamic value with the makers, then `stringify`. `set-field` and `push-item` return their container, so the calls chain naturally.
 
 ```tree
-load @cluesurf/base/code/json
+load @cluesurf/seed/code/json
   find make-object
   find set-field
   find from-text

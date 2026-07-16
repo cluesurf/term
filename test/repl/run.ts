@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const resolver = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
 
   // load the stdlib and use it
   const load = await repl.feed(
-    'load @cluesurf/base/code/maybe\n  find maybe',
+    'load @cluesurf/seed/code/maybe\n  find maybe',
   )
 
   expect('accepts a stdlib load', load.kind, 'definition')

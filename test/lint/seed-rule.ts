@@ -17,7 +17,7 @@ const seedRoot = resolvePath(here, '..', '..')
 const baseTree = resolvePath(seedRoot, 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -29,7 +29,7 @@ const stdlib = (path: string): Source | undefined => {
 }
 
 const readRuntime = (path: string): string | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {return undefined}
 

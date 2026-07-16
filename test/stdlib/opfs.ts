@@ -25,7 +25,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -37,7 +37,7 @@ const stdlib = (path: string): Source | undefined => {
 }
 
 const readRuntime = (path: string): string | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -111,7 +111,7 @@ class MemoryDirectory {
 async function loadBrowserFile(): Promise<
   Record<string, (...a: unknown[]) => Promise<unknown>>
 > {
-  const source = `load @cluesurf/base/code/file
+  const source = `load @cluesurf/seed/code/file
   find file
 
 task put

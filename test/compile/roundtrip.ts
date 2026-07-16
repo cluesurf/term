@@ -73,7 +73,7 @@ const dir = mkdtempSync(join(tmpdir(), 'seed-roundtrip-'))
 const baseTree = join(process.cwd(), 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -86,11 +86,11 @@ const stdlib = (path: string): Source | undefined => {
 
 // read a native runtime shim's raw source (the path already carries the real extension, no `.tree`). `nativePrelude`
 // now resolves shims next to the module that docks them (an absolute path), so try that directly first; fall back to
-// the `@cluesurf/base/...` import-path form for any dock whose origin file was not recorded.
+// the `@cluesurf/seed/...` import-path form for any dock whose origin file was not recorded.
 const readRuntime = (path: string): string | undefined => {
   if (existsSync(path)) {return readFileSync(path, 'utf8')}
 
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -1169,7 +1169,7 @@ task run
 // `maybe<t>`. These exercise the full generic-container path on the strict backends (native `<T>` struct with a used
 // type parameter, mutation through the shared list handle, and a `maybe<t>`-returning method extracted via unwrap-or).
 // stack is LIFO: push 7, push 3, pop -> 3.
-const STACK_GENERIC = `load @cluesurf/base/code/list/stack
+const STACK_GENERIC = `load @cluesurf/seed/code/list/stack
   find stack
 
 task run
@@ -1192,7 +1192,7 @@ task run
 `
 
 // queue is FIFO: enqueue 7, enqueue 3, dequeue -> 7.
-const QUEUE_GENERIC = `load @cluesurf/base/code/list/queue
+const QUEUE_GENERIC = `load @cluesurf/seed/code/list/queue
   find queue
 
 task run
@@ -1215,7 +1215,7 @@ task run
 `
 
 // deque is double-ended: push-back 7, push-front 3 -> [3, 7], pop-back -> 7.
-const DEQUE_GENERIC = `load @cluesurf/base/code/list/deque
+const DEQUE_GENERIC = `load @cluesurf/seed/code/list/deque
   find deque
 
 task run
@@ -1240,7 +1240,7 @@ task run
 // code-point decomposition: to-runes turns text into its list of Unicode scalar values, building each backend's own
 // list representation directly (so the result is a first-class list whose /length applies). "A😀b" is three code points
 // (the emoji is one astral scalar), so the count is 3 on every backend -- proving the list-return wrapper is solved.
-const RUNE_COUNT = `load @cluesurf/base/code/text/unicode
+const RUNE_COUNT = `load @cluesurf/seed/code/text/unicode
   find to-runes
 
 task run
@@ -1254,7 +1254,7 @@ task run
 
 // round-trip: to-runes then from-runes reconstructs the original text, astral scalar included. from-runes is pure Seed
 // over the list's own iteration (folding each rune's one-character text), so it never touches a backend's list rep.
-const RUNE_ROUND = `load @cluesurf/base/code/text/unicode
+const RUNE_ROUND = `load @cluesurf/seed/code/text/unicode
   find to-runes
   find from-runes
 
@@ -1442,7 +1442,7 @@ const FIB = `task find-fibonacci-via-loop
 `
 
 // the stdlib maybe used concretely: a native enum, pattern match, map, and unwrap-or
-const MAYBE = `load @cluesurf/base/code/maybe
+const MAYBE = `load @cluesurf/seed/code/maybe
   find maybe
 
 task demo
@@ -1468,7 +1468,7 @@ task demo
 // per-target file IO programs (identical shape, different native platform module)
 const ioProgram = (
   platform: string,
-) => `load @cluesurf/base/code/native/${platform}/file
+) => `load @cluesurf/seed/code/native/${platform}/file
   find write-file
   find read-file
 
@@ -1489,7 +1489,7 @@ task read-demo
 `
 
 // a value computed through the public math interface: power(2,10) forwards to the per-target math shim's pow
-const MATH_PROG = `load @cluesurf/base/code/math
+const MATH_PROG = `load @cluesurf/seed/code/math
   find power
 
 task compute
@@ -1505,10 +1505,10 @@ task compute
 // binding is per-backend in one place; kept so the caller's per-platform loop is unchanged.
 const cryptoProgram = (
   _platform: string,
-) => `load @cluesurf/base/code/cryptography/digest
+) => `load @cluesurf/seed/code/cryptography/digest
   find sha256
 
-load @cluesurf/base/code/bytes
+load @cluesurf/seed/code/bytes
   find from-text
   find to-hex
 
@@ -1527,7 +1527,7 @@ const SHA256_ABC =
   'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 
 // base64 / hex / hmac through the public interfaces, forwarding to each target's shim (prelude auto-collected)
-const BASE64_PROG = `load @cluesurf/base/code/text/base64
+const BASE64_PROG = `load @cluesurf/seed/code/text/base64
   find encode
 
 task compute
@@ -1537,7 +1537,7 @@ task compute
       text <hello>
 `
 
-const HEX_PROG = `load @cluesurf/base/code/text/hex
+const HEX_PROG = `load @cluesurf/seed/code/text/hex
   find encode
 
 task compute
@@ -1547,10 +1547,10 @@ task compute
       text <hi>
 `
 
-const HMAC_PROG = `load @cluesurf/base/code/cryptography/hmac
+const HMAC_PROG = `load @cluesurf/seed/code/cryptography/hmac
   find sha256
 
-load @cluesurf/base/code/bytes
+load @cluesurf/seed/code/bytes
   find from-text
   find to-hex
 
@@ -1571,10 +1571,10 @@ const HMAC_VECTOR =
   'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8'
 
 // uuid: version4 is random, so verify its FORMAT with regex (cross-platform, no member access). Uses both shims.
-const UUID_PROG = `load @cluesurf/base/code/uuid
+const UUID_PROG = `load @cluesurf/seed/code/uuid
   find version4
 
-load @cluesurf/base/code/regex
+load @cluesurf/seed/code/regex
   find matches
 
 task compute
@@ -1588,7 +1588,7 @@ task compute
 `
 
 // random: integer(low, high) with low == high is deterministic
-const RANDOM_PROG = `load @cluesurf/base/code/random
+const RANDOM_PROG = `load @cluesurf/seed/code/random
   find integer
 
 task compute
@@ -1603,10 +1603,10 @@ task compute
 // crypto currency); hex-encode each at the edge so the comparison is by value on every platform (a raw-buffer != would
 // be a reference compare on node / kotlin). Asserted as a boolean to stay print-format agnostic. Exercises the inlined
 // random-bytes bind on each platform (rust OsRng, swift system RNG, kotlin SecureRandom).
-const SECURE_RANDOM_PROG = `load @cluesurf/base/code/cryptography/random
+const SECURE_RANDOM_PROG = `load @cluesurf/seed/code/cryptography/random
   find bytes
 
-load @cluesurf/base/code/bytes
+load @cluesurf/seed/code/bytes
   find to-hex
 
 task compute
@@ -1623,7 +1623,7 @@ task compute
 
 // the bytes currency type as a native buffer: text "ab" + "cd" concatenated, hex-encoded, equals "61626364". The data
 // is a byte vector / Data / ByteArray the whole way through, hex only at the edge. Boolean so it is print-agnostic.
-const BYTES_PROG = `load @cluesurf/base/code/bytes
+const BYTES_PROG = `load @cluesurf/seed/code/bytes
   find from-text
   find to-hex
   find concat
@@ -1644,11 +1644,11 @@ task compute
 // AES-256-GCM: encrypt a plaintext then decrypt it, asserting the round-trip recovers the original (boolean, so it is
 // print-format agnostic). Key is 32 bytes / 64 hex, nonce is 12 bytes / 24 hex. Exercises each platform's AEAD
 // library (rust aes-gcm, swift CryptoKit AES.GCM, kotlin javax.crypto), all agreeing on the ciphertext || tag layout.
-const CIPHER_PROG = `load @cluesurf/base/code/cryptography/cipher
+const CIPHER_PROG = `load @cluesurf/seed/code/cryptography/cipher
   find encrypt
   find decrypt
 
-load @cluesurf/base/code/bytes
+load @cluesurf/seed/code/bytes
   find from-text
   find to-text
   find from-hex
@@ -1682,12 +1682,12 @@ task compute
 
 // Ed25519 signatures: generate a key pair, sign a message, verify it (boolean round-trip, print-format agnostic).
 // Exercises each platform's Ed25519 (rust ed25519-dalek, swift CryptoKit Curve25519, kotlin java.security).
-const SIGNATURE_PROG = `load @cluesurf/base/code/cryptography/signature
+const SIGNATURE_PROG = `load @cluesurf/seed/code/cryptography/signature
   find make-key-pair
   find sign
   find verify
 
-load @cluesurf/base/code/bytes
+load @cluesurf/seed/code/bytes
   find from-text
 
 task compute
@@ -1713,7 +1713,7 @@ task compute
 
 // environment variable: PATH is always set in a spawned process, so reading it yields a non-empty string. Asserts as
 // a boolean via the host environment (rust std::env, swift ProcessInfo, kotlin System.getenv).
-const ENV_VAR_PROG = `load @cluesurf/base/code/environment
+const ENV_VAR_PROG = `load @cluesurf/seed/code/environment
   find variable
 
 task compute
@@ -1727,11 +1727,11 @@ task compute
 
 // subprocess: run `echo ok` to completion and confirm exit code 0 (std::process::Command / Foundation.Process /
 // ProcessBuilder). Boolean result keeps the output uniform across backends.
-const RUN_PROG = `load @cluesurf/base/code/process/run
+const RUN_PROG = `load @cluesurf/seed/code/process/run
   find run
   find run-result
 
-load @cluesurf/base/code/list
+load @cluesurf/seed/code/list
   find list
   find push
 
@@ -1763,7 +1763,7 @@ task compute
 // sockets stack — opaque per-backend handle (the platform socket) stored in the connection / listener forms, plus
 // connect / listen / accept / read / write. The accept picks up the connection the OS backlogs from connect, so the
 // flow stays sequential.
-const TCP_PROG = `load @cluesurf/base/code/network/tcp
+const TCP_PROG = `load @cluesurf/seed/code/network/tcp
   find connect
   find listen
   find read
@@ -1815,7 +1815,7 @@ task compute
 
 // UDP loopback: open two datagram sockets, send a message from one to the other, receive it. Exercises the datagram
 // stack — opaque per-backend socket handle, plus open / send / receive returning the datagram form with sender address.
-const UDP_PROG = `load @cluesurf/base/code/network/udp
+const UDP_PROG = `load @cluesurf/seed/code/network/udp
   find open
   find send
   find receive
@@ -1851,7 +1851,7 @@ task compute
 
 // rune Unicode predicates + case mapping via declarative bindings (rust char tables, swift Character, kotlin Character).
 // 233 is 'é' (a letter), to-uppercase of 97 'a' is 65 'A'. Both checks true.
-const RUNE_PROG = `load @cluesurf/base/code/rune
+const RUNE_PROG = `load @cluesurf/seed/code/rune
   find make-rune
   find is-letter
   find to-uppercase
@@ -1877,7 +1877,7 @@ task compute
 `
 
 // Unicode text measurement via declarative bindings: 'café' is 4 code points and 5 UTF-8 bytes on every backend.
-const UNICODE_COUNT_PROG = `load @cluesurf/base/code/text/unicode
+const UNICODE_COUNT_PROG = `load @cluesurf/seed/code/text/unicode
   find rune-count
   find byte-count
 
@@ -1897,7 +1897,7 @@ task compute
 
 // Unicode normalization via declarative bindings: NFD decomposes 'café' so it has more than 4 code points (the accent
 // splits off). rust uses the unicode-normalization crate, the others the built-in normalizer.
-const UNICODE_NORM_PROG = `load @cluesurf/base/code/text/unicode
+const UNICODE_NORM_PROG = `load @cluesurf/seed/code/text/unicode
   find to-nfd
   find rune-count
 
@@ -1912,7 +1912,7 @@ task compute
 `
 
 // Unicode grapheme segmentation: a decomposed 'é' (e + combining accent) is two code points but one grapheme cluster.
-const UNICODE_GRAPHEME_PROG = `load @cluesurf/base/code/text/unicode
+const UNICODE_GRAPHEME_PROG = `load @cluesurf/seed/code/text/unicode
   find grapheme-count
   find rune-count
   find to-nfd
@@ -1936,7 +1936,7 @@ task compute
 
 // concurrency channel: send a message then receive it over a buffered text channel (node async queue, rust tokio mpsc,
 // swift semaphore-buffered, kotlin BlockingQueue). The buffer holds the value so send-then-receive in one task works.
-const CHANNEL_PROG = `load @cluesurf/base/code/channel
+const CHANNEL_PROG = `load @cluesurf/seed/code/channel
   find make-channel
   find send
   find receive
@@ -1961,7 +1961,7 @@ task compute
 `
 // concurrency atomic: an atomic counter, increase then load (node Atomics/SAB, rust AtomicI64, swift lock-guarded,
 // kotlin AtomicLong). 10 + 5 = 15, and the cell reads back 15.
-const ATOMIC_PROG = `load @cluesurf/base/code/atomic
+const ATOMIC_PROG = `load @cluesurf/seed/code/atomic
   find make-atomic
   find load
   find increase
@@ -1987,7 +1987,7 @@ task compute
 `
 // concurrency mutex: lock then unlock then lock again proves the lock is released and re-acquirable (node async flag,
 // rust atomic spinlock, swift NSLock, kotlin ReentrantLock).
-const MUTEX_PROG = `load @cluesurf/base/code/mutex
+const MUTEX_PROG = `load @cluesurf/seed/code/mutex
   find make-mutex
   find lock
   find unlock
@@ -2013,9 +2013,9 @@ task compute
 `
 // directory make plus metadata: make a directory then confirm is-directory reports it. Exercises the io shim's
 // dir-make and is-directory on each platform (rust std::fs, swift FileManager, kotlin java.io.File).
-const DIR_MAKE_PROG = `load @cluesurf/base/code/file/directory
+const DIR_MAKE_PROG = `load @cluesurf/seed/code/file/directory
   find make
-load @cluesurf/base/code/file/metadata
+load @cluesurf/seed/code/file/metadata
   find is-directory
 
 task compute
@@ -2028,7 +2028,7 @@ task compute
 `
 
 // directory remove: make then remove a directory, then confirm it no longer exists (returns false).
-const DIR_REMOVE_PROG = `load @cluesurf/base/code/file/directory
+const DIR_REMOVE_PROG = `load @cluesurf/seed/code/file/directory
   find make
   find remove
   find exists
@@ -2047,7 +2047,7 @@ task compute
 // directory list: make a directory with one child, list it, and count the entries by walking the result. Exercises
 // the list-typed native return (Vec<String> / [String] / MutableList<String>) plus native list iteration on each
 // backend. The walk avoids reducing through the list form, which does not yet apply to a raw native array.
-const DIR_LIST_PROG = `load @cluesurf/base/code/file/directory
+const DIR_LIST_PROG = `load @cluesurf/seed/code/file/directory
   find make
   find remove
   find list
@@ -2077,7 +2077,7 @@ task compute
 
 // directory walk: make a nested directory tree, walk it recursively, and count the entries. Exercises each platform's
 // recursive enumerator (rust std::fs recursion, swift FileManager.enumerator, kotlin walkTopDown) returning a list.
-const DIR_WALK_PROG = `load @cluesurf/base/code/file/directory
+const DIR_WALK_PROG = `load @cluesurf/seed/code/file/directory
   find make
   find remove
   find walk
@@ -2107,7 +2107,7 @@ task compute
 
 // path: join a base and a name, then read the last segment back. Exercises the path shim (node path, rust std::path,
 // swift Foundation, kotlin java.io.File). Asserted as a boolean over the exact cross-platform result.
-const PATH_JOIN_PROG = `load @cluesurf/base/code/path
+const PATH_JOIN_PROG = `load @cluesurf/seed/code/path
   find join
   find file-name
 
@@ -2123,7 +2123,7 @@ task compute
 `
 
 // path: a file extension carries its leading dot, the same on every platform.
-const PATH_EXTENSION_PROG = `load @cluesurf/base/code/path
+const PATH_EXTENSION_PROG = `load @cluesurf/seed/code/path
   find file-extension
 
 task compute
@@ -2139,7 +2139,7 @@ task compute
 // invariants at once (format matches the exact cross-platform string, parse inverts format, add-months is
 // calendar-aware) as a single boolean. Exercises each platform's date library (rust chrono, swift Foundation,
 // kotlin java.time), all agreeing on the 2026-06-19T12:34:56.000Z shape.
-const CALENDAR_PROG = `load @cluesurf/base/code/calendar
+const CALENDAR_PROG = `load @cluesurf/seed/code/calendar
   find make-utc
   find format
   find parse
@@ -2177,11 +2177,11 @@ task compute
 
 // X25519 ECDH: two key pairs derive the same shared secret from opposite sides (the agreement property), asserted as
 // a boolean. Exercises each platform's X25519 (rust x25519-dalek, swift CryptoKit, kotlin java.security).
-const KEY_AGREEMENT_PROG = `load @cluesurf/base/code/cryptography/key-agreement
+const KEY_AGREEMENT_PROG = `load @cluesurf/seed/code/cryptography/key-agreement
   find make-key-pair
   find shared-secret
 
-load @cluesurf/base/code/bytes
+load @cluesurf/seed/code/bytes
   find to-hex
 
 task compute
@@ -2213,7 +2213,7 @@ task compute
 
 // dns: resolving a numeric IP returns it, through each platform's resolver (rust std::net, swift getaddrinfo, kotlin
 // InetAddress). Offline and deterministic, asserted as a boolean.
-const DNS_PROG = `load @cluesurf/base/code/network/dns
+const DNS_PROG = `load @cluesurf/seed/code/network/dns
   find resolve-one
 
 task compute
@@ -2231,7 +2231,7 @@ task compute
 
 // collection: build two sets, intersect them, check the size. Exercises the native map runtime (set / has / size /
 // keys) plus mutable-collection construction and walk on each platform's reference-typed map. Asserted as a boolean.
-const COLLECTION_PROG = `load @cluesurf/base/code/set
+const COLLECTION_PROG = `load @cluesurf/seed/code/set
   find set
 
 task compute
@@ -2274,7 +2274,7 @@ task compute
 // list: build a list with push (in-place mutation persists), map it through a closure, then reduce. Exercises the
 // native list runtime -- mutation, the closure-taking ops (map / reduce), and `Box<dyn Fn>` / lambda closures.
 // [1,2,3] -> map(*2) -> [2,4,6] -> reduce(+, 0) -> 12.
-const LIST_PROG = `load @cluesurf/base/code/list
+const LIST_PROG = `load @cluesurf/seed/code/list
   find list
 
 task compute
@@ -2315,7 +2315,7 @@ task compute
 `
 
 // list set: in-place index write through the native splice op (rust Vec::splice, swift replaceSubrange, kotlin subList)
-const LIST_SET_PROG = `load @cluesurf/base/code/list
+const LIST_SET_PROG = `load @cluesurf/seed/code/list
   find list
   find set
   find get
@@ -2345,7 +2345,7 @@ task compute
 
 // json: parse a JSON array (no braces -- seed text literals interpolate single { ), index it, read the number.
 // as-number(get-item(parse("[10,20,30]"), 1)) == 20.0, through each platform's host JSON.
-const JSON_RT_PROG = `load @cluesurf/base/code/json
+const JSON_RT_PROG = `load @cluesurf/seed/code/json
   find parse
   find get-item
   find as-number
@@ -2365,7 +2365,7 @@ task compute
 // json encode: assemble a typed value (make-object + set-field + from-*), stringify it through the host JSON, then
 // parse the text back and read the name field. Proves typed encode round-trips on each platform's native JSON value
 // (serde_json Map, JSONSerialization dictionary) with no derive macros. Asserted as a boolean (text equality).
-const JSON_ENCODE_RT = `load @cluesurf/base/code/json
+const JSON_ENCODE_RT = `load @cluesurf/seed/code/json
   find parse
   find stringify
   find field-text
@@ -2405,7 +2405,7 @@ task compute
 
 // float: real floating-point math. square-root(9.0) == 3.0 exactly (asserted as a boolean to avoid print-format
 // differences: rust prints "3", swift/kotlin print "3.0").
-const FLOAT_PROG = `load @cluesurf/base/code/float
+const FLOAT_PROG = `load @cluesurf/seed/code/float
   find square-root
 
 task compute
@@ -2418,7 +2418,7 @@ task compute
 `
 
 // arc-trig: arc-cosine(1.0) == 0.0 through each platform's float library (Math.acos / f64.acos / Foundation / kotlin.math)
-const TRIG_PROG = `load @cluesurf/base/code/float
+const TRIG_PROG = `load @cluesurf/seed/code/float
   find arc-cosine
 
 task compute
@@ -2431,7 +2431,7 @@ task compute
 `
 
 // vector-3: length(3,4,0) == 5 through the concrete float vector form
-const VECTOR3_PROG = `load @cluesurf/base/code/line/float/32/vector-3
+const VECTOR3_PROG = `load @cluesurf/seed/code/line/float/32/vector-3
   find make-vector-3
   find length
 
@@ -2448,7 +2448,7 @@ task compute
 `
 
 // quaternion: length(1,2,2,0) == 3 through the concrete float quaternion form
-const QUATERNION_PROG = `load @cluesurf/base/code/line/float/32/quaternion
+const QUATERNION_PROG = `load @cluesurf/seed/code/line/float/32/quaternion
   find make-quaternion
   find length
 
@@ -2466,7 +2466,7 @@ task compute
 `
 
 // time: now() is non-deterministic, so assert it is a positive epoch (boolean -> "true")
-const TIME_PROG = `load @cluesurf/base/code/time
+const TIME_PROG = `load @cluesurf/seed/code/time
   find now
 
 task compute
@@ -2478,7 +2478,7 @@ task compute
 `
 
 // console: compute() prints to stdout (it returns unit), so the runner just calls it and captures stdout
-const CONSOLE_PROG = `load @cluesurf/base/code/console
+const CONSOLE_PROG = `load @cluesurf/seed/code/console
   find log
 
 task compute
@@ -2488,7 +2488,7 @@ task compute
 `
 
 // clock: monotonic now() is positive
-const CLOCK_PROG = `load @cluesurf/base/code/clock
+const CLOCK_PROG = `load @cluesurf/seed/code/clock
   find now
 
 task compute
@@ -2500,10 +2500,10 @@ task compute
 `
 
 // process / environment: return non-empty platform info, verified with regex (no member access)
-const PROCESS_PROG = `load @cluesurf/base/code/process
+const PROCESS_PROG = `load @cluesurf/seed/code/process
   find platform
 
-load @cluesurf/base/code/regex
+load @cluesurf/seed/code/regex
   find matches
 
 task compute
@@ -2514,10 +2514,10 @@ task compute
       call platform
 `
 
-const ENVIRONMENT_PROG = `load @cluesurf/base/code/environment
+const ENVIRONMENT_PROG = `load @cluesurf/seed/code/environment
   find directory
 
-load @cluesurf/base/code/regex
+load @cluesurf/seed/code/regex
   find matches
 
 task compute
@@ -2529,7 +2529,7 @@ task compute
 `
 
 // log: info() prints to stdout
-const LOG_PROG = `load @cluesurf/base/code/log
+const LOG_PROG = `load @cluesurf/seed/code/log
   find info
 
 task compute
@@ -2539,7 +2539,7 @@ task compute
 `
 
 // a string op through the public interface: to-upper("seed") forwards to the per-target text shim
-const TEXT_PROG = `load @cluesurf/base/code/text/string
+const TEXT_PROG = `load @cluesurf/seed/code/text/string
   find to-upper
 
 task compute
@@ -2550,7 +2550,7 @@ task compute
 `
 
 // string concat through the public interface, forwarding to each target's text shim (boolean result -> uniform output)
-const CONCAT_PROG = `load @cluesurf/base/code/text/string
+const CONCAT_PROG = `load @cluesurf/seed/code/text/string
   find concat
 
 task compute
@@ -2564,7 +2564,7 @@ task compute
 `
 
 // a regex match through the public interface, forwarding to the per-target regex shim (the prelude is auto-collected)
-const REGEX_PROG = `load @cluesurf/base/code/regex
+const REGEX_PROG = `load @cluesurf/seed/code/regex
   find matches
 
 task compute
@@ -3830,7 +3830,7 @@ function main(): void {
   }
 
   if (port) {
-    const httpProg = `load @cluesurf/base/code/network/http\n  find get\n\ntask compute\n  mark async\n  like text\n  save r\n    call get\n      text <http://127.0.0.1:${port}/>\n      wait true\n  send back\n    read r/body\n`
+    const httpProg = `load @cluesurf/seed/code/network/http\n  find get\n\ntask compute\n  mark async\n  like text\n  save r\n    call get\n      text <http://127.0.0.1:${port}/>\n      wait true\n  send back\n    read r/body\n`
     runSwiftCrypto(
       'swift + http: GET a real server via URLSession',
       frontEnd(httpProg, true, 'swift'),
@@ -3873,7 +3873,7 @@ function main(): void {
   }
 
   if (wsPort) {
-    const wsProg = `load @cluesurf/base/code/network/websocket
+    const wsProg = `load @cluesurf/seed/code/network/websocket
   find connect
   find send
   find receive

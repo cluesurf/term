@@ -14,9 +14,9 @@ import { render } from '@cluesurf/make/code/parser/diagnostic'
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base') // deck/seed/deck/base.tree
 
-// resolve `@cluesurf/base/code/<path>` to the stdlib .tree file on disk
+// resolve `@cluesurf/seed/code/<path>` to the stdlib .tree file on disk
 function resolveStdlib(importPath: string): Source | undefined {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!importPath.startsWith(prefix)) {return undefined}
 
@@ -70,7 +70,7 @@ async function loadProgram(
 }
 
 // a program that loads the real base.tree maybe and exercises it
-const MAYBE = `load @cluesurf/base/code/maybe
+const MAYBE = `load @cluesurf/seed/code/maybe
   find maybe
 
 task unwrap-present
@@ -120,7 +120,7 @@ task increment
       code 1
 `
 
-const RESULT = `load @cluesurf/base/code/result
+const RESULT = `load @cluesurf/seed/code/result
   find result
 
 task ok-value
@@ -147,7 +147,7 @@ task okay-check
         bind value, code 1
 `
 
-const PAIR = `load @cluesurf/base/code/pair
+const PAIR = `load @cluesurf/seed/code/pair
   find pair
 
 task first-of
@@ -168,7 +168,7 @@ task second-after-swap
           bind second, code 4
 `
 
-const BOOLEAN = `load @cluesurf/base/code/boolean
+const BOOLEAN = `load @cluesurf/seed/code/boolean
   find boolean
 
 task negate-true
@@ -197,10 +197,10 @@ task base-name
 
 // both maybe and result loaded together: they each define `unwrap-or`/`map`, so this only works if the bare call
 // dispatches on the receiver's form (selective find / receiver dispatch).
-const COMBINED = `load @cluesurf/base/code/maybe
+const COMBINED = `load @cluesurf/seed/code/maybe
   find maybe
 
-load @cluesurf/base/code/result
+load @cluesurf/seed/code/result
   find result
 
 task from-maybe
@@ -221,7 +221,7 @@ task from-result
 `
 
 // the list type: native-array-backed methods, dispatched on the array receiver
-const LIST = `load @cluesurf/base/code/list
+const LIST = `load @cluesurf/seed/code/list
   find list
 
 task first-of
@@ -342,13 +342,13 @@ task sum-of
 `
 
 // the combinators added to maybe / result / pair (and-then, or-else, filter, get-or-else, unwrap, map-error, ...)
-const COMBINATORS = `load @cluesurf/base/code/maybe
+const COMBINATORS = `load @cluesurf/seed/code/maybe
   find maybe
 
-load @cluesurf/base/code/result
+load @cluesurf/seed/code/result
   find result
 
-load @cluesurf/base/code/pair
+load @cluesurf/seed/code/pair
   find pair
 
 task double-maybe
@@ -466,7 +466,7 @@ task map-second-pair
 `
 
 // the hash (map) type, backed by the native map
-const HASH = `load @cluesurf/base/code/hash
+const HASH = `load @cluesurf/seed/code/hash
   find hash
 
 task set-and-get
@@ -549,7 +549,7 @@ task entry-count-verb
 `
 
 // the range type
-const RANGE = `load @cluesurf/base/code/range
+const RANGE = `load @cluesurf/seed/code/range
   find range
 
 task measure-range
@@ -605,7 +605,7 @@ task range-excludes-end
       code 10
 `
 
-const SET = `load @cluesurf/base/code/set
+const SET = `load @cluesurf/seed/code/set
   find set
 
 task add-has
@@ -676,7 +676,7 @@ task unique-count
       read s
 `
 
-const STACK = `load @cluesurf/base/code/list/stack
+const STACK = `load @cluesurf/seed/code/list/stack
   find stack
 
 task push-pop
@@ -700,7 +700,7 @@ task push-pop
       code 0
 `
 
-const QUEUE = `load @cluesurf/base/code/list/queue
+const QUEUE = `load @cluesurf/seed/code/list/queue
   find queue
 
 task fifo
@@ -725,7 +725,7 @@ task fifo
 `
 
 // linked-list: a recursive immutable ADT (empty | node)
-const LINKED_LIST = `load @cluesurf/base/code/list/linked-list
+const LINKED_LIST = `load @cluesurf/seed/code/list/linked-list
   find linked-list
 
 task ll-length
@@ -766,7 +766,7 @@ task ll-empty
 `
 
 // bag (multiset, keeps duplicates) and ordered-set (dedup, keeps order), both array-backed
-const BAG = `load @cluesurf/base/code/list/bag
+const BAG = `load @cluesurf/seed/code/list/bag
   find bag
 
 task bag-size
@@ -786,7 +786,7 @@ task bag-size
       read b
 `
 
-const ORDERED_SET = `load @cluesurf/base/code/list/ordered-set
+const ORDERED_SET = `load @cluesurf/seed/code/list/ordered-set
   find ordered-set
 
 task oset-size
@@ -813,7 +813,7 @@ task oset-size
 `
 
 // list breadth: sum (loop), index-of, take-first / drop-first, flatten — all native-backed or pure-loop
-const LIST_EXTRAS = `load @cluesurf/base/code/list
+const LIST_EXTRAS = `load @cluesurf/seed/code/list
   find list
 
 task sum-of
@@ -942,7 +942,7 @@ task last-index-of-one
 `
 
 // pair map-both: apply a different function to each side
-const PAIR_BOTH = `load @cluesurf/base/code/pair
+const PAIR_BOTH = `load @cluesurf/seed/code/pair
   find pair
 
 task double
@@ -987,7 +987,7 @@ task both-second
 `
 
 // color: pure-logic RGB operations (grayscale, luminance, invert, is-dark, blend), all integer math
-const COLOR = `load @cluesurf/base/code/color/rgb
+const COLOR = `load @cluesurf/seed/code/color/rgb
   find rgb-color
 
 task gray
@@ -1044,7 +1044,7 @@ task blended-red
     read c/red
 `
 
-const ORDERING = `load @cluesurf/base/code/ordering
+const ORDERING = `load @cluesurf/seed/code/ordering
   find ordering
   find from-numbers
 

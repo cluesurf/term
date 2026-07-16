@@ -6,7 +6,7 @@ Maps to: JavaScript array methods, Rust iterator adapters, or LINQ.
 
 ## Cheatsheet
 
-### list (`@cluesurf/base/code/list`)
+### list (`@cluesurf/seed/code/list`)
 
 | Verb | Does |
 | --- | --- |
@@ -30,7 +30,7 @@ Maps to: JavaScript array methods, Rust iterator adapters, or LINQ.
 | `sum` / `product` | numeric folds |
 | `copy` / `clear` | shallow copy / empty in place |
 
-### set (`@cluesurf/base/code/set`)
+### set (`@cluesurf/seed/code/set`)
 
 | Verb | Does |
 | --- | --- |
@@ -39,7 +39,7 @@ Maps to: JavaScript array methods, Rust iterator adapters, or LINQ.
 | `is-subset` / `is-superset` | containment |
 | `size` / `count` / `is-empty` / `to-list` / `clear` | shape and conversion |
 
-### hash (`@cluesurf/base/code/hash`)
+### hash (`@cluesurf/seed/code/hash`)
 
 | Verb | Does |
 | --- | --- |
@@ -64,7 +64,7 @@ Maps to: JavaScript array methods, Rust iterator adapters, or LINQ.
 These three cover most queries. `map` changes each item, `filter` drops items, `reduce` collapses the list. Each takes an inline `task` as its argument.
 
 ```tree
-load @cluesurf/base/code/list
+load @cluesurf/seed/code/list
   find list
 
 # the squares of the even numbers
@@ -146,7 +146,7 @@ host has-negative
 For numeric lists, the `statistics` module reads off the common aggregates directly.
 
 ```tree
-load @cluesurf/base/code/statistics
+load @cluesurf/seed/code/statistics
   find mean
   find greatest
   find span
@@ -167,7 +167,7 @@ host spread
 Sorting needs a comparator: a function that returns an `ordering`. The `from-numbers` task is the base comparator for numbers, and `reverse` flips it for descending order.
 
 ```tree
-load @cluesurf/base/code/ordering
+load @cluesurf/seed/code/ordering
   find ordering
   find from-numbers
 
@@ -190,7 +190,7 @@ A comparator that returns `less`, `equal`, or `greater` plugs into any ordered s
 A `set` answers membership and the standard algebra. A `hash` answers key lookups, returning a `maybe` so a missing key is handled, not assumed.
 
 ```tree
-load @cluesurf/base/code/set
+load @cluesurf/seed/code/set
   find set
 
 # the tags in both lists
@@ -199,7 +199,7 @@ host shared
     read mine
     read theirs
 
-load @cluesurf/base/code/hash
+load @cluesurf/seed/code/hash
   find hash
 
 # a config value with a default

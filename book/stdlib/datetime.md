@@ -40,7 +40,7 @@ The combiners are named `plus` and `minus` rather than `add` and `subtract`, bec
 ## Building a date
 
 ```tree
-load @cluesurf/base/code/plain-date
+load @cluesurf/seed/code/plain-date
   find plain-date
   find from-parts
 
@@ -116,7 +116,7 @@ host february-length
 Build a span from any unit, combine spans, and read the result back in whatever unit you want. Reading down to a coarser unit truncates.
 
 ```tree
-load @cluesurf/base/code/duration
+load @cluesurf/seed/code/duration
   find duration
   find from-hours
   find from-minutes

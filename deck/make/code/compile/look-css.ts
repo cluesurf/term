@@ -4,7 +4,7 @@
 // its own static-output pass rather than going through the term IR.
 //
 // The canonical grammar lives in the self-hosted mill at `deck/mill/code/look` (mine + mint) with AST forms at
-// `@cluesurf/base/code/look`. This TS pass hand-walks the parse tree the same way `mill.ts` hand-parses the zone DSL
+// `@cluesurf/seed/code/look`. This TS pass hand-walks the parse tree the same way `mill.ts` hand-parses the zone DSL
 // during the self-hosting transition (one grammar source of truth, two readers). The parse tree wraps each argument as
 // a child group whose head is its name, so `have color, red` is a group `[name have, group[name color], group[name
 // red]]`; the accessors below mirror mill.ts (headName / rest).

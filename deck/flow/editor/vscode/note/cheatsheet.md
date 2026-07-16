@@ -133,7 +133,7 @@ task name
 ## 8b. Completion — import path + exports
 
 ```
-load @cluesurf/base/code/
+load @cluesurf/seed/code/
 ```
 
 **Action:** type after the trailing `/`.
@@ -163,7 +163,7 @@ task use-it
 **Action:** F12 (Go to Definition) on `square` inside `use-it`.
 **Check:** jumps to the `task square` definition.
 
-**Cross-file:** in a file that does `load @cluesurf/base/code/text` / `find to-upper-case` and then `call to-upper-case`, F12 on the call jumps into `deck/base/code/text.tree` at the `task to-upper-case` definition. Works for an imported `task`, `form`, or `mask` alike.
+**Cross-file:** in a file that does `load @cluesurf/seed/code/text` / `find to-upper-case` and then `call to-upper-case`, F12 on the call jumps into `deck/base/code/text.tree` at the `task to-upper-case` definition. Works for an imported `task`, `form`, or `mask` alike.
 
 ---
 
@@ -264,7 +264,7 @@ task shout
 ```
 
 **Action:** `to-upper-case` is undefined (red squiggle). Open the lightbulb / Quick Fix (Cmd/Ctrl+`.`) on it.
-**Check:** offers **"Import to-upper-case from @cluesurf/base/code/text"**. Applying it inserts `load @cluesurf/base/code/text` / `find to-upper-case` (added under an existing `load` of that module if one is present), and the squiggle clears.
+**Check:** offers **"Import to-upper-case from @cluesurf/seed/code/text"**. Applying it inserts `load @cluesurf/seed/code/text` / `find to-upper-case` (added under an existing `load` of that module if one is present), and the squiggle clears.
 
 ---
 

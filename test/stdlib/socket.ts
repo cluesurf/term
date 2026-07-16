@@ -25,7 +25,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -43,7 +43,7 @@ const readRuntime = (path: string): string | undefined => {
     return readFileSync(path, 'utf8')
   }
 
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -101,7 +101,7 @@ async function loadModule(
   >
 }
 
-const TCP = `load @cluesurf/base/code/network/tcp
+const TCP = `load @cluesurf/seed/code/network/tcp
   find connect
 
 task ping
@@ -131,7 +131,7 @@ task ping
     read reply
 `
 
-const UDP = `load @cluesurf/base/code/network/udp
+const UDP = `load @cluesurf/seed/code/network/udp
   find open
 
 task round-trip

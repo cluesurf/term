@@ -387,7 +387,7 @@ expect(
   2,
 )
 
-// import hints + cross-file navigation need a real project root (the seed package has `link/@cluesurf/base`). A doc uri
+// import hints + cross-file navigation need a real project root (the seed package has `link/@cluesurf/seed`). A doc uri
 // inside the package resolves the stdlib exactly as a build would.
 const { pathToFileURL } = await import('node:url')
 const { join } = await import('node:path')
@@ -435,8 +435,8 @@ async function projComplete(
   return r.items.map(i => i.label)
 }
 
-// import-path completion: `load @cluesurf/base/code/` lists the stdlib modules
-const loadLine = 'load @cluesurf/base/code/'
+// import-path completion: `load @cluesurf/seed/code/` lists the stdlib modules
+const loadLine = 'load @cluesurf/seed/code/'
 const modules = await projComplete(`${loadLine}\n`, 0, loadLine.length)
 expect(
   'completion: import path lists stdlib modules',
@@ -446,7 +446,7 @@ expect(
 
 // export completion: `find` under a `load` lists that module's definitions
 const exports_ = await projComplete(
-  'load @cluesurf/base/code/text\n  find \n',
+  'load @cluesurf/seed/code/text\n  find \n',
   1,
   7,
 )
@@ -459,7 +459,7 @@ expect(
 
 // cross-file go-to-definition: a call to an imported name jumps to its module file
 const navDoc =
-  'load @cluesurf/base/code/text\n  find to-upper-case\n\ntask shout\n  take m, like text\n  like text\n  send back\n    call to-upper-case\n      read m\n'
+  'load @cluesurf/seed/code/text\n  find to-upper-case\n\ntask shout\n  take m, like text\n  like text\n  send back\n    call to-upper-case\n      read m\n'
 
 await projServer.dispatch({
   jsonrpc: '2.0',
@@ -542,7 +542,7 @@ expect(
   codeActions.some(
     a =>
       a.title.includes('to-upper-case') &&
-      a.title.includes('@cluesurf/base/code/text'),
+      a.title.includes('@cluesurf/seed/code/text'),
   ),
   true,
 )

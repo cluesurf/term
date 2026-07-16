@@ -36,7 +36,7 @@ type SeedRule = {
 }
 
 // compile a `.tree` rule, import it, and adapt its `rule` meta to the engine's Rule. `resolve` supplies the stdlib
-// (so the rule can `load @cluesurf/base/code/rule`); `readRuntime` supplies any native shim a rule docks.
+// (so the rule can `load @cluesurf/seed/code/rule`); `readRuntime` supplies any native shim a rule docks.
 export async function loadSeedRule(
   source: { file: string; text: string },
   resolve: Resolver,

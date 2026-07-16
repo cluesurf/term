@@ -8,8 +8,8 @@ Maps to: `console.log`, a linter, and a formatter.
 
 | Write | Means |
 | --- | --- |
-| `call info` / `call warn` / `call error` / `call debug` | log a message (from `@cluesurf/base/code/log`) |
-| `call write-line` / `call write-error` | print a raw line (from `@cluesurf/base/code/native/console`) |
+| `call info` / `call warn` / `call error` / `call debug` | log a message (from `@cluesurf/seed/code/log`) |
+| `call write-line` / `call write-error` | print a raw line (from `@cluesurf/seed/code/native/console`) |
 | `# lint off L0xx` | suppress one lint rule on the next definition |
 | `# text` | a comment, on its own line |
 
@@ -29,7 +29,7 @@ Note: there is no `show` keyword for logging. `show` belongs to proofs (`show ho
 The `log` module gives you four levels. Load the ones you use, then call them with a `text` message.
 
 ```tree
-load @cluesurf/base/code/log
+load @cluesurf/seed/code/log
   find info
   find warn
   find error
@@ -53,7 +53,7 @@ task charge
 For raw output with no level prefix, drop to the native console:
 
 ```tree
-load @cluesurf/base/code/native/console
+load @cluesurf/seed/code/native/console
   find write-line
 
 task trace
@@ -113,7 +113,7 @@ When a lint warning is a false positive for your case, silence that one rule on 
 
 ```tree
 # lint off L008
-load @cluesurf/base/code/clock
+load @cluesurf/seed/code/clock
   find now
 ```
 

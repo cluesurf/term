@@ -14,7 +14,7 @@ import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
 
-// resolve `@cluesurf/base/...` imports to the stdlib that ships with this package, if it can be found on disk. The
+// resolve `@cluesurf/seed/...` imports to the stdlib that ships with this package, if it can be found on disk. The
 // stdlib is `deck/base` under the seed package root. We walk up from this module's directory looking for it, rather
 // than assuming a fixed depth, so it is found whether this code runs from source (deck/make/code) or from the bundled
 // CLI (host/line.js) -- the two sit at different depths under the package root.
@@ -54,7 +54,7 @@ export function stdlibResolver(): Resolver | undefined {
   }
 
   return (path: string): Source | undefined => {
-    const prefix = '@cluesurf/base/'
+    const prefix = '@cluesurf/seed/'
 
     if (!path.startsWith(prefix)) {
       return undefined
@@ -70,7 +70,7 @@ export function stdlibResolver(): Resolver | undefined {
 
 // resolve any `@scope/pkg/sub/path` import via the package manager's link dir (`<root>/link/@scope/pkg/...`), where
 // `seed link` symlinks each dependency. Follows the file-resolution rules (foo.tree, then foo/base.tree, foo/note.tree).
-// This is how a project resolves its linked packages (@cluesurf/base, @cluesurf/bind, @cluesurf/term, @cluesurf/site).
+// This is how a project resolves its linked packages (@cluesurf/seed, @cluesurf/bind, @cluesurf/term, @cluesurf/site).
 export function linkResolver(root: string): Resolver {
   const linkDir = join(root, 'link')
 
@@ -268,7 +268,7 @@ function treeFilesIn(
 }
 
 // find a linked package module that defines `name` at top level, for the auto-import code action. Searches the
-// project's `link/` packages and returns the import path to load it by (e.g. `@cluesurf/base/code/text`) plus the kind.
+// project's `link/` packages and returns the import path to load it by (e.g. `@cluesurf/seed/code/text`) plus the kind.
 // On-demand only (a code-action invocation), so a full scan is acceptable; it stops at the first match.
 export function findModuleExporting(
   root: string,

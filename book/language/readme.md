@@ -75,7 +75,7 @@ Every head you will meet, grouped by job. Each has its own page.
 | `show hold` | state a claim to prove inside a `rule` | [math](../math/readme.md) |
 | `hold` | a proof obligation / constraint on a task | [math](../math/readme.md) |
 
-Logging is not a keyword. You print with the standard library: `call info` / `call warn` / `call error` from `@cluesurf/base/code/log` (see [debugging](debugging.md)).
+Logging is not a keyword. You print with the standard library: `call info` / `call warn` / `call error` from `@cluesurf/seed/code/log` (see [debugging](debugging.md)).
 
 ## Literals at a glance
 
@@ -120,7 +120,7 @@ task add  # there are no trailing comments after code; keep them on their own li
 
 ```tree
 # greet.tree
-load @cluesurf/base/code/log
+load @cluesurf/seed/code/log
   find info
 
 task greet

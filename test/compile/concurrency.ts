@@ -25,7 +25,7 @@ import type { Program } from '@cluesurf/make/code/compile/node'
 const baseTree = join(process.cwd(), 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -43,7 +43,7 @@ const readRuntime = (path: string): string | undefined => {
     return readFileSync(path, 'utf8')
   }
 
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -132,7 +132,7 @@ async function runProgram(
 }
 
 // spawn a task, wait for its result
-const SPAWN = `load @cluesurf/base/code/task
+const SPAWN = `load @cluesurf/seed/code/task
   find spawn
 
 task run
@@ -151,7 +151,7 @@ task run
 `
 
 // gather two tasks: both complete before gather returns, results in source order, joined -> "AB"
-const GATHER = `load @cluesurf/base/code/task
+const GATHER = `load @cluesurf/seed/code/task
   find gather
 
 task run

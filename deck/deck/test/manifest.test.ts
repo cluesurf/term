@@ -147,7 +147,7 @@ deck @cluesurf/seed
     const text = `
 deck @cluesurf/my-app
   mark <0.0.1>
-  link @cluesurf/base, mark <0.0.x>
+  link @cluesurf/seed, mark <0.0.x>
 
   case work
     link @cluesurf/buzz, mark <0.0.x>
@@ -155,7 +155,7 @@ deck @cluesurf/my-app
 `
     const manifest = parseManifest({ text })
     expect(manifest.link).toHaveLength(1)
-    expect(manifest.link[0]!.name).toBe('@cluesurf/base')
+    expect(manifest.link[0]!.name).toBe('@cluesurf/seed')
     expect(manifest.devLink).toHaveLength(2)
     expect(manifest.devLink![0]!.name).toBe('@cluesurf/buzz')
     expect(manifest.devLink![1]!.name).toBe('@cluesurf/crow')
@@ -163,7 +163,7 @@ deck @cluesurf/my-app
 
   it('parses host registry blocks', () => {
     const text = `
-deck @cluesurf/base
+deck @cluesurf/seed
   mark <0.0.1>
 
   host <https://npm.pkg.github.com>
@@ -179,7 +179,7 @@ deck @cluesurf/base
 
   it('parses a full manifest', () => {
     const text = `
-deck @cluesurf/base
+deck @cluesurf/seed
   head <A TreeCode Framework>
   mark <0.0.1>
   sort tool
@@ -295,7 +295,7 @@ deck @cluesurf/my-app
 
   it('writes host block', () => {
     const text = `
-deck @cluesurf/base
+deck @cluesurf/seed
   mark <0.0.1>
   host <https://npm.pkg.github.com>
     link @cluesurf/seal, mark <0.0.x>

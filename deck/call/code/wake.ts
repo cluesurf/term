@@ -20,7 +20,7 @@ const DECK_TREE = (project: string): string => `deck ${project}
 
 const BOOT_TREE = `# The application entry point. \`seed boot\` compiles and runs this module's \`boot\` task.
 
-load @cluesurf/base/code/console
+load @cluesurf/seed/code/console
   find log
 
 task boot

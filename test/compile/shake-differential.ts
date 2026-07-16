@@ -18,7 +18,7 @@ import type { Statement } from '@cluesurf/make/code/compile/node'
 const baseTree = join(process.cwd(), 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -38,7 +38,7 @@ const stdlib = (path: string): Source | undefined => {
 
 // relative loads within the stdlib tree resolve against the importing file
 const resolve = (path: string, from: string): Source | undefined => {
-  if (path.startsWith('@cluesurf/base/')) {
+  if (path.startsWith('@cluesurf/seed/')) {
     return stdlib(path)
   }
 

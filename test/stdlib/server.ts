@@ -28,7 +28,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -46,7 +46,7 @@ const readRuntime = (path: string): string | undefined => {
     return readFileSync(path, 'utf8')
   }
 
-  const prefix = '@cluesurf/base/'
+  const prefix = '@cluesurf/seed/'
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -59,14 +59,14 @@ const readRuntime = (path: string): string | undefined => {
 
 // the Seed program: a server whose handler routes on the request path -- `/` greets, anything else echoes the path,
 // proving the request's parsed method / path / query reach the handler.
-const SOURCE = `load @cluesurf/base/code/network/server
+const SOURCE = `load @cluesurf/seed/code/network/server
   find start
   find stop
 
-load @cluesurf/base/code/network/server/request
+load @cluesurf/seed/code/network/server/request
   find request
 
-load @cluesurf/base/code/network/server/response
+load @cluesurf/seed/code/network/server/response
   find response
   find make-ok
   find make-status

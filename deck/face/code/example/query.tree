@@ -7,7 +7,7 @@
 # authenticated base client is the remaining binding; the query shape and its lowering are shown here.
 
 dock load
-  load <@cluesurf/base/word>, name word-api
+  load <@cluesurf/seed/word>, name word-api
 
 # the base filter this query builds: the project scope and the grammatical role
 form noun-query

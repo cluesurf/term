@@ -73,10 +73,10 @@ const ROUTER = `load @cluesurf/site/code/http/http
   find route
   find server
 
-load @cluesurf/base/code/hash
+load @cluesurf/seed/code/hash
   find get
 
-load @cluesurf/base/code/maybe
+load @cluesurf/seed/code/maybe
   find unwrap-or
 
 task respond
