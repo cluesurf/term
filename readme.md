@@ -14,7 +14,7 @@
   term
 </h3>
 <p align='center'>
-  A Semantic Keystone Ψ
+  A reactive modeling language Ψ
 </p>
 
 <br/>
