@@ -1,7 +1,7 @@
 // The per-file build worker (node, `worker_threads`). The batch compiler fans the project's .tree files out across a
 // pool of these: each worker compiles one whole file at a time through the ordinary `compile()` path, so routes, env
 // binds, and every other whole-program transform are handled exactly as in a sequential build. The project's on-disk
-// cache (`.seed/cache`) is shared across workers, so the stdlib is parsed and milled once for the whole pool, not once
+// cache (`.base/term/cache`) is shared across workers, so the stdlib is parsed and milled once for the whole pool, not once
 // per worker. The worker reads the file itself (the driver sends only the path) and posts back the emitted output.
 
 import { parentPort } from 'node:worker_threads'

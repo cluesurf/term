@@ -1,6 +1,6 @@
 # Integer math: the clean uniform interface. The host-backed operations (absolute, minimum, maximum, power, sign, square-root) delegate to the per-backend native implementation in its own file (`native/<env>/math`). Operations with no host primitive (clamp, greatest-common-divisor, factorial) compose from the interface in pure Seed. `number` is the platform integer (i64 / Int / Long), so round-down / round-up / round are the identity.
 
-load @term/base/code/native/math
+load @term/seed/code/native/math
   find abs
   find min
   find max

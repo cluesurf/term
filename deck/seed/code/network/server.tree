@@ -3,15 +3,15 @@
 # `request` in, a `response` out); `stop` shuts it down. Async on every target. For declarative routing, the `dock`
 # routing DSL (`hook </path>`) lowers to a `route(host, path)` dispatcher you hand to `start` as the handler.
 
-load @term/base/code/native/network/server
+load @term/seed/code/native/network/server
   find do-start
   find do-stop
   find do-serve
 
-load @term/base/code/network/server/request
+load @term/seed/code/network/server/request
   find request
 
-load @term/base/code/network/server/response
+load @term/seed/code/network/server/response
   find response
 
 # a running server: the platform server object lives in the opaque `dock` handle, plus the bound host and port

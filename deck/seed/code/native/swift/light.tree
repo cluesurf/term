@@ -27,13 +27,13 @@ task set-light-mode
 
   call is-true
     read device/has-light
-    hook true
+    hook hold
       stem seek
         call device/native/lock-for-configuration
         hook fail, back false
 
       save device/native/torch-mode
-        stem case
+        fork case
           read mode
           case auto
             read av-capture-device/torch-mode/auto

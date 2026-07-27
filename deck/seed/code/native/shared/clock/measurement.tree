@@ -12,7 +12,7 @@ task read
   take m, like mark
   take now, like size
   fork case, read m
-    case mark, base start
+    case mark, link start
       send back
         call subtract
           bind a, read now

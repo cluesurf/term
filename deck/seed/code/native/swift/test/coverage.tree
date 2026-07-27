@@ -1,5 +1,8 @@
 
-load @term/base/code/test/coverage
+load @term/seed/code/list
+  find push
+
+load @term/seed/code/test/coverage
   find coverage
   find file-coverage
 
@@ -68,17 +71,16 @@ task format
   walk list, read coverage/files
     hook next
       take site, name fc
-      call list-push
-        bind list, read lines
-        bind item
-          call text-concat
-            bind a, read fc/path
-            bind b
-              call text-concat
-                bind a, text <: >
-                bind b
-                  call to-text
-                    bind value, read fc/functions
+      call push
+        read lines
+        call text-concat
+          bind a, read fc/path
+          bind b
+            call text-concat
+              bind a, text <: >
+              bind b
+                call to-text
+                  bind value, read fc/functions
 
   send back
     call text-join

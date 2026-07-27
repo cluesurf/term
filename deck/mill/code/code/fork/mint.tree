@@ -1,5 +1,5 @@
 
-load @term/base/code/fork
+load @term/seed/code/fork
   find fork-test
   find fork-test-pair
   find fork-miss

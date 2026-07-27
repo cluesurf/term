@@ -1,6 +1,6 @@
 # Regular expressions. The clean uniform interface; the per-env native implementation wraps the platform's regex engine and is selected at build time, hidden behind the API.
 
-load @term/base/code/native/regex
+load @term/seed/code/native/regex
   find do-matches
   find do-replace
   find do-find

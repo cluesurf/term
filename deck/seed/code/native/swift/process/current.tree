@@ -2,7 +2,7 @@
 dock load
   load <Foundation>, name foundation
 
-load @term/base/code/process/current
+load @term/seed/code/process/current
   find process-info
 
 task read

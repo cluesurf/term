@@ -1,4 +1,10 @@
 
+load @term/seed/code/list
+  find get
+  find pop
+  find push
+  find size
+
 load ./context
   find make
   find set
@@ -24,8 +30,8 @@ task register
 
   save group, text <>
   save stack-size
-    call list-size
-      bind list, read group-stack
+    call size
+      read group-stack
   fork test
     hook test
       call is-above
@@ -54,29 +60,29 @@ task register
 
   save entry
     make list
-  call list-push
-    bind list, read entry
-    bind item, read full-name
-  call list-push
-    bind list, read entry
-    bind item, read work
+  call push
+    read entry
+    read full-name
+  call push
+    read entry
+    read work
 
-  call list-push
-    bind list, read test-registry
-    bind item, read entry
+  call push
+    read test-registry
+    read entry
 
 task describe
   take name, like text
   take work, like task
 
-  call list-push
-    bind list, read group-stack
-    bind item, read name
+  call push
+    read group-stack
+    read name
 
   call work
 
-  call list-pop
-    bind list, read group-stack
+  call pop
+    read group-stack
 
 task run
   note async
@@ -94,8 +100,8 @@ task run
     call clock/now/get
 
   save size
-    call list-size
-      bind list, read test-registry
+    call size
+      read test-registry
   save i, code 0
   walk test
     hook test
@@ -104,19 +110,19 @@ task run
         bind b, read size
     hook hold
       save entry
-        call list-get
-          bind list, read test-registry
-          bind index, read i
+        call get
+          read test-registry
+          read i
 
       save name
-        call list-get
-          bind list, read entry
-          bind index, code 0
+        call get
+          read entry
+          code 0
 
       save work
-        call list-get
-          bind list, read entry
-          bind index, code 1
+        call get
+          read entry
+          code 1
 
       fork test
         hook test

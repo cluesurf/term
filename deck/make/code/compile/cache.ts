@@ -4,7 +4,7 @@
 //     unchanged, even if other modules in the graph changed. Fine-grained, so the persisted entries are small.
 //   - output level: the whole compiled result for an exact module graph. A re-save with no edits returns instantly.
 // The in-memory path is pure and browser-safe (a pure-JS content hash, no node:crypto). Persistence is OPTIONAL and
-// injected as a `CacheStore`, so the browser path stays pure while a node CLI can back the cache with `.seed/cache`
+// injected as a `CacheStore`, so the browser path stays pure while a node CLI can back the cache with `.base/term/cache`
 // (see code/call/cache-store.ts). Keys fold in a version, so a toolchain change never serves a stale hit.
 // See note/research/repo/turborepo/07-lessons-for-seed.md and note/seed/plan/compilation-performance.md (Tier 1).
 
@@ -13,7 +13,7 @@ import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
 
 // the cache format epoch. Bump to invalidate every persisted entry at once (turborepo's `global_cache_key`). Change
 // this on any change to the cached value shape or the mill/compile pipeline that the per-entry key does not capture.
-export const CACHE_EPOCH = '2'
+export const CACHE_EPOCH = '3'
 
 // cyrb53: a fast, well-distributed 53-bit string hash. A collision only ever causes a stale reuse (never a crash),
 // and at 53 bits that is astronomically unlikely for a source tree.
@@ -49,7 +49,7 @@ export type MilledUnit =
   | { ok: false; diagnostics: Diagnostic[] }
 
 // a persistent backend for the cache. `kind` separates namespaces (`mill` / `output`). Synchronous and string-valued,
-// so the in-memory cache stays simple. A node implementation reads / writes `.seed/cache`; the browser passes none.
+// so the in-memory cache stays simple. A node implementation reads / writes `.base/term/cache`; the browser passes none.
 export interface CacheStore {
   load(kind: string, key: string): string | undefined
   save(kind: string, key: string, value: string): void

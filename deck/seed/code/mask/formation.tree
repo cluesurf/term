@@ -14,4 +14,4 @@ mask failable-formation
   task form
     take source, like from
     like maybe
-      like self
+      head self

@@ -1,7 +1,7 @@
 
 # Filesystem path manipulation: join, directory, file name, file extension, and absoluteness. The per-env native implementation wraps the platform's own path library (node path, rust std::path, swift Foundation, kotlin java.io.File), selected at build time and hidden. The file extension carries its leading dot, an empty string when there is none.
 
-load @term/base/code/native/path
+load @term/seed/code/native/path
   find do-join
   find do-directory
   find do-file-name

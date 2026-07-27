@@ -1,5 +1,5 @@
 
-load @term/base/code/flow
+load @term/seed/code/flow
   find flow
   find show
   find dive

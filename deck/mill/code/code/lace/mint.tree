@@ -1,5 +1,5 @@
 
-load @term/base/code/lace
+load @term/seed/code/lace
   find lace
   find walk
   find test

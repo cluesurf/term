@@ -3,7 +3,7 @@
 dock load
   load <global:websocket>, name websocket
 
-load @term/base/code/network/websocket
+load @term/seed/code/network/websocket
   find socket
   find message
 

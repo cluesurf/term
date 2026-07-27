@@ -1,9 +1,9 @@
 
-# Builder for the look (CSS) DSL: map the parsed slots onto the look AST forms in @term/base/code/look.
+# Builder for the look (CSS) DSL: map the parsed slots onto the look AST forms in @term/seed/code/look.
 # The shared builder (seed) comes from the code building-block mill by name. Mirrors the zone DSL builder
 # (../zone/mint).
 
-load @term/base/code/look
+load @term/seed/code/look
   find face-rule
   find style-rule
   find look-element

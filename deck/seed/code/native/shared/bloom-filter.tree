@@ -27,7 +27,7 @@ form bloom-filter
         call is-less-than
           read i
           read k
-      hook true
+      hook hold
         save tmp6
           call is-less-than
             read x
@@ -39,9 +39,9 @@ form bloom-filter
         save tmp8
         call test
           tmp6
-          hook true
+          hook hold
             save tmp8, read tmp7
-          hook false
+          hook miss
             save tmp8, read x
         save r[i], read tmp8
         save x
@@ -53,9 +53,9 @@ form bloom-filter
         save i
           call increment
             bind value, read i
-      hook false
+      hook miss
         bust fork9
-    send back seed, read r
+    send back, read r
   task add
     take v
     save tmp10
@@ -71,7 +71,7 @@ form bloom-filter
           call is-less-than
             read i
             read k
-      hook true
+      hook hold
         save tmp11
           call math/floor
             call divide
@@ -88,7 +88,7 @@ form bloom-filter
         save i
           call increment
             bind value, read i
-      hook false
+      hook miss
         bust fork12
   task test
     take v
@@ -105,7 +105,7 @@ form bloom-filter
           call is-less-than
             read i
             read k
-      hook true
+      hook hold
         save b, read l[i]
         save tmp14
           call math/floor
@@ -122,14 +122,14 @@ form bloom-filter
                   read b
                   code 32
             code 0
-          hook true
-            send back seed, read false
+          hook hold
+            send back, read false
         save i
           call increment
             bind value, read i
-      hook false
+      hook miss
         bust fork15
-    send back seed, read true
+    send back, read true
   task get-size
     save buckets, read self/buckets
     save bits, code 0
@@ -141,7 +141,7 @@ form bloom-filter
           call is-less-than
             read i
             read n
-      hook true
+      hook hold
         save bits
           call assign-increment
             bind bits
@@ -150,10 +150,9 @@ form bloom-filter
         save i
           call increment
             bind value, read i
-      hook false
+      hook miss
         bust fork16
-    send back seed
-      call divide
+    send back      call divide
         call multiply
           call negative
             bind bits, read self/m
@@ -191,7 +190,7 @@ task make-bloom-filter
       call is-less-than
         read i
         read n
-    hook true
+    hook hold
       call bloom/buckets/set
         read i
         code 0

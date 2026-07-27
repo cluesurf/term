@@ -1,13 +1,13 @@
 
-load @term/base/code/shared/result
+load @term/seed/code/shared/result
   find free-result
   find is-below-or-return-error
-  find is-minimally-or-return-error
+  find is-minimum-or-return-error
 
-load @term/base/code/javascript/integer/8
+load @term/seed/code/javascript/integer/8
   find i8
 
-load @term/base/code/native/javascript/native
+load @term/seed/code/native/javascript/native
   find native-number
   find add
   find subtract
@@ -49,7 +49,7 @@ tree integer
           fuse is-below-or-return-error
             read c
             code 256
-          fuse is-minimally-or-return-error
+          fuse is-minimum-or-return-error
             read c
             code 0
           move c
@@ -86,7 +86,7 @@ tree integer
         task seek-fall
           take a, like i{{size}}
           take base, like i{{size}}
-          fuse is-minimally-or-return-error
+          fuse is-minimum-or-return-error
             read base
             code 2
           fuse is-above-or-return-error
@@ -310,7 +310,7 @@ tree integer
         take b, like i{{size}}
         like bool
 
-      task is-not-equal
+      task is-unequal
         take a, like i{{size}}
         take b, like i{{size}}
         like bool
@@ -325,12 +325,12 @@ tree integer
         take b, like i{{size}}
         like bool
 
-      task is-minimally
+      task is-minimum
         take a, like i{{size}}
         take b, like i{{size}}
         like bool
 
-      task is-maximally
+      task is-maximum
         take a, like i{{size}}
         take b, like i{{size}}
         like bool

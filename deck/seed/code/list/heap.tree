@@ -1,11 +1,11 @@
 
 # Binary min-heap of numbers, backed by the native array. The smallest value is always at the root. `push` sifts up, `pop` removes the root and sifts down. Pops return `maybe`, so an empty heap is total. In-place index writes go through the native `splice`, which lowers on every backend (JS splice, rust Vec::splice, swift replaceSubrange, kotlin subList). The parent index `(i-1)/2` floors uniformly (integer division on the compiled backends; the native `at` / `splice` truncate the fractional index on node).
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
   find get
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
 
 form heap
@@ -76,7 +76,7 @@ form heap
   task peek
     take self
     like maybe
-      like number
+      head number
     fork test
       hook test
         call is-above
@@ -96,7 +96,7 @@ form heap
   task pop
     take self
     like maybe
-      like number
+      head number
     fork test
       hook test
         call is-equal

@@ -9,7 +9,7 @@ load @term/site/code/zone/reactive
   find make-signal
   find read-signal
   find write-signal
-load @term/base/code/math
+load @term/seed/code/math
   find minimum
   find maximum
 

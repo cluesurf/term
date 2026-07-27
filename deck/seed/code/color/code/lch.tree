@@ -1,5 +1,5 @@
 
-load @term/base/code/mixin/access
+load @term/seed/code/mixin/access
   find access
 
 form lch

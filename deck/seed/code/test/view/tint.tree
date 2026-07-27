@@ -86,12 +86,12 @@ zone test-rise
   fork roll
     hook test
       call call/time/is-less, 50
-      hook true
+      hook hold
         zone text, read call/time
           fuse green-bold
     hook test
       call call/time/is-less, 200
-      hook true
+      hook hold
         zone text, read call/time
           fuse yellow-bold
     hook fall # default case

@@ -1,6 +1,6 @@
 # Signed 32-bit integer: values -2147483648 to 2147483647. See `n` for the operation template.
 
-load @term/base/code/bit
+load @term/seed/code/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or
@@ -8,12 +8,12 @@ load @term/base/code/bit
   find shift-left
   find shift-right
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
   find some
   find none
 
-load @term/base/code/integer/n
+load @term/seed/code/integer/n
   find integer
 
 fuse integer, i32, 4294967295, 2147483648, -2147483648, 2147483647

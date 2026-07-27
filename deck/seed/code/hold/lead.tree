@@ -4,13 +4,12 @@ tree is-not-or-return-error
   take b
 
   hook bind
-    stem test
+    fork test
       call is-not
         read a
         read b
-      hook false
-        send back seed
-          make not-error
+      hook miss
+        send back          make not-error
 
 tree is-below-or-return-error
   take a
@@ -38,16 +37,15 @@ tree is-bound-or-return-error
   take b
 
   hook bind
-    stem test
+    fork test
       call is-{type}
         read a
         read b
-      hook false
-        send back seed
-          make range-error
+      hook miss
+        send back          make range-error
             term type
 
-tree is-minimally-or-return-error
+tree is-minimum-or-return-error
   take a
   take b
 

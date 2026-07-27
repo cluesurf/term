@@ -3,7 +3,7 @@
 # and its observers. Reading a signal inside an effect subscribes that effect; writing re-runs the subscribers. The
 # render runtime builds on these to keep the host tree in sync with state.
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
 form signal

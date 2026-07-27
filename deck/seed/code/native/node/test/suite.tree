@@ -1,11 +1,11 @@
 
-load @term/base/code/native/shared/test/suite
+load @term/seed/code/native/shared/test/suite
   find init
   find describe as shared-describe
   find register
   find run as shared-run
 
-load @term/base/code/test/suite
+load @term/seed/code/test/suite
   find report
 
 task describe

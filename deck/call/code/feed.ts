@@ -57,7 +57,7 @@ export async function callFeed(input: {
           return
         }
 
-        if (file.includes('/.seed/') || file.includes('/host/')) {
+        if (file.includes('/.base/term/') || file.includes('/host/')) {
           return
         }
 

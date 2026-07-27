@@ -1,5 +1,5 @@
 
-load @term/base/code/bear
+load @term/seed/code/bear
   find bear
 
 mint bear

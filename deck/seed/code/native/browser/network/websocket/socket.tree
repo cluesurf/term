@@ -1,8 +1,8 @@
 
-load @term/base/code/network/websocket
+load @term/seed/code/network/websocket
   find socket
 
-load @term/base/code/network/websocket/socket
+load @term/seed/code/network/websocket/socket
   find message
 
 task send

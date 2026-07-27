@@ -36,12 +36,12 @@ task is-bit-count-odd
 
 task get-next-power-of-two
   take n
-  stem test
+  fork test
     call is-equal
       read n
       code 0
-    hook true
-      send back seed, read 1
+    hook hold
+      send back, read 1
   save n, call decrement, read n
   save n
     call bitwise-or
@@ -83,15 +83,13 @@ task get-next-power-of-two
     call shift-right
       read n
       code 16
-  send back seed
-    call add
+  send back    call add
       read n
       code 1
 
 task reverse-bits
   take n
-  send back seed
-    call bitwise-or
+  send back    call bitwise-or
       call bitwise-or
         call bitwise-or
           call bit-reversal-table/get

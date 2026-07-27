@@ -1,10 +1,10 @@
 
 # Stack (LIFO), backed by the native array.
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
 
 form stack
@@ -25,7 +25,7 @@ form stack
   task pop
     take self
     like maybe
-      like t
+      head t
     fork test
       hook test
         call is-above
@@ -44,7 +44,7 @@ form stack
   task peek
     take self
     like maybe
-      like t
+      head t
     send back
       call last
         read self/items

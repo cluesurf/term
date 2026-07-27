@@ -33,10 +33,10 @@ task get
         hook else
           save xdg
             read process/env/XDG_DATA_HOME
-          fork test, call is-not-equal, read xdg, read void
-            hook true
+          fork test, call is-unequal, read xdg, read void
+            hook hold
               send back, read xdg
-            hook false
+            hook miss
               save home
                 call homedir
               send back
@@ -60,10 +60,10 @@ task get
         hook else
           save xdg
             read process/env/XDG_CONFIG_HOME
-          fork test, call is-not-equal, read xdg, read void
-            hook true
+          fork test, call is-unequal, read xdg, read void
+            hook hold
               send back, read xdg
-            hook false
+            hook miss
               save home
                 call homedir
               send back
@@ -91,10 +91,10 @@ task get
         hook else
           save xdg
             read process/env/XDG_CACHE_HOME
-          fork test, call is-not-equal, read xdg, read void
-            hook true
+          fork test, call is-unequal, read xdg, read void
+            hook hold
               send back, read xdg
-            hook false
+            hook miss
               save home
                 call homedir
               send back

@@ -1,5 +1,5 @@
 
-load @term/base/code/hold
+load @term/seed/code/hold
   find hold
   find hold-hook
 

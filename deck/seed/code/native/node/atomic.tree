@@ -6,7 +6,7 @@ dock type
 dock load
   load <global:atomic>, name atomic
 
-load @term/base/code/atomic
+load @term/seed/code/atomic
   find atomic
 
 task do-make

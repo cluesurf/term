@@ -1,11 +1,11 @@
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
-load @term/base/code/mark/8
+load @term/seed/code/mark/8
   find mark-8
 
-load @term/base/code/text/code/utf-8
+load @term/seed/code/text/code/utf-8
   find text-utf-8
 
 task allocate
@@ -50,69 +50,71 @@ task make-utf-8-from-utf-16
         read text/get-size
     hook step
       save h, read text[i]
-      stem and
-        call is-greater-than-or-equal-to
-          read h
-          code 0xD800
-        call is-less-than-or-equal-to
-          read h
-          code 0xDBFF
-        hook true
-          stem test
+      fork test
+        hook test
+          call and
+            call is-greater-than-or-equal-to
+              read h
+              code 0xD800
+            call is-maximum
+              read h
+              code 0xDBFF
+        hook hold
+          fork test
             call is-less-than
               call add
                 read i
                 code 1
               read text/get-size
-            hook true
+            hook hold
               save l, read text[i]
               stem and
                 call is-greater-than-or-equal-to
                   read l
                   code 0xDC00
-                call is-less-than-or-equal-to
+                call is-maximum
                   read l
                   code 0xDFFF
-                hook true
+                hook hold
                   save size
                     call increment
                       read size
                       code 4
-                hook false
+                hook miss
                   save size
                     call increment
                       read size
                       code 3
-            hook false
+            hook miss
               save size
                 call increment
                   read size
                   code 3
-        hook false
+        hook miss
           stem roll
-            stem test
+            fork test
               call is-less-than
                 read h
                 code 0x80
-              hook true
+              hook hold
                 save size
                   call increment
                     read size
                     code 1
-            stem test
+            fork test
               call is-less-than
                 read h
                 code 0x800
-              hook true
+              hook hold
                 save size
                   call increment
                     read size
                     code 2
-            stem test
+            fork test
               call is-less-than
                 read h
                 code 0x10000
-              hook true
+              hook hold
                 save size
                   call increment
                     read size
@@ -126,30 +128,32 @@ task make-utf-8-from-utf-16
         read text/get-size
     hook step
       save h, read text[i]
-      stem and
-        call is-greater-than-or-equal-to
-          read h
-          code 0xD800
-        call is-less-than-or-equal-to
-          read h
-          code 0xDBFF
-        hook true
-          stem test
+      fork test
+        hook test
+          call and
+            call is-greater-than-or-equal-to
+              read h
+              code 0xD800
+            call is-maximum
+              read h
+              code 0xDBFF
+        hook hold
+          fork test
             call is-less-than
               call add
                 read i
                 code 1
               read text/get-size
-            hook true
+            hook hold
               save l, read text[i]
               stem and
                 call is-greater-than-or-equal-to
                   read l
                   code 0xDC00
-                call is-less-than-or-equal-to
+                call is-maximum
                   read l
                   code 0xDFFF
-                hook true
+                hook hold
                   save cp
                     call add
                       call shift-left
@@ -196,7 +200,7 @@ task make-utf-8-from-utf-16
                       call bitwise-and
                         read cp
                         code 0x3F
-                hook false
+                hook miss
                   save tmp, read j
                   save j, call increment, read j
                   save head-text[tmp], code 0xEF
@@ -206,7 +210,7 @@ task make-utf-8-from-utf-16
                   save tmp, read j
                   save j, call increment, read j
                   save head-text[tmp], code 0xBD
-            hook false
+            hook miss
               save tmp, read j
               save j, call increment, read j
               save head-text[tmp], code 0xEF
@@ -216,21 +220,21 @@ task make-utf-8-from-utf-16
               save tmp, read j
               save j, call increment, read j
               save head-text[tmp], code 0xBD
-        hook false
+        hook miss
           stem roll
-            stem test
+            fork test
               call is-less-than
                 read h
                 code 0x80
-              hook true
+              hook hold
                 save tmp, read j
                 save j, call increment, read j
                 save head-text[tmp], read h
-            stem test
+            fork test
               call is-less-than
                 read h
                 code 0x800
-              hook true
+              hook hold
                 save tmp, read j
                 save j, call increment, read j
                 save head-text[tmp]
@@ -251,11 +255,11 @@ task make-utf-8-from-utf-16
                   call increment
                     read size
                     code 2
-            stem test
+            fork test
               call is-less-than
                 read h
                 code 0x10000
-              hook true
+              hook hold
                 save tmp, read j
                 save j, call increment, read j
                 save head-text[tmp]
@@ -288,7 +292,7 @@ task make-utf-8-from-utf-16
                   call increment
                     read size
                     code 3
-  send back seed, read head-text
+  send back, read head-text
 
 task make-utf-16-from-utf-8
   take text
@@ -299,11 +303,11 @@ task make-utf-16-from-utf-8
   task decode-byte
     take byte
     save type, read utf-8-decoding-table/get, read byte
-    stem test
-      call is-not-equal
+    fork test
+      call is-unequal
         read state
         code 0
-      hook true
+      hook hold
         save point
           call bitwise-or
             call bitwise-and
@@ -312,7 +316,7 @@ task make-utf-16-from-utf-8
             call shift-left
               read point
               code 6
-      hook false
+      hook miss
         save point
           call bitwise-and
             call shift-right
@@ -328,7 +332,7 @@ task make-utf-16-from-utf-8
               read state
               code 16
           read type
-    send back seed, read state
+    send back, read state
   save i, code 0
   walk test, fork decode-byte-walk
     hook test
@@ -337,7 +341,7 @@ task make-utf-16-from-utf-8
         read text/length
     hook step
       save point, code 0
-      stem case, call decode-byte, read text[i]
+      fork case, call decode-byte, read text[i]
         fork case
         case 0, bust case
         case 1
@@ -345,34 +349,36 @@ task make-utf-16-from-utf-8
             code 0xfffd
           walk test, fork fork3
             hook test
-              stem and
-                call is-less-than
-                  call add
-                    read i
-                    code 1
-                  read text/length
-                call is-equal
-                  call bitwise-and
-                    call text/get
+              fork test
+                hook test
+                  call and
+                    call is-less-than
                       call add
                         read i
                         code 1
-                    code 0xc0
-                  code 0x80
+                      read text/length
+                    call is-equal
+                      call bitwise-and
+                        call text/get
+                          call add
+                            read i
+                            code 1
+                        code 0xc0
+                      code 0x80
             hook step
               save i, call increment, read i
           save state, read point
           roll decode-byte-walk
         stem fall
           roll decode-byte-walk
-      stem test
-        call is-less-than-or-equal-to
+      fork test
+        call is-maximum
           read point
           code 0xffff
-        hook true
+        hook hold
           call head-text/push
             bind read point
-        hook false
+        hook miss
           call head-text/push
             call add
               code 0xd7c0
@@ -388,7 +394,7 @@ task make-utf-16-from-utf-8
       save point, code 0
       save i, call increment, read i
 
-  send back seed, read head-text
+  send back, read head-text
 
 host utf-8-decoding-table
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

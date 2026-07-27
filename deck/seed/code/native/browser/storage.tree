@@ -4,11 +4,11 @@ task get
   take store, like text, fall text <local>
 
   fork test, call is-equal, read store, text <session>
-    hook true
+    hook hold
       send back
         call session-storage/get-item
           read key
-    hook false
+    hook miss
       send back
         call local-storage/get-item
           read key
@@ -19,11 +19,11 @@ task set
   take store, like text, fall text <local>
 
   fork test, call is-equal, read store, text <session>
-    hook true
+    hook hold
       call session-storage/set-item
         read key
         read value
-    hook false
+    hook miss
       call local-storage/set-item
         read key
         read value
@@ -33,10 +33,10 @@ task remove
   take store, like text, fall text <local>
 
   fork test, call is-equal, read store, text <session>
-    hook true
+    hook hold
       call session-storage/remove-item
         read key
-    hook false
+    hook miss
       call local-storage/remove-item
         read key
 
@@ -44,20 +44,20 @@ task clear
   take store, like text, fall text <local>
 
   fork test, call is-equal, read store, text <session>
-    hook true
+    hook hold
       call session-storage/clear
-    hook false
+    hook miss
       call local-storage/clear
 
 task list-keys
   take store, like text, fall text <local>
 
   fork test, call is-equal, read store, text <session>
-    hook true
+    hook hold
       send back
         call browser-storage-keys
           read session-storage
-    hook false
+    hook miss
       send back
         call browser-storage-keys
           read local-storage
@@ -66,9 +66,9 @@ task length
   take store, like text, fall text <local>
 
   fork test, call is-equal, read store, text <session>
-    hook true
+    hook hold
       send back, read session-storage/length
-    hook false
+    hook miss
       send back, read local-storage/length
 
 task browser-storage-keys

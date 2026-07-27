@@ -1,6 +1,6 @@
 # Complex number: a real and an imaginary part, both floats. Pure float math, identical on every backend. The combiners are named `plus` / `minus` / `times` because `add` / `subtract` / `multiply` are the number arithmetic primitives. Read the parts directly as `value/real` and `value/imaginary`.
 
-load @term/base/code/float
+load @term/seed/code/float
   find square-root
 
 form complex

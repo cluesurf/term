@@ -21,6 +21,6 @@ task list
 task check
   take name, like text
   send back
-    call is-not-equal
+    call is-unequal
       read process/env/{name}
       read void

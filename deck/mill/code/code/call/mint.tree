@@ -1,5 +1,5 @@
 
-load @term/base/code/call
+load @term/seed/code/call
   find call
   find hook
 

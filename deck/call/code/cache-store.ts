@@ -1,4 +1,4 @@
-// A node-backed persistent cache store for the compiler (Tier 1). Reads / writes JSON entries under `.seed/cache`, so a
+// A node-backed persistent cache store for the compiler (Tier 1). Reads / writes JSON entries under `.base/term/cache`, so a
 // cold `seed boot` / `seed make` reuses the parse + mill + compile work of a prior run. Writes are atomic (temp file
 // then rename), so a killed build never leaves a truncated entry a later run would trust. Injected into `CompileCache`,
 // which keeps its own logic browser-safe. See note/seed/plan/compilation-performance.md (Tier 1).
@@ -20,7 +20,7 @@ import {
   hashText,
 } from '@cluesurf/make/code/compile/cache'
 
-// a disk-backed cache store rooted at `dir` (e.g. `<project>/.seed/cache`). One subdir per kind, one file per key.
+// a disk-backed cache store rooted at `dir` (e.g. `<project>/.base/term/cache`). One subdir per kind, one file per key.
 export function diskCacheStore(dir: string): CacheStore {
   const ensured = new Set<string>()
 
@@ -136,7 +136,7 @@ export function compilerVersion(): string {
 export function cacheHome(): string {
   return (
     process.env.SEED_CACHE_HOME ??
-    path.join(os.homedir(), '.seed', 'store')
+    path.join(os.homedir(), '.base/term', 'store')
   )
 }
 
@@ -162,7 +162,7 @@ export function sharedCacheStore(
 export function projectCache(projectRoot: string): CompileCache {
   return new CompileCache(
     sharedCacheStore(
-      path.join(projectRoot, '.seed', 'cache'),
+      path.join(projectRoot, '.base/term', 'cache'),
       cacheHome(),
     ),
     compilerVersion(),

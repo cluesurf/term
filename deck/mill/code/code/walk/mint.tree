@@ -1,5 +1,5 @@
 
-load @term/base/code/walk
+load @term/seed/code/walk
   find walk
   find hook
 

@@ -1,5 +1,5 @@
 
-load @term/base/code/host
+load @term/seed/code/host
   find host-form
   find host-task
   find host-hook

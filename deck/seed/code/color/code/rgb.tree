@@ -1,11 +1,11 @@
 
-load @term/base/code/mixin/each
+load @term/seed/code/mixin/each
   find define-each
 
-load @term/base/code/mixin/access
+load @term/seed/code/mixin/access
   find access
 
-load @term/base/code/color
+load @term/seed/code/color
   find space
 
 form rgb

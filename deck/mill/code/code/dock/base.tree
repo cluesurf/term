@@ -1,5 +1,5 @@
 
-# The dock mill: the routing + CLI DSL. Grammar in ./mine, builder in ./mint, AST in @term/base/code/dock.
+# The dock mill: the routing + CLI DSL. Grammar in ./mine, builder in ./mint, AST in @term/seed/code/dock.
 
 mill dock
   bind mine, load ./mine

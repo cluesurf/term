@@ -3,10 +3,10 @@ task get
   take precise, like bool, fall false
 
   fork test, read precise
-    hook true
+    hook hold
       send back
         call kotlin-nano-time
-    hook false
+    hook miss
       send back
         call kotlin-current-millis
 

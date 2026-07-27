@@ -1,5 +1,5 @@
 
-load @term/base/code/tune
+load @term/seed/code/tune
   find tune
 
 mint tune

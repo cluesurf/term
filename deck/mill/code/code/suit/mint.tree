@@ -1,5 +1,5 @@
 
-load @term/base/code/suit
+load @term/seed/code/suit
   find suit
 
 mint suit

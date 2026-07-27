@@ -1,4 +1,9 @@
 
+load @term/seed/code/list
+  find clear
+  find get
+  find size
+
 form call-record
   link arguments, like list
   link result
@@ -44,8 +49,8 @@ task read
         bind b, text <count>
     hook hold
       send back
-        call list-size
-          bind list, read calls
+        call size
+          read calls
 
   fork test
     hook test
@@ -54,8 +59,8 @@ task read
         bind b, text <last>
     hook hold
       save len
-        call list-size
-          bind list, read calls
+        call size
+          read calls
       fork test
         hook test
           call is-equal
@@ -65,12 +70,11 @@ task read
           send back
 
       send back
-        call list-get
-          bind list, read calls
-          bind index
-            call subtract
-              bind a, read len
-              bind b, code 1
+        call get
+          read calls
+          call subtract
+            bind a, read len
+            bind b, code 1
 
   fork test
     hook test
@@ -79,8 +83,8 @@ task read
         bind b, text <arguments>
     hook hold
       save len
-        call list-size
-          bind list, read calls
+        call size
+          read calls
       fork test
         hook test
           call is-equal
@@ -90,17 +94,16 @@ task read
           send back
 
       save last
-        call list-get
-          bind list, read calls
-          bind index
-            call subtract
-              bind a, read len
-              bind b, code 1
+        call get
+          read calls
+          call subtract
+            bind a, read len
+            bind b, code 1
       send back, read last/arguments
 
 task reset
   take mock, like mock
   save data, read mock/dock
   save calls, read data/calls
-  call list-clear
-    bind list, read calls
+  call clear
+    read calls

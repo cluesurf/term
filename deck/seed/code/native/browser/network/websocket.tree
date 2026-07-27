@@ -1,5 +1,5 @@
 
-load @term/base/code/network/websocket
+load @term/seed/code/network/websocket
   find socket
 
 task connect

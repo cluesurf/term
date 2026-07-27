@@ -1,6 +1,6 @@
 # Vector-3D: a 3-component 32-bit-float vector. Pure float math, identical on every backend. The combiners are named `plus` / `minus` because `add` / `subtract` are the number arithmetic primitives. `scale` multiplies by a scalar, `dot` is the scalar product, `cross` the vector product, `length` the magnitude, `normalize` the unit vector, `distance` the gap between two points.
 
-load @term/base/code/float
+load @term/seed/code/float
   find square-root
 
 form vector-3

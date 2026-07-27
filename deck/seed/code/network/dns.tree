@@ -1,6 +1,6 @@
 # DNS resolution. The clean uniform interface; the per-env native implementation wraps the platform's name resolver (node dns.lookup, rust std::net, swift getaddrinfo, kotlin java.net.InetAddress, browser DNS-over-HTTPS) and is selected at build time, hidden behind the API. resolve returns every address a host maps to; resolve-one returns the primary address. Addresses are returned as text (dotted IPv4 or colon IPv6). Async on every target, since resolution is a network operation. Browser resolution goes over DNS-over-HTTPS, so it sees public names only (no localhost / private hosts).
 
-load @term/base/code/native/network/dns
+load @term/seed/code/native/network/dns
   find do-resolve
   find do-resolve-one
 

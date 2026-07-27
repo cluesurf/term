@@ -4,7 +4,7 @@ dock load
   load <std::io::Read>, name read-trait
   load <std::io::Write>, name write-trait
 
-load @term/base/code/process
+load @term/seed/code/process
   find child
 
 task wait
@@ -24,10 +24,10 @@ task stop
   take form, like text, fall text <gentle>
 
   fork test, call is-equal, read form, text <force>
-    hook true
+    hook hold
       call child/dock/kill
         halt kink
-    hook false
+    hook miss
       save id
         call child/dock/id
       call libc/kill
@@ -63,13 +63,13 @@ task read
   save buf, make string
 
   fork test, call is-equal, read kind, text <stderr>
-    hook true
+    hook hold
       save stream
         call child/dock/stderr/as-mut
       call stream/read-to-string
         read buf
         halt kink
-    hook false
+    hook miss
       save stream
         call child/dock/stdout/as-mut
       call stream/read-to-string
@@ -87,13 +87,13 @@ task stream
 
   save source
     fork test, call is-equal, read kind, text <stderr>
-      hook true
+      hook hold
         save s
           call child/dock/stderr/take
         send back
           call io/buf-reader/new
             read s
-      hook false
+      hook miss
         save s
           call child/dock/stdout/take
         send back

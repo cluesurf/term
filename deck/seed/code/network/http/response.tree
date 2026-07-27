@@ -1,5 +1,5 @@
 
-load @term/base/code/network/http
+load @term/seed/code/network/http
   find response
 
 task read

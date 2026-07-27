@@ -86,7 +86,7 @@ async function findTestFiles(input: {
       const full = path.join(dir, entry.name)
 
       if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === '.seed') {
+        if (entry.name === 'node_modules' || entry.name === '.base/term') {
           continue
         }
 
@@ -114,12 +114,25 @@ async function findTestFiles(input: {
     }
   }
 
-  const codeDir = path.join(input.root, 'code')
+  // a package keeps tests beside the code (`code/**`) and/or in its own `test` tree, which `deck.tree` declares as
+  // `test ./test`. Walk both: a package that has a `code` dir still needs its `test` dir collected, and only when
+  // NEITHER exists do we fall back to sweeping the whole root.
+  const roots = ['code', 'test'].map(dir => path.join(input.root, dir))
 
-  try {
-    await fs.access(codeDir)
-    await walk(codeDir)
-  } catch {
+  let walked = false
+
+  for (const dir of roots) {
+    try {
+      await fs.access(dir)
+    } catch {
+      continue
+    }
+
+    await walk(dir)
+    walked = true
+  }
+
+  if (!walked) {
     await walk(input.root)
   }
 

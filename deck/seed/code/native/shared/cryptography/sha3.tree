@@ -24,7 +24,7 @@ task compute-rho-offset-constants
       save x, read new-x
       save y, read new-y
       save t, call increment, read t
-  send back seed, read table
+  send back, read table
 
 task compute-pi-index-constants
   save table, make list
@@ -47,7 +47,7 @@ task compute-pi-index-constants
                 link multiply, code 5
           save y, call increment, read y
       save x, call increment, read x
-  send back seed, read table
+  send back, read table
 
 task compute-round-constants
   save table, make list
@@ -64,14 +64,14 @@ task compute-round-constants
         hook test
           call j/is-below, code 7
         hook step
-          stem test, call lfsr/intersect-bitwise, code 1
-            hook true
+          fork test, call lfsr/intersect-bitwise, code 1
+            hook hold
               save bit-position
                 call 1/shift-base, read j
                   link subtract, code 1
               stem roll
-                stem test, call bit-position/is-below, code 32
-                  hook true
+                fork test, call bit-position/is-below, code 32
+                  hook hold
                     save round-constant-lsw
                       call oppose-bitwise
                         read round-constant-lsw
@@ -81,8 +81,8 @@ task compute-round-constants
                     read round-constant-msw
                     call 1/shift-base, call bit-position/subtract, code 32
           stem roll
-            stem test, call lfsr/intersect-bitwise, code 128
-              hook true
+            fork test, call lfsr/intersect-bitwise, code 128
+              hook hold
                 save lfsr
                   call lfsr/shift-base, code 1
                     link oppose-bitwise, code 113
@@ -96,7 +96,7 @@ task compute-round-constants
           read round-constant-msw
           read round-constant-lsw
       save i, call increment, read i
-  send back seed, read table
+  send back, read table
 
 save t, call create-variable-table
 task create-variable-table
@@ -108,7 +108,7 @@ task create-variable-table
     hook step
       save table[i], call x64-word/create
       save i, call increment, read i
-  send back seed, read table
+  send back, read table
 
 save output-length, code 512
 task do-reset
@@ -250,8 +250,8 @@ task do-process-block
           save lane-lsw, lane/low
           save rho-offset, rhooffsets[lane-index]
           stem roll
-            stem test, call rho-offset/is-below, code 32
-              hook true
+            fork test, call rho-offset/is-below, code 32
+              hook hold
                 save t-msw
                   call lane-msw/shift-base, read rho-offset
                     link unite-bitwise, call lane-lsw/shift-head-unsigned, call 32/subtract, read rho-offset
@@ -372,7 +372,6 @@ task do-finalize
       call hash-words/push, read lane-lsw
       call hash-words/push, read lane-msw
       save i, call increment, read i
-  send back seed
-    make word-array/init
+  send back    make word-array/init
       read hash-words
       read output-length-bytes

@@ -1,4 +1,8 @@
 
+load @term/seed/code/list
+  find push
+  find size
+
 host current
 
 form context
@@ -30,23 +34,23 @@ task fail
   take ctx, like context
   take failure, like failure
   fork case, read ctx
-    case context, base name, base failures, base skipped, base start-time
-      call list-push
-        bind list, read failures
-        bind item, read failure
+    case context, link name, link failures, link skipped, link start-time
+      call push
+        read failures
+        read failure
 
 task is-passed
   take ctx, like context
   like boolean
   fork case, read ctx
-    case context, base name, base failures, base skipped, base start-time
+    case context, link name, link failures, link skipped, link start-time
       fork test
         hook test, read skipped
         hook hold
           send back, false
       save count
-        call list-size
-          bind list, read failures
+        call size
+          read failures
       fork test
         hook test
           call is-equal
@@ -60,14 +64,14 @@ task is-passed
 task skip
   take ctx, like context
   fork case, read ctx
-    case context, base name, base failures, base skipped, base start-time
+    case context, link name, link failures, link skipped, link start-time
       save skipped, true
 
 task count
   take ctx, like context
   like size
   fork case, read ctx
-    case context, base name, base failures, base skipped, base start-time
+    case context, link name, link failures, link skipped, link start-time
       send back
-        call list-size
-          bind list, read failures
+        call size
+          read failures

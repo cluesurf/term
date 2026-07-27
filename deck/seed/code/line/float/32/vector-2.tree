@@ -1,6 +1,6 @@
 # Vector-2D: a 2-component 32-bit-float vector. Pure float math. `plus` / `minus` combine, `scale` by a scalar, `dot` is the scalar product, `cross` the scalar (z-component) cross product, `length` the magnitude, `normalize` the unit vector, `distance` the gap.
 
-load @term/base/code/float
+load @term/seed/code/float
   find square-root
 
 form vector-2

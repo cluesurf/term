@@ -1,6 +1,6 @@
 # An atomic integer cell for lock-free shared-memory counters across concurrent tasks. The clean uniform interface; each backend wraps its platform atomic (node Atomics over a SharedArrayBuffer, rust AtomicI64, swift a lock-guarded cell, kotlin AtomicLong) behind this API, selected at build time. The platform cell lives in the opaque `dock` handle, typed per backend. Operations are synchronous and atomic.
 
-load @term/base/code/native/atomic
+load @term/seed/code/native/atomic
   find do-make
   find do-load
   find do-store

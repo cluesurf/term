@@ -1,4 +1,4 @@
-// `seed mind`: the project's durable memory -- one fact per file under `.seed/memory/`, with an index. This is what
+// `seed mind`: the project's durable memory -- one fact per file under `.base/term/memory/`, with an index. This is what
 // lets an unattended session (a disposable agent) start cold and still know the project's decisions and conventions.
 //
 //   seed mind <fact>            remember a fact
@@ -36,7 +36,7 @@ function slug(text: string): string {
 }
 
 function memoryDir(root: string): string {
-  return path.join(root, '.seed', 'memory')
+  return path.join(root, '.base/term', 'memory')
 }
 
 type Fact = {

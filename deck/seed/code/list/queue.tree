@@ -1,10 +1,10 @@
 
 # Queue (FIFO), backed by the native array.
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
 
 form queue
@@ -25,7 +25,7 @@ form queue
   task dequeue
     take self
     like maybe
-      like t
+      head t
     fork test
       hook test
         call is-above
@@ -43,7 +43,7 @@ form queue
   task peek
     take self
     like maybe
-      like t
+      head t
     send back
       call first
         read self/items

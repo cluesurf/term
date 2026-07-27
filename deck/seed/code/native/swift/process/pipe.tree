@@ -2,7 +2,7 @@
 dock load
   load <Foundation>, name foundation
 
-load @term/base/code/process
+load @term/seed/code/process
   find child
 
 task connect

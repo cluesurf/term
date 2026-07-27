@@ -8,7 +8,7 @@ import {
   fade,
 } from '@cluesurf/make/code/tint'
 
-const BUILD_DIRS = ['host', 'make', 'hold', '.seed/cache']
+const BUILD_DIRS = ['host', 'make', 'hold', '.base/term/cache']
 
 export async function callWash(input: {
   root: string
@@ -17,7 +17,7 @@ export async function callWash(input: {
   if (input.target === 'tail') {
     logStep('Clearing logs...')
 
-    const logDir = path.join(input.root, '.seed', 'log')
+    const logDir = path.join(input.root, '.base/term', 'log')
 
     try {
       await fsp.rm(logDir, { recursive: true, force: true })

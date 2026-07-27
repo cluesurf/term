@@ -8,7 +8,7 @@ mask incomplete-comparison
     take other, like other
     free wave
 
-  task is-not-equal
+  task is-unequal
     take self
     take other, like other
     free wave

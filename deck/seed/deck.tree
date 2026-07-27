@@ -1,5 +1,5 @@
 
-deck @term/base
+deck @term/seed
   bear ./code
   test ./test
   mark <0.0.4>

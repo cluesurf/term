@@ -37,13 +37,13 @@ task replace
   take all, like bool, fall false
 
   fork test, name all
-    hook true
+    hook hold
       send back
         call kotlin-replace-all
           read value
           read search
           read replacement
-    hook false
+    hook miss
       send back
         call kotlin-replace-first
           read value

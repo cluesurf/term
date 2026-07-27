@@ -1,5 +1,5 @@
 
-load @term/base/code/shared/hash
+load @term/seed/code/shared/hash
   take task hash-djb2-xor
     save task hash
 
@@ -34,7 +34,7 @@ form hash-table
       hook test
         call is-present
           read self/list[i]
-      hook true
+      hook hold
         fuse update-hash
     save self/list[i]
       make leaf
@@ -50,15 +50,15 @@ form hash-table
     walk test
       hook step
         stem roll
-          stem test
+          fork test
             call not, read self/list[i]
-            hook true, back seed
-          stem test
+            hook hold, back seed
+          fork test
             call is-equal
               read self/list[i]/key
               read key
-            hook true
-              send back seed, read self/list[i]/value
+            hook hold
+              send back, read self/list[i]/value
           stem fall
             fuse update-hash
         fuse increment-step
@@ -69,14 +69,14 @@ form hash-table
     walk test
       hook step
         stem roll
-          stem test
+          fork test
             call not, read self/list[i]
-            hook true, back seed
-          stem test
+            hook hold, back seed
+          fork test
             call is-equal
               read self/list[i]/key
               read key
-            hook true
+            hook hold
               save self/list[i], read void
               save self/size
                 call decrement

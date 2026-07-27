@@ -1,5 +1,5 @@
 
-load @term/base/code/process
+load @term/seed/code/process
   find child
 
 task wait
@@ -17,10 +17,10 @@ task stop
     call is-equal
       bind a, read form
       bind b, text <force>
-    hook true
+    hook hold
       call kotlin-destroy-forcibly
         read child/dock
-    hook false
+    hook miss
       call kotlin-destroy
         read child/dock
 
@@ -44,11 +44,11 @@ task read
   take format, like text, fall text <text>
 
   fork test, call is-equal, read kind, text <stderr>
-    hook true
+    hook hold
       send back
         call kotlin-read-stderr
           read child/dock
-    hook false
+    hook miss
       send back
         call kotlin-read-stdout
           read child/dock

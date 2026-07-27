@@ -9,12 +9,12 @@ task read
 
   save stats
     fork test, name follow
-      hook true
+      hook hold
         call fs-promise/stat
           note async
           read path
           halt kink
-      hook false
+      hook miss
         call fs-promise/lstat
           note async
           read path
@@ -23,15 +23,15 @@ task read
   save kind, text <other>
   fork test
     call stats/is-directory
-    hook true
+    hook hold
       save kind, text <directory>
   fork test
     call stats/is-symbolic-link
-    hook true
+    hook hold
       save kind, text <link>
   fork test
     call stats/is-file
-    hook true
+    hook hold
       save kind, text <file>
 
   send back

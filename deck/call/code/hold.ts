@@ -6,7 +6,7 @@
  * diagnostics as structured, actionable items), optionally runs the
  * cross-backend differential, and exits non-zero so it gates CI.
  *
- * It is INCREMENTAL: a per-project obligation cache (under `.seed/hold`)
+ * It is INCREMENTAL: a per-project obligation cache (under `.base/term/hold`)
  * skips any file whose content - and the content of every module it
  * loads, and the toolchain version - is unchanged since it last held.
  * The first run checks everything; later runs only re-check what moved.
@@ -50,7 +50,7 @@ export async function callHold(input: {
 
   const resolve = projectResolver(root, 'node', root)
   const cache = useCache
-    ? diskObligationCache(path.join(root, '.seed', 'hold'))
+    ? diskObligationCache(path.join(root, '.base/term', 'hold'))
     : memoryObligationCache()
 
   const result = holdIncremental({

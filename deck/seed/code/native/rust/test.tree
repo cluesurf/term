@@ -3,7 +3,7 @@ dock load
   load <std::io>, name io
   load <std::io::Write>, name write-trait
 
-load @term/base/code/native/shared/test/assert
+load @term/seed/code/native/shared/test/assert
   find assert
   find deny
   find mark-skip

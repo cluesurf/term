@@ -25,7 +25,7 @@ coat form
         take other, like b
         free wave
 
-      task is-less-than-or-equal-to
+      task is-maximum
         take self
         take other, like b
         free wave

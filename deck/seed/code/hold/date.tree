@@ -24,12 +24,12 @@ task get-days-in-year
   take year
 
   fork test
-    call is-not-equal
+    call is-unequal
       call remainder
         read year
         code 4
       code 0
-    hook true, back 365
+    hook hold, back 365
 
   fork and
     fork test
@@ -39,12 +39,12 @@ task get-days-in-year
           code 100
         code 0
     fork test
-      call is-not-equal
+      call is-unequal
         call remainder
           read year
           code 400
         code 0
-    hook true, back 365
+    hook hold, back 365
 
   send back 366
 
@@ -236,7 +236,7 @@ task convert-from-julian-day-to-gregorian-day
           read day
           read k-day-zero-in-julian-day
         code 40177
-      hook true
+      hook hold
         save jsimple
           call add
             call subtract
@@ -259,8 +259,7 @@ task convert-from-julian-day-to-gregorian-day
             code 1461
             read after-1968
         save four-year-cycle, read four-year-cycle-table[jsimple]
-        send back seed
-          make day-triplet
+        send back          make day-triplet
             call add
               read y
               call shift-right
@@ -329,7 +328,7 @@ task convert-from-julian-day-to-gregorian-day
     call is-greater-than
       read m
       code 12
-    hook true
+    hook hold
       save m, code 13
   save y
     call subtract
@@ -339,7 +338,7 @@ task convert-from-julian-day-to-gregorian-day
     call is-greater-than
       read m
       code 2
-    hook true
+    hook hold
       save y, call decrement, read y
       save m, call decrement, read m
   save d
@@ -351,8 +350,7 @@ task convert-from-julian-day-to-gregorian-day
         call multiply
           code 30.6001
           read je
-  send back seed
-    make day-triplet
+  send back    make day-triplet
       read y
       read m
       read d
@@ -386,17 +384,17 @@ task calculate-four-year-cycle-table
         read month
         code 12
 
-    hook true
+    hook hold
       save length, read month-lengths[month]
       save day, code 1
 
       walk test, fork fork3
         hook test
-          call is-less-than-or-equal-to
+          call is-maximum
             read day
             read length
 
-        hook true
+        hook hold
           save four-year-cycle-table[leap-position]
             call add
               call shift-left
@@ -455,7 +453,7 @@ task calculate-four-year-cycle-table
             call increment
               bind value, read day
 
-        hook false
+        hook miss
           bust fork3
 
       fork test
@@ -463,7 +461,7 @@ task calculate-four-year-cycle-table
           read month
           code 1
 
-        hook true
+        hook hold
           save next-position
             save leap-position
               call increment
@@ -479,7 +477,7 @@ task calculate-four-year-cycle-table
         call increment
           bind value, read month
 
-    hook false
+    hook miss
       bust fork5
 
-  send back seed, read four-year-cycle-table
+  send back, read four-year-cycle-table

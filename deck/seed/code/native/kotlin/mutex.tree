@@ -6,7 +6,7 @@ dock type
 dock load
   load <global:mutex>, name mutex
 
-load @term/base/code/mutex
+load @term/seed/code/mutex
   find mutex
 
 task do-make

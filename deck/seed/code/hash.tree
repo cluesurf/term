@@ -1,7 +1,7 @@
 
 # Hash map: the stdlib map type, backed by the native map. Build a value with `make find`.
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
   find unwrap-or
 
@@ -13,7 +13,7 @@ form hash
     take self
     take key, like k
     like maybe
-      like v
+      head v
     fork test
       hook test
         call self/has

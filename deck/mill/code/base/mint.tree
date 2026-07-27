@@ -4,7 +4,7 @@
 # `base` throughout: "grouped inside the object with this hash" — a pack for a
 # `link`, a shard at the top level.
 
-load @term/base/code/deck
+load @term/seed/code/deck
   find deck-hold
   find deck-file
   find deck-shard

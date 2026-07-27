@@ -5,7 +5,7 @@
 # reused by every grid variant. The container-width input comes from a ResizeObserver binding (a dom primitive, the
 # measured/virtual variants' remaining piece); CSS-grid layout needs only this math + a class.
 
-load @term/base/code/math
+load @term/seed/code/math
   find minimum
 
 form grid-fit

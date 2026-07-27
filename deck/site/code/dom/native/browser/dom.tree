@@ -26,7 +26,7 @@ load @term/bind/code/browser/dom/node
 load @term/bind/code/browser/dom/child-node
   find child-node
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
 
 load ../../view

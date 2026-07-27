@@ -3,7 +3,7 @@
 # exact-base-10 `decimal` (unbounded mantissa), which is more than 34 digits of precision and portable everywhere. Use a
 # native f128 directly on a backend that gains one; for exact decimal precision today, this is the answer.
 
-load @term/base/code/decimal
+load @term/seed/code/decimal
   find big-decimal
   find make-big-decimal
 

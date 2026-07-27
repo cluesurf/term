@@ -3,15 +3,15 @@
 # delimiter (tab gives TSV). `parse` yields the rows as a list of lists of text; `stringify` writes them back,
 # quoting a field only when it needs it.
 
-load @term/base/code/text
+load @term/seed/code/text
   find char-at
   find char-code-at
   find contains
 
-load @term/base/code/text/string
+load @term/seed/code/text/string
   find concat
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
 # parse comma-separated text into rows of fields

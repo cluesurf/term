@@ -15,16 +15,16 @@ task fnv-hash-32-1a
       call is-less-than
         read i
         read n
-    hook true
+    hook hold
       save c, call v/get, read i
       save d
         call bitwise-and
           read c
           code 0xff00
-      stem test
+      fork test
         call is-present
           read d
-        hook true
+        hook hold
           save a
             call fnv-hash-32-multiply
               call bitwise-xor
@@ -40,7 +40,7 @@ task fnv-hash-32-1a
               read c
               code 0xff
       save i, call increment, read i
-  send back seed, call fnv-hash-32-mixer, read a
+  send back, call fnv-hash-32-mixer, read a
 
 task fnv-hash-32-mixer
   take a
@@ -74,16 +74,14 @@ task fnv-hash-32-mixer
       call shift-left
         read a
         code 5
-  send back seed
-    call bitwise-and
+  send back    call bitwise-and
       read a
       code 0xffffffff
 
 task fnv-hash-32-multiply
   # a * 16777619 mod 2**32.
   take a
-  send back seed
-    call add
+  send back    call add
       call add
         call add
           call add

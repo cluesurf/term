@@ -1,5 +1,5 @@
 
-load @term/base/code/environment/language
+load @term/seed/code/environment/language
   find locale
 
 task read
@@ -15,9 +15,9 @@ task read
     read parts/0
   save region
     fork test, call is-above, read parts/length, code 1
-      hook true
+      hook hold
         read parts/1
-      hook false
+      hook miss
         text <>
 
   send back

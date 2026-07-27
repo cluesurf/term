@@ -3,7 +3,7 @@
 # 0.1 + 0.2 must equal 0.3. That is the `decimal` module (an unbounded big-integer mantissa with a scale), so big-float
 # IS big-decimal -- this module is the named entry point that builds one from text or from a platform float.
 
-load @term/base/code/decimal
+load @term/seed/code/decimal
   find big-decimal
   find make-big-decimal
 

@@ -19,7 +19,7 @@ export async function callLink(input: {
   root: string
   deck?: string
 }): Promise<void> {
-  // no argument: register the current package in the global link registry (~/.seed/link), so any project can later
+  // no argument: register the current package in the global link registry (~/.base/term/link), so any project can later
   // `seed link <name>` to use this working copy.
   if (!input.deck) {
     logStep('Registering current package globally...')

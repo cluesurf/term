@@ -480,7 +480,7 @@ function parseLikeType(likeGroup: GroupNode): Type {
   return first ? parseType(first) : UNKNOWN
 }
 
-const BINARY_BUILTIN: Record<string, BinaryOp> = {
+export const BINARY_BUILTIN: Record<string, BinaryOp> = {
   add: '+',
   subtract: '-',
   multiply: '*',

@@ -3,7 +3,7 @@
 dock load
   load <global:tcp>, name tcp
 
-load @term/base/code/network/tcp
+load @term/seed/code/network/tcp
   find listener
   find connection
 

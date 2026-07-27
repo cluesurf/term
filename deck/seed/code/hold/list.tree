@@ -20,61 +20,60 @@ form list
   task set
     take index
     take item, like item-type
-    stem test
+    fork test
       call is-less-than
         read self/length
         read index
-      hook true
-        send back seed, make error
+      hook hold
+        send back, make error
     call self/line/set
       read item
-    send back seed, read self
+    send back, read self
 
   task get
     take index
-    stem test
+    fork test
       call is-less-than
         read self/length
         read index
-      hook true
-        send back seed, make error
-    send back seed
-      call self/line/get
+      hook hold
+        send back, make error
+    send back      call self/line/get
         read index
 
   task reallocate
     take capacity
-    stem test
+    fork test
       call is-equal
         read capacity
         read self/capacity
-      hook true
-        send back seed, read self
+      hook hold
+        send back, read self
     save old-line, read self/line
-    stem test
+    fork test
       call is-greater-than
         read capacity
         read self/capacity
-      hook true
+      hook hold
         save self/line
           make line, like item-type
             read capacity
         call self/line/set
           read old-line
           code 0
-      hook false
+      hook miss
         save self/line
           call old-line/slice
             code 0
             read capacity
-    stem test
+    fork test
       call is-less-than
         read capacity
         read self/length
-      hook true
+      hook hold
         save self/length, read capacity
     save self/capacity, read capacity
-    send back seed, read self
+    send back, read self
 
   task grow
     take capacity
@@ -82,22 +81,22 @@ form list
       call is-greater-than-or-equal-to
         read self/capacity
         read capacity
-      hook true
-        send back seed, read self
+      hook hold
+        send back, read self
     save new-capacity, read self/capacity
     walk test
       hook test
         call is-less-than
           read new-capacity
           read capacity
-      hook true
+      hook hold
         save new-capacity
           call scale
             read new-capacity
             read self/growth-factor
     call self/reallocate
       read new-capacity
-    send back seed, read self
+    send back, read self
 
   task grow
     save new-capacity
@@ -106,22 +105,22 @@ form list
         read self/growth-factor
     call self/reallocate
       read new-capacity
-    send back seed, read self
+    send back, read self
 
   task resize
     take length
-    stem test
+    fork test
       call is-equal
         read length
         read self/length
-      hook true
-        send back seed, read self
+      hook hold
+        send back, read self
 
-    stem test
+    fork test
       call is-less-than
         read length
         read self/length
-      hook true
+      hook hold
         save i
           call subtract
             read self/length
@@ -131,41 +130,40 @@ form list
             call is-greater-than
               read i
               read length
-          hook true
+          hook hold
             save self/line[i], read void
             save i, call decrement, read i
         save self/length, read length
-        send back seed, read self
+        send back, read self
     save self/length, read length
     call self/reallocate
       read length
-    send back seed, read self
+    send back, read self
 
   task push
     take value
-    stem test
+    fork test
       call is-equal
         read self/capacity
         read self/length
-      hook true
+      hook hold
         call self/grow
 
     call self/line/set
       read self/length
       read value
     save self/length, call increment, read self/length
-    send back seed, read self
+    send back, read self
 
   task pop
-    stem test
+    fork test
       call is-equal
         read self/length
         code 0
-      hook true
-        send back seed, make none
+      hook hold
+        send back, make none
     save self/length, call decrement, read self/length
-    send back seed
-      call self/line/get
+    send back      call self/line/get
         read self/length
 
   task replace

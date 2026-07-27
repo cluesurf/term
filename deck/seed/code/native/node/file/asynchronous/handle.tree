@@ -14,23 +14,23 @@ task open
   save flags, text <r>
 
   fork test, name append
-    hook true
+    hook hold
       fork test, name read
-        hook true
+        hook hold
           save flags, text <a+>
-        hook false
+        hook miss
           save flags, text <a>
 
   fork test, name write
-    hook true
+    hook hold
       fork test, name read
-        hook true
+        hook hold
           fork test, name create
-            hook true
+            hook hold
               save flags, text <w+>
-            hook false
+            hook miss
               save flags, text <r+>
-        hook false
+        hook miss
           save flags, text <w>
 
   save handle
@@ -92,14 +92,14 @@ task seek
   take frame, like text, fall text <start>
 
   fork test, call is-equal, read frame, text <start>
-    hook true
+    hook hold
       call file/dock/seek
         note async
         read offset
         halt kink
 
   fork test, call is-equal, read frame, text <relative>
-    hook true
+    hook hold
       save current
         call file/dock/stat
           note async
@@ -112,7 +112,7 @@ task seek
         halt kink
 
   fork test, call is-equal, read frame, text <end>
-    hook true
+    hook hold
       save stats
         call file/dock/stat
           note async

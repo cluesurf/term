@@ -18,8 +18,8 @@ task create-tables
       call i/is-below, code 256
     hook step
       stem roll
-        stem test, call i/is-below, code 128
-          hook true
+        fork test, call i/is-below, code 128
+          hook hold
             save d[i], call i/shift-base, code 1
         save d[i]
           call i/shift-base, code 1
@@ -75,8 +75,8 @@ task create-tables
           link unite-bitwise, call t/shift-head-unsigned, code 24
       save invsubmix3[sx], read t
       stem roll
-        stem test, call not, read x
-          hook true
+        fork test, call not, read x
+          hook hold
             save xi, code 1
             save x, read xi
         save tmp1, call x8/oppose-bitwise, read x2
@@ -102,10 +102,9 @@ save rcon
     code 54
 task do-reset
   save t
-  stem test, call self/n-rounds/intersect, call self/key-prior-reset/is-strictly-equal, read self/key
-    hook true
-      send back seed
-  save key, save self/key-prior-reset, read self/key
+  fork test, call self/n-rounds/intersect, call self/key-prior-reset/is-strictly-equal, read self/key
+    hook hold
+      send back  save key, save self/key-prior-reset, read self/key
   save key-words, key/words
   save key-size, call key/sig-bytes/divide, code 4
   save n-rounds, save self/n-rounds, call key-size/add, code 6
@@ -119,14 +118,14 @@ task do-reset
       call ks-row/is-below, read ks-rows
     hook step
       stem roll
-        stem test, call ks-row/is-below, read key-size
-          hook true
+        fork test, call ks-row/is-below, read key-size
+          hook hold
             save key-schedule[ks-row], read key-words[ks-row]
         save tmp3, call ks-row/subtract, code 1
         save t, read key-schedule[tmp3]
         stem roll
-          stem test, call not, call ks-row/remainder, read key-size
-            hook true
+          fork test, call not, call ks-row/remainder, read key-size
+            hook hold
               save t
                 call t/shift-base, code 8
                   link unite-bitwise, call t/shift-head-unsigned, code 24
@@ -150,12 +149,12 @@ task do-reset
                 call oppose-bitwise
                   read t
                   call rcon[tmp8]/shift-base, code 24
-          stem test
+          fork test
             call key-size/is-above, code 6
               link intersect
                 call ks-row/remainder, read key-size
                   link is-equal, code 4
-            hook true
+            hook hold
               save tmp9, call t/shift-head-unsigned, code 24
               save tmp10
                 call t/shift-head-unsigned, code 16
@@ -180,16 +179,16 @@ task do-reset
     hook step
       save ks-row, call ks-rows/subtract, read inv-ks-row
       stem roll
-        stem test, call inv-ks-row/remainder, code 4
-          hook true
+        fork test, call inv-ks-row/remainder, code 4
+          hook hold
             save t, key-schedule[ks-row]
         save tmp15, call ks-row/subtract, code 4
         save t, key-schedule[tmp15]
       stem roll
-        stem test
+        fork test
           call inv-ks-row/is-below, code 4
             link unite, call ks-row/is-max, code 4
-          hook true
+          hook hold
             save inv-key-schedule[inv-ks-row], read t
         save tmp16, call t/shift-head-unsigned, code 24
         save tmp17

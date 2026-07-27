@@ -22,7 +22,7 @@ load @term/site/code/http/http
   find route-server
 load @term/site/code/http/serve
   find serve
-load @term/base/code/list
+load @term/seed/code/list
   find list
   find push
 

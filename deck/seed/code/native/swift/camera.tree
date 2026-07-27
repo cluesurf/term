@@ -40,7 +40,7 @@ form camera
   task set-flash
     take mode
     save self/native-settings/flash-mode
-      stem case
+      fork case
         read mode
         case auto
           read av-capture-device/flash-mode/auto

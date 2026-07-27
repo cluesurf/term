@@ -1,5 +1,5 @@
 
-load @term/base/code/mask
+load @term/seed/code/mask
   find mask
 
 mint mask

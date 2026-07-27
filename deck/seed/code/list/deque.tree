@@ -1,10 +1,10 @@
 
 # Deque (double-ended queue), backed by the native array. Push and pop at either end. Pops return `maybe` so an empty deque is total, never a fault.
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
 
 form deque
@@ -33,7 +33,7 @@ form deque
   task pop-back
     take self
     like maybe
-      like t
+      head t
       like t
     fork test
       hook test
@@ -53,7 +53,7 @@ form deque
   task pop-front
     take self
     like maybe
-      like t
+      head t
       like t
     fork test
       hook test
@@ -72,7 +72,7 @@ form deque
   task front
     take self
     like maybe
-      like t
+      head t
       like t
     send back
       call first
@@ -81,7 +81,7 @@ form deque
   task back
     take self
     like maybe
-      like t
+      head t
       like t
     send back
       call last

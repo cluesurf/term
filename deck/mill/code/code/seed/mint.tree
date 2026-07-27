@@ -1,5 +1,5 @@
 
-load @term/base/code/seed
+load @term/seed/code/seed
   find seed-def
 
 mint seed

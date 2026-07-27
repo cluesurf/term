@@ -1,6 +1,6 @@
 # Authenticated symmetric encryption (AES-256-GCM). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/cipher`). Input and output stay in the currency types.
 
-load @term/base/code/native/cryptography/cipher
+load @term/seed/code/native/cryptography/cipher
   find encrypt-aes-gcm
   find decrypt-aes-gcm
 

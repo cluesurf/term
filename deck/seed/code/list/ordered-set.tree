@@ -1,7 +1,7 @@
 
 # Ordered set: unique values in insertion order, backed by the native array.
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
 form ordered-set

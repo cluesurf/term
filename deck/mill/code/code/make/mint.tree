@@ -1,5 +1,5 @@
 
-load @term/base/code/make
+load @term/seed/code/make
   find make
 
 mint make

@@ -7,20 +7,20 @@ mask complication
   task source
     take safe
       like maybe
-        like loan
+        head loan
           like reflection
             like complication
             time always
   task backtrace
     take safe
       like maybe
-        like backtrace
+        head backtrace
           like loan
   task description
     take safe, like text
   task cause
     take safe
       like maybe
-        like loan
+        head loan
           like reflection
             like complication

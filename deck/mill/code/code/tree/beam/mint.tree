@@ -1,5 +1,5 @@
 
-load @term/base/code/beam
+load @term/seed/code/beam
   find code-beam
   find code-beam-body
 

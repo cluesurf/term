@@ -1,5 +1,5 @@
 
-load @term/base/code/tree
+load @term/seed/code/tree
   find code-tree
   find code-tree-take
   find code-tree-body

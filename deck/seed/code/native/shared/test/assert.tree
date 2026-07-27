@@ -10,7 +10,7 @@ load ./compare
   find contains-text
   find contains-list
 
-load @term/base/code/native/shared/test
+load @term/seed/code/native/shared/test
   find make-failure
 
 task assert

@@ -1,8 +1,8 @@
 
-load @term/base/code/base/result
+load @term/seed/code/base/result
   find result
 
-load @term/base/code/base/kink
+load @term/seed/code/base/kink
   find kink
 
 task make

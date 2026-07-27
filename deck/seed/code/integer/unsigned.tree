@@ -1,7 +1,7 @@
 # Unsigned 8-, 16-, and 32-bit integers (u8 / u16 / u32): values from 0 to the width maximum. Same template as the
 # signed widths with a sign bit of 0, so the sign-extension step is the identity and values stay non-negative.
 
-load @term/base/code/bit
+load @term/seed/code/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or
@@ -9,12 +9,12 @@ load @term/base/code/bit
   find shift-left
   find shift-right
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
   find some
   find none
 
-load @term/base/code/integer/n
+load @term/seed/code/integer/n
   find integer
 
 fuse integer, u8, 255, 0, 0, 255

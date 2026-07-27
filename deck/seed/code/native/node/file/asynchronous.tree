@@ -9,14 +9,14 @@ task read
   take format, like text, fall text <text>
 
   fork test, call is-equal, read format, text <bytes>
-    hook true
+    hook hold
       save result
         call fs-promise/read-file
           note async
           read path
           halt kink
       send back, read result
-    hook false
+    hook miss
       save result
         call fs-promise/read-file
           note async
@@ -54,7 +54,7 @@ task copy
   take deep, like bool, fall false
 
   fork test, name deep
-    hook true
+    hook hold
       call fs-promise/cp
         note async
         read from
@@ -62,7 +62,7 @@ task copy
         make options
           bind recursive, true
         halt kink
-    hook false
+    hook miss
       call fs-promise/copy-file
         note async
         read from
@@ -104,7 +104,7 @@ task test
     halt kink
 
   fork test, call is-null, read kind
-    hook true
+    hook hold
       send back, true
 
   save stats
@@ -114,17 +114,17 @@ task test
       halt kink
 
   fork test, call is-equal, read kind, text <file>
-    hook true
+    hook hold
       send back
         call stats/is-file
 
   fork test, call is-equal, read kind, text <directory>
-    hook true
+    hook hold
       send back
         call stats/is-directory
 
   fork test, call is-equal, read kind, text <link>
-    hook true
+    hook hold
       send back
         call stats/is-symbolic-link
 

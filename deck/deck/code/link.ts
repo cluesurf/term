@@ -10,7 +10,7 @@ import { verifyHash } from './hash'
 import { FetchConfig } from './form'
 
 const LINK_DIR = 'link'
-const SEED_DIR = '.seed'
+const SEED_DIR = '.base/term'
 
 export async function linkPackages(input: {
   root: string
@@ -341,7 +341,7 @@ export async function devUnlink(input: {
   await fsp.rm(targetLink, { force: true })
 }
 
-// the global link registry lives at ~/.seed/link/<name>, a symlink to a package's working directory. `seed link` (no
+// the global link registry lives at ~/.base/term/link/<name>, a symlink to a package's working directory. `seed link` (no
 // argument) registers the current package there; `seed link <name>` symlinks a registered package into a project. This
 // is the two-step `npm link` model: register once globally, consume from any project.
 function globalLinkPath(fullName: string): string {

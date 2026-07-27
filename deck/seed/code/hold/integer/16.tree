@@ -31,8 +31,7 @@ task is-bit-count-odd
 
 task reverse-bits-word
   take n
-  send back seed
-    call bitwise-or
+  send back    call bitwise-or
       call bit-reversal-table/get
         call bitwise-and
           call shift-right

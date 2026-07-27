@@ -1,5 +1,5 @@
 
-load @term/base/code/case
+load @term/seed/code/case
   find head
   find base
   find list

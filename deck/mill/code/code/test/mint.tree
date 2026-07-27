@@ -1,7 +1,7 @@
 
-note <lower a `test <phrase>` block to the `test` meta object: its name is the phrase, its work is the body's flow wrapped as a task. `run` (in @term/base/code/test) executes a list of these. No special compiler support: a milled `test` is an ordinary record the backend emits like any other.>
+note <lower a `test <phrase>` block to the `test` meta object: its name is the phrase, its work is the body's flow wrapped as a task. `run` (in @term/seed/code/test) executes a list of these. No special compiler support: a milled `test` is an ordinary record the backend emits like any other.>
 
-load @term/base/code/test
+load @term/seed/code/test
   find test
 
 mint test

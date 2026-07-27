@@ -6,7 +6,7 @@ dock type
 dock load
   load <global:udp>, name udp
 
-load @term/base/code/network/udp
+load @term/seed/code/network/udp
   find socket
 
 task do-open

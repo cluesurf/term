@@ -4,7 +4,7 @@
 # is pure arithmetic on the epoch-millisecond timestamp plus `calendar`'s decomposition, so the local wall-clock parts
 # fall out by shifting the instant by the offset and reading it as UTC.
 
-load @term/base/code/calendar
+load @term/seed/code/calendar
   find to-parts
   find date-parts
 

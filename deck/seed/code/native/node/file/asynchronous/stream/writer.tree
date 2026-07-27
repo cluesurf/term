@@ -13,8 +13,8 @@ task create
 
   save flags
     fork test, name append
-      hook true, text <a>
-      hook false, text <w>
+      hook hold, text <a>
+      hook miss, text <w>
 
   save handle
     call fs/create-write-stream

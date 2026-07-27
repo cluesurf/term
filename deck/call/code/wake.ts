@@ -45,7 +45,7 @@ seed make     # build
 
 const GITIGNORE = `host
 link
-.seed
+.base/
 node_modules
 `
 

@@ -1,5 +1,5 @@
 
-load @term/base/code/next
+load @term/seed/code/next
   find next
 
 mint next

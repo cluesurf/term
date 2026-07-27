@@ -9,7 +9,7 @@ task test-suite
       walk list, read call/nest
         hook step
           take t, name test
-          stem case, read t/nest/size
+          fork case, read t/nest/size
             case 2
               test {scope}-{call/name}-{t/name}
                 call fork[call/name]

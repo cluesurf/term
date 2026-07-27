@@ -1,6 +1,6 @@
 # Pseudo-random numbers. The clean uniform interface; the per-env native implementation is selected at build time and hidden. Random by nature, so this is an explicit escape hatch, never used in the deterministic language core (use vacuum or fillWillPattern there).
 
-load @term/base/code/native/random
+load @term/seed/code/native/random
   find random-number
   find random-integer
 

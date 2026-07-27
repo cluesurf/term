@@ -1,5 +1,5 @@
 
-load @term/base/code/proof/equal
+load @term/seed/code/proof/equal
   find equal
 
 rule substitution

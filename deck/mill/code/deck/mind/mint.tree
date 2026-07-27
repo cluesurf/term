@@ -1,5 +1,5 @@
 
-load @term/base/code/deck
+load @term/seed/code/deck
   find deck-deck-mind
 
 mint deck-mind, like deck-deck-mind

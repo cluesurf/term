@@ -1,5 +1,5 @@
 
-load @term/base/code/import
+load @term/seed/code/import
   find import
   find import-reference
 

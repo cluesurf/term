@@ -1,10 +1,10 @@
 
-load @term/base/code/native/shared/test/mock
+load @term/seed/code/native/shared/test/mock
   find make as shared-make
   find read as shared-read
   find reset as shared-reset
 
-load @term/base/code/test/mock
+load @term/seed/code/test/mock
   find mock
 
 task make

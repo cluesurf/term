@@ -1,4 +1,8 @@
 
+load @term/seed/code/list
+  find get
+  find size
+
 task deep-equal
   take a
   take b
@@ -21,11 +25,11 @@ task deep-equal
           bind value, read b
     hook hold
       save size-a
-        call list-size
-          bind list, read a
+        call size
+          read a
       save size-b
-        call list-size
-          bind list, read b
+        call size
+          read b
       fork test
         hook test
           call is-equal
@@ -41,13 +45,13 @@ task deep-equal
             bind b, read size-a
         hook hold
           save item-a
-            call list-get
-              bind list, read a
-              bind index, read i
+            call get
+              read a
+              read i
           save item-b
-            call list-get
-              bind list, read b
-              bind index, read i
+            call get
+              read b
+              read i
           save eq
             call deep-equal
               bind a, read item-a
@@ -130,8 +134,8 @@ task contains-list
   like boolean
 
   save size
-    call list-size
-      bind list, read list
+    call size
+      read list
   save i, code 0
   walk test
     hook test
@@ -140,9 +144,9 @@ task contains-list
         bind b, read size
     hook hold
       save item
-        call list-get
-          bind list, read list
-          bind index, read i
+        call get
+          read list
+          read i
       fork test
         hook test
           call is-equal

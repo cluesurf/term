@@ -1,5 +1,5 @@
 
-load @term/base/code/back
+load @term/seed/code/back
   find back
 
 mint back

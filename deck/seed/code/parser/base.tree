@@ -5,13 +5,13 @@ load ./state
 load ./error
   find error
 
-load @term/base/code/result
+load @term/seed/code/result
   find result
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
 form parser

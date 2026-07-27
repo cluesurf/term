@@ -1,9 +1,9 @@
 # HSL color (hue 0-360, saturation 0-100, lightness 0-100) and conversion from RGB. Integer-scaled, pure logic on top of the math interface.
 
-load @term/base/code/color/rgb
+load @term/seed/code/color/rgb
   find rgb-color
 
-load @term/base/code/math
+load @term/seed/code/math
   find minimum
   find maximum
   find absolute

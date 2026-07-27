@@ -15,6 +15,7 @@ import type {
   Statement,
   ZoneNode,
 } from '@cluesurf/make/code/compile/node'
+import { BINARY_BUILTIN } from '@cluesurf/make/code/compile/mill'
 
 export type Scope = Map<string, Binding>
 
@@ -104,6 +105,16 @@ export function resolve(
     if (statement.form === 'record-type') {
       typeNames.add(statement.name)
 
+      // a variantless record is matched under its OWN name (`case context, base name, base failures`), so its
+      // record-level fields have to bind in that branch exactly as a variant's fields do. Without this the `base`
+      // patterns read as uses of undefined names rather than as declarations.
+      if (statement.fields.length > 0) {
+        variantFields.set(
+          statement.name,
+          statement.fields.map(f => f.name),
+        )
+      }
+
       for (const variant of statement.variants) {
         variantFields.set(
           variant.name,
@@ -150,6 +161,9 @@ export function resolve(
           node.binding = binding
         } else if (typeNames.has(node.name)) {
           // a type used as a first-class value -- no local binding, resolved as the type itself
+        } else if (node.name in BINARY_BUILTIN) {
+          // arithmetic / comparison the emitter lowers to an operator (`is-below` -> `<`). These have no definition
+          // to bind to and are never imported, so the resolver must not treat them as unknown names.
         } else {
           const suggestion = nearest(node.name, known())
           diagnostics.push(

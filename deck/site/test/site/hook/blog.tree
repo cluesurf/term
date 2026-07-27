@@ -23,15 +23,15 @@ load @term/site/code/http/http
 load @term/site/code/http/serve
   find serve
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
   find push
   find join
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find unwrap-or
 
-load @term/base/code/hash
+load @term/seed/code/hash
   find get
 
 # one post as a JSON object

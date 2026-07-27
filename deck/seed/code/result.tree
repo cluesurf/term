@@ -1,5 +1,5 @@
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
 
 form result

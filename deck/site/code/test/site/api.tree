@@ -10,10 +10,10 @@ load ../../http/http
   find server
   find route-server
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find unwrap-or
 
-load @term/base/code/hash
+load @term/seed/code/hash
   find get
 
 task make-api

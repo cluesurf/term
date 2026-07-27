@@ -3,10 +3,10 @@ task get
   take precise, like bool, fall false
 
   fork test, read precise
-    hook true
+    hook hold
       send back
         call browser-performance-now
-    hook false
+    hook miss
       send back
         call date/now
 

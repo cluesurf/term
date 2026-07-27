@@ -18,7 +18,7 @@ const DEFAULT_EXCLUDE = [
   'hold',
   'test',
   'task',
-  '.seed',
+  '.base/term',
   'node_modules',
   '.git',
   'host',
@@ -111,7 +111,7 @@ export async function createTarball(input: {
   const manifest = await loadManifest({ dir: input.dir })
   const markStr = showMark(manifest.mark)
   const tarName = `${manifest.name}-${markStr}.tgz`
-  const tmpDir = path.join(input.dir, '.seed', 'tmp')
+  const tmpDir = path.join(input.dir, '.base/term', 'tmp')
   const packageDir = path.join(tmpDir, 'package')
   const tarPath = path.join(tmpDir, tarName)
 
@@ -282,7 +282,7 @@ export async function publishDeck(input: {
 
 async function loadAuthToken(): Promise<string | undefined> {
   const os = await import('os')
-  const authFile = path.join(os.homedir(), '.seed', 'auth')
+  const authFile = path.join(os.homedir(), '.base/term', 'auth')
 
   try {
     const text = await fsp.readFile(authFile, 'utf-8')

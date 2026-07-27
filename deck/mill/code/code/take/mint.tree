@@ -1,5 +1,5 @@
 
-load @term/base/code/take
+load @term/seed/code/take
   find take
   find take-value
 

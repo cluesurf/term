@@ -126,7 +126,7 @@ export async function verifyInstall(input: { root: string }): Promise<{
     const linkPath = path.join(
       input.root,
       'link',
-      '.seed',
+      '.base/term',
       `${entry.name}@${markStr}`,
     )
 

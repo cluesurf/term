@@ -11,7 +11,7 @@ task create-table
           link multiply, code 4294967296
           link unite-bitwise, code 0
       save i, call increment, read i
-  send back seed, read t
+  send back, read t
 
 task doreset
   save self/hash
@@ -724,7 +724,7 @@ task finalize
               link unite-bitwise, call h-i/shift-head-unsigned, code 8
               link intersect-bitwise, code 4278255360
       save i, call increment, read i
-  send back seed, read hash
+  send back, read hash
 
 task ff
   take a
@@ -742,8 +742,7 @@ task ff
             link intersect-bitwise, read d
       link add, read x
       link add, read t
-  send back seed
-    call n/shift-base, read s
+  send back    call n/shift-base, read s
       link unite-bitwise, call n/shift-head-unsigned, call 32/subtract, read s
       link add, read b
 
@@ -761,8 +760,7 @@ task gg
         link unite-bitwise, call c/intersect-bitwise, call bitflip, read d
       link add, read x
       link add, read t
-  send back seed
-    call n/shift-base, read s
+  send back    call n/shift-base, read s
       link unite-bitwise, call n/shift-head-unsigned, call 32/subtract, read s
       link add, read b
 
@@ -780,8 +778,7 @@ task hh
         link oppose-bitwise, read d
       link add, read x
       link add, read t
-  send back seed
-    call n/shift-base, read s
+  send back    call n/shift-base, read s
       link unite-bitwise, call n/shift-head-unsigned, call 32/subtract, read s
       link add, read b
 
@@ -797,7 +794,6 @@ task ii
     call a/add, call c/oppose-bitwise, call b/unite-bitwise, call bitflip, read d
       link add, read x
       link add, read t
-  send back seed
-    call n/shift-base, read s
+  send back    call n/shift-base, read s
       link unite-bitwise, call n/shift-head-unsigned, call 32/subtract, read s
       link add, read b

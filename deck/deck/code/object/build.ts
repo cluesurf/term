@@ -33,7 +33,7 @@ import { ObjectStore } from './store'
 // Directories never published (build artifacts, local install, vcs).
 const DEFAULT_EXCLUDE = new Set([
   'link',
-  '.seed',
+  '.base/term',
   '.term',
   'node_modules',
   '.git',

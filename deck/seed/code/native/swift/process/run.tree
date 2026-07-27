@@ -1,6 +1,6 @@
 # swift subprocess runner. Internal: reached only through the public run API.
 
-load @term/base/code/process/run
+load @term/seed/code/process/run
   find run-result
 
 dock load

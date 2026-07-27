@@ -62,7 +62,7 @@ const bumped = holdIncremental({ files: [file], resolve, cache, version: 'test-2
 ok('a version bump invalidates the cache', bumped.checked === 1 && bumped.cached === 0)
 
 // --- disk persistence: a fresh cache object reads prior verdicts ---
-const diskDir = path.join(dir, '.seed', 'hold')
+const diskDir = path.join(dir, '.base/term', 'hold')
 const disk1 = diskObligationCache(diskDir)
 holdIncremental({ files: [file], resolve, cache: disk1, version: VERSION, cross: false })
 const disk2 = diskObligationCache(diskDir) // reopened: should load the saved entry

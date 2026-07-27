@@ -1,6 +1,6 @@
 # Common string operations over the text type. The clean uniform interface; the per-env native implementation is selected at build time and hidden. node and browser call the host String methods directly; the compiled targets call a thin text shim over their platform string API.
 
-load @term/base/code/native/text/string
+load @term/seed/code/native/text/string
   find do-upper
   find do-lower
   find do-trim

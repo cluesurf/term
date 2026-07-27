@@ -4,7 +4,7 @@
 # its commit `hash` nested. A small package lists `link` file entries; a large
 # one lists `base` shard entries (a content-defined sitemap index), each a
 # sub-manifest. Targets the deck-hold / deck-file / deck-shard AST forms in
-# @term/base/code/deck.
+# @term/seed/code/deck.
 
 mine hold
   mine term, term deck

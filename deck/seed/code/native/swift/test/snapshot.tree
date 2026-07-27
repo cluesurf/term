@@ -2,19 +2,19 @@
 dock load
   load <Foundation>, name foundation
 
-load @term/base/code/native/shared/test/snapshot
+load @term/seed/code/native/shared/test/snapshot
   find resolve
   find serialize
   find deserialize
 
-load @term/base/code/native/shared/test/context
+load @term/seed/code/native/shared/test/context
   find get
   find fail
 
-load @term/base/code/native/shared/test
+load @term/seed/code/native/shared/test
   find make-failure
 
-load @term/base/code/native/shared/test/compare
+load @term/seed/code/native/shared/test/compare
   find deep-equal
 
 task match

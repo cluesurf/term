@@ -11,11 +11,11 @@ tree call-promise-with-callback-result
         fuse call
           test is-present
             read error
-            hook true
+            hook hold
               call resolve
                 make error
                   read error
-            hook false
+            hook miss
               call resolve
                 make ok
                   fuse result

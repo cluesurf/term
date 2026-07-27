@@ -1,5 +1,5 @@
 
-load @term/base/code/mill
+load @term/seed/code/mill
   find mill-mine
   find mill-mint
   find mill-mill

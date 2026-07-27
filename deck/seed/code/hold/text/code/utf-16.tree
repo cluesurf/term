@@ -1,11 +1,11 @@
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
-load @term/base/code/mark/16
+load @term/seed/code/mark/16
   find mark-16
 
-load @term/base/code/text/code/utf-16
+load @term/seed/code/text/code/utf-16
   find text-utf-16
 
 task allocate

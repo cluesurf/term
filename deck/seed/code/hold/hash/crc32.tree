@@ -13,7 +13,7 @@ task calculate-crc32
       call is-less-than
         read i
         read list/length
-    hook true
+    hook hold
       save crc
         call bitwise-xor
           call crc32-table
@@ -26,8 +26,7 @@ task calculate-crc32
             read crc
             code 8
       save i, call increment, read i
-  send back seed
-    call unsigned-shift-right
+  send back    call unsigned-shift-right
       call bitwise-xor
         read crc
         call negative

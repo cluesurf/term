@@ -9,13 +9,13 @@ task make
   take hard, like bool, fall false
 
   fork test, name hard
-    hook true
+    hook hold
       call fs-promise/link
         note async
         read from
         read to
         halt kink
-    hook false
+    hook miss
       call fs-promise/symlink
         note async
         read from

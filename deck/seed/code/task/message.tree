@@ -1,5 +1,5 @@
 
-load @term/base/code/task
+load @term/seed/code/task
   find handle
 
 task send

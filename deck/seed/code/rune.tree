@@ -1,6 +1,6 @@
 # Rune: a single Unicode scalar value (code point), 0 through 0x10FFFF, held as a number. The ASCII predicates are exact for their range and need no platform support. The Unicode predicates (letter / number / whitespace / case over the whole code space) and case mapping delegate to each backend's native Unicode tables: rust / swift / kotlin via inline declarative bindings (no hand-written native), node / browser via a small runtime shim (JS property-escape regex cannot be spelled in a `.tree` literal). Either way the data lives in the platform, never shipped here.
 
-load @term/base/code/native/rune
+load @term/seed/code/native/rune
   find do-is-letter
   find do-is-number
   find do-is-whitespace

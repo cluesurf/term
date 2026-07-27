@@ -3,7 +3,7 @@ import path from 'path'
 import os from 'os'
 import { hashFile } from './hash'
 
-const SEED_DIR = '.seed'
+const SEED_DIR = '.base/term'
 
 export function getStoreRoot(): string {
   return path.join(os.homedir(), SEED_DIR)

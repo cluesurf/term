@@ -1,5 +1,5 @@
 
-load @term/base/code/test/suite
+load @term/seed/code/test/suite
   find failure
 
 task make-failure

@@ -1,6 +1,6 @@
 # Statistics over a list of numbers. Pure folds, identical on every backend. Integer results: `mean` truncates, and `total` of an empty list is zero. `least` / `greatest` assume a non-empty list. `variance` and `standard-deviation` need floats and live in a float-stats follow-up.
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
 task total

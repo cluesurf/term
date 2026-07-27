@@ -1,5 +1,5 @@
 
-load @term/base/code/process
+load @term/seed/code/process
   find child
 
 task wait
@@ -26,10 +26,10 @@ task stop
     call is-equal
       bind a, read form
       bind b, text <force>
-    hook true
+    hook hold
       call child/dock/kill
         text <SIGKILL>
-    hook false
+    hook miss
       call child/dock/kill
         text <SIGTERM>
 
@@ -59,9 +59,9 @@ task read
       call is-equal
         bind a, read kind
         bind b, text <stderr>
-      hook true
+      hook hold
         send back, read child/dock/stderr
-      hook false
+      hook miss
         send back, read child/dock/stdout
 
   save chunks, make list
@@ -87,11 +87,11 @@ task read
     call is-equal
       bind a, read format
       bind b, text <text>
-    hook true
+    hook hold
       send back
         call output/to-string
           text <utf8>
-    hook false
+    hook miss
       send back, read output
 
 task stream
@@ -106,9 +106,9 @@ task stream
       call is-equal
         bind a, read kind
         bind b, text <stderr>
-      hook true
+      hook hold
         send back, read child/dock/stderr
-      hook false
+      hook miss
         send back, read child/dock/stdout
 
   send back, read source

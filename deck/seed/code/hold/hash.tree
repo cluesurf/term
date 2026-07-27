@@ -11,7 +11,7 @@ task hash-djb2-xor
       call is-less-than
         read mark
         read size
-    hook true
+    hook hold
       save hash
         call bitwise-xor
           call multiply

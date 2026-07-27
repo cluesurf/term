@@ -2,7 +2,7 @@
 dock load
   load <Foundation>, name foundation
 
-load @term/base/code/process
+load @term/seed/code/process
   find child
 
 task wait
@@ -20,11 +20,11 @@ task stop
   take form, like text, fall text <gentle>
 
   fork test, call is-equal, read form, text <force>
-    hook true
+    hook hold
       call kill
         call child/dock/process-identifier
         code 9
-    hook false
+    hook miss
       call child/dock/terminate
 
 task write
@@ -57,10 +57,10 @@ task read
 
   save pipe
     fork test, call is-equal, read kind, text <stderr>
-      hook true
+      hook hold
         send back
           call child/dock/standard-error
-      hook false
+      hook miss
         send back
           call child/dock/standard-output
 
@@ -68,12 +68,12 @@ task read
     call pipe/file-handle-for-reading/read-data-to-end-of-file
 
   fork test, call is-equal, read format, text <text>
-    hook true
+    hook hold
       send back
         call foundation/string
           bind data, read data
           bind encoding, text <utf8>
-    hook false
+    hook miss
       send back, read data
 
 task stream
@@ -85,10 +85,10 @@ task stream
 
   save pipe
     fork test, call is-equal, read kind, text <stderr>
-      hook true
+      hook hold
         send back
           call child/dock/standard-error
-      hook false
+      hook miss
         send back
           call child/dock/standard-output
 

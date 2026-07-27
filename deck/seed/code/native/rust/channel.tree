@@ -6,7 +6,7 @@ dock type
 dock load
   load <global:channel>, name channel
 
-load @term/base/code/channel
+load @term/seed/code/channel
   find channel
 
 task do-make

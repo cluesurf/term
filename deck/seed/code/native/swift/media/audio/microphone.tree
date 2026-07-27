@@ -1,6 +1,6 @@
 
 task request-access
-  stem case
+  fork case
     call av-audio-session-form/shared-instance/request-record-permission
       note async
     case av-audio-session-form/record-permission/granted

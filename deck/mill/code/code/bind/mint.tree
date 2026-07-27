@@ -1,5 +1,5 @@
 
-load @term/base/code/bind
+load @term/seed/code/bind
   find bind
 
 mint bind, like bind

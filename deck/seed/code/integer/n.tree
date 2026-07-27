@@ -5,7 +5,7 @@
 # implementation for every backend, no per-width native code and no runtime shim. Each width fuses this once, passing its
 # name, mask, sign bit, and bounds. See `8` / `16` / `32` (signed) and `unsigned` (u8 / u16 / u32).
 
-load @term/base/code/bit
+load @term/seed/code/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or
@@ -13,7 +13,7 @@ load @term/base/code/bit
   find shift-left
   find shift-right
 
-load @term/base/code/maybe
+load @term/seed/code/maybe
   find maybe
   find some
   find none
@@ -188,7 +188,7 @@ tree integer
       take a, like number
       take b, like number
       like maybe
-        like number
+        head number
       save sum
         call add
           read a
@@ -212,7 +212,7 @@ tree integer
       take a, like number
       take b, like number
       like maybe
-        like number
+        head number
       save diff
         call subtract
           read a
@@ -236,7 +236,7 @@ tree integer
       take a, like number
       take b, like number
       like maybe
-        like number
+        head number
       save product
         call multiply
           read a

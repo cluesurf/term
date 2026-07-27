@@ -5,13 +5,13 @@
 dock load
   load <global:server>, name runtime
 
-load @term/base/code/network/server/request
+load @term/seed/code/network/server/request
   find request
 
-load @term/base/code/network/server/response
+load @term/seed/code/network/server/response
   find response
 
-load @term/base/code/network/server
+load @term/seed/code/network/server
   find server
 
 # run the server on (host, port), blocking for the life of the process (the entry point of a server binary)

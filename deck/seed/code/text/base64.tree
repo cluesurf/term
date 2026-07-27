@@ -1,6 +1,6 @@
 # Base64 text encoding. The clean uniform interface; the per-env native implementation is selected at build time and hidden behind the API.
 
-load @term/base/code/native/text/base64
+load @term/seed/code/native/text/base64
   find to-base64
   find from-base64
 

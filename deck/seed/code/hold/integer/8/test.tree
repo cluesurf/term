@@ -1,5 +1,5 @@
 
-load @term/base/code/shared/test
+load @term/seed/code/shared/test
   find test-suite
 
 call test-suite, read suite

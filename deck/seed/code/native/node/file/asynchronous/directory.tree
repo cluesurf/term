@@ -1,4 +1,7 @@
 
+load @term/seed/code/list
+  find deep
+
 dock load
   load <node:fs/promises>, name fs-promise
   load <node:path>, name path
@@ -9,12 +12,12 @@ task list
   take deep, like bool, fall false
 
   fork test, name deep
-    hook true
+    hook hold
       send back
-        call list-deep
+        call deep
           read path
           text <>
-    hook false
+    hook miss
       send back
         call fs-promise/readdir
           note async
@@ -52,16 +55,16 @@ task list-deep
 
       fork test
         call entry/is-directory
-        hook true
+        hook hold
           call result/push
             read relative
           save sub
-            call list-deep
+            call deep
               read full-path
               read relative
           call result/concat
             read sub
-        hook false
+        hook miss
           call result/push
             read relative
 
@@ -123,11 +126,11 @@ task walk-step
       save kind, text <file>
       fork test
         call entry/is-directory
-        hook true
+        hook hold
           save kind, text <directory>
       fork test
         call entry/is-symbolic-link
-        hook true
+        hook hold
           save kind, text <link>
 
       call result/push
@@ -138,17 +141,17 @@ task walk-step
 
       fork test
         call entry/is-directory
-        hook true
+        hook hold
           fork test
             call is-above
               bind a, read max-depth
               bind b, code 0
-            hook true
+            hook hold
               fork test
                 call is-below
                   bind a, read level
                   bind b, read max-depth
-                hook true
+                hook hold
                   call walk-step
                     read base
                     read full-path
@@ -157,7 +160,7 @@ task walk-step
                       bind b, code 1
                     read max-depth
                     read result
-            hook false
+            hook miss
               call walk-step
                 read base
                 read full-path

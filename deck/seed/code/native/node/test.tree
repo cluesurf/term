@@ -1,5 +1,5 @@
 
-load @term/base/code/native/shared/test/assert
+load @term/seed/code/native/shared/test/assert
   find assert
   find deny
   find mark-skip

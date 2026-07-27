@@ -24,7 +24,7 @@ be a language-agnostic package manager in the long run.
 ### Specification
 
 ```tree
-deck @cluesurf/seed
+deck @cluesurf/base
   head <A TreeCode Framework>
 
   mark <0.0.1>
@@ -52,7 +52,7 @@ deck @cluesurf/seed
   link @cluesurf/bead, mark <0.0.x>
   link @cluesurf/chew, mark <0.0.x>
   link @cluesurf/move, mark <0.0.x>
-  link @cluesurf/seed, site <git://github.com/user/project.git#commit-ish>
+  link @cluesurf/base, site <git://github.com/user/project.git#commit-ish>
 
   # use a custom registry
   host <https://npm.pkg.github.com>
@@ -156,7 +156,7 @@ Here is the `package.json` that gets generated for the package.
 
 ```json
 {
-  "name": "@cluesurf/seed",
+  "name": "@cluesurf/base",
   "base": true,
   "version": "0.0.1"
 }
@@ -201,7 +201,7 @@ base <0.0.1>
 load @cluesurf/moon
   mark <*>
   lock <0.0.1>
-load @cluesurf/seed
+load @cluesurf/base
   mark <*>
   lock <0.0.1>
 load @cluesurf/wolf
@@ -210,7 +210,7 @@ load @cluesurf/wolf
 
 link <@cluesurf/wolf:0.0.1>
   hash <sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==>
-  load @cluesurf/seed
+  load @cluesurf/base
     mark <0.0.1>
 ```
 
