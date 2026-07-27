@@ -173,6 +173,31 @@ export function tokenize(source: {
     while (pos < lineText.length) {
       const mode = modeStack[modeStack.length - 1] ?? LexMode.Default
 
+      // inside a text literal, `\<` and `\>` are the escaped angles: emit the bare angle as content and do NOT touch
+      // the depth balance, so an unbalanced one can be written at all. Depth-balancing alone cannot express `=>` or a
+      // lone `<` in native source, because those never pair up. The backslash is consumed, so `\>` yields `>`.
+      if (
+        mode === LexMode.Text &&
+        lineText.startsWith('\\', pos) &&
+        (lineText.startsWith('<', pos + 1) ||
+          lineText.startsWith('>', pos + 1))
+      ) {
+        const token: Token = {
+          kind: TokenKind.Chunk,
+          span: {
+            start: { line, column },
+            end: { line, column: column + 2 },
+          },
+          text: lineText[pos + 1]!,
+        }
+
+        append(token)
+        previous = token
+        pos += 2
+        column += 2
+        continue
+      }
+
       // inside a text literal with an unclosed `<`, the next `>` closes that nested bracket, not the literal: emit it as
       // a literal chunk and rebalance, so `text <Hmac<Sha256>>` keeps the generic and ends only at the final `>`.
       if (
