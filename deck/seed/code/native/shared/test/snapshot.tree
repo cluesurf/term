@@ -75,7 +75,7 @@ task match
 
   save exists
     call file/test
-      note async
+      wait true
       bind path, read path
 
   fork test
@@ -86,14 +86,14 @@ task match
           bind value, read value
           bind format, read format
       call file/write
-        note async
+        wait true
         bind path, read path
         bind data, read data
       send back
 
   save raw
     call file/read
-      note async
+      wait true
       bind path, read path
 
   save stored
@@ -137,6 +137,6 @@ task update
       bind format, read format
 
   call file/write
-    note async
+    wait true
     bind path, read path
     bind data, read data

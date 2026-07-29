@@ -742,7 +742,8 @@ task ff
             link intersect-bitwise, read d
       link add, read x
       link add, read t
-  send back    call n/shift-base, read s
+  send back
+    call n/shift-base, read s
       link unite-bitwise, call n/shift-head-unsigned, call 32/subtract, read s
       link add, read b
 
@@ -760,7 +761,8 @@ task gg
         link unite-bitwise, call c/intersect-bitwise, call bitflip, read d
       link add, read x
       link add, read t
-  send back    call n/shift-base, read s
+  send back
+    call n/shift-base, read s
       link unite-bitwise, call n/shift-head-unsigned, call 32/subtract, read s
       link add, read b
 
@@ -778,7 +780,8 @@ task hh
         link oppose-bitwise, read d
       link add, read x
       link add, read t
-  send back    call n/shift-base, read s
+  send back
+    call n/shift-base, read s
       link unite-bitwise, call n/shift-head-unsigned, call 32/subtract, read s
       link add, read b
 
@@ -794,6 +797,7 @@ task ii
     call a/add, call c/oppose-bitwise, call b/unite-bitwise, call bitflip, read d
       link add, read x
       link add, read t
-  send back    call n/shift-base, read s
+  send back
+    call n/shift-base, read s
       link unite-bitwise, call n/shift-head-unsigned, call 32/subtract, read s
       link add, read b

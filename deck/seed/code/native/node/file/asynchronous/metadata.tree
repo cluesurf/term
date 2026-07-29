@@ -11,12 +11,12 @@ task read
     fork test, name follow
       hook hold
         call fs-promise/stat
-          note async
+          wait true
           read path
           halt kink
       hook miss
         call fs-promise/lstat
-          note async
+          wait true
           read path
           halt kink
 

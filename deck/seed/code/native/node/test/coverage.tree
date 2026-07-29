@@ -15,7 +15,7 @@ task read
 
   save raw
     call v8/take-coverage
-      note async
+      wait true
 
   save files
     make list

@@ -13,17 +13,17 @@ task read
     case text
       send back
         call raw/text
-          note async
+          wait true
           halt kink
     case bytes
       send back
         call raw/array-buffer
-          note async
+          wait true
           halt kink
     case json
       send back
         call raw/json
-          note async
+          wait true
           halt kink
     case stream
       send back

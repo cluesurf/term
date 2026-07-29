@@ -20,7 +20,7 @@ task list
     hook miss
       send back
         call fs-promise/readdir
-          note async
+          wait true
           read path
           halt kink
 
@@ -32,7 +32,7 @@ task list-deep
 
   save entries
     call fs-promise/readdir
-      note async
+      wait true
       read base
       make options
         bind with-file-types, true
@@ -75,7 +75,7 @@ task make
   take path, like text
 
   call fs-promise/mkdir
-    note async
+    wait true
     read path
     make options
       bind recursive, true
@@ -108,7 +108,7 @@ task walk-step
 
   save entries
     call fs-promise/readdir
-      note async
+      wait true
       read current
       make options
         bind with-file-types, true

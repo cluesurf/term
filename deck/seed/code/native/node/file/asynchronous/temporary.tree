@@ -19,13 +19,13 @@ task make
     hook hold
       send back
         call fs-promise/mkdtemp
-          note async
+          wait true
           read base
           halt kink
 
   save dir
     call fs-promise/mkdtemp
-      note async
+      wait true
       read base
       halt kink
 
@@ -37,7 +37,7 @@ task make
         read suffix
 
   call fs-promise/write-file
-    note async
+    wait true
     read file-path
     text <>
     halt kink

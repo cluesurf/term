@@ -83,13 +83,15 @@ task get-next-power-of-two
     call shift-right
       read n
       code 16
-  send back    call add
+  send back
+    call add
       read n
       code 1
 
 task reverse-bits
   take n
-  send back    call bitwise-or
+  send back
+    call bitwise-or
       call bitwise-or
         call bitwise-or
           call bit-reversal-table/get

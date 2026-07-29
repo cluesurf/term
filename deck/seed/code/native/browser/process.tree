@@ -20,7 +20,7 @@ task run
 
   save output
     call browser-worker-run
-      note async
+      wait true
       read worker
       read input
       read timeout

@@ -8,7 +8,7 @@ task read
 
   save stats
     call fs-promise/stat
-      note async
+      wait true
       read path
       halt kink
 
@@ -24,7 +24,7 @@ task write
   take group, like size
 
   call fs-promise/chown
-    note async
+    wait true
     read path
     read user
     read group

@@ -195,7 +195,8 @@ task gcd
             read b
           code 0
         hook hold
-          send back            call math/abs
+          send back
+            call math/abs
               bind read b
       save b
         call remainder
@@ -205,7 +206,8 @@ task gcd
 task lcm
   take a
   take b
-  send back    call math/abs
+  send back
+    call math/abs
       call multiply
         call divide
           read a

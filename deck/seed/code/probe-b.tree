@@ -1,0 +1,17 @@
+
+form colour
+  case red
+  case blue
+
+task probe-local-sum
+  take flag, like boolean
+  like colour
+  fork test
+    hook test
+      read flag
+    hook hold
+      send back
+        make red
+    hook miss
+      send back
+        make blue

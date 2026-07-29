@@ -9,7 +9,8 @@ tree is-not-or-return-error
         read a
         read b
       hook miss
-        send back          make not-error
+        send back
+          make not-error
 
 tree is-below-or-return-error
   take a
@@ -42,7 +43,8 @@ tree is-bound-or-return-error
         read a
         read b
       hook miss
-        send back          make range-error
+        send back
+          make range-error
             term type
 
 tree is-minimum-or-return-error

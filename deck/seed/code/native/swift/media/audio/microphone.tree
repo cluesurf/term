@@ -2,7 +2,7 @@
 task request-access
   fork case
     call av-audio-session-form/shared-instance/request-record-permission
-      note async
+      wait true
     case av-audio-session-form/record-permission/granted
       term granted
     case av-audio-session-form/record-permission/denied

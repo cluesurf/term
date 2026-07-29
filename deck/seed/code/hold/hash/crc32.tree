@@ -26,7 +26,8 @@ task calculate-crc32
             read crc
             code 8
       save i, call increment, read i
-  send back    call unsigned-shift-right
+  send back
+    call unsigned-shift-right
       call bitwise-xor
         read crc
         call negative

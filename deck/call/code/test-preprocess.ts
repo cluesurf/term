@@ -1,6 +1,6 @@
 // The `test` preprocessor. A test file is ordinary Seed plus `test <phrase>` blocks. This rewrites each block, before
 // the compiler sees it, into a top-level async task that returns whether the test held: every assertion (`want hold` /
-// `want miss`) becomes a fail-fast guard, and the task ends `send back, wave true`. Helper `task`/`form`/`load`/`host`
+// `want miss`) becomes a fail-fast guard, and the task ends `send back, true`. Helper `task`/`form`/`load`/`host`
 // declarations are passed through untouched. This is used by `seed test` (the CLI runner). When the self-hosting mill
 // consumes the `test` grammar (term.tree/code/code/test), this step folds into the mint with no change to any test
 // file. See note/library/seed/test-dsl.md.
@@ -74,7 +74,7 @@ function guard(group: string[]): string[] {
     ...condition,
     `    ${failOn}`,
     '      send back',
-    '        wave false',
+    '        false',
   ]
 }
 
@@ -112,7 +112,7 @@ export function preprocessTests(source: string): Preprocessed {
       i++
     }
 
-    // emit the task: setup statements pass through, assertions become guards, then `send back, wave true`
+    // emit the task: setup statements pass through, assertions become guards, then `send back, true`
     out.push(`task ${slug}`, '  mark async', '  like boolean')
 
     for (const group of statements(body, 2)) {
@@ -125,7 +125,7 @@ export function preprocessTests(source: string): Preprocessed {
       }
     }
 
-    out.push('  send back', '    wave true')
+    out.push('  send back', '    true')
   }
 
   return { text: out.join('\n'), labels }

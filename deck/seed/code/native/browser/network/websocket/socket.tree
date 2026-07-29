@@ -23,7 +23,7 @@ task send
       save raw/onerror, read on-error
       call raw/send, read data
       call ok
-    note async
+    wait true
     halt kink
 
 task close
@@ -42,7 +42,7 @@ task close
         task handle-close
           call ok
       save raw/onclose, read on-close
-    note async
+    wait true
 
 task stream
   note async

@@ -12,14 +12,14 @@ task read
     hook hold
       save result
         call fs-promise/read-file
-          note async
+          wait true
           read path
           halt kink
       send back, read result
     hook miss
       save result
         call fs-promise/read-file
-          note async
+          wait true
           read path
           text <utf8>
           halt kink
@@ -31,7 +31,7 @@ task write
   take data, like text
 
   call fs-promise/write-file
-    note async
+    wait true
     read path
     read data
     halt kink
@@ -42,7 +42,7 @@ task append
   take data, like text
 
   call fs-promise/append-file
-    note async
+    wait true
     read path
     read data
     halt kink
@@ -56,7 +56,7 @@ task copy
   fork test, name deep
     hook hold
       call fs-promise/cp
-        note async
+        wait true
         read from
         read to
         make options
@@ -64,7 +64,7 @@ task copy
         halt kink
     hook miss
       call fs-promise/copy-file
-        note async
+        wait true
         read from
         read to
         halt kink
@@ -75,7 +75,7 @@ task move
   take to, like text
 
   call fs-promise/rename
-    note async
+    wait true
     read from
     read to
     halt kink
@@ -86,7 +86,7 @@ task remove
   take deep, like bool, fall false
 
   call fs-promise/rm
-    note async
+    wait true
     read path
     make options
       bind recursive, read deep
@@ -99,7 +99,7 @@ task test
   take kind, like text, need false
 
   call fs-promise/access
-    note async
+    wait true
     read path
     halt kink
 
@@ -109,7 +109,7 @@ task test
 
   save stats
     call fs-promise/stat
-      note async
+      wait true
       read path
       halt kink
 

@@ -11,13 +11,13 @@ task make
   fork test, name hard
     hook hold
       call fs-promise/link
-        note async
+        wait true
         read from
         read to
         halt kink
     hook miss
       call fs-promise/symlink
-        note async
+        wait true
         read from
         read to
         halt kink
@@ -28,6 +28,6 @@ task read
 
   send back
     call fs-promise/readlink
-      note async
+      wait true
       read path
       halt kink

@@ -4,7 +4,7 @@ task send-request
 
   stem try
     call url-session-form/shared/data
-      note async
+      wait true
       bind from, read url
       save data
     fuse catch-and-return-error
@@ -36,7 +36,7 @@ task download-file-from-url
 
   stem try
     call url-session-form/shared/download
-      note async
+      wait true
       bind from, read url
       save local-url
     fuse catch-and-return-error
@@ -59,7 +59,8 @@ tree return-if-error-exists
       test is-present
         read error
       hook hold
-        send back          make error
+        send back
+          make error
             read error/option
 
 tree return-if-value-exists
@@ -70,5 +71,6 @@ tree return-if-value-exists
       test is-present
         read value
       hook hold
-        send back          make ok
+        send back
+          make ok
             read value/option

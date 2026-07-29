@@ -132,7 +132,11 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // a chunk runs over literal text, including a `{` that does not open an interpolation (not followed by an
   // identifier) and any `}`; it stops at `>` (close), `\` (escape), or an interpolation-opening `{`. Escapes cover
   // the delimiters (`\<` `\>` `\{` `\}`) and the standard characters (`\n` `\r` `\t` `\\`); the mill unescapes.
-  [TokenKind.Chunk]: /(?:\\[<>{}nrt\\]|\{+(?![a-zA-Z_])|[^>{\\])+/y,
+  // a backslash that does not introduce a known escape is a LITERAL backslash, so a Windows path (`text <\Temp>`) or
+  // any other stray `\` can be written without doubling it. Without this the chunk matcher stops dead at the `\` and
+  // no matcher can consume it, which surfaces as a structure error rather than anything about the backslash.
+  [TokenKind.Chunk]:
+    /(?:\\[<>{}nrt\\]|\\(?![<>{}nrt\\])|\{+(?![a-zA-Z_])|[^>{\\])+/y,
 }
 
 export function tokenize(source: {

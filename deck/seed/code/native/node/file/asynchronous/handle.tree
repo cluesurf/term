@@ -35,7 +35,7 @@ task open
 
   save handle
     call fs-promise/open
-      note async
+      wait true
       read path
       read flags
       halt kink
@@ -50,7 +50,7 @@ task close
   take file, like file
 
   call file/dock/close
-    note async
+    wait true
     halt kink
 
 task read
@@ -64,7 +64,7 @@ task read
 
   save result
     call file/dock/read
-      note async
+      wait true
       read buffer
       code 0
       read size
@@ -79,7 +79,7 @@ task write
 
   save result
     call file/dock/write
-      note async
+      wait true
       read data
       halt kink
 
@@ -94,7 +94,7 @@ task seek
   fork test, call is-equal, read frame, text <start>
     hook hold
       call file/dock/seek
-        note async
+        wait true
         read offset
         halt kink
 
@@ -102,10 +102,10 @@ task seek
     hook hold
       save current
         call file/dock/stat
-          note async
+          wait true
           halt kink
       call file/dock/seek
-        note async
+        wait true
         call add
           bind a, read current/size
           bind b, read offset
@@ -115,10 +115,10 @@ task seek
     hook hold
       save stats
         call file/dock/stat
-          note async
+          wait true
           halt kink
       call file/dock/seek
-        note async
+        wait true
         call subtract
           bind a, read stats/size
           bind b, read offset
@@ -129,7 +129,7 @@ task flush
   take file, like file
 
   call file/dock/datasync
-    note async
+    wait true
     halt kink
 
 task clear
@@ -138,6 +138,6 @@ task clear
   take size, like size, fall code 0
 
   call file/dock/truncate
-    note async
+    wait true
     read size
     halt kink

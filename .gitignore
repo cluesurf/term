@@ -2,6 +2,7 @@
 /host
 /node_modules
 /.seed
+/.base
 
 # compiled output of every in-tree deck (build artifacts, regenerated, never committed)
 deck/*/host/

@@ -9,7 +9,7 @@ task wait
 
   save code
     call browser-worker-wait
-      note async
+      wait true
       read child/dock
 
   send back, read code
@@ -45,7 +45,7 @@ task read
 
   save output
     call browser-worker-read
-      note async
+      wait true
       read child/dock
 
   send back, read output

@@ -50,7 +50,7 @@ task read
 
   save chunk
     call stream/dock/read
-      note async
+      wait true
 
   send back, read chunk
 
@@ -59,4 +59,4 @@ task close
   take stream, like reader
 
   call stream/dock/destroy
-    note async
+    wait true

@@ -74,14 +74,16 @@ task fnv-hash-32-mixer
       call shift-left
         read a
         code 5
-  send back    call bitwise-and
+  send back
+    call bitwise-and
       read a
       code 0xffffffff
 
 task fnv-hash-32-multiply
   # a * 16777619 mod 2**32.
   take a
-  send back    call add
+  send back
+    call add
       call add
         call add
           call add

@@ -7,7 +7,7 @@ task delay
   take duration, like size
 
   call browser-set-timeout-promise
-    note async
+    wait true
     read duration
 
 task now

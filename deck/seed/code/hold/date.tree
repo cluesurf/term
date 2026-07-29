@@ -259,7 +259,8 @@ task convert-from-julian-day-to-gregorian-day
             code 1461
             read after-1968
         save four-year-cycle, read four-year-cycle-table[jsimple]
-        send back          make day-triplet
+        send back
+          make day-triplet
             call add
               read y
               call shift-right
@@ -350,7 +351,8 @@ task convert-from-julian-day-to-gregorian-day
         call multiply
           code 30.6001
           read je
-  send back    make day-triplet
+  send back
+    make day-triplet
       read y
       read m
       read d

@@ -372,6 +372,7 @@ task do-finalize
       call hash-words/push, read lane-lsw
       call hash-words/push, read lane-msw
       save i, call increment, read i
-  send back    make word-array/init
+  send back
+    make word-array/init
       read hash-words
       read output-length-bytes

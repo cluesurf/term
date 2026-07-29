@@ -9,7 +9,7 @@ task wait
 
   save code
     call promise/make
-      note async
+      wait true
       take resolve, like task
       call child/dock/on
         text <exit>
@@ -68,7 +68,7 @@ task read
 
   save output
     call promise/make
-      note async
+      wait true
       take resolve, like task
 
       call stream/on

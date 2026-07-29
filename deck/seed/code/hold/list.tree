@@ -38,7 +38,8 @@ form list
         read index
       hook hold
         send back, make error
-    send back      call self/line/get
+    send back
+      call self/line/get
         read index
 
   task reallocate
@@ -163,7 +164,8 @@ form list
       hook hold
         send back, make none
     save self/length, call decrement, read self/length
-    send back      call self/line/get
+    send back
+      call self/line/get
         read self/length
 
   task replace

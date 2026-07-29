@@ -152,7 +152,8 @@ form bloom-filter
             bind value, read i
       hook miss
         bust fork16
-    send back      call divide
+    send back
+      call divide
         call multiply
           call negative
             bind bits, read self/m

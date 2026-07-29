@@ -27,7 +27,7 @@ task run
 
   send back
     call shared-run
-      note async
+      wait true
       bind filter, read filter
       bind timeout, read timeout
       bind parallel, read parallel

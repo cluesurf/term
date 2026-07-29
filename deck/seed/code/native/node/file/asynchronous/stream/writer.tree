@@ -33,7 +33,7 @@ task write
   take data, like text
 
   call stream/dock/write
-    note async
+    wait true
     read data
 
 task close
@@ -41,4 +41,4 @@ task close
   take stream, like writer
 
   call stream/dock/end
-    note async
+    wait true

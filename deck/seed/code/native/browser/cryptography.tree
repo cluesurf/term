@@ -14,7 +14,7 @@ task digest
 
   save hash
     call crypto/subtle/digest
-      note async
+      wait true
       read name
       read encoded
       halt kink

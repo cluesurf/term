@@ -31,7 +31,7 @@ task match
   save exists, true
   save raw, text <>
   call fs/access
-    note async
+    wait true
     bind path, read path
     halt kink
       save exists, false
@@ -44,7 +44,7 @@ task match
           bind name, text <>
           bind format, read format
       call fs/mkdir
-        note async
+        wait true
         bind path, text <.seed/snapshot>
         bind options
           make object
@@ -55,7 +55,7 @@ task match
           bind value, read value
           bind format, read format
       call fs/write-file
-        note async
+        wait true
         bind path, read path
         bind data, read data
         bind encoding, text <utf8>
@@ -63,7 +63,7 @@ task match
 
   save raw
     call fs/read-file
-      note async
+      wait true
       bind path, read path
       bind encoding, text <utf8>
 
@@ -103,7 +103,7 @@ task update
       bind format, read format
 
   call fs/mkdir
-    note async
+    wait true
     bind path, text <.seed/snapshot>
     bind options
       make object
@@ -116,7 +116,7 @@ task update
       bind format, read format
 
   call fs/write-file
-    note async
+    wait true
     bind path, read path
     bind data, read data
     bind encoding, text <utf8>

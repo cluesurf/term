@@ -19,7 +19,7 @@ task request-access
 
   call av-capture-device/request-access
     read av-media-type/video
-    note async
+    wait true
 
 task get-default-device
   call av-capture-device/default
