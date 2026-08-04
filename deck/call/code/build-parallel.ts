@@ -8,7 +8,7 @@
 // pulls esbuild (used here only to bundle the worker) into its own bundle.
 
 import path from 'node:path'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { Worker } from 'node:worker_threads'
 import { cpus, tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -16,9 +16,39 @@ import { buildSync } from 'esbuild'
 import { findTreeFiles } from '@term/call/code/make'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const BUILD_WORKER_SOURCE = path.join(HERE, 'build-worker.ts')
-// the seed package root (three levels up from deck/call/code/), whose tsconfig carries the package path mappings
-const SEED_ROOT = path.resolve(HERE, '..', '..', '..')
+
+// `import.meta.url` is `deck/call/code/` when running from source under tsx, but `host/`
+// when running from the bundled CLI, where no `.ts` sits beside the bundle. So both the
+// worker source and the package root are LOCATED rather than reached by a fixed number of
+// `..` hops. Getting this wrong is silent: esbuild prints a resolve error and throws, the
+// caller falls back to the sequential build, and the parallel path simply never runs.
+function findUp(relative: string): string | undefined {
+  let dir = HERE
+
+  for (let level = 0; level < 8; level += 1) {
+    const candidate = path.join(dir, relative)
+
+    if (existsSync(candidate)) {
+      return candidate
+    }
+
+    const parent = path.dirname(dir)
+
+    if (parent === dir) {
+      break
+    }
+
+    dir = parent
+  }
+
+  return undefined
+}
+
+const BUILD_WORKER_SOURCE =
+  findUp('build-worker.ts') ?? findUp(path.join('deck', 'call', 'code', 'build-worker.ts'))
+
+// the package root, whose tsconfig carries the `@term/...` path mappings
+const TSCONFIG = findUp('tsconfig.json')
 
 // bundle the per-file build worker once per process. worker_threads needs a runnable module path and does not inherit
 // the tsx `@/` resolution, so esbuild bundles the worker (resolving `@/...` from the package tsconfig) into a
@@ -30,6 +60,14 @@ function ensureBuildWorkerBundle(): string {
     return buildWorkerBundle
   }
 
+  if (!BUILD_WORKER_SOURCE || !TSCONFIG) {
+    // fail before esbuild does, so the caller's fallback is taken without esbuild first
+    // printing a resolve error that looks like a broken build
+    throw new Error(
+      'parallel build unavailable: could not locate build-worker.ts or tsconfig.json',
+    )
+  }
+
   const out = path.join(tmpdir(), `seed-build-worker-${process.pid}.mjs`)
   buildSync({
     entryPoints: [BUILD_WORKER_SOURCE],
@@ -37,7 +75,7 @@ function ensureBuildWorkerBundle(): string {
     bundle: true,
     platform: 'node',
     format: 'esm',
-    tsconfig: path.join(SEED_ROOT, 'tsconfig.json'),
+    tsconfig: TSCONFIG,
     // the worker imports make.ts for the project resolver, and make.ts dynamically imports THIS module for the parallel
     // build. The worker never runs that path, so keep this module (and the esbuild it pulls) out of the worker bundle
     // rather than bundling esbuild's native binary into a /tmp worker.
@@ -63,9 +101,14 @@ type Reply = {
 
 export function compileProjectParallel(
   root: string,
-  options?: { concurrency?: number; env?: string },
+  options?: { concurrency?: number; env?: string; platform?: string },
 ): Promise<{ compiled: number; failed: number; errors: string[] }> {
-  const files = findTreeFiles(root)
+  // the SAME selection the sequential build makes. A build targets one platform, and the
+  // other platforms' native trees are not compiled: without this filter the pool picks up
+  // every `native/<other>` tree and fails on code that was never meant to build here.
+  // Defaults to the worker's own default env, so the two cannot drift apart.
+  const platform = options?.platform ?? options?.env ?? 'node'
+  const files = findTreeFiles(root, [], platform)
 
   if (files.length === 0) {
     return Promise.resolve({ compiled: 0, failed: 0, errors: [] })

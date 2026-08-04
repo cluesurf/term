@@ -31,7 +31,7 @@ import type { GroupNode, Node } from '@term/make/code/parser/tree'
 
 // ── tree accessors (mirror mill.ts) ───────────────────────────────────────────
 
-// flatten a name / text node's chunks to a string; read the numeric value of an integer / decimal / mark node
+// flatten a name / text node's chunks to a string; read the numeric value of an integer / decimal node
 function nodeText(node: Node | undefined): string {
   if (!node) {
     return ''
@@ -43,12 +43,8 @@ function nodeText(node: Node | undefined): string {
       .join('')
   }
 
-  if (
-    node.kind === 'integer' ||
-    node.kind === 'decimal' ||
-    node.kind === 'mark'
-  ) {
-    return String((node as { value: number | string }).value)
+  if (node.kind === 'integer' || node.kind === 'decimal') {
+    return String(node.value)
   }
 
   return ''
@@ -223,7 +219,7 @@ function renderValue(have: GroupNode): string {
   }
 
   if (vals.length === 1) {
-    return renderValueNode(vals[0])
+    return renderValueNode(vals[0]!)
   }
 
   // a list of simple values: comma- or space-joined by the property

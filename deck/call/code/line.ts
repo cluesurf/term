@@ -768,9 +768,11 @@ const cli = yargs(hideBin(process.argv))
           type: 'number',
           description: 'Fuzz inputs per term',
         })
-        .option('terms', {
+        // `seeds`, not `terms`: these are fuzzing seeds, unrelated to the language's
+        // name. `compiler-audit.ts` and the CLI dispatch test both use `--seeds`.
+        .option('seeds', {
           type: 'number',
-          description: 'Distinct fuzz terms',
+          description: 'Distinct fuzz seeds',
         })
         .option('fuzz-timeout', {
           type: 'number',
@@ -785,7 +787,7 @@ const cli = yargs(hideBin(process.argv))
         root,
         glob: argv.glob,
         runs: argv.runs,
-        terms: argv.terms,
+        seeds: argv.seeds,
         fuzzTimeout: argv.fuzzTimeout,
         json: argv.json,
       })

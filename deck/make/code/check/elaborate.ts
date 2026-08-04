@@ -122,21 +122,47 @@ function hasFreeVar(term: Term, depth = 0): boolean {
     return true
   }
 
+  // mirrors `usesVar` in judge.ts, which is the authoritative binder structure for this
+  // term language. Every tag carrying a subterm must appear: a missing one falls to
+  // `default` and reports CLOSED, which is the unsafe direction for a gate whose whole
+  // job is to catch a term that is not.
   switch (term.tag) {
     case 'var':
       return term.index >= depth
     case 'app':
       return hasFreeVar(term.fun, depth) || hasFreeVar(term.arg, depth)
     case 'lam':
-      return hasFreeVar(term.body, depth + 1)
-    case 'pi':
-      return (
-        hasFreeVar(term.domain, depth) || hasFreeVar(term.codomain, depth + 1)
-      )
     case 'self':
       return hasFreeVar(term.body, depth + 1)
-    case 'annotate':
-      return hasFreeVar(term.value, depth) || hasFreeVar(term.type, depth)
+    case 'pi':
+    case 'sigma':
+      return (
+        hasFreeVar(term.domain, depth) ||
+        hasFreeVar(term.codomain, depth + 1)
+      )
+    case 'ann':
+      return hasFreeVar(term.term, depth) || hasFreeVar(term.type, depth)
+    case 'pair':
+      return (
+        hasFreeVar(term.first, depth) || hasFreeVar(term.second, depth)
+      )
+    case 'fst':
+    case 'snd':
+      return hasFreeVar(term.pair, depth)
+    case 'id':
+      return (
+        hasFreeVar(term.type, depth) ||
+        hasFreeVar(term.left, depth) ||
+        hasFreeVar(term.right, depth)
+      )
+    case 'refl':
+      return hasFreeVar(term.type, depth) || hasFreeVar(term.value, depth)
+    case 'j':
+      return (
+        hasFreeVar(term.proof, depth) ||
+        hasFreeVar(term.motive, depth) ||
+        hasFreeVar(term.base, depth)
+      )
     default:
       return false
   }
@@ -3912,6 +3938,10 @@ export function elaborateReport(
         return false
       }
 
+      // captured after the guard so the narrowing survives into the nested callbacks
+      // below, where `typeHead` widens back to `Term`
+      const typeHeadName = typeHead.name
+
       const variants = variantNames.get(typeHead.name)
 
       if (!variants || variants.length === 0) {
@@ -4289,7 +4319,11 @@ export function elaborateReport(
             x =>
               x.field.type.tag === 'const' &&
               variantNames.has(x.field.type.name) &&
-              x.field.type.name !== typeTerm.name,
+              // compared against the HEAD constant: for a polymorphic inductive
+              // (`stack natural`) the type is an application spine with no `name` of its
+              // own, so comparing against it would never match and every recursive field
+              // would be split, clobbering the induction hypothesis this guard protects
+              x.field.type.name !== typeHeadName,
           )
           .map(x => ({
             level: x.level,

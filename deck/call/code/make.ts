@@ -285,7 +285,7 @@ export function projectResolver(
       importPath.startsWith('./') || importPath.startsWith('../')
 
     const memoKey = relative
-      ? `${path.dirname(fromFile)} ${importPath}`
+      ? `${path.dirname(fromFile)}\0${importPath}`
       : importPath
 
     const memoHit = resolveMemo.get(memoKey)

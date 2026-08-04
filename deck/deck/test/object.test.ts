@@ -19,7 +19,11 @@ import { directRegistry } from '../code/object/registry'
 import { generateKeypair } from '../code/object/sign'
 import { publishPackage } from '../code/object/publish'
 import { installPackage } from '../code/object/install'
-import { serveRegistry } from '../code/object/serve'
+import {
+  serveRegistry,
+  writeAccessFromEnv,
+  REGISTRY_TOKEN_VARIABLE,
+} from '../code/object/serve'
 import { httpRegistry } from '../code/object/http'
 import type { AddressInfo } from 'net'
 
@@ -301,14 +305,21 @@ describe('transfer protocol', () => {
     const keypair = generateKeypair()
     const serverStore = localObjectStore({ root: path.join(tmp, 'http-server') })
     const refs = memoryRefStore()
+    // a real token rather than `'open'`, so the end-to-end publish exercises the auth
+    // path it will run through in production
+    const token = 'cs-testtestest-testtest-testtest-testtest'
     const server = serveRegistry({
       store: serverStore,
       refs,
       scopeKeys: async s => (s === '@term' ? [keypair.publicKey] : []),
+      write: { token },
     })
     await new Promise<void>(resolve => server.listen(0, resolve))
     const port = (server.address() as AddressInfo).port
-    const registry = httpRegistry({ baseUrl: `http://127.0.0.1:${port}` })
+    const registry = httpRegistry({
+      baseUrl: `http://127.0.0.1:${port}`,
+      token,
+    })
 
     try {
       const clientA = localObjectStore({ root: path.join(tmp, 'http-a') })
@@ -368,5 +379,117 @@ describe('transfer protocol', () => {
     } finally {
       server.close()
     }
+  })
+})
+
+describe('registry write authorization', () => {
+  const TOKEN = 'cs-mndbtkhs-fvzxcwlr-mndbtkhs-fvzxcwlr'
+
+  // a minimal server: the auth gate runs before any handler, so no real objects are needed
+  async function withServer(
+    write: Parameters<typeof serveRegistry>[0]['write'],
+    body: (base: string) => Promise<void>,
+  ): Promise<void> {
+    const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'term-auth-'))
+    const server = serveRegistry({
+      store: localObjectStore({ root: path.join(tmp, 'store') }),
+      refs: memoryRefStore(),
+      scopeKeys: async () => [],
+      write,
+    })
+    await new Promise<void>(resolve => server.listen(0, resolve))
+    const port = (server.address() as AddressInfo).port
+
+    try {
+      await body(`http://127.0.0.1:${port}`)
+    } finally {
+      server.close()
+    }
+  }
+
+  const post = (base: string, path_: string, token?: string) =>
+    fetch(`${base}${path_}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-object-id': 'sha256:0000',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: '{}',
+    })
+
+  const WRITES = [
+    '/package-objects/mutate!',
+    '/packages/bundle!',
+    '/packages/commit!',
+  ]
+
+  it('refuses every write with no token', async () => {
+    await withServer({ token: TOKEN }, async base => {
+      for (const route of WRITES) {
+        expect((await post(base, route)).status).toBe(401)
+      }
+    })
+  })
+
+  it('refuses every write with the wrong token', async () => {
+    await withServer({ token: TOKEN }, async base => {
+      for (const route of WRITES) {
+        expect((await post(base, route, `${TOKEN}x`)).status).toBe(401)
+      }
+    })
+  })
+
+  it('refuses a token that is a prefix of the real one', async () => {
+    await withServer({ token: TOKEN }, async base => {
+      const response = await post(base, WRITES[0]!, TOKEN.slice(0, 10))
+
+      expect(response.status).toBe(401)
+    })
+  })
+
+  it('lets a correct token past the gate', async () => {
+    await withServer({ token: TOKEN }, async base => {
+      for (const route of WRITES) {
+        // past the gate: whatever the handler then makes of an empty body, it is not 401
+        expect((await post(base, route, TOKEN)).status).not.toBe(401)
+      }
+    })
+  })
+
+  it('answers with a challenge a client can act on', async () => {
+    await withServer({ token: TOKEN }, async base => {
+      const response = await post(base, WRITES[0]!)
+
+      expect(response.headers.get('www-authenticate')).toMatch(/^Bearer/)
+      expect((await response.json()).error).toMatch(/bearer token/)
+    })
+  })
+
+  it('leaves reads public, so installing needs no credentials', async () => {
+    await withServer({ token: TOKEN }, async base => {
+      const response = await fetch(`${base}/package-objects/sha256:missing`)
+
+      // 404 rather than 401: the read was allowed, the object simply is not there
+      expect(response.status).toBe(404)
+    })
+  })
+
+  it('allows writes when explicitly opened, for an in-process server', async () => {
+    await withServer('open', async base => {
+      expect((await post(base, WRITES[0]!)).status).not.toBe(401)
+    })
+  })
+  it('reads a deployment token from the environment', () => {
+    expect(
+      writeAccessFromEnv({ [REGISTRY_TOKEN_VARIABLE]: TOKEN }),
+    ).toEqual({ token: TOKEN })
+  })
+
+  it('refuses to start rather than silently accepting anonymous publishes', () => {
+    expect(() => writeAccessFromEnv({})).toThrow(/would accept anonymous/)
+    expect(() =>
+      writeAccessFromEnv({ [REGISTRY_TOKEN_VARIABLE]: '   ' }),
+    ).toThrow(/would accept anonymous/)
   })
 })

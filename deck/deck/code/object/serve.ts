@@ -12,6 +12,7 @@
  */
 
 import http from 'http'
+import { createHash, timingSafeEqual } from 'crypto'
 import { ObjectStore } from './store'
 import { RefStore } from './refs'
 import {
@@ -40,6 +41,70 @@ function sendJson(res: http.ServerResponse, code: number, body: unknown): void {
   res.end(text)
 }
 
+/**
+ * How writes are authorized.
+ *
+ * Required rather than optional, and with no default, so a deployed registry cannot be
+ * left open by forgetting a field. `'open'` has to be asked for by name, and is only for
+ * an in-process test server.
+ *
+ * One shared token is the whole policy for now: it says "this caller may publish", not
+ * who they are or what they own. Ownership, teams, and per-package privileges come later
+ * and replace this, rather than building on it.
+ */
+export type WriteAccess = { token: string } | 'open'
+
+/** The environment variable a deployed registry reads its publish token from. */
+export const REGISTRY_TOKEN_VARIABLE = 'TERM_REGISTRY_TOKEN'
+
+/**
+ * The write policy for a deployed registry, from the environment.
+ *
+ * Throws when the variable is missing or blank rather than falling back to `'open'`. A
+ * registry that silently accepts anonymous publishes because a variable was not set is
+ * the failure this is meant to prevent, and it would not be visible until someone else
+ * found it.
+ */
+export function writeAccessFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): WriteAccess {
+  const token = env[REGISTRY_TOKEN_VARIABLE]?.trim()
+
+  if (!token) {
+    throw new Error(
+      `${REGISTRY_TOKEN_VARIABLE} is not set, so the registry would accept anonymous publishes`,
+    )
+  }
+
+  return { token }
+}
+
+/** The bearer token on a request, or null. */
+function bearer(req: http.IncomingMessage): string | null {
+  const header = req.headers.authorization
+
+  if (!header) {
+    return null
+  }
+
+  const match = /^Bearer +(.+)$/i.exec(header.trim())
+
+  return match ? match[1]!.trim() : null
+}
+
+/**
+ * Is the presented token the expected one?
+ *
+ * Both sides are hashed first so the comparison is over equal-length digests: it cannot
+ * throw on a length mismatch, and it leaks neither the token's content nor its length.
+ */
+function tokenMatches(presented: string, expected: string): boolean {
+  return timingSafeEqual(
+    createHash('sha256').update(presented).digest(),
+    createHash('sha256').update(expected).digest(),
+  )
+}
+
 function queryRef(url: URL): Ref | null {
   const version = url.searchParams.get('version')
   const branch = url.searchParams.get('branch')
@@ -65,11 +130,47 @@ export function serveRegistry(input: {
   store: ObjectStore
   refs: RefStore
   scopeKeys: ScopeKeys
+  write: WriteAccess
 }): http.Server {
+  // Reads stay public: installing a package must work with no credentials, and every
+  // object is content-addressed, so serving one reveals nothing a hash did not already
+  // name. Only the three endpoints that CHANGE the registry are gated.
+  const allowsWrite = (req: http.IncomingMessage): boolean => {
+    if (input.write === 'open') {
+      return true
+    }
+
+    const presented = bearer(req)
+
+    return presented !== null && tokenMatches(presented, input.write.token)
+  }
+
   return http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://localhost')
       const parts = url.pathname.split('/').filter(Boolean)
+
+      // one gate for every write, decided from the path rather than repeated at each
+      // handler, so a new write endpoint cannot be added without passing through it
+      const isWrite =
+        req.method === 'POST' &&
+        ((parts[0] === 'package-objects' && parts[1] === 'mutate!') ||
+          (parts[0] === 'packages' &&
+            (parts[1] === 'bundle!' || parts[1] === 'commit!')))
+
+      if (isWrite && !allowsWrite(req)) {
+        res.writeHead(401, {
+          'content-type': 'application/json',
+          'www-authenticate': 'Bearer realm="registry"',
+        })
+        res.end(
+          JSON.stringify({
+            error: 'a valid bearer token is required to publish',
+          }),
+        )
+
+        return
+      }
 
       // POST /package-objects/mutate!  <object bytes>  (id in x-object-id header)
       if (

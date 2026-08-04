@@ -108,7 +108,9 @@ export function check(
 
       if (statement.variants.length > 0) {
         const set = new Set<string>()
-        const indexHeads = new Map<string, string>()
+        // one head PER INDEX POSITION, matching `familyVariantIndexHead` and the
+        // position-wise comparison the inversion check does
+        const indexHeads = new Map<string, (string | undefined)[]>()
 
         for (const variant of statement.variants) {
           set.add(variant.name)
