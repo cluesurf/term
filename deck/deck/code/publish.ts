@@ -229,7 +229,8 @@ export async function publishDeck(input: {
     return
   }
 
-  // upload to registry (scope-routed: @term/* -> base.term.surf)
+  // upload to the API (scope-routed: @term/* -> tool.base.surf). The API takes the
+  // bytes and puts them in the object store; the client never writes to the store.
   const registry = resolveRegistry({
     name: fullName,
     registry: input.config.registry,

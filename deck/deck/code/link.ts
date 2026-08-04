@@ -91,7 +91,7 @@ async function installResolved(input: {
 
   // verify integrity. The registry declares the digest algorithm in
   // the integrity prefix (`sha256-…` or `sha512-…`), so verify with
-  // THAT algorithm rather than assuming sha512 (the term.surf registry
+  // THAT algorithm rather than assuming sha512 (the base.surf registry
   // stores sha256). Accept hex or base64 encoding (npm uses base64,
   // this registry uses hex).
   if (resolved.hash) {

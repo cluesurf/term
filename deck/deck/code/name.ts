@@ -20,15 +20,33 @@ export function isScoped(input: { name: string }): boolean {
   return input.name.startsWith('@')
 }
 
-// the term package registry base. `@term/*` scoped packages resolve
-// here by default (a proxied DNS record onto the shared base.clue.surf
-// backend). the client builds `${TERM_REGISTRY}/<scope>/<name>` for
-// metadata and `${TERM_REGISTRY}/<scope>/<name>/-/<file>.tgz` for
-// publish, landing on the root scoped-package routes (e.g.
-// `https://base.term.surf/@term/base`). packages use their native
-// name here, no `.tree` suffix. tarball URLs the metadata points at
-// live on deck.term.surf (R2), fetched directly.
-export const TERM_REGISTRY = 'https://base.term.surf'
+// TWO hosts, and only two.
+//
+//   tool.base.surf  the API, for the registry and for all content
+//   mesh.base.surf  the object store, one flat namespace
+//
+// The client builds `${TERM_REGISTRY}/<scope>/<name>` for metadata and
+// `${TERM_REGISTRY}/<scope>/<name>/-/<file>.tgz` to publish, so both land
+// on the API. Packages use their native name here, with no `.tree` suffix.
+//
+// The API never serves bytes. Metadata points at the object store, and the
+// client fetches the tarball from there directly.
+export const TERM_REGISTRY = 'https://tool.base.surf'
+
+// The object store. Keys are FLAT: `<id>.<ext>`, where the id is the
+// content hash. No directories, no package name in the path, no version in
+// the path. Two packages that publish byte-identical content share one
+// object, and an object's name proves its content.
+export const OBJECT_STORE = 'https://mesh.base.surf'
+
+// Where a stored object lives. The extension is carried so a store fetch
+// can be content-typed without a lookup.
+export function objectUrl(input: {
+  id: string
+  extension: string
+}): string {
+  return `${OBJECT_STORE}/${input.id}.${input.extension}`
+}
 
 // the default scope -> registry map. any scope not listed falls back to
 // the config's `registry` field (npmjs.org unless overridden).

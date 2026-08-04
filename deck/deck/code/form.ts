@@ -118,7 +118,7 @@ export type FetchConfig = {
   registry: string
   // per-scope registry overrides, npm's `@scope:registry` mechanism.
   // keyed by scope including the leading `@` (e.g. `@term`). the term
-  // registry (`@term` -> https://base.term.surf) is wired by default.
+  // registry (`@term` -> https://tool.base.surf) is wired by default.
   scopeRegistries?: Record<string, string>
   concurrency: number
   offline: boolean

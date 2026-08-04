@@ -58,7 +58,14 @@ export {
   createTarball,
   validateManifest,
 } from './publish'
-export { toRegistryName, toTreeName, parseScope } from './name'
+export {
+  toRegistryName,
+  toTreeName,
+  parseScope,
+  objectUrl,
+  TERM_REGISTRY,
+  OBJECT_STORE,
+} from './name'
 export { auditDependencies } from './audit'
 export type { Advisory, AuditResult } from './audit'
 
