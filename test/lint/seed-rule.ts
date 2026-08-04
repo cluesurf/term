@@ -5,12 +5,12 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { withNativeEnv } from '@cluesurf/make/code/compile/native'
-import { lint } from '@cluesurf/make/code/lint/lint'
-import { loadSeedRules } from '@cluesurf/make/code/lint/seed-rule'
-import type { Source } from '@cluesurf/make/code/compile/load'
+import { parse } from '@term/make/code/parser/tree'
+import { mill } from '@term/make/code/compile/mill'
+import { withNativeEnv } from '@term/make/code/compile/native'
+import { lint } from '@term/make/code/lint/lint'
+import { loadSeedRules } from '@term/make/code/lint/seed-rule'
+import type { Source } from '@term/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const seedRoot = resolvePath(here, '..', '..')

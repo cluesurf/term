@@ -4,8 +4,8 @@
 // browser / rust / swift — the user only ever sees the uniform public API and never names a platform. An import that
 // is already env-qualified (`.../native/node/...`) is left alone. See feedback_stdlib_clean_api_dock_native.
 
-import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
-import type { Program } from '@cluesurf/make/code/compile/node'
+import type { Resolver, Source } from '@term/make/code/compile/load'
+import type { Program } from '@term/make/code/compile/node'
 
 // the platforms a native module can target; an import already under one of these is concrete, not abstract
 export const NATIVE_ENVS = [

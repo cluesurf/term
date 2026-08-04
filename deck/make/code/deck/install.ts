@@ -15,19 +15,19 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { parse } from '@cluesurf/make/code/parser/tree'
+import { parse } from '@term/make/code/parser/tree'
 import type {
   GroupNode,
   NameNode,
   Node,
   RootNode,
-} from '@cluesurf/make/code/parser/tree'
+} from '@term/make/code/parser/tree'
 import {
   parsePackage,
   storePath,
-} from '@cluesurf/make/code/deck/resolve'
-import type { Lockfile } from '@cluesurf/make/code/deck/lock'
-import { serializeLockfile } from '@cluesurf/make/code/deck/lock'
+} from '@term/make/code/deck/resolve'
+import type { Lockfile } from '@term/make/code/deck/lock'
+import { serializeLockfile } from '@term/make/code/deck/lock'
 
 function nameText(name: NameNode): string {
   return name.parts

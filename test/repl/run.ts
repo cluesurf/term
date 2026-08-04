@@ -5,8 +5,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Repl } from '@cluesurf/call/code/walk'
-import type { Source } from '@cluesurf/make/code/compile/load'
+import { Repl } from '@term/call/code/walk'
+import type { Source } from '@term/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')

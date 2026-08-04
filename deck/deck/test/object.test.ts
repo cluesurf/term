@@ -82,7 +82,7 @@ describe('object core', () => {
     const storeRoot = path.join(tmp, 'rt-store')
     const out = path.join(tmp, 'rt-out')
     await fsp.mkdir(path.join(dir, 'code'), { recursive: true })
-    await fsp.writeFile(path.join(dir, 'deck.tree'), 'deck @term/demo\n  mark <0.0.2>\n')
+    await fsp.writeFile(path.join(dir, 'deck.tree'), 'deck @term/demo\n  code <0.0.2>\n')
     await fsp.writeFile(path.join(dir, 'readme.md'), '# demo\n')
     await fsp.writeFile(path.join(dir, 'code', 'video.bin'), prngBytes(120 * 1024, 42))
 
@@ -113,7 +113,7 @@ describe('object core', () => {
     const dir = path.join(tmp, 'bin-pkg')
     const storeRoot = path.join(tmp, 'bin-store')
     await fsp.mkdir(dir, { recursive: true })
-    await fsp.writeFile(path.join(dir, 'deck.tree'), 'deck @term/demo\n  mark <0.0.2>\n')
+    await fsp.writeFile(path.join(dir, 'deck.tree'), 'deck @term/demo\n  code <0.0.2>\n')
     const bin = path.join(dir, 'big.bin')
     await fsp.writeFile(bin, prngBytes(120 * 1024, 7))
 
@@ -146,7 +146,7 @@ describe('object core', () => {
     const dir = path.join(tmp, 'wide-pkg')
     const storeRoot = path.join(tmp, 'wide-store')
     await fsp.mkdir(path.join(dir, 'words'), { recursive: true })
-    await fsp.writeFile(path.join(dir, 'deck.tree'), 'deck @term/demo\n  mark <0.0.2>\n')
+    await fsp.writeFile(path.join(dir, 'deck.tree'), 'deck @term/demo\n  code <0.0.2>\n')
     for (let i = 0; i < 400; i += 1) {
       await fsp.writeFile(
         path.join(dir, 'words', `w${String(i).padStart(4, '0')}.tree`),
@@ -180,7 +180,7 @@ describe('transfer protocol', () => {
   it('delta publish, delta install, branches, and signature enforcement', async () => {
     const pkgDir = path.join(tmp, 'reg-pkg')
     await fsp.mkdir(path.join(pkgDir, 'words'), { recursive: true })
-    await fsp.writeFile(path.join(pkgDir, 'deck.tree'), 'deck @term/lang\n  mark <0.0.2>\n')
+    await fsp.writeFile(path.join(pkgDir, 'deck.tree'), 'deck @term/lang\n  code <0.0.2>\n')
     for (let i = 0; i < 300; i += 1) {
       await fsp.writeFile(
         path.join(pkgDir, 'words', `w${String(i).padStart(4, '0')}.tree`),
@@ -224,7 +224,7 @@ describe('transfer protocol', () => {
 
     // edit one word, publish v0.0.4 as a delta
     await fsp.writeFile(path.join(pkgDir, 'words', 'w0150.tree'), 'word 150\n  gloss <edited>\n')
-    await fsp.writeFile(path.join(pkgDir, 'deck.tree'), 'deck @term/lang\n  mark <0.0.4>\n')
+    await fsp.writeFile(path.join(pkgDir, 'deck.tree'), 'deck @term/lang\n  code <0.0.4>\n')
     const p2 = await publishPackage({
       dir: pkgDir,
       package: '@term/lang',
@@ -290,7 +290,7 @@ describe('transfer protocol', () => {
   it('delta publish and install over real HTTP', async () => {
     const pkgDir = path.join(tmp, 'http-pkg')
     await fsp.mkdir(path.join(pkgDir, 'words'), { recursive: true })
-    await fsp.writeFile(path.join(pkgDir, 'deck.tree'), 'deck @term/lang\n  mark <0.0.2>\n')
+    await fsp.writeFile(path.join(pkgDir, 'deck.tree'), 'deck @term/lang\n  code <0.0.2>\n')
     for (let i = 0; i < 200; i += 1) {
       await fsp.writeFile(
         path.join(pkgDir, 'words', `w${String(i).padStart(4, '0')}.tree`),
@@ -336,7 +336,7 @@ describe('transfer protocol', () => {
       expect(await listFiles(outB)).toEqual(await listFiles(pkgDir))
 
       await fsp.writeFile(path.join(pkgDir, 'words', 'w0100.tree'), 'word 100\n  gloss <edited>\n')
-      await fsp.writeFile(path.join(pkgDir, 'deck.tree'), 'deck @term/lang\n  mark <0.0.4>\n')
+      await fsp.writeFile(path.join(pkgDir, 'deck.tree'), 'deck @term/lang\n  code <0.0.4>\n')
       const p2 = await publishPackage({
         dir: pkgDir,
         package: '@term/lang',

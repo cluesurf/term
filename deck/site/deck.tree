@@ -1,5 +1,7 @@
 
 deck @term/site
-  mark <0.0.14>
-  link @term/base, mark <0.0.x>
-  link @term/bind, mark <0.0.x>
+  head <The Term application framework>
+  code <0.0.14>
+  lock mit
+  link @term/base, code <0.0.x>
+  link @term/bind, code <0.0.x>

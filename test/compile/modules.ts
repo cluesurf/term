@@ -2,10 +2,10 @@
 // entry module imports the cross-module function + type from the helper, and proves the emitted ESM files actually run
 // when wired together (write each module to disk, dynamic-import the entry, call it). Run: npx tsx test/compile/modules.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Source } from '@cluesurf/make/code/compile/load'
-import { hashText } from '@cluesurf/make/code/compile/cache'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { compile } from '@term/make/code/compile/compile'
+import type { Source } from '@term/make/code/compile/load'
+import { hashText } from '@term/make/code/compile/cache'
+import { projectResolver } from '@term/call/code/make'
 import { transform } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'

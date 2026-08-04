@@ -9,7 +9,7 @@
  */
 
 import { parentPort } from 'node:worker_threads'
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 parentPort?.on('message', (text: string) => {
   try {

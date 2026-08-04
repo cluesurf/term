@@ -12,8 +12,8 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { install } from '@cluesurf/make/code/deck/install'
-import { storePath } from '@cluesurf/make/code/deck/resolve'
+import { install } from '@term/make/code/deck/install'
+import { storePath } from '@term/make/code/deck/resolve'
 
 let pass = 0
 let fail = 0

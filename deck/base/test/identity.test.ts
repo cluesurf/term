@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { record, text, ref } from '@/base/make'
-import { datasetOf } from '@/diff/change'
+import { record, text, ref } from '@term/base/code/base/make'
+import { datasetOf } from '@term/base/code/diff/change'
 import {
   referrers,
   isRedirect,
@@ -9,7 +9,7 @@ import {
   mergeRecords,
   splitRecord,
   removeWithAction,
-} from '@/identity/lifecycle'
+} from '@term/base/code/identity/lifecycle'
 
 const A = 'aaaaaaaa-1111-4111-8111-111111111111'
 const B = 'bbbbbbbb-2222-4222-8222-222222222222'

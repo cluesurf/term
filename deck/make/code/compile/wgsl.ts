@@ -8,13 +8,13 @@ import type {
   Program,
   Statement,
   Type,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import {
   exhausted,
   unsupported,
-} from '@cluesurf/make/code/compile/backend'
-import { monomorphize } from '@cluesurf/make/code/ir/monomorphize'
-import { experimentalBanner } from '@cluesurf/make/code/compile/backend-registry'
+} from '@term/make/code/compile/backend'
+import { monomorphize } from '@term/make/code/ir/monomorphize'
+import { experimentalBanner } from '@term/make/code/compile/backend-registry'
 
 function snake(name: string): string {
   return name.replace(/-/g, '_')

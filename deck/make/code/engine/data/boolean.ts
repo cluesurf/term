@@ -2,7 +2,7 @@
 // Kleene / strong three-valued logic). The "unknown" is the don't-care of associative search and the empty cell.
 // Ordinary two-valued boolean is the {-1, +1} subset. One trit, one cell, so a 24-cell dock holds 24 booleans.
 
-import type { Trit } from '@cluesurf/make/code/engine/data/trit'
+import type { Trit } from '@term/make/code/engine/data/trit'
 
 export type Bool3 = Trit // -1 false, 0 unknown, +1 true
 

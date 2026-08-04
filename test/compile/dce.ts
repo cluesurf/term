@@ -2,7 +2,7 @@
 // is dropped from the output -- even the entry module's own public surface. Without an entry point (the library
 // default), every top-level function is kept (its public API). Run: npx tsx test/compile/dce.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

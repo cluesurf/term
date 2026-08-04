@@ -1,5 +1,5 @@
-import type { CollectionKind } from '@/base/type'
-import type { Granularity } from '@/text/diff'
+import type { CollectionKind } from '@term/base/code/base/type'
+import type { Granularity } from '@term/base/code/text/diff'
 
 // The concurrency contract a property declares for concurrent edits. Defined here (with
 // the rest of the schema) so the merge layer can depend on the schema without a cycle.

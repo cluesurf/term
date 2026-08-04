@@ -1,5 +1,5 @@
 
-# Type — headless typography family, ported from the React type components (mesh/deck/face/code/component/type:
+# Type — headless typography family, ported from the React type components (the React type components:
 # index.tsx dispatcher, text.tsx core TypeText, shared.tsx, and the use-text hook hook/use-text.ts).
 #
 # The core `text` zone reproduces React `<TypeText>`: one tag (default span) carrying the resolved font + size +

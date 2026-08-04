@@ -1,9 +1,9 @@
-import type { Mark, RecordNode } from '@/base/type'
-import type { Dataset } from '@/diff/change'
-import { readCommit } from '@/commit/commit'
-import { collectChunkHashes, readDataset } from '@/store/tree'
-import type { ChunkStore } from '@/store/chunk-store'
-import type { ChunkMessage } from '@/sync/chunk-sync'
+import type { Mark, RecordNode } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
+import { readCommit } from '@term/base/code/commit/commit'
+import { collectChunkHashes, readDataset } from '@term/base/code/store/tree'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
+import type { ChunkMessage } from '@term/base/code/sync/chunk-sync'
 
 // Partial replication. Not every replica wants all of history or all of the data. A
 // shallow fetch takes a commit's full state without its ancestry (a snapshot: current

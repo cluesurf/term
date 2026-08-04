@@ -1,7 +1,7 @@
-import type { RecordNode, Value } from '@/base/type'
-import { canonicalizeValue } from '@/canon/canonicalize'
-import { emptyDataset, type Change, type Dataset } from '@/diff/change'
-import { applyChanges } from '@/patch/patch'
+import type { RecordNode, Value } from '@term/base/code/base/type'
+import { canonicalizeValue } from '@term/base/code/canon/canonicalize'
+import { emptyDataset, type Change, type Dataset } from '@term/base/code/diff/change'
+import { applyChanges } from '@term/base/code/patch/patch'
 
 // A projection consumes the change feed, builds a queryable structure, and can
 // rebuild from history. Any read surface (a relational cache, a search index, an
@@ -17,6 +17,23 @@ export interface Projection {
   // the commit hash this projection currently reflects, for lag reporting
   servingCommit(): string | undefined
   setServingCommit(hash: string): void
+}
+
+// The same contract for a projection that lives behind a network call, which a relational
+// or search target does. Kept separate rather than making `Projection` async, because an
+// in-memory projection is genuinely synchronous and forcing a promise on it would make
+// every caller await something that never yields.
+//
+// The commit travels WITH the changes here, unlike `Projection`, where it is set
+// afterwards. A remote projection must record both in one transaction, or a crash between
+// them leaves it either losing a commit or replaying one.
+export interface AsyncProjection {
+  apply(input: {
+    commit: string
+    changes: Array<Change>
+  }): Promise<{ applied: boolean }>
+  serving(): Promise<string | undefined>
+  rebuild(input: { commit: string; dataset: Dataset }): Promise<unknown>
 }
 
 export class MemoryProjection implements Projection {

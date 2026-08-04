@@ -1,8 +1,8 @@
 // Resolution and type-checking tests: confirm the resolver catches unknown names and the checker catches type
 // mismatches and arity errors. Run: npx tsx test/check/run.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { render } from '@cluesurf/make/code/parser/diagnostic'
+import { compile } from '@term/make/code/compile/compile'
+import { render } from '@term/make/code/parser/diagnostic'
 
 let pass = 0
 let fail = 0

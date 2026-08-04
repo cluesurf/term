@@ -4,8 +4,8 @@
 // `origin` records where a variable was solved, for hover / diagnostics. Pure of diagnostics: `unify` returns a
 // boolean, the caller decides how to report a failure. See note/seed/plan/compilation-performance.md (Tier 2).
 
-import type { Type } from '@cluesurf/make/code/compile/node'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
+import type { Type } from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
 
 export class Substitution {
   private readonly bindings = new Map<number, Type>()

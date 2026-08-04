@@ -4,8 +4,8 @@
 // (index.html + app.js). The browser impl calls the real DOM via bind (`document.createElement`, `el.setAttribute`,
 // `parent.appendChild`, ...); no FFI shim is needed. Run: npx tsx test/zone/browser.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'

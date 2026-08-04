@@ -4,9 +4,9 @@
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { compileProject } from '@cluesurf/call/code/make'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { renderDiagnostic } from '@cluesurf/call/code/report'
+import { compileProject } from '@term/call/code/make'
+import { compile } from '@term/make/code/compile/compile'
+import { renderDiagnostic } from '@term/call/code/report'
 
 let pass = 0
 let fail = 0

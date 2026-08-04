@@ -16,26 +16,26 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as net from 'node:net'
 import * as http from 'node:http'
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { expandTemplates } from '@cluesurf/make/code/compile/template'
-import { resolve as resolveNames } from '@cluesurf/make/code/check/resolve'
-import { check } from '@cluesurf/make/code/check/infer'
-import { resolveAsync } from '@cluesurf/make/code/check/async-resolve'
-import { simplify } from '@cluesurf/make/code/ir/simplify'
-import { collectModules } from '@cluesurf/make/code/compile/load'
-import type { Source } from '@cluesurf/make/code/compile/load'
+import { parse } from '@term/make/code/parser/tree'
+import { mill } from '@term/make/code/compile/mill'
+import { expandTemplates } from '@term/make/code/compile/template'
+import { resolve as resolveNames } from '@term/make/code/check/resolve'
+import { check } from '@term/make/code/check/infer'
+import { resolveAsync } from '@term/make/code/check/async-resolve'
+import { simplify } from '@term/make/code/ir/simplify'
+import { collectModules } from '@term/make/code/compile/load'
+import type { Source } from '@term/make/code/compile/load'
 import {
   withNativeEnv,
   nativePrelude,
-} from '@cluesurf/make/code/compile/native'
-import { emitRust } from '@cluesurf/make/code/compile/rust'
+} from '@term/make/code/compile/native'
+import { emitRust } from '@term/make/code/compile/rust'
 import {
   emitKotlin,
   hoistKotlinImports,
-} from '@cluesurf/make/code/compile/kotlin'
-import { emitSwift } from '@cluesurf/make/code/compile/swift'
-import type { Program } from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/kotlin'
+import { emitSwift } from '@term/make/code/compile/swift'
+import type { Program } from '@term/make/code/compile/node'
 
 const baseTree = join(process.cwd(), 'deck', 'base')
 

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import type { RecordNode, Value } from '@/base/type'
-import { canonicalBytes, canonicalValueBytes } from '@/canon/canonicalize'
+import type { RecordNode, Value } from '@term/base/code/base/type'
+import { canonicalBytes, canonicalValueBytes } from '@term/base/code/canon/canonicalize'
 
 // Content addressing. A hash is computed over the canonical DAG-CBOR bytes,
 // never over the .tree text and never over a text rendering of those bytes, so

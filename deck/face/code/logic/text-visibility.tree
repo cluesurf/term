@@ -1,6 +1,6 @@
 
 # Text-visibility machine — the full per-instance font-loading fade / cross-fade state machine, ported 1:1 from the
-# React typography stack (mesh/deck/face/code/hook/use-text.ts + component/type/text.tsx + shared.tsx). Every text node
+# React typography stack (the React text hook + component/type/text.tsx + shared.tsx). Every text node
 # that renders through the Type component drives its own copy of this: it hides until its font status is known, then
 # either snaps to the real font (warm cache / very fast), fades the real font in, or fades a metric-matched fallback in
 # and later cross-fades to the real font when it arrives -- all with real inline opacity + a CSS opacity transition,

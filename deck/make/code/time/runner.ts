@@ -2,18 +2,18 @@
 // against the compiled artifact, and reduces the raw samples to statistics. Benchmarks are zero-argument top-level
 // functions whose name starts with `time-` (e.g. `task time-sort`).
 
-import { toCamel } from '@cluesurf/make/code/compile/typescript'
-import type { Program } from '@cluesurf/make/code/compile/node'
+import { toCamel } from '@term/make/code/compile/typescript'
+import type { Program } from '@term/make/code/compile/node'
 import {
   compileToModule,
   prepareModuleDir,
   runNode,
   cleanupDir,
-} from '@cluesurf/make/code/time/execute'
+} from '@term/make/code/time/execute'
 import {
   computeStats,
   type BenchmarkResult,
-} from '@cluesurf/make/code/time/stats'
+} from '@term/make/code/time/stats'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 

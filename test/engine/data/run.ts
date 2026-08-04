@@ -6,13 +6,13 @@ import {
   tritString,
   fromTritString,
   negateTrits,
-} from '@cluesurf/make/code/engine/data/trit'
-import * as I from '@cluesurf/make/code/engine/data/integer'
-import * as B from '@cluesurf/make/code/engine/data/boolean'
-import * as F from '@cluesurf/make/code/engine/data/float'
-import * as S from '@cluesurf/make/code/engine/data/string'
-import * as A from '@cluesurf/make/code/engine/data/array'
-import * as M from '@cluesurf/make/code/engine/data/map'
+} from '@term/make/code/engine/data/trit'
+import * as I from '@term/make/code/engine/data/integer'
+import * as B from '@term/make/code/engine/data/boolean'
+import * as F from '@term/make/code/engine/data/float'
+import * as S from '@term/make/code/engine/data/string'
+import * as A from '@term/make/code/engine/data/array'
+import * as M from '@term/make/code/engine/data/map'
 
 let pass = 0
 let fail = 0

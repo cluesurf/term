@@ -8,8 +8,8 @@
 // not fire. Drive it with `flush()` after a batch of edits (a file save in watch mode). See
 // note/library/face/tailwind-jit.md.
 
-import { Database } from '@cluesurf/make/code/compile/query'
-import type { Cx, Equals } from '@cluesurf/make/code/compile/query'
+import { Database } from '@term/make/code/compile/query'
+import type { Cx, Equals } from '@term/make/code/compile/query'
 
 // the default change test is STRUCTURAL, not reference (`Object.is`). Query results are usually arrays / records built
 // fresh each run, so a reference compare would fire the effect on every flush (a footgun). Structural compare matches

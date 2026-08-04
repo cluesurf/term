@@ -1,7 +1,7 @@
-import type { Mark, RecordNode } from '@/base/type'
-import type { Dataset } from '@/diff/change'
-import { ref } from '@/base/make'
-import { compareHlc, type Hlc } from '@/merge/clock'
+import type { Mark, RecordNode } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
+import { ref } from '@term/base/code/base/make'
+import { compareHlc, type Hlc } from '@term/base/code/merge/clock'
 
 // Move-aware hierarchy. Records form a forest through a `~parent` reference, and moving a
 // record changes that reference while keeping the record's mark, so a move preserves

@@ -1,6 +1,6 @@
-import type { ChunkStore } from '@/store/chunk-store'
-import type { RefStore } from '@/store/ref-store'
-import { reachableChunks } from '@/gc/gc'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
+import type { RefStore } from '@term/base/code/store/ref-store'
+import { reachableChunks } from '@term/base/code/gc/gc'
 
 // A bundle is a whole repo slice in one transferable object: the refs it names and every
 // chunk reachable from them. It is how base moves history without a live connection, the

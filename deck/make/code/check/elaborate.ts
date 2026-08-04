@@ -18,20 +18,20 @@
 import type {
   Diagnostic,
   Span,
-} from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
   Program,
   Proof,
   Statement,
   Type,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import type {
   Context,
   Term,
   Value,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 import {
   TypeError,
   applyValue,
@@ -53,15 +53,15 @@ import {
   resetMetas,
   showTerm,
   whnf,
-} from '@cluesurf/make/code/check/judge'
-import { terminatingFunctions } from '@cluesurf/make/code/check/totality'
-import { isLinearGoal } from '@cluesurf/make/code/check/holds'
+} from '@term/make/code/check/judge'
+import { terminatingFunctions } from '@term/make/code/check/totality'
+import { isLinearGoal } from '@term/make/code/check/holds'
 import {
   ringEqual,
   ringEqualModulo,
   nonNegativeDifference,
-} from '@cluesurf/make/code/check/ring'
-import { checkFold } from '@cluesurf/make/code/check/induct'
+} from '@term/make/code/check/ring'
+import { checkFold } from '@term/make/code/check/induct'
 
 // ---- term builders ----
 const constant = (name: string): Term => ({ tag: 'const', name })

@@ -6,7 +6,7 @@
 // checks that the relaxation now ranges over all positions, while still REQUIRING reachable branches (soundness).
 // Run: npx tsx test/check/inversion-multi.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

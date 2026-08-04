@@ -3,7 +3,7 @@
 // service it degrades gracefully (reported as unavailable, never a crash). This is the `npm audit` equivalent.
 import { FetchConfig } from './form'
 import { loadLockfile } from './lock'
-import { showMark } from './mark'
+import { showCode } from './code'
 import { makeDefaultFetchConfig } from './fetch'
 import { toRegistryName } from './name'
 
@@ -53,7 +53,7 @@ export async function auditDependencies(input: {
 
   for (const entry of lockfile.decks) {
     const registryName = toRegistryName({ name: entry.name })
-    const version = showMark(entry.mark)
+    const version = showCode(entry.code)
     body[registryName] = [...(body[registryName] ?? []), version]
   }
 

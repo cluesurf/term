@@ -1,4 +1,4 @@
-import type { ChunkStore } from '@/store/chunk-store'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
 
 // A pack gathers many small chunks into one blob with an index, so a store or a transfer
 // holds one large object instead of thousands of tiny ones. It is base's answer to git's

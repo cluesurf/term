@@ -16,7 +16,7 @@ import {
   realRootsBySign,
   hasRealRoot,
   derivative,
-} from '@cluesurf/make/code/check/sturm'
+} from '@term/make/code/check/sturm'
 
 let pass = 0
 let fail = 0

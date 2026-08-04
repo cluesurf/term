@@ -2,15 +2,15 @@
 // HTTP, so the LSP, `seed feed`, and the CLI share one warm compiler instead of each cold-starting. Stays alive until
 // interrupted. See code/dev/daemon.ts.
 
-import { startDaemon } from '@cluesurf/make/code/dev/daemon'
-import type { NativeEnv } from '@cluesurf/make/code/compile/native'
+import { startDaemon } from '@term/make/code/dev/daemon'
+import type { NativeEnv } from '@term/make/code/compile/native'
 import {
   logStep,
   logGood,
   logFail,
   formatError,
   fade,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 export async function callWork(input: {
   root: string

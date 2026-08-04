@@ -9,7 +9,7 @@ import type {
   Statement,
   Type,
   ZoneNode,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 const OP_NAME: Record<string, string> = {
   '+': 'add',

@@ -10,7 +10,7 @@ describe('topologicalSort', () => {
         {
           host: 'cluesurf',
           name: 'a',
-          mark: { major: 1, minor: 0, patch: 0 },
+          code: { major: 1, minor: 0, patch: 0 },
           link: [],
         },
       ],
@@ -19,7 +19,7 @@ describe('topologicalSort', () => {
         {
           host: 'cluesurf',
           name: 'b',
-          mark: { major: 1, minor: 0, patch: 0 },
+          code: { major: 1, minor: 0, patch: 0 },
           link: [],
         },
       ],
@@ -38,11 +38,11 @@ describe('topologicalSort', () => {
         {
           host: 'cluesurf',
           name: 'app',
-          mark: { major: 1, minor: 0, patch: 0 },
+          code: { major: 1, minor: 0, patch: 0 },
           link: [
             {
               name: '@cluesurf/shared',
-              mark: { form: 'wild', major: 1 },
+              code: { form: 'wild', major: 1 },
             },
           ],
         },
@@ -52,7 +52,7 @@ describe('topologicalSort', () => {
         {
           host: 'cluesurf',
           name: 'shared',
-          mark: { major: 1, minor: 0, patch: 0 },
+          code: { major: 1, minor: 0, patch: 0 },
           link: [],
         },
       ],
@@ -69,15 +69,15 @@ describe('topologicalSort', () => {
         {
           host: 'cluesurf',
           name: 'app',
-          mark: { major: 1, minor: 0, patch: 0 },
+          code: { major: 1, minor: 0, patch: 0 },
           link: [
             {
               name: '@cluesurf/web',
-              mark: { form: 'wild', major: 1 },
+              code: { form: 'wild', major: 1 },
             },
             {
               name: '@cluesurf/api',
-              mark: { form: 'wild', major: 1 },
+              code: { form: 'wild', major: 1 },
             },
           ],
         },
@@ -87,11 +87,11 @@ describe('topologicalSort', () => {
         {
           host: 'cluesurf',
           name: 'web',
-          mark: { major: 1, minor: 0, patch: 0 },
+          code: { major: 1, minor: 0, patch: 0 },
           link: [
             {
               name: '@cluesurf/shared',
-              mark: { form: 'wild', major: 1 },
+              code: { form: 'wild', major: 1 },
             },
           ],
         },
@@ -101,11 +101,11 @@ describe('topologicalSort', () => {
         {
           host: 'cluesurf',
           name: 'api',
-          mark: { major: 1, minor: 0, patch: 0 },
+          code: { major: 1, minor: 0, patch: 0 },
           link: [
             {
               name: '@cluesurf/shared',
-              mark: { form: 'wild', major: 1 },
+              code: { form: 'wild', major: 1 },
             },
           ],
         },
@@ -115,7 +115,7 @@ describe('topologicalSort', () => {
         {
           host: 'cluesurf',
           name: 'shared',
-          mark: { major: 1, minor: 0, patch: 0 },
+          code: { major: 1, minor: 0, patch: 0 },
           link: [],
         },
       ],

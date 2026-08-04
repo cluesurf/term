@@ -2,9 +2,9 @@
 // ES module (esbuild `transform`, build-time codegen), write it to a temp directory, and run it with plain `node` in
 // a child process. The benchmark and memory-profile commands both build on this. No `eval`, no interpreter.
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Program } from '@cluesurf/make/code/compile/node'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+import { compile } from '@term/make/code/compile/compile'
+import type { Program } from '@term/make/code/compile/node'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { spawn } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'

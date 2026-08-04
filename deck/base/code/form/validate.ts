@@ -1,8 +1,8 @@
-import type { RecordNode, Value } from '@/base/type'
-import { isMark } from '@/base/mark'
-import { canonicalizeValue } from '@/canon/canonicalize'
-import type { Dataset } from '@/diff/change'
-import type { Constraint, Form, Property, RoleBase, Severity } from '@/form/form'
+import type { RecordNode, Value } from '@term/base/code/base/type'
+import { isMark } from '@term/base/code/base/mark'
+import { canonicalizeValue } from '@term/base/code/canon/canonicalize'
+import type { Dataset } from '@term/base/code/diff/change'
+import type { Constraint, Form, Property, RoleBase, Severity } from '@term/base/code/form/form'
 
 // Validation runs the built-in checks and the form constraints. A `hold` violation
 // is an error (blocks a commit); a `want` violation is a warning. Validation is a

@@ -27,10 +27,10 @@ import {
   cpSync,
 } from 'fs'
 import { buildSync } from 'esbuild'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
-import { printDiagnostics } from '@cluesurf/call/code/report'
-import { nativePrelude } from '@cluesurf/make/code/compile/native'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
+import { printDiagnostics } from '@term/call/code/report'
+import { nativePrelude } from '@term/make/code/compile/native'
 import {
   findProjectRoot,
   findEntry,
@@ -39,14 +39,14 @@ import {
   buildStyles,
   hashAssets,
   writeBuildId,
-} from '@cluesurf/call/code/boot'
-import { projectCache } from '@cluesurf/call/code/cache-store'
+} from '@term/call/code/boot'
+import { projectCache } from '@term/call/code/cache-store'
 import {
   logStep,
   logGood,
   logFail,
   formatError,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 export async function callCast(input: {
   root: string

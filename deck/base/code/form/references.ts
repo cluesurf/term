@@ -1,8 +1,8 @@
-import type { Mark, RecordNode, Value } from '@/base/type'
-import type { Dataset } from '@/diff/change'
-import type { Diagnostic } from '@/form/validate'
-import type { Severity } from '@/form/form'
-import { isOffHistoryRef, offHistoryId, type OffHistoryStore } from '@/offhistory/store'
+import type { Mark, RecordNode, Value } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
+import type { Diagnostic } from '@term/base/code/form/validate'
+import type { Severity } from '@term/base/code/form/form'
+import { isOffHistoryRef, offHistoryId, type OffHistoryStore } from '@term/base/code/offhistory/store'
 
 // Referential integrity across the whole record graph, independent of any form. This
 // catches the dangling references that the `dangle` referential action and off-history

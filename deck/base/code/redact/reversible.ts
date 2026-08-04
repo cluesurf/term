@@ -1,15 +1,15 @@
-import type { RecordNode } from '@/base/type'
-import type { Mark } from '@/base/type'
-import type { Dataset } from '@/diff/change'
-import { makeTombstone } from '@/redact/redact'
+import type { RecordNode } from '@term/base/code/base/type'
+import type { Mark } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
+import { makeTombstone } from '@term/base/code/redact/redact'
 import {
   KeyStore,
   shredEncrypt,
   shredDecrypt,
   type Shredded,
-} from '@/redact/shred'
-import { canonicalizeRecord } from '@/canon/canonicalize'
-import { decodeRecord } from '@/canon/decode'
+} from '@term/base/code/redact/shred'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
+import { decodeRecord } from '@term/base/code/canon/decode'
 
 // Reversible redaction. A plain redaction is immediate and permanent. Some policies
 // want a window in which an author can undo a mistaken redaction, then a point of no

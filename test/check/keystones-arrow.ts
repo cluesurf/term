@@ -11,7 +11,7 @@ import {
   atLeast,
   below,
   proves,
-} from '@cluesurf/make/code/check/refine'
+} from '@term/make/code/check/refine'
 
 const lit = (n: number) => linear({}, n)
 const isquared = linear({ isquared: 1 }) // the square of the new unit i, a free variable

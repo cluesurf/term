@@ -1,8 +1,8 @@
 // L005: a control-flow block with no body (an empty `fork` branch, `walk` loop, or `task`) is almost always a
 // mistake or dead scaffolding. Report only: the right fix (fill it in or delete it) is the author's call.
 
-import type { Statement } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Statement } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 function emptyBlocks(s: Statement): boolean {
   switch (s.form) {

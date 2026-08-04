@@ -11,8 +11,8 @@
  * code/math), so run from the seed install dir.
  */
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
 import { synthesizeContract, verifyContract, type Contract } from './contract'
 import { emitSeed } from './emit'
 

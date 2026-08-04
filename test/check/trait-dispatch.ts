@@ -1,7 +1,7 @@
 // Trait dispatch: a `wear`/`suit` instance's method bodies are preserved (desugared to form-style methods) and a
 // concrete trait-method call dispatches to them, end to end (compile -> run on node). Run: npx tsx test/check/trait-dispatch.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import { transformSync } from 'esbuild'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

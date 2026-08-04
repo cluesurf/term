@@ -8,8 +8,8 @@
 // (see code/call/cache-store.ts). Keys fold in a version, so a toolchain change never serves a stale hit.
 // See note/research/repo/turborepo/07-lessons-for-seed.md and note/seed/plan/compilation-performance.md (Tier 1).
 
-import type { Program } from '@cluesurf/make/code/compile/node'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+import type { Program } from '@term/make/code/compile/node'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 
 // the cache format epoch. Bump to invalidate every persisted entry at once (turborepo's `global_cache_key`). Change
 // this on any change to the cached value shape or the mill/compile pipeline that the per-entry key does not capture.

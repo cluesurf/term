@@ -1,8 +1,8 @@
 // Sum-of-squares (PSD) soundness for nonNegativeDifference: quadratic inequalities that must prove, and indefinite /
 // false ones that must NOT (soundness). Run: npx tsx test/check/sos.ts
 
-import { nonNegativeDifference } from '@cluesurf/make/code/check/ring'
-import type { Expression } from '@cluesurf/make/code/compile/node'
+import { nonNegativeDifference } from '@term/make/code/check/ring'
+import type { Expression } from '@term/make/code/compile/node'
 
 const S = {
   start: { line: 0, column: 0 },

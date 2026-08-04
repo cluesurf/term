@@ -15,29 +15,29 @@
 //
 // The unit result (stubs included) is JSON-serializable, so the cache persists across processes and can be shared.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type {
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { mill } from '@cluesurf/make/code/compile/mill'
+} from '@term/make/code/compile/node'
+import { parse } from '@term/make/code/parser/tree'
+import { mill } from '@term/make/code/compile/mill'
 import {
   expandTemplates,
   collectTemplates,
-} from '@cluesurf/make/code/compile/template'
-import type { Template } from '@cluesurf/make/code/compile/template'
-import { collectModules } from '@cluesurf/make/code/compile/load'
-import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
-import { compileProgram } from '@cluesurf/make/code/compile/compile'
-import type { ModuleEmit } from '@cluesurf/make/code/compile/modules'
-import { stubProgram } from '@cluesurf/make/code/compile/stub'
-import { interfaceHash } from '@cluesurf/make/code/compile/interface'
+} from '@term/make/code/compile/template'
+import type { Template } from '@term/make/code/compile/template'
+import { collectModules } from '@term/make/code/compile/load'
+import type { Resolver, Source } from '@term/make/code/compile/load'
+import { compileProgram } from '@term/make/code/compile/compile'
+import type { ModuleEmit } from '@term/make/code/compile/modules'
+import { stubProgram } from '@term/make/code/compile/stub'
+import { interfaceHash } from '@term/make/code/compile/interface'
 import {
   hashText,
   hashFields,
-} from '@cluesurf/make/code/compile/cache'
-import type { CompileCache } from '@cluesurf/make/code/compile/cache'
+} from '@term/make/code/compile/cache'
+import type { CompileCache } from '@term/make/code/compile/cache'
 
 export type SeparateResult =
   | {

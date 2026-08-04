@@ -14,7 +14,7 @@
  * the AI proposing under the verifier's certification.
  */
 
-import { projectResolver } from '@cluesurf/call/code/make'
+import { projectResolver } from '@term/call/code/make'
 import { autocomplete, isSound } from './pipeline'
 import { hintProposer } from './gap'
 import { type Contract } from './contract'

@@ -7,7 +7,7 @@
 import {
   toTrits,
   type Trit,
-} from '@cluesurf/make/code/engine/data/trit'
+} from '@term/make/code/engine/data/trit'
 
 const TRITS_PER_CODEPOINT = 14 // 3^14 = 4,782,969 > 0x10FFFF (max Unicode scalar)
 

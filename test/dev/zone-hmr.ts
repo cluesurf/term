@@ -3,10 +3,10 @@
 // signal, then drive the real `applyHmr` through an actual re-import of an edited module. The signal value must
 // survive the swap and the freshly compiled view must be the one mounted. Run: npx tsx test/dev/zone-hmr.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
-import { applyHmr } from '@cluesurf/make/code/dev/client'
-import type { HmrEnvironment } from '@cluesurf/make/code/dev/client'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
+import { applyHmr } from '@term/make/code/dev/client'
+import type { HmrEnvironment } from '@term/make/code/dev/client'
 import { transform } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'

@@ -1,6 +1,6 @@
 
 # Layout-slot registry: the Seed port of @cluesurf/face's `useLayoutSlot` / layout-slot manager (React version at
-# mesh/deck/face/code/manager/layout-slot). A module-scoped reactive registry of the eight layout regions -- the six
+# the React layout-slot manager). A module-scoped reactive registry of the eight layout regions -- the six
 # chrome cells (top / bottom x left / center / right) plus the two sidebars (left / right). A page registers a
 # component into a region; the Layout's `region` outlet renders it. The zone runtime is a single app instance (one page
 # mounted at a time), so a module signal per region IS the registry -- no React context, and reactivity replaces

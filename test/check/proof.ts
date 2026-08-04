@@ -2,7 +2,7 @@
 // words. v1 tactics: `melt`/`calm` (definitional equality) and `cite` (a previously proven, named lemma).
 // Run: npx tsx test/check/proof.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

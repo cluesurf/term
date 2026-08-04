@@ -4,13 +4,13 @@ import type {
   Mark,
   RecordNode,
   Value,
-} from '@/base/type'
-import { valueEqual, recordEqual } from '@/base/equal'
-import { canonicalizeValue } from '@/canon/canonicalize'
-import type { Dataset } from '@/diff/change'
-import { merge3Text } from '@/text/merge'
-import { applyFieldPolicy, type FieldPolicyResolver } from '@/merge/policy'
-import type { MergePolicy } from '@/form/form'
+} from '@term/base/code/base/type'
+import { valueEqual, recordEqual } from '@term/base/code/base/equal'
+import { canonicalizeValue } from '@term/base/code/canon/canonicalize'
+import type { Dataset } from '@term/base/code/diff/change'
+import { merge3Text } from '@term/base/code/text/merge'
+import { applyFieldPolicy, type FieldPolicyResolver } from '@term/base/code/merge/policy'
+import type { MergePolicy } from '@term/base/code/form/form'
 
 // Three-way semantic merge. Edits to different fields auto-merge; only concurrent
 // edits to the same scalar field conflict; collections merge by their declared

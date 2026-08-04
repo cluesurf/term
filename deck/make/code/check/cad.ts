@@ -21,7 +21,7 @@
 import {
   cellSamplesBig,
   rationalNonNegativeEverywhere,
-} from '@cluesurf/make/code/check/sturm'
+} from '@term/make/code/check/sturm'
 
 // a bivariate polynomial: `coeff[i][j]` = integer coefficient of `x^i y^j`. Ragged rows are padded as zero.
 export type Bivariate = bigint[][]

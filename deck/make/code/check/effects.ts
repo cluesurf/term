@@ -7,13 +7,13 @@
 //   3. an asynchronous call in a synchronous task must be awaited (otherwise its result escapes unhandled).
 // Browser-safe, no host APIs.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 // the inferred effect row of each function: the set of effects it may perform. `async` is the marker effect
 // (resolved at an await, so it does not propagate). `throw` propagates transitively through the call graph (a

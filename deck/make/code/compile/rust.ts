@@ -10,22 +10,22 @@ import type {
   Program,
   Statement,
   Type,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import {
   collectBinds,
   renderBind,
   bindGap,
   bindImports,
   referencedBinds,
-} from '@cluesurf/make/code/compile/bind'
+} from '@term/make/code/compile/bind'
 import {
   ARRAY_OP_BOUND,
   collectionCall,
   collectionRead,
   exhausted,
   unsupported,
-} from '@cluesurf/make/code/compile/backend'
-import type { CollectionOp } from '@cluesurf/make/code/compile/backend'
+} from '@term/make/code/compile/backend'
+import type { CollectionOp } from '@term/make/code/compile/backend'
 
 // `self` is fine in Rust as a name only in methods; as a free identifier rename it. Names snake_case.
 function vname(name: string): string {

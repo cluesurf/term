@@ -2,13 +2,13 @@
 // that blames where each side's variable was first fixed. Extracted from the inference closure as a component of the
 // modular checker (a factory over the substitution + diagnostics sink). See note/seed/plan/compilation-performance.md (Tier 2).
 
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Diagnostic,
   Span,
-} from '@cluesurf/make/code/parser/diagnostic'
-import type { Type } from '@cluesurf/make/code/compile/node'
-import { showType } from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/parser/diagnostic'
+import type { Type } from '@term/make/code/compile/node'
+import { showType } from '@term/make/code/compile/node'
 
 export type Expect = (
   actual: Type,

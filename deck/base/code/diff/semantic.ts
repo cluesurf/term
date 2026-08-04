@@ -1,7 +1,7 @@
-import type { Mark, RecordNode } from '@/base/type'
-import type { Dataset } from '@/diff/change'
-import { parentOf } from '@/identity/tree'
-import { diffValues, type ValueDiff } from '@/diff/value-diff'
+import type { Mark, RecordNode } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
+import { parentOf } from '@term/base/code/identity/tree'
+import { diffValues, type ValueDiff } from '@term/base/code/diff/value-diff'
 
 // A semantic diff of the record graph. Where the field-level diff (see ./diff) records
 // raw field.set and field.remove, this classifies a change the way a person reads it:

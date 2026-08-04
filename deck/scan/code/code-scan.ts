@@ -4,8 +4,8 @@
 
 import fsp from 'fs/promises'
 import path from 'path'
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { mill } from '@cluesurf/make/code/compile/mill'
+import { parse } from '@term/make/code/parser/tree'
+import { mill } from '@term/make/code/compile/mill'
 import type { CodeFinding } from './form'
 import type { Rule } from './rule'
 import { runRules } from './rule'

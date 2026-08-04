@@ -1,6 +1,6 @@
 
 # Grid fit — the pure responsive-column algorithm, ported faithfully from the React grid's `computeFit`
-# (mesh/deck/face/code/component/grid/shared.ts). Picks the largest column count whose item width still meets
+# (the React grid components). Picks the largest column count whose item width still meets
 # `min-width`, capped by `max-columns`, `child-count`, and `max-width`. Pure logic (no DOM), so it is testable and
 # reused by every grid variant. The container-width input comes from a ResizeObserver binding (a dom primitive, the
 # measured/virtual variants' remaining piece); CSS-grid layout needs only this math + a class.

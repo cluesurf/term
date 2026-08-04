@@ -10,21 +10,21 @@ import { rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import * as path from 'node:path'
 import { buildSync } from 'esbuild'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { emitTypeScript } from '@term/make/code/compile/typescript'
 import type {
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import {
   processDef,
   buildDefContext,
-} from '@cluesurf/make/code/compile/def-pass'
+} from '@term/make/code/compile/def-pass'
 import type {
   DefContext,
   DefOutput,
-} from '@cluesurf/make/code/compile/def-pass'
-import type { Scope } from '@cluesurf/make/code/check/resolve'
+} from '@term/make/code/compile/def-pass'
+import type { Scope } from '@term/make/code/check/resolve'
 
 type FunctionDef = Extract<Statement, { form: 'function' }>
 

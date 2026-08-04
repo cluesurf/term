@@ -1,4 +1,4 @@
-import type { Change } from '@/diff/change'
+import type { Change } from '@term/base/code/diff/change'
 
 // A mark-to-commits index: which commits touched a given record. base already stores
 // each commit's field-level change set, so this is built by reading those sets rather

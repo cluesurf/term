@@ -1,12 +1,12 @@
 // Dev HMR test: the module graph (importer edges, prune detection) and the propagation algorithm (self-accept,
 // dep-accept, bubble-to-ancestor, dead-end full-reload, cycles). Pure, no server. Run: npx tsx test/dev/hmr.ts
 
-import { ModuleGraph } from '@cluesurf/make/code/dev/module-graph'
-import type { ModuleNode } from '@cluesurf/make/code/dev/module-graph'
+import { ModuleGraph } from '@term/make/code/dev/module-graph'
+import type { ModuleNode } from '@term/make/code/dev/module-graph'
 import {
   propagateUpdate,
   affectedModules,
-} from '@cluesurf/make/code/dev/hmr'
+} from '@term/make/code/dev/hmr'
 
 let pass = 0
 let fail = 0

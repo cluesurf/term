@@ -1,6 +1,6 @@
 
 # Content — the prose typography family, ported from the React content components
-# (mesh/deck/face/code/component/content.tsx). Each component is a thin element wrapper that renders the EXACT Tailwind
+# (the React content component). Each component is a thin element wrapper that renders the EXACT Tailwind
 # class string the React version computes, with the surface-aware `themeClass(role, level, 'colors')` calls resolved at
 # surface level 1 (the default level clue.surf home sits on). The React version wraps children in the `T` typography
 # shell (which only adds a leading class on the element); here the class string already carries every visible utility,

@@ -1,6 +1,8 @@
 
 deck @term/face
-  mark <0.0.6>
-  link @term/base, mark <0.0.x>
-  link @term/bind, mark <0.0.x>
-  link @term/site, mark <0.0.x>
+  head <Headless user interface components for Term>
+  code <0.0.6>
+  lock mit
+  link @term/base, code <0.0.x>
+  link @term/bind, code <0.0.x>
+  link @term/site, code <0.0.x>

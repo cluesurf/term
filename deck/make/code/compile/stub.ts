@@ -10,7 +10,7 @@
 import type {
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 // the stub of one checked program: its public, body-less surface, in original order
 export function stubProgram(program: Program): Program {

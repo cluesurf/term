@@ -1,7 +1,7 @@
 // L015: a record literal (`make <form>`) that sets the same field twice. The later value silently wins, so the
 // earlier one is dead -- almost always a copy-paste or a typo.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noDuplicateKeys: Rule = {
   name: 'no-duplicate-keys',

@@ -1,5 +1,5 @@
 // An object-storage interface modeled on how mesh talks to Cloudflare R2 through the
-// S3 SDK (mesh/deck/back/code/tool/cloudflare/r2.ts): put, get, head, delete, list over
+// S3 SDK (the platform R2 client): put, get, head, delete, list over
 // a flat key namespace. base depends on this interface, not on the SDK, so the same
 // chunk store runs over R2, S3, a filesystem, or the in-memory stub below. Bytes are
 // carried as strings, matching the synchronous ChunkStore, so the canonical encoders

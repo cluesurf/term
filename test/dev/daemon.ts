@@ -2,7 +2,7 @@
 // diagnostics, re-analyze after an edit (still warm, re-checked incrementally), report a real type error, and drop a
 // document. Proves the shared warm-analyzer process end to end. Run: npx tsx test/dev/daemon.ts
 
-import { startDaemon } from '@cluesurf/make/code/dev/daemon'
+import { startDaemon } from '@term/make/code/dev/daemon'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 

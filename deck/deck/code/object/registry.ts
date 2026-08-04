@@ -18,7 +18,8 @@
 import { hashObject, isObjectId } from './hash'
 import { ObjectStore } from './store'
 import { RefStore } from './refs'
-import { commitClosure, buildManifest, Manifest } from './graph'
+import { buildManifest, Manifest } from './graph'
+import { reachableFromCommit } from './release'
 import { verifyId } from './sign'
 import { openPack } from './pack'
 
@@ -191,7 +192,7 @@ export async function publishCommit(input: {
   }
 
   // 2. verify the commit's whole closure is present in the store
-  const closure = await commitClosure({
+  const closure = await reachableFromCommit({
     commitId: input.commit,
     store: input.store,
   })
@@ -297,6 +298,7 @@ export function directRegistry(input: {
       return buildManifest({
         commitId: commit,
         ref: refLabel(args.ref),
+        package: args.package,
         store: input.store,
       })
     },

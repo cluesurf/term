@@ -1,15 +1,15 @@
-import type { RecordNode } from '@/base/type'
-import type { Dataset } from '@/diff/change'
-import type { Form, RoleBase } from '@/form/form'
-import { toCanonValue, canonicalString } from '@/canon/json'
-import { fromCanonValue } from '@/canon/json'
-import type { Canon } from '@/canon/json'
+import type { RecordNode } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
+import type { Form, RoleBase } from '@term/base/code/form/form'
+import { toCanonValue, canonicalString } from '@term/base/code/canon/json'
+import { fromCanonValue } from '@term/base/code/canon/json'
+import type { Canon } from '@term/base/code/canon/json'
 import {
   offHistoryRef,
   offHistoryId,
   isOffHistoryRef,
   type OffHistoryStore,
-} from '@/offhistory/store'
+} from '@term/base/code/offhistory/store'
 
 // Sensitivity routing. A form marks a property sensitive with the `seal` constraint
 // (`hold('seal')`). A sealed field's value is stored off-history, in a mutable side

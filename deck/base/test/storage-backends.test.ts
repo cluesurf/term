@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { canonicalizeRecord } from '@/canon/canonicalize'
-import { decodeRecord } from '@/canon/decode'
-import { record, text } from '@/base/make'
-import { MemoryObjectStore } from '@/store/object-store'
-import { R2ChunkStore, chunkKey } from '@/store/r2-chunk-store'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
+import { decodeRecord } from '@term/base/code/canon/decode'
+import { record, text } from '@term/base/code/base/make'
+import { MemoryObjectStore } from '@term/base/code/store/object-store'
+import { R2ChunkStore, chunkKey } from '@term/base/code/store/r2-chunk-store'
 import {
   CockroachRefStore,
   PostgresRefStore,
   MemorySqlClient,
   DEFAULT_REF_COLUMNS,
-} from '@/store/sql-ref-store'
+} from '@term/base/code/store/sql-ref-store'
 
 const M1 = '11111111-1111-4111-8111-111111111111'
 

@@ -13,7 +13,7 @@ import {
   atLeast,
   below,
   proves,
-} from '@cluesurf/make/code/check/refine'
+} from '@term/make/code/check/refine'
 
 let pass = 0
 let fail = 0

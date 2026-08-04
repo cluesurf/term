@@ -3,13 +3,13 @@
 // (8 <= dimension), and antisymmetry of the order forces it to equal 8. The proof is antisymmetry applied to the
 // two pressures: a real kernel proof term the sound kernel checks. Run: npx tsx test/check/pinch-judge.ts
 
-import type { Term } from '@cluesurf/make/code/check/judge'
+import type { Term } from '@term/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   litLevel,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 
 const v = (index: number): Term => ({ tag: 'var', index })
 const kc = (name: string): Term => ({ tag: 'const', name })

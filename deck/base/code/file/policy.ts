@@ -1,7 +1,7 @@
-import type { FileConfig, RoleBase } from '@/form/form'
-import { globMatcher, matchesGlob } from '@/file/glob'
-import { diffText, type Granularity, type Hunk } from '@/text/diff'
-import { merge3Text, type TextMerge } from '@/text/merge'
+import type { FileConfig, RoleBase } from '@term/base/code/form/form'
+import { globMatcher, matchesGlob } from '@term/base/code/file/glob'
+import { diffText, type Granularity, type Hunk } from '@term/base/code/text/diff'
+import { merge3Text, type TextMerge } from '@term/base/code/text/merge'
 
 // Applies a `role base`'s file rules: which files are opaque (never diffed, versioned
 // as whole blobs) and, for the rest, at what granularity to diff and merge. This is

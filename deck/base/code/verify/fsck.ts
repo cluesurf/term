@@ -1,7 +1,7 @@
-import { hashBytes } from '@/canon/hash'
-import { parseCommit } from '@/commit/commit'
-import { treeNodeRefs } from '@/store/tree'
-import type { ChunkStore } from '@/store/chunk-store'
+import { hashBytes } from '@term/base/code/canon/hash'
+import { parseCommit } from '@term/base/code/commit/commit'
+import { treeNodeRefs } from '@term/base/code/store/tree'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
 
 // Integrity verification, base's `fsck`. Because every object (commit, tree node, record
 // chunk, change set) is content-addressed, integrity is one uniform check: a chunk is

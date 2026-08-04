@@ -11,9 +11,9 @@
 import { join } from 'node:path'
 import { readFileSync, existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Source } from '@cluesurf/make/code/compile/load'
-import type { Statement } from '@cluesurf/make/code/compile/node'
+import { compile } from '@term/make/code/compile/compile'
+import type { Source } from '@term/make/code/compile/load'
+import type { Statement } from '@term/make/code/compile/node'
 
 const baseTree = join(process.cwd(), 'deck', 'base')
 

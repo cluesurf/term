@@ -4,8 +4,8 @@
 // `substGenerics` substitutes a form's generic names with concrete types (pure, no substitution needed).
 // See note/seed/plan/compilation-performance.md (Tier 2).
 
-import type { Type } from '@cluesurf/make/code/compile/node'
-import type { Substitution } from '@cluesurf/make/code/check/substitution'
+import type { Type } from '@term/make/code/compile/node'
+import type { Substitution } from '@term/make/code/check/substitution'
 
 // deeply resolve a type (so array<var> becomes array<concrete> for nice output)
 export function zonk(type: Type, sub: Substitution): Type {

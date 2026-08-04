@@ -1,5 +1,5 @@
 
-# The Term site-asset accessor, the `@term/site` port of the React `@cluesurf/site-mesh/code/base/asset.ts`. It
+# The Term site-asset accessor, the `@term/site` port of the React the React site-asset accessor. It
 # resolves a logical asset path (`/CrowMark.otf`, `/logo.png`) to its current content-hashed immutable URL on
 # `site.clue.surf` -- the SAME host + `cluesurfsite` R2 bucket the React sites use, so a Term site's fonts / logos /
 # images resolve to the same hashed CDN objects. Pages / components consume it: `load @term/site/code/base/asset/asset`
@@ -15,7 +15,7 @@
 
 dock load
   load <global:asset>, name asset
-  mark native
+  note native
 
 # Resolve a logical asset path to its current hashed URL on site.clue.surf. Throws if the asset is not in the
 # manifest (matching getSiteAssetPath), so a misspelled path fails loudly instead of producing a broken URL.

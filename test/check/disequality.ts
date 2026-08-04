@@ -6,7 +6,7 @@
 // that is NOT a tautology (`n != 0` for a natural n, which could be 0) is rejected, and a CONSTRUCTOR disequality is
 // left to the kernel's no-confusion (untouched). Run: npx tsx test/check/disequality.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

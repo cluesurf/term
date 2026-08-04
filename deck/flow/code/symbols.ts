@@ -9,11 +9,11 @@ import type {
   Program,
   Statement,
   Type,
-} from '@cluesurf/make/code/compile/node'
-import { showType } from '@cluesurf/make/code/compile/node'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
-import type { LspPosition } from '@cluesurf/flow/code/analyze'
-import { within } from '@cluesurf/flow/code/analyze'
+} from '@term/make/code/compile/node'
+import { showType } from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
+import type { LspPosition } from '@term/flow/code/analyze'
+import { within } from '@term/flow/code/analyze'
 
 export type SymbolKind =
   | 'function'

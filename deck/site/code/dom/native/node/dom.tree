@@ -17,7 +17,7 @@ load ../../view
 
 dock load
   load <global:html>, name doc
-  mark native
+  note native
 
 form element
   link tag, like text

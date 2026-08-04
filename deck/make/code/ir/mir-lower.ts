@@ -11,8 +11,8 @@ import type {
   Statement,
   Expression,
   Type,
-} from '@cluesurf/make/code/compile/node'
-import type { Inst } from '@cluesurf/make/code/ir/perceus'
+} from '@term/make/code/compile/node'
+import type { Inst } from '@term/make/code/ir/perceus'
 
 function isHeapType(type?: Type): boolean {
   if (!type) {

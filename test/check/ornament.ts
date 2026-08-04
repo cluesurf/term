@@ -6,7 +6,7 @@
 // list, so the indexed family really is the unindexed one decorated with a recomputable measure. Soundness control: a
 // wrong recovered index is rejected. Run: npx tsx test/check/ornament.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

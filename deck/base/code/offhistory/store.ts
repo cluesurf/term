@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import type { Value } from '@/base/type'
+import type { Value } from '@term/base/code/base/type'
 
 // Off-history two-tier storage. The content-addressed history is immutable: once a
 // value is committed it can never be truly erased, only redacted or crypto-shredded.

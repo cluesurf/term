@@ -1,11 +1,11 @@
 // Perceus / FBIP tests: precise dup/drop insertion from last-use, and in-place reuse. Run: npx tsx test/ir/perceus.ts
 
-import type { Inst } from '@cluesurf/make/code/ir/perceus'
+import type { Inst } from '@term/make/code/ir/perceus'
 import {
   perceus,
   perceusControl,
   showInst,
-} from '@cluesurf/make/code/ir/perceus'
+} from '@term/make/code/ir/perceus'
 
 let pass = 0
 let fail = 0

@@ -2,8 +2,8 @@
 // dispatcher. Editors launch this with `--stdio`. Everything interesting lives in server.ts (logic) and protocol.ts
 // (framing); this file only owns the real streams.
 
-import { LanguageServer } from '@cluesurf/flow/code/server'
-import { MessageReader, encode } from '@cluesurf/flow/code/protocol'
+import { LanguageServer } from '@term/flow/code/server'
+import { MessageReader, encode } from '@term/flow/code/protocol'
 
 function main(): void {
   const server = new LanguageServer()

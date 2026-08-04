@@ -12,7 +12,7 @@ import {
 } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
+import type { Resolver, Source } from '@term/make/code/compile/load'
 
 // resolve `@cluesurf/seed/...` imports to the stdlib that ships with this package, if it can be found on disk. The
 // stdlib is `deck/base` under the seed package root. We walk up from this module's directory looking for it, rather

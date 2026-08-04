@@ -3,8 +3,8 @@
 // the signature-firewall pattern. Plus the async additions: in-flight dedup, cycle detection, and that concurrent
 // (interleaved) evaluation produces the same recompute counts as serial. Run: npx tsx test/compile/query.ts
 
-import { Database, LOW, HIGH } from '@cluesurf/make/code/compile/query'
-import type { Cx } from '@cluesurf/make/code/compile/query'
+import { Database, LOW, HIGH } from '@term/make/code/compile/query'
+import type { Cx } from '@term/make/code/compile/query'
 
 let pass = 0
 let fail = 0

@@ -1,5 +1,5 @@
-import type { RecordNode, Value } from '@/base/type'
-import type { Dataset } from '@/diff/change'
+import type { RecordNode, Value } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
 
 // Schema migration. A form changes and existing records must move to the new shape.
 // Migrations are declarative, idempotent operations, so they can be applied lazily

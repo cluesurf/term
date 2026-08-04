@@ -6,12 +6,12 @@
 import type {
   Severity,
   Span,
-} from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 // a source replacement: the editor swaps the text in `span` for `text`. The unit of every autofix and of the
 // formatter's output, so the language server applies both the same way.

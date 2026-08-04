@@ -4,12 +4,12 @@
 // trait model (structural, no orphan-coherence machinery). See note/research/vibe/computation/plans/04-typecheck.md.
 // Resolving which instance to pass at a call site (and monomorphization) is the deeper continuation.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import {
   diagnose,
   nearest,
-} from '@cluesurf/make/code/parser/diagnostic'
-import type { Program } from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/parser/diagnostic'
+import type { Program } from '@term/make/code/compile/node'
 
 export function checkTraits(
   program: Program,

@@ -13,8 +13,8 @@ import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { splitTopLevel } from '@cluesurf/make/code/compile/incremental-parse'
-import { splitStreamingToArray, streamFileBlocks } from '@cluesurf/make/code/compile/stream'
+import { splitTopLevel } from '@term/make/code/compile/incremental-parse'
+import { splitStreamingToArray, streamFileBlocks } from '@term/make/code/compile/stream'
 
 let pass = 0
 let fail = 0

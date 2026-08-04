@@ -4,8 +4,8 @@
 // is the bare condition sliced verbatim; the negating shape (`true` in the else) is reported without a fix because the
 // rewrite needs a `fork lack` wrapper.
 
-import type { Statement } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Statement } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 // the single statement of a one-statement block, or undefined
 function onlyStatement(body: Statement[]): Statement | undefined {

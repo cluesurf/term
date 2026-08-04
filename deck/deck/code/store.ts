@@ -62,7 +62,7 @@ export async function storeFile(input: {
 export async function storeDeckMeta(input: {
   registry: string
   name: string
-  mark: string
+  code: string
   data: string
 }): Promise<void> {
   const dir = path.join(
@@ -70,7 +70,7 @@ export async function storeDeckMeta(input: {
     'link',
     input.registry,
     input.name,
-    input.mark,
+    input.code,
   )
 
   await fsp.mkdir(dir, { recursive: true })
@@ -80,14 +80,14 @@ export async function storeDeckMeta(input: {
 export async function loadDeckMeta(input: {
   registry: string
   name: string
-  mark: string
+  code: string
 }): Promise<string | undefined> {
   const file = path.join(
     getDeckDir(),
     'link',
     input.registry,
     input.name,
-    input.mark,
+    input.code,
     'deck.tree',
   )
 

@@ -3,7 +3,7 @@
 // syntax (`meet` already existed). Soundness: a conjunction with a false conjunct must NOT be discharged.
 // Run: npx tsx test/check/connective-goals.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

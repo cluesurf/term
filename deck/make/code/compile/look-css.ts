@@ -26,8 +26,8 @@
 // The value renderer accepts both `text <x>` (old) and bare / `<x>` / `tint ...` / list / function (new), so a sheet
 // can migrate rule by rule.
 
-import { parse } from '@cluesurf/make/code/parser/tree'
-import type { GroupNode, Node } from '@cluesurf/make/code/parser/tree'
+import { parse } from '@term/make/code/parser/tree'
+import type { GroupNode, Node } from '@term/make/code/parser/tree'
 
 // ── tree accessors (mirror mill.ts) ───────────────────────────────────────────
 

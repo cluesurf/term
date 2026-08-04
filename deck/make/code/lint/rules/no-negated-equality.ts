@@ -3,7 +3,7 @@
 // equality is spelled as a nested call in the source (no inline operator token to flip), and the inline call form the
 // rewrite would need does not round-trip reliably, so a fix could corrupt the operands. The author makes the swap.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noNegatedEquality: Rule = {
   name: 'no-negated-equality',

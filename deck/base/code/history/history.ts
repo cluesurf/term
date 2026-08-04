@@ -1,8 +1,8 @@
-import type { Dataset } from '@/diff/change'
-import type { RecordNode, Value } from '@/base/type'
-import { canonicalizeValue } from '@/canon/canonicalize'
-import { MarkIndex, marksTouched } from '@/lookup/mark-index'
-import type { Repository } from '@/repo/repo'
+import type { Dataset } from '@term/base/code/diff/change'
+import type { RecordNode, Value } from '@term/base/code/base/type'
+import { canonicalizeValue } from '@term/base/code/canon/canonicalize'
+import { MarkIndex, marksTouched } from '@term/base/code/lookup/mark-index'
+import type { Repository } from '@term/base/code/repo/repo'
 
 // History operations over the commit graph: who last set each field of a record
 // (blame), when a record changed (record history), and a binary search for the first

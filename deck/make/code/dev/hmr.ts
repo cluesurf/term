@@ -7,7 +7,7 @@
 import type {
   ModuleGraph,
   ModuleNode,
-} from '@cluesurf/make/code/dev/module-graph'
+} from '@term/make/code/dev/module-graph'
 
 // one hot update: re-import `accepted` (the changed module's URL) and run the accept callback registered at `boundary`
 export interface HmrUpdate {

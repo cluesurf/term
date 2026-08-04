@@ -4,8 +4,8 @@
 import {
   type BenchmarkResult,
   formatDuration,
-} from '@cluesurf/make/code/time/stats'
-import { type Suite } from '@cluesurf/make/code/time/output'
+} from '@term/make/code/time/stats'
+import { type Suite } from '@term/make/code/time/output'
 
 // percent change beyond which a difference is reported as a regression / improvement rather than noise
 const SIGNIFICANT_PCT = 5

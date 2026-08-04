@@ -1,12 +1,12 @@
 // Monomorphization tests: a generic function called at two concrete types becomes two specialized functions, the
 // generic original is dropped, and the calls are rewritten. Run: npx tsx test/ir/monomorphize.ts
 
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { resolve } from '@cluesurf/make/code/check/resolve'
-import { check } from '@cluesurf/make/code/check/infer'
-import { monomorphize } from '@cluesurf/make/code/ir/monomorphize'
-import type { Program } from '@cluesurf/make/code/compile/node'
+import { parse } from '@term/make/code/parser/tree'
+import { mill } from '@term/make/code/compile/mill'
+import { resolve } from '@term/make/code/check/resolve'
+import { check } from '@term/make/code/check/infer'
+import { monomorphize } from '@term/make/code/ir/monomorphize'
+import type { Program } from '@term/make/code/compile/node'
 
 let pass = 0
 let fail = 0

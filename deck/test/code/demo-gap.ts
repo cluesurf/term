@@ -11,7 +11,7 @@
  * Pure node + tsx, deterministic.
  */
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import { gapsFromDiagnostics, showGap } from './checker-gap'
 
 let pass = 0

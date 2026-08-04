@@ -7,7 +7,7 @@
 import type {
   Expression,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 export type Bind = Extract<Statement, { form: 'bind' }>
 

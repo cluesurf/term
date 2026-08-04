@@ -15,7 +15,7 @@ import {
   circRec,
   reflPath,
   type Term,
-} from '@cluesurf/make/code/check/cubical'
+} from '@term/make/code/check/cubical'
 
 let pass = 0
 let fail = 0

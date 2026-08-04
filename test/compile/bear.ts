@@ -2,8 +2,8 @@
 // imports the bearing module sees them. This is how the native bindings (bind.tree) surface a platform's types: each
 // wrapper leads with a run of `bear @...` lines. Run: npx tsx test/compile/bear.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Source } from '@cluesurf/make/code/compile/load'
+import { compile } from '@term/make/code/compile/compile'
+import type { Source } from '@term/make/code/compile/load'
 
 let pass = 0
 let fail = 0

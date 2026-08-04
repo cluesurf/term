@@ -3,9 +3,9 @@
 // Asserts the schema is created, posts persist, list returns them in order, and get-by-id reads one back.
 // Run: npx tsx test/site/blog-db.ts   (set DATABASE_URL to override the connection)
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
-import { nativePrelude } from '@cluesurf/make/code/compile/native'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
+import { nativePrelude } from '@term/make/code/compile/native'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'

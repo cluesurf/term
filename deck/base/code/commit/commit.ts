@@ -1,6 +1,6 @@
-import { canonicalString } from '@/canon/json'
-import type { ChunkStore } from '@/store/chunk-store'
-import { signCommit, verifyCommit } from '@/access/sign'
+import { canonicalString } from '@term/base/code/canon/json'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
+import { signCommit, verifyCommit } from '@term/base/code/access/sign'
 
 // A commit records more than a message: the record-tree root it names, its parents,
 // authorship, the reason and sources behind the change, and the validation result.

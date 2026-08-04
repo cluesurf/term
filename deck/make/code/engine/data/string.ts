@@ -6,7 +6,7 @@
 import {
   toTrits,
   type Trit,
-} from '@cluesurf/make/code/engine/data/trit'
+} from '@term/make/code/engine/data/trit'
 
 export type Rope =
   | { form: 'leaf'; text: string; length: number }

@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { record, text, integer, ref } from '@/base/make'
-import type { RecordNode } from '@/base/type'
-import { datasetOf, emptyDataset } from '@/diff/change'
-import { diffDataset } from '@/diff/diff'
-import { query, QueryableProjection } from '@/query/query'
-import { OrderedIndex } from '@/query/ordered-index'
-import { ReferenceIndex } from '@/lookup/reference-index'
-import { removeWithAction } from '@/identity/lifecycle'
+import { record, text, integer, ref } from '@term/base/code/base/make'
+import type { RecordNode } from '@term/base/code/base/type'
+import { datasetOf, emptyDataset } from '@term/base/code/diff/change'
+import { diffDataset } from '@term/base/code/diff/diff'
+import { query, QueryableProjection } from '@term/base/code/query/query'
+import { OrderedIndex } from '@term/base/code/query/ordered-index'
+import { ReferenceIndex } from '@term/base/code/lookup/reference-index'
+import { removeWithAction } from '@term/base/code/identity/lifecycle'
 
 const mk = (i: number): string =>
   `${i + 1}0000000-0000-4000-8000-000000000000`

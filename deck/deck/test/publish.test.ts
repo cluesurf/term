@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validateManifest } from '../code/publish'
+import { validateManifest } from '../code/manifest'
 import { DeckManifest } from '../code/form'
 
 describe('validateManifest', () => {
@@ -7,7 +7,7 @@ describe('validateManifest', () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: 'seed',
-      mark: { major: 1, minor: 0, patch: 2 },
+      code: { major: 1, minor: 0, patch: 2 },
       link: [],
     }
     const errors = await validateManifest({ manifest })
@@ -18,7 +18,7 @@ describe('validateManifest', () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: '',
-      mark: { major: 1, minor: 0, patch: 2 },
+      code: { major: 1, minor: 0, patch: 2 },
       link: [],
     }
     const errors = await validateManifest({ manifest })
@@ -29,7 +29,7 @@ describe('validateManifest', () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: 'seed',
-      mark: { major: 0, minor: 0, patch: 0 },
+      code: { major: 0, minor: 0, patch: 0 },
       link: [],
     }
     const errors = await validateManifest({ manifest })
@@ -40,7 +40,7 @@ describe('validateManifest', () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: 'seed',
-      mark: { major: 1, minor: 0, patch: 3 },
+      code: { major: 1, minor: 0, patch: 3 },
       link: [],
     }
     const errors = await validateManifest({ manifest })
@@ -53,7 +53,7 @@ describe('validateManifest', () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: 'seed',
-      mark: { major: 1, minor: 0, patch: 4 },
+      code: { major: 1, minor: 0, patch: 4 },
       link: [],
     }
     const errors = await validateManifest({ manifest })

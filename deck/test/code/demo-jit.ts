@@ -2,13 +2,13 @@
 // used-class extraction from the milled program, the JIT catalog filter, the backdated `usedClasses` query, and the
 // side-effect subscription layer. Run: `npx tsx deck/test/code/demo-jit.ts`. See note/library/face/tailwind-jit.md.
 
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { expandTemplates } from '@cluesurf/make/code/compile/template'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { collectUsedClasses } from '@cluesurf/make/code/compile/used-classes'
-import { compileLookCss } from '@cluesurf/make/code/compile/look-css'
-import { QueryCompiler } from '@cluesurf/make/code/compile/incremental'
-import { Subscriptions } from '@cluesurf/make/code/compile/subscribe'
+import { parse } from '@term/make/code/parser/tree'
+import { expandTemplates } from '@term/make/code/compile/template'
+import { mill } from '@term/make/code/compile/mill'
+import { collectUsedClasses } from '@term/make/code/compile/used-classes'
+import { compileLookCss } from '@term/make/code/compile/look-css'
+import { QueryCompiler } from '@term/make/code/compile/incremental'
+import { Subscriptions } from '@term/make/code/compile/subscribe'
 
 let pass = 0
 let fail = 0

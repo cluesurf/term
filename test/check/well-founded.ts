@@ -6,7 +6,7 @@
 // removes the manual fuel argument -- is the research-grade completion; it needs a dependent, indexed, higher-order
 // constructor.) Soundness control: a wrong gcd value is rejected. Run: npx tsx test/check/well-founded.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

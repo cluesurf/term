@@ -4,7 +4,7 @@
 // and `calm` could not discharge it. Constructor injectivity falls out of the same encoding. These tests lock both in.
 // Run: npx tsx test/check/record-projection.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

@@ -1,6 +1,6 @@
-import type { Value } from '@/base/type'
-import { valueEqual } from '@/base/equal'
-import { diffText, type Granularity, type Hunk } from '@/text/diff'
+import type { Value } from '@term/base/code/base/type'
+import { valueEqual } from '@term/base/code/base/equal'
+import { diffText, type Granularity, type Hunk } from '@term/base/code/text/diff'
 
 // Leaf-level diff of two field values in a `.tree` record. The semantic diff (see
 // ./diff) records which field changed and its whole before and after value, matched by

@@ -2,14 +2,14 @@
 // into a second empty cache, and confirms a cold compile in the second project then hits the warmed (pulled) disk
 // cache. Proves the share-across-machines protocol end to end, headlessly. Run: npx tsx test/compile/remote-cache.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { CompileCache } from '@cluesurf/make/code/compile/cache'
-import { diskCacheStore } from '@cluesurf/call/code/cache-store'
+import { compile } from '@term/make/code/compile/compile'
+import { CompileCache } from '@term/make/code/compile/cache'
+import { diskCacheStore } from '@term/call/code/cache-store'
 import {
   pullRemoteCache,
   pushRemoteCache,
   startRemoteCacheServer,
-} from '@cluesurf/call/code/remote-cache'
+} from '@term/call/code/remote-cache'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'

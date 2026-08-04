@@ -5,7 +5,7 @@
 // (`vecnat (succ n) -> vecnat n`) and a safe head. This is genuine dependent pattern matching: the impossible `vnil`
 // branch is omitted (ex-falso), and the result type refines per branch. Run: npx tsx test/check/dependent-match.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

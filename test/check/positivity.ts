@@ -5,7 +5,7 @@
 // positive. Sound over any ordered ring. Soundness controls: a square is only >= 0 (NOT > 0, the base may be zero),
 // and a non-square product (`x * y`) is not certified. Run: npx tsx test/check/positivity.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

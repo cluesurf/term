@@ -6,7 +6,7 @@
 // needs per-branch refinement of the scrutinee's index variables (the convoy pattern); the substitution form of
 // transport -- `a == b |- f a == f b` -- is already proven in `identity-subst.ts`. Run: npx tsx test/check/identity.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

@@ -1,13 +1,13 @@
 // Unused-binding warnings: a `let`/`save` binding that is never read is reported as a warning (not an error, so
 // it does not fail compilation). A usability nicety. See note/research/vibe/computation/plans/04-typecheck.md.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 function collectReads(expr: Expression, read: Set<string>): void {
   switch (expr.form) {

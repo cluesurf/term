@@ -1,23 +1,23 @@
 import { describe, it, expect } from 'vitest'
-import { record, text } from '@/base/make'
-import { datasetOf } from '@/diff/change'
-import { canonicalizeRecord } from '@/canon/canonicalize'
-import { hashRecord } from '@/canon/hash'
-import { form, property, hold, roleBase } from '@/form/form'
-import { MemoryChunkStore } from '@/store/chunk-store'
-import { MemoryRefStore } from '@/store/ref-store'
-import { Repository } from '@/repo/repo'
-import { removeMatching } from '@/erase/erase'
-import { RevocationList, enforceRevocation } from '@/erase/revocation'
-import { applyChunks } from '@/sync/chunk-sync'
-import { MemoryObjectStore } from '@/store/object-store'
-import { chunkKey } from '@/store/r2-chunk-store'
-import { reachableChunksAsync, collectGarbageAsync } from '@/gc/gc-async'
-import { R2ChunkStore } from '@/store/r2-chunk-store'
-import { MemoryOffHistoryStore, offHistoryId } from '@/offhistory/store'
-import { partitionSensitive, resolveSensitive } from '@/offhistory/sensitive'
-import { RedactionVault, redactReversibly, unredact } from '@/redact/reversible'
-import { isRedacted } from '@/redact/redact'
+import { record, text } from '@term/base/code/base/make'
+import { datasetOf } from '@term/base/code/diff/change'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
+import { hashRecord } from '@term/base/code/canon/hash'
+import { form, property, hold, roleBase } from '@term/base/code/form/form'
+import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
+import { MemoryRefStore } from '@term/base/code/store/ref-store'
+import { Repository } from '@term/base/code/repo/repo'
+import { removeMatching } from '@term/base/code/erase/erase'
+import { RevocationList, enforceRevocation } from '@term/base/code/erase/revocation'
+import { applyChunks } from '@term/base/code/sync/chunk-sync'
+import { MemoryObjectStore } from '@term/base/code/store/object-store'
+import { chunkKey } from '@term/base/code/store/r2-chunk-store'
+import { reachableChunksAsync, collectGarbageAsync } from '@term/base/code/gc/gc-async'
+import { R2ChunkStore } from '@term/base/code/store/r2-chunk-store'
+import { MemoryOffHistoryStore, offHistoryId } from '@term/base/code/offhistory/store'
+import { partitionSensitive, resolveSensitive } from '@term/base/code/offhistory/sensitive'
+import { RedactionVault, redactReversibly, unredact } from '@term/base/code/redact/reversible'
+import { isRedacted } from '@term/base/code/redact/redact'
 
 const A = '11111111-1111-4111-8111-111111111111'
 const SECRET_MARK = '22222222-2222-4222-8222-222222222222'
@@ -75,7 +75,7 @@ describe('async mirror garbage collection', () => {
     for (const h of chunks.keys()) {
       await objects.put(chunkKey(h), chunks.get(h)!)
     }
-    await objects.put(chunkKey('sha256:stale'), 'orphan')
+    await objects.put(chunkKey(`sha256:${'0'.repeat(64)}`), 'orphan')
 
     const head = repo.head('main')!
     // the async reachable set matches the sync one
@@ -84,7 +84,7 @@ describe('async mirror garbage collection', () => {
 
     const report = await collectGarbageAsync(objects, [head])
     expect(report.removed).toBe(1)
-    expect(await objects.get(chunkKey('sha256:stale'))).toBeUndefined()
+    expect(await objects.get(chunkKey(`sha256:${'0'.repeat(64)}`))).toBeUndefined()
     // reachable objects survive
     for (const h of repo.reachableChunkHashes()) {
       expect(await objects.get(chunkKey(h))).toBeDefined()

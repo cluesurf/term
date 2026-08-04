@@ -1,6 +1,6 @@
 /**
  * The bridge from the live compiler to the property engine: turn the
- * compiler's real type IR (`Type` from @cluesurf/make/code/compile/
+ * compiler's real type IR (`Type` from @term/make/code/compile/
  * node) into a generator. This is the integration step that makes
  * property testing work on ACTUAL parsed-and-checked Seed types, not a
  * hand-written `SeedType` - "read the compiler's real type IR in
@@ -12,7 +12,7 @@
  * `RecordTable` the checker already builds.
  */
 
-import type { Type } from '@cluesurf/make/code/compile/node'
+import type { Type } from '@term/make/code/compile/node'
 import { genForType, type SeedType, tInt, tWave, tText, tList, tRecord, tWhole } from './type'
 import { type Gen } from './property'
 

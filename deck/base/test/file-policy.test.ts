@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { form, property, roleBase } from '@/form/form'
-import { matchesGlob } from '@/file/glob'
-import { filePolicy, diffFile, mergeFile } from '@/file/policy'
+import { form, property, roleBase } from '@term/base/code/form/form'
+import { matchesGlob } from '@term/base/code/file/glob'
+import { filePolicy, diffFile, mergeFile } from '@term/base/code/file/policy'
 
-// A .tree site (like mesh/site/clue.surf/home2) compiled to build output: the source
+// A .tree site (like a sibling `.tree` site) compiled to build output: the source
 // is diffed finely, the generated build/ files and js/css bundles are opaque.
 const role = roleBase([form('word', [property('term', { base: 'text' })])], {
   files: {

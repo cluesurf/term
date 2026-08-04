@@ -12,7 +12,7 @@
 import { writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { projectResolver } from '@term/call/code/make'
 import { holdIncremental } from './hold-incremental'
 import { obligationKey, memoryObligationCache, diskObligationCache } from './obligation-cache'
 

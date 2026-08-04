@@ -2,7 +2,7 @@
  * The registry manifest: a published deck's flat file listing with
  * placement, emitted and parsed as `.tree` (note/term/registry/14 + 17).
  *
- * Head `deck @scope/name`; `mark` pins the ref with its commit `hash`
+ * Head `deck @scope/name`; `code` pins the ref with its commit `hash`
  * nested. Each file is a `link <path>` naming its content `hash` and `size`;
  * placement is a `base` child (the pack it is grouped in, with `site` the
  * byte offset) or, by default, none — a loose object. A large package's
@@ -116,7 +116,7 @@ function emitEntry(entry: ManifestEntry): string {
 
 /** Emit a leaf manifest as `.tree` text. */
 export function emitManifest(m: HoldManifest): string {
-  const head = [`deck ${m.package}`, '', `mark <${m.ref}>`, `  hash <${m.hash}>`, '']
+  const head = [`deck ${m.package}`, '', `code <${m.ref}>`, `  hash <${m.hash}>`, '']
   const body = m.files.map(emitEntry)
 
   return `${head.join('\n')}\n${body.join('\n\n')}\n`
@@ -124,7 +124,7 @@ export function emitManifest(m: HoldManifest): string {
 
 /** Emit a shard-index manifest as `.tree` text (a `base <shard-hash>` per shard). */
 export function emitShardIndex(m: ShardedManifest): string {
-  const head = [`deck ${m.package}`, '', `mark <${m.ref}>`, `  hash <${m.hash}>`, '']
+  const head = [`deck ${m.package}`, '', `code <${m.ref}>`, `  hash <${m.hash}>`, '']
   const body = m.shards.map(shard =>
     [`base <${shard.hash}>`, `  foot <${shard.foot}>`, `  head <${shard.head}>`, `  size ${shard.size}`].join('\n'),
   )
@@ -267,12 +267,12 @@ export function parseManifest(
       continue
     }
 
-    // a top-level `mark` is the ref; a top-level `base` starts a shard
+    // a top-level `code` is the ref; a top-level `base` starts a shard
     if (indent === 0) {
-      const mark = tagValue(line, 'mark')
-      if (mark !== undefined) {
+      const code = tagValue(line, 'code')
+      if (code !== undefined) {
         closeEntry()
-        ref = mark
+        ref = code
         continue
       }
       const base = tagValue(line, 'base')

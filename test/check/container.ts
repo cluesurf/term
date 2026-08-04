@@ -8,7 +8,7 @@
 // the function-field W-type already covered (`wtype-function.ts`); the relation to indexed families is `ornament.ts`.
 // Run: npx tsx test/check/container.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

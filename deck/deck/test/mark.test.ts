@@ -1,23 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseMark,
-  parseMarkHold,
-  showMark,
-  compareMark,
-  markMatch,
-  pickBestMark,
-  bumpMark,
-} from '../code/mark'
+  parseCode,
+  parseCodeHold,
+  showCode,
+  compareCode,
+  codeMatch,
+  pickBestCode,
+  bumpCode,
+} from '../code/code'
 
-describe('parseMark', () => {
+describe('parseCode', () => {
   it('parses simple version', () => {
-    const mark = parseMark('1.2.3')
-    expect(mark).toEqual({ major: 1, minor: 2, patch: 3 })
+    const code = parseCode('1.2.3')
+    expect(code).toEqual({ major: 1, minor: 2, patch: 3 })
   })
 
   it('parses version with prerelease', () => {
-    const mark = parseMark('1.0.0-beta.1')
-    expect(mark).toEqual({
+    const code = parseCode('1.0.0-beta.1')
+    expect(code).toEqual({
       major: 1,
       minor: 0,
       patch: 0,
@@ -26,69 +26,69 @@ describe('parseMark', () => {
   })
 
   it('throws on invalid version', () => {
-    expect(() => parseMark('abc')).toThrow('Invalid version')
+    expect(() => parseCode('abc')).toThrow('Invalid version')
   })
 })
 
-describe('showMark', () => {
+describe('showCode', () => {
   it('shows simple version', () => {
-    expect(showMark({ major: 1, minor: 2, patch: 3 })).toBe('1.2.3')
+    expect(showCode({ major: 1, minor: 2, patch: 3 })).toBe('1.2.3')
   })
 
   it('shows version with prerelease', () => {
     expect(
-      showMark({ major: 1, minor: 0, patch: 0, prerelease: 'beta.1' }),
+      showCode({ major: 1, minor: 0, patch: 0, prerelease: 'beta.1' }),
     ).toBe('1.0.0-beta.1')
   })
 })
 
-describe('compareMark', () => {
+describe('compareCode', () => {
   it('compares major versions', () => {
     const a = { major: 2, minor: 0, patch: 0 }
     const b = { major: 1, minor: 0, patch: 0 }
-    expect(compareMark(a, b)).toBeGreaterThan(0)
+    expect(compareCode(a, b)).toBeGreaterThan(0)
   })
 
   it('compares minor versions', () => {
     const a = { major: 1, minor: 2, patch: 0 }
     const b = { major: 1, minor: 1, patch: 0 }
-    expect(compareMark(a, b)).toBeGreaterThan(0)
+    expect(compareCode(a, b)).toBeGreaterThan(0)
   })
 
   it('compares patch versions', () => {
     const a = { major: 1, minor: 0, patch: 2 }
     const b = { major: 1, minor: 0, patch: 1 }
-    expect(compareMark(a, b)).toBeGreaterThan(0)
+    expect(compareCode(a, b)).toBeGreaterThan(0)
   })
 
   it('prerelease sorts before release', () => {
     const a = { major: 1, minor: 0, patch: 0, prerelease: 'beta' }
     const b = { major: 1, minor: 0, patch: 0 }
-    expect(compareMark(a, b)).toBeLessThan(0)
+    expect(compareCode(a, b)).toBeLessThan(0)
   })
 })
 
-describe('parseMarkHold', () => {
+describe('parseCodeHold', () => {
   it('parses exact version', () => {
-    const hold = parseMarkHold('1.2.3')
+    const hold = parseCodeHold('1.2.3')
     expect(hold).toEqual({
       form: 'exact',
-      mark: { major: 1, minor: 2, patch: 3 },
+      code: { major: 1, minor: 2, patch: 3 },
     })
   })
 
   it('parses major wildcard', () => {
-    const hold = parseMarkHold('1.x.x')
+    const hold = parseCodeHold('1.x.x')
     expect(hold).toEqual({ form: 'wild', major: 1 })
   })
 
   it('parses minor wildcard', () => {
-    const hold = parseMarkHold('1.2.x')
+    const hold = parseCodeHold('1.2.x')
     expect(hold).toEqual({ form: 'wild', major: 1, minor: 2 })
   })
 
   it('parses band range', () => {
-    const hold = parseMarkHold('1.0.0..2.0.0')
+    const hold = parseCodeHold('1.0.0..2.0.0')
     expect(hold).toEqual({
       form: 'band',
       base: { major: 1, minor: 0, patch: 0 },
@@ -97,7 +97,7 @@ describe('parseMarkHold', () => {
   })
 
   it('parses union (test)', () => {
-    const hold = parseMarkHold('0.14.x|0.15.x')
+    const hold = parseCodeHold('0.14.x|0.15.x')
     expect(hold.form).toBe('test')
     if (hold.form === 'test') {
       expect(hold.list).toHaveLength(2)
@@ -108,7 +108,7 @@ describe('parseMarkHold', () => {
 
   it('parses caret constraint as a precise band', () => {
     // the npm rule: ^1.2.3 allows >=1.2.3 <2.0.0, so the lower bound is the version itself (1.0.0 must NOT match)
-    const hold = parseMarkHold('^1.2.3')
+    const hold = parseCodeHold('^1.2.3')
     expect(hold).toEqual({
       form: 'band',
       base: { major: 1, minor: 2, patch: 3 },
@@ -118,7 +118,7 @@ describe('parseMarkHold', () => {
 
   it('parses leading-zero caret locking the minor', () => {
     // ^0.2.3 locks the left-most non-zero element: >=0.2.3 <0.3.0
-    const hold = parseMarkHold('^0.2.3')
+    const hold = parseCodeHold('^0.2.3')
     expect(hold).toEqual({
       form: 'band',
       base: { major: 0, minor: 2, patch: 3 },
@@ -128,7 +128,7 @@ describe('parseMarkHold', () => {
 
   it('parses double-zero caret locking the patch', () => {
     // ^0.0.3 is exactly >=0.0.3 <0.0.4
-    const hold = parseMarkHold('^0.0.3')
+    const hold = parseCodeHold('^0.0.3')
     expect(hold).toEqual({
       form: 'band',
       base: { major: 0, minor: 0, patch: 3 },
@@ -138,7 +138,7 @@ describe('parseMarkHold', () => {
 
   it('parses tilde constraint as a precise band', () => {
     // the npm rule: ~1.2.3 allows >=1.2.3 <1.3.0 (patch movement within the minor)
-    const hold = parseMarkHold('~1.2.3')
+    const hold = parseCodeHold('~1.2.3')
     expect(hold).toEqual({
       form: 'band',
       base: { major: 1, minor: 2, patch: 3 },
@@ -148,74 +148,74 @@ describe('parseMarkHold', () => {
 
   it('caret band excludes versions below its base', () => {
     expect(
-      markMatch(
+      codeMatch(
         { major: 1, minor: 0, patch: 0 },
-        parseMarkHold('^1.2.3'),
+        parseCodeHold('^1.2.3'),
       ),
     ).toBe(false)
     expect(
-      markMatch(
+      codeMatch(
         { major: 1, minor: 9, patch: 9 },
-        parseMarkHold('^1.2.3'),
+        parseCodeHold('^1.2.3'),
       ),
     ).toBe(true)
     expect(
-      markMatch(
+      codeMatch(
         { major: 2, minor: 0, patch: 0 },
-        parseMarkHold('^1.2.3'),
+        parseCodeHold('^1.2.3'),
       ),
     ).toBe(false)
   })
 
   it('tilde band stays within the minor', () => {
     expect(
-      markMatch(
+      codeMatch(
         { major: 1, minor: 2, patch: 9 },
-        parseMarkHold('~1.2.3'),
+        parseCodeHold('~1.2.3'),
       ),
     ).toBe(true)
     expect(
-      markMatch(
+      codeMatch(
         { major: 1, minor: 3, patch: 0 },
-        parseMarkHold('~1.2.3'),
+        parseCodeHold('~1.2.3'),
       ),
     ).toBe(false)
   })
 })
 
-describe('markMatch', () => {
+describe('codeMatch', () => {
   it('matches exact version', () => {
-    const mark = { major: 1, minor: 2, patch: 3 }
-    const hold = parseMarkHold('1.2.3')
-    expect(markMatch(mark, hold)).toBe(true)
+    const code = { major: 1, minor: 2, patch: 3 }
+    const hold = parseCodeHold('1.2.3')
+    expect(codeMatch(code, hold)).toBe(true)
   })
 
   it('does not match different exact version', () => {
-    const mark = { major: 1, minor: 2, patch: 4 }
-    const hold = parseMarkHold('1.2.3')
-    expect(markMatch(mark, hold)).toBe(false)
+    const code = { major: 1, minor: 2, patch: 4 }
+    const hold = parseCodeHold('1.2.3')
+    expect(codeMatch(code, hold)).toBe(false)
   })
 
   it('matches major wildcard', () => {
-    const mark = { major: 1, minor: 5, patch: 3 }
-    const hold = parseMarkHold('1.x.x')
-    expect(markMatch(mark, hold)).toBe(true)
+    const code = { major: 1, minor: 5, patch: 3 }
+    const hold = parseCodeHold('1.x.x')
+    expect(codeMatch(code, hold)).toBe(true)
   })
 
   it('does not match wrong major', () => {
-    const mark = { major: 2, minor: 0, patch: 0 }
-    const hold = parseMarkHold('1.x.x')
-    expect(markMatch(mark, hold)).toBe(false)
+    const code = { major: 2, minor: 0, patch: 0 }
+    const hold = parseCodeHold('1.x.x')
+    expect(codeMatch(code, hold)).toBe(false)
   })
 
   it('matches minor wildcard', () => {
-    const mark = { major: 1, minor: 2, patch: 9 }
-    const hold = parseMarkHold('1.2.x')
-    expect(markMatch(mark, hold)).toBe(true)
+    const code = { major: 1, minor: 2, patch: 9 }
+    const hold = parseCodeHold('1.2.x')
+    expect(codeMatch(code, hold)).toBe(true)
   })
 })
 
-describe('pickBestMark', () => {
+describe('pickBestCode', () => {
   it('picks highest matching version', () => {
     const versions = [
       { major: 1, minor: 0, patch: 0 },
@@ -223,94 +223,94 @@ describe('pickBestMark', () => {
       { major: 1, minor: 2, patch: 0 },
       { major: 2, minor: 0, patch: 0 },
     ]
-    const hold = parseMarkHold('1.x.x')
-    const best = pickBestMark({ versions, hold })
+    const hold = parseCodeHold('1.x.x')
+    const best = pickBestCode({ versions, hold })
     expect(best).toEqual({ major: 1, minor: 2, patch: 0 })
   })
 
   it('returns undefined when no match', () => {
     const versions = [{ major: 2, minor: 0, patch: 0 }]
-    const hold = parseMarkHold('1.x.x')
-    const best = pickBestMark({ versions, hold })
+    const hold = parseCodeHold('1.x.x')
+    const best = pickBestCode({ versions, hold })
     expect(best).toBeUndefined()
   })
 })
 
-describe('markMatch (band)', () => {
+describe('codeMatch (band)', () => {
   it('matches version inside range', () => {
-    const mark = { major: 1, minor: 5, patch: 0 }
-    const hold = parseMarkHold('1.0.0..2.0.0')
-    expect(markMatch(mark, hold)).toBe(true)
+    const code = { major: 1, minor: 5, patch: 0 }
+    const hold = parseCodeHold('1.0.0..2.0.0')
+    expect(codeMatch(code, hold)).toBe(true)
   })
 
   it('matches lower bound (inclusive)', () => {
-    const mark = { major: 1, minor: 0, patch: 0 }
-    const hold = parseMarkHold('1.0.0..2.0.0')
-    expect(markMatch(mark, hold)).toBe(true)
+    const code = { major: 1, minor: 0, patch: 0 }
+    const hold = parseCodeHold('1.0.0..2.0.0')
+    expect(codeMatch(code, hold)).toBe(true)
   })
 
   it('does not match upper bound (exclusive)', () => {
-    const mark = { major: 2, minor: 0, patch: 0 }
-    const hold = parseMarkHold('1.0.0..2.0.0')
-    expect(markMatch(mark, hold)).toBe(false)
+    const code = { major: 2, minor: 0, patch: 0 }
+    const hold = parseCodeHold('1.0.0..2.0.0')
+    expect(codeMatch(code, hold)).toBe(false)
   })
 
   it('does not match below range', () => {
-    const mark = { major: 0, minor: 9, patch: 0 }
-    const hold = parseMarkHold('1.0.0..2.0.0')
-    expect(markMatch(mark, hold)).toBe(false)
+    const code = { major: 0, minor: 9, patch: 0 }
+    const hold = parseCodeHold('1.0.0..2.0.0')
+    expect(codeMatch(code, hold)).toBe(false)
   })
 })
 
-describe('markMatch (test/union)', () => {
+describe('codeMatch (test/union)', () => {
   it('matches first option', () => {
-    const mark = { major: 0, minor: 14, patch: 5 }
-    const hold = parseMarkHold('0.14.x|0.15.x')
-    expect(markMatch(mark, hold)).toBe(true)
+    const code = { major: 0, minor: 14, patch: 5 }
+    const hold = parseCodeHold('0.14.x|0.15.x')
+    expect(codeMatch(code, hold)).toBe(true)
   })
 
   it('matches second option', () => {
-    const mark = { major: 0, minor: 15, patch: 0 }
-    const hold = parseMarkHold('0.14.x|0.15.x')
-    expect(markMatch(mark, hold)).toBe(true)
+    const code = { major: 0, minor: 15, patch: 0 }
+    const hold = parseCodeHold('0.14.x|0.15.x')
+    expect(codeMatch(code, hold)).toBe(true)
   })
 
   it('does not match outside union', () => {
-    const mark = { major: 0, minor: 16, patch: 0 }
-    const hold = parseMarkHold('0.14.x|0.15.x')
-    expect(markMatch(mark, hold)).toBe(false)
+    const code = { major: 0, minor: 16, patch: 0 }
+    const hold = parseCodeHold('0.14.x|0.15.x')
+    expect(codeMatch(code, hold)).toBe(false)
   })
 })
 
-describe('bumpMark', () => {
+describe('bumpCode', () => {
   it('bumps major version', () => {
-    const mark = { major: 1, minor: 2, patch: 3 }
-    const bumped = bumpMark({ mark, level: 1 })
+    const code = { major: 1, minor: 2, patch: 3 }
+    const bumped = bumpCode({ code, level: 1 })
     expect(bumped).toEqual({ major: 2, minor: 0, patch: 0 })
   })
 
   it('bumps minor version', () => {
-    const mark = { major: 1, minor: 2, patch: 3 }
-    const bumped = bumpMark({ mark, level: 2 })
+    const code = { major: 1, minor: 2, patch: 3 }
+    const bumped = bumpCode({ code, level: 2 })
     expect(bumped).toEqual({ major: 1, minor: 3, patch: 0 })
   })
 
   it('bumps patch to next even number', () => {
-    const mark = { major: 1, minor: 0, patch: 2 }
-    const bumped = bumpMark({ mark, level: 3 })
+    const code = { major: 1, minor: 0, patch: 2 }
+    const bumped = bumpCode({ code, level: 3 })
     expect(bumped.patch % 2).toBe(0)
     expect(bumped.patch).toBeGreaterThan(2)
   })
 
   it('bumps odd patch to next even', () => {
-    const mark = { major: 1, minor: 0, patch: 3 }
-    const bumped = bumpMark({ mark, level: 3 })
+    const code = { major: 1, minor: 0, patch: 3 }
+    const bumped = bumpCode({ code, level: 3 })
     expect(bumped).toEqual({ major: 1, minor: 0, patch: 4 })
   })
 
   it('bumps even patch to next even', () => {
-    const mark = { major: 1, minor: 0, patch: 4 }
-    const bumped = bumpMark({ mark, level: 3 })
+    const code = { major: 1, minor: 0, patch: 4 }
+    const bumped = bumpCode({ code, level: 3 })
     expect(bumped).toEqual({ major: 1, minor: 0, patch: 6 })
   })
 })

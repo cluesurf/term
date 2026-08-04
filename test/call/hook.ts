@@ -1,11 +1,11 @@
 // CLI `hook` DSL dispatch test: compile a command tree, then resolve real argv against it (subcommand descent, flags,
 // positionals, the bound task). Run: npx tsx test/call/hook.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import {
   commandRoutes,
   dispatch,
-} from '@cluesurf/call/code/hook-dispatch'
+} from '@term/call/code/hook-dispatch'
 
 let pass = 0
 let fail = 0

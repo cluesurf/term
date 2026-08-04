@@ -21,11 +21,12 @@
     "noImplicitAny": false,
     "paths": {
       "@/*": ["./*"],
-      "@cluesurf/make/*": ["./deck/make/*"],
-      "@cluesurf/call/*": ["./deck/call/*"],
-      "@cluesurf/scan/*": ["./deck/scan/*"],
-      "@cluesurf/test/*": ["./deck/test/*"],
-      "@cluesurf/flow/*": ["./deck/flow/*"],
+      "@term/make/*": ["./deck/make/*"],
+      "@term/base/*": ["./deck/base/*"],
+      "@term/call/*": ["./deck/call/*"],
+      "@term/scan/*": ["./deck/scan/*"],
+      "@term/test/*": ["./deck/test/*"],
+      "@term/flow/*": ["./deck/flow/*"],
       "@cluesurf/deck.tree": ["./deck/deck/code/index"]
     }
   },

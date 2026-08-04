@@ -12,14 +12,14 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs'
-import { tokenize } from '@cluesurf/make/code/parser/token'
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { CompileCache } from '@cluesurf/make/code/compile/cache'
-import { collectModules } from '@cluesurf/make/code/compile/load'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
-import { splitTopLevel } from '@cluesurf/make/code/compile/incremental-parse'
-import { splitStreamingToArray } from '@cluesurf/make/code/compile/stream'
+import { tokenize } from '@term/make/code/parser/token'
+import { parse } from '@term/make/code/parser/tree'
+import { compile } from '@term/make/code/compile/compile'
+import { CompileCache } from '@term/make/code/compile/cache'
+import { collectModules } from '@term/make/code/compile/load'
+import type { Resolver } from '@term/make/code/compile/load'
+import { splitTopLevel } from '@term/make/code/compile/incremental-parse'
+import { splitStreamingToArray } from '@term/make/code/compile/stream'
 import { bench, scaling, type BenchResult } from './bench'
 
 export type BenchSuite = {

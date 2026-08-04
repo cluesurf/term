@@ -4,16 +4,16 @@
 import type {
   Expression,
   Statement,
-} from '@cluesurf/make/code/engine/ast'
-import { run, callFunction } from '@cluesurf/make/code/engine/engine'
-import { display, type Value } from '@cluesurf/make/code/engine/value'
+} from '@term/make/code/engine/ast'
+import { run, callFunction } from '@term/make/code/engine/engine'
+import { display, type Value } from '@term/make/code/engine/value'
 
 // tiny AST builders
 const int = (value: number): Expression => ({ form: 'integer', value })
 const str = (value: string): Expression => ({ form: 'string', value })
 const vbl = (name: string): Expression => ({ form: 'variable', name })
 const bin = (
-  op: import('@cluesurf/make/code/engine/ast').BinaryOp,
+  op: import('@term/make/code/engine/ast').BinaryOp,
   left: Expression,
   right: Expression,
 ): Expression => ({ form: 'binary', op, left, right })

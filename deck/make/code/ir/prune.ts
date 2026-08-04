@@ -20,7 +20,7 @@
 import type {
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 // every name mentioned anywhere inside a node (deep, generic, over-approximate)
 function collectNames(node: unknown, out: Set<string>): void {

@@ -14,15 +14,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { nativePrelude } from '@cluesurf/make/code/compile/native'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
+import { compile } from '@term/make/code/compile/compile'
+import { nativePrelude } from '@term/make/code/compile/native'
+import type { Resolver } from '@term/make/code/compile/load'
+import type { Span } from '@term/make/code/parser/diagnostic'
 import type {
   Rule,
   LintContext,
   LintNode,
-} from '@cluesurf/make/code/lint/rule'
+} from '@term/make/code/lint/rule'
 
 // the meta object a Seed rule module exports: the shape of `make rule` in code/rule.tree
 type SeedRule = {

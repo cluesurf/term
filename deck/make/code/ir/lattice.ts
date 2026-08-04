@@ -7,7 +7,7 @@
 // adjacency (Margenstern's coordinate automaton) is a deeper refinement. See plans/06-runtime-substrate.md.
 // Pure and browser-safe.
 
-import type { Net } from '@cluesurf/make/code/ir/net'
+import type { Net } from '@term/make/code/ir/net'
 
 export type Cell = {
   id: number

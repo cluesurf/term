@@ -78,7 +78,7 @@ task posts-json
 task list-handler
   take request, like request
   take params, like hash
-  mark async
+  note async
   like response
   save posts
     call list-posts
@@ -94,7 +94,7 @@ task list-handler
 task get-handler
   take request, like request
   take params, like hash
-  mark async
+  note async
   like response
   save id
     call unwrap-or
@@ -146,7 +146,7 @@ task build-app
 task start
   take url, like text
   take port, like u16
-  mark async
+  note async
   call setup
     read url
     wait true
@@ -156,7 +156,7 @@ task start
 
 # seed a few sample posts the first time (only when the table is empty), so a fresh `seed boot` shows content
 task seed-sample
-  mark async
+  note async
   save posts
     call list-posts
       wait true
@@ -186,7 +186,7 @@ task seed-sample
 task boot
   take url, like text
   take port, like u16
-  mark async
+  note async
   call setup
     read url
     wait true
@@ -198,7 +198,7 @@ task boot
 
 # test helpers: reset the table and seed a post (so the loop test controls the data)
 task reset
-  mark async
+  note async
   call run
     text <DELETE FROM post>
     make list
@@ -208,7 +208,7 @@ task seed-post
   take id, like text
   take title, like text
   take body, like text
-  mark async
+  note async
   call create-post
     read id
     read title

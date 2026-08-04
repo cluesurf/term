@@ -1,6 +1,6 @@
-import type { ChunkStore } from '@/store/chunk-store'
-import { collectMissingChunks } from '@/store/tree'
-import type { RevocationList } from '@/erase/revocation'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
+import { collectMissingChunks } from '@term/base/code/store/tree'
+import type { RevocationList } from '@term/base/code/erase/revocation'
 
 // The async replica sync protocol: prolly-tree chunk transfer. Two peers reconcile
 // by comparing what they have and transferring only the chunks the receiver lacks.

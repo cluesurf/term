@@ -1,7 +1,7 @@
-import { mintMark } from '@/base/mark'
-import type { RecordNode } from '@/base/type'
-import type { Dataset } from '@/diff/change'
-import type { RoleBase } from '@/form/form'
+import { mintMark } from '@term/base/code/base/mark'
+import type { RecordNode } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
+import type { RoleBase } from '@term/base/code/form/form'
 
 // Auto-marking. Registering a form under `role base` turns on the rule that every
 // instance must carry a mark. Rather than error, the tooling adds a fresh mark to

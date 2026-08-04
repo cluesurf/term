@@ -2,10 +2,10 @@
 // projects that compile the same module (e.g. a linked stdlib file with a shared realpath) reuse each other's mill
 // work. The whole-graph `output` level stays project-local. Run: npx tsx test/compile/shared-cache.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { CompileCache } from '@cluesurf/make/code/compile/cache'
-import { sharedCacheStore } from '@cluesurf/call/code/cache-store'
-import type { Source } from '@cluesurf/make/code/compile/load'
+import { compile } from '@term/make/code/compile/compile'
+import { CompileCache } from '@term/make/code/compile/cache'
+import { sharedCacheStore } from '@term/call/code/cache-store'
+import type { Source } from '@term/make/code/compile/load'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'

@@ -4,28 +4,28 @@
 // program and everything downstream untouched). This is the first phase wired onto the engine; resolve / check / emit
 // follow as per-definition queries with the signature firewall. See note/seed/plan/compilation-performance.md (Tier 2).
 
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { expandTemplates } from '@cluesurf/make/code/compile/template'
-import type { Template } from '@cluesurf/make/code/compile/template'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { collectUsedClasses } from '@cluesurf/make/code/compile/used-classes'
-import { Database, LOW } from '@cluesurf/make/code/compile/query'
-import type { Durability, Cx } from '@cluesurf/make/code/compile/query'
-import { hashText } from '@cluesurf/make/code/compile/cache'
-import type { MilledUnit } from '@cluesurf/make/code/compile/cache'
+import { parse } from '@term/make/code/parser/tree'
+import { expandTemplates } from '@term/make/code/compile/template'
+import type { Template } from '@term/make/code/compile/template'
+import { mill } from '@term/make/code/compile/mill'
+import { collectUsedClasses } from '@term/make/code/compile/used-classes'
+import { Database, LOW } from '@term/make/code/compile/query'
+import type { Durability, Cx } from '@term/make/code/compile/query'
+import { hashText } from '@term/make/code/compile/cache'
+import type { MilledUnit } from '@term/make/code/compile/cache'
 import type {
   Program,
   Statement,
   Expression,
-} from '@cluesurf/make/code/compile/node'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/compile/node'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import {
   resolve as resolveNames,
   buildGlobalScope,
-} from '@cluesurf/make/code/check/resolve'
-import type { Scope } from '@cluesurf/make/code/check/resolve'
-import { check as inferTypes } from '@cluesurf/make/code/check/infer'
-import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
+} from '@term/make/code/check/resolve'
+import type { Scope } from '@term/make/code/check/resolve'
+import { check as inferTypes } from '@term/make/code/check/infer'
+import { emitTypeScript } from '@term/make/code/compile/typescript'
 
 export type MergedProgram =
   | { ok: true; program: Program }

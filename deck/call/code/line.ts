@@ -1,34 +1,34 @@
 import { readFileSync } from 'node:fs'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import { showBanner, showInfo } from '@cluesurf/make/code/show'
-import { callLoad } from '@cluesurf/call/code/load'
-import { callSave } from '@cluesurf/call/code/save'
-import { callToss } from '@cluesurf/call/code/toss'
-import { callHost } from '@cluesurf/call/code/host'
-import { callSeek } from '@cluesurf/call/code/seek'
-import { callLink } from '@cluesurf/call/code/link'
-import { callMake } from '@cluesurf/call/code/make'
-import { callScan } from '@cluesurf/call/code/scan'
-import { callMind } from '@cluesurf/call/code/mind'
-import { callTest } from '@cluesurf/call/code/test'
-import { callTime } from '@cluesurf/call/code/time'
-import { callBoot } from '@cluesurf/call/code/boot'
-import { callCast } from '@cluesurf/call/code/cast'
-import { callHalt } from '@cluesurf/call/code/halt'
-import { callFeed } from '@cluesurf/call/code/feed'
-import { callWork } from '@cluesurf/call/code/work'
-import { callWake } from '@cluesurf/call/code/wake'
-import { callWash } from '@cluesurf/call/code/wash'
-import { callWalk } from '@cluesurf/call/code/walk'
-import { callMove } from '@cluesurf/call/code/move'
-import { callNote } from '@cluesurf/call/code/note'
-import { callForm } from '@cluesurf/call/code/form'
-import { callLint } from '@cluesurf/call/code/lint'
-import { callHold } from '@cluesurf/call/code/hold'
-import { callHunt } from '@cluesurf/call/code/hunt'
-import { callLook } from '@cluesurf/call/code/look'
-import { logFail, warn } from '@cluesurf/make/code/tint'
+import { showBanner, showInfo } from '@term/make/code/show'
+import { callLoad } from '@term/call/code/load'
+import { callSave } from '@term/call/code/save'
+import { callToss } from '@term/call/code/toss'
+import { callHost } from '@term/call/code/host'
+import { callSeek } from '@term/call/code/seek'
+import { callLink } from '@term/call/code/link'
+import { callMake } from '@term/call/code/make'
+import { callScan } from '@term/call/code/scan'
+import { callMind } from '@term/call/code/mind'
+import { callTest } from '@term/call/code/test'
+import { callTime } from '@term/call/code/time'
+import { callBoot } from '@term/call/code/boot'
+import { callCast } from '@term/call/code/cast'
+import { callHalt } from '@term/call/code/halt'
+import { callFeed } from '@term/call/code/feed'
+import { callWork } from '@term/call/code/work'
+import { callWake } from '@term/call/code/wake'
+import { callWash } from '@term/call/code/wash'
+import { callWalk } from '@term/call/code/walk'
+import { callMove } from '@term/call/code/move'
+import { callNote } from '@term/call/code/note'
+import { callForm } from '@term/call/code/form'
+import { callLint } from '@term/call/code/lint'
+import { callHold } from '@term/call/code/hold'
+import { callHunt } from '@term/call/code/hunt'
+import { callLook } from '@term/call/code/look'
+import { logFail, warn } from '@term/make/code/tint'
 
 const COMMANDS = [
   'wake',
@@ -273,14 +273,20 @@ const cli = yargs(hideBin(process.argv))
     'host',
     'Publish package to registry',
     yargs =>
-      yargs.option('dry', {
-        type: 'boolean',
-        description: 'Dry run (no upload)',
-      }),
+      yargs
+        .option('dry', {
+          type: 'boolean',
+          description: 'Dry run (no upload)',
+        })
+        .option('registry', {
+          type: 'string',
+          description: 'Registry host to publish to',
+        }),
     async argv => {
       await callHost({
         root,
         dryRun: argv.dry,
+        registry: argv.registry,
       })
     },
   )
@@ -602,7 +608,7 @@ const cli = yargs(hideBin(process.argv))
       yargs
         .positional('target', {
           type: 'string',
-          description: 'What to move (mark)',
+          description: 'What to move (code)',
         })
         .positional('level', {
           type: 'string',
@@ -791,16 +797,16 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.positional('what', {
         type: 'string',
-        description: 'What to show (mark, deck, self)',
+        description: 'What to show (code, deck, self)',
       }),
     async argv => {
-      if (argv.what === 'mark') {
-        const { loadManifest, showMark } =
+      if (argv.what === 'code') {
+        const { loadManifest, showCode } =
           await import('@cluesurf/deck.tree')
 
         try {
           const manifest = await loadManifest({ dir: root })
-          console.log(showMark(manifest.mark))
+          console.log(showCode(manifest.code))
         } catch {
           logFail('No deck.tree found')
         }

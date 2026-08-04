@@ -4,7 +4,7 @@
 // a ring identity could not be cited. Soundness: a `cite` of the wrong identity is still rejected.
 // Run: npx tsx test/check/calc-chains.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

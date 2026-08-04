@@ -6,7 +6,7 @@
 // that distinguishes 0 and 2 cannot be lifted (its respect obligation `0 = 2` is unconstructable) -- which is exactly
 // what keeps the quotient sound. Run: npx tsx test/check/set-quotient.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

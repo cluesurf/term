@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { text, integer, decimal, ref, boolean, nul } from '@/base/make'
-import { diffValues } from '@/diff/value-diff'
+import { text, integer, decimal, ref, boolean, nul } from '@term/base/code/base/make'
+import { diffValues } from '@term/base/code/diff/value-diff'
 
 describe('leaf value diff', () => {
   it('diffs a changed string field at word granularity', () => {

@@ -2,7 +2,7 @@
 // Distinct from the engine AST (the runtime interpreter's): these nodes carry a source span, an optional inferred
 // type, and may contain holes (unresolved references). See note/research/vibe/computation/plans/11-elaboration.md.
 
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
+import type { Span } from '@term/make/code/parser/diagnostic'
 
 // surface types. `unknown` is the gradual any. `variable` is an inference metavariable (a type hole).
 export type Type =

@@ -8,7 +8,7 @@
 // Both are checked DEFINITIONALLY (through `check` on a `refl`), with soundness controls (a different target is NOT
 // accepted). Run: npx tsx test/check/circle-kernel.ts
 
-import type { Term } from '@cluesurf/make/code/check/judge'
+import type { Term } from '@term/make/code/check/judge'
 import {
   check,
   contextWithSignature,
@@ -16,8 +16,8 @@ import {
   litLevel,
   resetDefinitions,
   resetMetas,
-} from '@cluesurf/make/code/check/judge'
-import type { Mult } from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
+import type { Mult } from '@term/make/code/check/judge'
 
 let pass = 0
 let fail = 0

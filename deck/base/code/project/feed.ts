@@ -1,7 +1,7 @@
-import { emptyDataset, type Change } from '@/diff/change'
-import { diffDataset, diffRecord } from '@/diff/diff'
-import type { Repository } from '@/repo/repo'
-import type { Projection } from '@/project/projection'
+import { emptyDataset, type Change } from '@term/base/code/diff/change'
+import { diffDataset, diffRecord } from '@term/base/code/diff/diff'
+import type { Repository } from '@term/base/code/repo/repo'
+import type { AsyncProjection, Projection } from '@term/base/code/project/projection'
 
 // The change feed is the one integration point for the read side: an ordered stream
 // of field-level changes per commit, which any projection subscribes to. base emits
@@ -93,6 +93,46 @@ export function sync(
   } else if (at !== head) {
     advance(repo, at, head, projection)
   }
+}
+
+/**
+ * Bring a remote projection up to a branch head.
+ *
+ * The async sibling of `sync`, sharing its change computation so a relational target and
+ * an in-memory one advance on exactly the same field-level changes rather than on two
+ * independently derived ones.
+ *
+ * A fresh projection rebuilds from the branch's dataset instead of replaying, so its
+ * result depends only on the state at that commit. Returns the commit now served.
+ */
+export async function syncAsync(
+  repo: Repository,
+  branch: string,
+  projection: AsyncProjection,
+): Promise<string | undefined> {
+  const head = repo.head(branch)
+
+  if (head === undefined) {
+    return projection.serving()
+  }
+
+  const at = await projection.serving()
+
+  if (at === head) {
+    return head
+  }
+
+  if (at === undefined) {
+    await projection.rebuild({ commit: head, dataset: repo.checkout(head) })
+    return head
+  }
+
+  await projection.apply({
+    commit: head,
+    changes: commitChanges(repo, at, head),
+  })
+
+  return head
 }
 
 // A simple in-process change feed for realtime and custom projections: subscribers

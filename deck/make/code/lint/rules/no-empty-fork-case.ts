@@ -2,7 +2,7 @@
 // dead scaffolding or an unfinished match. Report only: filling in the arms (or removing the empty fork) is the
 // author's call. This is more specific than no-empty-block, which does not cover a match with zero cases.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noEmptyForkCase: Rule = {
   name: 'no-empty-fork-case',

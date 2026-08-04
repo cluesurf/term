@@ -4,40 +4,40 @@
 // Pipeline: parse -> mill (mine/mint) -> resolve (fill name holes) -> check (types) -> emit.
 // See note/research/vibe/computation/plans/11-elaboration.md.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { parse } from '@cluesurf/make/code/parser/tree'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { parse } from '@term/make/code/parser/tree'
 import {
   expandTemplates,
   collectTemplates,
-} from '@cluesurf/make/code/compile/template'
-import type { Template } from '@cluesurf/make/code/compile/template'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { resolve } from '@cluesurf/make/code/check/resolve'
-import { check } from '@cluesurf/make/code/check/infer'
-import { resolveAsync } from '@cluesurf/make/code/check/async-resolve'
-import { disambiguateOverloads } from '@cluesurf/make/code/check/overload'
-import { elaborateReport } from '@cluesurf/make/code/check/elaborate'
-import { checkHolds } from '@cluesurf/make/code/check/holds'
-import { checkTraits } from '@cluesurf/make/code/check/traits'
-import { checkEffects } from '@cluesurf/make/code/check/effects'
-import { checkTotality } from '@cluesurf/make/code/check/totality'
-import { findUnused } from '@cluesurf/make/code/check/unused'
-import { pruneToReachable } from '@cluesurf/make/code/ir/prune'
-import { simplify } from '@cluesurf/make/code/ir/simplify'
-import { passDictionaries } from '@cluesurf/make/code/ir/dictionary'
-import { lowerZones } from '@cluesurf/make/code/compile/zone-lower'
-import { compileLookCss } from '@cluesurf/make/code/compile/look-css'
-import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
-import { emitModules } from '@cluesurf/make/code/compile/modules'
-import type { ModuleEmit } from '@cluesurf/make/code/compile/modules'
-import { collectModules } from '@cluesurf/make/code/compile/load'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
-import { hashText } from '@cluesurf/make/code/compile/cache'
-import type { CompileCache } from '@cluesurf/make/code/compile/cache'
+} from '@term/make/code/compile/template'
+import type { Template } from '@term/make/code/compile/template'
+import { mill } from '@term/make/code/compile/mill'
+import { resolve } from '@term/make/code/check/resolve'
+import { check } from '@term/make/code/check/infer'
+import { resolveAsync } from '@term/make/code/check/async-resolve'
+import { disambiguateOverloads } from '@term/make/code/check/overload'
+import { elaborateReport } from '@term/make/code/check/elaborate'
+import { checkHolds } from '@term/make/code/check/holds'
+import { checkTraits } from '@term/make/code/check/traits'
+import { checkEffects } from '@term/make/code/check/effects'
+import { checkTotality } from '@term/make/code/check/totality'
+import { findUnused } from '@term/make/code/check/unused'
+import { pruneToReachable } from '@term/make/code/ir/prune'
+import { simplify } from '@term/make/code/ir/simplify'
+import { passDictionaries } from '@term/make/code/ir/dictionary'
+import { lowerZones } from '@term/make/code/compile/zone-lower'
+import { compileLookCss } from '@term/make/code/compile/look-css'
+import { emitTypeScript } from '@term/make/code/compile/typescript'
+import { emitModules } from '@term/make/code/compile/modules'
+import type { ModuleEmit } from '@term/make/code/compile/modules'
+import { collectModules } from '@term/make/code/compile/load'
+import type { Resolver } from '@term/make/code/compile/load'
+import { hashText } from '@term/make/code/compile/cache'
+import type { CompileCache } from '@term/make/code/compile/cache'
 import type {
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 // The render-runtime helpers that `lowerZones` (compile/zone-lower.ts)
 // synthesizes calls to when it lowers a `zone` component. Because that

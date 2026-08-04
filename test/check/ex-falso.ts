@@ -6,7 +6,7 @@
 // fires -- guarantees integer variables. Soundness control: under a CONSISTENT assumption (`2 a == 4`, solvable at
 // a = 2) the same non-tautological hold is NOT vacuously proven. Run: npx tsx test/check/ex-falso.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

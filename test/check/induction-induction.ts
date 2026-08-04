@@ -6,7 +6,7 @@
 // type-safe -- `extend`'s `a` field must be a `ty`, not (say) a `nat`. With induction-recursion, this completes
 // "define a type and a function/type on it simultaneously". Run: npx tsx test/check/induction-induction.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

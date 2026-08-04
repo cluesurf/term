@@ -113,7 +113,7 @@ export function preprocessTests(source: string): Preprocessed {
     }
 
     // emit the task: setup statements pass through, assertions become guards, then `send back, true`
-    out.push(`task ${slug}`, '  mark async', '  like boolean')
+    out.push(`task ${slug}`, '  note async', '  like boolean')
 
     for (const group of statements(body, 2)) {
       const head = group[0]!.trim().split(/[\s,]/)[0]!

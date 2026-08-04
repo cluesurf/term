@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { record, text } from '@/base/make'
-import type { RecordNode } from '@/base/type'
-import { datasetOf } from '@/diff/change'
-import { MemoryChunkStore } from '@/store/chunk-store'
-import type { ChunkStore } from '@/store/chunk-store'
-import { writeDataset, updateTree, diffRoots } from '@/store/tree'
+import { record, text } from '@term/base/code/base/make'
+import type { RecordNode } from '@term/base/code/base/type'
+import { datasetOf } from '@term/base/code/diff/change'
+import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
+import { writeDataset, updateTree, diffRoots } from '@term/base/code/store/tree'
 
 // A chunk store that counts reads, to prove the diff walks only the changed region.
 class CountingStore implements ChunkStore {

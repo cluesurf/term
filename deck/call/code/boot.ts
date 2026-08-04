@@ -15,34 +15,34 @@ import {
 import { build, buildSync, version as esbuildVersion } from 'esbuild'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import {
   projectResolver,
   resolveTreeFile,
   watchTreeFiles,
-} from '@cluesurf/call/code/make'
-import { printDiagnostics } from '@cluesurf/call/code/report'
-import { nativePrelude } from '@cluesurf/make/code/compile/native'
-import type { NativeEnv } from '@cluesurf/make/code/compile/native'
-import { hashText } from '@cluesurf/make/code/compile/cache'
+} from '@term/call/code/make'
+import { printDiagnostics } from '@term/call/code/report'
+import { nativePrelude } from '@term/make/code/compile/native'
+import type { NativeEnv } from '@term/make/code/compile/native'
+import { hashText } from '@term/make/code/compile/cache'
 import {
   projectCache,
   compilerVersion,
-} from '@cluesurf/call/code/cache-store'
+} from '@term/call/code/cache-store'
 import {
   pullRemoteCache,
   pushRemoteCache,
-} from '@cluesurf/call/code/remote-cache'
-import { toConstant } from '@cluesurf/make/code/compile/typescript'
-import { parse } from '@cluesurf/make/code/parser/tree'
-import type { GroupNode } from '@cluesurf/make/code/parser/tree'
+} from '@term/call/code/remote-cache'
+import { toConstant } from '@term/make/code/compile/typescript'
+import { parse } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/tree'
 import {
   logStep,
   logGood,
   logFail,
   formatError,
   fade,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 // the head name of a tree group (its first `name` node), and the group's first argument as text. The structured way to
 // read a `.tree` file (mirrors the helpers in code/deck/install.ts).

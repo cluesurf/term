@@ -7,7 +7,7 @@
 import type {
   Expression,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 export type Terminator =
   | { kind: 'return' } // leaves the function

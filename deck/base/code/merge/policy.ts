@@ -1,7 +1,7 @@
-import type { Value } from '@/base/type'
-import { canonicalizeValue } from '@/canon/canonicalize'
-import { set as setValue, item } from '@/base/make'
-import type { MergePolicy, RoleBase } from '@/form/form'
+import type { Value } from '@term/base/code/base/type'
+import { canonicalizeValue } from '@term/base/code/canon/canonicalize'
+import { set as setValue, item } from '@term/base/code/base/make'
+import type { MergePolicy, RoleBase } from '@term/base/code/form/form'
 
 // Per-field merge policy: the concurrency contract a form declares for a property, so
 // not every field is treated the same when two branches change it. The default is to

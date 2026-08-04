@@ -6,7 +6,7 @@
 //     reaches the MOTZKIN polynomial, non-negative yet not a sum of squares.
 // It stays sound: any polynomial that dips below zero is never certified. Run: npx tsx test/check/cad-prove.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

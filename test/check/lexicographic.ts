@@ -4,7 +4,7 @@
 // does lexicographically. Soundness control: a swap recursion `bad(a, b) = bad(b, a)` does NOT descend at any position
 // and must NOT be made transparent, so a law over it does not discharge. Run: npx tsx test/check/lexicographic.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

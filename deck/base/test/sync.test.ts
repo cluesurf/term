@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { record, text } from '@/base/make'
-import type { RecordNode } from '@/base/type'
-import { datasetOf, type Change, type Dataset } from '@/diff/change'
-import { MemoryChunkStore } from '@/store/chunk-store'
-import { writeDataset, readDataset } from '@/store/tree'
-import { pull, packMissing, applyChunks } from '@/sync/chunk-sync'
-import { OpLog, applyOps } from '@/sync/op-sync'
-import { emptyDataset } from '@/diff/change'
-import type { Hlc } from '@/merge/clock'
+import { record, text } from '@term/base/code/base/make'
+import type { RecordNode } from '@term/base/code/base/type'
+import { datasetOf, type Change, type Dataset } from '@term/base/code/diff/change'
+import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
+import { writeDataset, readDataset } from '@term/base/code/store/tree'
+import { pull, packMissing, applyChunks } from '@term/base/code/sync/chunk-sync'
+import { OpLog, applyOps } from '@term/base/code/sync/op-sync'
+import { emptyDataset } from '@term/base/code/diff/change'
+import type { Hlc } from '@term/base/code/merge/clock'
 
 function markOf(i: number): string {
   return `${i.toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`

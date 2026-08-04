@@ -7,7 +7,7 @@
 import {
   nonNegativeEverywhereNvar,
   nPoly,
-} from '@cluesurf/make/code/check/cad-nvar'
+} from '@term/make/code/check/cad-nvar'
 
 let pass = 0
 let fail = 0

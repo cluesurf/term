@@ -50,6 +50,11 @@ export type RecordNode = {
   type: string
   label?: string
   fields: Map<string, Value>
+  // Authored comments, preserved so a `.tree` round trip loses nothing. Keyed by the
+  // field the comment sits above; the empty key holds the comments above the record
+  // itself. Part of the record, therefore part of its hash: changing a comment is a
+  // change, and two records that read differently are different.
+  comments?: Map<string, Array<string>>
 }
 
 // The scalar value kinds, for validation and canonical ordering.

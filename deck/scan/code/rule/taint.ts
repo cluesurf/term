@@ -11,7 +11,7 @@ import type {
   Program,
   Statement,
   Expression,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import type { CodeFinding } from '../form'
 import type { Rule } from '../rule'
 import {

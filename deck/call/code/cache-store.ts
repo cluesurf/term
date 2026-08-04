@@ -13,12 +13,12 @@ import {
 import os from 'os'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import type { CacheStore } from '@cluesurf/make/code/compile/cache'
+import type { CacheStore } from '@term/make/code/compile/cache'
 import {
   CACHE_EPOCH,
   CompileCache,
   hashText,
-} from '@cluesurf/make/code/compile/cache'
+} from '@term/make/code/compile/cache'
 
 // a disk-backed cache store rooted at `dir` (e.g. `<project>/.base/term/cache`). One subdir per kind, one file per key.
 export function diskCacheStore(dir: string): CacheStore {

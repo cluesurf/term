@@ -3,7 +3,7 @@
 // its three vulnerable-version forms matches (structured ranges, explicit versions, or an npm range expression).
 
 import type { Advisory, AdvisoryRange } from './form'
-import { compareVersion, satisfies, toMark } from './semver'
+import { compareVersion, satisfies, toCode } from './semver'
 
 // is `version` inside one structured window? `introduced <= v` and (`v < fixed` or no fixed) and
 // (`v <= lastAffected` or no lastAffected). An absent/`0` introduced means "from the beginning".
@@ -32,7 +32,7 @@ function inRange(version: string, range: AdvisoryRange): boolean {
 // is an installed `version` affected by `advisory`?
 export function isAffected(version: string, advisory: Advisory): boolean {
   // an unparseable version cannot be soundly matched against structured ranges; only an exact-string listing can
-  const parsed = toMark(version)
+  const parsed = toCode(version)
 
   if (advisory.versions && advisory.versions.includes(version)) {
     return true

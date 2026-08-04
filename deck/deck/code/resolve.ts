@@ -4,20 +4,20 @@ import {
   FetchConfig,
   LockEntry,
   Lockfile,
-  Mark,
-  MarkHold,
+  Code,
+  CodeHold,
   RegistryPackageMeta,
   ResolutionMap,
   ResolvedDeck,
 } from './form'
 import {
-  compareMark,
-  markMatch,
-  parseMark,
-  showMark,
-  parseMarkHold,
-  pickBestMark,
-} from './mark'
+  compareCode,
+  codeMatch,
+  parseCode,
+  showCode,
+  parseCodeHold,
+  pickBestCode,
+} from './code'
 import {
   fetchPackageMeta,
   getVersionList,
@@ -79,13 +79,13 @@ async function resolveLink(input: {
   const workspace = ctx.workspaces.get(link.name)
 
   if (workspace) {
-    const wsVersion = workspace.mark
+    const wsVersion = workspace.code
 
-    if (markMatch(wsVersion, link.mark)) {
-      const key = `${link.name}@${showMark(wsVersion)}`
+    if (codeMatch(wsVersion, link.code)) {
+      const key = `${link.name}@${showCode(wsVersion)}`
       ctx.resolved.set(key, {
         name: link.name,
-        mark: wsVersion,
+        code: wsVersion,
         hash: '',
         site: '',
         link: new Map(workspace.link.map(l => [l.name, '*'])),
@@ -99,26 +99,26 @@ async function resolveLink(input: {
   // check lockfile for existing resolution
   const locked = findLockedVersion({
     name: link.name,
-    hold: link.mark,
+    hold: link.code,
     lockfile: ctx.lockfile,
   })
 
   if (locked) {
-    const key = `${link.name}@${showMark(locked.mark)}`
+    const key = `${link.name}@${showCode(locked.code)}`
 
     if (!ctx.resolved.has(key)) {
       ctx.resolved.set(key, {
         name: locked.name,
-        mark: locked.mark,
+        code: locked.code,
         hash: locked.hash,
         site: locked.site,
-        link: new Map(locked.link.map(l => [l.name, l.mark])),
+        link: new Map(locked.link.map(l => [l.name, l.code])),
       })
 
       // resolve transitive deps from lockfile
       const transLinks: DeckLink[] = locked.link.map(l => ({
         name: l.name,
-        mark: { form: 'exact' as const, mark: parseMark(l.mark) },
+        code: { form: 'exact' as const, code: parseCode(l.code) },
       }))
 
       await resolveLinks({ links: transLinks, ctx })
@@ -134,22 +134,22 @@ async function resolveLink(input: {
   })
 
   const versions = getVersionList({ meta })
-  const best = pickBestMark({ versions, hold: link.mark })
+  const best = pickBestCode({ versions, hold: link.code })
 
   if (!best) {
     throw new Error(`No version of ${link.name} matches constraint`)
   }
 
-  const markStr = showMark(best)
-  const versionMeta = getVersionMeta({ meta, mark: markStr })
+  const codeStr = showCode(best)
+  const versionMeta = getVersionMeta({ meta, code: codeStr })
 
   if (!versionMeta) {
     throw new Error(
-      `Version metadata not found for ${link.name}@${markStr}`,
+      `Version metadata not found for ${link.name}@${codeStr}`,
     )
   }
 
-  const key = `${link.name}@${markStr}`
+  const key = `${link.name}@${codeStr}`
 
   if (ctx.resolved.has(key)) {return}
 
@@ -162,13 +162,13 @@ async function resolveLink(input: {
     depLinks.set(depName, depConstraint)
     transLinks.push({
       name: depName,
-      mark: parseMarkHold(depConstraint),
+      code: parseCodeHold(depConstraint),
     })
   }
 
   ctx.resolved.set(key, {
     name: link.name,
-    mark: best,
+    code: best,
     hash: versionMeta.integrity,
     site: versionMeta.tarball,
     link: depLinks,
@@ -179,7 +179,7 @@ async function resolveLink(input: {
 
 function findLockedVersion(input: {
   name: string
-  hold: MarkHold
+  hold: CodeHold
   lockfile?: Lockfile
 }): LockEntry | undefined {
   if (!input.lockfile) {return undefined}
@@ -187,7 +187,7 @@ function findLockedVersion(input: {
   for (const entry of input.lockfile.decks) {
     if (
       entry.name === input.name &&
-      markMatch(entry.mark, input.hold)
+      codeMatch(entry.code, input.hold)
     ) {
       return entry
     }
@@ -204,12 +204,12 @@ export function buildLockfile(input: {
   for (const resolved of input.resolution.decks.values()) {
     decks.push({
       name: resolved.name,
-      mark: resolved.mark,
+      code: resolved.code,
       hash: resolved.hash,
       site: resolved.site,
-      link: Array.from(resolved.link.entries()).map(([name, mark]) => ({
+      link: Array.from(resolved.link.entries()).map(([name, code]) => ({
         name,
-        mark,
+        code,
       })),
     })
   }

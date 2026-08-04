@@ -4,7 +4,7 @@
 import {
   type BenchmarkResult,
   formatDuration,
-} from '@cluesurf/make/code/time/stats'
+} from '@term/make/code/time/stats'
 
 export type Suite = {
   results: BenchmarkResult[]

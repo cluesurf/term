@@ -6,14 +6,14 @@
 import type {
   Diagnostic,
   Span,
-} from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   GroupNode,
   NameNode,
   Node,
   RootNode,
-} from '@cluesurf/make/code/parser/tree'
+} from '@term/make/code/parser/tree'
 import type {
   BinaryOp,
   DockArgument,
@@ -28,7 +28,7 @@ import type {
   Type,
   ZoneAttribute,
   ZoneNode,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import {
   BOOLEAN,
   BYTES,
@@ -38,7 +38,7 @@ import {
   STRING,
   UNIT,
   UNKNOWN,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 // like-type names to surface types
 const TYPE_NAME: Record<string, Type> = {

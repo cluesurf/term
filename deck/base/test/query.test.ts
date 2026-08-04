@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { record, text, integer } from '@/base/make'
-import { datasetOf, emptyDataset } from '@/diff/change'
-import { diffDataset } from '@/diff/diff'
-import { query, QueryableProjection } from '@/query/query'
-import type { RecordNode } from '@/base/type'
+import { record, text, integer } from '@term/base/code/base/make'
+import { datasetOf, emptyDataset } from '@term/base/code/diff/change'
+import { diffDataset } from '@term/base/code/diff/diff'
+import { query, QueryableProjection } from '@term/base/code/query/query'
+import type { RecordNode } from '@term/base/code/base/type'
 
 const marks = Array.from(
   { length: 5 },

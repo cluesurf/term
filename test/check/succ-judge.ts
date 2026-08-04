@@ -5,14 +5,14 @@
 // successor -- succ m = \ P z s. s m (m P z s) -- type-checks against Nat -> Nat and its eliminator computes,
 // with no manual coercions anywhere. This is the sugar gap closed at the root. Run: npx tsx test/check/succ-judge.ts
 
-import type { Mult, Term } from '@cluesurf/make/code/check/judge'
+import type { Mult, Term } from '@term/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   defineConstant,
   litLevel,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 
 const v = (i: number): Term => ({ tag: 'var', index: i })
 const kc = (n: string): Term => ({ tag: 'const', name: n })

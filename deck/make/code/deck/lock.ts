@@ -7,8 +7,8 @@ import type {
   NameNode,
   Node,
   RootNode,
-} from '@cluesurf/make/code/parser/tree'
-import { parse } from '@cluesurf/make/code/parser/tree'
+} from '@term/make/code/parser/tree'
+import { parse } from '@term/make/code/parser/tree'
 
 export type LockRequest = {
   name: string

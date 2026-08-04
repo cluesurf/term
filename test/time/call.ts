@@ -4,7 +4,7 @@
 // A trivial `time-noop` task keeps each run sub-millisecond, so the default iteration count is harmless: the point is
 // that the plumbing (collect files -> compile -> run -> table/json -> save -> compare -> gate) works end to end.
 
-import { callTime } from '@cluesurf/call/code/time'
+import { callTime } from '@term/call/code/time'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'

@@ -10,7 +10,7 @@
 import type {
   Program,
   ZoneNode,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 export type UsedClasses = {
   // the sorted set of statically-known class tokens (the JIT keep-list)

@@ -1,5 +1,5 @@
-import type { Value } from '@/base/type'
-import { canonicalizeValue } from '@/canon/canonicalize'
+import type { Value } from '@term/base/code/base/type'
+import { canonicalizeValue } from '@term/base/code/canon/canonicalize'
 
 // Ordering for query comparisons and ordered indexes. Same-kind scalars order
 // naturally (numbers numerically, text and dates lexically); anything else falls back

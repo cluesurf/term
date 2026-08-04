@@ -6,14 +6,14 @@
 import {
   compileBenchmarks,
   runBenchmarks,
-} from '@cluesurf/make/code/time/runner'
-import { buildSuite } from '@cluesurf/make/code/time/output'
-import type { Suite } from '@cluesurf/make/code/time/output'
+} from '@term/make/code/time/runner'
+import { buildSuite } from '@term/make/code/time/output'
+import type { Suite } from '@term/make/code/time/output'
 import {
   compareResults,
   shouldFail,
-} from '@cluesurf/make/code/time/compare'
-import type { Comparison } from '@cluesurf/make/code/time/compare'
+} from '@term/make/code/time/compare'
+import type { Comparison } from '@term/make/code/time/compare'
 
 // a saved baseline is the JSON `results` array of a prior suite, narrowed to the fields the comparison reads
 export type Baseline = { results: { name: string; mean_ns: number }[] }

@@ -1,4 +1,4 @@
-import type { Mark, RecordNode, Value } from '@/base/type'
+import type { Mark, RecordNode, Value } from '@term/base/code/base/type'
 
 // The typed, field-level change set. A commit is a set of these, keyed by mark, so
 // history records exactly what changed rather than which lines moved. Recording

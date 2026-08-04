@@ -8,7 +8,7 @@ import type {
   Expression,
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 type Fn = Extract<Statement, { form: 'function' }>
 

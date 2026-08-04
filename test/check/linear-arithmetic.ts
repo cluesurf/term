@@ -4,7 +4,7 @@
 // like `add a b == add b a` without knowing to drop the tactic. Soundness: a false linear claim is still rejected.
 // Run: npx tsx test/check/linear-arithmetic.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

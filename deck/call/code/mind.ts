@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
-import { logGood, fade, logStep } from '@cluesurf/make/code/tint'
+import { logGood, fade, logStep } from '@term/make/code/tint'
 
 const KINDS = [
   'decision',

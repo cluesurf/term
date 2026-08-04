@@ -1,12 +1,12 @@
 // IR -> Perceus MIR lowering tests: a real compiled function body lowers to ANF, heap-owned bindings are classified,
 // and the result drives correct dup/drop through perceusControl. Run: npx tsx test/ir/mir-lower.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { lowerToMir } from '@cluesurf/make/code/ir/mir-lower'
+import { compile } from '@term/make/code/compile/compile'
+import { lowerToMir } from '@term/make/code/ir/mir-lower'
 import {
   perceusControl,
   showInst,
-} from '@cluesurf/make/code/ir/perceus'
+} from '@term/make/code/ir/perceus'
 
 let pass = 0
 let fail = 0

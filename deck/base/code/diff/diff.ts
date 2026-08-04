@@ -1,6 +1,6 @@
-import type { RecordNode } from '@/base/type'
-import { valueEqual } from '@/base/equal'
-import type { Change, Dataset } from '@/diff/change'
+import type { RecordNode } from '@term/base/code/base/type'
+import { valueEqual } from '@term/base/code/base/equal'
+import type { Change, Dataset } from '@term/base/code/diff/change'
 
 // Semantic diff. Given two datasets, produce the field-level change set that turns
 // one into the other, matched by mark, not by position or line. A record moved,

@@ -5,7 +5,7 @@
 // however, is exactly the dependent eliminator, and proving by it is the induction tactic). Run:
 // npx tsx test/check/induction-judge.ts
 
-import type { Mult, Term } from '@cluesurf/make/code/check/judge'
+import type { Mult, Term } from '@term/make/code/check/judge'
 import {
   check,
   contextWithSignature,
@@ -13,7 +13,7 @@ import {
   infer,
   showTerm,
   litLevel,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 
 const v = (i: number): Term => ({ tag: 'var', index: i })
 const kc = (n: string): Term => ({ tag: 'const', name: n })

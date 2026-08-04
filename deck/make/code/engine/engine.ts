@@ -7,7 +7,7 @@ import type {
   Statement,
   Expression,
   BinaryOp,
-} from '@cluesurf/make/code/engine/ast'
+} from '@term/make/code/engine/ast'
 import {
   type Value,
   type Scope,
@@ -21,12 +21,12 @@ import {
   valuesEqual,
   keyOf,
   display,
-} from '@cluesurf/make/code/engine/value'
-import * as Int from '@cluesurf/make/code/engine/data/integer'
-import * as Flt from '@cluesurf/make/code/engine/data/float'
-import * as Str from '@cluesurf/make/code/engine/data/string'
-import * as Arr from '@cluesurf/make/code/engine/data/array'
-import * as Mp from '@cluesurf/make/code/engine/data/map'
+} from '@term/make/code/engine/value'
+import * as Int from '@term/make/code/engine/data/integer'
+import * as Flt from '@term/make/code/engine/data/float'
+import * as Str from '@term/make/code/engine/data/string'
+import * as Arr from '@term/make/code/engine/data/array'
+import * as Mp from '@term/make/code/engine/data/map'
 
 type Signal =
   | { kind: 'normal' }

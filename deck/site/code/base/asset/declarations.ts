@@ -1,9 +1,9 @@
 /**
  * Per-asset configuration consumed by the sync script
- * (`mesh/task/sync-term-assets.ts`).
+ * (`the asset sync task`).
  *
  * This is the Term (`@term/site`) port of the React
- * `@cluesurf/site-mesh/code/base/declarations.ts`. The
+ * the React site-asset declarations. The
  * shape, the two collections, and the CrowMark @font-face
  * declaration are identical -- Term sites serve their
  * hashed assets from the SAME host (`site.clue.surf`) and

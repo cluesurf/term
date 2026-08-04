@@ -1,4 +1,4 @@
-export type Mark = {
+export type Code = {
   major: number
   minor: number
   patch: number
@@ -7,8 +7,8 @@ export type Mark = {
 
 export type MarkBand = {
   form: 'band'
-  base: Mark
-  head: Mark
+  base: Code
+  head: Code
 }
 
 export type MarkWild = {
@@ -23,11 +23,11 @@ export type MarkTest = {
   list: MarkWild[]
 }
 
-export type MarkHold =
+export type CodeHold =
   | MarkBand
   | MarkWild
   | MarkTest
-  | { form: 'exact'; mark: Mark }
+  | { form: 'exact'; code: Code }
 
 export type DeckMind = {
   name: string
@@ -54,14 +54,14 @@ export type RoleConfig = {
 
 export type DeckLink = {
   name: string
-  mark: MarkHold
+  code: CodeHold
   have?: number
 }
 
 export type DeckManifest = {
   host: string
   name: string
-  mark: Mark
+  code: Code
   head?: string
   mind?: DeckMind[]
   lock?: string
@@ -85,7 +85,7 @@ export type DeckManifest = {
 
 export type ResolvedDeck = {
   name: string
-  mark: Mark
+  code: Code
   hash: string
   site: string
   link: Map<string, string>
@@ -97,10 +97,10 @@ export type ResolutionMap = {
 
 export type LockEntry = {
   name: string
-  mark: Mark
+  code: Code
   hash: string
   site: string
-  link: { name: string; mark: string }[]
+  link: { name: string; code: string }[]
 }
 
 export type Lockfile = {

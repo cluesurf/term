@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { record, text, integer, decimal, list, set, item } from '@/base/make'
+import { record, text, integer, decimal, list, set, item } from '@term/base/code/base/make'
 import {
   canonicalizeRecord,
   normalizeDecimal,
-} from '@/canon/canonicalize'
-import { hashRecord } from '@/canon/hash'
-import { isMark, mintMark, normalizeMark } from '@/base/mark'
+} from '@term/base/code/canon/canonicalize'
+import { hashRecord } from '@term/base/code/canon/hash'
+import { isMark, mintMark, normalizeMark } from '@term/base/code/base/mark'
 
 describe('canonicalization', () => {
   it('is independent of field insertion order', () => {

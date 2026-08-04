@@ -5,13 +5,13 @@
 // NON-truncation constructor stays proof-relevant, and a different TYPE argument is not equated.
 // Run: npx tsx test/check/hprop.ts
 
-import type { Term } from '@cluesurf/make/code/check/judge'
+import type { Term } from '@term/make/code/check/judge'
 import {
   areConvertible,
   evaluate,
   registerTruncation,
   resetDefinitions,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 
 let pass = 0
 let fail = 0

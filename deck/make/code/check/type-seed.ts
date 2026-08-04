@@ -4,9 +4,9 @@
 // the `records` / `formGenerics` tables (shared with expression inference) and the algorithm lives here.
 // See note/seed/plan/compilation-performance.md (Tier 2).
 
-import type { Type } from '@cluesurf/make/code/compile/node'
-import { UNKNOWN } from '@cluesurf/make/code/compile/node'
-import type { Substitution } from '@cluesurf/make/code/check/substitution'
+import type { Type } from '@term/make/code/compile/node'
+import { UNKNOWN } from '@term/make/code/compile/node'
+import type { Substitution } from '@term/make/code/check/substitution'
 
 export type SeedType = (
   type: Type | undefined,

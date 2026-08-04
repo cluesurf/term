@@ -9,12 +9,12 @@ import {
   logStep,
   fade,
   name as tintName,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 const DECK_TREE = (project: string): string => `deck ${project}
   bear ./code
   test ./test
-  mark <0.0.1>
+  code <0.0.1>
   boot ./code/boot
 `
 

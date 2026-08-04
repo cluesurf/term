@@ -1,5 +1,7 @@
 
 deck @term/flow
+  head <The Term language server>
   bear ./code
-  mark <0.0.2>
-  link @term/make, mark <0.0.x>
+  code <0.0.2>
+  lock mit
+  link @term/make, code <0.0.x>

@@ -4,9 +4,9 @@
 // note/seed/compiler/parallel-worker-pool.md.
 
 import { parentPort, threadId } from 'node:worker_threads'
-import { processDef } from '@cluesurf/make/code/compile/def-pass'
-import type { DefContext } from '@cluesurf/make/code/compile/def-pass'
-import type { Statement } from '@cluesurf/make/code/compile/node'
+import { processDef } from '@term/make/code/compile/def-pass'
+import type { DefContext } from '@term/make/code/compile/def-pass'
+import type { Statement } from '@term/make/code/compile/node'
 
 type FunctionDef = Extract<Statement, { form: 'function' }>
 

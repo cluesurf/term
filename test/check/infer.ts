@@ -1,7 +1,7 @@
 // Inference-engine tests: let-polymorphism (a generic used at two types), declared-annotation enforcement, and
 // record field-existence. Run: npx tsx test/check/infer.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

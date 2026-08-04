@@ -3,7 +3,7 @@
 // it (transitively) loads are collected in dependency order, then compiled as one merged program. Circular loads
 // are handled (each module is included exactly once). Browser-safe: file reading is delegated to a resolver.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 
 export type Source = { file: string; text: string }
 

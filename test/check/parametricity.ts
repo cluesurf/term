@@ -7,7 +7,7 @@
 // free-theorem capability is here.) Soundness control: a false "naturality" with the arguments swapped is rejected.
 // Run: npx tsx test/check/parametricity.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

@@ -2,21 +2,21 @@
 // `analyze` produces diagnostics (errors and warnings, with ranges) plus the typed program; `hoverAt` answers a
 // hover request by finding the narrowest typed expression under the cursor. Pure: no streams, no document store.
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
-import type { CompileCache } from '@cluesurf/make/code/compile/cache'
+import { compile } from '@term/make/code/compile/compile'
+import type { Resolver } from '@term/make/code/compile/load'
+import type { CompileCache } from '@term/make/code/compile/cache'
 import type {
   Expression,
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
-import { showType } from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
+import { showType } from '@term/make/code/compile/node'
 import type {
   Diagnostic,
   Position as SeedPosition,
   Severity,
   Span,
-} from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/parser/diagnostic'
 
 // LSP geometry: 0-based line/character, exactly the compiler's own coordinates, so spans map across unchanged.
 export type LspPosition = { line: number; character: number }

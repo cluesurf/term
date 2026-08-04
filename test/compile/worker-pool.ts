@@ -2,14 +2,14 @@
 // differential guarantee), that a multi-definition build genuinely runs across multiple worker threads, and that the
 // pool's output is the same regardless of how many workers process it. Run: npx tsx test/compile/worker-pool.ts
 
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { buildGlobalScope } from '@cluesurf/make/code/check/resolve'
+import { parse } from '@term/make/code/parser/tree'
+import { mill } from '@term/make/code/compile/mill'
+import { buildGlobalScope } from '@term/make/code/check/resolve'
 import {
   emitProgramParallel,
   WorkerPool,
-} from '@cluesurf/make/code/compile/worker-pool'
-import type { Program } from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/worker-pool'
+import type { Program } from '@term/make/code/compile/node'
 
 let pass = 0
 let fail = 0

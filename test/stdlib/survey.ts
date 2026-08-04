@@ -6,9 +6,9 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { withNativeEnv } from '@cluesurf/make/code/compile/native'
-import type { Source } from '@cluesurf/make/code/compile/load'
+import { compile } from '@term/make/code/compile/compile'
+import { withNativeEnv } from '@term/make/code/compile/native'
+import type { Source } from '@term/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const base = join(here, '..', '..', 'deck', 'base')

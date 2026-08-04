@@ -4,8 +4,8 @@
 // in a type but not in the environment (value-restricted), `freeTypeVars` collects a type's free variables.
 // See note/seed/plan/compilation-performance.md (Tier 2).
 
-import type { Expression, Type } from '@cluesurf/make/code/compile/node'
-import type { Substitution } from '@cluesurf/make/code/check/substitution'
+import type { Expression, Type } from '@term/make/code/compile/node'
+import type { Substitution } from '@term/make/code/check/substitution'
 
 // a type with some inference variables generalized. Empty `vars` is a plain monomorphic type.
 export type Scheme = { vars: number[]; type: Type }

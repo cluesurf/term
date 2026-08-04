@@ -1,4 +1,4 @@
-import { loadManifest, showMark } from '@cluesurf/deck.tree'
+import { loadManifest, showCode } from '@cluesurf/deck.tree'
 import chalk from 'chalk'
 import {
   logFail,
@@ -6,7 +6,7 @@ import {
   name,
   mark as markColor,
   fade,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 export async function callNote(input: {
   root: string
@@ -23,7 +23,7 @@ export async function callNote(input: {
       '  ' +
         chalk.bold(name(fullName)) +
         ' ' +
-        markColor(showMark(manifest.mark)),
+        markColor(showCode(manifest.code)),
     )
 
     if (manifest.head) {

@@ -1,8 +1,8 @@
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, existsSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
-import { compileProject } from '@cluesurf/call/code/make'
-import { compileProjectParallel } from '@cluesurf/call/code/build-parallel'
+import { compileProject } from '@term/call/code/make'
+import { compileProjectParallel } from '@term/call/code/build-parallel'
 
 // a few self-contained .tree files (no stdlib imports, so the project resolver only needs local files)
 const FILES: Record<string,string> = {

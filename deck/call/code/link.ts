@@ -13,7 +13,7 @@ import {
   fade,
   formatError,
   name,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 export async function callLink(input: {
   root: string

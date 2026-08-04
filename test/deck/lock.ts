@@ -3,7 +3,7 @@
 import {
   parseLockfile,
   serializeLockfile,
-} from '@cluesurf/make/code/deck/lock'
+} from '@term/make/code/deck/lock'
 
 const SAMPLE = `base <0.0.1>
 

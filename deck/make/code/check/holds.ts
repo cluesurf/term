@@ -3,14 +3,14 @@
 // constraints, then discharges the goals with the Fourier-Motzkin prover in refine.ts. An unprovable hold is a
 // diagnostic. See note/research/vibe/computation/plans/04-typecheck.md. Browser-safe.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
-import type { Linear } from '@cluesurf/make/code/check/refine'
+} from '@term/make/code/compile/node'
+import type { Linear } from '@term/make/code/check/refine'
 import {
   above,
   atLeast,
@@ -18,19 +18,19 @@ import {
   below,
   linear,
   proves,
-} from '@cluesurf/make/code/check/refine'
+} from '@term/make/code/check/refine'
 import {
   positiveEverywhere as sturmPositiveEverywhere,
   nonNegativeEverywhere as sturmNonNegativeEverywhere,
-} from '@cluesurf/make/code/check/sturm'
+} from '@term/make/code/check/sturm'
 import {
   bivariateNonNegative,
   type Bivariate,
-} from '@cluesurf/make/code/check/cad'
+} from '@term/make/code/check/cad'
 import {
   nonNegativeEverywhereNvar,
   nPoly,
-} from '@cluesurf/make/code/check/cad-nvar'
+} from '@term/make/code/check/cad-nvar'
 
 let modCounter = 0
 

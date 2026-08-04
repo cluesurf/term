@@ -4,7 +4,7 @@
 # visualization page in Seed: it draws the 24-cell (the D4 coin of 24 directions) as its 2D F4-Coxeter shadow, 96 edges
 # with twelve-fold symmetry. The GLSL sources and the projected edge geometry come from a deterministic runtime shim
 # (<global:lattice>) so the .tree side stays clean. DOM chrome (the canvas) is rendered by zone; the render is WebGL via
-# @term/site/code/graphics. Copy of the structure for mesh/site/code.surf/home/site/page/vibe/.
+# @term/site/code/graphics. Copy of the structure for the vibe pages.
 
 load @term/site/code/dom/dom
   find view

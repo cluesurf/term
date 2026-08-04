@@ -8,8 +8,8 @@
 import type {
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
-import type { DockRoute } from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
+import type { DockRoute } from '@term/make/code/compile/node'
 
 // the CLI command routes of a program: every top-level `hook` (lowered to a dock statement)
 export function commandRoutes(program: Program): DockRoute[] {

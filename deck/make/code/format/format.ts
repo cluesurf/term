@@ -6,12 +6,12 @@
 // ignores the input layout and prints from the tree). Part of the one-parse pipeline (see plans/19-format-and-lint).
 // Pure and browser-safe.
 
-import { parse } from '@cluesurf/make/code/parser/tree'
+import { parse } from '@term/make/code/parser/tree'
 import type {
   GroupNode,
   Node,
   RootNode,
-} from '@cluesurf/make/code/parser/tree'
+} from '@term/make/code/parser/tree'
 
 const WIDTH = 84
 

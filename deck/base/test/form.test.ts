@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { record, text, integer, ref, set, item } from '@/base/make'
-import { datasetOf } from '@/diff/change'
+import { record, text, integer, ref, set, item } from '@term/base/code/base/make'
+import { datasetOf } from '@term/base/code/diff/change'
 import {
   form,
   property,
   hold,
   want,
   roleBase,
-} from '@/form/form'
-import { validateRecord, validateDataset, errors } from '@/form/validate'
+} from '@term/base/code/form/form'
+import { validateRecord, validateDataset, errors } from '@term/base/code/form/validate'
 
 const M1 = '11111111-1111-4111-8111-111111111111'
 const M2 = '22222222-2222-4222-8222-222222222222'

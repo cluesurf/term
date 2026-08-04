@@ -4,7 +4,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { compileZone } from '@cluesurf/make/code/zone/compile'
+import { compileZone } from '@term/make/code/zone/compile'
 
 const SOURCE = `zone counter
   state count, code 0
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
     true,
   )
 
-  // write inside the project so `@cluesurf/make/code/zone/reactive` resolves under tsx, then run it
+  // write inside the project so `@term/make/code/zone/reactive` resolves under tsx, then run it
   const here = dirname(fileURLToPath(import.meta.url))
   const dir = join(here, 'generated')
   mkdirSync(dir, { recursive: true })

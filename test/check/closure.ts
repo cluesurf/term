@@ -4,7 +4,7 @@
 // DEPENDENT parameter type. This was the recurring gate for the generic well-founded recursor and for building
 // accessibility witnesses. Run: npx tsx test/check/closure.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

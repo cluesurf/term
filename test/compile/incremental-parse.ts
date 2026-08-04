@@ -1,11 +1,11 @@
 // Incremental parsing tests: a file parses definition-by-definition, reusing unchanged blocks, and the merged tree is
 // identical to a whole-file parse (including spans). Run: npx tsx test/compile/incremental-parse.ts
 
-import { parse } from '@cluesurf/make/code/parser/tree'
+import { parse } from '@term/make/code/parser/tree'
 import {
   splitTopLevel,
   incrementalParse,
-} from '@cluesurf/make/code/compile/incremental-parse'
+} from '@term/make/code/compile/incremental-parse'
 
 let pass = 0
 let fail = 0

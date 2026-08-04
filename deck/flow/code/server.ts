@@ -5,18 +5,18 @@
 // references, rename, symbols, completion, signature help) are queries over the index. The node entry point
 // (main.ts) pumps stdin/stdout into it.
 
-import type { Message } from '@cluesurf/flow/code/protocol'
+import type { Message } from '@term/flow/code/protocol'
 import {
   hoverAt,
   toRange,
   toLspDiagnostic,
-} from '@cluesurf/flow/code/analyze'
+} from '@term/flow/code/analyze'
 import type {
   LspDiagnostic,
   LspPosition,
-} from '@cluesurf/flow/code/analyze'
-import { IncrementalAnalyzer } from '@cluesurf/make/code/compile/analyzer'
-import { analyze } from '@cluesurf/make/code/analyze'
+} from '@term/flow/code/analyze'
+import { IncrementalAnalyzer } from '@term/make/code/compile/analyzer'
+import { analyze } from '@term/make/code/analyze'
 import {
   editorResolver,
   findModuleExporting,
@@ -24,7 +24,7 @@ import {
   moduleCompletions,
   moduleExports,
   scanDefs,
-} from '@cluesurf/make/code/resolve'
+} from '@term/make/code/resolve'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   buildIndex,
@@ -33,17 +33,17 @@ import {
   occurrencesOf,
   scopeAt,
   callAt,
-} from '@cluesurf/flow/code/symbols'
+} from '@term/flow/code/symbols'
 import type {
   SymbolIndex,
   SymbolKind,
-} from '@cluesurf/flow/code/symbols'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
+} from '@term/flow/code/symbols'
+import type { Resolver } from '@term/make/code/compile/load'
 import type {
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
-import { showType } from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
+import { showType } from '@term/make/code/compile/node'
 
 type TextDocumentParams = {
   textDocument: { uri: string; text?: string }

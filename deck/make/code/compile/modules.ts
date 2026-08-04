@@ -14,12 +14,12 @@ import type {
   Statement,
   Expression,
   Type,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import {
   emitTypeScript,
   toCamel,
   toPascal,
-} from '@cluesurf/make/code/compile/typescript'
+} from '@term/make/code/compile/typescript'
 
 const ENTRY = '<entry>'
 

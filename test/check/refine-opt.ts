@@ -8,7 +8,7 @@ import {
   below,
   above,
   proves,
-} from '@cluesurf/make/code/check/refine'
+} from '@term/make/code/check/refine'
 
 let pass = 0,
   fail = 0

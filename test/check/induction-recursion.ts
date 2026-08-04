@@ -6,7 +6,7 @@
 // branch may return `nat`); and a type-RETURNING match uses the LARGE eliminator `matchType` (motive into Type1), so a
 // branch may itself be a type. Soundness: `el natcode = nat`, NOT `bool`. Run: npx tsx test/check/induction-recursion.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

@@ -1,4 +1,6 @@
 
 deck @term/make
+  head <The Term compiler>
   bear ./code
-  mark <0.0.2>
+  code <0.0.2>
+  lock mit

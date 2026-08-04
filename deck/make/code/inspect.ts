@@ -3,12 +3,12 @@
 // structured data; rendering to JSON / CSV / a table is separate. The CLI `seed look` drives it. This is the easy way
 // to see "what's on" a module — including transitively re-exported (`bear`'d) definitions.
 
-import { collectModules } from '@cluesurf/make/code/compile/load'
-import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { expandTemplates } from '@cluesurf/make/code/compile/template'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { showType } from '@cluesurf/make/code/compile/node'
+import { collectModules } from '@term/make/code/compile/load'
+import type { Resolver, Source } from '@term/make/code/compile/load'
+import { parse } from '@term/make/code/parser/tree'
+import { expandTemplates } from '@term/make/code/compile/template'
+import { mill } from '@term/make/code/compile/mill'
+import { showType } from '@term/make/code/compile/node'
 
 export type FormSymbol = {
   kind: 'form'

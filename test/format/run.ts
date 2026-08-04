@@ -1,8 +1,8 @@
 // Formatter tests: canonical layout, idempotence, comment preservation, and (above all) meaning preservation.
 // Run: npx tsx test/format/run.ts
 
-import { format } from '@cluesurf/make/code/format/format'
-import { parse } from '@cluesurf/make/code/parser/tree'
+import { format } from '@term/make/code/format/format'
+import { parse } from '@term/make/code/parser/tree'
 
 let pass = 0
 let fail = 0

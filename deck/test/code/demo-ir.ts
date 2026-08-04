@@ -12,8 +12,8 @@
  * Pure node + tsx, deterministic.
  */
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Type } from '@cluesurf/make/code/compile/node'
+import { compile } from '@term/make/code/compile/compile'
+import type { Type } from '@term/make/code/compile/node'
 import { genFromIR, irToSeedType, type RecordTable } from './ir-gen'
 import { check } from './property'
 

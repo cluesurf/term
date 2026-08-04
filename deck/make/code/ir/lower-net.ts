@@ -8,8 +8,8 @@
 // self-loop of the bare identity all need the extra wiring described in plans/06-runtime-substrate.md; they are the
 // next layer. Pure and browser-safe.
 
-import { Net } from '@cluesurf/make/code/ir/net'
-import type { Port } from '@cluesurf/make/code/ir/net'
+import { Net } from '@term/make/code/ir/net'
+import type { Port } from '@term/make/code/ir/net'
 
 export type Term =
   | { t: 'var'; name: string }

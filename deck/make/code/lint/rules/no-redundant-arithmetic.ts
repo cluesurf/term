@@ -3,8 +3,8 @@
 // edit is exact. Only the identities that preserve the other operand's value AND its side effects are offered, so
 // `x * 0` is deliberately excluded (it would drop x, whose evaluation may have effects). Mirrors the IR simplifier.
 
-import type { Expression } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Expression } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 function isLiteral(expr: Expression, value: number): boolean {
   return (

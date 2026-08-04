@@ -1,5 +1,5 @@
-import { canonicalString } from '@/canon/json'
-import type { PrunableChunkStore } from '@/store/chunk-store'
+import { canonicalString } from '@term/base/code/canon/json'
+import type { PrunableChunkStore } from '@term/base/code/store/chunk-store'
 
 // Distributed erasure. A local erasure reclaims content in the store it runs against,
 // but a fork or replica that has the old chunks would otherwise keep serving them, and

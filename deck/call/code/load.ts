@@ -4,7 +4,7 @@ import {
   logFail,
   logStep,
   formatError,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 export async function callLoad(input: {
   root: string

@@ -204,6 +204,7 @@ export function serveRegistry(input: {
           const manifest = await buildManifest({
             commitId: commit,
             ref: commit,
+            package: pkg,
             store: input.store,
           })
           sendJson(res, 200, manifest)

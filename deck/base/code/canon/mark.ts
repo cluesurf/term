@@ -5,7 +5,7 @@
 //
 // The platform rendering is the TONE CODE: the alphabet `mndbtkhsfvzxcwlr`, one
 // letter per nibble, dashed 8-8-8-8. Consonant-only, so codes never accidentally
-// spell words and stay easy to dictate. See mesh/deck/belt/code/tool/tone.ts.
+// spell words and stay easy to dictate. See the platform tone-code encoder.
 //
 //   mndbtkhs-fvzxcwlr-btkhsfvz-xcwlrmnd     35 characters, 32 letters + 3 dashes
 //
@@ -15,7 +15,7 @@
 //
 // See note/library/base/20-serialization-and-wire-format.md.
 
-import type { Mark } from '@/base/type'
+import type { Mark } from '@term/base/code/base/type'
 
 // Ordering is the tone alphabet: index is the nibble value.
 export const TONE_ALPHABET = 'mndbtkhsfvzxcwlr'
@@ -27,6 +27,52 @@ const TONE_TO_NIBBLE = new Map<string, number>(
 const HEX = '0123456789abcdef'
 
 export const MARK_BYTE_LENGTH = 16
+
+// One extension per format, lowercase. An object key names its content, so the same
+// format must never appear under two spellings: `jpeg` and `jpg` would otherwise be two
+// keys for one thing and defeat deduplication at the naming layer.
+//
+// These match the platform's upload policy, which already maps `image/jpeg` to `jpg`.
+// Keep the two in step.
+const CANONICAL_EXTENSION: Record<string, string> = {
+  jpeg: 'jpg',
+  jpe: 'jpg',
+  tif: 'tiff',
+  htm: 'html',
+  yml: 'yaml',
+  mpeg: 'mp3',
+  mpg: 'mp4',
+  qt: 'mov',
+  markdown: 'md',
+  text: 'txt',
+  svgz: 'svg',
+}
+
+// Normalize an extension: lowercase, no leading dot, and one spelling per format.
+export function canonicalExtension(extension: string): string {
+  const bare = extension.trim().toLowerCase().replace(/^\.+/, '')
+
+  return CANONICAL_EXTENSION[bare] ?? bare
+}
+
+// Re-letter ANY hex run through the tone alphabet, length preserved, and group it in
+// EIGHTS. A mark is 32 hex characters, so four groups; a sha256 is 64, so eight. One
+// rule at both lengths, which is what makes an object key and a mark read the same way.
+export function toneOfHex(hex: string): string {
+  let flat = ''
+
+  for (const character of hex.toLowerCase()) {
+    const nibble = HEX.indexOf(character)
+
+    if (nibble < 0) {
+      throw new Error(`invalid hex character: ${character}`)
+    }
+
+    flat += TONE_ALPHABET[nibble]
+  }
+
+  return (flat.match(/.{1,8}/g) ?? [flat]).join('-')
+}
 
 // The dash layout disambiguates the two accepted text forms without relying on
 // the alphabets, which overlap on b, c, d and f:

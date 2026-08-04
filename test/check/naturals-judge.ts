@@ -4,14 +4,14 @@
 // self-encoded Nat lives in Type0 (its own motive's universe), so the recursor can eliminate INTO Nat -- addition
 // and multiplication, which return Nat, type-check and reduce. Run: npx tsx test/check/naturals-judge.ts
 
-import type { Mult, Term } from '@cluesurf/make/code/check/judge'
+import type { Mult, Term } from '@term/make/code/check/judge'
 import {
   contextWithSignature,
   check,
   evaluate,
   defineConstant,
   litLevel,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 
 const v = (index: number): Term => ({ tag: 'var', index })
 const kc = (name: string): Term => ({ tag: 'const', name })

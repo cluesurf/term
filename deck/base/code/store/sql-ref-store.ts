@@ -1,5 +1,5 @@
 // A mutable ref store backed by a Postgres-wire database (CockroachDB or PostgreSQL),
-// mirroring how mesh reaches its database through Kysely over pg (mesh/deck/back/code/
+// mirroring how the platform reaches its database through Kysely over pg (a platform package/code/
 // tool/db). Refs are the small mutable part of the store, the branch heads, updated by
 // compare-and-swap so concurrent commits serialize. Chunks are immutable and live in
 // object storage; refs are transactional and live here. base depends only on the
@@ -104,7 +104,7 @@ export class SqlRefStore implements AsyncRefStore {
   }
 
   // The CREATE TABLE statement for this store's configuration. Ship it as a migration
-  // (mesh/move/NNNN-*.sql) in a real deployment.
+  // (a platform migration) in a real deployment.
   ddl(): string {
     return this.ddlSql
   }

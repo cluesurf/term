@@ -4,7 +4,7 @@
 // (the same scope indexed families already use for `vecnat`'s `rest : vecnat count`). It type-checks, the dependency is
 // ENFORCED (a vector of the wrong length is rejected), and projection COMPUTES. Run: npx tsx test/check/dependent-record.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

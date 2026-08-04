@@ -73,7 +73,7 @@ task clear
 
 # Compile a shader for the given GL stage constant. Private: make-shader maps the kind union to the constant.
 task make-stage
-  mark private
+  note private
   take gl, like web-gl-rendering-context-base
   take type-code
   take source, like text
@@ -159,7 +159,7 @@ task make-buffer
 
 # Map a primitive-kind to its GL mode constant.
 task mode-code
-  mark private
+  note private
   take gl, like web-gl-rendering-context-base
   take kind, like primitive-kind
   fork case, read kind

@@ -4,7 +4,7 @@
 // inserts the witnesses, and recognises recursive fields by their type former -- so structural induction over a
 // polymorphic container works (and polymorphic functions over it reduce). Run: npx tsx test/check/polymorphic-induction.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

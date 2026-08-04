@@ -2,8 +2,8 @@
 // The condition then changes nothing -- a copy-paste bug, or a leftover after the two branches were meant to diverge.
 // Only fires on a simple two-way fork with fully, structurally identical bodies.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
-import { statementListsEqual } from '@cluesurf/make/code/compile/expr-equal'
+import type { Rule } from '@term/make/code/lint/rule'
+import { statementListsEqual } from '@term/make/code/compile/expr-equal'
 
 export const noIdenticalBranches: Rule = {
   name: 'no-identical-branches',

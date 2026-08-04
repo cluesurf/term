@@ -13,8 +13,8 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { collectModules } from '@cluesurf/make/code/compile/load'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
+import { collectModules } from '@term/make/code/compile/load'
+import type { Resolver } from '@term/make/code/compile/load'
 import { proveFile, type Report } from './prove-file'
 import { obligationKey, type ObligationCache, type Verdict } from './obligation-cache'
 

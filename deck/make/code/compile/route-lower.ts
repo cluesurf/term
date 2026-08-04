@@ -16,8 +16,8 @@ import type {
   Program,
   Statement,
   Expression,
-} from '@cluesurf/make/code/compile/node'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
 
 type RouteStatement = Extract<Statement, { form: 'dock' }>
 

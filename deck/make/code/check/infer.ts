@@ -6,28 +6,28 @@
 import type {
   Diagnostic,
   Span,
-} from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
-import { Substitution } from '@cluesurf/make/code/check/substitution'
-import { instantiate } from '@cluesurf/make/code/check/signature'
-import type { Signature } from '@cluesurf/make/code/check/signature'
-import { makeSeedType } from '@cluesurf/make/code/check/type-seed'
-import { zonkGeneric as zonkGenericType } from '@cluesurf/make/code/check/zonk'
+} from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
+import { Substitution } from '@term/make/code/check/substitution'
+import { instantiate } from '@term/make/code/check/signature'
+import type { Signature } from '@term/make/code/check/signature'
+import { makeSeedType } from '@term/make/code/check/type-seed'
+import { zonkGeneric as zonkGenericType } from '@term/make/code/check/zonk'
 import {
   instantiateScheme as instantiateSchemeImpl,
   freeTypeVars as freeTypeVarsImpl,
   generalize as generalizeImpl,
   isValueExpression,
-} from '@cluesurf/make/code/check/scheme'
-import type { Scheme, Env } from '@cluesurf/make/code/check/scheme'
-import { makeExpect } from '@cluesurf/make/code/check/expect'
+} from '@term/make/code/check/scheme'
+import type { Scheme, Env } from '@term/make/code/check/scheme'
+import { makeExpect } from '@term/make/code/check/expect'
 import type {
   Expression,
   Program,
   Statement,
   Type,
   ZoneNode,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import {
   BOOLEAN,
   DYNAMIC,
@@ -37,7 +37,7 @@ import {
   UNIT,
   UNKNOWN,
   showType,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 export function check(
   program: Program,

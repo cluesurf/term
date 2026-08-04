@@ -7,11 +7,11 @@ import {
   formatError,
   name,
   fade,
-} from '@cluesurf/make/code/tint'
-import { runScan, failsThreshold } from '@cluesurf/scan/code/scan'
-import { formatHuman, toJson } from '@cluesurf/scan/code/report'
-import { toSarifJson } from '@cluesurf/scan/code/sarif'
-import { planUpgrades, applyUpgrades } from '@cluesurf/scan/code/fix'
+} from '@term/make/code/tint'
+import { runScan, failsThreshold } from '@term/scan/code/scan'
+import { formatHuman, toJson } from '@term/scan/code/report'
+import { toSarifJson } from '@term/scan/code/sarif'
+import { planUpgrades, applyUpgrades } from '@term/scan/code/fix'
 
 export async function callSeek(input: {
   root: string

@@ -7,9 +7,9 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Source } from '@cluesurf/make/code/compile/load'
-import { render } from '@cluesurf/make/code/parser/diagnostic'
+import { compile } from '@term/make/code/compile/compile'
+import type { Source } from '@term/make/code/compile/load'
+import { render } from '@term/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base') // deck/seed/deck/base.tree

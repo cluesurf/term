@@ -1,17 +1,17 @@
 // The runtime values of the engine, over the balanced-ternary data types. Plus the scope (the environment) and
 // the closure / native-function shapes. See note/research/vibe/computation/engine/01-values.md.
 
-import type { Statement } from '@cluesurf/make/code/engine/ast'
-import type { Bool3 } from '@cluesurf/make/code/engine/data/boolean'
-import type { TernaryInteger } from '@cluesurf/make/code/engine/data/integer'
-import type { TernaryFloat } from '@cluesurf/make/code/engine/data/float'
-import type { Rope } from '@cluesurf/make/code/engine/data/string'
-import type { Vector } from '@cluesurf/make/code/engine/data/array'
-import type { TernaryMap } from '@cluesurf/make/code/engine/data/map'
-import * as Int from '@cluesurf/make/code/engine/data/integer'
-import * as Flt from '@cluesurf/make/code/engine/data/float'
-import * as Str from '@cluesurf/make/code/engine/data/string'
-import * as Arr from '@cluesurf/make/code/engine/data/array'
+import type { Statement } from '@term/make/code/engine/ast'
+import type { Bool3 } from '@term/make/code/engine/data/boolean'
+import type { TernaryInteger } from '@term/make/code/engine/data/integer'
+import type { TernaryFloat } from '@term/make/code/engine/data/float'
+import type { Rope } from '@term/make/code/engine/data/string'
+import type { Vector } from '@term/make/code/engine/data/array'
+import type { TernaryMap } from '@term/make/code/engine/data/map'
+import * as Int from '@term/make/code/engine/data/integer'
+import * as Flt from '@term/make/code/engine/data/float'
+import * as Str from '@term/make/code/engine/data/string'
+import * as Arr from '@term/make/code/engine/data/array'
 
 export type Value =
   | { form: 'unit' }

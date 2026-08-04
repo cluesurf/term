@@ -1,9 +1,9 @@
-import type { Mark, RecordNode } from '@/base/type'
-import { canonicalizeRecord } from '@/canon/canonicalize'
-import { canonicalString } from '@/canon/json'
-import { decodeRecord } from '@/canon/decode'
-import type { Dataset } from '@/diff/change'
-import type { ChunkStore } from '@/store/chunk-store'
+import type { Mark, RecordNode } from '@term/base/code/base/type'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
+import { canonicalString } from '@term/base/code/canon/json'
+import { decodeRecord } from '@term/base/code/canon/decode'
+import type { Dataset } from '@term/base/code/diff/change'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
 
 // A content-addressed prolly tree over records keyed by mark. Records are stored as
 // chunks by their canonical hash (so equal records dedup). The tree indexes them,

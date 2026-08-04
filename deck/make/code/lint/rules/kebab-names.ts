@@ -2,7 +2,7 @@
 // No camelCase, no underscores, no abbreviations enforced here (that needs a dictionary) but the shape is. Report
 // only: a rename fix would have to update every reference, which is a refactor, not a local edit.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 

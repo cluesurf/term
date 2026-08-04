@@ -18,16 +18,16 @@
  */
 
 import path from 'node:path'
-import { projectResolver } from '@cluesurf/call/code/make'
-import { collectTreeFiles } from '@cluesurf/call/code/files'
-import { compilerVersion } from '@cluesurf/call/code/cache-store'
-import { holdIncremental } from '@cluesurf/test/code/hold-incremental'
+import { projectResolver } from '@term/call/code/make'
+import { collectTreeFiles } from '@term/call/code/files'
+import { compilerVersion } from '@term/call/code/cache-store'
+import { holdIncremental } from '@term/test/code/hold-incremental'
 import {
   diskObligationCache,
   memoryObligationCache,
-} from '@cluesurf/test/code/obligation-cache'
-import { renderReport } from '@cluesurf/test/code/prove-file'
-import { logGood, logFail, fade } from '@cluesurf/make/code/tint'
+} from '@term/test/code/obligation-cache'
+import { renderReport } from '@term/test/code/prove-file'
+import { logGood, logFail, fade } from '@term/make/code/tint'
 
 export async function callHold(input: {
   root: string

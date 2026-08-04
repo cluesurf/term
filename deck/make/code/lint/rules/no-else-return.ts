@@ -1,8 +1,8 @@
 // L023: when every branch of a `fork test` already exits (`send back` / `halt` / `throw`), the `hook miss` (else) is
 // unnecessary -- its body can be unindented to follow the fork. Reduces nesting.
 
-import type { Statement } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Statement } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 const TERMINATORS = new Set<Statement['form']>([
   'return',

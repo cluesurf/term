@@ -1,3 +1,5 @@
 
 deck @term/deck
-  mark <0.0.2>
+  head <The Term package manager>
+  code <0.0.2>
+  lock mit

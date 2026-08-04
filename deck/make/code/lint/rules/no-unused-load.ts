@@ -4,7 +4,7 @@
 // `context.referenced`; if the alias is absent, nothing uses the import. Report only: the safe fix (delete the line,
 // and the enclosing `dock load` if it becomes empty) is the author's call.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noUnusedLoad: Rule = {
   name: 'no-unused-load',

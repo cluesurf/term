@@ -21,7 +21,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import path from 'node:path'
-import { hashText } from '@cluesurf/make/code/compile/cache'
+import { hashText } from '@term/make/code/compile/cache'
 
 /** The recorded outcome of a verification, small and serializable. */
 export type Verdict = {

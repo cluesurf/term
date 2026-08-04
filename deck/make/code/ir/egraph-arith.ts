@@ -17,10 +17,10 @@
 import type {
   Expression,
   BinaryOp,
-} from '@cluesurf/make/code/compile/node'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
-import type { Expr } from '@cluesurf/make/code/ir/egraph'
-import { optimize } from '@cluesurf/make/code/ir/egraph'
+} from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
+import type { Expr } from '@term/make/code/ir/egraph'
+import { optimize } from '@term/make/code/ir/egraph'
 
 const ARITH = new Set<BinaryOp>(['+', '-', '*'])
 

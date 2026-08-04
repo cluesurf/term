@@ -2,8 +2,8 @@
 // confirm requests are matched to routes (including `:param` paths) and dispatched, with 404 for no match. The
 // matcher + dispatch are the uniform "ours" layer; `serve` (transport) is native-delegated. Run: npx tsx test/http/run.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
 import { transform } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'

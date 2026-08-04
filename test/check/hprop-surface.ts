@@ -4,7 +4,7 @@
 // an ordinary (non-`prop`) form stays proof-RELEVANT, so distinct evidence is NOT equated.
 // Run: npx tsx test/check/hprop-surface.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

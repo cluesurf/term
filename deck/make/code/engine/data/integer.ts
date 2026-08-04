@@ -11,7 +11,7 @@ import {
   tritLength,
   tritWordRange,
   type Trit,
-} from '@cluesurf/make/code/engine/data/trit'
+} from '@term/make/code/engine/data/trit'
 
 export type Resolution = 'tri8' | 'tri16' | 'tri40' | 'big'
 

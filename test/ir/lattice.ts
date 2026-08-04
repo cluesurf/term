@@ -5,8 +5,8 @@ import {
   honeycomb,
   lattice,
   place,
-} from '@cluesurf/make/code/ir/lattice'
-import { Net } from '@cluesurf/make/code/ir/net'
+} from '@term/make/code/ir/lattice'
+import { Net } from '@term/make/code/ir/net'
 
 let pass = 0
 let fail = 0

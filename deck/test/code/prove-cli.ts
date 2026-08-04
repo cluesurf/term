@@ -3,7 +3,7 @@
  * runner. The reusable core lives in `prove-file.ts` (resolver-injected,
  * no `@cluesurf/call` dependency); this script supplies the project
  * resolver and the process glue (argv, output, exit code). The real
- * CLI verb is `@cluesurf/call/code/hold` (`seed hold`), which calls
+ * CLI verb is `@term/call/code/hold` (`seed hold`), which calls
  * the same `proveFile`. Usage:
  *   npx tsx deck/test/code/prove-cli.ts <file.tree> [--cross] [--json]
  *
@@ -12,7 +12,7 @@
 
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { projectResolver } from '@term/call/code/make'
 import { proveFile, renderReport } from './prove-file'
 
 export async function main(): Promise<void> {

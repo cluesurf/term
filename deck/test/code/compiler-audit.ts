@@ -13,7 +13,7 @@
 
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { projectResolver } from '@term/call/code/make'
 import { huntSeedCompiler, renderHunt } from './seed-hunt'
 
 async function main(): Promise<void> {

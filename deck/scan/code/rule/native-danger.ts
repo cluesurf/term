@@ -2,7 +2,7 @@
 // these is not always a bug, but every use is worth a security review, so the rule surfaces the import site. This is
 // the structural, always-correct half of the code scan (the taint rule adds data-flow reasoning on top).
 
-import type { Program } from '@cluesurf/make/code/compile/node'
+import type { Program } from '@term/make/code/compile/node'
 import type { CodeFinding, Severity } from '../form'
 import type { Rule } from '../rule'
 import { pointOf } from '../rule'

@@ -4,11 +4,11 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { editorResolver } from '@cluesurf/make/code/resolve'
-import { logGood, logFail, fade } from '@cluesurf/make/code/tint'
-import { printDiagnostic } from '@cluesurf/call/code/report'
+import { compile } from '@term/make/code/compile/compile'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { editorResolver } from '@term/make/code/resolve'
+import { logGood, logFail, fade } from '@term/make/code/tint'
+import { printDiagnostic } from '@term/call/code/report'
 
 // the JSON shape an agent consumes: stable, workspace-relative, no machine paths or timestamps
 function toJson(

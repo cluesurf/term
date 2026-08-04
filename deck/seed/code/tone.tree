@@ -1,7 +1,7 @@
 
 # Tone code: encode a hex string into a compact, human-readable code by re-lettering each hex nibble through the
 # 16-character consonant-only alphabet `mndbtkhsfvzxcwlr` (from termsurf/tone), grouped into 4-letter runs with `-`.
-# Ported from mesh/deck/belt/code/tool/tone.ts (the encode half). Used for content-hashed asset names
+# Ported from the platform tone-code encoder (the encode half). Used for content-hashed asset names
 # (`/base/look-<tone>.css`, cutting-edge cache-busting) and opaque ids. A 16-hex-char input -> `4-4-4-4` (16 letters).
 
 load @term/seed/code/list

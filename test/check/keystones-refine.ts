@@ -11,7 +11,7 @@ import {
   below,
   above,
   proves,
-} from '@cluesurf/make/code/check/refine'
+} from '@term/make/code/check/refine'
 
 const lit = (n: number) => linear({}, n)
 const d = linear({ dimension: 1 }) // the dimension, a free variable

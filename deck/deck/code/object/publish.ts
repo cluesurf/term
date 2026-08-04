@@ -9,13 +9,11 @@
  * objects (see note/term/registry/04).
  */
 
-import { buildCommit } from './build'
-import { commitClosure } from './graph'
+import { buildRelease } from './release'
 import { ObjectStore } from './store'
 import { Registry, PublishTarget } from './registry'
 import { signId, Keypair } from './sign'
 import { ChunkParams } from './chunk'
-import { TreeParams } from './model'
 import { buildPacks, Pack, PackInput } from './pack'
 
 const sleep = (ms: number): Promise<void> =>
@@ -61,7 +59,6 @@ export async function publishPackage(input: {
   parents?: string[]
   deps?: Record<string, string>
   params?: ChunkParams
-  treeParams?: TreeParams
 }): Promise<{
   commitId: string
   ref: string
@@ -74,23 +71,26 @@ export async function publishPackage(input: {
   const log = (message: string): void =>
     console.error(`  [publish ${input.package}] ${message} (${since()})`)
 
-  const { commitId } = await buildCommit({
+  // The version is a @term/base dataset of file records, committed through base's
+  // Repository, so a release carries history rather than a bare commit object. The
+  // tree is computed in memory and its chunks are shipped below.
+  const release = await buildRelease({
     dir: input.dir,
-    package: input.package,
-    deps: input.deps ?? {},
-    author: input.author,
-    time: input.time,
-    message: input.message,
-    parents: input.parents,
     store: input.local,
+    meta: {
+      author: input.author,
+      time: Date.parse(input.time) || 0,
+      message: input.message ?? '',
+    },
     params: input.params,
-    treeParams: input.treeParams,
   })
-  log('built commit')
 
-  // 2. compute the commit's full object closure
-  const closure = await commitClosure({ commitId, store: input.local })
-  const ids = Array.from(closure)
+  const commitId = release.commit
+  log(`built release, ${release.files.length} files`)
+
+  // 2. the closure: the tree's nodes plus every chunk of every file. Content-addressed
+  // throughout, so holding an id means holding its whole subtree.
+  const ids = release.closure
   log(`closure = ${ids.length} objects`)
 
   // 3. negotiate: ask the registry which objects it is missing
@@ -106,7 +106,14 @@ export async function publishPackage(input: {
   const packInputs: PackInput[] = []
 
   for (const id of missing) {
-    packInputs.push({ id, path: id, bytes: await input.local.get(id) })
+    // a tree or commit chunk is still in memory; a file chunk is already in the store
+    const inMemory = release.chunks.get(id)
+    const bytes =
+      inMemory === undefined
+        ? await input.local.get(id)
+        : Buffer.from(inMemory, 'utf8')
+
+    packInputs.push({ id, path: id, bytes })
   }
 
   packInputs.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))

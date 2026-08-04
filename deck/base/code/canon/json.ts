@@ -1,5 +1,5 @@
-import type { CollectionKind, Item, RecordNode, Value } from '@/base/type'
-import { normalizeDecimal } from '@/canon/canonicalize'
+import type { CollectionKind, Item, RecordNode, Value } from '@term/base/code/base/type'
+import { normalizeDecimal } from '@term/base/code/canon/canonicalize'
 
 // Deterministic JSON, for the internal structures that are NOT record graphs:
 // commit objects, changesets, prolly-tree nodes, revocation lists, and

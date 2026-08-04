@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { record, text, ref, list, item, nested } from '@/base/make'
-import { datasetOf } from '@/diff/change'
-import { validateReferences } from '@/form/references'
-import { errors } from '@/form/validate'
-import { removeWithAction } from '@/identity/lifecycle'
+import { record, text, ref, list, item, nested } from '@term/base/code/base/make'
+import { datasetOf } from '@term/base/code/diff/change'
+import { validateReferences } from '@term/base/code/form/references'
+import { errors } from '@term/base/code/form/validate'
+import { removeWithAction } from '@term/base/code/identity/lifecycle'
 import {
   MemoryOffHistoryStore,
   putOffHistory,
-} from '@/offhistory/store'
+} from '@term/base/code/offhistory/store'
 
 const A = 'aaaaaaaa-1111-4111-8111-111111111111'
 const B = 'bbbbbbbb-2222-4222-8222-222222222222'

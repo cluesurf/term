@@ -4,24 +4,24 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { stdlibResolver } from '@cluesurf/make/code/resolve'
+import { compile } from '@term/make/code/compile/compile'
+import type { Resolver } from '@term/make/code/compile/load'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { stdlibResolver } from '@term/make/code/resolve'
 import {
   logStep,
   logFail,
   logGood,
   fade,
   bold,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 // the module resolvers now live in the compiler (make), so the CLI, dev server, and language server share them. Kept
 // re-exported here for the CLI's existing call sites and tests.
 export {
   stdlibResolver,
   linkResolver,
-} from '@cluesurf/make/code/resolve'
+} from '@term/make/code/resolve'
 
 // the keywords that begin a top-level definition; anything else typed at the prompt is an expression to evaluate
 const DEFINITION =

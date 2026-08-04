@@ -7,7 +7,7 @@
 // established constructively. Soundness controls: a higher-order call computes the RIGHT value (a wrong one is
 // rejected), and a false shape law is rejected. Run: npx tsx test/check/higher-order.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

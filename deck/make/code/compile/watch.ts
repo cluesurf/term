@@ -5,10 +5,10 @@
 // uses the same incremental path on every keystroke.
 
 import { watch as fsWatch, readFileSync } from 'node:fs'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { CompileResult } from '@cluesurf/make/code/compile/compile'
-import { CompileCache } from '@cluesurf/make/code/compile/cache'
-import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
+import { compile } from '@term/make/code/compile/compile'
+import type { CompileResult } from '@term/make/code/compile/compile'
+import { CompileCache } from '@term/make/code/compile/cache'
+import type { Resolver, Source } from '@term/make/code/compile/load'
 
 // the in-memory compiled mesh: a long-lived compiler whose cache survives across recompiles, so each edit only
 // recomputes the modules that actually changed

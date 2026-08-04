@@ -21,7 +21,7 @@
 // trivariate CHOI-LAM form `x^4 y^2 + y^4 z^2 + z^4 x^2 - 3 x^2 y^2 z^2`, a non-negative polynomial that is not a sum of
 // squares. Browser-safe.
 
-import { cellSamplesBig } from '@cluesurf/make/code/check/sturm'
+import { cellSamplesBig } from '@term/make/code/check/sturm'
 
 // a multivariate polynomial: the exponent tuple (length = the variable count) joined by commas, mapped to its integer
 // coefficient. The empty map is the zero polynomial.

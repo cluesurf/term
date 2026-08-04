@@ -1,10 +1,11 @@
-import { hashBytes } from '@/canon/hash'
-import type { ObjectStore } from '@/store/object-store'
+import { hashBytes } from '@term/base/code/canon/hash'
+import { toneOfHex } from '@term/base/code/canon/mark'
+import type { ObjectStore } from '@term/base/code/store/object-store'
 
 // A content-addressed chunk store backed by object storage (R2/S3). Chunks are
 // immutable blobs keyed by their content hash, written once and shared forever, so the
 // key layout is a flat namespace exactly like the rest of the platform's R2 usage in
-// mesh (mesh/deck/back/code/resource/registry/r2-store.ts): the key is the hash plus a
+// the registry object store: the key is the hash plus a
 // `.chunk` suffix at the bucket root, no shard directories. This is the async
 // counterpart to the in-memory ChunkStore, for when the store is a network service.
 //
@@ -18,10 +19,16 @@ export interface AsyncChunkStore {
   has(hash: string): Promise<boolean>
 }
 
-// The flat object key for a chunk. Mirrors mesh's `<id>.<ext>` convention.
+// The flat object key for a chunk: `<8>-<8>-…-<8>.<ext>`, tone-coded.
+//
+// One flat namespace, no directories and no package name in the path, matching
+// `land.base.surf/<id>.<ext>`, the store's public shape. The digest is re-lettered through the tone alphabet and
+// grouped in eights, the same rule a mark uses, so keys read consistently at both
+// lengths.
 export function chunkKey(hash: string): string {
-  // the hash already carries its `sha256:` scheme; keep it stable and URL-safe
-  return `${hash.replace(':', '-')}.chunk`
+  const hex = hash.includes(':') ? hash.split(':')[1]! : hash
+
+  return `${toneOfHex(hex)}.chunk`
 }
 
 export class R2ChunkStore implements AsyncChunkStore {

@@ -1,6 +1,6 @@
-import type { Mark, RecordNode } from '@/base/type'
-import type { ChunkStore } from '@/store/chunk-store'
-import { diffRoots, readRecord } from '@/store/tree'
+import type { Mark, RecordNode } from '@term/base/code/base/type'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
+import { diffRoots, readRecord } from '@term/base/code/store/tree'
 
 // Catch-up for mirrors. A mirror never replays from genesis: it bootstraps from a
 // recent snapshot (a root hash) and catches up by diffing its root against the

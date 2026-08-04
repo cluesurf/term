@@ -3,10 +3,10 @@
 // into sibling groups, and opens and closes names, interpolations, and texts. Detects the structural errors.
 // Browser-safe.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
-import type { Token, TokenList } from '@cluesurf/make/code/parser/token'
-import { TokenKind } from '@cluesurf/make/code/parser/token'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
+import type { Token, TokenList } from '@term/make/code/parser/token'
+import { TokenKind } from '@term/make/code/parser/token'
 
 export enum EventKind {
   OpenGroup = 'open-group',

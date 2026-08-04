@@ -13,10 +13,10 @@ export type {
   RecordNode,
   CollectionKind,
   ScalarKind,
-} from '@/base/type'
-export * from '@/base/make'
-export { mintMark, isMark, normalizeMark } from '@/base/mark'
-export { valueEqual, recordEqual } from '@/base/equal'
+} from '@term/base/code/base/type'
+export * from '@term/base/code/base/make'
+export { mintMark, isMark, normalizeMark } from '@term/base/code/base/mark'
+export { valueEqual, recordEqual } from '@term/base/code/base/equal'
 
 // Canonical serialization and hashing
 export {
@@ -29,29 +29,29 @@ export {
   parseDecimal,
   formatDecimal,
   normalizeDecimal,
-} from '@/canon/canonicalize'
-export { decodeRecord, decodeRecordBytes, decodeValue, decodeValueBytes } from '@/canon/decode'
-export { hashRecord, hashValue, hashBytes, hashCanonicalBytes, HASH_FUNCTION } from '@/canon/hash'
-export { markToBytes, bytesToMark, bytesToToneMark, bytesToHexMark, toToneMark, toHexMark, TONE_ALPHABET } from '@/canon/mark'
-export { CANONICAL_FORM_VERSION, TAG_REF, TAG_BLOB, TAG_DECIMAL } from '@/canon/cbor'
+} from '@term/base/code/canon/canonicalize'
+export { decodeRecord, decodeRecordBytes, decodeValue, decodeValueBytes } from '@term/base/code/canon/decode'
+export { hashRecord, hashValue, hashBytes, hashCanonicalBytes, HASH_FUNCTION } from '@term/base/code/canon/hash'
+export { markToBytes, bytesToMark, bytesToToneMark, bytesToHexMark, toToneMark, toHexMark, TONE_ALPHABET } from '@term/base/code/canon/mark'
+export { CANONICAL_FORM_VERSION, TAG_REF, TAG_BLOB, TAG_DECIMAL } from '@term/base/code/canon/cbor'
 
 // Diff, patch, merge
-export type { Change, Dataset } from '@/diff/change'
-export { emptyDataset, datasetOf } from '@/diff/change'
-export { diffDataset, diffRecord } from '@/diff/diff'
-export { diffValues } from '@/diff/value-diff'
-export type { ValueDiff } from '@/diff/value-diff'
-export { diffSemantic, summarizeSemantic } from '@/diff/semantic'
-export type { SemanticChange } from '@/diff/semantic'
-export { applyChanges } from '@/patch/patch'
-export { mergeDataset } from '@/merge/merge'
-export type { Conflict, MergeResult, MergeOptions } from '@/merge/merge'
-export { MergeSession } from '@/merge/session'
-export type { Resolution } from '@/merge/session'
-export { applyFieldPolicy, policyResolver } from '@/merge/policy'
-export type { MergePolicy, FieldPolicyResolver } from '@/merge/policy'
-export type { Hlc } from '@/merge/clock'
-export { compareHlc, localTick, receiveTick, tieBreak } from '@/merge/clock'
+export type { Change, Dataset } from '@term/base/code/diff/change'
+export { emptyDataset, datasetOf } from '@term/base/code/diff/change'
+export { diffDataset, diffRecord } from '@term/base/code/diff/diff'
+export { diffValues } from '@term/base/code/diff/value-diff'
+export type { ValueDiff } from '@term/base/code/diff/value-diff'
+export { diffSemantic, summarizeSemantic } from '@term/base/code/diff/semantic'
+export type { SemanticChange } from '@term/base/code/diff/semantic'
+export { applyChanges } from '@term/base/code/patch/patch'
+export { mergeDataset } from '@term/base/code/merge/merge'
+export type { Conflict, MergeResult, MergeOptions } from '@term/base/code/merge/merge'
+export { MergeSession } from '@term/base/code/merge/session'
+export type { Resolution } from '@term/base/code/merge/session'
+export { applyFieldPolicy, policyResolver } from '@term/base/code/merge/policy'
+export type { MergePolicy, FieldPolicyResolver } from '@term/base/code/merge/policy'
+export type { Hlc } from '@term/base/code/merge/clock'
+export { compareHlc, localTick, receiveTick, tieBreak } from '@term/base/code/merge/clock'
 
 // Forms, constraints, validation
 export type {
@@ -61,34 +61,34 @@ export type {
   Like,
   Severity,
   RoleBase,
-} from '@/form/form'
-export { form, property, hold, want, roleBase } from '@/form/form'
-export type { Diagnostic } from '@/form/validate'
-export { validateRecord, validateDataset, errors } from '@/form/validate'
-export { validateReferences } from '@/form/references'
-export type { ReferenceOptions } from '@/form/references'
-export { autoMark } from '@/form/automark'
+} from '@term/base/code/form/form'
+export { form, property, hold, want, roleBase } from '@term/base/code/form/form'
+export type { Diagnostic } from '@term/base/code/form/validate'
+export { validateRecord, validateDataset, errors } from '@term/base/code/form/validate'
+export { validateReferences } from '@term/base/code/form/references'
+export type { ReferenceOptions } from '@term/base/code/form/references'
+export { autoMark } from '@term/base/code/form/automark'
 
 // The store (prolly tree, chunks, refs)
-export type { ChunkStore, PrunableChunkStore } from '@/store/chunk-store'
-export { MemoryChunkStore, isPrunable } from '@/store/chunk-store'
-export type { RefStore } from '@/store/ref-store'
-export { MemoryRefStore } from '@/store/ref-store'
-export { writeDataset, readDataset, readRecord, diffRoots } from '@/store/tree'
-export { catchUp } from '@/store/mirror'
-export type { CatchUp } from '@/store/mirror'
+export type { ChunkStore, PrunableChunkStore } from '@term/base/code/store/chunk-store'
+export { MemoryChunkStore, isPrunable } from '@term/base/code/store/chunk-store'
+export type { RefStore } from '@term/base/code/store/ref-store'
+export { MemoryRefStore } from '@term/base/code/store/ref-store'
+export { writeDataset, readDataset, readRecord, diffRoots } from '@term/base/code/store/tree'
+export { catchUp } from '@term/base/code/store/mirror'
+export type { CatchUp } from '@term/base/code/store/mirror'
 
 // Async storage backends (R2 object storage for chunks, CockroachDB for refs)
-export type { ObjectStore, ObjectHead } from '@/store/object-store'
-export { MemoryObjectStore } from '@/store/object-store'
-export type { AsyncChunkStore } from '@/store/r2-chunk-store'
-export { R2ChunkStore, chunkKey } from '@/store/r2-chunk-store'
+export type { ObjectStore, ObjectHead } from '@term/base/code/store/object-store'
+export { MemoryObjectStore } from '@term/base/code/store/object-store'
+export type { AsyncChunkStore } from '@term/base/code/store/r2-chunk-store'
+export { R2ChunkStore, chunkKey } from '@term/base/code/store/r2-chunk-store'
 export type {
   SqlClient,
   AsyncRefStore,
   RefColumns,
   SqlRefOptions,
-} from '@/store/sql-ref-store'
+} from '@term/base/code/store/sql-ref-store'
 export {
   SqlRefStore,
   CockroachRefStore,
@@ -97,47 +97,47 @@ export {
   DEFAULT_REF_COLUMNS,
   DEFAULT_REF_TABLE,
   REF_TABLE_DDL,
-} from '@/store/sql-ref-store'
+} from '@term/base/code/store/sql-ref-store'
 
 // Commits and the repository
-export type { Commit, Validation } from '@/commit/commit'
+export type { Commit, Validation } from '@term/base/code/commit/commit'
 export {
   writeCommit,
   readCommit,
   commitPayload,
   signCommitObject,
   verifyCommitObject,
-} from '@/commit/commit'
+} from '@term/base/code/commit/commit'
 export {
   encodeChanges,
   decodeChanges,
   writeChanges,
   readChanges,
-} from '@/commit/changeset'
-export { Repository } from '@/repo/repo'
-export { MemoryRefLog } from '@/reflog/reflog'
-export type { RefLog, RefLogEntry } from '@/reflog/reflog'
+} from '@term/base/code/commit/changeset'
+export { Repository } from '@term/base/code/repo/repo'
+export { MemoryRefLog } from '@term/base/code/reflog/reflog'
+export type { RefLog, RefLogEntry } from '@term/base/code/reflog/reflog'
 export type {
   CommitMeta,
   CommitResult,
   MergeResultOut,
   RepoOptions,
-} from '@/repo/repo'
+} from '@term/base/code/repo/repo'
 
 // Projections and the change feed
-export type { Projection } from '@/project/projection'
-export { MemoryProjection } from '@/project/projection'
+export type { Projection } from '@term/base/code/project/projection'
+export { MemoryProjection } from '@term/base/code/project/projection'
 export {
   ChangeFeed,
   commitChanges,
   projectFromEmpty,
   advance,
   sync,
-} from '@/project/feed'
+} from '@term/base/code/project/feed'
 
 // The .tree syntax
-export { formatTree } from '@/tree/format'
-export { parseTree } from '@/tree/parse'
+export { formatTree } from '@term/base/code/tree/format'
+export { parseTree } from '@term/base/code/tree/parse'
 
 // Text diff and three-way merge (finer than line-level git diff)
 export {
@@ -146,28 +146,28 @@ export {
   tokenize,
   detokenize,
   changeHunks,
-} from '@/text/diff'
-export type { Granularity, Hunk, Edit, ChangeHunk } from '@/text/diff'
-export { merge3Text, merge3Tokens } from '@/text/merge'
-export type { TextMerge, MergeRegion } from '@/text/merge'
+} from '@term/base/code/text/diff'
+export type { Granularity, Hunk, Edit, ChangeHunk } from '@term/base/code/text/diff'
+export { merge3Text, merge3Tokens } from '@term/base/code/text/merge'
+export type { TextMerge, MergeRegion } from '@term/base/code/text/merge'
 
 // File-level diff policy: opt generated/derived files out of text diffing
-export type { FileConfig, FileRule } from '@/form/form'
-export { globMatcher, matchesGlob } from '@/file/glob'
-export { FilePolicy, filePolicy, diffFile, mergeFile } from '@/file/policy'
+export type { FileConfig, FileRule } from '@term/base/code/form/form'
+export { globMatcher, matchesGlob } from '@term/base/code/file/glob'
+export { FilePolicy, filePolicy, diffFile, mergeFile } from '@term/base/code/file/policy'
 
 // Sync: async replica (chunk transfer) and realtime (op delta)
-export { collectChunkHashes } from '@/store/tree'
+export { collectChunkHashes } from '@term/base/code/store/tree'
 export {
   missingChunks,
   packMissing,
   applyChunks,
   pull,
-} from '@/sync/chunk-sync'
-export type { ChunkMessage } from '@/sync/chunk-sync'
-export { OpLog, applyOps } from '@/sync/op-sync'
-export type { Op } from '@/sync/op-sync'
-export { shallowChunks, packShallow, sparseRecords, ofTypes } from '@/sync/partial'
+} from '@term/base/code/sync/chunk-sync'
+export type { ChunkMessage } from '@term/base/code/sync/chunk-sync'
+export { OpLog, applyOps } from '@term/base/code/sync/op-sync'
+export type { Op } from '@term/base/code/sync/op-sync'
+export { shallowChunks, packShallow, sparseRecords, ofTypes } from '@term/base/code/sync/partial'
 
 // Offline transfer (bundle) and packing
 export {
@@ -175,43 +175,43 @@ export {
   encodeBundle,
   decodeBundle,
   applyBundle,
-} from '@/transport/bundle'
-export type { Bundle, ApplyBundleReport } from '@/transport/bundle'
-export { packChunks, unpack, readFromPack } from '@/store/pack'
-export type { Pack } from '@/store/pack'
+} from '@term/base/code/transport/bundle'
+export type { Bundle, ApplyBundleReport } from '@term/base/code/transport/bundle'
+export { packChunks, unpack, readFromPack } from '@term/base/code/store/pack'
+export type { Pack } from '@term/base/code/store/pack'
 
 // Remote editing: browser-server and cloud-local push/pull over an injected transport
-export { MemoryRemoteRepo } from '@/transport/session'
-export type { RemoteRepo, PushResult, PullResult } from '@/transport/session'
+export { MemoryRemoteRepo } from '@term/base/code/transport/session'
+export type { RemoteRepo, PushResult, PullResult } from '@term/base/code/transport/session'
 
 // Access control and signed authorship
-export { AccessPolicy, authorizeCommit } from '@/access/policy'
-export type { Action, Resource } from '@/access/policy'
-export { generateKeypair, signCommit, verifyCommit } from '@/access/sign'
-export type { Keypair } from '@/access/sign'
+export { AccessPolicy, authorizeCommit } from '@term/base/code/access/policy'
+export type { Action, Resource } from '@term/base/code/access/policy'
+export { generateKeypair, signCommit, verifyCommit } from '@term/base/code/access/sign'
+export type { Keypair } from '@term/base/code/access/sign'
 
 // Deletion: redaction and crypto-shredding
-export { makeTombstone, isRedacted, redactInDataset } from '@/redact/redact'
+export { makeTombstone, isRedacted, redactInDataset } from '@term/base/code/redact/redact'
 export {
   KeyStore,
   shredEncrypt,
   shredDecrypt,
-} from '@/redact/shred'
-export type { Shredded } from '@/redact/shred'
+} from '@term/base/code/redact/shred'
+export type { Shredded } from '@term/base/code/redact/shred'
 export {
   RedactionVault,
   redactReversibly,
   unredact,
-} from '@/redact/reversible'
+} from '@term/base/code/redact/reversible'
 
 // Garbage collection and hard erasure from history
-export { reachableChunks, sweep, sweepObjectStore } from '@/gc/gc'
-export type { GcReport } from '@/gc/gc'
-export { reachableChunksAsync, collectGarbageAsync } from '@/gc/gc-async'
-export { removeMatching, redactMatching, ConcurrentErasureError } from '@/erase/erase'
-export type { Eraser, EraseReport } from '@/erase/erase'
-export { RevocationList, enforceRevocation } from '@/erase/revocation'
-export type { RevocationReport } from '@/erase/revocation'
+export { reachableChunks, sweep, sweepObjectStore } from '@term/base/code/gc/gc'
+export type { GcReport } from '@term/base/code/gc/gc'
+export { reachableChunksAsync, collectGarbageAsync } from '@term/base/code/gc/gc-async'
+export { removeMatching, redactMatching, ConcurrentErasureError } from '@term/base/code/erase/erase'
+export type { Eraser, EraseReport } from '@term/base/code/erase/erase'
+export { RevocationList, enforceRevocation } from '@term/base/code/erase/revocation'
+export type { RevocationReport } from '@term/base/code/erase/revocation'
 
 // Off-history two-tier storage for regulated, deletable content
 export {
@@ -221,17 +221,17 @@ export {
   offHistoryId,
   putOffHistory,
   resolveOffHistory,
-} from '@/offhistory/store'
-export type { OffHistoryStore } from '@/offhistory/store'
+} from '@term/base/code/offhistory/store'
+export type { OffHistoryStore } from '@term/base/code/offhistory/store'
 export {
   sealedProperties,
   partitionSensitive,
   resolveSensitive,
-} from '@/offhistory/sensitive'
+} from '@term/base/code/offhistory/sensitive'
 
 // Schema migration (upcasting, migrations as commits)
-export { upcastRecord, upcastDataset, upcastAll } from '@/migrate/migrate'
-export type { MigrationOp, Migration } from '@/migrate/migrate'
+export { upcastRecord, upcastDataset, upcastAll } from '@term/base/code/migrate/migrate'
+export type { MigrationOp, Migration } from '@term/base/code/migrate/migrate'
 
 // Identity lifecycle: merge-as-redirect, split, referential actions
 export {
@@ -242,8 +242,8 @@ export {
   mergeRecords,
   splitRecord,
   removeWithAction,
-} from '@/identity/lifecycle'
-export type { RefAction, RemoveResult } from '@/identity/lifecycle'
+} from '@term/base/code/identity/lifecycle'
+export type { RefAction, RemoveResult } from '@term/base/code/identity/lifecycle'
 
 // Move-aware hierarchy: first-class moves, move-aware diff, cycle-safe tree CRDT
 export {
@@ -254,28 +254,28 @@ export {
   applyMoves,
   mergeTree,
   recoverOrphans,
-} from '@/identity/tree'
-export type { MoveChange, TreeMove } from '@/identity/tree'
-export { orderKeyBetween, orderKeyAfter, orderKeyBefore } from '@/base/order'
+} from '@term/base/code/identity/tree'
+export type { MoveChange, TreeMove } from '@term/base/code/identity/tree'
+export { orderKeyBetween, orderKeyAfter, orderKeyBefore } from '@term/base/code/base/order'
 
 // Ephemeral presence and soft leases (separate from durable state)
-export { PresenceChannel, LeaseRegistry } from '@/live/presence'
-export type { PresenceState, Lease } from '@/live/presence'
+export { PresenceChannel, LeaseRegistry } from '@term/base/code/live/presence'
+export type { PresenceState, Lease } from '@term/base/code/live/presence'
 
 // Query language and declared indexes
-export { Query, query, QueryableProjection } from '@/query/query'
-export type { Predicate, Comparator, Order } from '@/query/query'
-export { OrderedIndex } from '@/query/ordered-index'
-export { compareValues } from '@/query/compare'
+export { Query, query, QueryableProjection } from '@term/base/code/query/query'
+export type { Predicate, Comparator, Order } from '@term/base/code/query/query'
+export { OrderedIndex } from '@term/base/code/query/ordered-index'
+export { compareValues } from '@term/base/code/query/compare'
 
 // Maintained reverse-reference index for identity operations at scale
-export { ReferenceIndex } from '@/lookup/reference-index'
+export { ReferenceIndex } from '@term/base/code/lookup/reference-index'
 
 // History operations: field-level blame, record history, bisect, mark index
-export { blame, recordHistory, bisect, buildMarkIndex, markHistory } from '@/history/history'
-export type { FieldBlame, HistoryEntry } from '@/history/history'
-export { MarkIndex, marksTouched } from '@/lookup/mark-index'
+export { blame, recordHistory, bisect, buildMarkIndex, markHistory } from '@term/base/code/history/history'
+export type { FieldBlame, HistoryEntry } from '@term/base/code/history/history'
+export { MarkIndex, marksTouched } from '@term/base/code/lookup/mark-index'
 
 // Integrity verification (fsck)
-export { fsck } from '@/verify/fsck'
-export type { FsckReport } from '@/verify/fsck'
+export { fsck } from '@term/base/code/verify/fsck'
+export type { FsckReport } from '@term/base/code/verify/fsck'

@@ -11,8 +11,8 @@
 //   tone                                ->  :root { --color-zinc-200: #e4e4e7 }
 //     have color-zinc-200, text <#e4e4e7>
 
-import { parse } from '@cluesurf/make/code/parser/tree'
-import type { GroupNode, Node } from '@cluesurf/make/code/parser/tree'
+import { parse } from '@term/make/code/parser/tree'
+import type { GroupNode, Node } from '@term/make/code/parser/tree'
 
 // flatten a name / text node's chunks to a string
 function textOf(node: Node | undefined): string {

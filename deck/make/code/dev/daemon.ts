@@ -5,10 +5,10 @@
 
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
-import { IncrementalAnalyzer } from '@cluesurf/make/code/compile/analyzer'
-import { projectResolver } from '@cluesurf/call/code/make'
-import { findProjectRoot } from '@cluesurf/call/code/boot'
-import type { NativeEnv } from '@cluesurf/make/code/compile/native'
+import { IncrementalAnalyzer } from '@term/make/code/compile/analyzer'
+import { projectResolver } from '@term/call/code/make'
+import { findProjectRoot } from '@term/call/code/boot'
+import type { NativeEnv } from '@term/make/code/compile/native'
 
 export interface Daemon {
   port: number

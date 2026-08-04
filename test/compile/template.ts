@@ -1,8 +1,8 @@
 // Template (tree/fuse) expansion tests. Run: npx tsx test/compile/template.ts
 
-import { parse, printTree } from '@cluesurf/make/code/parser/tree'
-import { expandTemplates } from '@cluesurf/make/code/compile/template'
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { parse, printTree } from '@term/make/code/parser/tree'
+import { expandTemplates } from '@term/make/code/compile/template'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

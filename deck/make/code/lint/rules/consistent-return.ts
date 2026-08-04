@@ -1,8 +1,8 @@
 // L027: a function that returns a value on some paths (`send back x`) but nothing on others (`send back`) is usually a
 // bug -- a path that forgot its value. Either every `send back` carries a value or none does.
 
-import type { Statement } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Statement } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 // collect the function's own returns, split by whether they carry a value. Nested functions / closures are skipped:
 // they have their own return contract.

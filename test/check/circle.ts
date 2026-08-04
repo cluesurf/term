@@ -6,7 +6,7 @@
 // distinct from `id base` -- the circle does not secretly degenerate to a point. The recursion principle `circ-rec`
 // (mapping out by giving a point and a loop in the target) computes on `base`. Run: npx tsx test/check/circle.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

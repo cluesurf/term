@@ -1,7 +1,7 @@
-import type { Value } from '@/base/type'
-import type { Dataset } from '@/diff/change'
-import { mergeDataset, type Conflict } from '@/merge/merge'
-import { applyChanges } from '@/patch/patch'
+import type { Value } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
+import { mergeDataset, type Conflict } from '@term/base/code/merge/merge'
+import { applyChanges } from '@term/base/code/patch/patch'
 
 // A merge session holds a half-merged state so conflicts can be resolved deliberately
 // and then committed, instead of the merge either fully succeeding or being rejected.

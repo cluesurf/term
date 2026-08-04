@@ -7,8 +7,8 @@
 import type {
   BinaryOp,
   Expression,
-} from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+} from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 const COMPARE = new Set<BinaryOp>(['==', '!=', '<', '<=', '>', '>='])
 

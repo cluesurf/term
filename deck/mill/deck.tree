@@ -1,4 +1,5 @@
 
 deck @term/mill
   head <The Term DSL Library>
-  mark <0.0.2>
+  code <0.0.2>
+  lock mit

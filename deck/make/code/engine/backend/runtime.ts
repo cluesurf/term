@@ -6,7 +6,7 @@ import {
   binary,
   indexGet,
   memberGet,
-} from '@cluesurf/make/code/engine/engine'
+} from '@term/make/code/engine/engine'
 import {
   type Value,
   UNIT,
@@ -17,9 +17,9 @@ import {
   truthy as isTruthy,
   display as show,
   keyOf,
-} from '@cluesurf/make/code/engine/value'
-import * as Arr from '@cluesurf/make/code/engine/data/array'
-import * as Mp from '@cluesurf/make/code/engine/data/map'
+} from '@term/make/code/engine/value'
+import * as Arr from '@term/make/code/engine/data/array'
+import * as Mp from '@term/make/code/engine/data/map'
 
 export const UNIT_V: Value = UNIT
 

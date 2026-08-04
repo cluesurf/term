@@ -19,9 +19,9 @@
 import { writeFileSync, readFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { CompileCache } from '@cluesurf/make/code/compile/cache'
-import { interfaceHash } from '@cluesurf/make/code/compile/interface'
+import { compile } from '@term/make/code/compile/compile'
+import { CompileCache } from '@term/make/code/compile/cache'
+import { interfaceHash } from '@term/make/code/compile/interface'
 import {
   affectedSet,
   reusableSet,
@@ -29,7 +29,7 @@ import {
   topoOrder,
   isAcyclic,
   type DepGraph,
-} from '@cluesurf/make/code/compile/affected'
+} from '@term/make/code/compile/affected'
 
 let pass = 0
 let fail = 0

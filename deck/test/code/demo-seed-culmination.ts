@@ -15,8 +15,8 @@
  * synthesis strategy in the literature.
  */
 
-import { projectResolver } from '@cluesurf/call/code/make'
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
+import { compile } from '@term/make/code/compile/compile'
 import {
   observationalEnum,
   constraintSynth,

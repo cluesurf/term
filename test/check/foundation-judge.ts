@@ -3,7 +3,7 @@
 // funext that computes, dependent pairs, and self types. This checks the foundation on the sound kernel that
 // Seed actually uses, not the superseded Type-in-Type kernel.ts. Run: npx tsx test/check/foundation-judge.ts
 
-import type { Mult, Term } from '@cluesurf/make/code/check/judge'
+import type { Mult, Term } from '@term/make/code/check/judge'
 import {
   check,
   checks,
@@ -14,7 +14,7 @@ import {
   litLevel,
   eqLevel,
   bind,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 
 // ---- term builders (the judge.ts idiom) ----
 const v = (index: number): Term => ({ tag: 'var', index })

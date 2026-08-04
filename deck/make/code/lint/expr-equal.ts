@@ -9,7 +9,7 @@
 import type {
   Expression,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 export function expressionsEqual(
   a: Expression,

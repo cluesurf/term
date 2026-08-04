@@ -3,7 +3,7 @@
 // no-duplicate-keys (L015); this covers the map (`make find`) literal, whose keys are constant strings. Report only:
 // the author decides which entry to keep.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noDuplicateMapKey: Rule = {
   name: 'no-duplicate-map-key',

@@ -1,8 +1,8 @@
 // HMR failure recovery: a recompile error shows an overlay and keeps the app running on its last-good code (no
 // reload, so state survives), and the next good update clears the overlay. Run: npx tsx test/dev/failure-recovery.ts
 
-import { applyHmr } from '@cluesurf/make/code/dev/client'
-import type { HmrEnvironment } from '@cluesurf/make/code/dev/client'
+import { applyHmr } from '@term/make/code/dev/client'
+import type { HmrEnvironment } from '@term/make/code/dev/client'
 
 let pass = 0
 let fail = 0

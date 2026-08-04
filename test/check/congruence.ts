@@ -4,7 +4,7 @@
 // essential: two UNRELATED hypotheses must not connect their endpoints, or the prover would equate distinct things.
 // Run: npx tsx test/check/congruence.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

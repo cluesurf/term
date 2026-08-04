@@ -9,19 +9,19 @@ import type {
   Statement,
   Type,
   ZoneNode,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import {
   exhausted,
   mapCollect,
-} from '@cluesurf/make/code/compile/backend'
-import { lowerRoutes } from '@cluesurf/make/code/compile/route-lower'
+} from '@term/make/code/compile/backend'
+import { lowerRoutes } from '@term/make/code/compile/route-lower'
 import {
   collectBinds,
   renderBind,
   bindGap,
   referencedBinds,
-} from '@cluesurf/make/code/compile/bind'
-import type { Bind } from '@cluesurf/make/code/compile/bind'
+} from '@term/make/code/compile/bind'
+import type { Bind } from '@term/make/code/compile/bind'
 
 const PRECEDENCE: Record<BinaryOp, number> = {
   '||': 1,

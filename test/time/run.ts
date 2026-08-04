@@ -7,13 +7,13 @@
 import {
   computeStats,
   formatDuration,
-} from '@cluesurf/make/code/time/stats'
-import { compileBenchmarks } from '@cluesurf/make/code/time/runner'
+} from '@term/make/code/time/stats'
+import { compileBenchmarks } from '@term/make/code/time/runner'
 import {
   compareResults,
   shouldFail,
-} from '@cluesurf/make/code/time/compare'
-import { benchmark } from '@cluesurf/make/code/time/benchmark'
+} from '@term/make/code/time/compare'
+import { benchmark } from '@term/make/code/time/benchmark'
 import * as os from 'node:os'
 
 let pass = 0

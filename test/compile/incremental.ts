@@ -3,8 +3,8 @@
 // per-definition firewall holds (a callee body edit never re-checks / re-emits the caller). Queries run under a
 // `db.transaction` context. Run: npx tsx test/compile/incremental.ts
 
-import { QueryCompiler } from '@cluesurf/make/code/compile/incremental'
-import type { Cx } from '@cluesurf/make/code/compile/query'
+import { QueryCompiler } from '@term/make/code/compile/incremental'
+import type { Cx } from '@term/make/code/compile/query'
 
 let pass = 0
 let fail = 0

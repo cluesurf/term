@@ -23,8 +23,8 @@ import type {
   Expression,
   ZoneNode,
   Type,
-} from '@cluesurf/make/code/compile/node'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
 
 // The render-runtime + component functions are referenced by bare name (a
 // `variable` callee with no binding -> the emitter writes `name(args)`); the

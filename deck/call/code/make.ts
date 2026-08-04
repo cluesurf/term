@@ -14,23 +14,23 @@ import {
 import {
   compile,
   isLookStylesheet,
-} from '@cluesurf/make/code/compile/compile'
-import { compileSeparate } from '@cluesurf/make/code/compile/separate'
-import { CompileCache } from '@cluesurf/make/code/compile/cache'
-import { projectCache } from '@cluesurf/call/code/cache-store'
-import { preprocessTests } from '@cluesurf/call/code/test-preprocess'
-import { withNativeEnv } from '@cluesurf/make/code/compile/native'
-import type { NativeEnv } from '@cluesurf/make/code/compile/native'
-import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
-import { stdlibResolver, linkResolver } from '@cluesurf/call/code/walk'
-import { renderDiagnostic } from '@cluesurf/call/code/report'
+} from '@term/make/code/compile/compile'
+import { compileSeparate } from '@term/make/code/compile/separate'
+import { CompileCache } from '@term/make/code/compile/cache'
+import { projectCache } from '@term/call/code/cache-store'
+import { preprocessTests } from '@term/call/code/test-preprocess'
+import { withNativeEnv } from '@term/make/code/compile/native'
+import type { NativeEnv } from '@term/make/code/compile/native'
+import type { Resolver, Source } from '@term/make/code/compile/load'
+import { stdlibResolver, linkResolver } from '@term/call/code/walk'
+import { renderDiagnostic } from '@term/call/code/report'
 import {
   logGood,
   logFail,
   logStep,
   formatError,
   fade,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 // every .tree file under a directory, skipping generated output and dependency / vcs folders
 // the per-platform native trees. A build targets ONE of these, and `withNativeEnv` rewrites every abstract
@@ -763,7 +763,7 @@ export async function callMake(input: {
       } else if (parallel) {
         try {
           const { compileProjectParallel } = await import(
-            '@cluesurf/call/code/build-parallel'
+            '@term/call/code/build-parallel'
           )
           result = await compileProjectParallel(input.root)
         } catch {

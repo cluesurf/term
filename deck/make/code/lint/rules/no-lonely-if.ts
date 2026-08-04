@@ -1,7 +1,7 @@
 // L026: a `hook miss` (else) whose only statement is another `fork test` should be an else-if (`hook test`) arm of the
 // same fork instead, flattening a needless level of nesting.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noLonelyIf: Rule = {
   name: 'no-lonely-if',

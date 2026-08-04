@@ -18,7 +18,8 @@
     "types": ["node"],
     "typeRoots": ["node_modules/@types"],
     "paths": {
-      "@/*": ["./code/*"]
+      "@/*": ["./code/*"],
+      "@term/base/*": ["./*"]
     }
   },
   "include": ["code/**/*.ts", "test/**/*.ts"],

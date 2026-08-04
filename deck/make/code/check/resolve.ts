@@ -3,22 +3,22 @@
 // unresolved name that is not legally runtime-deferred becomes an unknown-name diagnostic. This is the hole-filling
 // pass (the part that fills name and import holes). See note/research/vibe/computation/plans/11-elaboration.md.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import {
   diagnose,
   nearest,
-} from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/parser/diagnostic'
 import type {
   Binding,
   Expression,
   Program,
   Statement,
   ZoneNode,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import {
   BINARY_BUILTIN,
   UNARY_BUILTIN,
-} from '@cluesurf/make/code/compile/mill'
+} from '@term/make/code/compile/mill'
 
 export type Scope = Map<string, Binding>
 

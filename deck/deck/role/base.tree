@@ -4,10 +4,10 @@ load @term/code
   find book
 
 role book
-  take ~/book/**/*.tree
-    miss ~/book/**/{code,view}/**/*.tree
+  take @/book/**/*.tree
+    miss @/book/**/\{code,view\}/**/*.tree
 
 role code
-  take ~/code/**/*.tree
+  take @/code/**/*.tree
   # book can have nested code in it
-  take ~/book/**/{code,view}/**/*.tree
+  take @/book/**/\{code,view\}/**/*.tree

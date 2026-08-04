@@ -1,5 +1,5 @@
-import type { ChunkStore } from '@/store/chunk-store'
-import type { RefStore } from '@/store/ref-store'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
+import type { RefStore } from '@term/base/code/store/ref-store'
 
 // The network seam for remote editing. A `RemoteRepo` is whatever sits across the wire:
 // a server for a browser client, or a cloud store for a local replica. base's push and

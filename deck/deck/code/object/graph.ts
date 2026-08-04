@@ -13,6 +13,10 @@
 import { Blob, Commit, validateEntries } from './model'
 import { readDirEntries, dirNodeIds } from './tree'
 import { ObjectStore } from './store'
+import { reachableFromCommit } from './release'
+import { filesOfDataset } from './dataset'
+import { readDataset } from '@term/base/code/store/tree'
+import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
 
 async function readJson<T>(store: ObjectStore, id: string): Promise<T> {
   const bytes = await store.get(id)
@@ -181,14 +185,37 @@ export async function flattenTree(input: {
 export async function buildManifest(input: {
   commitId: string
   ref: string
+  package: string
   store: ObjectStore
 }): Promise<Manifest> {
-  const commit = await readJson<Commit>(input.store, input.commitId)
-  const files = await flattenTree({ treeId: commit.tree, store: input.store })
+  // A version is a @term/base dataset now, so the manifest is read out of the prolly
+  // tree rather than walked over nested directory objects. Every chunk the commit
+  // reaches is already in this store, so the read is local.
+  const reachable = await reachableFromCommit({
+    commitId: input.commitId,
+    store: input.store,
+  })
 
-  return {
-    package: commit.package,
-    ref: input.ref,
-    files,
+  const chunks = new MemoryChunkStore()
+
+  for (const id of reachable) {
+    chunks.put((await input.store.get(id)).toString('utf8'))
   }
+
+  const commit = await readJson<{ root: string }>(
+    input.store,
+    input.commitId,
+  )
+
+  const files = filesOfDataset(readDataset(commit.root, chunks)).map(
+    file => ({
+      path: file.path,
+      // a file's identity is its ordered chunk list; the first names it for a manifest
+      blob: file.chunks[0] ?? '',
+      size: file.size,
+      mode: file.mode === 'exec' ? ('exec' as const) : ('file' as const),
+    }),
+  )
+
+  return { package: input.package, ref: input.ref, files }
 }

@@ -7,7 +7,7 @@
 
 dock load
   load <global:assets>, name files
-  mark native
+  note native
 
 load @term/site/code/dom/dom
   find view
@@ -32,7 +32,7 @@ task host
       take host, like view
       take path, like text
   take port, like u16
-  mark async
+  note async
   # the catch-all handler: SSR-render the requested path through `route`
   save render-request
     task handle

@@ -2,22 +2,22 @@
 // OSV import, the static rules (native-danger + taint), SARIF shape, and the manifest fixer. Pure, no filesystem.
 // Run: npx tsx test/scan/unit.ts
 
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { mill } from '@cluesurf/make/code/compile/mill'
+import { parse } from '@term/make/code/parser/tree'
+import { mill } from '@term/make/code/compile/mill'
 import {
   toMark,
   compareVersion,
   satisfies,
-} from '@cluesurf/scan/code/semver'
-import { isAffected, planUpgrade } from '@cluesurf/scan/code/match'
-import { fromOsv, fromOsvFeed } from '@cluesurf/scan/code/osv'
-import type { OsvRecord } from '@cluesurf/scan/code/osv'
-import type { Advisory, CodeFinding, ScanResult } from '@cluesurf/scan/code/form'
-import { runRules } from '@cluesurf/scan/code/rule'
-import { nativeDangerRule } from '@cluesurf/scan/code/rule/native-danger'
-import { taintRule } from '@cluesurf/scan/code/rule/taint'
-import { toSarif } from '@cluesurf/scan/code/sarif'
-import { applyUpgradesToManifest, planUpgrades } from '@cluesurf/scan/code/fix'
+} from '@term/scan/code/semver'
+import { isAffected, planUpgrade } from '@term/scan/code/match'
+import { fromOsv, fromOsvFeed } from '@term/scan/code/osv'
+import type { OsvRecord } from '@term/scan/code/osv'
+import type { Advisory, CodeFinding, ScanResult } from '@term/scan/code/form'
+import { runRules } from '@term/scan/code/rule'
+import { nativeDangerRule } from '@term/scan/code/rule/native-danger'
+import { taintRule } from '@term/scan/code/rule/taint'
+import { toSarif } from '@term/scan/code/sarif'
+import { applyUpgradesToManifest, planUpgrades } from '@term/scan/code/fix'
 
 let pass = 0
 let fail = 0

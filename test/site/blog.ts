@@ -3,8 +3,8 @@
 // post" reads the inputs, renders a post (heading + body) into the list, and clears the inputs — and that a second
 // post appends without disturbing the first. Also emits the runnable browser artifacts. Run: npx tsx test/site/blog.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'

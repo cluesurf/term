@@ -2,8 +2,8 @@
 // already a boolean. Use `x` (or its negation) directly. A common verbosity, and `== true` quietly differs from a
 // truthiness check on non-boolean values, so flagging it nudges toward the clearer form.
 
-import type { BinaryOp } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { BinaryOp } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 const EQUALITY = new Set<BinaryOp>(['==', '!='])
 

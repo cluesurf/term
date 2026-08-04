@@ -5,7 +5,7 @@
 // is real. It auto-discovers the pinch-point proof (antisymmetry applied to the ceiling and the floor) and
 // multi-step propositional chains. Run: npx tsx test/check/search-judge.ts
 
-import type { Mult, Term } from '@cluesurf/make/code/check/judge'
+import type { Mult, Term } from '@term/make/code/check/judge'
 import {
   check,
   contextWithSignature,
@@ -13,7 +13,7 @@ import {
   infer,
   showTerm,
   litLevel,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 
 type Hyp = { name: string; type: Term }
 

@@ -3,17 +3,17 @@
 // linting and type checking), the merged diagnostics, and lazy `format`/`lint`/`check` closures. This is what the
 // language server drives: one parse, then format + lint + compile all read the same result. See plans/19-format-and-lint.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import type { RootNode } from '@cluesurf/make/code/parser/tree'
-import { parseTolerant } from '@cluesurf/make/code/parser/tree'
-import { expandTemplates } from '@cluesurf/make/code/compile/template'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { compileProgram } from '@cluesurf/make/code/compile/compile'
-import { formatTree } from '@cluesurf/make/code/format/format'
-import { lint, applyFixes } from '@cluesurf/make/code/lint/lint'
-import type { LintConfig } from '@cluesurf/make/code/lint/lint'
-import type { Finding } from '@cluesurf/make/code/lint/rule'
-import type { Program } from '@cluesurf/make/code/compile/node'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import type { RootNode } from '@term/make/code/parser/tree'
+import { parseTolerant } from '@term/make/code/parser/tree'
+import { expandTemplates } from '@term/make/code/compile/template'
+import { mill } from '@term/make/code/compile/mill'
+import { compileProgram } from '@term/make/code/compile/compile'
+import { formatTree } from '@term/make/code/format/format'
+import { lint, applyFixes } from '@term/make/code/lint/lint'
+import type { LintConfig } from '@term/make/code/lint/lint'
+import type { Finding } from '@term/make/code/lint/rule'
+import type { Program } from '@term/make/code/compile/node'
 
 export type Analysis = {
   tree: RootNode

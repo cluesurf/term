@@ -14,10 +14,16 @@
  * is interrupted.
  */
 
-import { checkoutCommit } from './checkout'
+import { restoreFiles } from './restore'
 import { ObjectStore } from './store'
+import { filesOfDataset } from './dataset'
+import {
+  readDataset,
+  treeNodeRefs,
+} from '@term/base/code/store/tree'
+import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
 import { Registry, Ref, objectMatches } from './registry'
-import { isLeafNode, TreeNode, Blob, Commit } from './model'
+import { Blob } from './model'
 
 // Fetch an object from the registry and verify its bytes hash to its id.
 async function fetchVerified(input: {
@@ -55,46 +61,6 @@ async function syncBlob(input: {
   await input.local.put({ id: input.blobId, bytes })
 }
 
-async function syncTree(input: {
-  nodeId: string
-  registry: Registry
-  local: ObjectStore
-}): Promise<void> {
-  if (await input.local.has(input.nodeId)) {
-    return
-  }
-
-  const bytes = await fetchVerified({ id: input.nodeId, registry: input.registry })
-  const node = JSON.parse(bytes.toString('utf8')) as TreeNode
-
-  if (isLeafNode(node)) {
-    for (const entry of node.entries) {
-      if (entry.kind === 'tree') {
-        await syncTree({
-          nodeId: entry.id,
-          registry: input.registry,
-          local: input.local,
-        })
-      } else {
-        await syncBlob({
-          blobId: entry.id,
-          registry: input.registry,
-          local: input.local,
-        })
-      }
-    }
-  } else {
-    for (const ref of node.refs) {
-      await syncTree({
-        nodeId: ref.id,
-        registry: input.registry,
-        local: input.local,
-      })
-    }
-  }
-
-  await input.local.put({ id: input.nodeId, bytes })
-}
 
 /** Install a package ref into `dest`, fetching only what the local store lacks. */
 export async function installPackage(input: {
@@ -111,25 +77,39 @@ export async function installPackage(input: {
 
   const before = await countLocal(input.local)
 
-  if (!(await input.local.has(commitId))) {
-    const bytes = await fetchVerified({ id: commitId, registry: input.registry })
-    const commit = JSON.parse(bytes.toString('utf8')) as Commit
+  // Pull the release's whole closure, then read the version out of it. A commit and its
+  // prolly-tree nodes are @term/base chunks now, so the walk is base's, not a
+  // hand-written recursion over directory objects.
+  const chunks = await pullRelease({
+    commitId,
+    registry: input.registry,
+    local: input.local,
+  })
 
-    await syncBlob({
-      blobId: commit.manifest,
-      registry: input.registry,
-      local: input.local,
-    })
-    await syncTree({
-      nodeId: commit.tree,
-      registry: input.registry,
-      local: input.local,
-    })
-    await input.local.put({ id: commitId, bytes })
+  const files = filesOfDataset(
+    readDataset(rootOfCommit({ commitId, chunks }), chunks),
+  )
+
+  // The tree reaches RECORD chunks; a record then names its FILE chunks. Those are one
+  // level below the tree and have to be fetched too, or a checkout finds the metadata
+  // and none of the bytes.
+  for (const file of files) {
+    for (const id of file.chunks) {
+      if (await input.local.has(id)) {
+        continue
+      }
+
+      const bytes = await fetchVerified({
+        id,
+        registry: input.registry,
+      })
+
+      await input.local.put({ id, bytes })
+    }
   }
 
-  await checkoutCommit({
-    commitId,
+  await restoreFiles({
+    files,
     dest: input.dest,
     store: input.local,
   })
@@ -137,6 +117,77 @@ export async function installPackage(input: {
   const fetched = (await countLocal(input.local)) - before
 
   return { commitId, fetched }
+}
+
+// Fetch every chunk of a release into an in-memory store, verifying each against its
+// own address. The registry is asked what the closure is; anything already held locally
+// is skipped, so a second install of a near-identical version moves almost nothing.
+async function pullRelease(input: {
+  commitId: string
+  registry: Registry
+  local: ObjectStore
+}): Promise<MemoryChunkStore> {
+  const chunks = new MemoryChunkStore()
+  const seen = new Set<string>()
+
+  // Fetch one chunk, preferring the local store. Every byte is verified against its own
+  // address by `fetchVerified`, so a corrupted or spoofed chunk is rejected.
+  const take = async (id: string): Promise<string> => {
+    const bytes = (await input.local.has(id))
+      ? await input.local.get(id)
+      : await fetchVerified({ id, registry: input.registry })
+
+    await input.local.put({ id, bytes })
+
+    const text = bytes.toString('utf8')
+    chunks.put(text)
+
+    return text
+  }
+
+  // Walk the tree from the commit. An unchanged subtree is already local, so it costs
+  // no request: this is what makes an install proportional to the CHANGE.
+  const walk = async (id: string): Promise<void> => {
+    if (seen.has(id)) {
+      return
+    }
+
+    seen.add(id)
+
+    const { leaf, refs } = treeNodeRefs(await take(id))
+
+    for (const ref of refs) {
+      if (leaf) {
+        // a leaf points at record chunks, which are terminal
+        await take(ref)
+        continue
+      }
+
+      await walk(ref)
+    }
+  }
+
+  const commit = JSON.parse(await take(input.commitId)) as {
+    root: string
+  }
+
+  await walk(commit.root)
+
+  return chunks
+}
+
+// The tree root a commit names.
+function rootOfCommit(input: {
+  commitId: string
+  chunks: MemoryChunkStore
+}): string {
+  const bytes = input.chunks.get(input.commitId)
+
+  if (bytes === undefined) {
+    throw new Error(`missing commit ${input.commitId}`)
+  }
+
+  return (JSON.parse(bytes) as { root: string }).root
 }
 
 // A cheap "how many objects do I hold" probe is not on the ObjectStore

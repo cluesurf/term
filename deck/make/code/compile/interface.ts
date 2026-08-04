@@ -17,8 +17,8 @@ import type {
   Program,
   Statement,
   Type,
-} from '@cluesurf/make/code/compile/node'
-import { hashText } from '@cluesurf/make/code/compile/cache'
+} from '@term/make/code/compile/node'
+import { hashText } from '@term/make/code/compile/cache'
 
 // a stable, structural string for a type (no spans, no inference ids that vary)
 function typeKey(type: Type | undefined): string {

@@ -1,20 +1,20 @@
-// Version comparison and npm-style range satisfaction, built on the package manager's `Mark` (semver) type so the
+// Version comparison and npm-style range satisfaction, built on the package manager's `Code` (semver) type so the
 // scanner and the resolver agree on version ordering. Dependency-free and pure. Covers the range grammar that OSV
 // ECOSYSTEM ranges and the registry bulk advisory service emit: comparators (`<`, `<=`, `>`, `>=`, `=`), AND by
 // whitespace, OR by `||`, hyphen ranges (`1.0.0 - 2.0.0`), the `x`/`*` wildcards, and caret/tilde (delegated to the
-// package manager's own `parseMarkHold` / `markMatch`).
+// package manager's own `parseCodeHold` / `codeMatch`).
 
-import type { Mark } from '@cluesurf/deck.tree'
+import type { Code } from '@cluesurf/deck.tree'
 import {
-  compareMark,
-  parseMarkHold,
-  markMatch,
+  compareCode,
+  parseCodeHold,
+  codeMatch,
 } from '@cluesurf/deck.tree'
 
-// parse a version string into a Mark, tolerating a leading `v`/`=`, missing minor/patch (padded with 0), and a
+// parse a version string into a Code, tolerating a leading `v`/`=`, missing minor/patch (padded with 0), and a
 // prerelease suffix. Returns undefined for anything that is not a plain dotted version, so callers can skip it
 // rather than crash (a range like `*` is handled before this is reached).
-export function toMark(text: string): Mark | undefined {
+export function toCode(text: string): Code | undefined {
   let value = text.trim()
 
   if (value.startsWith('v') || value.startsWith('=')) {
@@ -68,8 +68,8 @@ export function toMark(text: string): Mark | undefined {
 
 // compare two version strings. Returns <0 if a<b, 0 if equal, >0 if a>b. Unparseable versions sort last.
 export function compareVersion(a: string, b: string): number {
-  const ma = toMark(a)
-  const mb = toMark(b)
+  const ma = toCode(a)
+  const mb = toCode(b)
 
   if (!ma && !mb) {
     return 0
@@ -83,7 +83,7 @@ export function compareVersion(a: string, b: string): number {
     return -1
   }
 
-  return compareMark(ma, mb)
+  return compareCode(ma, mb)
 }
 
 // does a single comparator (`>=1.2.0`, `<2.0.0`, `=1.0.0`, bare `1.2.3`, `*`) hold for `version`?
@@ -106,18 +106,18 @@ function satisfiesComparator(version: string, comparator: string): boolean {
   // caret / tilde delegate to the package manager's own range engine (its band semantics): test the INSTALLED
   // version against the hold parsed from the operand
   if (operator === '^' || operator === '~') {
-    const target = version ? toMark(version) : undefined
+    const target = version ? toCode(version) : undefined
 
     if (!target) {
       return true
     }
 
-    return markMatch(target, parseMarkHold(`${operator}${operand}`))
+    return codeMatch(target, parseCodeHold(`${operator}${operand}`))
   }
 
-  // a wildcard operand (`1.x`, `1`) with no comparator is a prefix match: reuse parseMarkHold's wildcard form
+  // a wildcard operand (`1.x`, `1`) with no comparator is a prefix match: reuse parseCodeHold's wildcard form
   if (operator === '=' && /(^|\.)(x|\*)$|^\d+$|^\d+\.\d+$/.test(operand)) {
-    const target = version ? toMark(version) : undefined
+    const target = version ? toCode(version) : undefined
 
     if (target) {
       const normalized = operand
@@ -127,7 +127,7 @@ function satisfiesComparator(version: string, comparator: string): boolean {
         .slice(0, 3)
         .join('.')
 
-      return markMatch(target, parseMarkHold(normalized))
+      return codeMatch(target, parseCodeHold(normalized))
     }
   }
 

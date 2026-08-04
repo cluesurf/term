@@ -4,10 +4,10 @@
 import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
-import { runScan } from '@cluesurf/scan/code/scan'
-import { localDatabaseSource } from '@cluesurf/scan/code/advisory'
-import { planUpgrades, applyUpgrades } from '@cluesurf/scan/code/fix'
-import type { DependencyFinding } from '@cluesurf/scan/code/form'
+import { runScan } from '@term/scan/code/scan'
+import { localDatabaseSource } from '@term/scan/code/advisory'
+import { planUpgrades, applyUpgrades } from '@term/scan/code/fix'
+import type { DependencyFinding } from '@term/scan/code/form'
 
 let pass = 0
 let fail = 0

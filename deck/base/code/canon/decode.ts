@@ -1,4 +1,4 @@
-import type { CollectionKind, Item, RecordNode, Value } from '@/base/type'
+import type { CollectionKind, Item, RecordNode, Value } from '@term/base/code/base/type'
 import {
   bignumToBigint,
   decodeOne,
@@ -9,9 +9,9 @@ import {
   TAG_DECIMAL,
   TAG_REF,
   type CborValue,
-} from '@/canon/cbor'
-import { base16ToBytes, formatDecimal } from '@/canon/canonicalize'
-import { bytesToMark } from '@/canon/mark'
+} from '@term/base/code/canon/cbor'
+import { base16ToBytes, formatDecimal } from '@term/base/code/canon/canonicalize'
+import { bytesToMark } from '@term/base/code/canon/mark'
 
 // The inverse of canonicalization. Canonical bytes are DAG-CBOR, so decoding is
 // a CBOR read followed by a mapping back into the record graph. This is how the
@@ -172,6 +172,25 @@ function recordFromMap(entries: Map<string, CborValue>): RecordNode {
   const label = entries.get('label')
   if (label !== undefined) {
     node.label = expectText(label, 'record label')
+  }
+  // comments are content and must come back, or a `.tree` round trip through the store
+  // silently drops what the author wrote
+  const comments = entries.get('comments')
+  if (comments !== undefined) {
+    if (comments.kind !== 'map') {
+      throw new Error('record comments must be a map')
+    }
+    const out = new Map<string, Array<string>>()
+    for (const [key, value] of comments.value) {
+      if (value.kind !== 'array') {
+        throw new Error('record comments must map to an array of lines')
+      }
+      out.set(
+        key,
+        value.value.map(line => expectText(line, 'comment line')),
+      )
+    }
+    node.comments = out
   }
   return node
 }

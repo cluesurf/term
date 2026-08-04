@@ -3,8 +3,8 @@
 // signature, never its body. `instantiate` freshens a signature's generic variables (Hindley-Milner let-polymorphism)
 // against a substitution, so a generic function can be called at different types. See note/seed/plan/compilation-performance.md (Tier 2).
 
-import type { Type } from '@cluesurf/make/code/compile/node'
-import type { Substitution } from '@cluesurf/make/code/check/substitution'
+import type { Type } from '@term/make/code/compile/node'
+import type { Substitution } from '@term/make/code/check/substitution'
 
 export type Signature = {
   // the ids of this signature's generic type variables

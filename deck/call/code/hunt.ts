@@ -13,12 +13,12 @@
  * `huntSeedCompiler` - the same discipline as `seed hold`.
  */
 
-import { projectResolver } from '@cluesurf/call/code/make'
+import { projectResolver } from '@term/call/code/make'
 import {
   huntSeedCompiler,
   renderHunt,
-} from '@cluesurf/test/code/seed-hunt'
-import { logGood, logFail } from '@cluesurf/make/code/tint'
+} from '@term/test/code/seed-hunt'
+import { logGood, logFail } from '@term/make/code/tint'
 
 export async function callHunt(input: {
   root: string

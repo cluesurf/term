@@ -1,8 +1,8 @@
 // L018: a binding that exists only to be returned on the very next line (`save x, <e>` then `send back, read x`).
 // Return the expression directly. A common leftover that adds a needless name.
 
-import type { Statement } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Statement } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 function bodiesOf(node: Statement): Statement[][] {
   switch (node.form) {

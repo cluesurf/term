@@ -1,7 +1,7 @@
 // L024: the same native module is loaded (`dock load`) more than once. The extra loads are redundant -- collapse them
 // to one. The driver precomputes the set of modules that appear more than once.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noDuplicateLoad: Rule = {
   name: 'no-duplicate-load',

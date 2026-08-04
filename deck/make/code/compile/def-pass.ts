@@ -3,15 +3,15 @@
 // (`resolvedDef` / `typedDef` / `emitDef`) do, factored into one pure function so the inline path and a worker thread
 // run identical logic (DRY) and cannot diverge. Pure and browser-safe. See note/seed/compiler/parallel-worker-pool.md.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { resolve as resolveNames } from '@cluesurf/make/code/check/resolve'
-import type { Scope } from '@cluesurf/make/code/check/resolve'
-import { check as inferTypes } from '@cluesurf/make/code/check/infer'
-import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { resolve as resolveNames } from '@term/make/code/check/resolve'
+import type { Scope } from '@term/make/code/check/resolve'
+import { check as inferTypes } from '@term/make/code/check/infer'
+import { emitTypeScript } from '@term/make/code/compile/typescript'
 import type {
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 type FunctionDef = Extract<Statement, { form: 'function' }>
 

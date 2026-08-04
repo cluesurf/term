@@ -1,6 +1,6 @@
 
 # Grid — headless container-query responsive grid, ported from the React block-cq grid
-# (mesh/deck/face/code/component/grid/block-cq.tsx + index.tsx dispatcher + shared.ts computeFit). This is the pure-CSS
+# (the React grid components-cq.tsx + index.tsx dispatcher + shared.ts computeFit). This is the pure-CSS
 # variant the landing uses (the dispatcher routes a `maxColumns` grid here): the column count switches in `@container`
 # queries, never JS, so there is zero first-paint shift and rows are flex-wrap so the LAST partial row aligns
 # independently of the full rows above. The `look` DSL owns the actual per-config CSS (the `grid-cq-*` classes in

@@ -1,8 +1,8 @@
-import { Mark, MarkBand, MarkHold, MarkTest, MarkWild } from './form'
+import { Code, MarkBand, CodeHold, MarkTest, MarkWild } from './form'
 
 const MARK_PATTERN = /^(\d+)\.(\d+|x)\.(\d+|x)(?:-(.+))?$/
 
-export function parseMark(text: string): Mark {
+export function parseCode(text: string): Code {
   const match = MARK_PATTERN.exec(text)
 
   if (!match) {
@@ -17,12 +17,12 @@ export function parseMark(text: string): Mark {
   return { major, minor, patch, prerelease }
 }
 
-export function parseMarkHold(text: string): MarkHold {
+export function parseCodeHold(text: string): CodeHold {
   // union: "0.14.x|0.15.x"
   if (text.includes('|')) {
     const parts = text.split('|').map(p => p.trim())
     const list = parts.map(p => {
-      const parsed = parseMarkHold(p)
+      const parsed = parseCodeHold(p)
 
       if (parsed.form !== 'wild') {
         throw new Error(`Union members must be wildcard versions: ${p}`)
@@ -44,8 +44,8 @@ export function parseMarkHold(text: string): MarkHold {
 
     return {
       form: 'band',
-      base: parseMark(parts[0]!),
-      head: parseMark(parts[1]!),
+      base: parseCode(parts[0]!),
+      head: parseCode(parts[1]!),
     }
   }
 
@@ -73,50 +73,50 @@ export function parseMarkHold(text: string): MarkHold {
     return result
   }
 
-  // caret: compatible-with-`mark`, the npm rule. `^1.2.3` allows >=1.2.3 <2.0.0. For a leading-zero version the left-
+  // caret: compatible-with-`code`, the npm rule. `^1.2.3` allows >=1.2.3 <2.0.0. For a leading-zero version the left-
   // most non-zero element is locked instead: `^0.2.3` is >=0.2.3 <0.3.0, `^0.0.3` is >=0.0.3 <0.0.4. The lower bound is
   // the version itself (not a coarse `1.x.x`), so the band excludes earlier patches.
   if (text.startsWith('^')) {
-    const mark = parseMark(text.slice(1))
+    const code = parseCode(text.slice(1))
 
-    let head: Mark
+    let head: Code
 
-    if (mark.major > 0) {
-      head = { major: mark.major + 1, minor: 0, patch: 0 }
-    } else if (mark.minor > 0) {
-      head = { major: 0, minor: mark.minor + 1, patch: 0 }
+    if (code.major > 0) {
+      head = { major: code.major + 1, minor: 0, patch: 0 }
+    } else if (code.minor > 0) {
+      head = { major: 0, minor: code.minor + 1, patch: 0 }
     } else {
-      head = { major: 0, minor: 0, patch: mark.patch + 1 }
+      head = { major: 0, minor: 0, patch: code.patch + 1 }
     }
 
-    return { form: 'band', base: mark, head }
+    return { form: 'band', base: code, head }
   }
 
   // tilde: approximately-equivalent, the npm rule. `~1.2.3` allows >=1.2.3 <1.3.0 (patch changes within the minor).
   if (text.startsWith('~')) {
-    const mark = parseMark(text.slice(1))
+    const code = parseCode(text.slice(1))
 
     return {
       form: 'band',
-      base: mark,
-      head: { major: mark.major, minor: mark.minor + 1, patch: 0 },
+      base: code,
+      head: { major: code.major, minor: code.minor + 1, patch: 0 },
     }
   }
 
-  return { form: 'exact', mark: parseMark(text) }
+  return { form: 'exact', code: parseCode(text) }
 }
 
-export function showMark(mark: Mark): string {
-  const base = `${mark.major}.${mark.minor}.${mark.patch}`
+export function showCode(code: Code): string {
+  const base = `${code.major}.${code.minor}.${code.patch}`
 
-  if (mark.prerelease) {
-    return `${base}-${mark.prerelease}`
+  if (code.prerelease) {
+    return `${base}-${code.prerelease}`
   }
 
   return base
 }
 
-export function compareMark(a: Mark, b: Mark): number {
+export function compareCode(a: Code, b: Code): number {
   if (a.major !== b.major) {return a.major - b.major}
 
   if (a.minor !== b.minor) {return a.minor - b.minor}
@@ -138,70 +138,70 @@ export function compareMark(a: Mark, b: Mark): number {
   return 0
 }
 
-export function markMatch(mark: Mark, hold: MarkHold): boolean {
+export function codeMatch(code: Code, hold: CodeHold): boolean {
   switch (hold.form) {
     case 'exact':
-      return compareMark(mark, hold.mark) === 0
+      return compareCode(code, hold.code) === 0
 
     case 'wild':
-      if (mark.major !== hold.major) {return false}
+      if (code.major !== hold.major) {return false}
 
-      if (hold.minor !== undefined && mark.minor !== hold.minor)
+      if (hold.minor !== undefined && code.minor !== hold.minor)
         {return false}
 
-      if (hold.patch !== undefined && mark.patch !== hold.patch)
+      if (hold.patch !== undefined && code.patch !== hold.patch)
         {return false}
 
       return true
 
     case 'band':
       return (
-        compareMark(mark, hold.base) >= 0 &&
-        compareMark(mark, hold.head) < 0
+        compareCode(code, hold.base) >= 0 &&
+        compareCode(code, hold.head) < 0
       )
 
     case 'test':
-      return hold.list.some(wild => markMatch(mark, wild))
+      return hold.list.some(wild => codeMatch(code, wild))
   }
 }
 
-export function pickBestMark(input: {
-  versions: Mark[]
-  hold: MarkHold
-}): Mark | undefined {
+export function pickBestCode(input: {
+  versions: Code[]
+  hold: CodeHold
+}): Code | undefined {
   const matching = input.versions
-    .filter(v => markMatch(v, input.hold))
-    .sort((a, b) => compareMark(b, a))
+    .filter(v => codeMatch(v, input.hold))
+    .sort((a, b) => compareCode(b, a))
 
   return matching[0]
 }
 
-export function bumpMark(input: {
-  mark: Mark
+export function bumpCode(input: {
+  code: Code
   level: 1 | 2 | 3
-}): Mark {
+}): Code {
   switch (input.level) {
     case 1:
       return {
-        major: input.mark.major + 1,
+        major: input.code.major + 1,
         minor: 0,
         patch: 0,
       }
     case 2:
       return {
-        major: input.mark.major,
-        minor: input.mark.minor + 1,
+        major: input.code.major,
+        minor: input.code.minor + 1,
         patch: 0,
       }
 
     case 3: {
       // even patch numbers only for published versions
-      const next = input.mark.patch + 1
+      const next = input.code.patch + 1
       const even = next % 2 === 0 ? next : next + 1
 
       return {
-        major: input.mark.major,
-        minor: input.mark.minor,
+        major: input.code.major,
+        minor: input.code.minor,
         patch: even,
       }
     }

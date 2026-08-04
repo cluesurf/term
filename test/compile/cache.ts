@@ -2,15 +2,15 @@
 // output cache on an unchanged re-compile, and (3) reuse a module's mill across a graph where only a sibling changed.
 // Run: npx tsx test/compile/cache.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import {
   CompileCache,
   hashText,
   hashFields,
-} from '@cluesurf/make/code/compile/cache'
-import type { CacheStore } from '@cluesurf/make/code/compile/cache'
-import { diskCacheStore } from '@cluesurf/call/code/cache-store'
-import type { Source } from '@cluesurf/make/code/compile/load'
+} from '@term/make/code/compile/cache'
+import type { CacheStore } from '@term/make/code/compile/cache'
+import { diskCacheStore } from '@term/call/code/cache-store'
+import type { Source } from '@term/make/code/compile/load'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as nodePath from 'node:path'

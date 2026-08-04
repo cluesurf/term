@@ -8,9 +8,9 @@ import type {
   Program,
   Statement,
   ZoneNode,
-} from '@cluesurf/make/code/compile/node'
-import { egraphArith } from '@cluesurf/make/code/ir/egraph-arith'
-import { expressionsEqual } from '@cluesurf/make/code/compile/expr-equal'
+} from '@term/make/code/compile/node'
+import { egraphArith } from '@term/make/code/ir/egraph-arith'
+import { expressionsEqual } from '@term/make/code/compile/expr-equal'
 
 // the render + reactive runtime primitives emitZone (code/compile/typescript.ts) synthesizes as raw calls in a zone's
 // output. They never appear as call nodes in the AST, so reference-counting cannot see them. When a program contains

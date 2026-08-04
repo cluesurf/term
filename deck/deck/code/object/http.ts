@@ -142,7 +142,10 @@ export function httpRegistry(input: {
           'x-object-id': obj.id,
           ...authHeaders,
         },
-        body: new Blob([obj.bytes]),
+        // a node Buffer is a Uint8Array over a possibly-shared ArrayBuffer, which
+        // `BlobPart` does not accept. Copy into a plain view so the type is exact and
+        // the bytes cannot be mutated underneath an in-flight request.
+        body: new Blob([new Uint8Array(obj.bytes)]),
       })
 
       if (!response.ok) {
@@ -164,7 +167,7 @@ export function httpRegistry(input: {
           'x-pack-id': pack.id,
           ...authHeaders,
         },
-        body: new Blob([pack.bytes]),
+        body: new Blob([new Uint8Array(pack.bytes)]),
       })
 
       if (!response.ok) {

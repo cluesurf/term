@@ -12,7 +12,7 @@ import {
   logGood,
   logFail,
   fade,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 // the marker that identifies a seed boot server process in the process table
 const BOOT_MARKER = '.base/term/boot/'

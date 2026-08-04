@@ -11,10 +11,10 @@ import type {
   Expression,
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
-import { monomorphize } from '@cluesurf/make/code/ir/monomorphize'
-import { experimentalBanner } from '@cluesurf/make/code/compile/backend-registry'
+} from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
+import { monomorphize } from '@term/make/code/ir/monomorphize'
+import { experimentalBanner } from '@term/make/code/compile/backend-registry'
 
 const NOWHERE: Span = {
   start: { line: 0, column: 0 },

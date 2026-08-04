@@ -2,11 +2,11 @@
 // initialize, publishes diagnostics on open, hovers an inferred type, and clears diagnostics on close.
 // Run: npx tsx test/server/run.ts
 
-import { LanguageServer } from '@cluesurf/flow/code/server'
-import { MessageReader, encode } from '@cluesurf/flow/code/protocol'
-import type { Message } from '@cluesurf/flow/code/protocol'
-import { analyze, forEachExpression } from '@cluesurf/flow/code/analyze'
-import { buildIndex, referenceAt } from '@cluesurf/flow/code/symbols'
+import { LanguageServer } from '@term/flow/code/server'
+import { MessageReader, encode } from '@term/flow/code/protocol'
+import type { Message } from '@term/flow/code/protocol'
+import { analyze, forEachExpression } from '@term/flow/code/analyze'
+import { buildIndex, referenceAt } from '@term/flow/code/symbols'
 
 let pass = 0
 let fail = 0

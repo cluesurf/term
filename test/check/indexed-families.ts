@@ -7,7 +7,7 @@
 // the type former + per-constructor index result types). The dependent eliminator (a motive that refines the index per
 // branch) is the next step; construction and application are sound now. Run: npx tsx test/check/indexed-families.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

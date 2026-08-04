@@ -2,7 +2,7 @@
  * The core of `seed hold`, with the module resolver injected (not
  * built here). Keeping `proveFile` resolver-agnostic is what lets BOTH
  * the standalone `prove-cli.ts` AND the real `seed hold` CLI verb
- * (`@cluesurf/call/code/hold`) call it without the verification
+ * (`@term/call/code/hold`) call it without the verification
  * package depending on `@cluesurf/call` - which would be a cycle, since
  * `call` is what owns `projectResolver`.
  *
@@ -18,8 +18,8 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
+import { compile } from '@term/make/code/compile/compile'
+import type { Resolver } from '@term/make/code/compile/load'
 import { gapsFromDiagnostics, showGap } from './checker-gap'
 import { crossEmit } from './cross'
 

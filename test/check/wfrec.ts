@@ -5,7 +5,7 @@
 // COMPUTES. This is the mechanism that completes general well-founded recursion via accessibility. Soundness: a wrong
 // result is rejected, and crediting an inductive (finitely deep) type is sound. Run: npx tsx test/check/wfrec.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

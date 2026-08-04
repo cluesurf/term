@@ -5,41 +5,41 @@ describe('parseManifest', () => {
   it('parses a basic manifest', () => {
     const text = `
 deck @cluesurf/my-app
-  mark <1.0.0>
+  code <1.0.0>
   head <My cool app>
   mind <Lance Pollard>
   lock apache-2
   term <tool>
-  link @cluesurf/base, mark <1.x.x>
-  link @cluesurf/tree, mark <2.1.0>
+  link @cluesurf/base, code <1.x.x>
+  link @cluesurf/tree, code <2.1.0>
 `
     const manifest = parseManifest({ text })
 
     expect(manifest.host).toBe('cluesurf')
     expect(manifest.name).toBe('my-app')
-    expect(manifest.mark).toEqual({ major: 1, minor: 0, patch: 0 })
+    expect(manifest.code).toEqual({ major: 1, minor: 0, patch: 0 })
     expect(manifest.head).toBe('My cool app')
     expect(manifest.lock).toBe('apache-2')
     expect(manifest.term).toEqual(['tool'])
     expect(manifest.mind).toEqual([{ name: 'Lance Pollard' }])
     expect(manifest.link).toHaveLength(2)
     expect(manifest.link[0]!.name).toBe('@cluesurf/base')
-    expect(manifest.link[0]!.mark).toEqual({
+    expect(manifest.link[0]!.code).toEqual({
       form: 'wild',
       major: 1,
     })
     expect(manifest.link[1]!.name).toBe('@cluesurf/tree')
-    expect(manifest.link[1]!.mark).toEqual({
+    expect(manifest.link[1]!.code).toEqual({
       form: 'exact',
-      mark: { major: 2, minor: 1, patch: 0 },
+      code: { major: 2, minor: 1, patch: 0 },
     })
   })
 
   it('parses peer dependencies', () => {
     const text = `
 deck @cluesurf/plugin
-  mark <0.1.0>
-  link @cluesurf/core, mark <1.x.x>, have 1
+  code <0.1.0>
+  link @cluesurf/core, code <1.x.x>, have 1
 `
     const manifest = parseManifest({ text })
     expect(manifest.link[0]!.have).toBe(1)
@@ -48,7 +48,7 @@ deck @cluesurf/plugin
   it('parses hooks', () => {
     const text = `
 deck @cluesurf/tool
-  mark <1.0.0>
+  code <1.0.0>
   hook build, task ./task/build
 `
     const manifest = parseManifest({ text })
@@ -58,7 +58,7 @@ deck @cluesurf/tool
   it('parses role directive', () => {
     const text = `
 deck @cluesurf/base
-  mark <0.0.1>
+  code <0.0.1>
   role ./base/role
 `
     const manifest = parseManifest({ text })
@@ -68,7 +68,7 @@ deck @cluesurf/base
   it('parses directory pointers', () => {
     const text = `
 deck @cluesurf/base
-  mark <0.0.1>
+  code <0.0.1>
   task ./task
   book ./book
   role ./base/role
@@ -88,7 +88,7 @@ deck @cluesurf/base
   it('parses hide flag', () => {
     const text = `
 deck @cluesurf/my-app
-  mark <0.0.1>
+  code <0.0.1>
   hide true
 `
     const manifest = parseManifest({ text })
@@ -98,7 +98,7 @@ deck @cluesurf/my-app
   it('parses site and view', () => {
     const text = `
 deck @cluesurf/base
-  mark <0.0.1>
+  code <0.0.1>
   site <https://github.com/cluesurf/seed>
   view ./view/tree.gif
 `
@@ -110,7 +110,7 @@ deck @cluesurf/base
   it('parses sub-package deck entries', () => {
     const text = `
 deck @cluesurf/base
-  mark <0.0.1>
+  code <0.0.1>
   deck ./deck/load
   deck ./deck/line
 `
@@ -121,7 +121,7 @@ deck @cluesurf/base
   it('parses mind with inline base', () => {
     const text = `
 deck @cluesurf/base
-  mark <0.0.1>
+  code <0.0.1>
   mind <Lance Pollard>, base <lp@elk.fm>
 `
     const manifest = parseManifest({ text })
@@ -133,7 +133,7 @@ deck @cluesurf/base
   it('parses mind with child site', () => {
     const text = `
 deck @cluesurf/base
-  mark <0.0.1>
+  code <0.0.1>
   mind <Lance Pollard>, base <lp@elk.fm>
     site <lancejpollard.com>
 `
@@ -146,12 +146,12 @@ deck @cluesurf/base
   it('parses case work dev dependencies', () => {
     const text = `
 deck @cluesurf/my-app
-  mark <0.0.1>
-  link @cluesurf/base, mark <0.0.x>
+  code <0.0.1>
+  link @cluesurf/base, code <0.0.x>
 
   case work
-    link @cluesurf/buzz, mark <0.0.x>
-    link @cluesurf/crow, mark <0.0.x>
+    link @cluesurf/buzz, code <0.0.x>
+    link @cluesurf/crow, code <0.0.x>
 `
     const manifest = parseManifest({ text })
     expect(manifest.link).toHaveLength(1)
@@ -164,11 +164,11 @@ deck @cluesurf/my-app
   it('parses host registry blocks', () => {
     const text = `
 deck @cluesurf/base
-  mark <0.0.1>
+  code <0.0.1>
 
   host <https://npm.pkg.github.com>
-    link @cluesurf/seal, mark <0.0.x>
-    link @cluesurf/cone, mark <0.0.x>
+    link @cluesurf/seal, code <0.0.x>
+    link @cluesurf/cone, code <0.0.x>
 `
     const manifest = parseManifest({ text })
     expect(manifest.hostLink).toHaveLength(1)
@@ -181,7 +181,7 @@ deck @cluesurf/base
     const text = `
 deck @cluesurf/base
   head <A TreeCode Framework>
-  mark <0.0.1>
+  code <0.0.1>
   sort tool
   lock apache-2
   site <https://github.com/cluesurf/base>
@@ -194,14 +194,14 @@ deck @cluesurf/base
   deck ./deck/load
   deck ./deck/call
 
-  link @cluesurf/bind, mark <0.0.x>
-  link @cluesurf/moon, mark <0.0.x>
+  link @cluesurf/bind, code <0.0.x>
+  link @cluesurf/moon, code <0.0.x>
 
   host <https://npm.pkg.github.com>
-    link @cluesurf/seal, mark <0.0.x>
+    link @cluesurf/seal, code <0.0.x>
 
   case work
-    link @cluesurf/buzz, mark <0.0.x>
+    link @cluesurf/buzz, code <0.0.x>
 
   task ./task
   book ./book
@@ -240,23 +240,23 @@ describe('writeManifest', () => {
   it('round-trips a manifest', () => {
     const text = `
 deck @cluesurf/my-app
-  mark <1.0.0>
+  code <1.0.0>
   head <My cool app>
-  link @cluesurf/base, mark <1.x.x>
+  link @cluesurf/base, code <1.x.x>
 `
     const manifest = parseManifest({ text })
     const output = writeManifest({ manifest })
 
     expect(output).toContain('deck @cluesurf/my-app')
-    expect(output).toContain('mark <1.0.0>')
+    expect(output).toContain('code <1.0.0>')
     expect(output).toContain('head <My cool app>')
-    expect(output).toContain('link @cluesurf/base, mark <1.x.x>')
+    expect(output).toContain('link @cluesurf/base, code <1.x.x>')
   })
 
   it('writes new fields', () => {
     const text = `
 deck @cluesurf/base
-  mark <0.0.1>
+  code <0.0.1>
   hide true
   site <https://github.com/cluesurf/seed>
   view ./view/tree.gif
@@ -282,9 +282,9 @@ deck @cluesurf/base
   it('writes case work block', () => {
     const text = `
 deck @cluesurf/my-app
-  mark <0.0.1>
+  code <0.0.1>
   case work
-    link @cluesurf/buzz, mark <0.0.x>
+    link @cluesurf/buzz, code <0.0.x>
 `
     const manifest = parseManifest({ text })
     const output = writeManifest({ manifest })
@@ -296,9 +296,9 @@ deck @cluesurf/my-app
   it('writes host block', () => {
     const text = `
 deck @cluesurf/base
-  mark <0.0.1>
+  code <0.0.1>
   host <https://npm.pkg.github.com>
-    link @cluesurf/seal, mark <0.0.x>
+    link @cluesurf/seal, code <0.0.x>
 `
     const manifest = parseManifest({ text })
     const output = writeManifest({ manifest })

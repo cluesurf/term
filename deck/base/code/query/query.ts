@@ -1,9 +1,9 @@
-import type { RecordNode, Value } from '@/base/type'
-import { canonicalizeValue } from '@/canon/canonicalize'
-import type { Change } from '@/diff/change'
-import { MemoryProjection } from '@/project/projection'
-import { compareValues, fieldText } from '@/query/compare'
-import { OrderedIndex } from '@/query/ordered-index'
+import type { RecordNode, Value } from '@term/base/code/base/type'
+import { canonicalizeValue } from '@term/base/code/canon/canonicalize'
+import type { Change } from '@term/base/code/diff/change'
+import { MemoryProjection } from '@term/base/code/project/projection'
+import { compareValues, fieldText } from '@term/base/code/query/compare'
+import { OrderedIndex } from '@term/base/code/query/ordered-index'
 
 // A native query surface over the record graph, plus declared indexes so equality,
 // range, and prefix lookups do not scan every record. The query model is deliberately

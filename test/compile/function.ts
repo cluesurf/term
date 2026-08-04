@@ -5,8 +5,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { render } from '@cluesurf/make/code/parser/diagnostic'
+import { compile } from '@term/make/code/compile/compile'
+import { render } from '@term/make/code/parser/diagnostic'
 
 // `apply-twice` takes a task (number -> number) as a first-class value and applies it twice
 const SOURCE = `task increment

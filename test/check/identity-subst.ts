@@ -6,7 +6,7 @@
 // true on that path, so rewriting by it preserves truth. Soundness control: WITHOUT the equation, the goal is not
 // provable. Run: npx tsx test/check/identity-subst.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

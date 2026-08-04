@@ -4,9 +4,9 @@
 // dependents too, and the emitted modules still run correctly end to end.
 // Run: npx tsx test/compile/separate.ts
 
-import { compileSeparate } from '@cluesurf/make/code/compile/separate'
-import { CompileCache } from '@cluesurf/make/code/compile/cache'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
+import { compileSeparate } from '@term/make/code/compile/separate'
+import { CompileCache } from '@term/make/code/compile/cache'
+import type { Resolver } from '@term/make/code/compile/load'
 import { transformSync } from 'esbuild'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

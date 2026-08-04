@@ -5,9 +5,19 @@ import {
   DeckLink,
   DeckMind,
   DeckHostGroup,
-  MarkHold,
+  CodeHold,
 } from './form'
-import { parseMark, parseMarkHold, showMark } from './mark'
+import { parseCode, parseCodeHold, showCode } from './code'
+import {
+  readTree,
+  formOf,
+  formsWith,
+  valueOf,
+  termOf,
+  deepValueOf,
+  phraseOf,
+} from './read'
+import type { Form } from './read'
 
 export async function loadManifest(input: {
   dir: string
@@ -19,271 +29,87 @@ export async function loadManifest(input: {
 }
 
 export function parseManifest(input: { text: string }): DeckManifest {
-  const lines = input.text.split('\n')
+  const result = readTree({ file: 'deck.tree', text: input.text })
 
+  if (!result.ok) {
+    const first = result.diagnostics[0]
+
+    throw new Error(
+      `deck.tree could not be parsed${first ? `: ${first.message}` : ''}`,
+    )
+  }
+
+  // the whole manifest is one `deck` form; every declaration hangs off it
+  const root = result.forms.find(f => f.head === 'deck')
+
+  if (!root) {
+    throw new Error('deck.tree has no `deck` declaration')
+  }
+
+  // `deck @scope/name`, or a bare `deck name` for an unscoped package
   let host = ''
-  let name = ''
-  let mark = { major: 0, minor: 0, patch: 0 }
-  let head: string | undefined
+  let name = root.terms[0] ?? ''
+  const slash = name.indexOf('/')
 
-  const mind: DeckMind[] = []
+  if (name.startsWith('@') && slash !== -1) {
+    host = name.slice(1, slash)
+    name = name.slice(slash + 1)
+  }
 
-  let lock: string | undefined
-  let sort: string | undefined
+  const code = parseCode(valueOf(root, 'code') ?? '0.0.0')
+  const head = valueOf(root, 'head')
 
-  const term: string[] = []
-  const link: DeckLink[] = []
+  const mind = formsWith(root, 'mind').map(toMind)
+
+  // `lock mit` and `sort tool` carry a bare word, but tolerate `<...>` too
+  const lock = termOf(root, 'lock') ?? valueOf(root, 'lock')
+  const sort = termOf(root, 'sort') ?? valueOf(root, 'sort')
+
+  const term = formsWith(root, 'term').map(
+    f => f.value ?? f.terms[0] ?? '',
+  )
+
+  // a nested `deck ./path` is a member package
+  const deck = formsWith(root, 'deck')
+    .map(f => f.terms[0] ?? '')
+    .filter(Boolean)
+
+  const link = formsWith(root, 'link')
+    .map(toLink)
+    .filter((l): l is DeckLink => l !== undefined)
+
+  // `case work` holds the dev dependencies, as `link` forms and `host` groups
+  const work = formOf(root, 'case')
+  const devLink = work
+    ? formsWith(work, 'link')
+        .map(toLink)
+        .filter((l): l is DeckLink => l !== undefined)
+    : []
+
+  const hostLink = [
+    ...formsWith(root, 'host').map(toHostGroup),
+    ...(work ? formsWith(work, 'host').map(toHostGroup) : []),
+  ]
+
+  // `hook <name>, task <task>`
   const hook: Record<string, string> = {}
 
-  let role: string | undefined
-  let test: string | undefined
-  let bookDir: string | undefined
-  let lineDir: string | undefined
-  let callDir: string | undefined
-  let taskDir: string | undefined
-  let hide: boolean | undefined
-  let site: string | undefined
-  let view: string | undefined
+  for (const form of formsWith(root, 'hook')) {
+    const hookName = form.terms[0]
+    const taskForm = formOf(form, 'task')
+    const hookTask = taskForm ? phraseOf(taskForm) : form.terms[1]
 
-  const deck: string[] = []
-  const devLink: DeckLink[] = []
-  const hostLink: DeckHostGroup[] = []
-
-  let i = 0
-
-  while (i < lines.length) {
-    const raw = lines[i]!
-    const indent = raw.length - raw.trimStart().length
-    const line = raw.trim()
-    i++
-
-    if (!line || line.startsWith('#')) {continue}
-
-    if (line.startsWith('deck ')) {
-      const deckValue = line.slice(5).trim()
-
-      // Sub-package path (inside indented block)
-      if (indent >= 2 && deckValue.startsWith('./')) {
-        deck.push(deckValue)
-        continue
-      }
-
-      // Package name declaration (top-level)
-      const parts = deckValue.split('/')
-
-      if (parts.length === 2 && parts[0]!.startsWith('@')) {
-        host = parts[0]!.slice(1)
-        name = parts[1]!
-      } else {
-        name = deckValue
-      }
-
-      continue
-    }
-
-    if (line.startsWith('mark ')) {
-      const markText = extractAngle(line.slice(5).trim())
-      mark = parseMark(markText)
-      continue
-    }
-
-    if (line.startsWith('head ')) {
-      head = extractAngle(line.slice(5).trim())
-      continue
-    }
-
-    if (line.startsWith('mind ')) {
-      const mindLine = line.slice(5).trim()
-      const mindEntry = parseMindLine({ text: mindLine })
-
-      // Check for child lines (site, base)
-      while (i < lines.length) {
-        const nextRaw = lines[i]!
-        const nextIndent = nextRaw.length - nextRaw.trimStart().length
-        const nextLine = nextRaw.trim()
-
-        if (!nextLine || nextLine.startsWith('#')) {
-          i++
-          continue
-        }
-
-        if (nextIndent <= indent) {break}
-
-        if (nextLine.startsWith('site ')) {
-          mindEntry.site = extractAngle(nextLine.slice(5).trim())
-        } else if (nextLine.startsWith('base ')) {
-          mindEntry.base = extractAngle(nextLine.slice(5).trim())
-        }
-
-        i++
-      }
-
-      mind.push(mindEntry)
-      continue
-    }
-
-    if (line.startsWith('lock ')) {
-      lock = line.slice(5).trim()
-      continue
-    }
-
-    if (line.startsWith('sort ')) {
-      sort = extractAngle(line.slice(5).trim())
-      continue
-    }
-
-    if (line.startsWith('term ')) {
-      term.push(extractAngle(line.slice(5).trim()))
-      continue
-    }
-
-    if (line.startsWith('role ')) {
-      role = line.slice(5).trim()
-      continue
-    }
-
-    if (line.startsWith('test ')) {
-      test = line.slice(5).trim()
-      continue
-    }
-
-    if (line.startsWith('book ')) {
-      bookDir = line.slice(5).trim()
-      continue
-    }
-
-    if (line.startsWith('line ')) {
-      lineDir = line.slice(5).trim()
-      continue
-    }
-
-    if (line.startsWith('call ')) {
-      callDir = line.slice(5).trim()
-      continue
-    }
-
-    if (line.startsWith('task ')) {
-      taskDir = line.slice(5).trim()
-      continue
-    }
-
-    if (line.startsWith('hide ')) {
-      hide = line.slice(5).trim() === 'true'
-      continue
-    }
-
-    if (line.startsWith('site ')) {
-      site = extractAngle(line.slice(5).trim())
-      continue
-    }
-
-    if (line.startsWith('view ')) {
-      view = line.slice(5).trim()
-      continue
-    }
-
-    if (line.startsWith('case work')) {
-      // Dev dependencies block. Collect indented children.
-      while (i < lines.length) {
-        const nextRaw = lines[i]!
-        const nextIndent = nextRaw.length - nextRaw.trimStart().length
-        const nextLine = nextRaw.trim()
-
-        if (!nextLine || nextLine.startsWith('#')) {
-          i++
-          continue
-        }
-
-        if (nextIndent <= indent) {break}
-
-        if (nextLine.startsWith('link ')) {
-          const parsed = parseLinkLine({
-            text: nextLine.slice(5).trim(),
-          })
-
-          if (parsed) {devLink.push(parsed)}
-        } else if (nextLine.startsWith('host ')) {
-          const group = parseHostBlock({
-            lines,
-            index: i - 1,
-            parentIndent: nextIndent,
-          })
-
-          hostLink.push(group.group)
-          // The host block parser consumed lines up to group.nextIndex
-          // but we need to adjust since our outer loop increments i
-          i = group.nextIndex
-          continue
-        }
-
-        i++
-      }
-
-      continue
-    }
-
-    if (line.startsWith('host ')) {
-      const group = parseHostBlock({
-        lines,
-        index: i - 1,
-        parentIndent: indent,
-      })
-
-      hostLink.push(group.group)
-      i = group.nextIndex
-      continue
-    }
-
-    if (line.startsWith('link ')) {
-      const linkLine = line.slice(5).trim()
-      const parsed = parseLinkLine({ text: linkLine })
-
-      if (parsed) {
-        // Check for child lines (base, site)
-        while (i < lines.length) {
-          const nextRaw = lines[i]!
-          const nextIndent = nextRaw.length - nextRaw.trimStart().length
-          const nextLine = nextRaw.trim()
-
-          if (!nextLine || nextLine.startsWith('#')) {
-            i++
-            continue
-          }
-
-          if (nextIndent <= indent) {break}
-
-          // Skip child directives (base, site) for now
-          i++
-        }
-
-        link.push(parsed)
-      }
-
-      continue
-    }
-
-    if (line.startsWith('hook ')) {
-      const hookParts = line.slice(5).trim().split(',')
-
-      if (hookParts.length >= 2) {
-        const hookName = hookParts[0]!.trim()
-        const hookTask = hookParts
-          .slice(1)
-          .join(',')
-          .trim()
-          .replace(/^task\s+/, '')
-
-        hook[hookName] = hookTask
-      }
-
-      continue
+    if (hookName && hookTask) {
+      hook[hookName] = hookTask
     }
   }
+
+  const dir = (h: string): string | undefined => termOf(root, h)
 
   return {
     host,
     name,
-    mark,
+    code,
     head,
     mind: mind.length > 0 ? mind : undefined,
     lock,
@@ -291,121 +117,76 @@ export function parseManifest(input: { text: string }): DeckManifest {
     term: term.length > 0 ? term : undefined,
     link,
     hook: Object.keys(hook).length > 0 ? hook : undefined,
-    role,
-    test,
-    book: bookDir,
-    line: lineDir,
-    call: callDir,
-    task: taskDir,
-    hide,
-    site,
-    view,
+    role: dir('role'),
+    test: dir('test'),
+    book: dir('book'),
+    line: dir('line'),
+    call: dir('call'),
+    task: dir('task'),
+    hide: formOf(root, 'hide')
+      ? termOf(root, 'hide') === 'true'
+      : undefined,
+    site: valueOf(root, 'site') ?? termOf(root, 'site'),
+    view: termOf(root, 'view') ?? valueOf(root, 'view'),
     deck: deck.length > 0 ? deck : undefined,
     devLink: devLink.length > 0 ? devLink : undefined,
     hostLink: hostLink.length > 0 ? hostLink : undefined,
   }
 }
 
-function parseMindLine(input: { text: string }): DeckMind {
-  const parts = input.text.split(',').map(p => p.trim())
-  const name = extractAngle(parts[0]!)
-  const entry: DeckMind = { name }
+// `mind <Name>, base <email>, site <url>`, with the same fields also accepted as
+// indented children. Both arrive as nested forms, so one path reads both.
+function toMind(form: Form): DeckMind {
+  const entry: DeckMind = {
+    name: form.value ?? form.terms[0] ?? '',
+  }
 
-  for (let i = 1; i < parts.length; i++) {
-    const part = parts[i]!.trim()
+  const base = valueOf(form, 'base')
+  const site = valueOf(form, 'site')
 
-    if (part.startsWith('base ')) {
-      entry.base = extractAngle(part.slice(5).trim())
-    } else if (part.startsWith('site ')) {
-      entry.site = extractAngle(part.slice(5).trim())
-    }
+  if (base !== undefined) {
+    entry.base = base
+  }
+
+  if (site !== undefined) {
+    entry.site = site
   }
 
   return entry
 }
 
-function parseHostBlock(input: {
-  lines: string[]
-  index: number
-  parentIndent: number
-}): { group: DeckHostGroup; nextIndex: number } {
-  const { lines, parentIndent } = input
+// `link @scope/name, code <hold>, have <n>`
+function toLink(form: Form): DeckLink | undefined {
+  const linkName = form.terms[0]
 
-  let i = input.index
-
-  const raw = lines[i]!
-  const line = raw.trim()
-  const registry = extractAngle(line.slice(5).trim())
-  const groupLinks: DeckLink[] = []
-  i++
-
-  while (i < lines.length) {
-    const nextRaw = lines[i]!
-    const nextIndent = nextRaw.length - nextRaw.trimStart().length
-    const nextLine = nextRaw.trim()
-
-    if (!nextLine || nextLine.startsWith('#')) {
-      i++
-      continue
-    }
-
-    if (nextIndent <= parentIndent) {break}
-
-    if (nextLine.startsWith('link ')) {
-      const parsed = parseLinkLine({ text: nextLine.slice(5).trim() })
-
-      if (parsed) {groupLinks.push(parsed)}
-    }
-
-    i++
+  if (!linkName) {
+    return undefined
   }
+
+  const hold = valueOf(form, 'code')
+  const have = deepValueOf(form, 'have')
+  const parsed = have === undefined ? undefined : Number.parseInt(have, 10)
 
   return {
-    group: { registry, link: groupLinks },
-    nextIndex: i,
+    name: linkName,
+    code: hold ? parseCodeHold(hold) : { form: 'wild', major: 0 },
+    have: parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined,
   }
 }
 
-function parseLinkLine(input: { text: string }): DeckLink | undefined {
-  const parts = input.text.split(',').map(p => p.trim())
-  const nameStr = parts[0]
-
-  if (!nameStr) {return undefined}
-
-  let markHold: MarkHold = {
-    form: 'wild',
-    major: 0,
-  }
-
-  let have: number | undefined
-
-  for (let i = 1; i < parts.length; i++) {
-    const part = parts[i]!.trim()
-
-    if (part.startsWith('mark ')) {
-      const markText = extractAngle(part.slice(5).trim())
-      markHold = parseMarkHold(markText)
-    }
-
-    if (part.startsWith('have ')) {
-      have = parseInt(part.slice(5).trim(), 10)
-    }
-  }
-
+// `host <registry>` with `link` children: dependencies pinned to one registry
+function toHostGroup(form: Form): DeckHostGroup {
   return {
-    name: nameStr,
-    mark: markHold,
-    have,
+    registry: form.value ?? form.terms[0] ?? '',
+    link: formsWith(form, 'link')
+      .map(toLink)
+      .filter((l): l is DeckLink => l !== undefined),
   }
 }
 
-function extractAngle(text: string): string {
-  if (text.startsWith('<') && text.endsWith('>')) {
-    return text.slice(1, -1)
-  }
 
-  return text
-}
+
+
 
 export function writeManifest(input: {
   manifest: DeckManifest
@@ -415,7 +196,7 @@ export function writeManifest(input: {
 
   const fullName = m.host ? `@${m.host}/${m.name}` : m.name
   lines.push(`deck ${fullName}`)
-  lines.push(`  mark <${showMark(m.mark)}>`)
+  lines.push(`  code <${showCode(m.code)}>`)
 
   if (m.head) {
     lines.push(`  head <${m.head}>`)
@@ -454,9 +235,9 @@ export function writeManifest(input: {
   }
 
   for (const dep of m.link) {
-    const markStr = writeMarkHold({ hold: dep.mark })
+    const codeStr = writeCodeHold({ hold: dep.code })
 
-    let line = `  link ${dep.name}, mark <${markStr}>`
+    let line = `  link ${dep.name}, code <${codeStr}>`
 
     if (dep.have !== undefined) {
       line += `, have ${dep.have}`
@@ -470,8 +251,8 @@ export function writeManifest(input: {
       lines.push(`  host <${group.registry}>`)
 
       for (const dep of group.link) {
-        const markStr = writeMarkHold({ hold: dep.mark })
-        lines.push(`    link ${dep.name}, mark <${markStr}>`)
+        const codeStr = writeCodeHold({ hold: dep.code })
+        lines.push(`    link ${dep.name}, code <${codeStr}>`)
       }
     }
   }
@@ -480,8 +261,8 @@ export function writeManifest(input: {
     lines.push(`  case work`)
 
     for (const dep of m.devLink) {
-      const markStr = writeMarkHold({ hold: dep.mark })
-      lines.push(`    link ${dep.name}, mark <${markStr}>`)
+      const codeStr = writeCodeHold({ hold: dep.code })
+      lines.push(`    link ${dep.name}, code <${codeStr}>`)
     }
   }
 
@@ -534,10 +315,10 @@ export function writeManifest(input: {
   return lines.join('\n') + '\n'
 }
 
-function writeMarkHold(input: { hold: MarkHold }): string {
+function writeCodeHold(input: { hold: CodeHold }): string {
   switch (input.hold.form) {
     case 'exact':
-      return showMark(input.hold.mark)
+      return showCode(input.hold.code)
 
     case 'wild': {
       const minor =
@@ -550,10 +331,35 @@ function writeMarkHold(input: { hold: MarkHold }): string {
     }
 
     case 'band':
-      return `${showMark(input.hold.base)}..${showMark(input.hold.head)}`
+      return `${showCode(input.hold.base)}..${showCode(input.hold.head)}`
     case 'test':
       return input.hold.list
-        .map(w => writeMarkHold({ hold: w }))
+        .map(w => writeCodeHold({ hold: w }))
         .join('|')
   }
+}
+
+// Publish rules: a name, a version that is not 0.0.0, and an EVEN patch number.
+export async function validateManifest(input: {
+  manifest: DeckManifest
+}): Promise<string[]> {
+  const errors: string[] = []
+
+  if (!input.manifest.name) {
+    errors.push('Missing package name')
+  }
+
+  if (
+    input.manifest.code.major === 0 &&
+    input.manifest.code.minor === 0 &&
+    input.manifest.code.patch === 0
+  ) {
+    errors.push('Version must be set (not 0.0.0)')
+  }
+
+  if (input.manifest.code.patch % 2 !== 0) {
+    errors.push('Published versions must use even patch numbers')
+  }
+
+  return errors
 }

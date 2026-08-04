@@ -1,8 +1,8 @@
 import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
-import { ResolutionMap, ResolvedDeck, Mark } from './form'
-import { showMark } from './mark'
+import { ResolutionMap, ResolvedDeck, Code } from './form'
+import { showCode } from './code'
 import { getFilePath, initStore, getStoreRoot } from './store'
 import { hashBuffer } from './hash'
 import { fetchTarball } from './fetch'
@@ -68,8 +68,8 @@ async function installResolved(input: {
   config: FetchConfig
 }): Promise<void> {
   const { resolved, seedDir } = input
-  const markStr = showMark(resolved.mark)
-  const deckDir = path.join(seedDir, `${resolved.name}@${markStr}`)
+  const codeStr = showCode(resolved.code)
+  const deckDir = path.join(seedDir, `${resolved.name}@${codeStr}`)
 
   // skip if already installed
   try {
@@ -107,7 +107,7 @@ async function installResolved(input: {
 
     if (actualHex !== expected && actualBase64 !== expected) {
       throw new Error(
-        `Integrity check failed for ${resolved.name}@${showMark(resolved.mark)}. ` +
+        `Integrity check failed for ${resolved.name}@${showCode(resolved.code)}. ` +
           `Expected ${resolved.hash}, got ${algo}-${actualHex}`,
       )
     }
@@ -194,8 +194,8 @@ async function createTopLink(input: {
   resolved: ResolvedDeck
 }): Promise<void> {
   const { linkDir, seedDir, resolved } = input
-  const markStr = showMark(resolved.mark)
-  const deckDir = path.join(seedDir, `${resolved.name}@${markStr}`)
+  const codeStr = showCode(resolved.code)
+  const deckDir = path.join(seedDir, `${resolved.name}@${codeStr}`)
 
   // parse scope from name
   const parts = resolved.name.split('/')
@@ -225,8 +225,8 @@ async function createDepLinks(input: {
   resolution: ResolutionMap
 }): Promise<void> {
   const { seedDir, resolved, resolution } = input
-  const markStr = showMark(resolved.mark)
-  const deckDir = path.join(seedDir, `${resolved.name}@${markStr}`)
+  const codeStr = showCode(resolved.code)
+  const deckDir = path.join(seedDir, `${resolved.name}@${codeStr}`)
   const depsLinkDir = path.join(deckDir, LINK_DIR)
 
   if (resolved.link.size === 0) {return}
@@ -242,7 +242,7 @@ async function createDepLinks(input: {
 
     if (!depResolved) {continue}
 
-    const depMarkStr = showMark(depResolved.mark)
+    const depMarkStr = showCode(depResolved.code)
     const depDeckDir = path.join(seedDir, `${depName}@${depMarkStr}`)
 
     // parse scope

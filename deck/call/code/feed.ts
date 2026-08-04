@@ -4,16 +4,16 @@
 
 import { realpathSync, watch as fsWatch, existsSync } from 'fs'
 import path from 'path'
-import { startDevServer } from '@cluesurf/make/code/dev/server'
-import { findEntry } from '@cluesurf/call/code/boot'
-import type { NativeEnv } from '@cluesurf/make/code/compile/native'
+import { startDevServer } from '@term/make/code/dev/server'
+import { findEntry } from '@term/call/code/boot'
+import type { NativeEnv } from '@term/make/code/compile/native'
 import {
   logStep,
   logGood,
   logFail,
   formatError,
   fade,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 export async function callFeed(input: {
   root: string

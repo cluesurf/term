@@ -1,13 +1,13 @@
 // Language-server tests: the editor features (semantic tokens, inlay hints, hover) over a real typed program.
 // Run: npx tsx test/flow/lsp.ts. These were previously untested; this is the LSP coverage for P1.
 
-import { analyze, hoverAt } from '@cluesurf/flow/code/analyze'
-import { buildIndex } from '@cluesurf/flow/code/symbols'
+import { analyze, hoverAt } from '@term/flow/code/analyze'
+import { buildIndex } from '@term/flow/code/symbols'
 import {
   semanticTokens,
   inlayHints,
   LanguageServer,
-} from '@cluesurf/flow/code/server'
+} from '@term/flow/code/server'
 
 let pass = 0
 let fail = 0

@@ -198,7 +198,7 @@ task parse-with
 
 # is the character at the index a quote? (false past the end)
 task is-quote-at
-  mark private
+  note private
   take input, like text
   take index, like number
   like boolean
@@ -219,7 +219,7 @@ task is-quote-at
 
 # LF or CR ends a record
 task is-newline
-  mark private
+  note private
   take glyph-code, like number
   like boolean
   fork test
@@ -237,7 +237,7 @@ task is-newline
 
 # a CR at the index followed by an LF (the two-character record end)
 task is-crlf-at
-  mark private
+  note private
   take input, like text
   take index, like number
   like boolean
@@ -259,7 +259,7 @@ task is-crlf-at
       send back, false
 
 task is-quoteless-lf-at
-  mark private
+  note private
   take input, like text
   take index, like number
   like boolean
@@ -280,7 +280,7 @@ task is-quoteless-lf-at
 
 # does the last (unterminated) record carry anything worth flushing?
 task last-row-live
-  mark private
+  note private
   take field, like text
   take row, like list
   take pending, like boolean
@@ -361,7 +361,7 @@ task stringify-with
 
 # quote a field when it contains the delimiter, a quote, or a record end; double any quotes inside
 task encode-field
-  mark private
+  note private
   take field, like text
   take delimiter, like text
   like text
@@ -415,7 +415,7 @@ task encode-field
         read field
 
 task needs-quoting
-  mark private
+  note private
   take field, like text
   take delimiter, like text
   like boolean

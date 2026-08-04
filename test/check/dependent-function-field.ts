@@ -6,7 +6,7 @@
 // builds (its `step` is the ex-falso on `lt m zero`) AND reduces -- projecting its `n` field computes. This is the data
 // shape automatic well-founded recursion (`Acc`) is built on. Run: npx tsx test/check/dependent-function-field.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

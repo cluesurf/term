@@ -1,6 +1,6 @@
-import type { RecordNode } from '@/base/type'
-import { makeTombstone } from '@/redact/redact'
-import type { GcReport } from '@/gc/gc'
+import type { RecordNode } from '@term/base/code/base/type'
+import { makeTombstone } from '@term/base/code/redact/redact'
+import type { GcReport } from '@term/base/code/gc/gc'
 
 // Hard erasure from immutable history. The content-addressed prolly tree cannot delete
 // in place: a record's bytes stay in the older commits that referenced them even after

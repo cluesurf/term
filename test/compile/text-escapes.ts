@@ -2,7 +2,7 @@
 // parse inside `text <...>` and carry the right runtime value on the emitted TypeScript.
 // Run: npx tsx test/compile/text-escapes.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import { transformSync } from 'esbuild'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

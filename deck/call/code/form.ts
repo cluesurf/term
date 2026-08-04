@@ -1,14 +1,14 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { analyze } from '@cluesurf/make/code/analyze'
-import { render } from '@cluesurf/make/code/parser/diagnostic'
-import { collectTreeFiles } from '@cluesurf/call/code/files'
+import { analyze } from '@term/make/code/analyze'
+import { render } from '@term/make/code/parser/diagnostic'
+import { collectTreeFiles } from '@term/call/code/files'
 import {
   logGood,
   logFail,
   logStep,
   fade,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 // `seed form` -- format `.tree` files into canonical layout. By default it rewrites them in place; `--check` only
 // reports which files would change (for CI); `--list` prints the formatted source to stdout without writing. Files

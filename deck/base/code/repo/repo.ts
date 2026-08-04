@@ -1,46 +1,46 @@
-import { canonicalizeRecord } from '@/canon/canonicalize'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
 import {
   readCommit,
   writeCommit,
   signCommitObject,
   parseCommit,
   type Commit,
-} from '@/commit/commit'
+} from '@term/base/code/commit/commit'
 import type {
   RemoteRepo,
   PushResult,
   PullResult,
-} from '@/transport/session'
-import { writeChanges, readChanges } from '@/commit/changeset'
-import type { Keypair } from '@/access/sign'
-import { emptyDataset, type Dataset } from '@/diff/change'
-import { diffDataset } from '@/diff/diff'
-import type { RoleBase } from '@/form/form'
-import { errors as holdErrors, validateDataset, type Diagnostic } from '@/form/validate'
-import { mergeDataset, type Conflict, type MergeOptions } from '@/merge/merge'
-import { policyResolver } from '@/merge/policy'
-import { autoMark } from '@/form/automark'
-import { AccessPolicy, authorizeCommit } from '@/access/policy'
-import { isPrunable, type ChunkStore } from '@/store/chunk-store'
-import type { RefStore } from '@/store/ref-store'
-import { diffRoots, readDataset, readRecord, treeNodeRefs, updateTree, writeDataset } from '@/store/tree'
-import { reachableChunks, sweep, type GcReport } from '@/gc/gc'
-import { fsck, type FsckReport } from '@/verify/fsck'
+} from '@term/base/code/transport/session'
+import { writeChanges, readChanges } from '@term/base/code/commit/changeset'
+import type { Keypair } from '@term/base/code/access/sign'
+import { emptyDataset, type Dataset } from '@term/base/code/diff/change'
+import { diffDataset } from '@term/base/code/diff/diff'
+import type { RoleBase } from '@term/base/code/form/form'
+import { errors as holdErrors, validateDataset, type Diagnostic } from '@term/base/code/form/validate'
+import { mergeDataset, type Conflict, type MergeOptions } from '@term/base/code/merge/merge'
+import { policyResolver } from '@term/base/code/merge/policy'
+import { autoMark } from '@term/base/code/form/automark'
+import { AccessPolicy, authorizeCommit } from '@term/base/code/access/policy'
+import { isPrunable, type ChunkStore } from '@term/base/code/store/chunk-store'
+import type { RefStore } from '@term/base/code/store/ref-store'
+import { diffRoots, readDataset, readRecord, treeNodeRefs, updateTree, writeDataset } from '@term/base/code/store/tree'
+import { reachableChunks, sweep, type GcReport } from '@term/base/code/gc/gc'
+import { fsck, type FsckReport } from '@term/base/code/verify/fsck'
 import {
   ConcurrentErasureError,
   type Eraser,
   type EraseReport,
-} from '@/erase/erase'
+} from '@term/base/code/erase/erase'
 import {
   isOffHistoryRef,
   offHistoryId,
   type OffHistoryStore,
-} from '@/offhistory/store'
-import { RevocationList } from '@/erase/revocation'
-import { hashRecord } from '@/canon/hash'
-import type { RefLog, RefLogEntry } from '@/reflog/reflog'
-import type { Mark, RecordNode, Value } from '@/base/type'
-import type { Change } from '@/diff/change'
+} from '@term/base/code/offhistory/store'
+import { RevocationList } from '@term/base/code/erase/revocation'
+import { hashRecord } from '@term/base/code/canon/hash'
+import type { RefLog, RefLogEntry } from '@term/base/code/reflog/reflog'
+import type { Mark, RecordNode, Value } from '@term/base/code/base/type'
+import type { Change } from '@term/base/code/diff/change'
 
 // The repository ties the store, the refs, and commits into a version-control
 // system. The commit is gated by validation and lands via compare-and-swap on the

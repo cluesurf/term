@@ -15,7 +15,7 @@ load @term/seed/code/list
 
 task setup
   take url, like text
-  mark async
+  note async
   call connect
     read url
   call ensure-schema
@@ -27,7 +27,7 @@ form post
   link body, like text
 
 task ensure-schema
-  mark async
+  note async
   call run
     text <CREATE TABLE IF NOT EXISTS post (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL)>
     make list
@@ -37,7 +37,7 @@ task create-post
   take id, like text
   take title, like text
   take body, like text
-  mark async
+  note async
   call run
     text <INSERT INTO post (id, title, body) VALUES ($1, $2, $3)>
     make list
@@ -67,7 +67,7 @@ task post-of
 
 task list-posts
   like list
-  mark async
+  note async
   save rows
     call query
       text <SELECT id, title, body FROM post ORDER BY id>
@@ -88,7 +88,7 @@ task list-posts
 task get-post
   take id, like text
   like post
-  mark async
+  note async
   save rows
     call query
       text <SELECT id, title, body FROM post WHERE id = $1>

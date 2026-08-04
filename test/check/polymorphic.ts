@@ -5,7 +5,7 @@
 // field `like box / head a` -- are a further step, tracked in the plan; this covers the non-recursive case.)
 // Run: npx tsx test/check/polymorphic.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

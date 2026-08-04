@@ -7,7 +7,7 @@
 // Soundness control: two streams that differ at some index are NOT bisimilar (no pointwise lemma, so not equal).
 // Run: npx tsx test/check/coinduction.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

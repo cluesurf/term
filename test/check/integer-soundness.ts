@@ -5,7 +5,7 @@
 // wrongly discharged. These tests lock the gap shut: true integer equalities still discharge, false ones are rejected.
 // Run: npx tsx test/check/integer-soundness.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

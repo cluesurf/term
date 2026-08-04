@@ -1,6 +1,6 @@
 deck @term/term
   head <A TreeCode Programming Framework>
-  mark <0.0.1>
+  code <0.0.1>
   sort tool
   lock mit
   site <https://github.com/cluesurf/term.tree>
@@ -24,7 +24,7 @@ deck @term/term
   deck ./deck/seed
   deck ./deck/site
   deck ./deck/test
-  link @term/bind, mark <0.0.x>
+  link @term/bind, code <0.0.x>
   task ./task
   # the task loader
   book ./book

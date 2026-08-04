@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { record, text, ref } from '@/base/make'
-import { datasetOf, type Dataset } from '@/diff/change'
-import { canonicalizeRecord } from '@/canon/canonicalize'
+import { record, text, ref } from '@term/base/code/base/make'
+import { datasetOf, type Dataset } from '@term/base/code/diff/change'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
 import {
   parentOf,
   moveRecord,
@@ -10,8 +10,8 @@ import {
   applyMoves,
   mergeTree,
   type TreeMove,
-} from '@/identity/tree'
-import type { Hlc } from '@/merge/clock'
+} from '@term/base/code/identity/tree'
+import type { Hlc } from '@term/base/code/merge/clock'
 
 const A = 'aaaaaaaa-1111-4111-8111-111111111111'
 const B = 'bbbbbbbb-2222-4222-8222-222222222222'

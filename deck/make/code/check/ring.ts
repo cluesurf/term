@@ -6,7 +6,7 @@
 // arithmetic cannot. It is sound and decidable. It handles only +, -, * over the integers; anything else (division,
 // a function call, a non-integer literal) makes it decline (return false), leaving the goal to the other provers.
 
-import type { Expression } from '@cluesurf/make/code/compile/node'
+import type { Expression } from '@term/make/code/compile/node'
 
 // a polynomial maps each monomial (a canonical key over its variables, "" for the constant) to an integer coefficient
 type Poly = Map<string, number>

@@ -13,7 +13,7 @@
  * output is always verified.
  */
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import { emitSeed } from './emit'
 import { synthesizeContract, verifyContract, type Contract } from './contract'
 import { type Proposer } from './gap'

@@ -9,13 +9,13 @@
 //   - Sigma stays predicative: there are no impredicative strong sums (those reintroduce the paradox).
 // Run: npx tsx test/check/large-elim-judge.ts
 
-import type { Mult, Term } from '@cluesurf/make/code/check/judge'
+import type { Mult, Term } from '@term/make/code/check/judge'
 import {
   infer,
   contextWithSignature,
   evaluate,
   litLevel,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 
 const kc = (n: string): Term => ({ tag: 'const', name: n })
 const ty = (n: number): Term => ({ tag: 'type', level: litLevel(n) })

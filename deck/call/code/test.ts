@@ -5,9 +5,9 @@ import {
   logStep,
   formatError,
   fade,
-} from '@cluesurf/make/code/tint'
-import { runCommand, projectResolver } from '@cluesurf/call/code/make'
-import { runTestFile } from '@cluesurf/call/code/test-run'
+} from '@term/make/code/tint'
+import { runCommand, projectResolver } from '@term/call/code/make'
+import { runTestFile } from '@term/call/code/test-run'
 
 export async function callTest(input: {
   root: string

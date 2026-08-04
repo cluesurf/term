@@ -1,12 +1,12 @@
-import type { Change } from '@/diff/change'
-import type { Canon } from '@/canon/json'
+import type { Change } from '@term/base/code/diff/change'
+import type { Canon } from '@term/base/code/canon/json'
 import {
   toCanonValue,
   toCanonRecord,
   canonicalString,
-} from '@/canon/json'
-import { fromCanonValue, fromCanonRecord } from '@/canon/json'
-import type { ChunkStore } from '@/store/chunk-store'
+} from '@term/base/code/canon/json'
+import { fromCanonValue, fromCanonRecord } from '@term/base/code/canon/json'
+import type { ChunkStore } from '@term/base/code/store/chunk-store'
 
 // A commit's field-level change set, stored as its own content-addressed chunk and
 // referenced from the commit. Recording exactly what changed makes a commit auditable

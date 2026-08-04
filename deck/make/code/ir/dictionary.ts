@@ -15,7 +15,7 @@ import type {
   Program,
   Statement,
   Type,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 type Fn = Extract<Statement, { form: 'function' }>
 

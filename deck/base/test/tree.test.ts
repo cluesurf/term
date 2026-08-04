@@ -9,10 +9,10 @@ import {
   set,
   nested,
   item,
-} from '@/base/make'
-import { canonicalizeRecord } from '@/canon/canonicalize'
-import { formatTree } from '@/tree/format'
-import { parseTree } from '@/tree/parse'
+} from '@term/base/code/base/make'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
+import { formatTree } from '@term/base/code/tree/format'
+import { parseTree } from '@term/base/code/tree/parse'
 
 const M1 = '11111111-1111-4111-8111-111111111111'
 const S1 = '22222222-2222-4222-8222-222222222222'

@@ -1,5 +1,5 @@
-import { FetchConfig, Mark, RegistryPackageMeta } from './form'
-import { parseMark } from './mark'
+import { FetchConfig, Code, RegistryPackageMeta } from './form'
+import { parseCode } from './code'
 import { resolveRegistry, DEFAULT_SCOPE_REGISTRIES } from './name'
 
 const DEFAULT_REGISTRY = 'https://registry.npmjs.org'
@@ -98,13 +98,13 @@ async function readErrorBody(response: Response): Promise<string> {
 
 export function getVersionList(input: {
   meta: RegistryPackageMeta
-}): Mark[] {
-  return Object.keys(input.meta.versions).map(v => parseMark(v))
+}): Code[] {
+  return Object.keys(input.meta.versions).map(v => parseCode(v))
 }
 
 export function getVersionMeta(input: {
   meta: RegistryPackageMeta
-  mark: string
+  code: string
 }):
   | {
       tarball: string
@@ -113,7 +113,7 @@ export function getVersionMeta(input: {
       dependencies: Record<string, string>
     }
   | undefined {
-  const entry = input.meta.versions[input.mark]
+  const entry = input.meta.versions[input.code]
 
   if (!entry) {return undefined}
 

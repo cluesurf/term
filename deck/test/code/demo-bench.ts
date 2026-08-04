@@ -10,7 +10,7 @@
  * caught, not just measured.
  */
 
-import { projectResolver } from '@cluesurf/call/code/make'
+import { projectResolver } from '@term/call/code/make'
 import { runCompilerBench } from './seed-bench'
 import { renderBench, scaling } from './bench'
 

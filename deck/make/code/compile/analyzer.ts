@@ -5,12 +5,12 @@
 // stays free of any editor-protocol types, so the dev daemon uses it directly and the language server (flow) maps its
 // diagnostics into LSP form. See note/seed/plan/functional-checker.md and compilation-performance.md (Tier 2).
 
-import { QueryCompiler } from '@cluesurf/make/code/compile/incremental'
-import { LOW, HIGH } from '@cluesurf/make/code/compile/query'
-import { collectModules } from '@cluesurf/make/code/compile/load'
-import type { Resolver, Source } from '@cluesurf/make/code/compile/load'
-import type { Program } from '@cluesurf/make/code/compile/node'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+import { QueryCompiler } from '@term/make/code/compile/incremental'
+import { LOW, HIGH } from '@term/make/code/compile/query'
+import { collectModules } from '@term/make/code/compile/load'
+import type { Resolver, Source } from '@term/make/code/compile/load'
+import type { Program } from '@term/make/code/compile/node'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 
 export class IncrementalAnalyzer {
   // public for stats / tests (the query database tracks per-key recompute counts)

@@ -2,19 +2,19 @@
 // and which are experimental, and the experimental backends (WGSL, HVM) stamp their output with a banner stating why.
 // Run: npx tsx test/compile/backend-registry.ts
 
-import { parse } from '@cluesurf/make/code/parser/tree'
-import { mill } from '@cluesurf/make/code/compile/mill'
-import { resolve } from '@cluesurf/make/code/check/resolve'
-import { check } from '@cluesurf/make/code/check/infer'
-import { emitWgsl } from '@cluesurf/make/code/compile/wgsl'
+import { parse } from '@term/make/code/parser/tree'
+import { mill } from '@term/make/code/compile/mill'
+import { resolve } from '@term/make/code/check/resolve'
+import { check } from '@term/make/code/check/infer'
+import { emitWgsl } from '@term/make/code/compile/wgsl'
 import {
   BACKENDS,
   backendInfo,
   isExperimentalBackend,
   experimentalNotice,
   experimentalBanner,
-} from '@cluesurf/make/code/compile/backend-registry'
-import type { Program } from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/backend-registry'
+import type { Program } from '@term/make/code/compile/node'
 
 let pass = 0
 let fail = 0

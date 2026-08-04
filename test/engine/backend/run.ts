@@ -5,13 +5,13 @@ import type {
   Expression,
   Statement,
   BinaryOp,
-} from '@cluesurf/make/code/engine/ast'
-import { run, callFunction } from '@cluesurf/make/code/engine/engine'
+} from '@term/make/code/engine/ast'
+import { run, callFunction } from '@term/make/code/engine/engine'
 import {
   runCompiled,
   runCompiledFunction,
-} from '@cluesurf/make/code/engine/backend/typescript'
-import { display, type Value } from '@cluesurf/make/code/engine/value'
+} from '@term/make/code/engine/backend/typescript'
+import { display, type Value } from '@term/make/code/engine/value'
 
 const int = (value: number): Expression => ({ form: 'integer', value })
 const str = (value: string): Expression => ({ form: 'string', value })

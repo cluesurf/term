@@ -10,7 +10,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { compileProject } from '@cluesurf/call/code/make'
+import { compileProject } from '@term/call/code/make'
 
 let pass = 0
 let fail = 0

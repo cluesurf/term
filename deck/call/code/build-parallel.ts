@@ -13,7 +13,7 @@ import { Worker } from 'node:worker_threads'
 import { cpus, tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { buildSync } from 'esbuild'
-import { findTreeFiles } from '@cluesurf/call/code/make'
+import { findTreeFiles } from '@term/call/code/make'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const BUILD_WORKER_SOURCE = path.join(HERE, 'build-worker.ts')
@@ -41,7 +41,7 @@ function ensureBuildWorkerBundle(): string {
     // the worker imports make.ts for the project resolver, and make.ts dynamically imports THIS module for the parallel
     // build. The worker never runs that path, so keep this module (and the esbuild it pulls) out of the worker bundle
     // rather than bundling esbuild's native binary into a /tmp worker.
-    external: ['@cluesurf/call/code/build-parallel'],
+    external: ['@term/call/code/build-parallel'],
     // a CJS module in the compiler graph uses `require(...)` (e.g. a node builtin); esbuild's ESM output does not shim
     // dynamic require, so define one from import.meta.url. Without this the worker dies with "Dynamic require not supported".
     banner: {

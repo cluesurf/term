@@ -1,5 +1,5 @@
-import type { Mark, RecordNode, Value } from '@/base/type'
-import type { Dataset } from '@/diff/change'
+import type { Mark, RecordNode, Value } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
 
 // A maintained reverse-reference index: for any mark, the marks that reference it, in
 // O(referrers) rather than a full-dataset scan. Identity operations (merge, split,

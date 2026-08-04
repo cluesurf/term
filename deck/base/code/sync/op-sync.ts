@@ -1,6 +1,6 @@
-import type { Change, Dataset } from '@/diff/change'
-import { applyChanges } from '@/patch/patch'
-import { compareHlc, type Hlc } from '@/merge/clock'
+import type { Change, Dataset } from '@term/base/code/diff/change'
+import { applyChanges } from '@term/base/code/patch/patch'
+import { compareHlc, type Hlc } from '@term/base/code/merge/clock'
 
 // The realtime session protocol: operation-based delta sync. Each operation carries
 // a change and a hybrid-logical-clock timestamp. A joining or reconnecting peer

@@ -22,10 +22,10 @@
  * they are most likely to catch genuine defects on real code.
  */
 
-import { parse, printTree } from '@cluesurf/make/code/parser/tree'
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
+import { parse, printTree } from '@term/make/code/parser/tree'
+import { compile } from '@term/make/code/compile/compile'
+import { emitTypeScript } from '@term/make/code/compile/typescript'
+import type { Resolver } from '@term/make/code/compile/load'
 
 type Resolve = Resolver
 

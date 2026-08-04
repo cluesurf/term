@@ -18,10 +18,10 @@ import type {
   Node,
   RootNode,
   TextNode,
-} from '@cluesurf/make/code/parser/tree'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
-import type { Token } from '@cluesurf/make/code/parser/token'
-import { TokenKind } from '@cluesurf/make/code/parser/token'
+} from '@term/make/code/parser/tree'
+import type { Span } from '@term/make/code/parser/diagnostic'
+import type { Token } from '@term/make/code/parser/token'
+import { TokenKind } from '@term/make/code/parser/token'
 
 const ZERO_SPAN: Span = {
   start: { line: 0, column: 0 },

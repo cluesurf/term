@@ -1,4 +1,5 @@
 import { RoleConfig, RoleRule } from './form'
+import { readTree, formsWith, termsOf } from './read'
 
 /**
  * Parse a role file that maps glob patterns to mill names.
@@ -6,118 +7,52 @@ import { RoleConfig, RoleRule } from './form'
  * Example role file:
  *
  *   role book
- *     take ~/book/**\/*.tree
- *       miss ~/book/**\/{code,view}/**\/*.tree
+ *     take @/book/**\/*.tree
+ *       miss @/book/**\/{code,view}/**\/*.tree
  *
  *   role code
- *     take ~/code/**\/*.tree
- *     take ~/book/**\/{code,view}/**\/*.tree
+ *     take @/code/**\/*.tree
+ *     take @/book/**\/{code,view}/**\/*.tree
  */
 export function parseRoleFile(input: {
   text: string
   root: string
 }): RoleConfig {
   const { text, root } = input
-  const lines = text.split('\n')
+  const result = readTree({ file: 'role.tree', text })
+
+  if (!result.ok) {
+    const first = result.diagnostics[0]
+
+    throw new Error(
+      `role file could not be parsed${first ? `: ${first.message}` : ''}`,
+    )
+  }
+
   const rules: RoleRule[] = []
 
-  let i = 0
-
-  while (i < lines.length) {
-    const raw = lines[i]!
-    const indent = raw.length - raw.trimStart().length
-    const line = raw.trim()
-    i++
-
-    if (!line || line.startsWith('#') || line.startsWith('load ')) {
-      // Skip empty lines, comments, and load directives
-      // (load directives declare which vocabularies are available
-      //  but we don't need to resolve them here)
-      if (line.startsWith('load ')) {
-        // Skip child lines of load
-        while (i < lines.length) {
-          const nextRaw = lines[i]!
-          const nextIndent = nextRaw.length - nextRaw.trimStart().length
-          const nextLine = nextRaw.trim()
-
-          if (!nextLine || nextLine.startsWith('#')) {
-            i++
-            continue
-          }
-
-          if (nextIndent <= indent) {break}
-
-          i++
-        }
-      }
-
+  // `load` forms declare which vocabularies are available and are not needed here
+  for (const form of result.forms) {
+    if (form.head !== 'role') {
       continue
     }
 
-    if (line.startsWith('role ')) {
-      const name = line.slice(5).trim()
-      const take: { pattern: string; miss: string[] }[] = []
-
-      // Parse children (take/miss lines)
-      while (i < lines.length) {
-        const nextRaw = lines[i]!
-        const nextIndent = nextRaw.length - nextRaw.trimStart().length
-        const nextLine = nextRaw.trim()
-
-        if (!nextLine || nextLine.startsWith('#')) {
-          i++
-          continue
-        }
-
-        if (nextIndent <= indent) {break}
-
-        if (nextLine.startsWith('take ')) {
-          const pattern = expandTilde({
-            pattern: nextLine.slice(5).trim(),
-            root,
-          })
-
-          const missPatterns: string[] = []
-          const takeIndent = nextIndent
-          i++
-
-          // Check for miss children under this take
-          while (i < lines.length) {
-            const missRaw = lines[i]!
-            const missIndent =
-              missRaw.length - missRaw.trimStart().length
-
-            const missLine = missRaw.trim()
-
-            if (!missLine || missLine.startsWith('#')) {
-              i++
-              continue
-            }
-
-            if (missIndent <= takeIndent) {break}
-
-            if (missLine.startsWith('miss ')) {
-              missPatterns.push(
-                expandTilde({
-                  pattern: missLine.slice(5).trim(),
-                  root,
-                }),
-              )
-            }
-
-            i++
-          }
-
-          take.push({ pattern, miss: missPatterns })
-          continue
-        }
-
-        i++
-      }
-
-      rules.push({ name, take })
-      continue
-    }
+    rules.push({
+      name: form.terms[0] ?? '',
+      take: formsWith(form, 'take').map(entry => ({
+        // a glob is either bare (`@/code/**/*.tree`) or quoted when it contains
+        // braces (`<@/book/**/\{code,view\}/**/*.tree>`), which read as a value.
+        // Terms only, never a phrase walk: a `take` carries `miss` children and a
+        // phrase walk would swallow them into the pattern.
+        pattern: expandRoot({
+          pattern: entry.value ?? termsOf(entry),
+          root,
+        }),
+        miss: formsWith(entry, 'miss').map(m =>
+          expandRoot({ pattern: m.value ?? termsOf(m), root }),
+        ),
+      })),
+    })
   }
 
   return { rules }
@@ -157,14 +92,15 @@ export function matchRole(input: {
 }
 
 /**
- * Replace ~ prefix with the package root path.
+ * Replace the `@` prefix with the package root path. `@` is the package root
+ * throughout; `~` is never used.
  */
-function expandTilde(input: { pattern: string; root: string }): string {
-  if (input.pattern.startsWith('~/')) {
+function expandRoot(input: { pattern: string; root: string }): string {
+  if (input.pattern.startsWith('@/')) {
     return input.root + input.pattern.slice(1)
   }
 
-  if (input.pattern === '~') {
+  if (input.pattern === '@') {
     return input.root
   }
 

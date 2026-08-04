@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { record, text, integer } from '@/base/make'
-import { datasetOf } from '@/diff/change'
+import { record, text, integer } from '@term/base/code/base/make'
+import { datasetOf } from '@term/base/code/diff/change'
 import {
   upcastRecord,
   upcastDataset,
   upcastAll,
   type MigrationOp,
   type Migration,
-} from '@/migrate/migrate'
+} from '@term/base/code/migrate/migrate'
 
 const M1 = '11111111-1111-4111-8111-111111111111'
 const M2 = '22222222-2222-4222-8222-222222222222'

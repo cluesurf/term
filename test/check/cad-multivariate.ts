@@ -5,8 +5,8 @@
 // non-negative everywhere yet provably NOT a sum of squares, so no SOS certificate exists -- CAD proves it regardless.
 // Soundness controls: every polynomial that genuinely dips below zero is rejected. Run: npx tsx test/check/cad-multivariate.ts
 
-import { bivariateNonNegative } from '@cluesurf/make/code/check/cad'
-import type { Bivariate } from '@cluesurf/make/code/check/cad'
+import { bivariateNonNegative } from '@term/make/code/check/cad'
+import type { Bivariate } from '@term/make/code/check/cad'
 
 let pass = 0
 let fail = 0

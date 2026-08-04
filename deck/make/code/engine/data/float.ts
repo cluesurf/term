@@ -5,7 +5,7 @@
 import {
   tritLength,
   tritString,
-} from '@cluesurf/make/code/engine/data/trit'
+} from '@term/make/code/engine/data/trit'
 
 export type TernaryFloat = {
   readonly mantissa: bigint // balanced-ternary integer

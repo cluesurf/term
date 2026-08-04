@@ -4,14 +4,14 @@
 // that coercion the eliminator computes: zero's eliminator reduces to the base case. So the self-typed inductive
 // is NOT fundamentally blocked, only its implicit-coercion sugar is. Run: npx tsx test/check/naturals2-judge.ts
 
-import type { Mult, Term } from '@cluesurf/make/code/check/judge'
+import type { Mult, Term } from '@term/make/code/check/judge'
 import {
   check,
   contextWithSignature,
   evaluate,
   defineConstant,
   litLevel,
-} from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
 
 const v = (i: number): Term => ({ tag: 'var', index: i })
 const kc = (n: string): Term => ({ tag: 'const', name: n })

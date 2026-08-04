@@ -2,12 +2,12 @@
 // almost always a typo for a different operand, or leftover dead code. Report only; the fix is to correct the operand,
 // which the linter cannot guess.
 
-import type { BinaryOp } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { BinaryOp } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 import {
   expressionsEqual,
   isStable,
-} from '@cluesurf/make/code/compile/expr-equal'
+} from '@term/make/code/compile/expr-equal'
 
 const COMPARE = new Set<BinaryOp>(['==', '!=', '<', '<=', '>', '>='])
 

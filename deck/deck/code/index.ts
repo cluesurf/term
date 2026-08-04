@@ -4,7 +4,12 @@ export {
   removeDependency,
   verifyInstall,
 } from './install'
-export { loadManifest, parseManifest, writeManifest } from './manifest'
+export {
+  loadManifest,
+  parseManifest,
+  writeManifest,
+  validateManifest,
+} from './manifest'
 export {
   loadLockfile,
   parseLockfile,
@@ -24,14 +29,14 @@ export {
 } from './link'
 export { hashFile, hashBuffer, hashText, verifyHash } from './hash'
 export {
-  parseMark,
-  parseMarkHold,
-  showMark,
-  compareMark,
-  markMatch,
-  pickBestMark,
-  bumpMark,
-} from './mark'
+  parseCode,
+  parseCodeHold,
+  showCode,
+  compareCode,
+  codeMatch,
+  pickBestCode,
+  bumpCode,
+} from './code'
 export {
   fetchPackageMeta,
   fetchTarball,
@@ -53,25 +58,19 @@ export {
   topologicalSort,
 } from './workspace'
 export {
-  publishDeck,
-  collectFiles,
-  createTarball,
-  validateManifest,
-} from './publish'
-export {
   toRegistryName,
   toTreeName,
   parseScope,
   objectUrl,
-  TERM_REGISTRY,
+  BASE_API,
   OBJECT_STORE,
 } from './name'
 export { auditDependencies } from './audit'
 export type { Advisory, AuditResult } from './audit'
 
 export type {
-  Mark,
-  MarkHold,
+  Code,
+  CodeHold,
   MarkBand,
   MarkWild,
   MarkTest,
@@ -87,3 +86,34 @@ export type {
   RegistryPackageMeta,
   InstallConfig,
 } from './form'
+
+// The object-graph publish path, built on @term/base. This is the real one; the
+// tarball path below it is legacy and goes once this has published for real.
+export {
+  buildRelease,
+  reachableFromCommit,
+  RELEASE_BRANCH,
+} from './object/release'
+export type { Release } from './object/release'
+export { buildVersion, readVersionFiles } from './object/version'
+export type { BuiltVersion } from './object/version'
+export {
+  datasetOfFiles,
+  filesOfDataset,
+  fileRecord,
+  fileOfRecord,
+  markOfPath,
+} from './object/dataset'
+export type { PackageFile } from './object/dataset'
+export { restoreFiles, restoreVersion, safeJoin } from './object/restore'
+export { publishPackage } from './object/publish'
+export { installPackage } from './object/install'
+export { localObjectStore } from './object/store'
+export type { ObjectStore } from './object/store'
+export { directRegistry } from './object/registry'
+export { memoryRefStore } from './object/refs'
+export { httpRegistry } from './object/http'
+export { serveRegistry } from './object/serve'
+export { generateKeypair, signId, verifyId } from './object/sign'
+export type { Keypair } from './object/sign'
+export { objectKey, toneOfId, tonePath } from './object/tone'

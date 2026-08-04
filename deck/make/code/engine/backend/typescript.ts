@@ -8,10 +8,10 @@ import type {
   Statement,
   Expression,
   BinaryOp,
-} from '@cluesurf/make/code/engine/ast'
-import type { Value } from '@cluesurf/make/code/engine/value'
-import * as RT from '@cluesurf/make/code/engine/backend/runtime'
-import { exhausted } from '@cluesurf/make/code/compile/backend'
+} from '@term/make/code/engine/ast'
+import type { Value } from '@term/make/code/engine/value'
+import * as RT from '@term/make/code/engine/backend/runtime'
+import { exhausted } from '@term/make/code/compile/backend'
 
 const BINOP: Record<string, string> = {
   '+': 'add',
@@ -278,7 +278,7 @@ function makeEmitter() {
 export function compileToTypeScript(program: Program): string {
   const e = makeEmitter()
   const lines = [
-    "import * as RT from '@cluesurf/make/code/engine/backend/runtime'",
+    "import * as RT from '@term/make/code/engine/backend/runtime'",
     PREAMBLE,
     ...program.map(e.stmt),
   ]

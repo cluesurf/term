@@ -6,7 +6,7 @@
 // `(x-1)^2` as `x^2 + 1 >= 2x`. Soundness controls: a quadratic with positive discriminant (`x^2 >= 2x`, false at
 // x = 1) is not proven, and a downward parabola is not proven. Run: npx tsx test/check/quadratic.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

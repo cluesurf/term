@@ -1,7 +1,7 @@
 // L028: a value-less `send back` as the very last statement of a function does nothing -- the function returns at the
 // end anyway. Remove it.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noUselessReturn: Rule = {
   name: 'no-useless-return',

@@ -4,7 +4,7 @@
 // fix is purely the let-binding carrying its value. The soundness control is essential: a wrong witness must NOT prove.
 // Run: npx tsx test/check/existential.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

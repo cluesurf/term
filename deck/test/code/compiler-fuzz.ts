@@ -17,7 +17,7 @@
  */
 
 import { writeFileSync } from 'node:fs'
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import { makeRng, type Rng } from './property'
 
 /** A small seed corpus of valid, self-contained Seed programs. */

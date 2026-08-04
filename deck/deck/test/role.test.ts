@@ -5,10 +5,10 @@ describe('parseRoleFile', () => {
   it('parses basic role definitions', () => {
     const text = `
 role book
-  take ~/book/**/*.tree
+  take @/book/**/*.tree
 
 role code
-  take ~/code/**/*.tree
+  take @/code/**/*.tree
 `
     const config = parseRoleFile({ text, root: '/project' })
     expect(config.rules).toHaveLength(2)
@@ -22,8 +22,8 @@ role code
   it('parses take with miss exclusions', () => {
     const text = `
 role book
-  take ~/book/**/*.tree
-    miss ~/book/**/{code,view}/**/*.tree
+  take @/book/**/*.tree
+    miss @/book/**/\\{code,view\\}/**/*.tree
 `
     const config = parseRoleFile({ text, root: '/project' })
     expect(config.rules).toHaveLength(1)
@@ -36,8 +36,8 @@ role book
   it('parses multiple take entries per role', () => {
     const text = `
 role code
-  take ~/code/**/*.tree
-  take ~/book/**/{code,view}/**/*.tree
+  take @/code/**/*.tree
+  take @/book/**/\\{code,view\\}/**/*.tree
 `
     const config = parseRoleFile({ text, root: '/project' })
     expect(config.rules[0]!.take).toHaveLength(2)
@@ -50,7 +50,7 @@ load @cluesurf/code
   find book
 
 role code
-  take ~/code/**/*.tree
+  take @/code/**/*.tree
 `
     const config = parseRoleFile({ text, root: '/project' })
     expect(config.rules).toHaveLength(1)
@@ -62,7 +62,7 @@ role code
 # This is a comment
 
 role code
-  take ~/code/**/*.tree
+  take @/code/**/*.tree
   # another comment
 `
     const config = parseRoleFile({ text, root: '/project' })
@@ -74,12 +74,12 @@ describe('matchRole', () => {
   const config = parseRoleFile({
     text: `
 role book
-  take ~/book/**/*.tree
-    miss ~/book/**/{code,view}/**/*.tree
+  take @/book/**/*.tree
+    miss @/book/**/\\{code,view\\}/**/*.tree
 
 role code
-  take ~/code/**/*.tree
-  take ~/book/**/{code,view}/**/*.tree
+  take @/code/**/*.tree
+  take @/book/**/\\{code,view\\}/**/*.tree
 `,
     root: '/project',
   })
@@ -138,7 +138,7 @@ describe('matchRole edge cases', () => {
     const config = parseRoleFile({
       text: `
 role code
-  take ~/code/**/*.tree
+  take @/code/**/*.tree
 `,
       root: '/app',
     })
@@ -155,10 +155,10 @@ role code
     const config = parseRoleFile({
       text: `
 role special
-  take ~/code/special/**/*.tree
+  take @/code/special/**/*.tree
 
 role code
-  take ~/code/**/*.tree
+  take @/code/**/*.tree
 `,
       root: '/app',
     })

@@ -14,13 +14,13 @@ import {
   log,
   nested,
   item,
-} from '@/base/make'
-import type { RecordNode } from '@/base/type'
-import { canonicalizeRecord } from '@/canon/canonicalize'
-import { decodeRecord } from '@/canon/decode'
-import { datasetOf, type Dataset } from '@/diff/change'
-import { MemoryChunkStore } from '@/store/chunk-store'
-import { writeDataset, readDataset, diffRoots } from '@/store/tree'
+} from '@term/base/code/base/make'
+import type { RecordNode } from '@term/base/code/base/type'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
+import { decodeRecord } from '@term/base/code/canon/decode'
+import { datasetOf, type Dataset } from '@term/base/code/diff/change'
+import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
+import { writeDataset, readDataset, diffRoots } from '@term/base/code/store/tree'
 
 function markOf(i: number): string {
   return `${i.toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`

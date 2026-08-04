@@ -1,4 +1,4 @@
-import type { Expression } from '@cluesurf/make/code/compile/node'
+import type { Expression } from '@term/make/code/compile/node'
 
 // `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
 // Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),

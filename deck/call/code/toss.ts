@@ -5,7 +5,7 @@ import {
   logStep,
   formatError,
   name,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 export async function callToss(input: {
   root: string

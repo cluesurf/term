@@ -2,7 +2,7 @@
 // compile AND be callable with a concrete type. Regression for the kernel metavariable-scoping limitation noted in
 // note/term/compiler/trait-dictionary-passing.md. Run: npx tsx test/check/trait-forwarding.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import { transformSync } from 'esbuild'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

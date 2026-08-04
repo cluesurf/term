@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { record, text } from '@/base/make'
-import { datasetOf } from '@/diff/change'
-import { mergeDataset } from '@/merge/merge'
+import { record, text } from '@term/base/code/base/make'
+import { datasetOf } from '@term/base/code/diff/change'
+import { mergeDataset } from '@term/base/code/merge/merge'
 
 const M1 = '11111111-1111-4111-8111-111111111111'
 

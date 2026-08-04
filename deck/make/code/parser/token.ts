@@ -4,8 +4,8 @@
 import type {
   Diagnostic,
   Span,
-} from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 
 export enum LexMode {
   Default = 'default',
@@ -124,7 +124,13 @@ const PATTERN: Record<TokenKind, RegExp> = {
   [TokenKind.OpenParen]: /\(/y,
   [TokenKind.OpenAngle]: /</y,
   [TokenKind.Space]: / +/y,
-  [TokenKind.Name]: /[@~$%^&*'":.a-z0-9A-Z_\-?/]+/y,
+  // A bare name may carry ESCAPED BRACES. `{` normally opens an interpolation, so a
+  // glob written bare (`@/book/**/\{code,view\}/**/*.tree`) escapes them. The escaped
+  // group is consumed WHOLE, commas included, since a comma would otherwise end the
+  // token and split the pattern in two. `\{` / `\}` on their own are also literal.
+  // The reader unescapes, so the value comes back as `{code,view}`.
+  [TokenKind.Name]:
+    /(?:\\\{[^\\]*\\\}|\\[{}<>\\]|[@~$%^&*'":.a-z0-9A-Z_\-?/])+/y,
   // a bare run of digits is an Integer, BUT digits followed by a hyphen and a letter (`24-cell`) is a kebab IDENTIFIER,
   // not a number, so the Integer matcher declines there and the Name matcher claims the whole `24-cell`. A pure number
   // (`24`, `24-3`) is unaffected.
@@ -298,6 +304,30 @@ export function tokenize(source: {
           case TokenKind.CloseAngle:
             modeStack.pop()
             textDepthStack.pop()
+            break
+          // A COMMA CANNOT APPEAR IN AN INTERPOLATION. `{name}` substitutes ONE name, so
+          // `{code,view}` is not a template: it is data whose braces were not escaped,
+          // and it used to lex as an interpolation and silently drop its closing brace.
+          // Escape them (`\{code,view\}`) to mean the literal characters.
+          case TokenKind.Comma:
+            if (mode === LexMode.Interpolation) {
+              return {
+                ok: false,
+                diagnostics: [
+                  diagnose('syntax-error', {
+                    file: source.file,
+                    span: {
+                      start: { line, column },
+                      end: { line, column: column + 1 },
+                    },
+                    message:
+                      'a comma cannot appear inside `{...}`, which substitutes a single name',
+                    hint: 'to mean literal braces, escape them: `\\{a,b\\}`',
+                  }),
+                ],
+              }
+            }
+
             break
           case TokenKind.Chunk:
             // a chunk in a text literal may carry unescaped `<` (a generic / less-than); each deepens the bracket

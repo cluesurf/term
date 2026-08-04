@@ -1,5 +1,5 @@
-import type { Mark, RecordNode, Value } from '@/base/type'
-import type { Dataset } from '@/diff/change'
+import type { Mark, RecordNode, Value } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
 
 // Identity lifecycle beyond creation: two records that are one (merge to a redirect),
 // one record that was two (split), and what happens to references when a record is

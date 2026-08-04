@@ -1,8 +1,8 @@
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import { readFileSync, existsSync, writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'; import { join } from 'node:path'; import { pathToFileURL } from 'node:url'
 import * as http from 'node:http'; import * as crypto from 'node:crypto'; import type { Duplex } from 'node:stream'
-import { withNativeEnv, nativePrelude } from '@cluesurf/make/code/compile/native'
+import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 const baseTree=join(process.cwd(),'deck','base')
 const stdlib=(p:string):any=>{const pre='@cluesurf/seed/';if(!p.startsWith(pre))return undefined;const f=join(baseTree,p.slice(pre.length)+'.tree');return existsSync(f)?{file:f,text:readFileSync(f,'utf8')}:undefined}
 const readRuntime=(p:string):any=>{if(existsSync(p))return readFileSync(p,'utf8');const pre='@cluesurf/seed/';if(!p.startsWith(pre))return undefined;const f=join(baseTree,p.slice(pre.length));return existsSync(f)?readFileSync(f,'utf8'):undefined}

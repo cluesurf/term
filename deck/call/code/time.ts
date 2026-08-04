@@ -7,35 +7,35 @@ import {
   logWarn,
   formatError,
   fade,
-} from '@cluesurf/make/code/tint'
-import { render } from '@cluesurf/make/code/parser/diagnostic'
-import { collectTreeFiles } from '@cluesurf/call/code/files'
+} from '@term/make/code/tint'
+import { render } from '@term/make/code/parser/diagnostic'
+import { collectTreeFiles } from '@term/call/code/files'
 import {
   compileBenchmarks,
   runBenchmarks,
-} from '@cluesurf/make/code/time/runner'
-import { CompileFailure } from '@cluesurf/make/code/time/execute'
+} from '@term/make/code/time/runner'
+import { CompileFailure } from '@term/make/code/time/execute'
 import {
   buildSuite,
   formatTable,
   formatJson,
-} from '@cluesurf/make/code/time/output'
+} from '@term/make/code/time/output'
 import {
   compareResults,
   formatComparison,
   formatMarkdown,
   shouldFail,
   buildHistoryEntry,
-} from '@cluesurf/make/code/time/compare'
-import type { BenchmarkResult } from '@cluesurf/make/code/time/stats'
+} from '@term/make/code/time/compare'
+import type { BenchmarkResult } from '@term/make/code/time/stats'
 import {
   runCpuProfile,
   formatCpuResult,
-} from '@cluesurf/make/code/time/cpu'
+} from '@term/make/code/time/cpu'
 import {
   runMemoryProfile,
   formatMemoryResult,
-} from '@cluesurf/make/code/time/memory'
+} from '@term/make/code/time/memory'
 
 export async function callTime(input: {
   root: string

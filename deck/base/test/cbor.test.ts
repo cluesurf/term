@@ -12,7 +12,7 @@ import {
   list,
   set,
   item,
-} from '@/base/make'
+} from '@term/base/code/base/make'
 import {
   canonicalBytes,
   canonicalValueBytes,
@@ -20,14 +20,14 @@ import {
   base16ToBytes,
   parseDecimal,
   formatDecimal,
-} from '@/canon/canonicalize'
-import { decodeRecordBytes, decodeValueBytes } from '@/canon/decode'
+} from '@term/base/code/canon/canonicalize'
+import { decodeRecordBytes, decodeValueBytes } from '@term/base/code/canon/decode'
 import {
   ByteWriter,
   writeHead,
   decodeOne,
   TAG_REF,
-} from '@/canon/cbor'
+} from '@term/base/code/canon/cbor'
 import {
   markToBytes,
   bytesToMark,
@@ -35,7 +35,7 @@ import {
   toToneMark,
   toHexMark,
   MARK_BYTE_LENGTH,
-} from '@/canon/mark'
+} from '@term/base/code/canon/mark'
 
 // The canonical form is the only encoding whose exact bytes are load bearing.
 // These tests pin the rules that make one value produce one byte sequence, which

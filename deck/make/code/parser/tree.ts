@@ -4,15 +4,15 @@
 import type {
   Diagnostic,
   Span,
-} from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
-import type { Token } from '@cluesurf/make/code/parser/token'
-import { tokenize } from '@cluesurf/make/code/parser/token'
-import type { Event } from '@cluesurf/make/code/parser/event'
+} from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
+import type { Token } from '@term/make/code/parser/token'
+import { tokenize } from '@term/make/code/parser/token'
+import type { Event } from '@term/make/code/parser/event'
 import {
   EventKind,
   buildEvents,
-} from '@cluesurf/make/code/parser/event'
+} from '@term/make/code/parser/event'
 
 export type RootNode = { kind: 'root'; nodes: GroupNode[] }
 export type Comment = { text: string; span: Span }

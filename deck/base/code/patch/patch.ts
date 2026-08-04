@@ -1,5 +1,5 @@
-import type { RecordNode } from '@/base/type'
-import type { Change, Dataset } from '@/diff/change'
+import type { RecordNode } from '@term/base/code/base/type'
+import type { Change, Dataset } from '@term/base/code/diff/change'
 
 // Apply a change set to a dataset, producing a new dataset. Pure: the input is not
 // mutated. This is how a commit is projected into any downstream store and how a

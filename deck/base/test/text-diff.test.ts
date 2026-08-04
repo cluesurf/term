@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { diffText, diffTokens, tokenize, detokenize } from '@/text/diff'
-import { merge3Text, merge3Tokens } from '@/text/merge'
+import { diffText, diffTokens, tokenize, detokenize } from '@term/base/code/text/diff'
+import { merge3Text, merge3Tokens } from '@term/base/code/text/merge'
 
 describe('token diff', () => {
   it('produces a minimal edit script that reconstructs the target', () => {

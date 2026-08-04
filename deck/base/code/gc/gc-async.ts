@@ -1,8 +1,8 @@
-import { parseCommit } from '@/commit/commit'
-import { treeNodeRefs } from '@/store/tree'
-import { chunkKey, R2ChunkStore, type AsyncChunkStore } from '@/store/r2-chunk-store'
-import type { ObjectStore } from '@/store/object-store'
-import { sweepObjectStore, type GcReport } from '@/gc/gc'
+import { parseCommit } from '@term/base/code/commit/commit'
+import { treeNodeRefs } from '@term/base/code/store/tree'
+import { chunkKey, R2ChunkStore, type AsyncChunkStore } from '@term/base/code/store/r2-chunk-store'
+import type { ObjectStore } from '@term/base/code/store/object-store'
+import { sweepObjectStore, type GcReport } from '@term/base/code/gc/gc'
 
 // Asynchronous garbage collection for an object-store-only deployment (an R2-backed
 // store with no local sync mirror to drive the walk). It reads commit and tree chunks

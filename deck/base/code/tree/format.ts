@@ -1,5 +1,5 @@
-import type { Item, RecordNode, Value } from '@/base/type'
-import { normalizeDecimal } from '@/canon/canonicalize'
+import type { Item, RecordNode, Value } from '@term/base/code/base/type'
+import { normalizeDecimal } from '@term/base/code/canon/canonicalize'
 
 // Render a record graph to canonical .tree text: the readable authoring syntax.
 // A record is `type label`; the mark comes first; scalars are `name value` (typed
@@ -92,18 +92,46 @@ function writeItem(it: Item, depth: number, out: Array<string>): void {
 }
 
 // Write the mark then the sorted fields of a record.
+// Emit the comments attached to `key`, above the line they belong to. Position is
+// canonical, like everything else the formatter writes: a comment sits directly above
+// what it annotates, at that thing's indentation.
+function writeComments(
+  node: RecordNode,
+  key: string,
+  depth: number,
+  out: Array<string>,
+): void {
+  const lines = node.comments?.get(key)
+
+  if (!lines) {
+    return
+  }
+
+  for (const line of lines) {
+    out.push(line ? `${IND.repeat(depth)}# ${line}` : `${IND.repeat(depth)}#`)
+  }
+}
+
 function writeBody(node: RecordNode, depth: number, out: Array<string>): void {
   if (node.mark !== undefined) {
+    writeComments(node, 'mark', depth, out)
     out.push(`${IND.repeat(depth)}mark <${node.mark}>`)
   }
+
   for (const name of [...node.fields.keys()].sort()) {
+    writeComments(node, name, depth, out)
     writeField(name, node.fields.get(name)!, depth, out)
   }
 }
 
 export function formatTree(node: RecordNode): string {
   const out: Array<string> = []
+
+  // the record's own leading comments sit above its head line, at column zero
+  writeComments(node, '', 0, out)
+
   out.push(`${node.type}${node.label ? ` ${node.label}` : ''}`)
   writeBody(node, 1, out)
+
   return out.join('\n') + '\n'
 }

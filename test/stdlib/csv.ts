@@ -2,13 +2,13 @@
 // (quoted fields, embedded delimiters and newlines, doubled quotes, CRLF records, TSV via delimiter, and a
 // stringify -> parse roundtrip). Run: npx tsx test/stdlib/csv.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import { readFileSync, existsSync, writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { withNativeEnv } from '@cluesurf/make/code/compile/native'
-import type { Source } from '@cluesurf/make/code/compile/load'
+import { withNativeEnv } from '@term/make/code/compile/native'
+import type { Source } from '@term/make/code/compile/load'
 
 const baseTree = join(process.cwd(), 'deck', 'base')
 

@@ -6,8 +6,8 @@
 // frame can show context. Color follows `chalk.level` (auto-disabled when output is not a TTY).
 
 import { readFileSync } from 'node:fs'
-import { renderKink } from '@cluesurf/make/code/parser/diagnostic'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+import { renderKink } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 
 // the source lines of a diagnostic's file, read from disk. An optional `text` is used when the file is the one already
 // in memory (the common single-file case), avoiding a re-read.

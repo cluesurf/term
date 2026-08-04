@@ -1,7 +1,7 @@
 // L013: two arms of a `fork case` with the same label. The earlier arm always matches first, so the later one can
 // never run -- dead code, usually a typo or a copy-paste that should have named a different variant.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noDuplicateCase: Rule = {
   name: 'no-duplicate-case',

@@ -1,7 +1,7 @@
-import { readCommit } from '@/commit/commit'
-import { collectChunkHashes } from '@/store/tree'
-import type { ChunkStore, PrunableChunkStore } from '@/store/chunk-store'
-import type { ObjectStore } from '@/store/object-store'
+import { readCommit } from '@term/base/code/commit/commit'
+import { collectChunkHashes } from '@term/base/code/store/tree'
+import type { ChunkStore, PrunableChunkStore } from '@term/base/code/store/chunk-store'
+import type { ObjectStore } from '@term/base/code/store/object-store'
 
 // Garbage collection for the chunk store. Every chunk is content-addressed and
 // immutable, so a chunk is live exactly when it is reachable from a retained commit:

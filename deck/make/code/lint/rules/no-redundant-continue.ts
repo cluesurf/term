@@ -1,8 +1,8 @@
 // L022: a `turn next` (continue) as the last statement of a loop body does nothing -- the loop would advance anyway.
 // Remove it.
 
-import type { Statement } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Statement } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noRedundantContinue: Rule = {
   name: 'no-redundant-continue',

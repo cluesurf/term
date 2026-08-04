@@ -1,7 +1,7 @@
 // L016: a double negation (`fork lack` of a `fork lack`, i.e. `!!x`) cancels out. Use the value directly. Often a
 // leftover from a refactor or a misunderstanding of truthiness.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noDoubleNegation: Rule = {
   name: 'no-double-negation',

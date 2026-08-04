@@ -1,5 +1,5 @@
-import type { Mark, Value } from '@/base/type'
-import { compareValues } from '@/query/compare'
+import type { Mark, Value } from '@term/base/code/base/type'
+import { compareValues } from '@term/base/code/query/compare'
 
 // An ordered index over one (type, field): the marks sorted by their field value, so
 // range, prefix, and ordered reads are logarithmic-plus-output instead of a full scan.

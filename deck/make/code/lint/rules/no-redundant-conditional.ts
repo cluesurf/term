@@ -3,7 +3,7 @@
 // The expression-level analog of no-redundant-boolean. Fixable only on the non-negating shape (`true` arm / `false`
 // otherwise), where the result is the bare condition; the reverse needs a negation, so it is reported without a fix.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noRedundantConditional: Rule = {
   name: 'no-redundant-conditional',

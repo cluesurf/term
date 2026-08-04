@@ -7,7 +7,7 @@ import type { DependencyNode } from './form'
 import {
   loadLockfile,
   loadManifest,
-  showMark,
+  showCode,
   toRegistryName,
   toTreeName,
 } from '@cluesurf/deck.tree'
@@ -33,7 +33,7 @@ export async function readDependencyGraph(
 
   for (const entry of lockfile.decks) {
     const treeName = toTreeName({ name: entry.name })
-    versionOf.set(treeName, showMark(entry.mark))
+    versionOf.set(treeName, showCode(entry.code))
     edgesOf.set(
       treeName,
       entry.link.map(l => toTreeName({ name: l.name })),

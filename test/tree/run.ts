@@ -5,8 +5,8 @@
 
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve as resolvePath } from 'node:path'
-import { runTestFile } from '@cluesurf/call/code/test-run'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { runTestFile } from '@term/call/code/test-run'
+import { projectResolver } from '@term/call/code/make'
 
 async function runFile(file: string): Promise<number> {
   const run = await runTestFile({

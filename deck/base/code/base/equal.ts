@@ -1,5 +1,5 @@
-import type { RecordNode, Value } from '@/base/type'
-import { canonicalizeRecord, canonicalizeValue } from '@/canon/canonicalize'
+import type { RecordNode, Value } from '@term/base/code/base/type'
+import { canonicalizeRecord, canonicalizeValue } from '@term/base/code/canon/canonicalize'
 
 // Structural equality by canonical form. Two values or records are equal when they
 // mean the same thing, regardless of field order or set order.

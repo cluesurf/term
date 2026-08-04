@@ -1,4 +1,4 @@
-import type { CollectionKind, Item, RecordNode, Value } from '@/base/type'
+import type { CollectionKind, Item, RecordNode, Value } from '@term/base/code/base/type'
 import {
   ByteWriter,
   TAG_DATE,
@@ -14,8 +14,8 @@ import {
   writeNull,
   writeTag,
   writeText,
-} from '@/canon/cbor'
-import { markToBytes } from '@/canon/mark'
+} from '@term/base/code/canon/cbor'
+import { markToBytes } from '@term/base/code/canon/mark'
 
 // Canonical serialization. The same meaning always produces the same bytes, so
 // hashing, dedup, sync, and citeable releases are deterministic, and equivalent
@@ -220,6 +220,31 @@ function writeRecord(out: ByteWriter, node: RecordNode): void {
   }
   if (node.label !== undefined) {
     entries.push(['label', o => writeText(o, node.label!)])
+  }
+  // comments are content: a record whose comments differ is a different record, so
+  // they hash. Absent when there are none, so a record without comments is byte
+  // identical to one written before comments existed.
+  if (node.comments !== undefined && node.comments.size > 0) {
+    entries.push([
+      'comments',
+      o =>
+        writeMap(
+          o,
+          [...node.comments!].map(
+            ([key, lines]) =>
+              [
+                key,
+                (inner: ByteWriter) => {
+                  writeArrayHead(inner, lines.length)
+
+                  for (const line of lines) {
+                    writeText(inner, line)
+                  }
+                },
+              ] as [string, (inner: ByteWriter) => void],
+          ),
+        ),
+    ])
   }
   writeMap(out, entries)
 }

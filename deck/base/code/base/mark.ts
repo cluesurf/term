@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Mark } from '@/base/type'
+import type { Mark } from '@term/base/code/base/type'
 
 // A mark is a time-independent random UUID (version 4). It carries no timestamp,
 // so a record's identity reveals nothing about when it was made and is not coupled

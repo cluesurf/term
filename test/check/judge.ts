@@ -2,7 +2,7 @@
 // type, and observational function extensionality (funext that COMPUTES, derivable as the identity).
 // Run: npx tsx test/check/judge.ts
 
-import type { Level, Term } from '@cluesurf/make/code/check/judge'
+import type { Level, Term } from '@term/make/code/check/judge'
 import {
   bind,
   check,
@@ -20,8 +20,8 @@ import {
   resetMetas,
   varLevel,
   TypeError as CoreTypeError,
-} from '@cluesurf/make/code/check/judge'
-import type { Mult } from '@cluesurf/make/code/check/judge'
+} from '@term/make/code/check/judge'
+import type { Mult } from '@term/make/code/check/judge'
 
 const v = (index: number): Term => ({ tag: 'var', index })
 const kconst = (name: string): Term => ({ tag: 'const', name })

@@ -4,7 +4,7 @@
 // is not skipped, and the type declares + reduces + eliminates (`fork case`). Soundness control: a false law is rejected.
 // Run: npx tsx test/check/wtype-function.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

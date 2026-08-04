@@ -17,7 +17,7 @@ task query
   take sql, like text
   take params, like list
   like list
-  mark async
+  note async
   send back
     call postgres/query
       read sql
@@ -27,7 +27,7 @@ task query
 task run
   take sql, like text
   take params, like list
-  mark async
+  note async
   call postgres/run
     read sql
     read params

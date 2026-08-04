@@ -15,9 +15,9 @@ import type {
   Expression,
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
-import { ringEqual } from '@cluesurf/make/code/check/ring'
+} from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
+import { ringEqual } from '@term/make/code/check/ring'
 
 type Fn = Extract<Statement, { form: 'function' }>
 type Binary = Extract<Expression, { form: 'binary' }>

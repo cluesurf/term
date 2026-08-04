@@ -3,8 +3,8 @@
 // (a stray line after an early return, or a misindented statement). Only the unambiguous case is flagged -- a
 // terminator and its sibling in one block -- never cross-branch flow, so there are no false positives.
 
-import type { Statement } from '@cluesurf/make/code/compile/node'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Statement } from '@term/make/code/compile/node'
+import type { Rule } from '@term/make/code/lint/rule'
 
 const TERMINATORS = new Set<Statement['form']>([
   'return',

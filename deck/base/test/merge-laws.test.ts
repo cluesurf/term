@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { record, text } from '@/base/make'
-import type { RecordNode } from '@/base/type'
-import { datasetOf, type Dataset } from '@/diff/change'
-import { canonicalizeRecord } from '@/canon/canonicalize'
-import { mergeDataset } from '@/merge/merge'
+import { record, text } from '@term/base/code/base/make'
+import type { RecordNode } from '@term/base/code/base/type'
+import { datasetOf, type Dataset } from '@term/base/code/diff/change'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
+import { mergeDataset } from '@term/base/code/merge/merge'
 
 // The three-way merge should behave like a join over a common base: merging is
 // idempotent, commutative in its two sides, and (for independent edits) associative,

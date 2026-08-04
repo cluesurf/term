@@ -10,21 +10,21 @@ import type {
   Program,
   Statement,
   Type,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 import {
   ARRAY_OP_BOUND,
   collectionCall,
   collectionRead,
   exhausted,
-} from '@cluesurf/make/code/compile/backend'
-import type { CollectionOp } from '@cluesurf/make/code/compile/backend'
+} from '@term/make/code/compile/backend'
+import type { CollectionOp } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
   bindGap,
   bindImports,
   referencedBinds,
-} from '@cluesurf/make/code/compile/bind'
+} from '@term/make/code/compile/bind'
 
 // Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
 // `default`, etc.) it must be backtick-escaped, in both the declaration and every reference.

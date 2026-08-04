@@ -2,7 +2,7 @@
 // taken. `fork test / hook test, wave true` should be the body itself; `wave false` should be dropped. Report only,
 // since the right fix (collapse the fork, or correct the condition) is the author's call.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noConstantCondition: Rule = {
   name: 'no-constant-condition',

@@ -3,9 +3,9 @@
 // and assert the JSON came back through hono -> trie router -> Postgres. This is the complete backend loop end to end.
 // Run: npx tsx test/site/blog-loop.ts   (set DATABASE_URL to override the connection)
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
-import { nativePrelude } from '@cluesurf/make/code/compile/native'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
+import { nativePrelude } from '@term/make/code/compile/native'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as path from 'node:path'

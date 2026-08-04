@@ -3,9 +3,9 @@
 // real HTTP. Proves hono owns the socket while the uniform `handle-request` does the matching (static + `:param`).
 // Run: npx tsx test/site/serve.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
-import { nativePrelude } from '@cluesurf/make/code/compile/native'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
+import { nativePrelude } from '@term/make/code/compile/native'
 import { build } from 'esbuild'
 import * as fs from 'node:fs'
 import * as path from 'node:path'

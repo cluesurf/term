@@ -2,8 +2,8 @@
 // the set of reassigned names once and hands it in via the context. Fixable: swap the leading `save` keyword for
 // `host`, verified by slicing the source so the edit is only offered when the keyword is exactly where expected.
 
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Span } from '@term/make/code/parser/diagnostic'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const preferHostForConstant: Rule = {
   name: 'prefer-host-for-constant',

@@ -2,11 +2,11 @@
 // effect and is almost always a mistake (a wrong operand, or a change that was forgotten). Restricted to the plain `=`
 // form and stable places, so a compound `x += x` (which doubles x) and an effectful target are never misreported.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 import {
   expressionsEqual,
   isStable,
-} from '@cluesurf/make/code/compile/expr-equal'
+} from '@term/make/code/compile/expr-equal'
 
 export const noSelfAssignment: Rule = {
   name: 'no-self-assignment',

@@ -5,7 +5,7 @@
 // even though `0 != 1` in `nat` itself. The universal property holds -- a map out of the truncation into any other
 // proposition factors through the inclusion. Run: npx tsx test/check/hit.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

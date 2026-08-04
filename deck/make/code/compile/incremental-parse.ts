@@ -4,14 +4,14 @@
 // changed and reuse the rest, instead of re-lexing the whole file on every keystroke. The blocks partition the source
 // exactly: `blocks.map(b => b.text).join('\n') === source`.
 
-import { hashText } from '@cluesurf/make/code/compile/cache'
-import { parse } from '@cluesurf/make/code/parser/tree'
+import { hashText } from '@term/make/code/compile/cache'
+import { parse } from '@term/make/code/parser/tree'
 import type {
   RootNode,
   GroupNode,
   Node,
-} from '@cluesurf/make/code/parser/tree'
-import type { Span } from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/parser/tree'
+import type { Span } from '@term/make/code/parser/diagnostic'
 
 export type TopBlock = {
   // the definition's full source text (its leading comments + head + body)

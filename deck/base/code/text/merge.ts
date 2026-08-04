@@ -3,7 +3,7 @@ import {
   tokenize,
   detokenize,
   type Granularity,
-} from '@/text/diff'
+} from '@term/base/code/text/diff'
 
 // Three-way text merge (diff3) at line, word, or character granularity. Two branches
 // that edit disjoint regions of the same text merge cleanly, even inside a single

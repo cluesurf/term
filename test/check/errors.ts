@@ -1,12 +1,12 @@
 // Error-experience tests: every diagnostic carries an actionable fix, renders with a readable name, source
 // context, carets, and a hint; and a batch reports with a summary. Run: npx tsx test/check/errors.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import {
   render,
   renderKink,
   report,
-} from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/parser/diagnostic'
 
 let pass = 0
 let fail = 0

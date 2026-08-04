@@ -1,8 +1,8 @@
 // Parser conformance tests. Each case is a source string and the expected canonical expanded tree.
 // Run: npx tsx test/parser/run.ts
 
-import { parse, printTree } from '@cluesurf/make/code/parser/tree'
-import { render } from '@cluesurf/make/code/parser/diagnostic'
+import { parse, printTree } from '@term/make/code/parser/tree'
+import { render } from '@term/make/code/parser/diagnostic'
 
 let pass = 0
 let fail = 0

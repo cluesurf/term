@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { AccessPolicy, authorizeCommit } from '@/access/policy'
-import { generateKeypair, signCommit, verifyCommit } from '@/access/sign'
+import { AccessPolicy, authorizeCommit } from '@term/base/code/access/policy'
+import { generateKeypair, signCommit, verifyCommit } from '@term/base/code/access/sign'
 
 describe('access policy (relationship-based)', () => {
   it('honors the role hierarchy', () => {

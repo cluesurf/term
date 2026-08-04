@@ -9,7 +9,7 @@ import type {
   Expression,
   Program,
   Statement,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 export function disambiguateOverloads(program: Program): void {
   // every arity each function name is defined at

@@ -7,7 +7,7 @@ import * as path from 'node:path'
 import {
   compileToModule,
   prepareModuleDir,
-} from '@cluesurf/make/code/time/execute'
+} from '@term/make/code/time/execute'
 
 export type CpuFrame = {
   name: string

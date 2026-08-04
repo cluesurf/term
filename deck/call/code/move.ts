@@ -3,8 +3,8 @@ import path from 'path'
 import {
   loadManifest,
   writeManifest,
-  bumpMark,
-  showMark,
+  bumpCode,
+  showCode,
 } from '@cluesurf/deck.tree'
 import {
   logGood,
@@ -13,16 +13,16 @@ import {
   formatError,
   name,
   mark as markColor,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 export async function callMove(input: {
   root: string
   target?: string
   level?: string
 }): Promise<void> {
-  if (input.target !== 'mark') {
+  if (input.target !== 'code') {
     logFail(
-      `Unknown move target: ${input.target}. Use: seed move mark [1|2|3]`,
+      `Unknown move target: ${input.target}. Use: seed move code [1|2|3]`,
     )
     process.exit(1)
   }
@@ -33,11 +33,11 @@ export async function callMove(input: {
 
   try {
     const manifest = await loadManifest({ dir: input.root })
-    const oldMark = showMark(manifest.mark)
-    const newMark = bumpMark({ mark: manifest.mark, level })
-    manifest.mark = newMark
+    const oldCode = showCode(manifest.code)
+    const newCode = bumpCode({ code: manifest.code, level })
+    manifest.code = newCode
 
-    const newMarkStr = showMark(newMark)
+    const newCodeStr = showCode(newCode)
 
     const text = writeManifest({ manifest })
     await fsp.writeFile(
@@ -47,8 +47,8 @@ export async function callMove(input: {
     )
 
     logGood(
-      `Version bumped: ${markColor(oldMark)} → ${markColor(
-        newMarkStr,
+      `Version bumped: ${markColor(oldCode)} → ${markColor(
+        newCodeStr,
       )}`,
     )
   } catch (err) {

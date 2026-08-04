@@ -1,4 +1,4 @@
-import { signal } from '@cluesurf/make/code/zone/reactive'
+import { signal } from '@term/make/code/zone/reactive'
 
 export function counter() {
   const [count, setCount] = signal(0)

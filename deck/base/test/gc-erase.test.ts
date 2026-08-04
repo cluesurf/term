@@ -1,18 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { record, text } from '@/base/make'
-import { datasetOf } from '@/diff/change'
-import { canonicalizeRecord } from '@/canon/canonicalize'
-import { hashBytes } from '@/canon/hash'
-import { MemoryChunkStore } from '@/store/chunk-store'
-import { MemoryRefStore } from '@/store/ref-store'
-import type { RefStore } from '@/store/ref-store'
-import { Repository } from '@/repo/repo'
-import { removeMatching, redactMatching, ConcurrentErasureError } from '@/erase/erase'
-import { isRedacted } from '@/redact/redact'
-import { sweepObjectStore } from '@/gc/gc'
-import { MemoryObjectStore } from '@/store/object-store'
-import { chunkKey } from '@/store/r2-chunk-store'
-import { MemoryOffHistoryStore, putOffHistory } from '@/offhistory/store'
+import { record, text } from '@term/base/code/base/make'
+import { datasetOf } from '@term/base/code/diff/change'
+import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
+import { hashBytes } from '@term/base/code/canon/hash'
+import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
+import { MemoryRefStore } from '@term/base/code/store/ref-store'
+import type { RefStore } from '@term/base/code/store/ref-store'
+import { Repository } from '@term/base/code/repo/repo'
+import { removeMatching, redactMatching, ConcurrentErasureError } from '@term/base/code/erase/erase'
+import { isRedacted } from '@term/base/code/redact/redact'
+import { sweepObjectStore } from '@term/base/code/gc/gc'
+import { MemoryObjectStore } from '@term/base/code/store/object-store'
+import { chunkKey } from '@term/base/code/store/r2-chunk-store'
+import { MemoryOffHistoryStore, putOffHistory } from '@term/base/code/offhistory/store'
 
 const A = '11111111-1111-4111-8111-111111111111'
 const SECRET_MARK = '22222222-2222-4222-8222-222222222222'
@@ -159,12 +159,12 @@ describe('mirror garbage collection', () => {
     for (const h of repo.reachableChunkHashes()) {
       await mirror.put(chunkKey(h), chunks.get(h)!)
     }
-    await mirror.put(chunkKey('sha256:stale'), 'orphaned')
+    await mirror.put(chunkKey(`sha256:${'0'.repeat(64)}`), 'orphaned')
 
     const reachableKeys = new Set([...repo.reachableChunkHashes()].map(chunkKey))
     const report = await sweepObjectStore(mirror, reachableKeys)
     expect(report.removed).toBe(1)
-    expect(await mirror.get(chunkKey('sha256:stale'))).toBeUndefined()
+    expect(await mirror.get(chunkKey(`sha256:${'0'.repeat(64)}`))).toBeUndefined()
     // live chunks remain
     for (const h of repo.reachableChunkHashes()) {
       expect(await mirror.get(chunkKey(h))).toBeDefined()

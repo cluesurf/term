@@ -1,4 +1,6 @@
 
 deck @term/scan
+  head <Dependency and advisory scanning for Term packages>
   bear ./code
-  mark <0.0.2>
+  code <0.0.2>
+  lock mit

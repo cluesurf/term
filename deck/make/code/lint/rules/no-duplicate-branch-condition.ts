@@ -2,11 +2,11 @@
 // (the earlier identical condition always wins), so it is dead code, almost always a copy-paste where a different
 // condition was meant. Only stable conditions are compared, so a chain of distinct effectful checks is never flagged.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 import {
   expressionsEqual,
   isStable,
-} from '@cluesurf/make/code/compile/expr-equal'
+} from '@term/make/code/compile/expr-equal'
 
 export const noDuplicateBranchCondition: Rule = {
   name: 'no-duplicate-branch-condition',

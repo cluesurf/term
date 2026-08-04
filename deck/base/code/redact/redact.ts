@@ -1,5 +1,5 @@
-import type { Mark, RecordNode } from '@/base/type'
-import type { Dataset } from '@/diff/change'
+import type { Mark, RecordNode } from '@term/base/code/base/type'
+import type { Dataset } from '@term/base/code/diff/change'
 
 // Redaction: removing content from an immutable history. A redaction replaces a
 // record's content with a signed tombstone, recorded as a commit, so the hashes
@@ -18,7 +18,7 @@ export function makeTombstone(
   node: RecordNode,
   opts: { reason: string; by: string; time: number },
 ): RecordNode {
-  const fields = new Map<string, import('@/base/type').Value>()
+  const fields = new Map<string, import('@term/base/code/base/type').Value>()
   fields.set(REDACTED_FIELD, { kind: 'boolean', value: true })
   fields.set('reason', { kind: 'text', value: opts.reason })
   fields.set('by', { kind: 'text', value: opts.by })

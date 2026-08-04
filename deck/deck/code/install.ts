@@ -10,7 +10,7 @@ import { resolve, buildLockfile } from './resolve'
 import { linkPackages, cleanLinks } from './link'
 import { makeDefaultFetchConfig } from './fetch'
 import { findWorkspaces } from './workspace'
-import { parseMarkHold, showMark } from './mark'
+import { parseCodeHold, showCode } from './code'
 import { initStore } from './store'
 import fsp from 'fs/promises'
 import path from 'path'
@@ -71,16 +71,16 @@ export async function addDependency(input: {
 }): Promise<void> {
   const manifest = await loadManifest({ dir: input.root })
   const hold = input.constraint
-    ? parseMarkHold(input.constraint)
+    ? parseCodeHold(input.constraint)
     : { form: 'wild' as const, major: 0 }
 
   // check if already exists
   const existing = manifest.link.findIndex(l => l.name === input.name)
 
   if (existing >= 0) {
-    manifest.link[existing] = { name: input.name, mark: hold }
+    manifest.link[existing] = { name: input.name, code: hold }
   } else {
-    manifest.link.push({ name: input.name, mark: hold })
+    manifest.link.push({ name: input.name, code: hold })
   }
 
   // write updated manifest
@@ -122,18 +122,18 @@ export async function verifyInstall(input: { root: string }): Promise<{
   const outdated: string[] = []
 
   for (const entry of lockfile.decks) {
-    const markStr = showMark(entry.mark)
+    const codeStr = showCode(entry.code)
     const linkPath = path.join(
       input.root,
       'link',
       '.base/term',
-      `${entry.name}@${markStr}`,
+      `${entry.name}@${codeStr}`,
     )
 
     try {
       await fsp.access(linkPath)
     } catch {
-      missing.push(`${entry.name}@${markStr}`)
+      missing.push(`${entry.name}@${codeStr}`)
     }
   }
 

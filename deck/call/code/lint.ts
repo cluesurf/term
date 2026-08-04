@@ -1,16 +1,16 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { analyze } from '@cluesurf/make/code/analyze'
-import { render } from '@cluesurf/make/code/parser/diagnostic'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import type { Finding, TextEdit } from '@cluesurf/make/code/lint/rule'
-import { collectTreeFiles } from '@cluesurf/call/code/files'
+import { analyze } from '@term/make/code/analyze'
+import { render } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import type { Finding, TextEdit } from '@term/make/code/lint/rule'
+import { collectTreeFiles } from '@term/call/code/files'
 import {
   logGood,
   logFail,
   logStep,
   fade,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 // turn a lint finding into the compiler's Diagnostic shape so it renders identically. The stable rule code (`L003`)
 // becomes the numeric diagnostic code and the rule name is the heading.

@@ -9,8 +9,8 @@
  * every input, not merely over a bound, and it compiles.
  */
 
-import { projectResolver } from '@cluesurf/call/code/make'
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
+import { compile } from '@term/make/code/compile/compile'
 import { makeSmt, type SymSpec } from './smt'
 import { synthesizeSmt } from './synth-smt'
 import { emitSeed } from './emit'

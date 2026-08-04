@@ -5,7 +5,7 @@
 // integers: see `ringEqualModulo` in ring.ts. The negative control is essential -- a NON-consequence must be rejected.
 // Run: npx tsx test/check/ring-modulo.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

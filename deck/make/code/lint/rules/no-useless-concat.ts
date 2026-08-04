@@ -1,7 +1,7 @@
 // L021: concatenating two string literals (`text <a>` + `text <b>`) can always be written as one literal. The split
 // adds a runtime concat and reads worse.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noUselessConcat: Rule = {
   name: 'no-useless-concat',

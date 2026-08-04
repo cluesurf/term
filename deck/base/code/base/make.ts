@@ -4,7 +4,7 @@ import type {
   Mark,
   RecordNode,
   Value,
-} from '@/base/type'
+} from '@term/base/code/base/type'
 
 // Ergonomic builders for values and records. These construct the canonical model
 // in code and tests without hand-writing the tagged unions everywhere.

@@ -7,9 +7,9 @@ import type {
   GroupNode,
   NameNode,
   Node,
-} from '@cluesurf/make/code/parser/tree'
-import { parse } from '@cluesurf/make/code/parser/tree'
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
+} from '@term/make/code/parser/tree'
+import { parse } from '@term/make/code/parser/tree'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 
 const BINARY: Record<string, string> = {
   add: '+',
@@ -210,7 +210,7 @@ function emit(
   handlers: { event: string; body: string[] }[],
 ): string {
   const lines: string[] = [
-    `import { signal } from '@cluesurf/make/code/zone/reactive'`,
+    `import { signal } from '@term/make/code/zone/reactive'`,
     '',
   ]
 

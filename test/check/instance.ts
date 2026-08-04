@@ -1,7 +1,7 @@
 // Call-site instance resolution: a `need`-bounded generic, called at a concrete type, requires an instance of
 // that trait for that type. Run: npx tsx test/check/instance.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

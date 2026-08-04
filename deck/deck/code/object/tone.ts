@@ -1,3 +1,7 @@
+import {
+  TONE_ALPHABET,
+  canonicalExtension,
+} from '@term/base/code/canon/mark'
 /**
  * Tone-encoded, dash-grouped storage paths for object ids.
  *
@@ -6,7 +10,7 @@
  * alphabet and group it in fours, so a stored object reads as
  *   mndb-tkhs-fvzx-…   (16 groups of 4)
  * which is far easier to scan and dictate than a hex blob. This mirrors
- * the tone code used across the platform (mesh/deck/belt/code/tool/tone.ts,
+ * the tone code used across the platform (the platform tone-code encoder,
  * `hexToTone`). The alphabet is duplicated here because the Term client is
  * its own package and cannot import `@cluesurf/belt`; the server uses
  * belt's `hexToTone` directly and both agree because the alphabet is the
@@ -20,7 +24,7 @@
 import { idHex } from './hash'
 
 // The fixed 16-consonant tone alphabet, index i standing for hex digit i.
-// Must match `CODE` in mesh/deck/belt/code/tool/tone.ts exactly.
+// Must match `CODE` in the platform tone-code encoder exactly.
 const CODE = 'mndbtkhsfvzxcwlr'
 
 const HEX_TO_TONE: Record<string, string> = {}
@@ -46,26 +50,43 @@ export function hexToTone(hex: string): string {
   return out
 }
 
-/** Group a string into dash-separated runs of 4 (`abcd-efgh-…`). */
-export function dashInFours(flat: string): string {
-  const groups = flat.match(/.{1,4}/g)
+/**
+ * Group a string into dash-separated runs of EIGHT.
+ *
+ * Eight is the rule everywhere: a base tone mark is 32 hex characters in four
+ * groups of eight, and an object id is a sha256, so 64 hex characters in EIGHT
+ * groups of eight. One grouping, whatever the length.
+ */
+export function dashInEights(flat: string): string {
+  const groups = flat.match(/.{1,8}/g)
 
   return groups ? groups.join('-') : flat
 }
 
-/** The dashed tone form of an object id, e.g. `mndb-tkhs-…` (16 groups). */
+/** The dashed tone form of an object id: eight groups of eight. */
 export function toneOfId(id: string): string {
-  return dashInFours(hexToTone(idHex(id)))
+  return dashInEights(hexToTone(idHex(id)))
 }
 
 /**
- * The storage sub-path for an object id: a two-tone-character shard
- * directory (256 buckets) plus the full dashed tone name. Used for both
- * the local on-disk store and the R2 key, so both read the same way.
+ * The object store KEY: `<8>-<8>-<8>-<8>-<8>-<8>-<8>-<8>.<ext>`, tone-coded.
+ *
+ * The store is one FLAT namespace (`land.base.surf/<id>.<ext>`), so a key carries no
+ * directories and no package name. The extension lets a fetch be content-typed without
+ * a lookup.
+ */
+export function objectKey(input: {
+  id: string
+  extension: string
+}): string {
+  return `${toneOfId(input.id)}.${canonicalExtension(input.extension)}`
+}
+
+/**
+ * The LOCAL on-disk path. Identical to the remote key: ONE flat namespace, no shard
+ * directories. A key names its content and nothing else, so the same id reads the same
+ * way wherever it is stored.
  */
 export function tonePath(id: string): string {
-  const tone = hexToTone(idHex(id))
-  const shard = tone.slice(0, 2)
-
-  return `${shard}/${dashInFours(tone)}`
+  return dashInEights(hexToTone(idHex(id)))
 }

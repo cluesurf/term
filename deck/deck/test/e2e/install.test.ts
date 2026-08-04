@@ -13,11 +13,9 @@ import {
   writeManifest,
   parseManifest,
   verifyInstall,
-  collectFiles,
-  createTarball,
   validateManifest,
-  showMark,
-  parseMarkHold,
+  showCode,
+  parseCodeHold,
   makeDefaultFetchConfig,
 } from '@/index'
 import type { DeckManifest, FetchConfig, RegistryPackageMeta } from '@/form'
@@ -194,9 +192,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -205,16 +203,16 @@ describe('resolve', () => {
     expect(result.decks.size).toBeGreaterThanOrEqual(1)
     const leafA = Array.from(result.decks.values()).find(d => d.name === 'seed-e2e-leaf-a')
     expect(leafA).toBeDefined()
-    expect(leafA!.mark.major).toBe(1)
+    expect(leafA!.code.major).toBe(1)
   })
 
   test('resolves wildcard to latest matching version', async () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -222,19 +220,19 @@ describe('resolve', () => {
     const leafA = Array.from(result.decks.values()).find(d => d.name === 'seed-e2e-leaf-a')
     expect(leafA).toBeDefined()
     // should pick 1.2.0 (latest 1.x.x)
-    expect(leafA!.mark.minor).toBe(2)
-    expect(leafA!.mark.patch).toBe(0)
+    expect(leafA!.code.minor).toBe(2)
+    expect(leafA!.code.patch).toBe(0)
   })
 
   test('resolves exact version', async () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
         {
           name: 'seed-e2e-leaf-a',
-          mark: { form: 'exact', mark: { major: 1, minor: 0, patch: 2 } },
+          code: { form: 'exact', code: { major: 1, minor: 0, patch: 2 } },
         },
       ],
     }
@@ -242,16 +240,16 @@ describe('resolve', () => {
     const result = await resolve({ manifest, config: makeConfig() })
     const leafA = Array.from(result.decks.values()).find(d => d.name === 'seed-e2e-leaf-a')
     expect(leafA).toBeDefined()
-    expect(showMark(leafA!.mark)).toBe('1.0.2')
+    expect(showCode(leafA!.code)).toBe('1.0.2')
   })
 
   test('resolves transitive dependencies', async () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-mid-c', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-mid-c', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -265,9 +263,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-top-d', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-top-d', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -283,9 +281,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-does-not-exist', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-does-not-exist', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -298,9 +296,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', mark: parseMarkHold('99.x.x') },
+        { name: 'seed-e2e-leaf-a', code: parseCodeHold('99.x.x') },
       ],
     }
 
@@ -313,10 +311,10 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', mark: parseMarkHold('1.x.x') },
-        { name: 'seed-e2e-leaf-b', mark: parseMarkHold('0.x.x') },
+        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-leaf-b', code: parseCodeHold('0.x.x') },
       ],
     }
 
@@ -330,9 +328,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', mark: parseMarkHold('1.0.0..1.1.0') },
+        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.0.0..1.1.0') },
       ],
     }
 
@@ -340,8 +338,8 @@ describe('resolve', () => {
     const leafA = Array.from(result.decks.values()).find(d => d.name === 'seed-e2e-leaf-a')
     expect(leafA).toBeDefined()
     // should pick 1.0.2 (latest in range 1.0.0..1.1.0)
-    expect(leafA!.mark.major).toBe(1)
-    expect(leafA!.mark.minor).toBe(0)
+    expect(leafA!.code.major).toBe(1)
+    expect(leafA!.code.minor).toBe(0)
   })
 })
 
@@ -350,9 +348,9 @@ describe('lockfile', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-mid-c', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-mid-c', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -371,9 +369,9 @@ describe('lockfile', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -385,16 +383,16 @@ describe('lockfile', () => {
 
     const v1 = Array.from(resolution1.decks.values()).find(d => d.name === 'seed-e2e-leaf-a')
     const v2 = Array.from(resolution2.decks.values()).find(d => d.name === 'seed-e2e-leaf-a')
-    expect(showMark(v1!.mark)).toBe(showMark(v2!.mark))
+    expect(showCode(v1!.code)).toBe(showCode(v2!.code))
   })
 
   test('lockfile includes transitive dependency metadata', async () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-top-d', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-top-d', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -414,16 +412,16 @@ describe('manifest', () => {
   test('parseManifest and writeManifest round-trip', () => {
     const text = [
       'deck @myorg/mypackage',
-      '  mark <1.2.4>',
+      '  code <1.2.4>',
       '  head <A test package>',
-      '  link seed-e2e-leaf-a, mark <1.x.x>',
-      '  link seed-e2e-leaf-b, mark <0.1.0..1.0.0>',
+      '  link seed-e2e-leaf-a, code <1.x.x>',
+      '  link seed-e2e-leaf-b, code <0.1.0..1.0.0>',
     ].join('\n')
 
     const manifest = parseManifest({ text })
     expect(manifest.host).toBe('myorg')
     expect(manifest.name).toBe('mypackage')
-    expect(manifest.mark).toEqual({ major: 1, minor: 2, patch: 4 })
+    expect(manifest.code).toEqual({ major: 1, minor: 2, patch: 4 })
     expect(manifest.link.length).toBe(2)
 
     const written = writeManifest({ manifest })
@@ -436,7 +434,7 @@ describe('manifest', () => {
   test('parseManifest handles unscoped package', () => {
     const text = [
       'deck simple-pkg',
-      '  mark <0.1.0>',
+      '  code <0.1.0>',
     ].join('\n')
 
     const manifest = parseManifest({ text })
@@ -447,7 +445,7 @@ describe('manifest', () => {
   test('parseManifest reads hooks', () => {
     const text = [
       'deck test-pkg',
-      '  mark <1.0.0>',
+      '  code <1.0.0>',
       '  hook build, task tsc',
       '  hook test, task vitest run',
     ].join('\n')
@@ -464,8 +462,8 @@ describe('devLink and devUnlink', () => {
     const projectDir = await makeTmpDir(`devlink-project-${Date.now()}`)
     const localPkgDir = await makeTmpDir(`devlink-pkg-${Date.now()}`)
 
-    await writeDecktree(projectDir, 'deck test-project\n  mark <0.1.0>')
-    await writeDecktree(localPkgDir, 'deck @myorg/local-pkg\n  mark <0.1.0>')
+    await writeDecktree(projectDir, 'deck test-project\n  code <0.1.0>')
+    await writeDecktree(localPkgDir, 'deck @myorg/local-pkg\n  code <0.1.0>')
 
     await devLink({ root: projectDir, packageDir: localPkgDir })
 
@@ -481,8 +479,8 @@ describe('devLink and devUnlink', () => {
     const projectDir = await makeTmpDir(`devunlink-project-${Date.now()}`)
     const localPkgDir = await makeTmpDir(`devunlink-pkg-${Date.now()}`)
 
-    await writeDecktree(projectDir, 'deck test-project\n  mark <0.1.0>')
-    await writeDecktree(localPkgDir, 'deck @myorg/local-pkg\n  mark <0.1.0>')
+    await writeDecktree(projectDir, 'deck test-project\n  code <0.1.0>')
+    await writeDecktree(localPkgDir, 'deck @myorg/local-pkg\n  code <0.1.0>')
 
     await devLink({ root: projectDir, packageDir: localPkgDir })
     await devUnlink({ root: projectDir, name: '@myorg/local-pkg' })
@@ -495,8 +493,8 @@ describe('devLink and devUnlink', () => {
     const projectDir = await makeTmpDir(`devlink-unscoped-${Date.now()}`)
     const localPkgDir = await makeTmpDir(`devlink-unscoped-pkg-${Date.now()}`)
 
-    await writeDecktree(projectDir, 'deck test-project\n  mark <0.1.0>')
-    await writeDecktree(localPkgDir, 'deck local-pkg\n  mark <0.1.0>')
+    await writeDecktree(projectDir, 'deck test-project\n  code <0.1.0>')
+    await writeDecktree(localPkgDir, 'deck local-pkg\n  code <0.1.0>')
 
     await devLink({ root: projectDir, packageDir: localPkgDir })
 
@@ -506,81 +504,6 @@ describe('devLink and devUnlink', () => {
   })
 })
 
-describe('publish', () => {
-  test('validateManifest catches missing name', async () => {
-    const errors = await validateManifest({
-      manifest: { host: '', name: '', mark: { major: 1, minor: 0, patch: 0 }, link: [] },
-    })
-    expect(errors).toContain('Missing package name')
-  })
-
-  test('validateManifest catches zero version', async () => {
-    const errors = await validateManifest({
-      manifest: { host: '', name: 'test', mark: { major: 0, minor: 0, patch: 0 }, link: [] },
-    })
-    expect(errors).toContain('Version must be set (not 0.0.0)')
-  })
-
-  test('validateManifest catches odd patch version', async () => {
-    const errors = await validateManifest({
-      manifest: { host: '', name: 'test', mark: { major: 1, minor: 0, patch: 3 }, link: [] },
-    })
-    expect(errors).toContain('Published versions must use even patch numbers')
-  })
-
-  test('validateManifest passes for valid manifest', async () => {
-    const errors = await validateManifest({
-      manifest: { host: '', name: 'test', mark: { major: 1, minor: 0, patch: 2 }, link: [] },
-    })
-    expect(errors).toHaveLength(0)
-  })
-
-  test('collectFiles respects default excludes', async () => {
-    const dir = await makeTmpDir(`collect-${Date.now()}`)
-    await fsp.mkdir(path.join(dir, 'code'), { recursive: true })
-    await fsp.writeFile(path.join(dir, 'code', 'main.ts'), 'export {}')
-    await fsp.writeFile(path.join(dir, 'deck.tree'), 'deck test\n  mark <1.0.0>')
-    await fsp.mkdir(path.join(dir, 'node_modules'), { recursive: true })
-    await fsp.writeFile(path.join(dir, 'node_modules', 'junk.js'), 'junk')
-    await fsp.mkdir(path.join(dir, '.git'), { recursive: true })
-    await fsp.writeFile(path.join(dir, '.git', 'config'), 'gitconfig')
-
-    const files = await collectFiles({ dir })
-    expect(files).toContain('code/main.ts')
-    expect(files).toContain('deck.tree')
-    expect(files).not.toContain('node_modules/junk.js')
-    expect(files).not.toContain('.git/config')
-  })
-
-  test('collectFiles respects .treeignore', async () => {
-    const dir = await makeTmpDir(`treeignore-${Date.now()}`)
-    await fsp.mkdir(path.join(dir, 'code'), { recursive: true })
-    await fsp.writeFile(path.join(dir, 'code', 'main.ts'), 'export {}')
-    await fsp.mkdir(path.join(dir, 'tmp'), { recursive: true })
-    await fsp.writeFile(path.join(dir, 'tmp', 'scratch.ts'), 'temp')
-    await fsp.writeFile(path.join(dir, 'deck.tree'), 'deck test\n  mark <1.0.0>')
-    await fsp.writeFile(path.join(dir, '.treeignore'), 'tmp\n')
-
-    const files = await collectFiles({ dir })
-    expect(files).toContain('code/main.ts')
-    expect(files).not.toContain('tmp/scratch.ts')
-  })
-
-  test('createTarball produces a valid gzip', async () => {
-    const dir = await makeTmpDir(`tarball-${Date.now()}`)
-    await fsp.mkdir(path.join(dir, 'code'), { recursive: true })
-    await fsp.writeFile(path.join(dir, 'code', 'main.ts'), 'export {}')
-    await writeDecktree(dir, 'deck test-tar\n  mark <1.0.0>')
-
-    const files = await collectFiles({ dir })
-    const tarball = await createTarball({ dir, files })
-
-    expect(tarball.length).toBeGreaterThan(0)
-    // gzip magic bytes
-    expect(tarball[0]).toBe(0x1f)
-    expect(tarball[1]).toBe(0x8b)
-  })
-})
 
 describe('cleanLinks', () => {
   test('removes the entire link directory', async () => {
@@ -606,9 +529,9 @@ describe('offline mode', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -624,9 +547,9 @@ describe('offline mode', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      mark: { major: 0, minor: 1, patch: 0 },
+      code: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', mark: parseMarkHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -641,6 +564,6 @@ describe('offline mode', () => {
 
     const v1 = Array.from(resolution1.decks.values()).find(d => d.name === 'seed-e2e-leaf-a')
     const v2 = Array.from(resolution2.decks.values()).find(d => d.name === 'seed-e2e-leaf-a')
-    expect(showMark(v1!.mark)).toBe(showMark(v2!.mark))
+    expect(showCode(v1!.code)).toBe(showCode(v2!.code))
   })
 })

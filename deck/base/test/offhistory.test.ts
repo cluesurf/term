@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { record, text } from '@/base/make'
+import { record, text } from '@term/base/code/base/make'
 import {
   MemoryOffHistoryStore,
   putOffHistory,
   resolveOffHistory,
   isOffHistoryRef,
   offHistoryId,
-} from '@/offhistory/store'
-import { hashRecord } from '@/canon/hash'
+} from '@term/base/code/offhistory/store'
+import { hashRecord } from '@term/base/code/canon/hash'
 
 const M1 = '11111111-1111-4111-8111-111111111111'
 

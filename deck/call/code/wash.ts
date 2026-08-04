@@ -6,7 +6,7 @@ import {
   logStep,
   formatError,
   fade,
-} from '@cluesurf/make/code/tint'
+} from '@term/make/code/tint'
 
 const BUILD_DIRS = ['host', 'make', 'hold', '.base/term/cache']
 

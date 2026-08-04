@@ -4,7 +4,7 @@
 // (3) is genuinely computed (a false single-link claim is rejected), and (4) leaves a constructor named `link` alone.
 // Run: npx tsx test/compile/link-chain.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

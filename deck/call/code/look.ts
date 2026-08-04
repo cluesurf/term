@@ -5,10 +5,10 @@ import {
   toJson,
   toCsv,
   toTable,
-} from '@cluesurf/make/code/inspect'
-import type { Source } from '@cluesurf/make/code/compile/load'
-import { projectResolver } from '@cluesurf/call/code/make'
-import { logFail, logStep, fade } from '@cluesurf/make/code/tint'
+} from '@term/make/code/inspect'
+import type { Source } from '@term/make/code/compile/load'
+import { projectResolver } from '@term/call/code/make'
+import { logFail, logStep, fade } from '@term/make/code/tint'
 
 // `seed look <module>` -- inspect what a module exposes (forms + tasks with signatures), following its load/bear
 // graph. The target is a package path (`@cluesurf/bind/code/browser/dom`) or a `.tree` file. Output: table (default),

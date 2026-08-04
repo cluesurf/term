@@ -1,4 +1,4 @@
-import { hashBytes } from '@/canon/hash'
+import { hashBytes } from '@term/base/code/canon/hash'
 
 // The content-addressed chunk store: immutable blobs keyed by the hash of their
 // content. This is the whole storage surface for the prolly tree, so any backend

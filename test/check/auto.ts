@@ -6,7 +6,7 @@
 // `calm` alone cannot (it is not definitional for a symbolic `a`). Soundness control: a false goal is not closed.
 // Run: npx tsx test/check/auto.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

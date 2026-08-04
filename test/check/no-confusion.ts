@@ -5,7 +5,7 @@
 // equation. These tests pin both the positive (deep refutation works) and the negative (no false refutation) sides.
 // Run: npx tsx test/check/no-confusion.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

@@ -16,7 +16,7 @@ load ../../http
 task serve
   take server, like server
   take port, like u16
-  mark async
+  note async
 
   # one fallback handler for the whole app: convert the axum request to our `request`, run the uniform router, and
   # write the resulting `response` back. axum owns the socket; the routing logic stays in `handle-request`.
@@ -32,6 +32,6 @@ task serve
               read incoming
 
   call axum/serve
-    mark async
+    note async
     bind port, read port
     bind app, read app

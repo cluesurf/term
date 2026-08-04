@@ -13,12 +13,12 @@ task query
   take sql, like text
   take params, like list
   like list
-  mark async
+  note async
 
 task run
   take sql, like text
   take params, like list
-  mark async
+  note async
 
 task field
   take row, like row

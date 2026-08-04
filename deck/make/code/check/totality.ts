@@ -11,14 +11,14 @@
 //
 // Both walk the surface AST. Browser-safe, no host APIs.
 
-import type { Diagnostic } from '@cluesurf/make/code/parser/diagnostic'
-import { diagnose } from '@cluesurf/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
   Program,
   Statement,
   Type,
-} from '@cluesurf/make/code/compile/node'
+} from '@term/make/code/compile/node'
 
 export type TotalityReport = {
   errors: Diagnostic[]

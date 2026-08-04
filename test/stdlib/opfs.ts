@@ -14,12 +14,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 import {
   withNativeEnv,
   nativePrelude,
-} from '@cluesurf/make/code/compile/native'
-import type { Source } from '@cluesurf/make/code/compile/load'
+} from '@term/make/code/compile/native'
+import type { Source } from '@term/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')

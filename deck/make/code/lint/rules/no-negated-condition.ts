@@ -1,7 +1,7 @@
 // L025: a `fork test` whose condition is a negation (`fork lack ...`) and which also has a `hook miss` (else) reads
 // backward -- the reader parses the negative case first. Invert the condition and swap the branches for clarity.
 
-import type { Rule } from '@cluesurf/make/code/lint/rule'
+import type { Rule } from '@term/make/code/lint/rule'
 
 export const noNegatedCondition: Rule = {
   name: 'no-negated-condition',

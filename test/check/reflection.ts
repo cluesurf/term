@@ -4,7 +4,7 @@
 // the reflection technique (run a verified decider, trust its output) generalizing what `calm` does for equalities.
 // Run: npx tsx test/check/reflection.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0

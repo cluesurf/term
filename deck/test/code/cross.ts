@@ -11,12 +11,12 @@
  * every program. The TypeScript backend additionally runs.
  */
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import type { Resolver } from '@cluesurf/make/code/compile/load'
-import { emitTypeScript } from '@cluesurf/make/code/compile/typescript'
-import { emitRust } from '@cluesurf/make/code/compile/rust'
-import { emitKotlin } from '@cluesurf/make/code/compile/kotlin'
-import { emitSwift } from '@cluesurf/make/code/compile/swift'
+import { compile } from '@term/make/code/compile/compile'
+import type { Resolver } from '@term/make/code/compile/load'
+import { emitTypeScript } from '@term/make/code/compile/typescript'
+import { emitRust } from '@term/make/code/compile/rust'
+import { emitKotlin } from '@term/make/code/compile/kotlin'
+import { emitSwift } from '@term/make/code/compile/swift'
 
 export type BackendName = 'typescript' | 'rust' | 'kotlin' | 'swift'
 

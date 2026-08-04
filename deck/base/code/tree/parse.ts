@@ -1,19 +1,48 @@
-import type { CollectionKind, Item, RecordNode, Value } from '@/base/type'
+import type { CollectionKind, Item, RecordNode, Value } from '@term/base/code/base/type'
 
 // Parse .tree text into a record graph. Mirrors the formatter, so format and parse
 // round-trip. See note/library/base/02-tree-syntax.md.
 
-type Line = { indent: number; text: string }
+// A line, plus the comments written above it. Comments are trivia in the text and
+// content in the record: they attach to whatever they precede, so nothing an author
+// wrote is lost on a round trip.
+type Line = {
+  indent: number
+  text: string
+  comments?: Array<string>
+}
 
 function toLines(text: string): Array<Line> {
   const out: Array<Line> = []
+  let pending: Array<string> = []
+
   for (const raw of text.split('\n')) {
     if (raw.trim() === '') {
       continue
     }
+
     const spaces = raw.length - raw.replace(/^ +/, '').length
-    out.push({ indent: Math.floor(spaces / 2), text: raw.slice(spaces) })
+    const content = raw.slice(spaces)
+
+    // a comment attaches to the next real line, the way a leading comment reads
+    if (content.startsWith('#')) {
+      pending.push(content.slice(1).replace(/^ /, ''))
+      continue
+    }
+
+    const line: Line = {
+      indent: Math.floor(spaces / 2),
+      text: content,
+    }
+
+    if (pending.length > 0) {
+      line.comments = pending
+      pending = []
+    }
+
+    out.push(line)
   }
+
   return out
 }
 
@@ -58,26 +87,53 @@ class Cursor {
 function parseBody(
   c: Cursor,
   childIndent: number,
-): { mark?: string; fields: Map<string, Value> } {
+): {
+  mark?: string
+  fields: Map<string, Value>
+  comments: Map<string, Array<string>>
+} {
   const fields = new Map<string, Value>()
+  // keyed by the field the comment sits above
+  const comments = new Map<string, Array<string>>()
   let mark: string | undefined
+
   while (c.peek() && c.peek()!.indent === childIndent) {
-    const line = c.peek()!.text
+    const entry = c.peek()!
+    const line = entry.text
+
     if (line.startsWith('mark ')) {
       mark = line.slice(5).replace(/^<|>$/g, '')
+
+      if (entry.comments) {
+        comments.set('mark', entry.comments)
+      }
+
       c.i++
       continue
     }
+
     const sp = line.indexOf(' ')
     const name = sp < 0 ? line : line.slice(0, sp)
     const rest = sp < 0 ? '' : line.slice(sp + 1)
+
+    if (entry.comments) {
+      comments.set(name, entry.comments)
+    }
+
     c.i++
     fields.set(name, parseValue(c, rest, childIndent))
   }
-  const out: { mark?: string; fields: Map<string, Value> } = { fields }
+
+  const out: {
+    mark?: string
+    fields: Map<string, Value>
+    comments: Map<string, Array<string>>
+  } = { fields, comments }
+
   if (mark !== undefined) {
     out.mark = mark
   }
+
   return out
 }
 
@@ -168,15 +224,35 @@ function splitTypeLabel(s: string): [string, string | undefined] {
 function makeRecord(
   type: string,
   label: string | undefined,
-  body: { mark?: string; fields: Map<string, Value> },
+  body: {
+    mark?: string
+    fields: Map<string, Value>
+    comments?: Map<string, Array<string>>
+  },
+  own?: Array<string>,
 ): RecordNode {
   const node: RecordNode = { type, fields: body.fields }
+
   if (body.mark !== undefined) {
     node.mark = body.mark
   }
+
   if (label !== undefined) {
     node.label = label
   }
+
+  // the record's own leading comments live under the empty key, its fields' under
+  // their own names
+  const comments = new Map(body.comments ?? [])
+
+  if (own && own.length > 0) {
+    comments.set('', own)
+  }
+
+  if (comments.size > 0) {
+    node.comments = comments
+  }
+
   return node
 }
 
@@ -189,5 +265,6 @@ export function parseTree(text: string): RecordNode {
   const [type, label] = splitTypeLabel(first.text)
   c.i++
   const body = parseBody(c, 1)
-  return makeRecord(type, label, body)
+
+  return makeRecord(type, label, body, first.comments)
 }

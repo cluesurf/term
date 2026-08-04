@@ -7,7 +7,7 @@ import {
   prepareModuleDir,
   runNode,
   cleanupDir,
-} from '@cluesurf/make/code/time/execute'
+} from '@term/make/code/time/execute'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 

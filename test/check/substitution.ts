@@ -1,8 +1,8 @@
 // Substitution unit test (Tier 2 modular checker). The unifier extracted from the inference closure, now testable on
 // its own: fresh variables, path-compressed resolve, the occurs check, and structural unification. Run: npx tsx test/check/substitution.ts
 
-import { Substitution } from '@cluesurf/make/code/check/substitution'
-import type { Type } from '@cluesurf/make/code/compile/node'
+import { Substitution } from '@term/make/code/check/substitution'
+import type { Type } from '@term/make/code/compile/node'
 
 let pass = 0
 let fail = 0

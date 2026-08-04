@@ -2,8 +2,8 @@
 // and confirm the mounted DOM node reactively updates when a signal changes. This exercises the whole pipeline:
 // parse -> mill -> resolve -> infer -> emit (TypeScript) -> esbuild -> execute. Run: npx tsx test/zone/render.ts
 
-import { compile } from '@cluesurf/make/code/compile/compile'
-import { projectResolver } from '@cluesurf/call/code/make'
+import { compile } from '@term/make/code/compile/compile'
+import { projectResolver } from '@term/call/code/make'
 import { transform } from 'esbuild'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
