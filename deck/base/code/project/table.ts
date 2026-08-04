@@ -81,6 +81,15 @@ export type Index = {
   where?: Expression
 }
 
+// A legal SQL identifier in both engines, unquoted-safe. Anything else is rejected at
+// declaration rather than at DDL time, so a bad name is a form error with a form's
+// context, not a render error deep in a statement.
+const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_]*$/i
+
+export function isSafeIdentifier(name: string): boolean {
+  return SAFE_IDENTIFIER.test(name)
+}
+
 export type TableForm = {
   table: string
   // the primary key column, always a uuid, because a row's identity is the record's mark
@@ -104,6 +113,8 @@ export function validateTableForm(form: TableForm): Array<string> {
 
   if (!form.table) {
     problems.push('a table form needs a table name')
+  } else if (!isSafeIdentifier(form.table)) {
+    problems.push(`table name \`${form.table}\` is not a legal identifier`)
   }
 
   for (const column of form.columns) {
@@ -111,6 +122,10 @@ export function validateTableForm(form: TableForm): Array<string> {
       problems.push(`duplicate column \`${column.name}\``)
     }
     names.add(column.name)
+
+    if (!isSafeIdentifier(column.name)) {
+      problems.push(`column name \`${column.name}\` is not a legal identifier`)
+    }
 
     if (!COLUMN_TYPES.includes(column.type)) {
       problems.push(
@@ -138,6 +153,10 @@ export function validateTableForm(form: TableForm): Array<string> {
   }
 
   for (const index of form.indexes ?? []) {
+    if (!isSafeIdentifier(index.name)) {
+      problems.push(`index name \`${index.name}\` is not a legal identifier`)
+    }
+
     for (const column of index.columns) {
       if (!names.has(column)) {
         problems.push(`index \`${index.name}\` names unknown column \`${column}\``)

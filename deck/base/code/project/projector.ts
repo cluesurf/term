@@ -265,6 +265,14 @@ export class Projector {
     const freshness = input.freshness ?? { need: 'any' }
     const plan = planQuery(input.form, input.query)
 
+    // rendered up front, so a malformed query throws before any transaction is opened
+    // and is never mistaken for a freshness refusal
+    const statement = toSelect({
+      form: input.form,
+      query: input.query,
+      columns: input.columns,
+    })
+
     // ONE transaction for the bookkeeping read, the demand check, and the rows. Reading
     // them separately would let a concurrent apply land in between, and the answer would
     // then report a serving commit that does not describe the rows it carries. That is
@@ -300,13 +308,7 @@ export class Projector {
         return allowed
       }
 
-      const rows = await tx.all(
-        toSelect({
-          form: input.form,
-          query: input.query,
-          columns: input.columns,
-        }),
-      )
+      const rows = await tx.all(statement)
 
       return { ok: true as const, rows, serving: allowed.serving, plan }
     })

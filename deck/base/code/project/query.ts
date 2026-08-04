@@ -47,9 +47,12 @@ function columnsOf(query: Query): Map<string, Condition> {
   const out = new Map<string, Condition>()
 
   for (const condition of query.where ?? []) {
-    // the first condition on a column wins, so a repeated column cannot make a prefix
-    // look longer than it is
-    if (!out.has(condition.column)) {
+    const existing = out.get(condition.column)
+
+    // An EQUALITY on a column wins over a range on the same column, because equality is
+    // what extends an index prefix. Keeping whichever came first would let
+    // `syllables > 1 AND syllables = 3` plan as a range and miss the usable index.
+    if (!existing || (!EQUALITY.includes(existing.op) && EQUALITY.includes(condition.op))) {
       out.set(condition.column, condition)
     }
   }
@@ -87,12 +90,22 @@ function sameCondition(expression: Expression, condition: Condition): boolean {
   return false
 }
 
+const SAFE_LOW = BigInt(Number.MIN_SAFE_INTEGER)
+const SAFE_HIGH = BigInt(Number.MAX_SAFE_INTEGER)
+
 function literalOf(value: Value): string | number | boolean | undefined {
   switch (value.kind) {
     case 'text':
       return value.value
     case 'integer':
-      return Number(value.value)
+      // A bigint past the exact double range cannot be compared to a declared numeric
+      // literal without rounding, and rounding could make two different values look
+      // equal. That would select a partial index whose condition the query does NOT
+      // actually state, which is the one thing partial-index matching must never do.
+      // No match is always safe; a wrong match silently omits rows.
+      return value.value >= SAFE_LOW && value.value <= SAFE_HIGH
+        ? Number(value.value)
+        : undefined
     case 'decimal':
       return value.value
     case 'boolean':
@@ -172,6 +185,23 @@ export function planQuery(form: TableForm, query: Query): Plan {
   return best ?? { matched: [], scan: 'no-index-matches' }
 }
 
+/**
+ * Every column a query names that the form does not declare.
+ *
+ * A typo would otherwise render valid SQL and fail at the engine with an error naming
+ * the column but not the query, which is a long way from the mistake.
+ */
+export function unknownColumns(form: TableForm, query: Query, columns?: Array<string>): Array<string> {
+  const declared = new Set(form.columns.map(column => column.name))
+  const named = [
+    ...(query.where ?? []).map(condition => condition.column),
+    ...(query.order ? [query.order.column] : []),
+    ...(columns ?? []),
+  ]
+
+  return [...new Set(named.filter(column => !declared.has(column)))]
+}
+
 /** A query as a parameterized statement, with the columns to select. */
 export function toSelect(input: {
   form: TableForm
@@ -179,6 +209,14 @@ export function toSelect(input: {
   columns?: Array<string>
 }): Statement {
   const { form, query } = input
+  const unknown = unknownColumns(form, query, input.columns)
+
+  if (unknown.length) {
+    throw new Error(
+      `table \`${form.table}\` has no column ${unknown.map(name => `\`${name}\``).join(', ')}`,
+    )
+  }
+
   const columns = input.columns?.length
     ? input.columns.map(quote).join(', ')
     : '*'

@@ -492,4 +492,29 @@ describe('registry write authorization', () => {
       writeAccessFromEnv({ [REGISTRY_TOKEN_VARIABLE]: '   ' }),
     ).toThrow(/would accept anonymous/)
   })
+
+  it('gates an UNKNOWN write route too, so the default is closed', async () => {
+    await withServer({ token: TOKEN }, async base => {
+      // not a route the server implements. It must still be refused rather than
+      // reaching the router, or a write endpoint added later would be open until
+      // someone remembered to list it.
+      expect((await post(base, '/packages/something-new!')).status).toBe(401)
+      expect(
+        (await post(base, '/packages/something-new!', TOKEN)).status,
+      ).not.toBe(401)
+    })
+  })
+
+  it('leaves the negotiation POST public, since it changes nothing', async () => {
+    await withServer({ token: TOKEN }, async base => {
+      const response = await fetch(`${base}/packages/verify!`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids: [] }),
+      })
+
+      expect(response.status).toBe(200)
+      expect((await response.json()).missing).toEqual([])
+    })
+  })
 })

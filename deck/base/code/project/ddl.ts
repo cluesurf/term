@@ -13,7 +13,7 @@ import type {
   Expression,
   TableForm,
 } from '@term/base/code/project/table'
-import { validateTableForm } from '@term/base/code/project/table'
+import { isSafeIdentifier, validateTableForm } from '@term/base/code/project/table'
 
 export type Dialect = 'postgres' | 'cockroach'
 
@@ -46,7 +46,7 @@ const TYPES: Record<Dialect, Record<string, string>> = {
 
 /** An identifier, quoted so a column named like a keyword is still legal. */
 export function quote(name: string): string {
-  if (!/^[a-z_][a-z0-9_]*$/i.test(name)) {
+  if (!isSafeIdentifier(name)) {
     throw new Error(`unsafe identifier: ${name}`)
   }
 

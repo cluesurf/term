@@ -3,7 +3,7 @@ import { Projector } from '@term/base/code/project/projector'
 import type { Mapping } from '@term/base/code/project/mapping'
 import type { TableForm } from '@term/base/code/project/table'
 import { validateTableForm } from '@term/base/code/project/table'
-import { createTable } from '@term/base/code/project/ddl'
+import { createTable, quote } from '@term/base/code/project/ddl'
 import { datasetOf } from '@term/base/code/diff/change'
 import type { Change } from '@term/base/code/diff/change'
 import { text, integer } from '@term/base/code/base/make'
@@ -160,13 +160,24 @@ describe('ddl', () => {
     expect(statements[0]).toMatch(/'o''brien'/)
   })
 
-  it('refuses an unsafe identifier', () => {
+  it('refuses an unsafe identifier at validation, before any rendering', () => {
     expect(() =>
       createTable({
         dialect: 'postgres',
         form: { ...FORM, table: 'word"; DROP TABLE x; --' },
       }),
-    ).toThrow(/unsafe identifier/)
+    ).toThrow(/is not a legal identifier/)
+
+    expect(
+      validateTableForm({
+        ...FORM,
+        columns: [...FORM.columns, { name: 'a"; DROP TABLE x; --', type: 'text' }],
+      }).join(' '),
+    ).toMatch(/column name .* is not a legal identifier/)
+  })
+
+  it('still refuses an unsafe identifier at the renderer, as a last line of defense', () => {
+    expect(() => quote('word"; DROP TABLE x; --')).toThrow(/unsafe identifier/)
   })
 
   it('refuses to generate ddl from an invalid form', () => {

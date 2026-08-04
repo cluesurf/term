@@ -228,13 +228,70 @@ describe('toSelect', () => {
     expect(statement.sql).toBe('SELECT "mark", "text" FROM "word"')
   })
 
-  it('refuses an unsafe column name', () => {
+  it('refuses a column the form does not declare', () => {
+    expect(() =>
+      render({ where: [{ column: 'sylables', op: '=', value: text('x') }] }),
+    ).toThrow(/has no column `sylables`/)
+  })
+
+  it('refuses an injected column name, before it can reach the renderer', () => {
     expect(() =>
       render({
         where: [
           { column: 'text"; DROP TABLE word; --', op: '=', value: text('x') },
         ],
       }),
-    ).toThrow(/unsafe identifier/)
+    ).toThrow(/has no column/)
+  })
+
+  it('refuses an unknown order or projection column too', () => {
+    expect(() =>
+      render({ order: { column: 'nope', direction: 'ascending' } }),
+    ).toThrow(/has no column `nope`/)
+    expect(() =>
+      toSelect({ form: FORM, query: {}, columns: ['nope'] }),
+    ).toThrow(/has no column `nope`/)
+  })
+
+  it('prefers an equality over a range on the same column', () => {
+    // a range listed first must not hide the equality that makes the index usable
+    const plan = planQuery(FORM, {
+      where: [
+        { column: 'syllables', op: '>', value: integer(1) },
+        { column: 'syllables', op: '=', value: integer(3) },
+      ],
+    })
+
+    expect(plan.index).toBe('by_syllables')
+  })
+
+  it('will not match a partial index on an integer too large to compare exactly', () => {
+    const form = {
+      ...FORM,
+      indexes: [
+        {
+          name: 'big',
+          columns: ['language'] as Array<string>,
+          kind: 'partial' as const,
+          // beyond the exact double range
+          where: {
+            kind: 'compare' as const,
+            op: '=' as const,
+            column: 'syllables',
+            value: 9007199254740993,
+          },
+        },
+      ],
+    }
+
+    const plan = planQuery(form, {
+      where: [
+        { column: 'language', op: '=', value: text('tok') },
+        { column: 'syllables', op: '=', value: integer(9007199254740993n) },
+      ],
+    })
+
+    // rounding would make these look equal and select an index that omits rows
+    expect(plan.index).toBeUndefined()
   })
 })
