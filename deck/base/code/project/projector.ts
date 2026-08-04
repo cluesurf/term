@@ -18,6 +18,21 @@ import type { Statement } from '@term/base/code/project/sql'
 import { toStatement } from '@term/base/code/project/sql'
 import type { TableForm } from '@term/base/code/project/table'
 import { mergeWrites, writesFor } from '@term/base/code/project/write'
+import {
+  admit,
+  health as healthOf,
+  type Freshness,
+  type Health,
+  type LagBound,
+  type LagState,
+  type Served,
+} from '@term/base/code/project/lag'
+import {
+  planQuery,
+  toSelect,
+  type Plan,
+  type Query,
+} from '@term/base/code/project/query'
 
 // The seam an engine implements. Deliberately small: everything above it is dialect-free,
 // so a second engine is an adapter rather than a second projector.
@@ -48,6 +63,8 @@ export class Projector {
     private readonly engine: Engine,
     private readonly repository: string,
     private readonly mapping: Mapping,
+    // injected so lag is measured against one clock, and so tests are deterministic
+    private readonly now: () => number = Date.now,
   ) {}
 
   /** Create the tables an author declared, plus the projector's own bookkeeping. */
@@ -194,16 +211,113 @@ export class Projector {
     return { writes: writes.length }
   }
 
-  /** Record a commit as applied, and advance the serving commit, in the caller's transaction. */
+  /**
+   * Record a commit as applied, and advance the serving commit, in the caller's
+   * transaction.
+   *
+   * The applied time is written EXPLICITLY from the projector's clock rather than left
+   * to the column default. The default is the database's `now()`, so lag measured
+   * against it would fold in clock skew between the projector and its engine, and would
+   * differ between engines for no reason the caller could see.
+   */
   private async record(tx: Transaction, commit: string): Promise<void> {
+    const applied = new Date(this.now()).toISOString()
+
     await tx.run({
-      sql: `INSERT INTO ${quote(`${BOOKKEEPING_TABLE}_log`)} ("repository", "commit") VALUES ($1, $2) ON CONFLICT ("repository", "commit") DO NOTHING`,
-      params: [this.repository, commit],
+      sql: `INSERT INTO ${quote(`${BOOKKEEPING_TABLE}_log`)} ("repository", "commit", "applied") VALUES ($1, $2, $3) ON CONFLICT ("repository", "commit") DO NOTHING`,
+      params: [this.repository, commit, applied],
     })
 
     await tx.run({
-      sql: `INSERT INTO ${quote(BOOKKEEPING_TABLE)} ("repository", "commit") VALUES ($1, $2) ON CONFLICT ("repository") DO UPDATE SET "commit" = EXCLUDED."commit"`,
-      params: [this.repository, commit],
+      sql: `INSERT INTO ${quote(BOOKKEEPING_TABLE)} ("repository", "commit", "applied") VALUES ($1, $2, $3) ON CONFLICT ("repository") DO UPDATE SET "commit" = EXCLUDED."commit", "applied" = EXCLUDED."applied"`,
+      params: [this.repository, commit, applied],
+    })
+  }
+
+  /** What the projection knows about its own currency. */
+  async lagState(behind?: number): Promise<LagState> {
+    const rows = await this.engine.transact(tx =>
+      tx.all({
+        sql: `SELECT "commit", "applied" FROM ${quote(BOOKKEEPING_TABLE)} WHERE "repository" = $1`,
+        params: [this.repository],
+      }),
+    )
+
+    return stateOf(rows[0], behind)
+  }
+
+  /**
+   * Answer a query, subject to the lag contract.
+   *
+   * The freshness demand and the health bound are checked BEFORE the query runs, so an
+   * unhealthy projection costs a caller nothing and, more importantly, cannot answer.
+   * Every success carries the commit it was served at, so a result is as traceable as
+   * the records behind it.
+   */
+  async read(input: {
+    form: TableForm
+    query: Query
+    columns?: Array<string>
+    freshness?: Freshness
+    bound?: LagBound
+    behind?: number
+  }): Promise<Served<Array<Record<string, unknown>>> & { plan?: Plan }> {
+    const freshness = input.freshness ?? { need: 'any' }
+    const plan = planQuery(input.form, input.query)
+
+    // ONE transaction for the bookkeeping read, the demand check, and the rows. Reading
+    // them separately would let a concurrent apply land in between, and the answer would
+    // then report a serving commit that does not describe the rows it carries. That is
+    // precisely the guarantee this contract exists to make, so it cannot be split.
+    return this.engine.transact(async tx => {
+      const bookkeeping = await tx.all({
+        sql: `SELECT "commit", "applied" FROM ${quote(BOOKKEEPING_TABLE)} WHERE "repository" = $1`,
+        params: [this.repository],
+      })
+
+      const state = stateOf(bookkeeping[0], input.behind)
+
+      let hasCommit: boolean | undefined
+
+      if (freshness.need === 'commit') {
+        const found = await tx.all({
+          sql: `SELECT "commit" FROM ${quote(`${BOOKKEEPING_TABLE}_log`)} WHERE "repository" = $1 AND "commit" = $2`,
+          params: [this.repository, freshness.commit],
+        })
+
+        hasCommit = found.length > 0
+      }
+
+      const allowed = admit({
+        state,
+        bound: input.bound,
+        freshness,
+        hasCommit,
+        now: this.now(),
+      })
+
+      if (!allowed.ok) {
+        return allowed
+      }
+
+      const rows = await tx.all(
+        toSelect({
+          form: input.form,
+          query: input.query,
+          columns: input.columns,
+        }),
+      )
+
+      return { ok: true as const, rows, serving: allowed.serving, plan }
+    })
+  }
+
+  /** Whether the projection is inside its lag bound. */
+  async health(bound?: LagBound, behind?: number): Promise<Health> {
+    return healthOf({
+      state: await this.lagState(behind),
+      bound,
+      now: this.now(),
     })
   }
 }
@@ -230,4 +344,26 @@ export function rowsFor(input: {
   }
 
   return out
+}
+
+/**
+ * A bookkeeping row as lag state.
+ *
+ * Shared by `read` and `lagState` so the two cannot decode the same row differently,
+ * which would make a read's reported freshness disagree with a health check taken a
+ * moment later.
+ */
+function stateOf(
+  row: Record<string, unknown> | undefined,
+  behind?: number,
+): LagState {
+  const serving = typeof row?.commit === 'string' ? row.commit : undefined
+  const applied =
+    typeof row?.applied === 'string' ? Date.parse(row.applied) : undefined
+
+  return {
+    serving,
+    appliedAt: applied === undefined || Number.isNaN(applied) ? undefined : applied,
+    behind,
+  }
 }

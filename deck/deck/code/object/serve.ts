@@ -150,15 +150,24 @@ export function serveRegistry(input: {
       const url = new URL(req.url ?? '/', 'http://localhost')
       const parts = url.pathname.split('/').filter(Boolean)
 
-      // one gate for every write, decided from the path rather than repeated at each
-      // handler, so a new write endpoint cannot be added without passing through it
-      const isWrite =
-        req.method === 'POST' &&
-        ((parts[0] === 'package-objects' && parts[1] === 'mutate!') ||
-          (parts[0] === 'packages' &&
-            (parts[1] === 'bundle!' || parts[1] === 'commit!')))
+      // One gate, ahead of every handler. It allowlists the READS and gates everything
+      // else, so the default for anything new is closed. Listing the writes instead
+      // would mean a route added later is open until someone remembers to add it here,
+      // and that omission is invisible until it is found.
+      //
+      // Reads are safe to expose: installing a package must work with no credentials,
+      // and every object is content-addressed, so serving one reveals nothing its hash
+      // did not already name.
+      const isRead =
+        req.method === 'GET' ||
+        req.method === 'HEAD' ||
+        // the have / want negotiation. A POST only because the id list is too large for
+        // a query string; it reports which ids are absent and changes nothing.
+        (req.method === 'POST' &&
+          parts[0] === 'packages' &&
+          parts[1] === 'verify!')
 
-      if (isWrite && !allowsWrite(req)) {
+      if (!isRead && !allowsWrite(req)) {
         res.writeHead(401, {
           'content-type': 'application/json',
           'www-authenticate': 'Bearer realm="registry"',
