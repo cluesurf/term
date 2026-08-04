@@ -9,4 +9,5 @@ enum imath {
     static func pow(_ base: Int, _ exponent: Int) -> Int { return Int(Foundation.pow(Double(base), Double(exponent))) }
     static func signum(_ value: Int) -> Int { return value.signum() }
     static func sqrt(_ value: Int) -> Int { return Int(Double(value).squareRoot()) }
+    static func log(_ value: Int) -> Int { return Int(Foundation.log(Double(value))) }
 }

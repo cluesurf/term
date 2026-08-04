@@ -384,7 +384,7 @@ task make-utf-16-from-utf-8
           code 0xffff
         hook hold
           call head-text/push
-            bind read point
+            read point
         hook miss
           call head-text/push
             call add

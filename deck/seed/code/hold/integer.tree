@@ -210,7 +210,7 @@ task gcd
         hook hold
           send back
             call absolute
-              bind read b
+              read b
       save b
         call modulo
           read a
@@ -225,8 +225,8 @@ task lcm
         call divide
           read a
           call gcd
-            bind read a
-            bind read b
+            read a
+            read b
         read b
 
 tree is-even
@@ -278,10 +278,10 @@ tree rotate
       take b, like mark-{size}
 
       call unify-bitwise
-        call shift-base
+        call shift-left
           read a
           read b
-        call shift-head
+        call shift-right
           read a
           call subtract
             read size
@@ -292,10 +292,10 @@ tree rotate
       take b, like mark-{size}
 
       call unify-bitwise
-        call shift-head
+        call shift-right
           read a
           read b
-        call shift-base
+        call shift-left
           read a
           call subtract
             read size
@@ -313,7 +313,7 @@ task make-reversal-table
         code 256
     hook hold
       save v
-        call unsigned-shift-head
+        call unsigned-shift-right
           read i
           code 1
       save r, read i
@@ -324,7 +324,7 @@ task make-reversal-table
             read v
         hook hold
           save r
-            call shift-base
+            call shift-left
               read r
               code 1
           save r
@@ -338,13 +338,13 @@ task make-reversal-table
               read s
               code 1
           save v
-            call unsigned-shift-head
+            call unsigned-shift-right
               read v
               code 1
       call table/set
         read i
         call intersect-bitwise
-          call shift-base
+          call shift-left
             read r
             read s
           code 255
@@ -546,7 +546,7 @@ task make-de-bruijn-trailing-zero-table
   save n
     call power
       bind code 2
-      bind read exponent
+      read exponent
   save table, make array, read n
   save i, code 0
   walk test

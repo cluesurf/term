@@ -64,7 +64,7 @@ hook suite
       host b, code 255
       host r, make number-underflow-error
 
-  host shift-head
+  host shift-right
     host start
       host a, code 0b10000000
       host b, code 1
@@ -82,7 +82,7 @@ hook suite
       host b, code 1
       host r, code 0b00000000
 
-  host shift-base
+  host shift-left
     host start
       host a, code 0b00000001
       host b, code 1

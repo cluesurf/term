@@ -1,4 +1,9 @@
 
+load @term/seed/code/math
+  find round-down
+  find round-up
+  find logarithm
+
 form bloom-filter
   take m
   take k
@@ -13,10 +18,10 @@ form bloom-filter
     save r, read self/locations
     save a
       call fnv-1a
-        bind read v
+        read v
     save b
       call fnv-1a
-        bind read v
+        read v
         bind code 1576284489
     save x
       call modulo
@@ -62,7 +67,7 @@ form bloom-filter
     take v
     save tmp10
       call self/get-locations
-        bind read v
+        read v
     save l, read tmp10
     save k, read self/k
     save buckets, read self/buckets
@@ -75,7 +80,7 @@ form bloom-filter
             read k
       hook hold
         save tmp11
-          call math/floor
+          call round-down
             call divide
               read l/{i}
               code 32
@@ -97,7 +102,7 @@ form bloom-filter
     take v
     save tmp13
       call self/get-locations
-        bind read v
+        read v
     save l, read tmp13
     save k, read self/k
     save buckets, read self/buckets
@@ -111,7 +116,7 @@ form bloom-filter
       hook hold
         save b, read l/{i}
         save tmp14
-          call math/floor
+          call round-down
             call divide
               read b
               code 32
@@ -161,7 +166,7 @@ form bloom-filter
         call multiply
           call negative
             bind bits, read self/m
-          call math/log
+          call logarithm
             call subtract
               code 1
               call divide
@@ -173,7 +178,7 @@ task make-bloom-filter
   take m
   take k
   save n
-    call math/ceil
+    call round-up
       call divide
         read m
         code 32

@@ -62,7 +62,9 @@ zone test-band
       zone test-case
         bind case, read link
         bind side
-          call 1/add, read size
+          call add
+            code 1
+            read size
 
 zone test-rise
   take call
@@ -78,7 +80,10 @@ zone test-rise
   zone text, text <\>>
     fuse gray
   zone text, text <\n>
-  zone side, call 1/add, read side
+  zone side
+    call add
+      code 1
+      read side
   zone text, text time
     fuse gray
   zone text, text <\<>

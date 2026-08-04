@@ -1,4 +1,7 @@
 
+load @term/seed/code/hold/integer
+  find reverse-bits-8
+
 load @term/seed/code/bit
   find bitwise-and
   find bitwise-or
@@ -9,31 +12,31 @@ task is-bit-count-odd
   take x, like mark-32
   save x
     call oppose-bitwise
-      call shift-head
+      call shift-right
         read x
         code 16
       read x
   save x
     call oppose-bitwise
-      call shift-head
+      call shift-right
         read x
         code 8
       read x
   save x
     call oppose-bitwise
-      call shift-head
+      call shift-right
         read x
         code 4
       read x
   save x
     call oppose-bitwise
-      call shift-head
+      call shift-right
         read x
         code 2
       read x
   save x
     call oppose-bitwise
-      call shift-head
+      call shift-right
         read x
         code 1
       read x
@@ -101,14 +104,14 @@ task reverse-bits
     call bitwise-or
       call bitwise-or
         call bitwise-or
-          call bit-reversal-table/get
+          call reverse-bits-8
             call bitwise-and
               call shift-right
                 read n
                 code 24
               code 255
           call shift-left
-            call bit-reversal-table/get
+            call reverse-bits-8
               call bitwise-and
                 call shift-right
                   read n
@@ -116,7 +119,7 @@ task reverse-bits
                 code 255
             code 8
         call shift-left
-          call bit-reversal-table/get
+          call reverse-bits-8
             call bitwise-and
               call shift-right
                 read n
@@ -124,7 +127,7 @@ task reverse-bits
               code 255
           code 16
       call shift-left
-        call bit-reversal-table/get
+        call reverse-bits-8
           call bitwise-and
             read n
             code 255

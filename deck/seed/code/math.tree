@@ -5,6 +5,7 @@ load @term/seed/code/native/math
   find min
   find max
   find pow
+  find log
   find signum
   find sqrt
 
@@ -126,3 +127,11 @@ task factorial
           read count
           code 1
   send back, read result
+
+# the NATURAL logarithm (base e)
+task logarithm
+  take value, like number
+  like number
+  send back
+    call log
+      read value

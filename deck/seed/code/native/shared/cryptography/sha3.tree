@@ -10,7 +10,11 @@ task compute-rho-offset-constants
     hook test
       call t/is-below, code 24
     hook step
-      save tmp0, call x/add, call 5/multiply, read y
+      save tmp0
+        call x/add
+          call multiply
+            code 5
+            read y
       save table/{tmp0}
         call t/add, code 1
           link multiply, call t/add, code 2
@@ -18,8 +22,13 @@ task compute-rho-offset-constants
           link remainder, code 64
       save new-x, call y/remainder, code 5
       save new-y
-        call 2/multiply, read x
-          link add, call 3/multiply, read y
+        call multiply
+          code 2
+          read x
+          link add
+            call multiply
+              code 3
+              read y
           link remainder, code 5
       save x, read new-x
       save y, read new-y
@@ -38,11 +47,20 @@ task compute-pi-index-constants
         hook test
           call y/is-below, code 5
         hook step
-          save tmp2, call x/add, call 5/multiply, read y
+          save tmp2
+            call x/add
+              call multiply
+                code 5
+                read y
           save table/{tmp2}
             call y/add
-              call 2/multiply, read x
-                link add, call 3/multiply, read y
+              call multiply
+                code 2
+                read x
+                link add
+                  call multiply
+                    code 3
+                    read y
                 link remainder, code 5
                 link multiply, code 5
           save y, call increment, read y
@@ -67,22 +85,29 @@ task compute-round-constants
           fork test, call lfsr/intersect-bitwise, code 1
             hook hold
               save bit-position
-                call 1/shift-base, read j
+                call shift-left
+                  code 1
+                  read j
                   link subtract, code 1
               fork test, call bit-position/is-below, code 32
                 hook hold
                   save round-constant-lsw
                     call oppose-bitwise
                       read round-constant-lsw
-                      call 1/shift-base, read bit-position
+                      call shift-left
+                        code 1
+                        read bit-position
               save round-constant-msw
                 call oppose-bitwise
                   read round-constant-msw
-                  call 1/shift-base, call bit-position/subtract, code 32
+                  call shift-left
+                    code 1
+                    call bit-position/subtract
+                    code 32
           fork test, call lfsr/intersect-bitwise, code 128
             hook hold
               save lfsr
-                call lfsr/shift-base, code 1
+                call lfsr/shift-left, code 1
                   link oppose-bitwise, code 113
           save lfsr
             call base-shift
@@ -119,7 +144,10 @@ task do-reset
       save state/{i}, make x64-word/init
       save i, call increment, read i
   save self/block-size
-    call 1600/subtract, call 2/multiply, read output-length
+    call subtract
+      code 1600
+      call 2/multiply
+      read output-length
       link divide, code 32
 
 task do-process-block
@@ -132,27 +160,34 @@ task do-process-block
     hook test
       call i/is-below, read n-block-size-lanes
     hook step
-      save tmp9, call offset/add, call 2/multiply, read i
+      save tmp9
+        call offset/add
+          call multiply
+            code 2
+            read i
       save m2i, m/{tmp9}
       save tmp10
-        call offset/add, call 2/multiply, read i
+        call offset/add
+          call multiply
+            code 2
+            read i
           link add, code 1
       save m2i1, m/{tmp10}
       save m2i
-        call m2i/shift-base, code 8
-          link unite-bitwise, call m2i/shift-head-unsigned, code 24
+        call m2i/shift-left, code 8
+          link unite-bitwise, call m2i/unsigned-shift-right, code 24
           link intersect-bitwise, code 16711935
           link unite-bitwise
-            call m2i/shift-base, code 24
-              link unite-bitwise, call m2i/shift-head-unsigned, code 8
+            call m2i/shift-left, code 24
+              link unite-bitwise, call m2i/unsigned-shift-right, code 8
               link intersect-bitwise, code 4278255360
       save m2i1
-        call m2i1/shift-base, code 8
-          link unite-bitwise, call m2i1/shift-head-unsigned, code 24
+        call m2i1/shift-left, code 8
+          link unite-bitwise, call m2i1/unsigned-shift-right, code 24
           link intersect-bitwise, code 16711935
           link unite-bitwise
-            call m2i1/shift-base, code 24
-              link unite-bitwise, call m2i1/shift-head-unsigned, code 8
+            call m2i1/shift-left, code 24
+              link unite-bitwise, call m2i1/unsigned-shift-right, code 8
               link intersect-bitwise, code 4278255360
       save lane, state/{i}
       save lane/high
@@ -181,7 +216,11 @@ task do-process-block
             hook test
               call y/is-below, code 5
             hook step
-              save tmp12, call x/add, call 5/multiply, read y
+              save tmp12
+                call x/add
+                  call multiply
+                    code 5
+                    read y
               save lane, state/{tmp12}
               save t-msw
                 call oppose-bitwise
@@ -213,18 +252,22 @@ task do-process-block
           save tx1-lsw, tx1/low
           save t-msw
             call tx4/high/oppose-bitwise
-              call tx1-msw/shift-base, code 1
-                link unite-bitwise, call tx1-lsw/shift-head-unsigned, code 31
+              call tx1-msw/shift-left, code 1
+                link unite-bitwise, call tx1-lsw/unsigned-shift-right, code 31
           save t-lsw
             call tx4/low/oppose-bitwise
-              call tx1-lsw/shift-base, code 1
-                link unite-bitwise, call tx1-msw/shift-head-unsigned, code 31
+              call tx1-lsw/shift-left, code 1
+                link unite-bitwise, call tx1-msw/unsigned-shift-right, code 31
           save y, code 0
           walk test
             hook test
               call y/is-below, code 5
             hook step
-              save tmp17, call x/add, call 5/multiply, read y
+              save tmp17
+                call x/add
+                  call multiply
+                    code 5
+                    read y
               save lane, state/{tmp17}
               save lane/high
                 call oppose-bitwise
@@ -250,17 +293,33 @@ task do-process-block
           fork test, call rho-offset/is-below, code 32
             hook hold
               save t-msw
-                call lane-msw/shift-base, read rho-offset
-                  link unite-bitwise, call lane-lsw/shift-head-unsigned, call 32/subtract, read rho-offset
+                call lane-msw/shift-left, read rho-offset
+                  link unite-bitwise
+                    call lane-lsw/unsigned-shift-right
+                      call subtract
+                        code 32
+                        read rho-offset
               save t-lsw
-                call lane-lsw/shift-base, read rho-offset
-                  link unite-bitwise, call lane-msw/shift-head-unsigned, call 32/subtract, read rho-offset
+                call lane-lsw/shift-left, read rho-offset
+                  link unite-bitwise
+                    call lane-msw/unsigned-shift-right
+                      call subtract
+                        code 32
+                        read rho-offset
           save t-msw
-            call lane-lsw/shift-base, call rho-offset/subtract, code 32
-              link unite-bitwise, call lane-msw/shift-head-unsigned, call 64/subtract, read rho-offset
+            call lane-lsw/shift-left, call rho-offset/subtract, code 32
+              link unite-bitwise
+                call lane-msw/unsigned-shift-right
+                  call subtract
+                    code 64
+                    read rho-offset
           save t-lsw
-            call lane-msw/shift-base, call rho-offset/subtract, code 32
-              link unite-bitwise, call lane-lsw/shift-head-unsigned, call 64/subtract, read rho-offset
+            call lane-msw/shift-left, call rho-offset/subtract, code 32
+              link unite-bitwise
+                call lane-lsw/unsigned-shift-right
+                  call subtract
+                    code 64
+                    read rho-offset
           save t-pi-lane, t/{piindexes/{lane-index}}
           save t-pi-lane/high, read t-msw
           save t-pi-lane/low, read t-lsw
@@ -279,18 +338,28 @@ task do-process-block
             hook test
               call y/is-below, code 5
             hook step
-              save lane-index, call x/add, call 5/multiply, read y
+              save lane-index
+                call x/add
+                  call multiply
+                    code 5
+                    read y
               save lane, state/{lane-index}
               save t-lane, t/{lane-index}
               save tmp21
                 call x/add, code 1
                   link remainder, code 5
-                  link add, call 5/multiply, read y
+                  link add
+                    call multiply
+                      code 5
+                      read y
               save tx1-lane, t/{tmp21}
               save tmp22
                 call x/add, code 2
                   link remainder, code 5
-                  link add, call 5/multiply, read y
+                  link add
+                    call multiply
+                      code 5
+                      read y
               save tx2-lane, t/{tmp22}
               save lane/high
                 call t-lane/high/oppose-bitwise
@@ -320,17 +389,21 @@ task do-finalize
   save n-bits-total, call self/n-data-bytes/multiply, code 8
   save n-bits-left, call data/sig-bytes/multiply, code 8
   save block-size-bits, call self/block-size/multiply, code 32
-  save tmp26, call n-bits-left/shift-head-unsigned, code 5
+  save tmp26, call n-bits-left/unsigned-shift-right, code 5
   save data-words/{tmp26}
     call unite-bitwise
       read data-words/{tmp26}
-      call 1/shift-base, call 24/subtract, call n-bits-left/remainder, code 32
+      call shift-left
+        code 1
+        call 24/subtract
+        call n-bits-left/remainder
+        code 32
   save tmp27
     call math/ceil
       call n-bits-left/add, code 1
         link divide, read block-size-bits
       link multiply, read block-size-bits
-      link shift-head-unsigned, code 5
+      link unsigned-shift-right, code 5
       link subtract, code 1
   save data-words/{tmp27}
     call unite-bitwise
@@ -351,20 +424,20 @@ task do-finalize
       save lane-msw, lane/high
       save lane-lsw, lane/low
       save lane-msw
-        call lane-msw/shift-base, code 8
-          link unite-bitwise, call lane-msw/shift-head-unsigned, code 24
+        call lane-msw/shift-left, code 8
+          link unite-bitwise, call lane-msw/unsigned-shift-right, code 24
           link intersect-bitwise, code 16711935
           link unite-bitwise
-            call lane-msw/shift-base, code 24
-              link unite-bitwise, call lane-msw/shift-head-unsigned, code 8
+            call lane-msw/shift-left, code 24
+              link unite-bitwise, call lane-msw/unsigned-shift-right, code 8
               link intersect-bitwise, code 4278255360
       save lane-lsw
-        call lane-lsw/shift-base, code 8
-          link unite-bitwise, call lane-lsw/shift-head-unsigned, code 24
+        call lane-lsw/shift-left, code 8
+          link unite-bitwise, call lane-lsw/unsigned-shift-right, code 24
           link intersect-bitwise, code 16711935
           link unite-bitwise
-            call lane-lsw/shift-base, code 24
-              link unite-bitwise, call lane-lsw/shift-head-unsigned, code 8
+            call lane-lsw/shift-left, code 24
+              link unite-bitwise, call lane-lsw/unsigned-shift-right, code 8
               link intersect-bitwise, code 4278255360
       call hash-words/push, read lane-lsw
       call hash-words/push, read lane-msw

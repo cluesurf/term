@@ -1,4 +1,7 @@
 
+load @term/seed/code/hold/integer
+  find reverse-bits-8
+
 load @term/seed/code/bit
   find bitwise-and
   find bitwise-or
@@ -23,19 +26,19 @@ task is-bit-count-odd
   take x, like integer-8
   save x
     call oppose-bitwise
-      call shift-head
+      call shift-right
         read x
         code 4
       read x
   save x
     call oppose-bitwise
-      call shift-head
+      call shift-right
         read x
         code 2
       read x
   save x
     call oppose-bitwise
-      call shift-head
+      call shift-right
         read x
         code 1
       read x
@@ -54,17 +57,17 @@ task count-ones-in-integer-8
     call add
       call add
         call self/bitwise-intersect
-          call self/bitwise-shift-head
+          call self/bitwise-shift-right
             read i
             code 3
           code 1
         call self/bitwise-intersect
-          call self/bitwise-shift-head
+          call self/bitwise-shift-right
             read i
             code 2
           code 1
       call self/bitwise-intersect
-        call self/bitwise-shift-head
+        call self/bitwise-shift-right
           read i
           code 1
         code 1
@@ -75,5 +78,5 @@ task count-ones-in-integer-8
 task reverse-bits-byte
   take n
   send back
-    call bit-reversal-table/get
-      bind read n
+    call reverse-bits-8
+      read n

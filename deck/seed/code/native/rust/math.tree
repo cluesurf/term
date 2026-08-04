@@ -50,3 +50,10 @@ task sqrt
   send back
     call imath/sqrt
       read value
+
+task log
+  take value, like number
+  like number
+  send back
+    call imath/log
+      read value

@@ -7,4 +7,5 @@ object imath {
     fun pow(base: Long, exponent: Long): Long = Math.pow(base.toDouble(), exponent.toDouble()).toLong()
     fun signum(value: Long): Long = value.compareTo(0L).toLong()
     fun sqrt(value: Long): Long = Math.sqrt(value.toDouble()).toLong()
+    fun log(value: Long): Long = kotlin.math.ln(value.toDouble()).toLong()
 }

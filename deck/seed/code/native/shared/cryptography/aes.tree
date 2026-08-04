@@ -8,7 +8,10 @@ save invsubmix0, make list
 save invsubmix1, make list
 save invsubmix2, make list
 save invsubmix3, make list
-save key-size, call 256/divide, code 32
+save key-size
+  call divide
+    code 256
+    code 32
 call create-tables
 task create-tables
   save d, make list
@@ -19,9 +22,9 @@ task create-tables
     hook step
       fork test, call i/is-below, code 128
         hook hold
-          save d/{i}, call i/shift-base, code 1
+          save d/{i}, call i/shift-left, code 1
       save d/{i}
-        call i/shift-base, code 1
+        call i/shift-left, code 1
           link oppose-bitwise, code 283
       save i, call increment, read i
   save x, code 0
@@ -32,12 +35,12 @@ task create-tables
       call i/is-below, code 256
     hook step
       save sx
-        call xi/oppose-bitwise, call xi/shift-base, code 1
-          link oppose-bitwise, call xi/shift-base, code 2
-          link oppose-bitwise, call xi/shift-base, code 3
-          link oppose-bitwise, call xi/shift-base, code 4
+        call xi/oppose-bitwise, call xi/shift-left, code 1
+          link oppose-bitwise, call xi/shift-left, code 2
+          link oppose-bitwise, call xi/shift-left, code 3
+          link oppose-bitwise, call xi/shift-left, code 4
       save sx
-        call sx/shift-head-unsigned, code 8
+        call sx/unsigned-shift-right, code 8
           link oppose-bitwise, call sx/intersect-bitwise, code 255
           link oppose-bitwise, code 99
       save sbox/{x}, read sx
@@ -49,14 +52,14 @@ task create-tables
         call d/{sx}/multiply, code 257
           link oppose-bitwise, call sx/multiply, code 16843008
       save submix0/{x}
-        call t/shift-base, code 24
-          link unite-bitwise, call t/shift-head-unsigned, code 8
+        call t/shift-left, code 24
+          link unite-bitwise, call t/unsigned-shift-right, code 8
       save submix1/{x}
-        call t/shift-base, code 16
-          link unite-bitwise, call t/shift-head-unsigned, code 16
+        call t/shift-left, code 16
+          link unite-bitwise, call t/unsigned-shift-right, code 16
       save submix2/{x}
-        call t/shift-base, code 8
-          link unite-bitwise, call t/shift-head-unsigned, code 24
+        call t/shift-left, code 8
+          link unite-bitwise, call t/unsigned-shift-right, code 24
       save submix3/{x}, read t
       save t
         call x8/multiply, code 16843009
@@ -64,14 +67,14 @@ task create-tables
           link oppose-bitwise, call x2/multiply, code 257
           link oppose-bitwise, call x/multiply, code 16843008
       save invsubmix0/{sx}
-        call t/shift-base, code 24
-          link unite-bitwise, call t/shift-head-unsigned, code 8
+        call t/shift-left, code 24
+          link unite-bitwise, call t/unsigned-shift-right, code 8
       save invsubmix1/{sx}
-        call t/shift-base, code 16
-          link unite-bitwise, call t/shift-head-unsigned, code 16
+        call t/shift-left, code 16
+          link unite-bitwise, call t/unsigned-shift-right, code 16
       save invsubmix2/{sx}
-        call t/shift-base, code 8
-          link unite-bitwise, call t/shift-head-unsigned, code 24
+        call t/shift-left, code 8
+          link unite-bitwise, call t/unsigned-shift-right, code 24
       save invsubmix3/{sx}, read t
       fork test, call not, read x
         hook hold
@@ -124,20 +127,20 @@ task do-reset
       fork test, call not, call ks-row/remainder, read key-size
         hook hold
           save t
-            call t/shift-base, code 8
-              link unite-bitwise, call t/shift-head-unsigned, code 24
-          save tmp4, call t/shift-head-unsigned, code 24
+            call t/shift-left, code 8
+              link unite-bitwise, call t/unsigned-shift-right, code 24
+          save tmp4, call t/unsigned-shift-right, code 24
           save tmp5
-            call t/shift-head-unsigned, code 16
+            call t/unsigned-shift-right, code 16
               link intersect-bitwise, code 255
           save tmp6
-            call t/shift-head-unsigned, code 8
+            call t/unsigned-shift-right, code 8
               link intersect-bitwise, code 255
           save tmp7, call t/intersect-bitwise, code 255
           save t
-            call sbox/{tmp4}/shift-base, code 24
-              link unite-bitwise, call sbox/{tmp5}/shift-base, code 16
-              link unite-bitwise, call sbox/{tmp6}/shift-base, code 8
+            call sbox/{tmp4}/shift-left, code 24
+              link unite-bitwise, call sbox/{tmp5}/shift-left, code 16
+              link unite-bitwise, call sbox/{tmp6}/shift-left, code 8
               link unite-bitwise, read sbox/{tmp7}
           save tmp8
             call ks-row/divide, read key-size
@@ -145,25 +148,25 @@ task do-reset
           save t
             call oppose-bitwise
               read t
-              call rcon/{tmp8}/shift-base, code 24
+              call rcon/{tmp8}/shift-left, code 24
       fork test
         call key-size/is-above, code 6
           link intersect
             call ks-row/remainder, read key-size
               link is-equal, code 4
         hook hold
-          save tmp9, call t/shift-head-unsigned, code 24
+          save tmp9, call t/unsigned-shift-right, code 24
           save tmp10
-            call t/shift-head-unsigned, code 16
+            call t/unsigned-shift-right, code 16
               link intersect-bitwise, code 255
           save tmp11
-            call t/shift-head-unsigned, code 8
+            call t/unsigned-shift-right, code 8
               link intersect-bitwise, code 255
           save tmp12, call t/intersect-bitwise, code 255
           save t
-            call sbox/{tmp9}/shift-base, code 24
-              link unite-bitwise, call sbox/{tmp10}/shift-base, code 16
-              link unite-bitwise, call sbox/{tmp11}/shift-base, code 8
+            call sbox/{tmp9}/shift-left, code 24
+              link unite-bitwise, call sbox/{tmp10}/shift-left, code 16
+              link unite-bitwise, call sbox/{tmp11}/shift-left, code 8
               link unite-bitwise, read sbox/{tmp12}
       save tmp13, call ks-row/subtract, read key-size
       save key-schedule/{ks-row}, call key-schedule/{tmp13}/oppose-bitwise, read t
@@ -185,12 +188,12 @@ task do-reset
           link unite, call ks-row/is-max, code 4
         hook hold
           save inv-key-schedule/{inv-ks-row}, read t
-      save tmp16, call t/shift-head-unsigned, code 24
+      save tmp16, call t/unsigned-shift-right, code 24
       save tmp17
-        call t/shift-head-unsigned, code 16
+        call t/unsigned-shift-right, code 16
           link intersect-bitwise, code 255
       save tmp18
-        call t/shift-head-unsigned, code 8
+        call t/unsigned-shift-right, code 8
           link intersect-bitwise, code 255
       save tmp19, call t/intersect-bitwise, code 255
       save inv-key-schedule/{inv-ks-row}
@@ -262,12 +265,12 @@ task do-crypt-block
     hook test
       call round/is-below, read n-rounds
     hook step
-      save tmp32, call s0/shift-head-unsigned, code 24
+      save tmp32, call s0/unsigned-shift-right, code 24
       save tmp33
-        call s1/shift-head-unsigned, code 16
+        call s1/unsigned-shift-right, code 16
           link intersect-bitwise, code 255
       save tmp34
-        call s2/shift-head-unsigned, code 8
+        call s2/unsigned-shift-right, code 8
           link intersect-bitwise, code 255
       save tmp35, call s3/intersect-bitwise, code 255
       save tmp36, save ks-row, call increment, read ks-row
@@ -276,12 +279,12 @@ task do-crypt-block
           link oppose-bitwise, read submix2/{tmp34}
           link oppose-bitwise, read submix3/{tmp35}
           link oppose-bitwise, read key-schedule/{tmp36}
-      save tmp37, call s1/shift-head-unsigned, code 24
+      save tmp37, call s1/unsigned-shift-right, code 24
       save tmp38
-        call s2/shift-head-unsigned, code 16
+        call s2/unsigned-shift-right, code 16
           link intersect-bitwise, code 255
       save tmp39
-        call s3/shift-head-unsigned, code 8
+        call s3/unsigned-shift-right, code 8
           link intersect-bitwise, code 255
       save tmp40, call s0/intersect-bitwise, code 255
       save tmp41, save ks-row, call increment, read ks-row
@@ -290,12 +293,12 @@ task do-crypt-block
           link oppose-bitwise, read submix2/{tmp39}
           link oppose-bitwise, read submix3/{tmp40}
           link oppose-bitwise, read key-schedule/{tmp41}
-      save tmp42, call s2/shift-head-unsigned, code 24
+      save tmp42, call s2/unsigned-shift-right, code 24
       save tmp43
-        call s3/shift-head-unsigned, code 16
+        call s3/unsigned-shift-right, code 16
           link intersect-bitwise, code 255
       save tmp44
-        call s0/shift-head-unsigned, code 8
+        call s0/unsigned-shift-right, code 8
           link intersect-bitwise, code 255
       save tmp45, call s1/intersect-bitwise, code 255
       save tmp46, save ks-row, call increment, read ks-row
@@ -304,12 +307,12 @@ task do-crypt-block
           link oppose-bitwise, read submix2/{tmp44}
           link oppose-bitwise, read submix3/{tmp45}
           link oppose-bitwise, read key-schedule/{tmp46}
-      save tmp47, call s3/shift-head-unsigned, code 24
+      save tmp47, call s3/unsigned-shift-right, code 24
       save tmp48
-        call s0/shift-head-unsigned, code 16
+        call s0/unsigned-shift-right, code 16
           link intersect-bitwise, code 255
       save tmp49
-        call s1/shift-head-unsigned, code 8
+        call s1/unsigned-shift-right, code 8
           link intersect-bitwise, code 255
       save tmp50, call s2/intersect-bitwise, code 255
       save tmp51, save ks-row, call increment, read ks-row
@@ -323,64 +326,64 @@ task do-crypt-block
       save s2, read t2
       save s3, read t3
       save round, call increment, read round
-  save tmp53, call s0/shift-head-unsigned, code 24
+  save tmp53, call s0/unsigned-shift-right, code 24
   save tmp54
-    call s1/shift-head-unsigned, code 16
+    call s1/unsigned-shift-right, code 16
       link intersect-bitwise, code 255
   save tmp55
-    call s2/shift-head-unsigned, code 8
+    call s2/unsigned-shift-right, code 8
       link intersect-bitwise, code 255
   save tmp56, call s3/intersect-bitwise, code 255
   save tmp57, save ks-row, call increment, read ks-row
   save t0
-    call sbox/{tmp53}/shift-base, code 24
-      link unite-bitwise, call sbox/{tmp54}/shift-base, code 16
-      link unite-bitwise, call sbox/{tmp55}/shift-base, code 8
+    call sbox/{tmp53}/shift-left, code 24
+      link unite-bitwise, call sbox/{tmp54}/shift-left, code 16
+      link unite-bitwise, call sbox/{tmp55}/shift-left, code 8
       link unite-bitwise, read sbox/{tmp56}
       link oppose-bitwise, read key-schedule/{tmp57}
-  save tmp58, call s1/shift-head-unsigned, code 24
+  save tmp58, call s1/unsigned-shift-right, code 24
   save tmp59
-    call s2/shift-head-unsigned, code 16
+    call s2/unsigned-shift-right, code 16
       link intersect-bitwise, code 255
   save tmp60
-    call s3/shift-head-unsigned, code 8
+    call s3/unsigned-shift-right, code 8
       link intersect-bitwise, code 255
   save tmp61, call s0/intersect-bitwise, code 255
   save tmp62, save ks-row, call increment, read ks-row
   save t1
-    call sbox/{tmp58}/shift-base, code 24
-      link unite-bitwise, call sbox/{tmp59}/shift-base, code 16
-      link unite-bitwise, call sbox/{tmp60}/shift-base, code 8
+    call sbox/{tmp58}/shift-left, code 24
+      link unite-bitwise, call sbox/{tmp59}/shift-left, code 16
+      link unite-bitwise, call sbox/{tmp60}/shift-left, code 8
       link unite-bitwise, read sbox/{tmp61}
       link oppose-bitwise, read key-schedule/{tmp62}
-  save tmp63, call s2/shift-head-unsigned, code 24
+  save tmp63, call s2/unsigned-shift-right, code 24
   save tmp64
-    call s3/shift-head-unsigned, code 16
+    call s3/unsigned-shift-right, code 16
       link intersect-bitwise, code 255
   save tmp65
-    call s0/shift-head-unsigned, code 8
+    call s0/unsigned-shift-right, code 8
       link intersect-bitwise, code 255
   save tmp66, call s1/intersect-bitwise, code 255
   save tmp67, save ks-row, call increment, read ks-row
   save t2
-    call sbox/{tmp63}/shift-base, code 24
-      link unite-bitwise, call sbox/{tmp64}/shift-base, code 16
-      link unite-bitwise, call sbox/{tmp65}/shift-base, code 8
+    call sbox/{tmp63}/shift-left, code 24
+      link unite-bitwise, call sbox/{tmp64}/shift-left, code 16
+      link unite-bitwise, call sbox/{tmp65}/shift-left, code 8
       link unite-bitwise, read sbox/{tmp66}
       link oppose-bitwise, read key-schedule/{tmp67}
-  save tmp68, call s3/shift-head-unsigned, code 24
+  save tmp68, call s3/unsigned-shift-right, code 24
   save tmp69
-    call s0/shift-head-unsigned, code 16
+    call s0/unsigned-shift-right, code 16
       link intersect-bitwise, code 255
   save tmp70
-    call s1/shift-head-unsigned, code 8
+    call s1/unsigned-shift-right, code 8
       link intersect-bitwise, code 255
   save tmp71, call s2/intersect-bitwise, code 255
   save tmp72, save ks-row, call increment, read ks-row
   save t3
-    call sbox/{tmp68}/shift-base, code 24
-      link unite-bitwise, call sbox/{tmp69}/shift-base, code 16
-      link unite-bitwise, call sbox/{tmp70}/shift-base, code 8
+    call sbox/{tmp68}/shift-left, code 24
+      link unite-bitwise, call sbox/{tmp69}/shift-left, code 16
+      link unite-bitwise, call sbox/{tmp70}/shift-left, code 8
       link unite-bitwise, read sbox/{tmp71}
       link oppose-bitwise, read key-schedule/{tmp72}
   save m/{offset}, read t0

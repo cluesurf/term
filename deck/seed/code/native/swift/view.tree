@@ -6,40 +6,40 @@ form alignment
   take anchor
   take offset
 
-host vertical-alignment
-  term top
-  term center
-  term bottom
-  term first-text-baseline
-  term last-text-baseline
+form vertical-align
+  case top
+  case center
+  case bottom
+  case first-text-baseline
+  case last-text-baseline
 
-host horizontal-alignment
-  term leading
-  term center
-  term trailing
+form horizontal-align
+  case leading
+  case center
+  case trailing
 
-host blending-mode
-  term normal
-  term darken
-  term multiply
-  term color-burn
-  term plus-darker
-  term lighten
-  term screen
-  term color-dodge
-  term plus-lighter
-  term overlay
-  term soft-light
-  term hard-light
-  term difference
-  term exclusion
-  term hue
-  term saturation
-  term color
-  term luminosity
-  term source-atop
-  term destination-over
-  term destination-out
+form blend-mode
+  case normal
+  case darken
+  case multiply
+  case color-burn
+  case plus-darker
+  case lighten
+  case screen
+  case color-dodge
+  case plus-lighter
+  case overlay
+  case soft-light
+  case hard-light
+  case difference
+  case exclusion
+  case hue
+  case saturation
+  case color
+  case luminosity
+  case source-atop
+  case destination-over
+  case destination-out
 
 form dock
   link dock, like native-view

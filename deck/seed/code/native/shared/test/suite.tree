@@ -1,4 +1,13 @@
 
+load @term/seed/code/clock
+  find now
+
+load @term/seed/code/list
+  find join
+
+load @term/seed/code/json
+  find is-null
+
 load @term/seed/code/list
   find get
   find pop
@@ -42,7 +51,7 @@ task register
         bind b, code 0
     hook hold
       save group
-        call text-join
+        call join
           bind list, read group-stack
           bind separator, text < > >
 
@@ -100,7 +109,7 @@ task run
   save failures
     make list
   save start
-    call clock/now/get
+    call now
 
   save size
     call size
@@ -153,7 +162,7 @@ task run
         call make
           bind name, read name
           bind start-time
-            call clock/now/get
+            call now
 
       call set
         bind ctx, read ctx
@@ -195,7 +204,7 @@ task run
           bind b, code 1
 
   save end
-    call clock/now/get
+    call now
   save duration
     call subtract
       bind a, read end

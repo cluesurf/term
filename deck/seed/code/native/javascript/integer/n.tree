@@ -133,8 +133,8 @@ tree integer
         task seek-rise
         task seek-remainder
         task seek-remainder-euclid
-        task seek-shift-base
-        task seek-shift-head
+        task seek-shift-left
+        task seek-shift-right
         task seek-subtract
         task seek-unsign
 
@@ -177,8 +177,8 @@ tree integer
         task checked-rise
         task checked-remainder
         task checked-remainder-euclid
-        task checked-shift-base
-        task checked-shift-head
+        task checked-shift-left
+        task checked-shift-right
         task checked-subtract
         task checked-unsign
 
@@ -197,8 +197,8 @@ tree integer
         task clamped-rise
         task clamped-remainder
         task clamped-remainder-euclid
-        task clamped-shift-base
-        task clamped-shift-head
+        task clamped-shift-left
+        task clamped-shift-right
         task clamped-subtract
         task clamped-unsign
 
@@ -216,8 +216,8 @@ tree integer
         task wrapping-rise
         task wrapping-remainder
         task wrapping-remainder-euclid
-        task wrapping-shift-base
-        task wrapping-shift-head
+        task wrapping-shift-left
+        task wrapping-shift-right
         task wrapping-subtract
         task wrapping-unsign
 
@@ -226,9 +226,9 @@ tree integer
           note unsafe
         task unchecked-multiply
           note unsafe
-        task unchecked-shift-base
+        task unchecked-shift-left
           note unsafe
-        task unchecked-shift-head
+        task unchecked-shift-right
           note unsafe
         task unchecked-subtract
           note unsafe
@@ -247,8 +247,8 @@ tree integer
         task rise-test-and-roll
         task remainder-test-and-roll
         task remainder-euclid-test-and-roll
-        task shift-base-test-and-roll
-        task shift-head-test-and-roll
+        task shift-left-test-and-roll
+        task shift-right-test-and-roll
         task subtract-test-and-roll
         task unsign-test-and-roll
 
