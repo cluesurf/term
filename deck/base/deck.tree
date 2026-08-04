@@ -1,0 +1,6 @@
+
+deck @term/base
+  head <Version control for structured knowledge data>
+  mark <0.0.1>
+  sort tool
+  lock mit

@@ -1,0 +1,24 @@
+{
+  "name": "@cluesurf/base.tree",
+  "version": "0.0.1",
+  "license": "MIT",
+  "description": "Version control for structured knowledge data: the base protocol library.",
+  "type": "module",
+  "main": "./host/index.js",
+  "scripts": {
+    "make": "rm -rf host && tsc && tsc-alias",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint \"code/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"code/**/*.ts\" \"test/**/*.ts\""
+  },
+  "prettier": "@cluesurf/wash/flow.json",
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "prettier": "^3.6.2",
+    "tsc-alias": "^1.8.15",
+    "tsx": "^4.22.4",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.9"
+  }
+}

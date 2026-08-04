@@ -1,0 +1,44 @@
+import { createHash } from 'node:crypto'
+import type { RecordNode, Value } from '@/base/type'
+import { canonicalBytes, canonicalValueBytes } from '@/canon/canonicalize'
+
+// Content addressing. A hash is computed over the canonical DAG-CBOR bytes,
+// never over the .tree text and never over a text rendering of those bytes, so
+// reformatting never changes a hash and equivalent records hash identically.
+//
+// The function is NAMED IN THE ADDRESS rather than assumed. `sha256:<hex>` is
+// the textual multihash: a reader can always tell which function produced a
+// given address, so moving to another function later is a versioned change
+// rather than a format fork.
+//
+// sha256 is chosen over faster alternatives because the format is meant to be
+// implemented by other people, and sha256 is in every standard library while
+// blake3 usually is not. The workload is not hash-bound: cost is dominated by
+// chunk fetch, and content-defined chunking uses a separate rolling hash.
+//
+// See note/library/base/20-serialization-and-wire-format.md.
+
+export const HASH_FUNCTION = 'sha256'
+
+// The hash of raw canonical bytes.
+export function hashCanonicalBytes(bytes: Uint8Array): string {
+  const hex = createHash(HASH_FUNCTION).update(bytes).digest('hex')
+  return `${HASH_FUNCTION}:${hex}`
+}
+
+// The hash of an opaque string payload. Used by the chunk store for blobs and
+// for the string-keyed objects the store holds, which are not record graphs.
+export function hashBytes(bytes: string): string {
+  const hex = createHash(HASH_FUNCTION).update(bytes, 'utf8').digest('hex')
+  return `${HASH_FUNCTION}:${hex}`
+}
+
+// The content hash of a record, over its canonical bytes.
+export function hashRecord(node: RecordNode): string {
+  return hashCanonicalBytes(canonicalBytes(node))
+}
+
+// The content hash of a bare value, over its canonical bytes.
+export function hashValue(value: Value): string {
+  return hashCanonicalBytes(canonicalValueBytes(value))
+}
