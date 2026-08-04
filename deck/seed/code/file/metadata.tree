@@ -1,5 +1,5 @@
 
-# File metadata: size and kind. The clean uniform interface, the per-env native implementation is selected at build time and hidden. A missing path reads as size 0 and kind false, so the API stays total.
+# File metadata: size and kind. The clean uniform interface, the per-env native implementation is selected at build time and hidden. A missing path reads as code 0 and kind false, so the API stays total.
 
 load @term/seed/code/native/file/metadata
   find metadata-size

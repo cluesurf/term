@@ -19,11 +19,11 @@ host channel
 
 host range
   host j
-    host start, size 0
-    host end, size 0.221
+    host start, code 0
+    host end, code 0.221
   host c
-    host start, size 0
-    host end, size 0.19
+    host start, code 0
+    host end, code 0.19
   host h
-    host start, size 0
-    host end, size 360
+    host start, code 0
+    host end, code 360

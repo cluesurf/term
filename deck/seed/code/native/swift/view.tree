@@ -178,74 +178,74 @@ form dock
       read width
 
   task set-brightness
-    func brightness(Double)
+#     func brightness(Double)
   task set-clip-shape
-    func clipShape<S>(_ shape: S, style: FillStyle = FillStyle()) -> some View where S : Shape
+#     func clipShape<S>(_ shape: S, style: FillStyle = FillStyle()) -> some View where S : Shape
   task set-color-invert
-    func colorInvert()
+#     func colorInvert()
   task set-color-multiply
-    func colorMultiply(Color)
+#     func colorMultiply(Color)
   task set-container-shape
   task set-context-menu
-    func contextMenu<MenuItems>(menuItems: () -> MenuItems)
+#     func contextMenu<MenuItems>(menuItems: () -> MenuItems)
   task set-contrast
-    func contrast(Double)
+#     func contrast(Double)
   task set-coordinate-space
   task set-corner-radius
-    func cornerRadius(CGFloat, antialiased: Bool)
+#     func cornerRadius(CGFloat, antialiased: Bool)
   task set-disabled
-    func disabled(Bool)
+#     func disabled(Bool)
   task set-file-exporter
   task set-fixed-size
-    func fixedSize()
+#     func fixedSize()
   task set-focusable
-    func focusable(Bool)
+#     func focusable(Bool)
   task set-focused
-    func focused(FocusState<Bool>.Binding)
+#     func focused(FocusState<Bool>.Binding)
   task set-font
-    func font(Font?)
+#     func font(Font?)
   task set-foreground-color
-    func foregroundColor(Color?)
-    func foregroundStyle<S>(_ style: S) -> some View where S : ShapeStyle
+#     func foregroundColor(Color?)
+#     func foregroundStyle<S>(_ style: S) -> some View where S : ShapeStyle
   task set-grayscale
-    func grayscale(Double)
+#     func grayscale(Double)
   task set-help
-    func help(Text)
+#     func help(Text)
   task set-hidden
-    func hidden()
+#     func hidden()
   task set-hue-rotation
-    func hueRotation(Angle)
+#     func hueRotation(Angle)
   task set-line-spacing
-    func lineSpacing(CGFloat)
+#     func lineSpacing(CGFloat)
 
-  luminanceToAlpha
-    func luminanceToAlpha()
+#   luminanceToAlpha
+#     func luminanceToAlpha()
   task set-mask
-    func mask<Mask>(alignment: Alignment, () -> Mask)
-  func menuIndicator(Visibility)
-  func offset(CGSize)
-  func offset(x: CGFloat, y: CGFloat)
-  func onAppear(perform: (() -> Void)?)
-  func onDisappear(perform: (() -> Void)?)
-  func onDrag(() -> NSItemProvider)
-  func onDrop(of: [UTType], delegate: DropDelegate)
-  func onHover(perform: (Bool) -> Void)
-  func onLongPressGesture(minimumDuration: Double, maximumDistance: CGFloat, perform: () -> Void, onPressingChanged: ((Bool) -> Void)?)
-  func onMoveCommand(perform: ((MoveCommandDirection) -> Void)?)
-  func onPasteCommand(of: [UTType], perform: ([NSItemProvider]) -> Void)
-  func onTapGesture(count: Int, perform: () -> Void)
-  func opacity(Double)
-  func overlay<S>(S, ignoresSafeAreaEdges: Edge.Set)
-  func padding(CGFloat)
-  func padding(EdgeInsets)
-  func popover<Content>(isPresented: Binding<Bool>, attachmentAnchor: PopoverAttachmentAnchor, arrowEdge: Edge, content: () -> Content)
-  func position(CGPoint)
-  func refreshable(action: () async -> Void)
-  func saturation(Double)
-  func scaledToFill()
-  func scaledToFit()
-  func shadow(color: Color, radius: CGFloat, x: CGFloat, y: CGFloat)
-  func sheet<Content>(isPresented: Binding<Bool>, onDismiss: (() -> Void)?, content: () -> Content)
-  func sheet<Item, Content>(item: Binding<Item?>, onDismiss: (() -> Void)?, content: (Item) -> Content)
-  func tint(Color?)
-  func zIndex(Double)
+#     func mask<Mask>(alignment: Alignment, () -> Mask)
+#   func menuIndicator(Visibility)
+#   func offset(CGSize)
+#   func offset(x: CGFloat, y: CGFloat)
+#   func onAppear(perform: (() -> Void)?)
+#   func onDisappear(perform: (() -> Void)?)
+#   func onDrag(() -> NSItemProvider)
+#   func onDrop(of: [UTType], delegate: DropDelegate)
+#   func onHover(perform: (Bool) -> Void)
+#   func onLongPressGesture(minimumDuration: Double, maximumDistance: CGFloat, perform: () -> Void, onPressingChanged: ((Bool) -> Void)?)
+#   func onMoveCommand(perform: ((MoveCommandDirection) -> Void)?)
+#   func onPasteCommand(of: [UTType], perform: ([NSItemProvider]) -> Void)
+#   func onTapGesture(count: Int, perform: () -> Void)
+#   func opacity(Double)
+#   func overlay<S>(S, ignoresSafeAreaEdges: Edge.Set)
+#   func padding(CGFloat)
+#   func padding(EdgeInsets)
+#   func popover<Content>(isPresented: Binding<Bool>, attachmentAnchor: PopoverAttachmentAnchor, arrowEdge: Edge, content: () -> Content)
+#   func position(CGPoint)
+#   func refreshable(action: () async -> Void)
+#   func saturation(Double)
+#   func scaledToFill()
+#   func scaledToFit()
+#   func shadow(color: Color, radius: CGFloat, x: CGFloat, y: CGFloat)
+#   func sheet<Content>(isPresented: Binding<Bool>, onDismiss: (() -> Void)?, content: () -> Content)
+#   func sheet<Item, Content>(item: Binding<Item?>, onDismiss: (() -> Void)?, content: (Item) -> Content)
+#   func tint(Color?)
+#   func zIndex(Double)

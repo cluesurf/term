@@ -19,8 +19,8 @@ host channel
 
 host range
   host i
-    host start, size -0.595
-    host end, size 0.595
+    host start, code -0.595
+    host end, code 0.595
   host q
-    host start, size -0.522
-    host end, size 0.522
+    host start, code -0.522
+    host end, code 0.522

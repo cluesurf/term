@@ -25,6 +25,8 @@ mine host
         slot hook
       mine form, like host-bind
         slot bind
+      mine form, like host
+        slot host
 
 mine host-form
   mine term, term form

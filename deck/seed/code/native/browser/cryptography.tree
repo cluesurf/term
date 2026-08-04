@@ -39,9 +39,9 @@ task browser-digest-name
   note private
   take algorithm, like text
   dock call <run {
-    const map = { sha256: "SHA-256", sha384: "SHA-384", sha512: "SHA-512", sha1: "SHA-1" };
-    return map[algorithm] || algorithm.toUpperCase();
-  }>
+#     const map = { sha256: "SHA-256", sha384: "SHA-384", sha512: "SHA-512", sha1: "SHA-1" };
+#     return map[algorithm] || algorithm.toUpperCase();
+#   }>
 
 task browser-text-encode
   note private
@@ -52,6 +52,6 @@ task browser-bytes-to-hex
   note private
   take buffer
   dock call <run {
-    const bytes = new Uint8Array(buffer);
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
-  }>
+#     const bytes = new Uint8Array(buffer);
+#     return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+#   }>

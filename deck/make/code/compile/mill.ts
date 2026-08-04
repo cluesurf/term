@@ -155,6 +155,17 @@ function isWaitTrue(node: Node): boolean {
   return isWaitWith(node, 'true')
 }
 
+// is this node `halt kink`? On a `call` it marks error propagation to the caller (Rust `?`), not an argument.
+function isHaltKink(node: Node): boolean {
+  if (node.kind !== 'group' || headName(node) !== 'halt') {
+    return false
+  }
+
+  const arg = node.nodes[1]
+
+  return arg?.kind === 'group' && headName(arg) === 'kink'
+}
+
 function isWaitFalse(node: Node): boolean {
   return isWaitWith(node, 'false')
 }
@@ -1082,9 +1093,11 @@ export function mill(tree: RootNode, file: string): MillResult {
     // is auto-awaited later by async resolution when the callee turns out to be async.
     const awaited = parts.slice(1).some(isWaitTrue)
     const background = parts.slice(1).some(isWaitFalse)
+    // `halt kink` propagates the callee's error rather than being an argument
+    const propagate = parts.slice(1).some(isHaltKink)
     const callArgs = parts
       .slice(1)
-      .filter(a => !isWaitTrue(a) && !isWaitFalse(a))
+      .filter(a => !isWaitTrue(a) && !isWaitFalse(a) && !isHaltKink(a))
       .map(a => toExpression(a, scope))
 
     let result: Expression
@@ -1129,6 +1142,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         args: callArgs,
         span,
         ...(background ? { background: true } : {}),
+        ...(propagate ? { propagate: true } : {}),
       }
     }
 
@@ -2430,6 +2444,64 @@ export function mill(tree: RootNode, file: string): MillResult {
   // a real definition that computes in proofs and reads as a value. The result type comes from an optional `like <T>`,
   // else it is inferred from a literal value. Returns undefined for a value-less foreign host global (`host x, name <Y>`),
   // which stays an ambient binding handled by the body builder.
+  // a `host` group whose children are `host` groups, as a record expression. Returns undefined when this is an
+  // ordinary `host <name>, <value>` so the caller falls back to the plain-value path. Recurses, so records nest to
+  // any depth; a leaf `host <field>, <value>` contributes one field.
+  function hostRecord(group: GroupNode): Expression | undefined {
+    const children = rest(group)
+      .slice(1)
+      .filter(
+        (a): a is GroupNode =>
+          a.kind === 'group' && headName(a) === 'host',
+      )
+
+    if (children.length === 0) {
+      return undefined
+    }
+
+    const fields: { name: string; value: Expression }[] = []
+
+    for (const child of children) {
+      const target = rest(child)[0]
+      const fieldName =
+        target?.kind === 'group' ? headName(target) : undefined
+
+      if (!fieldName) {
+        continue
+      }
+
+      const deeper = hostRecord(child)
+
+      if (deeper) {
+        fields.push({ name: fieldName, value: deeper })
+        continue
+      }
+
+      const valueNode = rest(child)
+        .slice(1)
+        .find(
+          a =>
+            !(
+              a.kind === 'group' &&
+              HOST_ANNOTATION.has(headName(a) ?? '')
+            ),
+        )
+
+      if (valueNode) {
+        fields.push({
+          name: fieldName,
+          value: toExpression(valueNode, new Set<string>()),
+        })
+      }
+    }
+
+    if (fields.length === 0) {
+      return undefined
+    }
+
+    return { form: 'record', name: '', fields, span: spanOf(group) }
+  }
+
   function buildHostConstant(group: GroupNode): Statement | undefined {
     const args = rest(group)
     const target = args[0]
@@ -2453,7 +2525,13 @@ export function mill(tree: RootNode, file: string): MillResult {
       return undefined
     }
 
-    const value = toExpression(valueNode, new Set<string>())
+    // a `host` whose value children are themselves `host` groups is a NESTED RECORD constant:
+    //   host range / host h / host start, size 0 / host end, size 360
+    // Each nested `host` becomes a field, recursively, so a table of ranges is written as ordinary indented data
+    // rather than a `form` plus `make` / `bind` per shape.
+    const nested = hostRecord(group)
+
+    const value = nested ?? toExpression(valueNode, new Set<string>())
 
     const likeNode = args
       .slice(1)

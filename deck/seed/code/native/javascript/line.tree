@@ -27,7 +27,7 @@ form line
   task walk
     take step, like task
 
-    save i, size 0
+    save i, code 0
     save n
       call get-size
         read self

@@ -4,10 +4,10 @@ task test-suite
   take scope
 
   walk list, read suite
-    hook step
+    hook next
       take call
       walk list, read call/nest
-        hook step
+        hook next
           take t, name test
           fork case, read t/nest/size
             case 2

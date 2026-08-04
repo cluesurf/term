@@ -39,11 +39,11 @@ task list
 task rust-get-locale
   note private
   dock call <run {
-    match std::env::var("LANG") {
-      Ok(lang) => {
-        let l = lang.split('.').next().unwrap_or("en");
-        l.replace('_', "-").to_string()
-      }
-      Err(_) => String::from("en"),
-    }
-  }>
+#     match std::env::var("LANG") {
+#       Ok(lang) => {
+#         let l = lang.split('.').next().unwrap_or("en");
+#         l.replace('_', "-").to_string()
+#       }
+#       Err(_) => String::from("en"),
+#     }
+#   }>

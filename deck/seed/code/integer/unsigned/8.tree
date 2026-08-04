@@ -4,5 +4,5 @@ form u8
     bind self-type, like u8
     bind actual-type, like u8
     bind signed-type, like i8
-    bind bits, size 8
-    bind bits-minus-one, size 7
+    bind bits, code 8
+    bind bits-minus-one, code 7

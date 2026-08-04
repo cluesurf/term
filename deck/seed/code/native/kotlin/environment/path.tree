@@ -37,8 +37,8 @@ task kotlin-data-dir
       os.contains("mac") -> "${'$'}home/Library/Application Support"
       os.contains("win") -> System.getenv("APPDATA") ?: ""
       else -> System.getenv("XDG_DATA_HOME") ?: "${'$'}home/.local/share"
-    }
-  }>
+#     }
+#   }>
 
 task kotlin-config-dir
   note private
@@ -49,8 +49,8 @@ task kotlin-config-dir
       os.contains("mac") -> "${'$'}home/Library/Preferences"
       os.contains("win") -> System.getenv("APPDATA") ?: ""
       else -> System.getenv("XDG_CONFIG_HOME") ?: "${'$'}home/.config"
-    }
-  }>
+#     }
+#   }>
 
 task kotlin-cache-dir
   note private
@@ -62,7 +62,7 @@ task kotlin-cache-dir
       os.contains("win") -> {
         val local = System.getenv("LOCALAPPDATA") ?: ""
         "${'$'}local\\Temp"
-      }
-      else -> System.getenv("XDG_CACHE_HOME") ?: "${'$'}home/.cache"
-    }
-  }>
+#       }
+#       else -> System.getenv("XDG_CACHE_HOME") ?: "${'$'}home/.cache"
+#     }
+#   }>

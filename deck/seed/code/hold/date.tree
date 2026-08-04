@@ -50,128 +50,128 @@ task get-days-in-year
 
 # https://en.wikipedia.org/wiki/Date_format_by_country
 
-function DayTriplet(year, month, date) {
-  this.year = year;
-  this.month = month;
-  this.date = date;
-}
+# function DayTriplet(year, month, date) {
+#   this.year = year;
+#   this.month = month;
+#   this.date = date;
+# }
 
 
-function GetMillisecondsFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return msFromTime(LocalTimeNoCheck(t));
-}
+# function GetMillisecondsFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return msFromTime(LocalTimeNoCheck(t));
+# }
 
 
-function GetUTCMillisecondsFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return msFromTime(t);
-}
+# function GetUTCMillisecondsFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return msFromTime(t);
+# }
 
 
-function GetSecondsFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return SecFromTime(LocalTimeNoCheck(t));
-}
+# function GetSecondsFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return SecFromTime(LocalTimeNoCheck(t));
+# }
 
 
-function GetUTCSecondsFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return SecFromTime(t);
-}
+# function GetUTCSecondsFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return SecFromTime(t);
+# }
 
 
-function GetMinutesFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return MinFromTime(LocalTimeNoCheck(t));
-}
+# function GetMinutesFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return MinFromTime(LocalTimeNoCheck(t));
+# }
 
 
-function GetUTCMinutesFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return MinFromTime(t);
-}
+# function GetUTCMinutesFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return MinFromTime(t);
+# }
 
 
-function GetHoursFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return HourFromTime(LocalTimeNoCheck(t));
-}
+# function GetHoursFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return HourFromTime(LocalTimeNoCheck(t));
+# }
 
 
-function GetUTCHoursFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return HourFromTime(t);
-}
+# function GetUTCHoursFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return HourFromTime(t);
+# }
 
 
-function GetFullYearFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return YearFromTime(LocalTimeNoCheck(t));
-}
+# function GetFullYearFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return YearFromTime(LocalTimeNoCheck(t));
+# }
 
 
-function GetUTCFullYearFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return YearFromTime(t);
-}
+# function GetUTCFullYearFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return YearFromTime(t);
+# }
 
 
-function GetMonthFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return MonthFromTime(LocalTimeNoCheck(t));
-}
+# function GetMonthFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return MonthFromTime(LocalTimeNoCheck(t));
+# }
 
 
-function GetUTCMonthFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return MonthFromTime(t);
-}
+# function GetUTCMonthFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return MonthFromTime(t);
+# }
 
-Intl.DateTimeFormat().resolvedOptions().timeZone
+# Intl.DateTimeFormat().resolvedOptions().timeZone
 
-function GetDateFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return DateFromTime(LocalTimeNoCheck(t));
-}
-var local_time_offset = DateLocalTimeOffset();
+# function GetDateFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return DateFromTime(LocalTimeNoCheck(t));
+# }
+# var local_time_offset = DateLocalTimeOffset();
 
-function LocalTime(time) {
-  if ($isNaN(time)) return time;
-  return time + local_time_offset + DaylightSavingsOffset(time);
-}
+# function LocalTime(time) {
+#   if ($isNaN(time)) return time;
+#   return time + local_time_offset + DaylightSavingsOffset(time);
+# }
 
-function LocalTimeNoCheck(time) {
-  return time + local_time_offset + DaylightSavingsOffset(time);
-}
+# function LocalTimeNoCheck(time) {
+#   return time + local_time_offset + DaylightSavingsOffset(time);
+# }
 
-function GetUTCDateFrom(aDate) {
-  var t = aDate.getMilliseconds();
-  if ($isNaN(t)) return t;
-  return DateFromTime(t);
-}
+# function GetUTCDateFrom(aDate) {
+#   var t = aDate.getMilliseconds();
+#   if ($isNaN(t)) return t;
+#   return DateFromTime(t);
+# }
 
-// Compute modified Julian day from year, month, date.
-// The missing days in 1582 are ignored for JavaScript compatibility.
-function ToJulianDay(year, month, date) {
-  var jy = (month > 1) ? year : year - 1;
-  var jm = (month > 1) ? month + 2 : month + 14;
-  var ja = FLOOR(0.01*jy);
-  return FLOOR(FLOOR(365.25*jy) + FLOOR(30.6001*jm) + date + 1720995) + 2 - ja + FLOOR(0.25*ja);
-}
+# // Compute modified Julian day from year, month, date.
+# // The missing days in 1582 are ignored for JavaScript compatibility.
+# function ToJulianDay(year, month, date) {
+#   var jy = (month > 1) ? year : year - 1;
+#   var jm = (month > 1) ? month + 2 : month + 14;
+#   var ja = FLOOR(0.01*jy);
+#   return FLOOR(FLOOR(365.25*jy) + FLOOR(30.6001*jm) + date + 1720995) + 2 - ja + FLOOR(0.25*ja);
+# }
 
 form date
   take second
@@ -193,36 +193,36 @@ form date
         call self/get-millisecond
         read milliseconds-per-day
 
-  function YearFromTime(time) {
-  return FromJulianDay(Day(time) + kDayZeroInJulianDay).year;
-}
-// ECMA 262 - 15.9.1.4
-function MonthFromTime(time) {
-  return FromJulianDay(Day(time) + kDayZeroInJulianDay).month;
-}
-// ECMA 262 - 15.9.1.5
-function DateFromTime(time) {
-  return FromJulianDay(Day(time) + kDayZeroInJulianDay).date;
-}
+#   function YearFromTime(time) {
+#   return FromJulianDay(Day(time) + kDayZeroInJulianDay).year;
+# }
+# // ECMA 262 - 15.9.1.4
+# function MonthFromTime(time) {
+#   return FromJulianDay(Day(time) + kDayZeroInJulianDay).month;
+# }
+# // ECMA 262 - 15.9.1.5
+# function DateFromTime(time) {
+#   return FromJulianDay(Day(time) + kDayZeroInJulianDay).date;
+# }
 
-function aDate.getMilliseconds() {
-  if (IS_DATE(aDate)) return _ValueOf(aDate);
-  throw new $TypeError('this is not a Date object.');
-}
-
-
-function msFromTime(time) {
-  return Modulo(time, msPerSecond);
-}
+# function aDate.getMilliseconds() {
+#   if (IS_DATE(aDate)) return _ValueOf(aDate);
+#   throw new $TypeError('this is not a Date object.');
+# }
 
 
-// ECMA 262 - 5.2
-function Modulo(value, remainder) {
-  var mod = value % remainder;
-  // Guard against returning -0.
-  if (mod == 0) return 0;
-  return mod >= 0 ? mod : mod + remainder;
-}
+# function msFromTime(time) {
+#   return Modulo(time, msPerSecond);
+# }
+
+
+# // ECMA 262 - 5.2
+# function Modulo(value, remainder) {
+#   var mod = value % remainder;
+#   // Guard against returning -0.
+#   if (mod == 0) return 0;
+#   return mod >= 0 ? mod : mod + remainder;
+# }
 
 task convert-from-julian-day-to-gregorian-day
   take day

@@ -4,5 +4,5 @@ form u64
     bind self-type, like u64
     bind actual-type, like u64
     bind signed-type, like i64
-    bind bits, size 64
-    bind bits-minus-one, size 63
+    bind bits, code 64
+    bind bits-minus-one, code 63

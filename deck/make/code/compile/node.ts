@@ -112,6 +112,10 @@ export type Expression =
       // `wait false`: a fire-and-forget call. It is made but never awaited, even when the callee is async, and it does
       // not make the caller async. Async resolution skips it; without this flag an async call is awaited by default.
       background?: boolean
+      // `halt kink`: propagate the callee's error to the caller rather than handling it here (Rust `?`). On the
+      // exception-based backends (TypeScript, Kotlin, Swift) this is the default behaviour and needs no emit; on Rust
+      // it must emit the `?` operator. Emitters that ignore it are correct only for the former.
+      propagate?: boolean
     }
   | { form: 'array'; items: Expression[]; span: Span; type?: Type }
   | {

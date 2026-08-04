@@ -60,10 +60,10 @@ host browser-worker-counter
 task browser-next-worker-id
   note private
   dock call <run {
-    const c = browser_worker_counter;
-    c.value += 1;
-    return c.value;
-  }>
+#     const c = browser_worker_counter;
+#     c.value += 1;
+#     return c.value;
+#   }>
 
 task browser-worker-run
   note private
@@ -72,41 +72,41 @@ task browser-worker-run
   take input
   take timeout
   dock call <run {
-    return new Promise((resolve, reject) => {
-      let timer;
-      worker.onmessage = (e) => {
-        if (timer) clearTimeout(timer);
-        worker.terminate();
-        resolve({
-          code: 0,
-          stdout: typeof e.data === "string" ? e.data : JSON.stringify(e.data),
-          stderr: "",
-          ok: true
-        });
-      };
-      worker.onerror = (e) => {
-        if (timer) clearTimeout(timer);
-        worker.terminate();
-        resolve({
-          code: 1,
-          stdout: "",
-          stderr: e.message || "worker error",
-          ok: false
-        });
-      };
-      if (timeout) {
-        timer = setTimeout(() => {
-          worker.terminate();
-          resolve({
-            code: 1,
-            stdout: "",
-            stderr: "timeout",
-            ok: false
-          });
-        }, timeout);
-      }
-      if (input != null) {
-        worker.postMessage(input);
-      }
-    });
-  }>
+#     return new Promise((resolve, reject) => {
+#       let timer;
+#       worker.onmessage = (e) => {
+#         if (timer) clearTimeout(timer);
+#         worker.terminate();
+#         resolve({
+#           code: 0,
+#           stdout: typeof e.data === "string" ? e.data : JSON.stringify(e.data),
+#           stderr: "",
+#           ok: true
+#         });
+#       };
+#       worker.onerror = (e) => {
+#         if (timer) clearTimeout(timer);
+#         worker.terminate();
+#         resolve({
+#           code: 1,
+#           stdout: "",
+#           stderr: e.message || "worker error",
+#           ok: false
+#         });
+#       };
+#       if (timeout) {
+#         timer = setTimeout(() => {
+#           worker.terminate();
+#           resolve({
+#             code: 1,
+#             stdout: "",
+#             stderr: "timeout",
+#             ok: false
+#           });
+#         }, timeout);
+#       }
+#       if (input != null) {
+#         worker.postMessage(input);
+#       }
+#     });
+#   }>

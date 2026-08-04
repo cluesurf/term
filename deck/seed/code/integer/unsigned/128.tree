@@ -4,5 +4,5 @@ form u128
     bind self-type, like u128
     bind actual-type, like u128
     bind signed-type, like i128
-    bind bits, size 128
-    bind bits-minus-one, size 127
+    bind bits, code 128
+    bind bits-minus-one, code 127

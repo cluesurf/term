@@ -4,5 +4,5 @@ form u16
     bind self-type, like u16
     bind actual-type, like u16
     bind signed-type, like i16
-    bind bits, size 16
-    bind bits-minus-one, size 15
+    bind bits, code 16
+    bind bits-minus-one, code 15

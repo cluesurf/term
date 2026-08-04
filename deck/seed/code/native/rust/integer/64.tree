@@ -3,5 +3,5 @@ form i64
   fuse integer
     bind self-type, like i64
     bind unsigned-type, like u64
-    bind bits, size 64
-    bind bits-minus-one, size 63
+    bind bits, code 64
+    bind bits-minus-one, code 63

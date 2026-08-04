@@ -19,5 +19,5 @@ host channel
 
 host range
   host h
-    host start, size 0
-    host end, size 360
+    host start, code 0
+    host end, code 360

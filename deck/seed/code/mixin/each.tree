@@ -7,7 +7,7 @@ tree define-each
 
   hook fuse
     walk list, read list
-      hook step
+      hook next
         take item
         fuse read tree-name
           read item

@@ -16,7 +16,7 @@ task browser-pipe-workers
   take from-worker
   take to-worker
   dock call <run {
-    from_worker.addEventListener("message", (e) => {
-      to_worker.postMessage(e.data);
-    });
-  }>
+#     from_worker.addEventListener("message", (e) => {
+#       to_worker.postMessage(e.data);
+#     });
+#   }>

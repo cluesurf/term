@@ -42,12 +42,12 @@ task browser-current-executable
 task browser-exit
   note private
   dock call <run {
-    if (typeof self !== "undefined" && typeof self.close === "function" && typeof window === "undefined") {
-      self.close();
-    } else if (typeof window !== "undefined") {
-      window.close();
-    }
-  }>
+#     if (typeof self !== "undefined" && typeof self.close === "function" && typeof window === "undefined") {
+#       self.close();
+#     } else if (typeof window !== "undefined") {
+#       window.close();
+#     }
+#   }>
 
 task browser-listen-beforeunload
   note private
@@ -58,9 +58,9 @@ task browser-listen-visibility
   note private
   take handler
   dock call <run {
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        handler();
-      }
-    });
-  }>
+#     document.addEventListener("visibilitychange", () => {
+#       if (document.visibilityState === "hidden") {
+#         handler();
+#       }
+#     });
+#   }>
