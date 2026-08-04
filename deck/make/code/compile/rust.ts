@@ -559,6 +559,11 @@ export function emitRust(program: Program): string {
       }
 
       case 'member': {
+        // a DYNAMIC segment (`read table/{key}`) indexes the collection through its handle
+        if (node.index) {
+          return `${expr(node.target)}.borrow()[${expr(node.index)} as usize]`
+        }
+
         // `map.size` / `array.length` read the length (a map goes through its Rc<RefCell> handle; an array is a plain
         // Vec). Rendered as i64, the seed number type.
         const read = collectionRead(node)

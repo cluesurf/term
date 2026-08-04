@@ -11,11 +11,11 @@ form lch
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term l
-  term c
-  term h
-  term alpha
+form channel
+  case l
+  case c
+  case h
+  case alpha
 
 host range
   host l

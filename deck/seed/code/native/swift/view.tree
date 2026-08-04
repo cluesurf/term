@@ -45,128 +45,159 @@ form dock
   link dock, like native-view
 
   task set-vertical-align-top
+    take self
     call self/dock/alignment-guide
       read vertical-align/top
 
   task set-vertical-align-center
+    take self
     call self/dock/alignment-guide
       read vertical-align/center
 
   task set-vertical-align-bottom
+    take self
     call self/dock/alignment-guide
       read vertical-align/bottom
 
   task set-vertical-align-first-text-baseline
+    take self
     call self/dock/alignment-guide
       read vertical-align/first-text-baseline
 
   task set-vertical-align-last-text-baseline
+    take self
     call self/dock/alignment-guide
       read vertical-align/last-text-baseline
 
   task set-horizontal-align-leading
+    take self
     call self/dock/alignment-guide
       read horizontal-align/leading
 
   task set-horizontal-align-center
+    take self
     call self/dock/alignment-guide
       read horizontal-align/center
 
   task set-horizontal-align-trailing
+    take self
     call self/dock/alignment-guide
       read horizontal-align/trailing
 
   task set-blend-mode-normal
+    take self
     call self/dock/blend-mode
       read blend-mode/normal
 
   task set-blend-mode-darken
+    take self
     call self/dock/blend-mode
       read blend-mode/darken
 
   task set-blend-mode-multiply
+    take self
     call self/dock/blend-mode
       read blend-mode/multiply
 
   task set-blend-mode-color-burn
+    take self
     call self/dock/blend-mode
       read blend-mode/color-burn
 
   task set-blend-mode-plus-darker
+    take self
     call self/dock/blend-mode
       read blend-mode/plus-darker
 
   task set-blend-mode-lighten
+    take self
     call self/dock/blend-mode
       read blend-mode/lighten
 
   task set-blend-mode-screen
+    take self
     call self/dock/blend-mode
       read blend-mode/screen
 
   task set-blend-mode-color-dodge
+    take self
     call self/dock/blend-mode
       read blend-mode/color-dodge
 
   task set-blend-mode-plus-lighter
+    take self
     call self/dock/blend-mode
       read blend-mode/plus-lighter
 
   task set-blend-mode-overlay
+    take self
     call self/dock/blend-mode
       read blend-mode/overlay
 
   task set-blend-mode-soft-light
+    take self
     call self/dock/blend-mode
       read blend-mode/soft-light
 
   task set-blend-mode-hard-light
+    take self
     call self/dock/blend-mode
       read blend-mode/hard-light
 
   task set-blend-mode-difference
+    take self
     call self/dock/blend-mode
       read blend-mode/difference
 
   task set-blend-mode-exclusion
+    take self
     call self/dock/blend-mode
       read blend-mode/exclusion
 
   task set-blend-mode-hue
+    take self
     call self/dock/blend-mode
       read blend-mode/hue
 
   task set-blend-mode-saturation
+    take self
     call self/dock/blend-mode
       read blend-mode/saturation
 
   task set-blend-mode-color
+    take self
     call self/dock/blend-mode
       read blend-mode/color
 
   task set-blend-mode-luminosity
+    take self
     call self/dock/blend-mode
       read blend-mode/luminosity
 
   task set-blend-mode-source-atop
+    take self
     call self/dock/blend-mode
       read blend-mode/source-atop
 
   task set-blend-mode-destination-over
+    take self
     call self/dock/blend-mode
       read blend-mode/destination-over
 
   task set-blend-mode-destination-out
+    take self
     call self/dock/blend-mode
       read blend-mode/destination-out
 
   task set-blur
+    take self
     take radius, like decimal
     call self/dock/blur
       bind radius, read radius
       bind opaque, term true
 
   task set-border
+    take self
     take color, like color-rgb
     take width, like decimal
     call self/dock/border

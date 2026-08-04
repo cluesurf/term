@@ -2,6 +2,9 @@
 load @term/seed/code/list
   find push
 
+load @term/seed/code/text/string
+  find concat
+
 load @term/seed/code/test/coverage
   find coverage
   find file-coverage
@@ -42,15 +45,15 @@ task format
         bind b, text <summary>
     hook hold
       send back
-        call text-concat
+        call concat
           bind a, text <Coverage: >
           bind b
-            call text-concat
+            call concat
               bind a
                 call to-text
                   bind value, read covered
               bind b
-                call text-concat
+                call concat
                   bind a, text </>
                   bind b
                     call to-text
@@ -73,10 +76,10 @@ task format
       take site, name fc
       call push
         read lines
-        call text-concat
+        call concat
           bind a, read fc/path
           bind b
-            call text-concat
+            call concat
               bind a, text <: >
               bind b
                 call to-text

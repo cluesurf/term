@@ -1,6 +1,6 @@
 note <Unicode text measurement and normalization, native-powered through declarative bindings: rune / byte / grapheme counts, and the four normalization forms. Counts of 'café' (precomposed) versus its NFD decomposition show runes, bytes, and graphemes diverge correctly.>
 
-load @term/base/code/text/unicode
+load @term/seed/code/text/unicode
   find rune-count
   find byte-count
   find grapheme-count

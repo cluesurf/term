@@ -1,7 +1,13 @@
 
+dock load
+  load <global:shape>, name shape
+
 load @term/seed/code/list
   find get
   find size
+
+load @term/seed/code/text
+  find substring
 
 task deep-equal
   take a
@@ -19,10 +25,10 @@ task deep-equal
   fork test
     hook test
       meet and
-        call is-list
-          bind value, read a
-        call is-list
-          bind value, read b
+        call shape/is-list
+          read a
+        call shape/is-list
+          read b
     hook hold
       save size-a
         call size
@@ -74,11 +80,9 @@ task contains-text
   like boolean
 
   save text-size
-    call text-size
-      bind text, read text
+    read text/length
   save search-size
-    call text-size
-      bind text, read search
+    read search/length
   fork test
     hook test
       call is-equal
@@ -108,8 +112,8 @@ task contains-text
         bind b, read limit
     hook hold
       save slice
-        call text-slice
-          bind text, read text
+        call substring
+          bind value, read text
           bind start, read i
           bind end
             call add

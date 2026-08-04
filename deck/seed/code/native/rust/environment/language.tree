@@ -1,12 +1,24 @@
 
+# The host locale. Forwards to the linked tongue runtime shim, which normalises the platform's tag to BCP 47.
+# Internal: reached only through the public environment API.
+#
+# The shim is bound as `tongue` rather than `locale` so it does not collide with the `locale` form this module
+# returns: a name is package-global, and two things called `locale` shadow each other.
+
+dock load
+  load <global:locale>, name tongue
+
 load @term/seed/code/environment/language
   find locale
+
+load @term/seed/code/text
+  find split
 
 task read
   like locale
 
   save tag
-    call rust-get-locale
+    call tongue/tag
   save parts
     call split
       read tag
@@ -19,31 +31,18 @@ task read
         read parts/1
       hook miss
         text <>
+  save timezone
+    call tongue/timezone
 
   send back
     make locale
       bind language, read language
       bind region, read region
       bind tag, read tag
-      bind timezone, text <>
+      bind timezone, read timezone
 
 task list
   like list
 
-  save tag
-    call rust-get-locale
   send back
-    make list
-      read tag
-
-task rust-get-locale
-  note private
-  dock call <run {
-#     match std::env::var("LANG") {
-#       Ok(lang) => {
-#         let l = lang.split('.').next().unwrap_or("en");
-#         l.replace('_', "-").to_string()
-#       }
-#       Err(_) => String::from("en"),
-#     }
-#   }>
+    call tongue/preferred

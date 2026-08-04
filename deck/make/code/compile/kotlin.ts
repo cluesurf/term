@@ -517,6 +517,10 @@ export function emitKotlin(program: Program): string {
           return `${expr(read.target)}.size.toLong()`
         }
 
+        if (node.index) {
+          return `${expr(node.target)}[${expr(node.index)}]`
+        }
+
         return `${expr(node.target)}.${camel(node.name)}`
       }
 

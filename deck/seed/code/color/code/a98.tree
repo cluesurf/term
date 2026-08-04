@@ -11,8 +11,8 @@ form a98
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term r
-  term g
-  term b
-  term alpha
+form channel
+  case r
+  case g
+  case b
+  case alpha

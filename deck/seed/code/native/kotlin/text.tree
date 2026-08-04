@@ -1,4 +1,7 @@
 
+dock load
+  load <global:text>, name text
+
 task slice
   take value, like text
   take start, like size
@@ -128,81 +131,123 @@ task kotlin-substring
   take value, like text
   take start, like size
   take end, like size
-  dock call <value.substring(start.toInt(), end.toInt())>
+  send back
+    call text/slice
+      read value
+      read start
+      read end
 
 task kotlin-substring-from
   note private
   take value, like text
   take start, like size
-  dock call <value.substring(start.toInt())>
+  send back
+    call text/sliceFrom
+      read value
+      read start
 
 task kotlin-index-of
   note private
   take value, like text
   take search, like text
   take start, like size
-  dock call <value.indexOf(search, start.toInt())>
+  send back
+    call text/indexOf
+      read value
+      read search
+      read start
 
 task kotlin-replace-all
   note private
   take value, like text
   take search, like text
   take replacement, like text
-  dock call <value.replace(search, replacement)>
+  send back
+    call text/replace
+      read value
+      read search
+      read replacement
 
 task kotlin-replace-first
   note private
   take value, like text
   take search, like text
   take replacement, like text
-  dock call <value.replaceFirst(search, replacement)>
+  send back
+    call text/replaceFirst
+      read value
+      read search
+      read replacement
 
 task kotlin-split
   note private
   take value, like text
   take separator, like text
-  dock call <value.split(separator)>
+  send back
+    call text/split
+      read value
+      read separator
 
 task kotlin-join
   note private
   take list, like list
   take separator, like text
-  dock call <list.joinToString(separator)>
+  send back
+    call text/join
+      read list
+      read separator
 
 task kotlin-trim
   note private
   take value, like text
-  dock call <value.trim()>
+  send back
+    call text/trim
+      read value
 
 task kotlin-to-upper
   note private
   take value, like text
-  dock call <value.uppercase()>
+  send back
+    call text/upper
+      read value
 
 task kotlin-to-lower
   note private
   take value, like text
-  dock call <value.lowercase()>
+  send back
+    call text/lower
+      read value
 
 task kotlin-starts-with
   note private
   take value, like text
   take search, like text
-  dock call <value.startsWith(search)>
+  send back
+    call text/startsWith
+      read value
+      read search
 
 task kotlin-ends-with
   note private
   take value, like text
   take search, like text
-  dock call <value.endsWith(search)>
+  send back
+    call text/endsWith
+      read value
+      read search
 
 task kotlin-contains
   note private
   take value, like text
   take search, like text
-  dock call <value.contains(search)>
+  send back
+    call text/contains
+      read value
+      read search
 
 task kotlin-length
   note private
   take value, like text
-  dock call <value.length>
+  send back
+    call text/length
+      read value

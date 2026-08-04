@@ -1,4 +1,7 @@
 
+load @term/seed/code/bit
+  find unsigned-shift-right
+
 task hash-djb2-xor
   like mark-32
   take text
@@ -8,7 +11,7 @@ task hash-djb2-xor
 
   walk test
     hook step
-      call is-less-than
+      call is-below
         read mark
         read size
     hook hold
@@ -17,7 +20,7 @@ task hash-djb2-xor
           call multiply
             read hash
             code 33
-          read text/[i]
+          read text/{i}
       save mark
         call increment
           read mark

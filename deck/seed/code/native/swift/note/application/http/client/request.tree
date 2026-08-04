@@ -2,12 +2,11 @@
 task send-request
   note async
 
-  stem try
-    call url-session-form/shared/data
-      wait true
-      bind from, read url
-      save data
-    fuse catch-and-return-error
+  call url-session-form/shared/data
+    wait true
+    bind from, read url
+    save data
+  fuse catch-and-return-error
 
   send back, read data
 
@@ -15,13 +14,12 @@ task upload-file
   take request
   take data
 
-  stem try
-    call url-session-form/shared/upload
-      bind for, read request
-      bind from, read data
-      save response-data
-      save response
-    fuse catch-and-return-error
+  call url-session-form/shared/upload
+    bind for, read request
+    bind from, read data
+    save response-data
+    save response
+  fuse catch-and-return-error
 
   send back, read response
 
@@ -34,12 +32,11 @@ task download-file-from-url
         like file
       like error
 
-  stem try
-    call url-session-form/shared/download
-      wait true
-      bind from, read url
-      save local-url
-    fuse catch-and-return-error
+  call url-session-form/shared/download
+    wait true
+    bind from, read url
+    save local-url
+  fuse catch-and-return-error
 
   make ok
     make file

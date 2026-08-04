@@ -1,6 +1,6 @@
 note <Tests for duration. Pure integer-nanosecond spans: build from a unit, read back coarser, and compose with plus/minus/negate/absolute.>
 
-load @term/base/code/duration
+load @term/seed/code/duration
   find duration
   find from-seconds
   find from-milliseconds

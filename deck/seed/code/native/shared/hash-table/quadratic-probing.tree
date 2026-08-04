@@ -17,11 +17,13 @@ form hash-table
     save self/size, code 0
 
   task is-full
+    take self
     call is-equal
       read self/list/size
       read self/size
 
   task is-empty
+    take self
     call is-equal
       read self/list/size
       code 0
@@ -33,10 +35,10 @@ form hash-table
     walk test
       hook test
         call is-present
-          read self/list[i]
+          read self/list/{i}
       hook hold
         fuse update-hash
-    save self/list[i]
+    save self/list/{i}
       make leaf
         read key
         read value
@@ -45,44 +47,42 @@ form hash-table
         read self/size
 
   task find
+    take self
     take key
     fuse initialize-loop
     walk test
       hook step
-        stem roll
-          fork test
-            call not, read self/list[i]
-            hook hold, back seed
-          fork test
-            call is-equal
-              read self/list[i]/key
-              read key
-            hook hold
-              send back, read self/list[i]/value
-          stem fall
-            fuse update-hash
+        fork test
+          call not, read self/list/{i}
+          hook hold, back seed
+        fork test
+          call is-equal
+            read self/list/{i}/key
+            read key
+          hook hold
+            send back, read self/list/{i}/value
+        fuse update-hash
         fuse increment-step
 
   task remove
+    take self
     take key
     fuse initialize-loop
     walk test
       hook step
-        stem roll
-          fork test
-            call not, read self/list[i]
-            hook hold, back seed
-          fork test
-            call is-equal
-              read self/list[i]/key
-              read key
-            hook hold
-              save self/list[i], read void
-              save self/size
-                call decrement
-                  read self/size
-          stem fall
-            fuse update-hash
+        fork test
+          call not, read self/list/{i}
+          hook hold, back seed
+        fork test
+          call is-equal
+            read self/list/{i}/key
+            read key
+          hook hold
+            save self/list/{i}, read void
+            save self/size
+              call decrement
+                read self/size
+        fuse update-hash
         fuse increment-step
 
 form leaf

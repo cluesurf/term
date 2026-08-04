@@ -1,9 +1,9 @@
 
 # IP: Internet Protocol. Addressing and the packet header at the internet layer, for both version 4 and version 6.
 
-form ip-version
-  case four
-  case six
+host ip-version
+  term four
+  term six
 
 # a 32-bit IPv4 address, stored as its four octets
 form ipv4-address
@@ -14,10 +14,10 @@ form ipv6-address
   link groups, like list
 
 # either address family
-form ip-address
-  case v4
+host ip-address
+  term v4
     link value, like ipv4-address
-  case v6
+  term v6
     link value, like ipv6-address
 
 form ipv4-packet

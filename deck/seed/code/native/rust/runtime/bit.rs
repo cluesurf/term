@@ -6,4 +6,5 @@ mod bit {
     pub fn not(value: i64) -> i64 { !value }
     pub fn shift_left(value: i64, count: i64) -> i64 { value << (count as u32) }
     pub fn shift_right(value: i64, count: i64) -> i64 { value >> (count as u32) }
+    pub fn shift_right_unsigned(value: i64, count: i64) -> i64 { ((value as u64) >> (count as u32)) as i64 }
 }

@@ -1,6 +1,6 @@
 note <Tests for 3D vectors: plus, dot, cross, length, distance.>
 
-load @term/base/code/line/float/32/vector-3
+load @term/seed/code/line/float/32/vector-3
   find vector-3
   find make-vector-3
   find plus

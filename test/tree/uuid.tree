@@ -1,9 +1,9 @@
 note <Test that uuid version4 delegates to the per-backend generator and produces a version-4 UUID (the 15th character is always '4').>
 
-load @term/base/code/uuid
+load @term/seed/code/uuid
   find version4
 
-load @term/base/code/text
+load @term/seed/code/text
   find char-at
 
 test <version4 has the version digit 4 at index fourteen>

@@ -34,7 +34,11 @@ task fail
   take ctx, like context
   take failure, like failure
   fork case, read ctx
-    case context, link name, link failures, link skipped, link start-time
+    case context
+      link name
+      link failures
+      link skipped
+      link start-time
       call push
         read failures
         read failure
@@ -43,7 +47,11 @@ task is-passed
   take ctx, like context
   like boolean
   fork case, read ctx
-    case context, link name, link failures, link skipped, link start-time
+    case context
+      link name
+      link failures
+      link skipped
+      link start-time
       fork test
         hook test, read skipped
         hook hold
@@ -64,14 +72,22 @@ task is-passed
 task skip
   take ctx, like context
   fork case, read ctx
-    case context, link name, link failures, link skipped, link start-time
+    case context
+      link name
+      link failures
+      link skipped
+      link start-time
       save skipped, true
 
 task count
   take ctx, like context
   like size
   fork case, read ctx
-    case context, link name, link failures, link skipped, link start-time
+    case context
+      link name
+      link failures
+      link skipped
+      link start-time
       send back
         call size
           read failures

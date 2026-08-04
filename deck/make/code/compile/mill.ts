@@ -94,6 +94,66 @@ const HOST_ANNOTATION = new Set([
   'free',
 ])
 
+// a path whose segments may be DYNAMIC: `table/{key}` reads the member named by evaluating `key`, not the literal
+// member `key`. The lexer already parses `{key}` into an interpolation part of the name node; `nameText` drops those,
+// so a path is built from the parts here instead of from the flattened string. Returns undefined when the name holds
+// no interpolation, so the caller uses the plain string path.
+function dynamicPathExpression(
+  node: Node | undefined,
+  span: Span,
+  scope: Set<string>,
+  toExpr: (n: Node, s: Set<string>) => Expression,
+): Expression | undefined {
+  if (node?.kind !== 'group') {
+    return undefined
+  }
+
+  const head = node.nodes[0]
+
+  if (head?.kind !== 'name') {
+    return undefined
+  }
+
+  if (!head.parts.some(p => p.kind === 'interpolation')) {
+    return undefined
+  }
+
+  let expr: Expression | undefined
+
+  const step = (name: string) => {
+    if (!expr) {
+      expr = { form: 'variable', name, span }
+    } else {
+      expr = { form: 'member', target: expr, name, span }
+    }
+  }
+
+  for (const part of head.parts) {
+    if (part.kind === 'chunk') {
+      for (const segment of part.text.split('/').filter(s => s.length)) {
+        step(segment)
+      }
+
+      continue
+    }
+
+    // `{...}`: the segment is whatever the inner group evaluates to
+    if (!part.group || !expr) {
+      continue
+    }
+
+    expr = {
+      form: 'member',
+      target: expr,
+      name: '',
+      index: toExpr(part.group, scope),
+      span,
+    }
+  }
+
+  return expr
+}
+
 // a path string like `item/x` to a variable plus member chain
 function pathExpression(raw: string, span: Span): Expression {
   const parts = raw.split('/').filter(p => p.length > 0)
@@ -792,6 +852,19 @@ export function mill(tree: RootNode, file: string): MillResult {
 
       case 'read': {
         const target = args[0]
+
+        // `read table/{key}`: a dynamic segment, built from the name's parts so the interpolation survives
+        const dynamic = dynamicPathExpression(
+          target,
+          span,
+          scope,
+          toExpression,
+        )
+
+        if (dynamic) {
+          return dynamic
+        }
+
         const name =
           target?.kind === 'group' ? headName(target) : undefined
 
@@ -1373,7 +1446,24 @@ export function mill(tree: RootNode, file: string): MillResult {
             ? toExpression(valueNode, scope)
             : { form: 'integer', value: 0, span }
 
-          if (name.includes('/')) {
+          // `save table/{key}, X` assigns through a DYNAMIC segment, so the target is built from the name's parts
+          // rather than the flattened string, which drops the interpolation
+          const dynamicTarget = dynamicPathExpression(
+            target,
+            span,
+            scope,
+            toExpression,
+          )
+
+          if (dynamicTarget) {
+            out.push({
+              form: 'assign',
+              target: dynamicTarget,
+              op: '=',
+              value,
+              span,
+            })
+          } else if (name.includes('/')) {
             // `save self/field, X` mutates a member, not a binding: emit an assignment to the member path
             out.push({
               form: 'assign',
@@ -2122,11 +2212,15 @@ export function mill(tree: RootNode, file: string): MillResult {
                     part.kind === 'group' &&
                     headName(part) === 'link'
                   ) {
+                    // the bound name arrives as a nested group when written on its own line, but as a bare NAME node
+                    // when written inline after a comma (`case box, link tag, link items`). Both are the same thing.
                     const nameGroup = rest(part)[0]
                     const bindName =
                       nameGroup?.kind === 'group'
                         ? headName(nameGroup)
-                        : undefined
+                        : nameGroup?.kind === 'name'
+                          ? nameText(nameGroup)
+                          : undefined
 
                     if (bindName) {
                       binds.push(bindName)

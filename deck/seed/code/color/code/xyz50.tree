@@ -11,11 +11,11 @@ form xyz50
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term x
-  term y
-  term z
-  term alpha
+form channel
+  case x
+  case y
+  case z
+  case alpha
 
 host range
   host x

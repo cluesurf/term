@@ -1,4 +1,10 @@
 
+# Standard user folders. Forwards to the linked folder runtime shim, which holds the per-host layout rules.
+# Internal: reached only through the public environment API.
+
+dock load
+  load <global:folder>, name folder
+
 task get
   take kind, like text
   like text
@@ -6,45 +12,16 @@ task get
   fork case, read kind
     case home
       send back
-        call swift-home-dir
+        call folder/home
     case temporary
       send back
-        call swift-temp-dir
+        call folder/temporary
     case data
       send back
-        call swift-data-dir
+        call folder/data
     case configuration
       send back
-        call swift-config-dir
+        call folder/configuration
     case cache
       send back
-        call swift-cache-dir
-
-task swift-home-dir
-  note private
-  dock call <NSHomeDirectory()>
-
-task swift-temp-dir
-  note private
-  dock call <NSTemporaryDirectory()>
-
-task swift-data-dir
-  note private
-  dock call <run {
-    let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-    return paths.first?.path ?? ""
-  }>
-
-task swift-config-dir
-  note private
-  dock call <run {
-    let home = NSHomeDirectory()
-    return "\(home)/Library/Preferences"
-  }>
-
-task swift-cache-dir
-  note private
-  dock call <run {
-    let paths = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
-    return paths.first?.path ?? ""
-  }>
+        call folder/cache

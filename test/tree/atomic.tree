@@ -1,6 +1,6 @@
 note <Atomic integer cell: make, increase (atomic add returning the new value), load, store.>
 
-load @term/base/code/atomic
+load @term/seed/code/atomic
   find make-atomic
   find load
   find store

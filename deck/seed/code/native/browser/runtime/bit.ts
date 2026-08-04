@@ -7,4 +7,6 @@ const bit = {
   not: (value: number): number => ~value,
   shiftLeft: (value: number, count: number): number => value << count,
   shiftRight: (value: number, count: number): number => value >> count,
+  shiftRightUnsigned: (value: number, count: number): number =>
+    value >>> count,
 }

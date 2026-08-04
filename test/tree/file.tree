@@ -1,6 +1,6 @@
 note <Integration test for the file module: write a real file and read it back, async throughout. Setup (the write) sits in the body before the assertion; the test task is async automatically.>
 
-load @term/base/code/file
+load @term/seed/code/file
   find write
   find read
 

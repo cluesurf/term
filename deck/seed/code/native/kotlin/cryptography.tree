@@ -1,10 +1,16 @@
 
+# Digests and random bytes. Forwards to the linked cryptography runtime shim, which normalises the digest name to the
+# platform spelling. Internal: reached only through the public cryptography API.
+
+dock load
+  load <global:cryptography>, name cryptography
+
 task digest
   take algorithm, like text
   take data, like text
 
   send back
-    call kotlin-digest
+    call cryptography/digest
       read algorithm
       read data
 
@@ -12,32 +18,5 @@ task random-bytes
   take size, like size
 
   send back
-    call kotlin-random-bytes
+    call cryptography/random-bytes
       read size
-
-task kotlin-digest
-  note private
-  take algorithm, like text
-  take data, like text
-  dock call <run {
-    val name = when (algorithm) {
-      "sha256" -> "SHA-256"
-      "sha384" -> "SHA-384"
-      "sha512" -> "SHA-512"
-      "md5" -> "MD5"
-      "sha1" -> "SHA-1"
-      else -> algorithm.uppercase()
-#     }
-#     val md = java.security.MessageDigest.getInstance(name)
-#     val bytes = md.digest(data.toByteArray(Charsets.UTF_8))
-#     bytes.joinToString("") { "%02x".format(it) }
-#   }>
-
-task kotlin-random-bytes
-  note private
-  take size, like size
-  dock call <run {
-    val bytes = ByteArray(size.toInt())
-    java.security.SecureRandom().nextBytes(bytes)
-    bytes
-  }>

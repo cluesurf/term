@@ -1,13 +1,13 @@
 note <Tests for statistics over a list of numbers. A list is built by pushing elements (no literal syntax).>
 
-load @term/base/code/statistics
+load @term/seed/code/statistics
   find total
   find mean
   find least
   find greatest
   find span
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
 test <total sums the list>

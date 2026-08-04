@@ -11,11 +11,11 @@ form jch
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term j
-  term c
-  term h
-  term alpha
+form channel
+  case j
+  case c
+  case h
+  case alpha
 
 host range
   host j

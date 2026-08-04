@@ -6,4 +6,5 @@ object bit {
     fun not(value: Long): Long = value.inv()
     fun shiftLeft(value: Long, count: Long): Long = value shl count.toInt()
     fun shiftRight(value: Long, count: Long): Long = value shr count.toInt()
+    fun shiftRightUnsigned(value: Long, count: Long): Long = value ushr count.toInt()
 }

@@ -54,3 +54,12 @@ task do-shift-right
     call bit/shift-right
       read value
       read count
+
+task do-unsigned-shift-right
+  take value, like number
+  take count, like number
+  like number
+  send back
+    call bit/shift-right-unsigned
+      read value
+      read count

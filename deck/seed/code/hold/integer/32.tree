@@ -1,3 +1,10 @@
+
+load @term/seed/code/bit
+  find bitwise-and
+  find bitwise-or
+  find shift-left
+  find shift-right
+
 task is-bit-count-odd
   take x, like mark-32
   save x

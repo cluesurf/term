@@ -1,14 +1,14 @@
 
 load @term/seed/code/node/file
-  take tree open-head
-  take tree open-result
-  take host fs
-  take form file
+  find tree open-head
+  find tree open-result
+  find host fs
+  find form file
 
 form file
-  task read-synchronously, base read-file
-  task write-synchronously, base file-write
-  task clear-synchronously, base clear-file
+  task read-synchronously, name <read-file>
+  task write-synchronously, name <file-write>
+  task clear-synchronously, name <clear-file>
 
 task open
   fuse open-head, text <Synchronous open read only>
@@ -183,10 +183,8 @@ tree clear-file-call-2
 tree try
   take call
 
+  # `call try` / `hook fault` were a catch-and-return form that the language does not have. Errors propagate to the
+  # caller instead, which is what `halt kink` means.
   hook fuse
-    call try
-      make ok
-        fuse call
-      hook fault
-        take error
-        read error
+    fuse call
+      halt kink

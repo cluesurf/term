@@ -135,6 +135,10 @@ export type Expression =
       form: 'member'
       target: Expression
       name: string
+      // a DYNAMIC segment: `read table/{key}` reads the member named by evaluating `key` at runtime, rather than the
+      // literal member `key`. When set, `name` is the source text of the segment (kept for diagnostics) and emitters
+      // must render a subscript rather than a dot access.
+      index?: Expression
       // the member's foreign `name <...>` (e.g. a binding field's `COLOR_BUFFER_BIT`), set by the checker when the
       // accessed field declares one, so the emitter uses the exact native name instead of camelCasing the seed name.
       nick?: string

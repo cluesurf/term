@@ -11,6 +11,10 @@ deck/*/host/
 tmp/
 **/tmp/
 
+# SwiftPM build output next to the swift runtime shims (index store, object files), at any depth
+.build/
+**/.build/
+
 /link
 !/link/lock.tree
 .claude/CLAUDE.md

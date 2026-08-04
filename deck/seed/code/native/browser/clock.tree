@@ -1,4 +1,9 @@
 
+# The clock. Forwards to the linked clock runtime shim. Internal: reached only through the public clock API.
+
+dock load
+  load <global:clock>, name clock
+
 load ./clock/now
   find get
 
@@ -6,16 +11,10 @@ task delay
   note async
   take duration, like size
 
-  call browser-set-timeout-promise
+  call clock/delay
     wait true
     read duration
 
 task now
   send back
     call get
-
-task browser-set-timeout-promise
-  note private
-  note async
-  take duration, like size
-  dock call <new Promise(resolve => setTimeout(resolve, duration))>

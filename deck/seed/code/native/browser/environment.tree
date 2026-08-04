@@ -1,26 +1,20 @@
 
+# Host machine facts. Forwards to the linked machine runtime shim. Internal: reached only through the public
+# environment API.
+
+dock load
+  load <global:machine>, name machine
+
 task read
   send back
     make info
       bind system, text <browser>
       bind architecture, text <wasm>
       bind name
-        call browser-user-agent
+        call machine/name
       bind version, text <>
       bind endian, text <LE>
       bind cores
-        call browser-cores
+        call machine/cores
       bind memory
-        call browser-memory
-
-task browser-user-agent
-  note private
-  dock call <navigator.userAgent>
-
-task browser-cores
-  note private
-  dock call <navigator.hardwareConcurrency || 1>
-
-task browser-memory
-  note private
-  dock call <(navigator.deviceMemory || 0) * 1073741824>
+        call machine/memory

@@ -1,4 +1,7 @@
 
+dock load
+  load <global:process>, name process
+
 load @term/seed/code/process
   find child
 
@@ -8,7 +11,7 @@ task wait
   like size
 
   save code
-    call browser-worker-wait
+    call process/wait-worker
       wait true
       read child/dock
 
@@ -44,7 +47,7 @@ task read
   like text
 
   save output
-    call browser-worker-read
+    call process/read-worker
       wait true
       read child/dock
 
@@ -59,57 +62,9 @@ task stream
 
   save messages, make list
 
-  call browser-worker-stream
+  call process/stream-worker
     read child/dock
     read messages
 
   send back, read messages
 
-task browser-worker-wait
-  note private
-  note async
-  take worker
-  dock call <run {
-#     return new Promise((resolve) => {
-#       worker.addEventListener("message", (e) => {
-#         if (e.data && e.data.type === "exit") {
-#           resolve(e.data.code || 0);
-#         }
-#       });
-#       worker.addEventListener("error", () => {
-#         resolve(1);
-#       });
-#     });
-#   }>
-
-task browser-worker-read
-  note private
-  note async
-  take worker
-  dock call <run {
-#     return new Promise((resolve) => {
-#       const chunks = [];
-#       worker.addEventListener("message", (e) => {
-#         if (e.data && e.data.type === "exit") {
-#           resolve(chunks.join(""));
-#         } else {
-#           chunks.push(typeof e.data === "string" ? e.data : JSON.stringify(e.data));
-#         }
-#       });
-#       worker.addEventListener("error", () => {
-#         resolve(chunks.join(""));
-#       });
-#     });
-#   }>
-
-task browser-worker-stream
-  note private
-  take worker
-  take messages
-  dock call <run {
-#     worker.addEventListener("message", (e) => {
-#       if (e.data && e.data.type !== "exit" && e.data.type !== "close") {
-#         messages.push(e.data);
-#       }
-#     });
-#   }>

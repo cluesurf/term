@@ -1,4 +1,10 @@
 
+# Running a command. Forwards to the linked process runtime shim. A page cannot spawn a process, so `command` is read
+# as a worker script URL and a Worker stands in for the child. Internal: reached only through the public process API.
+
+dock load
+  load <global:process>, name process
+
 load @term/seed/code/process
   find result
   find child
@@ -15,11 +21,11 @@ task run
   like result
 
   save worker
-    call browser-make-worker
+    call process/make-worker
       read command
 
   save output
-    call browser-worker-run
+    call process/run-worker
       wait true
       read worker
       read input
@@ -37,76 +43,13 @@ task spawn
   like child
 
   save id
-    call browser-next-worker-id
+    call process/next-worker-id
 
   save worker
-    call browser-make-worker
+    call process/make-worker
       read command
 
   send back
     make child
       bind dock, read worker
       bind id, read id
-
-task browser-make-worker
-  note private
-  take url
-  dock call <new Worker(url)>
-
-host browser-worker-counter
-  note private
-  dock call <{ value: 0 }>
-
-task browser-next-worker-id
-  note private
-  dock call <run {
-#     const c = browser_worker_counter;
-#     c.value += 1;
-#     return c.value;
-#   }>
-
-task browser-worker-run
-  note private
-  note async
-  take worker
-  take input
-  take timeout
-  dock call <run {
-#     return new Promise((resolve, reject) => {
-#       let timer;
-#       worker.onmessage = (e) => {
-#         if (timer) clearTimeout(timer);
-#         worker.terminate();
-#         resolve({
-#           code: 0,
-#           stdout: typeof e.data === "string" ? e.data : JSON.stringify(e.data),
-#           stderr: "",
-#           ok: true
-#         });
-#       };
-#       worker.onerror = (e) => {
-#         if (timer) clearTimeout(timer);
-#         worker.terminate();
-#         resolve({
-#           code: 1,
-#           stdout: "",
-#           stderr: e.message || "worker error",
-#           ok: false
-#         });
-#       };
-#       if (timeout) {
-#         timer = setTimeout(() => {
-#           worker.terminate();
-#           resolve({
-#             code: 1,
-#             stdout: "",
-#             stderr: "timeout",
-#             ok: false
-#           });
-#         }, timeout);
-#       }
-#       if (input != null) {
-#         worker.postMessage(input);
-#       }
-#     });
-#   }>

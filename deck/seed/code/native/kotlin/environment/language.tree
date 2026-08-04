@@ -1,12 +1,24 @@
 
+# The host locale. Forwards to the linked tongue runtime shim, which normalises the platform's tag to BCP 47.
+# Internal: reached only through the public environment API.
+#
+# The shim is bound as `tongue` rather than `locale` so it does not collide with the `locale` form this module
+# returns: a name is package-global, and two things called `locale` shadow each other.
+
+dock load
+  load <global:locale>, name tongue
+
 load @term/seed/code/environment/language
   find locale
+
+load @term/seed/code/text
+  find split
 
 task read
   like locale
 
   save tag
-    call kotlin-get-locale-tag
+    call tongue/tag
   save parts
     call split
       read tag
@@ -20,7 +32,7 @@ task read
       hook miss
         text <>
   save timezone
-    call kotlin-get-timezone
+    call tongue/timezone
 
   send back
     make locale
@@ -32,16 +44,5 @@ task read
 task list
   like list
 
-  save tag
-    call kotlin-get-locale-tag
   send back
-    make list
-      read tag
-
-task kotlin-get-locale-tag
-  note private
-  dock call <java.util.Locale.getDefault().toLanguageTag()>
-
-task kotlin-get-timezone
-  note private
-  dock call <java.util.TimeZone.getDefault().id>
+    call tongue/preferred

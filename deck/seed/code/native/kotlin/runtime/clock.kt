@@ -1,4 +1,7 @@
+// Clock runtime. `now` is the wall clock in milliseconds; `precise` is the monotonic timer, which is immune to the
+// clock being adjusted and so is the one to measure durations with. Reached only through the public clock API.
 object clock {
-    fun currentTime(): Long = System.nanoTime() / 1000000
-    fun sleep(ms: Long) { Thread.sleep(ms) }
+    fun now(): Long = System.currentTimeMillis()
+
+    fun precise(): Long = System.nanoTime()
 }

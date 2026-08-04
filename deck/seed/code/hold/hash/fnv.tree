@@ -1,4 +1,10 @@
 
+load @term/seed/code/bit
+  find bitwise-and
+  find shift-left
+  find shift-right
+  find unsigned-shift-right
+
 task fnv-hash-32-1a
   take v
   take seed
@@ -12,7 +18,7 @@ task fnv-hash-32-1a
   save n, read v/length
   walk test
     hook test
-      call is-less-than
+      call is-below
         read i
         read n
     hook hold

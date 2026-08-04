@@ -1,4 +1,7 @@
 
+dock load
+  load <global:process>, name process
+
 load @term/seed/code/process
   find child
 
@@ -7,16 +10,6 @@ task connect
   take from, like child
   take to, like child
 
-  call browser-pipe-workers
+  call process/pipe
     read from/dock
     read to/dock
-
-task browser-pipe-workers
-  note private
-  take from-worker
-  take to-worker
-  dock call <run {
-#     from_worker.addEventListener("message", (e) => {
-#       to_worker.postMessage(e.data);
-#     });
-#   }>

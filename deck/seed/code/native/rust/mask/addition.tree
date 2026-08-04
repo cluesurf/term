@@ -16,12 +16,11 @@ tree addition-form
   take type
 
   hook bind
-    coat form
-      suit type
-        wear addition
-          fold well
+    suit type
+      wear addition
+        fold well
 
-          task add
-            take self, move true
-            take other, move true
-              like type
+        task add
+          take self, move true
+          take other, move true
+            like type

@@ -1,3 +1,9 @@
+
+load @term/seed/code/bit
+  find bitwise-and
+  find bitwise-or
+  find unsigned-shift-right
+
 task calculate-crc32
   take list
   take initial
@@ -10,7 +16,7 @@ task calculate-crc32
   save i, code 0
   walk test
     hook test
-      call is-less-than
+      call is-below
         read i
         read list/length
     hook hold

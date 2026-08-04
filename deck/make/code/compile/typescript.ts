@@ -418,6 +418,11 @@ function makeEmitter(
       }
 
       case 'member':
+        // a DYNAMIC segment (`read table/{key}`) subscripts rather than dot-accesses
+        if (node.index) {
+          return `${expression(node.target)}[${expression(node.index)}]`
+        }
+
         // a binding field with a foreign `name <...>` (e.g. COLOR_BUFFER_BIT) emits that native name verbatim; other
         // members camelCase the seed name
         return `${expression(node.target)}.${node.nick ?? toMember(node.name)}`

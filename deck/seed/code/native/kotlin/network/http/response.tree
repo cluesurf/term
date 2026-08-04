@@ -1,4 +1,7 @@
 
+dock load
+  load <global:response>, name response
+
 load @term/seed/code/network/http
   find response
 
@@ -9,31 +12,14 @@ task read
   fork case, read format
     case text
       send back
-        call kotlin-response-text
+        call response/text
           read response/dock
     case bytes
       send back
-        call kotlin-response-bytes
+        call response/bytes
           read response/dock
     case json
       send back
-        call kotlin-response-json
+        call response/json
           read response/dock
 
-task kotlin-response-text
-  note private
-  take raw
-  dock call <raw["body"] as? String ?: "">
-
-task kotlin-response-bytes
-  note private
-  take raw
-  dock call <(raw["body"] as? String ?: "").toByteArray()>
-
-task kotlin-response-json
-  note private
-  take raw
-  dock call <run {
-    val text = raw["body"] as? String ?: "{}"
-    org.json.JSONObject(text)
-  }>

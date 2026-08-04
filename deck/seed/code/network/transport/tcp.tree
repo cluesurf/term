@@ -25,15 +25,15 @@ form tcp-segment
   link payload, like list
 
 # the connection state machine (RFC 793)
-form tcp-state
-  case closed
-  case listen
-  case syn-sent
-  case syn-received
-  case established
-  case fin-wait-one
-  case fin-wait-two
-  case close-wait
-  case closing
-  case last-acknowledge
-  case time-wait
+host tcp-state
+  term closed
+  term listen
+  term syn-sent
+  term syn-received
+  term established
+  term fin-wait-one
+  term fin-wait-two
+  term close-wait
+  term closing
+  term last-acknowledge
+  term time-wait

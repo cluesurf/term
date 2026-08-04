@@ -1,4 +1,17 @@
 
+load @term/seed/code/math
+  find absolute
+  find power
+
+load @term/seed/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find bitwise-not
+  find shift-left
+  find shift-right
+  find unsigned-shift-right
+
 # Generic BigUint.
 
 # http://supertech.csail.mit.edu/papers/debruijn.pdf
@@ -173,7 +186,7 @@ task gcd
   take a
   take b
   call test
-    call is-greater-than
+    call is-above
       read b
       read a
     hook hold
@@ -190,16 +203,16 @@ task gcd
     hook hold
       call test
         call is-equal
-          call remainder
+          call modulo
             read a
             read b
           code 0
         hook hold
           send back
-            call math/abs
+            call absolute
               bind read b
       save b
-        call remainder
+        call modulo
           read a
           save a, read b
 
@@ -207,7 +220,7 @@ task lcm
   take a
   take b
   send back
-    call math/abs
+    call absolute
       call multiply
         call divide
           read a
@@ -371,7 +384,7 @@ task count-trailing-ones-32
   take x
   call count-trailing-zeroes-32
     call unsigned-shift-right
-      call negate-bitwise
+      call bitwise-not
         read x
       code 0
 
@@ -379,7 +392,7 @@ task count-trailing-ones-16
   take x
   call count-trailing-zeroes-32
     call unsigned-shift-right
-      call negate-bitwise
+      call bitwise-not
         read x
       code 0
 
@@ -387,7 +400,7 @@ task count-trailing-ones-8
   take x
   call count-trailing-zeroes-32
     call unsigned-shift-right
-      call negate-bitwise
+      call bitwise-not
         read x
       code 0
 
@@ -470,7 +483,7 @@ task count-leading-ones-32
   call count-leading-zeroes-32
     call bitwise-and
       call unsigned-shift-right
-        call negate-bitwise
+        call bitwise-not
           read n
         code 0
       code 0xffffffff
@@ -481,7 +494,7 @@ task count-leading-ones-16
   call count-leading-zeroes-16
     call bitwise-and
       call unsigned-shift-right
-        call negate-bitwise
+        call bitwise-not
           read n
         code 0
       code 0xffff
@@ -492,7 +505,7 @@ task count-leading-ones-8
   call count-leading-zeroes-8
     call bitwise-and
       call unsigned-shift-right
-        call negate-bitwise
+        call bitwise-not
           read n
         code 0
       code 0xff
@@ -531,7 +544,7 @@ task make-de-bruijn-trailing-zero-table
   take exponent
   take de-bruijn-constant
   save n
-    call math/pow
+    call power
       bind code 2
       bind read exponent
   save table, make array, read n
@@ -635,7 +648,7 @@ task count-zero-bits-32
   take x
   call count-one-bits-32
     call unsigned-shift-right
-      call negate-bitwise
+      call bitwise-not
         read x
       code 0
 
@@ -643,7 +656,7 @@ task count-zero-bits-16
   take x
   call count-one-bits-16
     call unsigned-shift-right
-      call negate-bitwise
+      call bitwise-not
         read x
       code 0
 
@@ -651,26 +664,62 @@ task count-zero-bits-8
   take x
   call count-one-bits-8
     call unsigned-shift-right
-      call negate-bitwise
+      call bitwise-not
         read x
       code 0
 
 task reverse-bits-8
   take n
-  call bit-reversal-table/get
-    read n
+
+  # swap nibbles, then pairs, then adjacent bits
+  save a
+    call bitwise-or
+      call shift-right
+        call bitwise-and
+          read n
+          code 0xF0
+        code 4
+      call shift-left
+        call bitwise-and
+          read n
+          code 0x0F
+        code 4
+  save b
+    call bitwise-or
+      call shift-right
+        call bitwise-and
+          read a
+          code 0xCC
+        code 2
+      call shift-left
+        call bitwise-and
+          read a
+          code 0x33
+        code 2
+  send back
+    call bitwise-or
+      call shift-right
+        call bitwise-and
+          read b
+          code 0xAA
+        code 1
+      call shift-left
+        call bitwise-and
+          read b
+          code 0x55
+        code 1
 
 task reverse-bits-16
   take n
   call bitwise-or
-    call bit-reversal-table/get
+    call reverse-bits-8
       call bitwise-and
         call shift-right
           read n
           code 8
         code 0xff
     call shift-left
-      call bit-reversal-table/get
+      call reverse-bits-8
         call bitwise-and
           read n
           code 0xff
@@ -682,34 +731,34 @@ task reverse-bits-32
     call add
       call add
         call multiply
-          call bit-reversal-table/get
+          call reverse-bits-8
             call bitwise-and
               read n
               code 0xff
-          call math/pow
+          call power
             bind code 2
             bind code 24
         call multiply
-          call bit-reversal-table/get
+          call reverse-bits-8
             call bitwise-and
               call unsigned-shift-right
                 read n
                 code 8
               code 0xff
-          call math/pow
+          call power
             bind code 2
             bind code 16
       call multiply
-        call bit-reversal-table/get
+        call reverse-bits-8
           call bitwise-and
             call unsigned-shift-right
               read n
               code 16
             code 0xff
-        call math/pow
+        call power
           bind code 2
           bind code 8
-    call bit-reversal-table/get
+    call reverse-bits-8
       call bitwise-and
         call unsigned-shift-right
           read n
@@ -721,7 +770,7 @@ task has-flag
   take flag
 
   test is-equal
-    call bitwise-intersect
+    call bitwise-and
       read flags
       read flag
     read flag
@@ -730,7 +779,7 @@ task add-flag
   take flags
   take flag
 
-  call bitwise-unite
+  call bitwise-or
     read flags
     read flag
 
@@ -738,16 +787,16 @@ task remove-flag
   take flags
   take flag
 
-  call bitwise-intersect
+  call bitwise-and
     read flags
-    call bitwise-negate
+    call bitwise-not
       read flag
 
 task toggle-flag
   take flags
   take flag
 
-  call bitwise-exclusive-unite
+  call bitwise-exclusive-or
     read flags
     read flag
 

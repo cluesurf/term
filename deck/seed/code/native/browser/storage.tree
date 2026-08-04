@@ -1,4 +1,7 @@
 
+dock load
+  load <global:storage>, name storage
+
 task get
   take key, like text
   take store, like text, fall text <local>
@@ -55,11 +58,11 @@ task list-keys
   fork test, call is-equal, read store, text <session>
     hook hold
       send back
-        call browser-storage-keys
+        call storage/keys
           read session-storage
     hook miss
       send back
-        call browser-storage-keys
+        call storage/keys
           read local-storage
 
 task length
@@ -70,14 +73,3 @@ task length
       send back, read session-storage/length
     hook miss
       send back, read local-storage/length
-
-task browser-storage-keys
-  note private
-  take storage
-  dock call <run {
-    const keys = [];
-    for (let i = 0; i < storage.length; i++) {
-      keys.push(storage.key(i));
-    }
-    return keys;
-  }>

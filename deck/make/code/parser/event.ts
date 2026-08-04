@@ -333,7 +333,8 @@ export function buildEvents(tokens: TokenList): EventResult {
     events.push({
       kind: EventKind.Integer,
       token,
-      value: parseInt(token.text, 10),
+      // thousand separators are presentation only: `2,440,588` is the number 2440588
+      value: parseInt(token.text.replace(/,/g, ''), 10),
     })
   }
 

@@ -1,13 +1,13 @@
 note <Tests for running a subprocess to completion: exit code and captured output.>
 
-load @term/base/code/process/run
+load @term/seed/code/process/run
   find run
   find run-result
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
-load @term/base/code/text
+load @term/seed/code/text
   find contains
 
 test <run echo exits with code zero>

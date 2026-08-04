@@ -1,10 +1,11 @@
 
 dock load
   load <node:os>, name os
+  load <global:locale>, name locale
 
 task read
   save options
-    call intl-date-time-format-resolved-options
+    call locale/options
   save tag, read options/locale
   save parts
     call split
@@ -28,12 +29,9 @@ task read
 
 task list
   save options
-    call intl-date-time-format-resolved-options
+    call locale/options
   save tag, read options/locale
   send back
     make list
       read tag
 
-task intl-date-time-format-resolved-options
-  note private
-  dock call <() => Intl.DateTimeFormat().resolvedOptions()>

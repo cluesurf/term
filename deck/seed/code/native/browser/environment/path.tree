@@ -1,11 +1,27 @@
 
+# Standard user folders. Forwards to the linked folder runtime shim. A browser has no user folders, so every one
+# resolves to the origin. Internal: reached only through the public environment API.
+
+dock load
+  load <global:folder>, name folder
+
 task get
   take kind, like text
   like text
 
-  send back
-    call browser-get-origin
-
-task browser-get-origin
-  note private
-  dock call <location.origin>
+  fork case, read kind
+    case home
+      send back
+        call folder/home
+    case temporary
+      send back
+        call folder/temporary
+    case data
+      send back
+        call folder/data
+    case configuration
+      send back
+        call folder/configuration
+    case cache
+      send back
+        call folder/cache

@@ -11,11 +11,11 @@ form jab
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term j
-  term a
-  term b
-  term alpha
+form channel
+  case j
+  case a
+  case b
+  case alpha
 
 host range
   host j

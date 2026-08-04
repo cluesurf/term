@@ -1,12 +1,24 @@
 
+# The host locale. Forwards to the linked tongue runtime shim, which normalises the platform's tag to BCP 47.
+# Internal: reached only through the public environment API.
+#
+# The shim is bound as `tongue` rather than `locale` so it does not collide with the `locale` form this module
+# returns: a name is package-global, and two things called `locale` shadow each other.
+
+dock load
+  load <global:locale>, name tongue
+
 load @term/seed/code/environment/language
   find locale
+
+load @term/seed/code/text
+  find split
 
 task read
   like locale
 
   save tag
-    call swift-get-locale
+    call tongue/tag
   save parts
     call split
       read tag
@@ -20,7 +32,7 @@ task read
       hook miss
         text <>
   save timezone
-    call swift-get-timezone
+    call tongue/timezone
 
   send back
     make locale
@@ -33,16 +45,4 @@ task list
   like list
 
   send back
-    call swift-preferred-languages
-
-task swift-get-locale
-  note private
-  dock call <Locale.current.identifier.replacingOccurrences(of: "_", with: "-")>
-
-task swift-get-timezone
-  note private
-  dock call <TimeZone.current.identifier>
-
-task swift-preferred-languages
-  note private
-  dock call <Locale.preferredLanguages>
+    call tongue/preferred

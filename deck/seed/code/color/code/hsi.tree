@@ -11,11 +11,11 @@ form hsi
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term h
-  term s
-  term i
-  term alpha
+form channel
+  case h
+  case s
+  case i
+  case alpha
 
 host range
   host h

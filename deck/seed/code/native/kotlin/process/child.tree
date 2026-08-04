@@ -1,4 +1,7 @@
 
+dock load
+  load <global:child>, name child
+
 load @term/seed/code/process
   find child
 
@@ -6,7 +9,7 @@ task wait
   take child, like child
 
   send back
-    call kotlin-wait-process
+    call child/wait
       read child/dock
 
 task stop
@@ -18,24 +21,24 @@ task stop
       bind a, read form
       bind b, text <force>
     hook hold
-      call kotlin-destroy-forcibly
+      call child/kill
         read child/dock
     hook miss
-      call kotlin-destroy
+      call child/stop
         read child/dock
 
 task write
   take child, like child
   take data, like text
 
-  call kotlin-write-stdin
+  call child/write
     read child/dock
     read data
 
 task close
   take child, like child
 
-  call kotlin-close-stdin
+  call child/close
     read child/dock
 
 task read
@@ -46,45 +49,10 @@ task read
   fork test, call is-equal, read kind, text <stderr>
     hook hold
       send back
-        call kotlin-read-stderr
+        call child/read-error
           read child/dock
     hook miss
       send back
-        call kotlin-read-stdout
+        call child/read-out
           read child/dock
 
-task kotlin-wait-process
-  note private
-  take proc
-  dock call <run { proc.waitFor(); proc.exitValue() }>
-
-task kotlin-destroy-forcibly
-  note private
-  take proc
-  dock call <proc.destroyForcibly()>
-
-task kotlin-destroy
-  note private
-  take proc
-  dock call <proc.destroy()>
-
-task kotlin-write-stdin
-  note private
-  take proc
-  take data, like text
-  dock call <proc.outputStream.write(data.toByteArray())>
-
-task kotlin-close-stdin
-  note private
-  take proc
-  dock call <proc.outputStream.close()>
-
-task kotlin-read-stdout
-  note private
-  take proc
-  dock call <proc.inputStream.bufferedReader().readText()>
-
-task kotlin-read-stderr
-  note private
-  take proc
-  dock call <proc.errorStream.bufferedReader().readText()>

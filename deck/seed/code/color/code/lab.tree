@@ -11,11 +11,11 @@ form lab
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term l
-  term a
-  term b
-  term alpha
+form channel
+  case l
+  case a
+  case b
+  case alpha
 
 host range
   host l

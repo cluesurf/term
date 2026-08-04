@@ -18,10 +18,11 @@ form list
   head item-type
 
   task set
+    take self
     take index
     take item, like item-type
     fork test
-      call is-less-than
+      call is-below
         read self/length
         read index
       hook hold
@@ -31,9 +32,10 @@ form list
     send back, read self
 
   task get
+    take self
     take index
     fork test
-      call is-less-than
+      call is-below
         read self/length
         read index
       hook hold
@@ -43,6 +45,7 @@ form list
         read index
 
   task reallocate
+    take self
     take capacity
     fork test
       call is-equal
@@ -52,7 +55,7 @@ form list
         send back, read self
     save old-line, read self/line
     fork test
-      call is-greater-than
+      call is-above
         read capacity
         read self/capacity
       hook hold
@@ -68,7 +71,7 @@ form list
             code 0
             read capacity
     fork test
-      call is-less-than
+      call is-below
         read capacity
         read self/length
       hook hold
@@ -77,9 +80,10 @@ form list
     send back, read self
 
   task grow
+    take self
     take capacity
     call test
-      call is-greater-than-or-equal-to
+      call is-minimum
         read self/capacity
         read capacity
       hook hold
@@ -87,7 +91,7 @@ form list
     save new-capacity, read self/capacity
     walk test
       hook test
-        call is-less-than
+        call is-below
           read new-capacity
           read capacity
       hook hold
@@ -100,6 +104,7 @@ form list
     send back, read self
 
   task grow
+    take self
     save new-capacity
       call scale
         read self/capacity
@@ -109,6 +114,7 @@ form list
     send back, read self
 
   task resize
+    take self
     take length
     fork test
       call is-equal
@@ -118,7 +124,7 @@ form list
         send back, read self
 
     fork test
-      call is-less-than
+      call is-below
         read length
         read self/length
       hook hold
@@ -128,11 +134,11 @@ form list
             code 1
         walk test
           hook test
-            call is-greater-than
+            call is-above
               read i
               read length
           hook hold
-            save self/line[i], read void
+            save self/line/{i}, read void
             save i, call decrement, read i
         save self/length, read length
         send back, read self
@@ -142,6 +148,7 @@ form list
     send back, read self
 
   task push
+    take self
     take value
     fork test
       call is-equal
@@ -157,6 +164,7 @@ form list
     send back, read self
 
   task pop
+    take self
     fork test
       call is-equal
         read self/length

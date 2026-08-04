@@ -1,13 +1,13 @@
 note <Tests for 4x4 matrices: identity cells, matrix product of identities, and transforming a vector by the identity.>
 
-load @term/base/code/line/float/32/matrix-4
+load @term/seed/code/line/float/32/matrix-4
   find matrix-4
   find identity-matrix-4
   find get
   find times
   find transform
 
-load @term/base/code/line/float/32/vector-4
+load @term/seed/code/line/float/32/vector-4
   find vector-4
   find make-vector-4
 

@@ -1,61 +1,42 @@
 
+# Environment variables. Forwards to the linked variable runtime shim, which holds the platform idioms. Internal:
+# reached only through the public environment API.
+
+dock load
+  load <global:variable>, name variable
+
 task get
   take name, like text
   like text
 
   send back
-    call kotlin-get-env
+    call variable/get
       read name
 
 task set
   take name, like text
   take value, like text
 
-  call kotlin-set-property
+  call variable/set
     read name
     read value
 
 task remove
   take name, like text
 
-  call kotlin-clear-property
+  call variable/remove
     read name
 
 task list
   like hash
 
   send back
-    call kotlin-list-env
+    call variable/list
 
 task check
   take name, like text
   like bool
 
   send back
-    call kotlin-check-env
+    call variable/check
       read name
-
-task kotlin-get-env
-  note private
-  take name, like text
-  dock call <System.getenv(name) ?: "">
-
-task kotlin-set-property
-  note private
-  take name, like text
-  take value, like text
-  dock call <System.setProperty(name, value)>
-
-task kotlin-clear-property
-  note private
-  take name, like text
-  dock call <System.clearProperty(name)>
-
-task kotlin-list-env
-  note private
-  dock call <System.getenv()>
-
-task kotlin-check-env
-  note private
-  take name, like text
-  dock call <System.getenv(name) != null>

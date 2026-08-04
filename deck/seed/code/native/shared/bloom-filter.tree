@@ -6,6 +6,7 @@ form bloom-filter
   take locations
 
   task get-locations
+    take self
     take v
     save k, read self/k
     save m, read self/m
@@ -18,18 +19,18 @@ form bloom-filter
         bind read v
         bind code 1576284489
     save x
-      call remainder
+      call modulo
         read a
         read m
     save i, code 0
     walk test
       hook test
-        call is-less-than
+        call is-below
           read i
           read k
       hook hold
         save tmp6
-          call is-less-than
+          call is-below
             read x
             code 0
         save tmp7
@@ -43,9 +44,9 @@ form bloom-filter
             save tmp8, read tmp7
           hook miss
             save tmp8, read x
-        save r[i], read tmp8
+        save r/{i}, read tmp8
         save x
-          call remainder
+          call modulo
             call add
               read x
               read b
@@ -57,6 +58,7 @@ form bloom-filter
         bust fork9
     send back, read r
   task add
+    take self
     take v
     save tmp10
       call self/get-locations
@@ -68,22 +70,22 @@ form bloom-filter
     walk test, fork fork12
       hook test
         call test
-          call is-less-than
+          call is-below
             read i
             read k
       hook hold
         save tmp11
           call math/floor
             call divide
-              read l[i]
+              read l/{i}
               code 32
-        save buckets[tmp11]
+        save buckets/{tmp11}
           call assign-bitwise-or
-            bind buckets[tmp11]
+            bind buckets/{tmp11}
             call shift-left
               code 1
-              call remainder
-                read l[i]
+              call modulo
+                read l/{i}
                 code 32
         save i
           call increment
@@ -91,6 +93,7 @@ form bloom-filter
       hook miss
         bust fork12
   task test
+    take self
     take v
     save tmp13
       call self/get-locations
@@ -102,11 +105,11 @@ form bloom-filter
     walk test, fork fork15
       hook test
         call test
-          call is-less-than
+          call is-below
             read i
             read k
       hook hold
-        save b, read l[i]
+        save b, read l/{i}
         save tmp14
           call math/floor
             call divide
@@ -115,10 +118,10 @@ form bloom-filter
         call test
           call is-strictly-equal
             call bitwise-and
-              read buckets[tmp14]
+              read buckets/{tmp14}
               call shift-left
                 code 1
-                call remainder
+                call modulo
                   read b
                   code 32
             code 0
@@ -131,6 +134,7 @@ form bloom-filter
         bust fork15
     send back, read true
   task get-size
+    take self
     save buckets, read self/buckets
     save bits, code 0
     save i, code 0
@@ -138,7 +142,7 @@ form bloom-filter
     walk test, fork fork16
       hook test
         call test
-          call is-less-than
+          call is-below
             read i
             read n
       hook hold
@@ -146,7 +150,7 @@ form bloom-filter
           call assign-increment
             bind bits
             call popcnt
-              bind read buckets[i]
+              bind read buckets/{i}
         save i
           call increment
             bind value, read i
@@ -188,7 +192,7 @@ task make-bloom-filter
   walk test
     hook test
       save i, call increment, read i
-      call is-less-than
+      call is-below
         read i
         read n
     hook hold

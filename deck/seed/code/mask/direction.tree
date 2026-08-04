@@ -5,7 +5,7 @@ mask incomplete-direction
 mask direction
   # Total order.
 
-host direction-type
-  term base, diff -1
-  term meet, diff 0
-  term head, diff 1
+form direction-type
+  case base, diff -1
+  case meet, diff 0
+  case head, diff 1

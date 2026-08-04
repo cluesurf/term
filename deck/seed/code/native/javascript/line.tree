@@ -35,7 +35,7 @@ form line
     call loop-javascript
       fork loop
       hook test
-        test is-less-than
+        test is-below
           read i
           read n
       hook step

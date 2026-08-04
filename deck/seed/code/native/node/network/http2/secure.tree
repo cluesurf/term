@@ -1,7 +1,7 @@
 
 load @term/seed/code/node/network/http2/shared
-  take tree server
-  take tree make-server
+  find tree server
+  find tree make-server
 
 fuse server
   like nodejs-http2-server

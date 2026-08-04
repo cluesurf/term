@@ -1,4 +1,10 @@
 
+# Standard user folders. Forwards to the linked folder runtime shim, which holds the per-host layout rules.
+# Internal: reached only through the public environment API.
+
+dock load
+  load <global:folder>, name folder
+
 task get
   take kind, like text
   like text
@@ -6,87 +12,16 @@ task get
   fork case, read kind
     case home
       send back
-        call rust-home-dir
+        call folder/home
     case temporary
       send back
-        call rust-temp-dir
+        call folder/temporary
     case data
       send back
-        call rust-data-dir
+        call folder/data
     case configuration
       send back
-        call rust-config-dir
+        call folder/configuration
     case cache
       send back
-        call rust-cache-dir
-
-task rust-home-dir
-  note private
-  dock call <run {
-#     match std::env::var("HOME") {
-#       Ok(h) => h,
-#       Err(_) => String::new(),
-#     }
-#   }>
-
-task rust-temp-dir
-  note private
-  dock call <std::env::temp_dir().to_string_lossy().to_string()>
-
-task rust-data-dir
-  note private
-  dock call <run {
-    if cfg!(target_os = "macos") {
-#       let home = std::env::var("HOME").unwrap_or_default();
-#       format!("{}/Library/Application Support", home)
-#     } else if cfg!(target_os = "windows") {
-#       std::env::var("APPDATA").unwrap_or_default()
-#     } else {
-#       match std::env::var("XDG_DATA_HOME") {
-#         Ok(d) => d,
-#         Err(_) => {
-#           let home = std::env::var("HOME").unwrap_or_default();
-#           format!("{}/.local/share", home)
-#         }
-#       }
-#     }
-#   }>
-
-task rust-config-dir
-  note private
-  dock call <run {
-    if cfg!(target_os = "macos") {
-#       let home = std::env::var("HOME").unwrap_or_default();
-#       format!("{}/Library/Preferences", home)
-#     } else if cfg!(target_os = "windows") {
-#       std::env::var("APPDATA").unwrap_or_default()
-#     } else {
-#       match std::env::var("XDG_CONFIG_HOME") {
-#         Ok(d) => d,
-#         Err(_) => {
-#           let home = std::env::var("HOME").unwrap_or_default();
-#           format!("{}/.config", home)
-#         }
-#       }
-#     }
-#   }>
-
-task rust-cache-dir
-  note private
-  dock call <run {
-    if cfg!(target_os = "macos") {
-#       let home = std::env::var("HOME").unwrap_or_default();
-#       format!("{}/Library/Caches", home)
-#     } else if cfg!(target_os = "windows") {
-#       let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
-#       format!("{}\\Temp", local)
-#     } else {
-#       match std::env::var("XDG_CACHE_HOME") {
-#         Ok(d) => d,
-#         Err(_) => {
-#           let home = std::env::var("HOME").unwrap_or_default();
-#           format!("{}/.cache", home)
-#         }
-#       }
-#     }
-#   }>
+        call folder/cache

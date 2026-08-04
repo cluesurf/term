@@ -5,6 +5,9 @@ load @term/seed/code/list
   find push
   find size
 
+load @term/seed/code/text/string
+  find concat
+
 load ./context
   find make
   find set
@@ -51,9 +54,9 @@ task register
         bind b, code 0
     hook hold
       save full-name
-        call text-concat
+        call concat
           bind a
-            call text-concat
+            call concat
               bind a, read group
               bind b, text < > >
           bind b, read name

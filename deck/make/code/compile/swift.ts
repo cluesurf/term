@@ -834,6 +834,11 @@ export function emitSwift(program: Program): string {
       }
 
       case 'member': {
+        // a DYNAMIC segment (`read table/{key}`) subscripts the wrapper's storage
+        if (node.index) {
+          return `${expr(node.target, bind)}.data[${expr(node.index, bind)}]`
+        }
+
         // `map.size` / `array.length` read the count (a map goes through its wrapper's `data`; an array is plain)
         const read = collectionRead(node)
 

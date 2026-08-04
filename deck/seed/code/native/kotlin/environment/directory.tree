@@ -1,21 +1,18 @@
 
+# The working directory. Forwards to the linked directory runtime shim. Internal: reached only through the public
+# environment API.
+
+dock load
+  load <global:directory>, name directory
+
 task get
   like text
 
   send back
-    call kotlin-current-dir
+    call directory/get
 
 task set
   take path, like text
 
-  call kotlin-set-current-dir
+  call directory/set
     read path
-
-task kotlin-current-dir
-  note private
-  dock call <System.getProperty("user.dir") ?: "">
-
-task kotlin-set-current-dir
-  note private
-  take path, like text
-  dock call <System.setProperty("user.dir", path)>

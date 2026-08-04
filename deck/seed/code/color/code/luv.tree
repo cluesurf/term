@@ -11,11 +11,11 @@ form luv
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term l
-  term u
-  term v
-  term alpha
+form channel
+  case l
+  case u
+  case v
+  case alpha
 
 host range
   host l

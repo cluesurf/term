@@ -1,4 +1,10 @@
 
+load @term/seed/code/bit
+  find bitwise-and
+  find bitwise-or
+  find shift-left
+  find shift-right
+
 task is-bit-count-odd
   take n, like integer-8
   save n

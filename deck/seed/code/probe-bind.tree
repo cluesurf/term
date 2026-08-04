@@ -1,0 +1,18 @@
+
+load @term/seed/code/list
+  find push
+
+form box
+  link tag, like text
+  link items, like list
+
+task add
+  take b, like box
+  take item, like text
+  fork case, read b
+    case box
+      link tag
+      link items
+      call push
+        read items
+        read item

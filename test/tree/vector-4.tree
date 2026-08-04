@@ -1,6 +1,6 @@
 note <Tests for 4D vectors: plus, dot, length.>
 
-load @term/base/code/line/float/32/vector-4
+load @term/seed/code/line/float/32/vector-4
   find vector-4
   find make-vector-4
   find plus

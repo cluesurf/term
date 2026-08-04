@@ -11,11 +11,11 @@ form hwb
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term h
-  term w
-  term b
-  term alpha
+form channel
+  case h
+  case w
+  case b
+  case alpha
 
 host range
   host h

@@ -6,4 +6,5 @@ enum bit {
     static func not(_ value: Int) -> Int { return ~value }
     static func shiftLeft(_ value: Int, _ count: Int) -> Int { return value << count }
     static func shiftRight(_ value: Int, _ count: Int) -> Int { return value >> count }
+    static func shiftRightUnsigned(_ value: Int, _ count: Int) -> Int { return Int(bitPattern: UInt(bitPattern: value) >> UInt(count)) }
 }

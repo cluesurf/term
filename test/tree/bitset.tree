@@ -1,6 +1,6 @@
 note <Tests for the packed bitset: set/clear/toggle/has single bits across word boundaries, count, and is-empty.>
 
-load @term/base/code/bitset
+load @term/seed/code/bitset
   find bitset
   find set
   find clear
@@ -9,7 +9,7 @@ load @term/base/code/bitset
   find count
   find is-empty
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
 test <set then has finds the bit>

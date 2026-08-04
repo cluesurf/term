@@ -1,4 +1,9 @@
 
+load @term/seed/code/bit
+  find bitwise-and
+  find shift-left
+  find shift-right
+
 # https://github.com/v8/v8/blob/f6911f6be82f5ea1d9d095f594b717ea28e17588/src/date-delay.js
 # https://github.com/hebcal/hebcal-es6
 # https://github.com/commenthol/date-chinese
@@ -8,13 +13,13 @@
 host hours-per-day, code 24
 host minutes-per-hour, code 60
 host seconds-per-minute, code 60
-host milliseconds-per-second, code 1,000
-host milliseconds-per-minute, code 60,000
-host milliseconds-per-hour, code 3,600,000
-host milliseconds-per-day, code 86,400,000
-host milliseconds-per-month, code 2,592,000,000
+host milliseconds-per-second, code 1000
+host milliseconds-per-minute, code 60000
+host milliseconds-per-hour, code 3600000
+host milliseconds-per-day, code 86400000
+host milliseconds-per-month, code 2592000000
 
-host k-day-zero-in-julian-day, code 2,440,588 # ToJulianDay(1970, 0, 1)
+host k-day-zero-in-julian-day, code 2440588 # ToJulianDay(1970, 0, 1)
 host k-month-mask, mark #h1e0
 host k-day-mask, mark #h01f
 host k-year-shift, code 9
@@ -25,7 +30,7 @@ task get-days-in-year
 
   fork test
     call is-unequal
-      call remainder
+      call modulo
         read year
         code 4
       code 0
@@ -34,13 +39,13 @@ task get-days-in-year
   fork and
     fork test
       call is-equal
-        call remainder
+        call modulo
           read year
           code 100
         code 0
     fork test
       call is-unequal
-        call remainder
+        call modulo
           read year
           code 400
         code 0
@@ -228,10 +233,10 @@ task convert-from-julian-day-to-gregorian-day
   take day
   fork roll
     fork and
-      call is-greater-than
+      call is-above
         read day
         read k-day-zero-in-julian-day
-      call is-less-than
+      call is-below
         call subtract
           read day
           read k-day-zero-in-julian-day
@@ -258,7 +263,7 @@ task convert-from-julian-day-to-gregorian-day
           call multiply
             code 1461
             read after-1968
-        save four-year-cycle, read four-year-cycle-table[jsimple]
+        save four-year-cycle, read four-year-cycle-table/{jsimple}
         send back
           make day-triplet
             call add
@@ -326,7 +331,7 @@ task convert-from-julian-day-to-gregorian-day
       read je
       code 1
   fork test
-    call is-greater-than
+    call is-above
       read m
       code 12
     hook hold
@@ -336,7 +341,7 @@ task convert-from-julian-day-to-gregorian-day
       read jc
       code 4715
   fork test
-    call is-greater-than
+    call is-above
       read m
       code 2
     hook hold
@@ -382,12 +387,12 @@ task calculate-four-year-cycle-table
 
   walk test, fork fork5
     hook test
-      call is-less-than
+      call is-below
         read month
         code 12
 
     hook hold
-      save length, read month-lengths[month]
+      save length, read month-lengths/{month}
       save day, code 1
 
       walk test, fork fork3
@@ -397,7 +402,7 @@ task calculate-four-year-cycle-table
             read length
 
         hook hold
-          save four-year-cycle-table[leap-position]
+          save four-year-cycle-table/{leap-position}
             call add
               call shift-left
                 read month
@@ -407,7 +412,7 @@ task calculate-four-year-cycle-table
             call add
               code 366
               read position
-          save four-year-cycle-table[next-position]
+          save four-year-cycle-table/{next-position}
             call add
               call add
                 call shift-left
@@ -421,7 +426,7 @@ task calculate-four-year-cycle-table
             call add
               code 731
               read position
-          save four-year-cycle-table[next-position]
+          save four-year-cycle-table/{next-position}
             call add
               call add
                 call shift-left
@@ -435,7 +440,7 @@ task calculate-four-year-cycle-table
             call add
               code 1096
               read position
-          save four-year-cycle-table[next-position]
+          save four-year-cycle-table/{next-position}
             call add
               call add
                 call shift-left
@@ -468,7 +473,7 @@ task calculate-four-year-cycle-table
             save leap-position
               call increment
                 bind value, read leap-position
-          save four-year-cycle-table[next-position]
+          save four-year-cycle-table/{next-position}
             call add
               call shift-left
                 read month

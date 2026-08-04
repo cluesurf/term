@@ -7,6 +7,7 @@ load @term/seed/code/native/bit
   find do-bitwise-not
   find do-shift-left
   find do-shift-right
+  find do-unsigned-shift-right
 
 task bitwise-and
   take left, like number
@@ -57,5 +58,15 @@ task shift-right
   like number
   send back
     call do-shift-right
+      read value
+      read count
+
+# a LOGICAL right shift: zeroes are shifted in, so the sign bit is not replicated. `shift-right` is arithmetic.
+task unsigned-shift-right
+  take value, like number
+  take count, like number
+  like number
+  send back
+    call do-unsigned-shift-right
       read value
       read count

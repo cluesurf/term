@@ -1,4 +1,10 @@
 
+# The current process. Forwards to the linked process runtime shim. A page is not a process, so each of these is the
+# nearest honest equivalent. Internal: reached only through the public process API.
+
+dock load
+  load <global:process>, name process
+
 load @term/seed/code/process/current
   find process-info
 
@@ -10,14 +16,14 @@ task read
       bind id, code 0
       bind arguments, make list
       bind directory
-        call browser-current-directory
+        call process/directory
       bind executable
-        call browser-current-executable
+        call process/executable
 
 task exit
   take code, like size, fall 0
 
-  call browser-exit
+  call process/exit
 
 task listen
   take signal, like text
@@ -25,42 +31,8 @@ task listen
 
   fork case, read signal
     case terminate
-      call browser-listen-beforeunload
+      call process/on-exit
         read handler
     case interrupt
-      call browser-listen-visibility
+      call process/on-hide
         read handler
-
-task browser-current-directory
-  note private
-  dock call <location.pathname>
-
-task browser-current-executable
-  note private
-  dock call <location.href>
-
-task browser-exit
-  note private
-  dock call <run {
-#     if (typeof self !== "undefined" && typeof self.close === "function" && typeof window === "undefined") {
-#       self.close();
-#     } else if (typeof window !== "undefined") {
-#       window.close();
-#     }
-#   }>
-
-task browser-listen-beforeunload
-  note private
-  take handler
-  dock call <window.addEventListener("beforeunload", handler)>
-
-task browser-listen-visibility
-  note private
-  take handler
-  dock call <run {
-#     document.addEventListener("visibilitychange", () => {
-#       if (document.visibilityState === "hidden") {
-#         handler();
-#       }
-#     });
-#   }>

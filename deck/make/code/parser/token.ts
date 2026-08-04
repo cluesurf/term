@@ -128,7 +128,12 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // a bare run of digits is an Integer, BUT digits followed by a hyphen and a letter (`24-cell`) is a kebab IDENTIFIER,
   // not a number, so the Integer matcher declines there and the Name matcher claims the whole `24-cell`. A pure number
   // (`24`, `24-3`) is unaffected.
-  [TokenKind.Integer]: /-?\d+(?=\b)(?!-[a-zA-Z])/y,
+  // a bare run of digits, OR a run written with THOUSAND SEPARATORS (`2,440,588`). The separated form requires exactly
+  // three digits after each comma and no space, so an ordinary argument list (`take a, 3`) still splits on its comma:
+  // only `1,234` binds as one number, never `1, 234`. The separated alternative is tried first, since the plain one
+  // would otherwise match just the leading `2`.
+  [TokenKind.Integer]:
+    /-?\d{1,3}(?:,\d{3})+(?![\d,])|-?\d+(?=\b)(?!-[a-zA-Z])/y,
   // a chunk runs over literal text, including a `{` that does not open an interpolation (not followed by an
   // identifier) and any `}`; it stops at `>` (close), `\` (escape), or an interpolation-opening `{`. Escapes cover
   // the delimiters (`\<` `\>` `\{` `\}`) and the standard characters (`\n` `\r` `\t` `\\`); the mill unescapes.

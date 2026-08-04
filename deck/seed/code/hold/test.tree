@@ -12,12 +12,12 @@ task test-suite
           fork case, read t/nest/size
             case 2
               test {scope}-{call/name}-{t/name}
-                call fork[call/name]
+                call fork/{call/name}
                   read call/a
                   read call/r
             case 3
               test {scope}-{call/name}-{t/name}
-                call fork[call/name]
+                call fork/{call/name}
                   read call/a
                   read call/b
                   read call/r

@@ -1,7 +1,20 @@
 
+load @term/seed/code/file
+  find read, name file-read
+  find write, name file-write
+  find test, name file-test
+
+load @term/seed/code/json
+  find stringify
+  find parse
+  find as-text
+
 load ./context
   find get
   find fail
+
+load @term/seed/code/text/string
+  find concat
 
 load ./compare
   find deep-equal
@@ -22,9 +35,9 @@ task resolve
     hook hold
       save ext, text <.txt>
   send back
-    call text-concat
+    call concat
       bind a
-        call text-concat
+        call concat
           bind a, text <.seed/snapshot/>
           bind b, read name
       bind b, read ext
@@ -41,10 +54,10 @@ task serialize
         bind b, text <json>
     hook hold
       send back
-        call json-serialize
+        call stringify
           bind value, read value
   send back
-    call to-text
+    call as-text
       bind value, read value
 
 task deserialize
@@ -58,7 +71,7 @@ task deserialize
         bind b, text <json>
     hook hold
       send back
-        call json-parse
+        call parse
           bind text, read raw
   send back, read raw
 
@@ -74,7 +87,7 @@ task match
       bind format, read format
 
   save exists
-    call file/test
+    call file-test
       wait true
       bind path, read path
 
@@ -85,14 +98,14 @@ task match
         call serialize
           bind value, read value
           bind format, read format
-      call file/write
+      call file-write
         wait true
         bind path, read path
         bind data, read data
       send back
 
   save raw
-    call file/read
+    call file-read
       wait true
       bind path, read path
 
@@ -136,7 +149,7 @@ task update
       bind value, read value
       bind format, read format
 
-  call file/write
+  call file-write
     wait true
     bind path, read path
     bind data, read data

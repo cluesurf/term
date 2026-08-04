@@ -1,15 +1,16 @@
 
+# The current time. Forwards to the linked clock runtime shim. Internal: reached only through the public clock API.
+
+dock load
+  load <global:clock>, name clock
+
 task get
   take precise, like bool, fall false
 
   fork test, read precise
     hook hold
       send back
-        call browser-performance-now
+        call clock/precise
     hook miss
       send back
-        call date/now
-
-task browser-performance-now
-  note private
-  dock call <performance.now()>
+        call clock/now

@@ -11,11 +11,11 @@ form yiq
   task convert-to-rgb
     like rgb-color
 
-host channel
-  term y
-  term i
-  term q
-  term alpha
+form channel
+  case y
+  case i
+  case q
+  case alpha
 
 host range
   host i

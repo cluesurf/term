@@ -28,9 +28,11 @@ task set-light-mode
   call is-true
     read device/has-light
     hook hold
-      stem seek
-        call device/native/lock-for-configuration
-        hook fail, back false
+      fork test
+        hook test
+          call device/native/lock-for-configuration
+        hook miss
+          back false
 
       save device/native/torch-mode
         fork case

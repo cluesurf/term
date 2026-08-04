@@ -1,14 +1,14 @@
 
 # FTP: File Transfer Protocol. A command/reply control channel plus a data transfer mode.
 
-form ftp-transfer-mode
-  case stream
-  case block
-  case compressed
+host ftp-transfer-mode
+  term stream
+  term block
+  term compressed
 
-form ftp-data-type
-  case ascii
-  case binary
+host ftp-data-type
+  term ascii
+  term binary
 
 # a control-channel command: a verb and an optional argument
 form ftp-command

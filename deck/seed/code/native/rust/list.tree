@@ -5,129 +5,122 @@
 
 # impl<T: Clone, A: Allocator> Vec<T, A>
 
-coat form
-  head item, base clone
-  head allocator, base allocator
+head item, base clone
+head allocator, base allocator
 
-  suit list
-    head item
-    head allocator
+suit list
+  head item
+  head allocator
 
-    task resize
-      take self
-      take size
-      take fill
+  task resize
+    take self
+    take size
+    take fill
 
 # impl<T: PartialEq, A: Allocator> Vec<T, A> {
 
-coat form
-  head item, base equality
-  head allocator, base allocator
+head item, base equality
+head allocator, base allocator
 
-  suit list
-    head item
-    head allocator
+suit list
+  head item
+  head allocator
 
-    task deduplicate
-      take self, lock false
+  task deduplicate
+    take self, lock false
 
 # impl<T: Clone, A: Allocator + Clone> Clone for Vec<T, A>
 
-coat form
-  head item, base clone
+head item, base clone
+head allocator
+  bind base
+    like and
+      like allocator
+      like clone
+
+suit list
+  head item
   head allocator
-    bind base
-      like and
-        like allocator
-        like clone
 
-  suit list
-    head item
-    head allocator
-
-    wear clone
-      task clone
-        take self, read true
+  wear clone
+    task clone
+      take self, read true
 
 # impl<T: Hash, A: Allocator> Hash for Vec<T, A>
 
-coat form
-  head item, base hash
-  head allocator, base allocator
+head item, base hash
+head allocator, base allocator
 
-  suit list
-    head item
-    head allocator
+suit list
+  head item
+  head allocator
 
-    wear hash
-      task hash
-        take self, read true
+  wear hash
+    task hash
+      take self, read true
 
 # impl<T, I: SliceIndex<[T]>, A: Allocator> Index<I> for Vec<T, A>
 #    type Output = I::Output;
 
-coat form
+head item
+head i, base slice-read, like line, like item
+head allocator, base allocator
+
+form list
   head item
-  head i, base slice-read, like line, like item
-  head allocator, base allocator
+  head allocator
 
-  form list
-    head item
-    head allocator
+  wear read
+    head i
+    take output, read i/output
 
-    wear read
-      head i
-      take output, read i/output
+    task read
+      take self, read true
+      take read, like i
+      free self/output, read true
 
-      task read
-        take self, read true
-        take read, like i
-        free self/output, read true
+head item
+head i, base slice-read, like line, like item
+head allocator, base allocator
 
-coat form
+suit list
   head item
-  head i, base slice-read, like line, like item
-  head allocator, base allocator
+  head allocator
 
-  suit list
-    head item
-    head allocator
+  wear read-flex
+    head i
+    take output, read i/output
 
-    wear read-flex
-      head i
-      take output, read i/output
-
-      task read
-        take self, flex true
-          read true
-        take read, like i
-        free self/output, flex true
-          read true
+    task read
+      take self, flex true
+        read true
+      take read, like i
+      free self/output, flex true
+        read true
 
 # impl<T, A: Allocator> IntoIterator for Vec<T, A> {
 #     type Item = T;
 #     type IntoIter = IntoIter<T, A>;
 
-coat form
+head item
+head allocator, base allocator
+
+suit list
   head item
-  head allocator, base allocator
+  head allocator
 
-  suit list
-    head item
-    head allocator
+  wear becoming-iteratable
+    take item, like item
+    take iterator
+      like becoming-iterator
+        like item
+        like allocator
 
-    wear becoming-iteratable
-      take item, like item
-      take iterator
-        like becoming-iterator
-          like item
-          like allocator
-
-      task become-iterator
-        take self, move true
-        free becoming-iterator
-          like item
-          like allocator
+    task become-iterator
+      take self, move true
+      free becoming-iterator
+        like item
+        like allocator
 
 # impl<'a, T, A: Allocator> IntoIterator for &'a Vec<T, A> {
 #     type Item = &'a T;
@@ -138,30 +131,29 @@ coat form
 #     }
 # }
 
-coat form
+time a
+head item
+head allocator, base allocator
+
+suit list, read true
   time a
   head item
-  head allocator, base allocator
+  head allocator
 
-  suit list, read true
-    time a
-    head item
-    head allocator
-
-    wear becoming-iteratable
-      take item, read true
+  wear becoming-iteratable
+    take item, read true
+      time a
+      like item
+    take iterator
+      like slice/iterator
         time a
         like item
-      take iterator
-        like slice/iterator
-          time a
-          like item
 
-      task become-iterator
-        take self, move true
-        free slice/iterator
-          time a
-          like item
+    task become-iterator
+      take self, move true
+      free slice/iterator
+        time a
+        like item
 
 # impl<'a, T, A: Allocator> IntoIterator for &'a mut Vec<T, A> {
 #     type Item = &'a mut T;
@@ -172,50 +164,48 @@ coat form
 #     }
 # }
 
-coat form
+time a
+head item
+head allocator, base allocator
+
+suit list, read true
+  flex true
   time a
   head item
-  head allocator, base allocator
+  head allocator
 
-  suit list, read true
-    flex true
-    time a
-    head item
-    head allocator
-
-    wear becoming-iteratable
-      take item, read true
-        flex true
+  wear becoming-iteratable
+    take item, read true
+      flex true
+      time a
+      like item
+    take iterator
+      like slice/iterator-flex
         time a
         like item
-      take iterator
-        like slice/iterator-flex
-          time a
-          like item
 
-      task become-iterator
-        take self, move true
-        free slice/iterator-flex
-          time a
-          like item
+    task become-iterator
+      take self, move true
+      free slice/iterator-flex
+        time a
+        like item
 
 # impl<T, A: Allocator> Vec<T, A>
 
-coat form
+head item
+head allocator, base allocator
+
+suit list
   head item
-  head allocator, base allocator
+  head allocator
 
-  suit list
-    head item
-    head allocator
-
-    task splice
-      head r, like range-bounds, like usize
-      head i, like becoming-iterable, bind item, base item
-      take self, flex true
-      take range, like r
-      take replace-with, like i
-      free splice
-        have time
-        like i/iterator
-        like allocator
+  task splice
+    head r, like range-bounds, like usize
+    head i, like becoming-iterable, bind item, base item
+    take self, flex true
+    take range, like r
+    take replace-with, like i
+    free splice
+      have time
+      like i/iterator
+      like allocator

@@ -1,19 +1,16 @@
 
+# The current time. Forwards to the linked clock runtime shim. Internal: reached only through the public clock API.
+
+dock load
+  load <global:clock>, name clock
+
 task get
   take precise, like bool, fall false
 
   fork test, read precise
     hook hold
       send back
-        call kotlin-nano-time
+        call clock/precise
     hook miss
       send back
-        call kotlin-current-millis
-
-task kotlin-current-millis
-  note private
-  dock call <System.currentTimeMillis()>
-
-task kotlin-nano-time
-  note private
-  dock call <System.nanoTime()>
+        call clock/now

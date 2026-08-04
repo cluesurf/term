@@ -1,6 +1,6 @@
 note <Tests for the arc-trigonometry added to float: exact-zero cases avoid float-equality noise.>
 
-load @term/base/code/float
+load @term/seed/code/float
   find tangent
   find arc-sine
   find arc-cosine

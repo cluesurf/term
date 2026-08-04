@@ -1,6 +1,6 @@
 note <Tests for the math module. Each test asserts with `want hold` (the body must be true) or `want miss` (must be false). The body holds the actual predicate call.>
 
-load @term/base/code/math
+load @term/seed/code/math
   find power
   find absolute
   find minimum

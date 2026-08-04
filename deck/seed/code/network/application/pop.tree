@@ -1,21 +1,21 @@
 
 # POP3: Post Office Protocol version 3. Commands and session states for retrieving mail from a server.
 
-form pop-state
-  case authorization
-  case transaction
-  case update
+host pop-state
+  term authorization
+  term transaction
+  term update
 
-form pop-command
-  case user
-  case password
-  case status
-  case list
-  case retrieve
-  case delete
-  case no-operation
-  case reset
-  case quit
+host pop-command
+  term user
+  term password
+  term status
+  term list
+  term retrieve
+  term delete
+  term no-operation
+  term reset
+  term quit
 
 # a server reply: success flag, status line, and any multi-line body
 form pop-response

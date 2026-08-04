@@ -1,14 +1,14 @@
 note <Tests for string concat and the text utilities join + count-occurrences.>
 
-load @term/base/code/text/string
+load @term/seed/code/text/string
   find concat
 
-load @term/base/code/text/util
+load @term/seed/code/text/util
   find join
   find count-occurrences
   find trim-characters
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
 
 test <concat joins two strings>

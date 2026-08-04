@@ -151,13 +151,13 @@ task contains
 
 # Character encodings.
 
-form encoding
-  case ascii
-  case base-64
-  case hex
-  case latin-1
-  case utf-8
-  case utf-16
-  case utf-16-be
-  case utf-16-le
-  case utf-32
+host encoding
+  term ascii
+  term base-64
+  term hex
+  term latin-1
+  term utf-8
+  term utf-16
+  term utf-16-be
+  term utf-16-le
+  term utf-32

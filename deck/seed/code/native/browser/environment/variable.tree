@@ -1,52 +1,42 @@
 
+# Environment variables. Forwards to the linked variable runtime shim, which uses origin-scoped local storage in
+# place of a process environment. Internal: reached only through the public environment API.
+
+dock load
+  load <global:variable>, name variable
+
 task get
   take name, like text
   like text
 
   send back
-    call local-storage/get-item
+    call variable/get
       read name
 
 task set
   take name, like text
   take value, like text
 
-  call local-storage/set-item
+  call variable/set
     read name
     read value
 
 task remove
   take name, like text
 
-  call local-storage/remove-item
+  call variable/remove
     read name
 
 task list
   like hash
 
   send back
-    call browser-list-variables
+    call variable/list
 
 task check
   take name, like text
   like bool
 
   send back
-    call browser-check-variable
+    call variable/check
       read name
-
-task browser-list-variables
-  note private
-  dock call <run {
-    const result = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      result[key] = localStorage.getItem(key);
-    }
-    return result;
-  }>
-
-task browser-check-variable
-  note private
-  take name
-  dock call <localStorage.getItem(name) !== null>

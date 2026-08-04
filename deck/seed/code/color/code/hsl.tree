@@ -13,11 +13,11 @@ form hsl
 
   task convert-to-css-string
 
-host channel
-  term h
-  term s
-  term l
-  term alpha
+form channel
+  case h
+  case s
+  case l
+  case alpha
 
 host range
   host h

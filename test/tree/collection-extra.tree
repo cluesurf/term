@@ -1,12 +1,12 @@
 note <Tests for the newly completed hash and set methods: hash get-or-default/clear/merge/entries, set intersection/clear/symmetric-difference/is-subset/is-superset.>
 
-load @term/base/code/hash
+load @term/seed/code/hash
   find hash
   find get-or-default
   find clear
   find merge
 
-load @term/base/code/set
+load @term/seed/code/set
   find set
   find insert
   find size
@@ -15,7 +15,7 @@ load @term/base/code/set
   find is-subset
   find is-superset
 
-load @term/base/code/list
+load @term/seed/code/list
   find list
   find size
 
