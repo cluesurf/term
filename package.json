@@ -13,7 +13,7 @@
     "lint": "bash task/lint.sh",
     "format": "prettier --write \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "host": "pnpm make && npm publish --access=public",
-    "install:all": "pnpm install && (cd deck/mill && pnpm install) && (cd deck/base && pnpm install) && (cd deck/deck && pnpm install) && (cd deck/flow/editor/vscode && pnpm install)"
+    "install:all": "pnpm install && (cd deck/base && pnpm install) && (cd deck/deck && pnpm install) && (cd deck/mill && pnpm install) && (cd deck/seed && pnpm install) && (cd deck/flow/editor/vscode && pnpm install)"
   },
   "prettier": "@cluesurf/wash/flow.json",
   "dependencies": {

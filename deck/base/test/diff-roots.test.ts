@@ -46,19 +46,9 @@ describe('diffRoots (cursor diff)', () => {
     expect(store.gets).toBe(0) // equal hash short-circuits, no read at all
   })
 
-  // KNOWN FAILING, AND THE ASSERTION IS RIGHT. Measured July 27, 2026: reads
-  // scale LINEARLY with the dataset (154 at 200 records, 1166 at 1600) and sit
-  // near half the total chunks, where a pruning prolly-tree diff should be
-  // O(log n) and roughly flat. 14-storage-substrate.md justifies the substrate
-  // on the opposite claim, that a diff costs the size of the change.
-  //
-  // Do NOT relax this threshold to make the suite green. The number is correct
-  // and the behaviour is wrong. Correctness is unaffected: the diff still
-  // reports exactly the changed record, which the assertion below still proves.
-  //
-  // Investigation and the leading hypothesis (updateTree rebuilding beyond the
-  // spine, leaving no shared subtrees to prune against) are in
-  // note/library/base/hardening-roadmap.md, Phase 6.
+  // Reads must stay flat as the dataset grows. This asserted under 40 and failed at
+  // 154 from July 27 2026 until the frontier rewrite; see `scales sublinearly` below
+  // and note/library/base/hardening-roadmap.md Phase 6 for the measurements.
   it('detects a single edit and reads only the path to it', () => {
     const store = new CountingStore()
     const rootA = writeDataset(datasetOf(bigDataset(200)), store)
@@ -73,6 +63,35 @@ describe('diffRoots (cursor diff)', () => {
     expect([...changed]).toEqual([markOf(100)])
     // walking only the changed path reads far fewer nodes than the ~200-leaf tree
     expect(store.gets).toBeLessThan(40)
+  })
+
+  // The claim 14-storage-substrate.md justifies the whole substrate on: a diff costs
+  // the size of the CHANGE, not the size of the dataset. A linear diff would read
+  // thousands of chunks at 3200 records. Measured 21 to 41 across a 16x size range.
+  it('scales sublinearly: one edit costs the same at 200 records as at 3200', () => {
+    const reads: Array<number> = []
+
+    for (const n of [200, 800, 3200]) {
+      const store = new CountingStore()
+      const rootA = writeDataset(datasetOf(bigDataset(n)), store)
+      const target = Math.floor(n / 2)
+      const rootB = updateTree(
+        rootA,
+        new Map([[markOf(target), record({ type: 'word', mark: markOf(target), fields: { term: text('EDIT') } })]]),
+        new Set(),
+        store,
+      )
+      store.gets = 0
+      const changed = diffRoots(rootA, rootB, store)
+      expect([...changed]).toEqual([markOf(target)])
+      reads.push(store.gets)
+    }
+
+    // flat, not linear: 16x the data must not cost materially more reads
+    for (const count of reads) {
+      expect(count).toBeLessThan(80)
+    }
+    expect(reads[2]!).toBeLessThan(reads[0]! * 3)
   })
 
   it('detects an added record', () => {

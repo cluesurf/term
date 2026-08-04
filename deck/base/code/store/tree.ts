@@ -181,47 +181,6 @@ export function readDataset(root: string, store: ChunkStore): Dataset {
   return out
 }
 
-// Every node hash reachable from a root (branches and leaves).
-function allNodeHashes(
-  hash: string,
-  store: ChunkStore,
-  into: Set<string>,
-): void {
-  if (into.has(hash)) {
-    return
-  }
-  into.add(hash)
-  const node = loadNode(hash, store)
-  if (node.kind === 'B') {
-    for (const [, childHash] of node.children) {
-      allNodeHashes(childHash, store, into)
-    }
-  }
-}
-
-// Collect leaf entries under a subtree, pruning any node whose hash appears in the
-// other tree (a shared subtree, whose entries cannot have changed).
-function collectUnshared(
-  hash: string,
-  other: Set<string>,
-  store: ChunkStore,
-  into: Map<Mark, string>,
-): void {
-  if (other.has(hash)) {
-    return // shared subtree: pruned, so shared records are never even read
-  }
-  const node = loadNode(hash, store)
-  if (node.kind === 'L') {
-    for (const [mark, rh] of node.entries) {
-      into.set(mark, rh)
-    }
-  } else {
-    for (const [, childHash] of node.children) {
-      collectUnshared(childHash, other, store, into)
-    }
-  }
-}
-
 // Every chunk hash reachable from a root: the tree nodes and the record chunks they
 // point at. This is what a sync transfers, and what a snapshot consists of.
 export function collectChunkHashes(
@@ -306,101 +265,157 @@ export function readRecord(
   }
 }
 
-// Ordered merge of two leaves' entries by mark: a mark on one side only changed
-// (added or removed); a mark on both sides changed iff its record hash differs.
-function diffLeafEntries(
-  ea: Array<Entry>,
-  eb: Array<Entry>,
-  changed: Set<Mark>,
-): void {
-  let i = 0
-  let j = 0
-  while (i < ea.length || j < eb.length) {
-    if (j >= eb.length || (i < ea.length && ea[i]![0] < eb[j]![0])) {
-      changed.add(ea[i]![0]) // present only in A: removed
-      i++
-    } else if (i >= ea.length || eb[j]![0] < ea[i]![0]) {
-      changed.add(eb[j]![0]) // present only in B: added
-      j++
+// Drop every node the two sides have in common. An equal hash is equal content, and a
+// mark lives under exactly one subtree, so a shared node's entries cannot have changed
+// on either side. Removing it from BOTH keeps the comparison balanced, and it is never
+// read. This is the whole basis of an O(change) diff.
+function pruneShared(
+  fa: Array<Entry>,
+  fb: Array<Entry>,
+): { a: Array<Entry>; b: Array<Entry> } {
+  const inB = new Set(fb.map(e => e[1]))
+  const inA = new Set(fa.map(e => e[1]))
+  return {
+    a: fa.filter(e => !inB.has(e[1])),
+    b: fb.filter(e => !inA.has(e[1])),
+  }
+}
+
+// How many levels a tree stands, following the leftmost spine. Every branch on a level
+// has the same depth beneath it, so one descent is enough. Costs one read per level.
+function depthOf(hash: string, store: ChunkStore): number {
+  let node = loadNode(hash, store)
+  let depth = 1
+  while (node.kind === 'B') {
+    node = loadNode(node.children[0]![1], store)
+    depth++
+  }
+  return depth
+}
+
+// Replace every branch in a frontier with its children. Leaves pass through, so a
+// frontier that has already bottomed out in places is not disturbed.
+function expandLevel(
+  frontier: Array<Entry>,
+  store: ChunkStore,
+): Array<Entry> {
+  const next: Array<Entry> = []
+  for (const entry of frontier) {
+    const node = loadNode(entry[1], store)
+    if (node.kind === 'B') {
+      next.push(...node.children)
     } else {
-      if (ea[i]![1] !== eb[j]![1]) {
-        changed.add(ea[i]![0]) // same mark, differing record hash: edited
+      next.push(entry)
+    }
+  }
+  return next
+}
+
+// Walk two trees down together as FRONTIERS of nodes rather than in structural
+// lockstep, pruning shared hashes at every level.
+//
+// Structural lockstep cannot be relied on here. Chunk boundaries are content-defined,
+// so a single edit changes hashes up the spine and can flip a boundary at the top,
+// which adds or removes a whole level: measured at 200 records, an edit took the tree
+// from height 5 to height 6. A descent that pairs node with node then meets a leaf on
+// one side and a branch on the other and has to give up.
+//
+// A frontier walk does not care. Each round expands whichever side still has branches,
+// leaves pass through untouched, and shared hashes drop out wherever they sit. The two
+// sides converge on leaves at their own pace, and reads stay proportional to the number
+// of nodes that actually differ.
+function diffFrontier(
+  rootA: string,
+  rootB: string,
+  store: ChunkStore,
+  changed: Set<Mark>,
+): void {
+  let a: Array<Entry> = [['', rootA]]
+  let b: Array<Entry> = [['', rootB]]
+
+  // Bring both frontiers to the same DEPTH before comparing anything. Two nodes only
+  // share a hash when they sit at the same depth, so while one tree is taller its
+  // frontier lines up against the wrong level of the other and nothing prunes. Walking
+  // the leftmost spine costs one read per level, and dropping the taller side's extra
+  // levels costs one read per node in a frontier that is still tiny near the root.
+  let da = depthOf(rootA, store)
+  let db = depthOf(rootB, store)
+
+  while (da > db) {
+    a = expandLevel(a, store)
+    da--
+  }
+  while (db > da) {
+    b = expandLevel(b, store)
+    db--
+  }
+
+  const aligned = pruneShared(a, b)
+  a = aligned.a
+  b = aligned.b
+
+  while (a.length > 0 || b.length > 0) {
+    const na = a.map(e => loadNode(e[1], store))
+    const nb = b.map(e => loadNode(e[1], store))
+
+    // both sides are down to leaves: merge what is left and compare record hashes
+    if (na.every(n => n.kind === 'L') && nb.every(n => n.kind === 'L')) {
+      const ma = new Map<Mark, string>()
+      const mb = new Map<Mark, string>()
+
+      for (const node of na) {
+        if (node.kind === 'L') {
+          for (const [mark, rh] of node.entries) {
+            ma.set(mark, rh)
+          }
+        }
       }
-      i++
-      j++
+      for (const node of nb) {
+        if (node.kind === 'L') {
+          for (const [mark, rh] of node.entries) {
+            mb.set(mark, rh)
+          }
+        }
+      }
+
+      for (const [mark, rh] of ma) {
+        if (mb.get(mark) !== rh) {
+          changed.add(mark) // edited, or removed if absent from B
+        }
+      }
+      for (const [mark] of mb) {
+        if (!ma.has(mark)) {
+          changed.add(mark) // present only in B: added
+        }
+      }
+      return
     }
-  }
-}
 
-// Two branches are aligned when their children partition the key space identically
-// (same count, same min-keys). An edit that does not move a chunk boundary keeps the
-// branch aligned, with only the child hashes that changed differing, which is the
-// overwhelming majority of edits since chunk boundaries are content-defined.
-function branchesAligned(ca: Array<Entry>, cb: Array<Entry>): boolean {
-  if (ca.length !== cb.length) {
-    return false
-  }
-  for (let k = 0; k < ca.length; k++) {
-    if (ca[k]![0] !== cb[k]![0]) {
-      return false
-    }
-  }
-  return true
-}
+    // expand one level. A branch is replaced by its children; a leaf waits here for the
+    // other side to come down to its depth.
+    const nextA: Array<Entry> = []
+    const nextB: Array<Entry> = []
 
-// The changed region between two subtrees, walking both in lockstep. Identical
-// subtrees (equal hash) are skipped without being read, so the work tracks the size
-// of the difference rather than the dataset. When a boundary shift misaligns two
-// branches (rare), it falls back to a correct hash-set comparison for that subtree.
-function diffSubtrees(
-  ha: string,
-  hb: string,
-  store: ChunkStore,
-  changed: Set<Mark>,
-): void {
-  if (ha === hb) {
-    return // identical subtree: nothing changed under here
-  }
-  const a = loadNode(ha, store)
-  const b = loadNode(hb, store)
-  if (a.kind === 'L' && b.kind === 'L') {
-    diffLeafEntries(a.entries, b.entries, changed)
-    return
-  }
-  if (a.kind === 'B' && b.kind === 'B' && branchesAligned(a.children, b.children)) {
-    for (let k = 0; k < a.children.length; k++) {
-      diffSubtrees(a.children[k]![1], b.children[k]![1], store, changed)
-    }
-    return
-  }
-  // Height mismatch or a moved boundary: compare this subtree by hash-set pruning,
-  // which is correct regardless of structure and stays local to the changed region.
-  fallbackDiff(ha, hb, store, changed)
-}
+    a.forEach((entry, k) => {
+      const node = na[k]!
+      if (node.kind === 'B') {
+        nextA.push(...node.children)
+      } else {
+        nextA.push(entry)
+      }
+    })
+    b.forEach((entry, k) => {
+      const node = nb[k]!
+      if (node.kind === 'B') {
+        nextB.push(...node.children)
+      } else {
+        nextB.push(entry)
+      }
+    })
 
-// A correct, structure-agnostic diff of two subtrees: prune shared nodes by hash,
-// then compare the unshared leaf entries. Used only where lockstep alignment breaks.
-function fallbackDiff(
-  ha: string,
-  hb: string,
-  store: ChunkStore,
-  changed: Set<Mark>,
-): void {
-  const hashesA = new Set<string>()
-  const hashesB = new Set<string>()
-  allNodeHashes(ha, store, hashesA)
-  allNodeHashes(hb, store, hashesB)
-
-  const partialA = new Map<Mark, string>()
-  const partialB = new Map<Mark, string>()
-  collectUnshared(ha, hashesB, store, partialA)
-  collectUnshared(hb, hashesA, store, partialB)
-
-  const marks = new Set<Mark>([...partialA.keys(), ...partialB.keys()])
-  for (const mark of marks) {
-    if (partialA.get(mark) !== partialB.get(mark)) {
-      changed.add(mark)
-    }
+    const pruned = pruneShared(nextA, nextB)
+    a = pruned.a
+    b = pruned.b
   }
 }
 
@@ -413,6 +428,9 @@ export function diffRoots(
   store: ChunkStore,
 ): Set<Mark> {
   const changed = new Set<Mark>()
-  diffSubtrees(rootA, rootB, store, changed)
+  if (rootA === rootB) {
+    return changed // equal roots short-circuit: not a single chunk is read
+  }
+  diffFrontier(rootA, rootB, store, changed)
   return changed
 }

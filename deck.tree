@@ -12,13 +12,18 @@ deck @term/term
   term platform
   term white-label
   term compiler
-  deck ./deck/make
-  deck ./deck/call
-  deck ./deck/flow
+  # every package under ./deck, alphabetical. `@term/term` is this manifest itself and is not a member of itself.
   deck ./deck/base
-  deck ./deck/site
-  deck ./deck/term
+  deck ./deck/call
   deck ./deck/deck
+  deck ./deck/face
+  deck ./deck/flow
+  deck ./deck/make
+  deck ./deck/mill
+  deck ./deck/scan
+  deck ./deck/seed
+  deck ./deck/site
+  deck ./deck/test
   link @term/bind, mark <0.0.x>
   task ./task
   # the task loader
