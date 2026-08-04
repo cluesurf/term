@@ -1,6 +1,6 @@
 load ../bind, find bind
 
-load ../task
+load ./task
   find base
   find flow, name task-flow
 

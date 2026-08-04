@@ -1,2 +1,3 @@
 
-host https, call require, text <https>
+dock load
+  load <node:https>, name https

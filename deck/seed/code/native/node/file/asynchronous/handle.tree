@@ -1,5 +1,6 @@
 
 dock load
+  load <node:buffer>, name buffer
   load <node:fs/promises>, name fs-promise
 
 task open

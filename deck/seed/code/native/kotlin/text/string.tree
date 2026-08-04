@@ -90,3 +90,10 @@ task do-concat
     call text/concat
       read input
       read other
+
+task do-to-text
+  take value
+  like text
+  send back
+    call value/to-string
+

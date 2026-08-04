@@ -10,7 +10,7 @@ load @term/seed/code/json
   find as-text
 
 load ./context
-  find get
+  find get-context
   find fail
 
 load @term/seed/code/text/string
@@ -63,6 +63,7 @@ task serialize
 task deserialize
   take raw, like text
   take format, like text
+  like dynamic
   note private
   fork test
     hook test
@@ -72,7 +73,7 @@ task deserialize
     hook hold
       send back
         call parse
-          bind text, read raw
+          read raw
   send back, read raw
 
 task match
@@ -123,7 +124,7 @@ task match
     hook test, read eq
     hook miss
       save ctx
-        call get
+        call get-context
       call fail
         bind ctx, read ctx
         bind failure

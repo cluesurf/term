@@ -1,14 +1,18 @@
 
+# An HTTP/2 stream. Forwards to the linked http2-stream runtime shim, which owns the callback-to-promise wrapper.
+# Internal: reached only through the public network API.
+
+dock load
+  load <global:http2-stream>, name http2-stream
+
 form stream
   task initiate-push-stream
-    take headers
-      like map
-        like string
-        like string
-    call make-javascript-promise
-      hook done
-        take fall
-        take push-stream
-        call resolve
-          make push-stream
-            read push-stream
+    note async
+    take self
+    take headers, like hash
+
+    send back
+      call http2-stream/initiate-push
+        wait true
+        read self
+        read headers

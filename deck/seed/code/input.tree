@@ -4,21 +4,21 @@ form input
     like void
 
   task read
-    take nbytes, like int
+    take nbytes, like integer
     like bytes
 
   task read-all
-    take bufsize, like int-nullable
+    take bufsize, like integer-nullable
     like bytes
 
   task read-byte
-    like int
+    like integer
 
   task read-bytes
     take s, like bytes
-    take pos, like int
-    take len, like int
-    like int
+    take pos, like integer
+    take len, like integer
+    like integer
 
   task read-double
     like float
@@ -28,36 +28,36 @@ form input
 
   task read-full-bytes
     take s, like bytes
-    take pos, like int
-    take len, like int
+    take pos, like integer
+    take len, like integer
     like void
 
   task read-int16
-    like int
+    like integer
 
   task read-int24
-    like int
+    like integer
 
   task read-int32
-    like int
+    like integer
 
   task read-int8
-    like int
+    like integer
 
   task read-line
-    like string
+    like text
 
   task read-string
-    take len, like int
+    take len, like integer
     take encoding, like encoding-nullable
-    like string
+    like text
 
   task read-uint16
-    like int
+    like integer
 
   task read-uint24
-    like int
+    like integer
 
   task read-until
-    take end, like int
-    like string
+    take end, like integer
+    like text

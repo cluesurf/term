@@ -1,5 +1,6 @@
 
 dock load
+  load <global:console>, name console
   load <node:fs/promises>, name fs-promise
   load <node:path>, name path
   load <node:os>, name os

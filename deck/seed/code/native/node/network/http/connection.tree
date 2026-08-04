@@ -1,17 +1,24 @@
 
+dock load
+  load <node:net>, name net
+
 task make-connection
   call net/create-connection
 
 form connection
+  link x-connection
+
   task get-bytes-read
   task get-bytes-written
   task connect
   task is-connecting
+    take self
     read self/x-connection/connecting
 
   task destroy
 
   task is-destroyed
+    take self
     read self/x-connection/destroyed
 
   task end

@@ -1,3 +1,10 @@
+load @term/seed/code/math
+  find absolute
+  find power
+  find square-root
+  find minimum
+  find maximum
+
 # Integer math: the clean uniform interface. The host-backed operations (absolute, minimum, maximum, power, sign, square-root) delegate to the per-backend native implementation in its own file (`native/<env>/math`). Operations with no host primitive (clamp, greatest-common-divisor, factorial) compose from the interface in pure Seed. `number` is the platform integer (i64 / Int / Long), so round-down / round-up / round are the identity.
 
 load @term/seed/code/native/math
@@ -6,6 +13,7 @@ load @term/seed/code/native/math
   find max
   find pow
   find log
+  find sin
   find signum
   find sqrt
 
@@ -13,7 +21,7 @@ task absolute
   take value, like number
   like number
   send back
-    call abs
+    call absolute
       read value
 
 task minimum
@@ -21,7 +29,7 @@ task minimum
   take b, like number
   like number
   send back
-    call min
+    call minimum
       read a
       read b
 
@@ -30,7 +38,7 @@ task maximum
   take b, like number
   like number
   send back
-    call max
+    call maximum
       read a
       read b
 
@@ -39,7 +47,7 @@ task power
   take exponent, like number
   like number
   send back
-    call pow
+    call power
       read base
       read exponent
 
@@ -54,7 +62,7 @@ task square-root
   take value, like number
   like number
   send back
-    call sqrt
+    call square-root
       read value
 
 task round-down
@@ -134,4 +142,12 @@ task logarithm
   like number
   send back
     call log
+      read value
+
+# the SINE of an angle in radians
+task sine
+  take value, like number
+  like number
+  send back
+    call sin
       read value

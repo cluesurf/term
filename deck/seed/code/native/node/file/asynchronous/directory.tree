@@ -54,7 +54,8 @@ task list-deep
           read entry/name
 
       fork test
-        call entry/is-directory
+        hook test
+          call entry/is-directory
         hook hold
           call result/push
             read relative
@@ -125,11 +126,13 @@ task walk-step
 
       save kind, text <file>
       fork test
-        call entry/is-directory
+        hook test
+          call entry/is-directory
         hook hold
           save kind, text <directory>
       fork test
-        call entry/is-symbolic-link
+        hook test
+          call entry/is-symbolic-link
         hook hold
           save kind, text <link>
 
@@ -140,17 +143,20 @@ task walk-step
           bind depth, read level
 
       fork test
-        call entry/is-directory
+        hook test
+          call entry/is-directory
         hook hold
           fork test
-            call is-above
-              bind a, read max-depth
-              bind b, code 0
+            hook test
+              call is-above
+                bind a, read max-depth
+                bind b, code 0
             hook hold
               fork test
-                call is-below
-                  bind a, read level
-                  bind b, read max-depth
+                hook test
+                  call is-below
+                    bind a, read level
+                    bind b, read max-depth
                 hook hold
                   call walk-step
                     read base

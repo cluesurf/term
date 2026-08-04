@@ -1,4 +1,9 @@
 
+# where a socket is bound or connected: the shape both `host` and `peer` return
+form address
+  link port, like integer
+  link host, like text
+
 form socket
   task add-sni-certificate
     take cb-servername-match
@@ -25,7 +30,7 @@ form socket
     like void
 
   task set-hostname
-    take name, like string
+    take name, like text
     like void
 
   task custom
@@ -38,20 +43,14 @@ form socket
     like output
 
   task host
-    like dynamic
-    fields
-      port, like int
-      host, like host
+    like address
 
   task listen
-    take connections, like int
+    take connections, like integer
     like void
 
   task peer
-    like dynamic
-    fields
-      port, like int
-      host, like host
+    like address
 
   task set-fast-send
     take b, like bool

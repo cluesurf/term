@@ -5,6 +5,7 @@ mask formation
   head from
 
   task form
+    take self
     take source, like from
     like self
 
@@ -12,6 +13,7 @@ mask failable-formation
   head from
 
   task form
+    take self
     take source, like from
     like maybe
       head self

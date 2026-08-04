@@ -19,7 +19,7 @@ task allocate
   free text, like text-utf-8
 
 form text-utf-8
-  take list
+  link list
     like list-type
       like mark-8
     note private
@@ -67,11 +67,12 @@ task make-utf-8-from-utf-16
               code 0xDBFF
         hook hold
           fork test
-            call is-below
-              call add
-                read i
-                code 1
-              read text/get-size
+            hook test
+              call is-below
+                call add
+                  read i
+                  code 1
+                read text/get-size
             hook hold
               save l, read text/{i}
               fork test
@@ -100,27 +101,30 @@ task make-utf-8-from-utf-16
                   code 3
         hook miss
           fork test
-            call is-below
-              read h
-              code 0x80
+            hook test
+              call is-below
+                read h
+                code 0x80
             hook hold
               save size
                 call increment
                   read size
                   code 1
           fork test
-            call is-below
-              read h
-              code 0x800
+            hook test
+              call is-below
+                read h
+                code 0x800
             hook hold
               save size
                 call increment
                   read size
                   code 2
           fork test
-            call is-below
-              read h
-              code 0x10000
+            hook test
+              call is-below
+                read h
+                code 0x10000
             hook hold
               save size
                 call increment
@@ -146,11 +150,12 @@ task make-utf-8-from-utf-16
               code 0xDBFF
         hook hold
           fork test
-            call is-below
-              call add
-                read i
-                code 1
-              read text/get-size
+            hook test
+              call is-below
+                call add
+                  read i
+                  code 1
+                read text/get-size
             hook hold
               save l, read text/{i}
               fork test
@@ -231,17 +236,19 @@ task make-utf-8-from-utf-16
               save head-text/{tmp}, code 0xBD
         hook miss
           fork test
-            call is-below
-              read h
-              code 0x80
+            hook test
+              call is-below
+                read h
+                code 0x80
             hook hold
               save tmp, read j
               save j, call increment, read j
               save head-text/{tmp}, read h
           fork test
-            call is-below
-              read h
-              code 0x800
+            hook test
+              call is-below
+                read h
+                code 0x800
             hook hold
               save tmp, read j
               save j, call increment, read j
@@ -264,9 +271,10 @@ task make-utf-8-from-utf-16
                   read size
                   code 2
           fork test
-            call is-below
-              read h
-              code 0x10000
+            hook test
+              call is-below
+                read h
+                code 0x10000
             hook hold
               save tmp, read j
               save j, call increment, read j
@@ -312,9 +320,10 @@ task make-utf-16-from-utf-8
     take byte
     save type, read utf-8-decoding-table/get, read byte
     fork test
-      call is-unequal
-        read state
-        code 0
+      hook test
+        call is-unequal
+          read state
+          code 0
       hook hold
         save point
           call bitwise-or
@@ -379,9 +388,10 @@ task make-utf-16-from-utf-8
           roll decode-byte-walk
         roll decode-byte-walk
       fork test
-        call is-maximum
-          read point
-          code 0xffff
+        hook test
+          call is-maximum
+            read point
+            code 0xffff
         hook hold
           call head-text/push
             read point

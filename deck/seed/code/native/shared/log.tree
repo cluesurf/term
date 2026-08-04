@@ -25,29 +25,35 @@ task log-record-make
 task log-record-level
   take r, like log-record
   fork case, read r
-    hook log-record, base level, base message, base timestamp
+    case log-record
+      link level
+      link message
+      link timestamp
       send back, read level
 
 task log-record-message
   take r, like log-record
   fork case, read r
-    hook log-record, base level, base message, base timestamp
+    case log-record
+      link level
+      link message
+      link timestamp
       send back, read message
 
 task log-level-rank
   take level, like log-level
   fork case, read level
-    hook trace
+    case trace
       send back, code 0
-    hook debug
+    case debug
       send back, code 1
-    hook info
+    case info
       send back, code 2
-    hook warn
+    case warn
       send back, code 3
-    hook error
+    case error
       send back, code 4
-    hook fatal
+    case fatal
       send back, code 5
 
 task log-level-is-above
@@ -59,6 +65,6 @@ task log-level-is-above
   save b-rank
     call log-level-rank
       bind level, read b
-  call is-greater-or-equal
+  call is-minimum
     bind a, read a-rank
     bind b, read b-rank

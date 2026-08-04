@@ -9,12 +9,12 @@ form linked-list
   case empty
   case node
     link value, like t
-    link next, like linked-list
+    link next, like linked-list t
 
   task prepend
-    take self
+    take self, like linked-list t
     take item, like t
-    like linked-list
+    like linked-list t
     send back
       make node
         bind value, read item

@@ -1,15 +1,15 @@
 
 form file
-  take dock
+  link dock
     # File descriptor
     note private
-  take path
+  link path
 
 tree open-head
   take note
   hook bind
     note note
-    take path, like string
+    take path, like text
 
 tree open-result
   hook bind

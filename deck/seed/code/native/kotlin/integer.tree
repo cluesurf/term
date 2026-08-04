@@ -4,122 +4,148 @@ tree integer
 
   hook fuse
     task add
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task subtract
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task multiply
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task divide
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task remainder
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task negate
+      take self
       take a, like self-type
       like self-type
 
     task abs
+      take self
       take a, like self-type
       like self-type
 
     task pow
+      take self
       take a, like self-type
       take exp, like i32
       like self-type
 
     task min
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task max
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task compare-to
+      take self
       take a, like self-type
       take b, like self-type
       like i32
 
     task equals
+      take self
       take a, like self-type
       take b, like self-type
       like bool
 
     task bitwise-and
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task bitwise-or
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task bitwise-xor
+      take self
       take a, like self-type
       take b, like self-type
       like self-type
 
     task bitwise-invert
+      take self
       take a, like self-type
       like self-type
 
     task shift-left
+      take self
       take a, like self-type
       take bits, like i32
       like self-type
 
     task shift-right
+      take self
       take a, like self-type
       take bits, like i32
       like self-type
 
     task shift-right-unsigned
+      take self
       take a, like self-type
       take bits, like i32
       like self-type
 
     task to-byte
+      take self
       take a, like self-type
       like i8
 
     task to-short
+      take self
       take a, like self-type
       like i16
 
     task to-int
+      take self
       take a, like self-type
       like i32
 
     task to-long
+      take self
       take a, like self-type
       like i64
 
     task to-float
+      take self
       take a, like self-type
       like f32
 
     task to-double
+      take self
       take a, like self-type
       like f64
 
     task to-string
+      take self
       take a, like self-type
       like text
 

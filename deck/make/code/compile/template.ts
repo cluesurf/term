@@ -281,8 +281,15 @@ export function collectTemplates(
       const head = headName(node)
 
       if (head === 'take') {
+        // the parameter name arrives as a nested group when written on its own line, but as a bare NAME node when
+        // written inline after a comma. Both are the same thing.
         const p = rest(node)[0]
-        const pName = p?.kind === 'group' ? headName(p) : undefined
+        const pName =
+          p?.kind === 'group'
+            ? headName(p)
+            : p?.kind === 'name'
+              ? nameText(p)
+              : undefined
 
         if (pName) {
           params.push(pName)

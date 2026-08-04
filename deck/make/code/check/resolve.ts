@@ -15,7 +15,10 @@ import type {
   Statement,
   ZoneNode,
 } from '@cluesurf/make/code/compile/node'
-import { BINARY_BUILTIN } from '@cluesurf/make/code/compile/mill'
+import {
+  BINARY_BUILTIN,
+  UNARY_BUILTIN,
+} from '@cluesurf/make/code/compile/mill'
 
 export type Scope = Map<string, Binding>
 
@@ -161,7 +164,10 @@ export function resolve(
           node.binding = binding
         } else if (typeNames.has(node.name)) {
           // a type used as a first-class value -- no local binding, resolved as the type itself
-        } else if (node.name in BINARY_BUILTIN) {
+        } else if (
+          node.name in BINARY_BUILTIN ||
+          UNARY_BUILTIN.has(node.name)
+        ) {
           // arithmetic / comparison the emitter lowers to an operator (`is-below` -> `<`). These have no definition
           // to bind to and are never imported, so the resolver must not treat them as unknown names.
         } else {

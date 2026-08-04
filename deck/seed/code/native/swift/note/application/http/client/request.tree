@@ -1,73 +1,38 @@
 
+# HTTP requests. Forwards to the linked request runtime shim, which owns the URLSession plumbing: its calls throw and
+# return tuples, and neither can be destructured here. Internal: reached only through the public network API.
+
+dock load
+  load <global:request>, name request
+
 task send-request
   note async
+  take url, like text
+  like text
 
-  call url-session-form/shared/data
-    wait true
-    bind from, read url
-    save data
-  fuse catch-and-return-error
-
-  send back, read data
+  send back
+    call request/send
+      wait true
+      read url
 
 task upload-file
-  take request
-  take data
+  note async
+  take url, like text
+  take data, like text
+  like text
 
-  call url-session-form/shared/upload
-    bind for, read request
-    bind from, read data
-    save response-data
-    save response
-  fuse catch-and-return-error
-
-  send back, read response
+  send back
+    call request/upload
+      wait true
+      read url
+      read data
 
 task download-file-from-url
-  take url
+  note async
+  take url, like text
+  like text
 
-  free seed
-    like result
-      like ok
-        like file
-      like error
-
-  call url-session-form/shared/download
-    wait true
-    bind from, read url
-    save local-url
-  fuse catch-and-return-error
-
-  make ok
-    make file
-      bind url, read local-url
-
-tree catch-and-return-error
-  hook bind
-    hook error
-      take error
-      send back, read error
-
-tree return-if-error-exists
-  take error, like optional, like error
-
-  hook bind
-    fork test
-      test is-present
-        read error
-      hook hold
-        send back
-          make error
-            read error/option
-
-tree return-if-value-exists
-  take value, like optional
-
-  hook bind
-    fork test
-      test is-present
-        read value
-      hook hold
-        send back
-          make ok
-            read value/option
+  send back
+    call request/download
+      wait true
+      read url

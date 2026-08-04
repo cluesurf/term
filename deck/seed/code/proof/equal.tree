@@ -1,8 +1,8 @@
 
 form equal
   head a
-  take x, like a
-  take y, like a
+  link x, like a
+  link y, like a
 
   case refl
     hold same

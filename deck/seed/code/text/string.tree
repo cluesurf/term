@@ -11,6 +11,7 @@ load @term/seed/code/native/text/string
   find do-replace
   find do-slice
   find do-concat
+  find do-to-text
 
 task to-upper
   take input, like text
@@ -100,3 +101,11 @@ task concat
     call do-concat
       read input
       read other
+
+# render any value as text
+task to-text
+  take value
+  like text
+  send back
+    call do-to-text
+      read value

@@ -1,4 +1,4 @@
 
-load ./measurement
+load ./clock/measurement
   find start
   find read

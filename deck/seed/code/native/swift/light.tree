@@ -1,48 +1,48 @@
 
+# The camera light (torch). Forwards to the linked light runtime shim, which owns the lock / unlock dance AVFoundation
+# requires and the mode enum. Internal: reached only through the public light API.
+
+dock load
+  load <global:light>, name light
+
 task get-light-level
   take device
-  read device/native/torch-level
+  like number
+
+  send back
+    call light/level
+      read device
 
 task has-light
-  # A Boolean value that specifies whether the capture device has a torch.
   take device
   like boolean
-  read device/native/has-torch
+
+  send back
+    call light/has
+      read device
 
 task is-light-available
-  # Indicates whether the torch is currently available for use.
   take device
   like boolean
-  read device/native/is-torch-available
+
+  send back
+    call light/available
+      read device
 
 task is-light-active
-  # A Boolean value indicating whether the device's torch is currently active.
   take device
   like boolean
-  read device/native/is-torch-active
+
+  send back
+    call light/active
+      read device
 
 task set-light-mode
   take device
-  take mode
+  take mode, like text
+  like boolean
 
-  call is-true
-    read device/has-light
-    hook hold
-      fork test
-        hook test
-          call device/native/lock-for-configuration
-        hook miss
-          back false
-
-      save device/native/torch-mode
-        fork case
-          read mode
-          case auto
-            read av-capture-device/torch-mode/auto
-          case on
-            read av-capture-device/torch-mode/on
-          case off
-            read av-capture-device/torch-mode/off
-
-      call device/native/unlock-for-configuration
-      send back true
+  send back
+    call light/set-mode
+      read device
+      read mode

@@ -16,7 +16,7 @@ task hash-djb2-xor
         read size
     hook hold
       save hash
-        call bitwise-xor
+        call bitwise-exclusive-or
           call multiply
             read hash
             code 33

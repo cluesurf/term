@@ -10,18 +10,24 @@ task completion-suggestion-make
   take kind, like text
   send back
     make completion-suggestion
-      bind text, read text
+      read text
       bind label, read label
       bind kind, read kind
 
 task completion-suggestion-text
   take s, like completion-suggestion
   fork case, read s
-    hook completion-suggestion, base text, base label, base kind
+    case completion-suggestion
+      link text
+      link label
+      link kind
       send back, read text
 
 task completion-suggestion-label
   take s, like completion-suggestion
   fork case, read s
-    hook completion-suggestion, base text, base label, base kind
+    case completion-suggestion
+      link text
+      link label
+      link kind
       send back, read label

@@ -22,21 +22,24 @@ task read
 
   save kind, text <other>
   fork test
-    call stats/is-directory
+    hook test
+      call stats/is-directory
     hook hold
       save kind, text <directory>
   fork test
-    call stats/is-symbolic-link
+    hook test
+      call stats/is-symbolic-link
     hook hold
       save kind, text <link>
   fork test
-    call stats/is-file
+    hook test
+      call stats/is-file
     hook hold
       save kind, text <file>
 
   send back
     make file-metadata
-      bind size, read stats/size
+      size, read stats/size
       bind kind, read kind
       bind made
         call stats/birth-time/get-time

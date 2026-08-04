@@ -11,30 +11,30 @@ load @term/seed/code/bit
 task is-bit-count-odd
   take n, like integer-8
   save n
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read n
         code 8
       read n
   save n
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read n
         code 4
       read n
   save n
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read n
         code 2
       read n
   save n
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read n
         code 1
       read n
-  call intersect-bitwise
+  call bitwise-and
     read n
     code 1
 

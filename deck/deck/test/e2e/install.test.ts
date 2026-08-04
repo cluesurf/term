@@ -149,23 +149,24 @@ beforeAll(async () => {
   })
 
   // seed the registry with test packages
-  // registry stores packages with .tree suffix (toRegistryName adds it)
-  addPackage({ name: 'seed-e2e-leaf-a.tree', version: '1.0.0' })
-  addPackage({ name: 'seed-e2e-leaf-a.tree', version: '1.0.2' })
-  addPackage({ name: 'seed-e2e-leaf-a.tree', version: '1.2.0' })
-  addPackage({ name: 'seed-e2e-leaf-a.tree', version: '2.0.0' })
+  // the registry is keyed by the bare package name: `fetch.ts` requests `${registry}/${name}` with no `.tree`
+  // suffix, so the fixture has to register under that same bare name
+  addPackage({ name: 'seed-e2e-leaf-a', version: '1.0.0' })
+  addPackage({ name: 'seed-e2e-leaf-a', version: '1.0.2' })
+  addPackage({ name: 'seed-e2e-leaf-a', version: '1.2.0' })
+  addPackage({ name: 'seed-e2e-leaf-a', version: '2.0.0' })
 
-  addPackage({ name: 'seed-e2e-leaf-b.tree', version: '0.1.0' })
-  addPackage({ name: 'seed-e2e-leaf-b.tree', version: '0.2.0' })
+  addPackage({ name: 'seed-e2e-leaf-b', version: '0.1.0' })
+  addPackage({ name: 'seed-e2e-leaf-b', version: '0.2.0' })
 
   addPackage({
-    name: 'seed-e2e-mid-c.tree',
+    name: 'seed-e2e-mid-c',
     version: '1.0.0',
     dependencies: { 'seed-e2e-leaf-a': '^1.0.0' },
   })
 
   addPackage({
-    name: 'seed-e2e-top-d.tree',
+    name: 'seed-e2e-top-d',
     version: '1.0.0',
     dependencies: {
       'seed-e2e-mid-c': '^1.0.0',

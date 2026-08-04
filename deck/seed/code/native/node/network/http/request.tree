@@ -1,6 +1,6 @@
 
 form request
-  take x-request
+  link x-request
     note private
 
   task get-header-by-key
@@ -10,24 +10,30 @@ form request
       read key
 
   task get-headers-iterator
+    take self
     make object-iterator
       call self/x-request/headers
 
   task get-body
 
   task get-host
+    take self
     read self/x-request/host
 
   task get-http-version
+    take self
     read self/x-request/http-version
 
   task get-protocol
+    take self
     read self/x-request/protocol
 
   task get-method
+    take self
     read self/x-request/method
 
   task get-path
+    take self
     read self/x-request/path
 
   task get-ip-address

@@ -1,26 +1,42 @@
 
-load @term/bind/code/node/process
-  find process
+# Environment variables. Forwards to the linked variable runtime shim. Internal: reached only through the public
+# environment API.
+
+dock load
+  load <global:variable>, name variable
 
 task get
   take name, like text
-  send back, read process/env/{name}
+  like text
+
+  send back
+    call variable/get
+      read name
 
 task set
   take name, like text
   take value, like text
-  save process/env/{name}, read value
+
+  call variable/set
+    read name
+    read value
 
 task remove
   take name, like text
-  save process/env/{name}, read void
+
+  call variable/remove
+    read name
 
 task list
-  send back, read process/env
+  like hash
+
+  send back
+    call variable/list
 
 task check
   take name, like text
+  like boolean
+
   send back
-    call is-unequal
-      read process/env/{name}
-      read void
+    call variable/check
+      read name

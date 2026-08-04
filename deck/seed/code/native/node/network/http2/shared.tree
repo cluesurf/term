@@ -1,5 +1,6 @@
 
-host http2, call require, text <http2>
+dock load
+  load <node:http2>, name http2
 
 task handle
 
@@ -8,17 +9,19 @@ tree server
 
   hook bind
     form server
-      take x-server, read server-form
+      link x-server, read server-form
         note private
-      take port, like unsigned-integer-16
+      link port, like unsigned-integer-16
         note private
 
       task listen
+        take self
         free seed, like self
         call self/x-server/listen
           read self/port
 
       task get-port
+        take self
         read self/port
 
 tree make-server

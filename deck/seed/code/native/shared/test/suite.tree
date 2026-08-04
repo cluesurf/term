@@ -1,4 +1,7 @@
 
+dock load
+  load <global:shape>, name shape
+
 load @term/seed/code/clock
   find now
 
@@ -25,15 +28,21 @@ load ./context
 load ./compare
   find contains-text
 
-host test-registry
-host group-stack
+form test-entry
+  link name, like text
+  link work, like task
+
+host test-registry, make list
+host group-stack, make list
 
 task init
   note private
-  save test-registry
-    make list
-  save group-stack
-    make list
+
+  call clear
+    read test-registry
+
+  call clear
+    read group-stack
 
 task register
   take name, like text
@@ -71,13 +80,9 @@ task register
           bind b, read name
 
   save entry
-    make list
-  call push
-    read entry
-    read full-name
-  call push
-    read entry
-    read work
+    make test-entry
+      bind name, read full-name
+      bind work, read work
 
   call push
     read test-registry
@@ -126,24 +131,17 @@ task run
           read test-registry
           read i
 
-      save name
-        call get
-          read entry
-          code 0
-
-      save work
-        call get
-          read entry
-          code 1
+      save name, read entry/name
+      save work, read entry/work
 
       fork test
         hook test
-          call is-null
+          call shape/is-null
             bind value, read filter
         hook miss
           save matches
             call contains-text
-              bind text, read name
+              read name
               bind search, read filter
           fork test
             hook test, read matches

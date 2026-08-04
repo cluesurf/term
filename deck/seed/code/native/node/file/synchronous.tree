@@ -121,7 +121,7 @@ tree open-body
   take node-flag
   hook fuse
     fuse open-result
-    save flag, read node-flag
+    save flag, text <{node-flag}>
     fuse open-body-call
 
 tree open-body-call

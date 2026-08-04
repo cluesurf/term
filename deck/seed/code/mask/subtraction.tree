@@ -3,5 +3,6 @@ wear subtract
   # Subtract
 
   task subtract
+    take self
     link self, like self
     link self, like self

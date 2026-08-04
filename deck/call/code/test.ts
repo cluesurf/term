@@ -90,9 +90,22 @@ async function findTestFiles(input: {
           continue
         }
 
+        // a shelved module (`draft.tree`) is out of the build, so its tests are out of the run too
+        try {
+          await fs.access(path.join(full, 'draft.tree'))
+          continue
+        } catch {
+          // no marker: walk it
+        }
+
         await walk(full)
       } else if (entry.name.endsWith('.tree')) {
         const text = await fs.readFile(full, 'utf-8')
+
+        // likewise for a single shelved file
+        if (/^note draft\s*$/m.test(text.slice(0, 2000))) {
+          continue
+        }
 
         // a file is collected if it carries runnable tests (`test`) OR proof obligations (`hold` / `rule`), at any
         // indentation -- a `hold` inside a `task` states a UNIVERSAL law over the task's parameters (proved by the

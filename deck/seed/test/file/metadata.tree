@@ -1,5 +1,9 @@
 
+load @term/seed/code/bit
+  find bitwise-and, name bit-and
+
 dock load
+  load <global:console>, name console
   load <node:fs/promises>, name fs-promise
   load <node:path>, name path
   load <node:os>, name os
@@ -137,8 +141,8 @@ task run-tests
 
   save mode
     call bit-and
-      bind a, read after-stats/mode
-      bind b, code 511
+      bind left, read after-stats/mode
+      bind right, code 511
 
   fork test
     call is-equal

@@ -8,4 +8,5 @@ mod imath {
     pub fn signum(value: i64) -> i64 { value.signum() }
     pub fn sqrt(value: i64) -> i64 { (value as f64).sqrt() as i64 }
     pub fn log(value: i64) -> i64 { (value as f64).ln() as i64 }
+    pub fn sin(value: i64) -> i64 { (value as f64).sin() as i64 }
 }

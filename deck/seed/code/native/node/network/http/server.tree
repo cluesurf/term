@@ -1,18 +1,21 @@
 
-host http, call require, text <http>
+dock load
+  load <node:http>, name http
 
 form server
-  take x-server, like nodejs-http-server
+  link x-server, like nodejs-http-server
     note private
-  take port, like unsigned-integer-16
+  link port, like unsigned-integer-16
     note private
 
   task listen
+    take self
     free seed, like self
     call self/x-server/listen
       read self/port
 
   task get-port
+    take self
     read self/port
 
 task make-server

@@ -1,5 +1,5 @@
 
-load ../now
+load ./now
   find get
 
 load ../../shared/clock/measurement

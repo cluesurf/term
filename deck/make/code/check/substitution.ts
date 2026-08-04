@@ -73,12 +73,29 @@ export class Substitution {
   }
 
   // unify two types, binding variables as needed. Returns whether they are compatible. `unknown` is gradual (unifies
-  // with anything). A `span` records the solution origin for diagnostics. Recurses structurally.
+  // with anything), and so is `dynamic`: it is the host's `any` at the FFI boundary, where values are unchecked by
+  // construction, so it is consistent with every type in both directions. A `span` records the solution origin for
+  // diagnostics. Recurses structurally.
   unify(a: Type, b: Type, span?: Span): boolean {
     const x = this.resolve(a)
     const y = this.resolve(b)
 
-    if (x.kind === 'unknown' || y.kind === 'unknown') {
+    if (
+      x.kind === 'unknown' ||
+      y.kind === 'unknown' ||
+      x.kind === 'dynamic' ||
+      y.kind === 'dynamic'
+    ) {
+      return true
+    }
+
+    // `number` and `float` are one numeric domain: every arithmetic builtin returns `number`, a fractional literal
+    // is a `float`, and both lower to the same host numeric type on every backend. Keeping them apart makes it
+    // impossible to compare a computed value against a fractional constant.
+    if (
+      (x.kind === 'number' || x.kind === 'float') &&
+      (y.kind === 'number' || y.kind === 'float')
+    ) {
       return true
     }
 

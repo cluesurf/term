@@ -1,4 +1,7 @@
 
+load @term/seed/code/math
+  find round-down
+
 load @term/seed/code/shared/result
   find free-result
   find is-below-or-return-error
@@ -60,7 +63,7 @@ tree integer
           fuse is-not-or-return-error
             read b
             code 0
-          call floor
+          call round-down
             call divide
               read a
               read b
@@ -92,7 +95,7 @@ tree integer
           fuse is-above-or-return-error
             read a
             code 0
-          call floor
+          call round-down
             call logarithm
               read a
               read base
@@ -102,7 +105,7 @@ tree integer
           fuse is-above-or-return-error
             read a
             code 0
-          call floor
+          call round-down
             call math-log-10-js
               read a
 
@@ -111,7 +114,7 @@ tree integer
           fuse is-above-or-return-error
             read a
             code 0
-          call floor
+          call round-down
             call math-log-2-js
               read a
 
@@ -268,14 +271,14 @@ tree integer
       task intersect-bitwise
         take a, like i{{size}}
         take b, like i{{size}}
-        call intersect-bitwise-js
+        call bitwise-and-js
           read a
           read b
 
       task unify-bitwise
         take a, like i{{size}}
         take b, like i{{size}}
-        call unify-bitwise-js
+        call bitwise-or-js
           read a
           read b
 

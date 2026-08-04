@@ -1,4 +1,7 @@
 
+dock load
+  load <global:shape>, name shape
+
 tree call-promise-with-callback-result
   take call
   take result
@@ -9,7 +12,7 @@ tree call-promise-with-callback-result
         take resolve, like task
 
         fuse call
-          test is-present
+          call shape/is-present
             read error
             hook hold
               call resolve

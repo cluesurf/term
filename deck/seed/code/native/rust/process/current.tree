@@ -1,9 +1,9 @@
 
+# The current process. Forwards to the linked current runtime shim, which owns the iterator chains and Result unwraps
+# that cannot be written here. Internal: reached only through the public process API.
+
 dock load
-  load <std::process>, name proc
-  load <std::env>, name env
-  load <libc>
-  load <signal_hook>, name signal-hook
+  load <global:current>, name current
 
 load @term/seed/code/process/current
   find process-info
@@ -14,59 +14,24 @@ task read
   send back
     make process-info
       bind id
-        call proc/id
+        call current/id
       bind arguments
-        call env/args
-          call collect
+        call current/arguments
       bind directory
-        call env/current-dir
-          halt kink
-          call to-string-lossy
-            call to-string
+        call current/directory
       bind executable
-        call env/current-exe
-          halt kink
-          call to-string-lossy
-            call to-string
+        call current/executable
 
 task exit
   take code, like size, fall 0
 
-  call proc/exit
+  call current/exit
     read code
 
 task listen
   take signal, like text
   take handler, like task
 
-  save signal-id
-    fork test
-      hook test
-        call is-equal
-          bind a, read signal
-          bind b, text <terminate>
-      hook hold
-        send back, read libc/sigterm
-      hook miss
-        fork test
-          hook test
-            call is-equal
-              bind a, read signal
-              bind b, text <interrupt>
-          hook hold
-            send back, read libc/sigint
-          hook miss
-            fork test
-              hook test
-                call is-equal
-                  bind a, read signal
-                  bind b, text <hangup>
-              hook hold
-                send back, read libc/sighup
-              hook miss
-                halt text <unknown signal>
-
-  call signal-hook/flag/register
-    read signal-id
+  call current/listen
+    read signal
     read handler
-    halt kink

@@ -551,6 +551,10 @@ function parseLikeType(likeGroup: GroupNode): Type {
   return first ? parseType(first) : UNKNOWN
 }
 
+// arithmetic the emitter lowers to a UNARY operation: `increment x` becomes `x + 1`. Like BINARY_BUILTIN these have
+// no definition to bind to and are never imported, so the resolver has to know them by name.
+export const UNARY_BUILTIN = new Set(['increment', 'decrement'])
+
 export const BINARY_BUILTIN: Record<string, BinaryOp> = {
   add: '+',
   subtract: '-',

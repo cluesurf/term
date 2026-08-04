@@ -5,9 +5,10 @@ tree is-not-or-return-error
 
   hook bind
     fork test
-      call is-not
-        read a
-        read b
+      hook test
+        call is-not
+          read a
+          read b
       hook miss
         send back
           make not-error
@@ -39,9 +40,10 @@ tree is-bound-or-return-error
 
   hook bind
     fork test
-      call is-{type}
-        read a
-        read b
+      hook test
+        call is-{type}
+          read a
+          read b
       hook miss
         send back
           make range-error

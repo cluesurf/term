@@ -766,12 +766,22 @@ export function check(
             sub,
           )
 
-          if (args.length !== signature.params.length) {
+          // trailing `need false` params may be omitted, so the accepted arity is a RANGE: at least `minArgs`,
+          // at most one per declared param.
+          if (
+            args.length < signature.minArgs ||
+            args.length > signature.params.length
+          ) {
+            const wanted =
+              signature.minArgs === signature.params.length
+                ? `${signature.params.length}`
+                : `${signature.minArgs} to ${signature.params.length}`
+
             diagnostics.push(
               diagnose('type-mismatch', {
                 file: currentFile,
                 span: node.span,
-                message: `"${node.callee.name}" expects ${signature.params.length} arguments, found ${args.length}`,
+                message: `"${node.callee.name}" expects ${wanted} arguments, found ${args.length}`,
               }),
             )
           } else {
@@ -924,14 +934,20 @@ export function check(
         // (gradual `unknown` from an opaque field unifies freely) and bind the declared type so the value can be re-typed
         // to a concrete form for receiver dispatch. Otherwise infer the binding's type from its initializer.
         if (node.type) {
+          // the annotation is a MILLED type and has to be seeded like any other before it can be compared: an
+          // unrecognized name becomes a fresh variable rather than a named type that unifies with nothing. Without
+          // this, `host x, text <...>` reports `expected text, found string`, because the mill records the annotation
+          // as the named type `text` while a literal infers as the string primitive.
+          const declared = seedType(node.type, new Map())
+
           // an ambient declaration (`host document, name <document> / like document`) has no initializer; the mill
           // synthesizes a unit placeholder, so do not check it against the declared type. A real initializer (a
           // re-type like `host el, like element / read x`, where the opaque field is gradual `unknown`) is checked.
           if (node.init.form !== 'unit') {
-            expect(initType, node.type, node.span, 'binding')
+            expect(initType, declared, node.span, 'binding')
           }
 
-          env.set(node.name, { vars: [], type: node.type })
+          env.set(node.name, { vars: [], type: declared })
         } else {
           // value-restricted let-generalization: an immutable binding to a syntactic value gets a polymorphic scheme
           const vars =

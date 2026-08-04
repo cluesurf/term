@@ -15,14 +15,17 @@ task process-result-make
   take stderr, like text
   send back
     make process-result
-      bind code, read code
+      code, read code
       bind stdout, read stdout
       bind stderr, read stderr
 
 task process-result-ok
   take r, like process-result
   fork case, read r
-    hook process-result, base code, base stdout, base stderr
+    case process-result
+      link code
+      link stdout
+      link stderr
       send back
         call is-equal
           bind a, read code
@@ -31,19 +34,28 @@ task process-result-ok
 task process-result-code
   take r, like process-result
   fork case, read r
-    hook process-result, base code, base stdout, base stderr
+    case process-result
+      link code
+      link stdout
+      link stderr
       send back, read code
 
 task process-result-stdout
   take r, like process-result
   fork case, read r
-    hook process-result, base code, base stdout, base stderr
+    case process-result
+      link code
+      link stdout
+      link stderr
       send back, read stdout
 
 task process-result-stderr
   take r, like process-result
   fork case, read r
-    hook process-result, base code, base stdout, base stderr
+    case process-result
+      link code
+      link stdout
+      link stderr
       send back, read stderr
 
 task process-info-make
@@ -59,5 +71,8 @@ task process-info-make
 task process-info-id
   take p, like process-info
   fork case, read p
-    hook process-info, base id, base directory, base executable
+    case process-info
+      link id
+      link directory
+      link executable
       send back, read id

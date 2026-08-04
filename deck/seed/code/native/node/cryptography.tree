@@ -1,8 +1,11 @@
 
+load @term/seed/code/void
+  find void
+
 form ecdh
-  take bulb, like nodejs-ecdh
+  link bulb, like nodejs-ecdh
     hide take
-  take curve-name
+  link curve-name
 
   task compute-secret
     take self
@@ -13,13 +16,13 @@ form ecdh
   task generate-compressed-keys
     take self
     call self/bulb/generate-keys
-      read void
+      make void
       text <compressed>
 
   task generate-uncompressed-keys
     take self
     call self/bulb/generate-keys
-      read void
+      make void
       text <uncompressed>
 
   task get-private-key

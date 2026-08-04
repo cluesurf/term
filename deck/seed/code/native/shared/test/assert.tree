@@ -1,8 +1,14 @@
 
+dock load
+  load <global:shape>, name shape
+
+load @term/seed/code/float
+  find absolute
+
 load ./context
-  find get
+  find get-context
   find fail
-  find skip
+  find skip-context
   find count
 
 load ./compare
@@ -14,14 +20,14 @@ load @term/seed/code/native/shared/test
   find make-failure
 
 task assert
-  take value
+  take value, like unknown
   take form, like text, fall text <truthy>
-  take expected, need false
+  take expected, like unknown, need false
   take message, like text, need false
   take tolerance, need false
 
   save ctx
-    call get
+    call get-context
 
   fork test
     hook test
@@ -96,12 +102,12 @@ task assert
       save has, false
       fork test
         hook test
-          call is-text
+          call shape/is-text
             bind value, read value
         hook hold
           save has
             call contains-text
-              bind text, read value
+              read value
               bind search, read expected
         hook miss
           save has
@@ -180,7 +186,7 @@ task assert
       save tol, code 0.001
       fork test
         hook test
-          call is-null
+          call shape/is-null
             bind value, read tolerance
         hook miss
           save tol, read tolerance
@@ -207,7 +213,7 @@ task assert
         bind b, text <type>
     hook hold
       save actual-type
-        call type-of
+        call shape/type-of
           bind value, read value
       fork test
         hook test
@@ -226,13 +232,13 @@ task assert
       send back
 
 task deny
-  take value
+  take value, like unknown
   take form, like text, fall text <truthy>
-  take expected, need false
+  take expected, like unknown, need false
   take message, like text, need false
 
   save ctx
-    call get
+    call get-context
   save before
     call count
       bind ctx, read ctx
@@ -241,6 +247,7 @@ task deny
     bind value, read value
     bind form, read form
     bind expected, read expected
+    bind message, read message
 
   save after
     call count
@@ -264,14 +271,14 @@ task deny
 task mark-skip
   take reason, like text, need false
   save ctx
-    call get
-  call skip
+    call get-context
+  call skip-context
     bind ctx, read ctx
 
 task mark-fail
   take message, like text
   save ctx
-    call get
+    call get-context
   call fail
     bind ctx, read ctx
     bind failure

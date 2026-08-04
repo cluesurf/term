@@ -4,6 +4,7 @@ load @term/seed/code/list
 
 load @term/seed/code/text/string
   find concat
+  find to-text
 
 load @term/seed/code/test/coverage
   find coverage

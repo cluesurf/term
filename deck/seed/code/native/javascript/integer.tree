@@ -1,8 +1,8 @@
 
-load ./32
+load ./integer/32
   find i32
 
-load ./grow
+load ./integer/grow
   find integer
 
 form number

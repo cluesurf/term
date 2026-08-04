@@ -1,4 +1,7 @@
 
+load @term/seed/code/math
+  find round-down
+
 load @term/seed/code/bit
   find bitwise-and
   find shift-left
@@ -19,9 +22,10 @@ host milliseconds-per-hour, code 3600000
 host milliseconds-per-day, code 86400000
 host milliseconds-per-month, code 2592000000
 
-host k-day-zero-in-julian-day, code 2440588 # ToJulianDay(1970, 0, 1)
-host k-month-mask, mark #h1e0
-host k-day-mask, mark #h01f
+# ToJulianDay(1970, 0, 1)
+host k-day-zero-in-julian-day, code 2440588
+host k-month-mask, code 0x1e0
+host k-day-mask, code 0x01f
 host k-year-shift, code 9
 host k-month-shift, code 5
 
@@ -29,26 +33,29 @@ task get-days-in-year
   take year
 
   fork test
-    call is-unequal
-      call modulo
-        read year
-        code 4
-      code 0
+    hook test
+      call is-unequal
+        call modulo
+          read year
+          code 4
+        code 0
     hook hold, back 365
 
   fork and
     fork test
-      call is-equal
-        call modulo
-          read year
-          code 100
-        code 0
+      hook test
+        call is-equal
+          call modulo
+            read year
+            code 100
+          code 0
     fork test
-      call is-unequal
-        call modulo
-          read year
-          code 400
-        code 0
+      hook test
+        call is-unequal
+          call modulo
+            read year
+            code 400
+          code 0
     hook hold, back 365
 
   send back 366
@@ -179,9 +186,9 @@ task get-days-in-year
 # }
 
 form date
-  take second
-  take millisecond
-  take zone
+  link second
+  link millisecond
+  link zone
 
   task get-millisecond
     take self
@@ -193,7 +200,7 @@ form date
 
   task get-day
     take self
-    call floor
+    call round-down
       call divide
         call self/get-millisecond
         read milliseconds-per-day
@@ -280,7 +287,7 @@ task convert-from-julian-day-to-gregorian-day
               read four-year-cycle
               read k-day-mask
   save jalpha
-    call floor
+    call round-down
       call divide
         call subtract
           read day
@@ -294,13 +301,13 @@ task convert-from-julian-day-to-gregorian-day
             read day
             code 1
           read jalpha
-        call floor
+        call round-down
           call multiply
             code 0.25
             read jalpha
       code 1524
   save jc
-    call floor
+    call round-down
       call add
         code 6680
         call divide
@@ -311,7 +318,7 @@ task convert-from-julian-day-to-gregorian-day
             code 122.1
           code 365.25
   save jd
-    call floor
+    call round-down
       call add
         call multiply
           code 365
@@ -320,7 +327,7 @@ task convert-from-julian-day-to-gregorian-day
           code 0.25
           read jc
   save je
-    call floor
+    call round-down
       call divide
         call subtract
           read jb
@@ -331,9 +338,10 @@ task convert-from-julian-day-to-gregorian-day
       read je
       code 1
   fork test
-    call is-above
-      read m
-      code 12
+    hook test
+      call is-above
+        read m
+        code 12
     hook hold
       save m, code 13
   save y
@@ -341,9 +349,10 @@ task convert-from-julian-day-to-gregorian-day
       read jc
       code 4715
   fork test
-    call is-above
-      read m
-      code 2
+    hook test
+      call is-above
+        read m
+        code 2
     hook hold
       save y, call decrement, read y
       save m, call decrement, read m
@@ -352,7 +361,7 @@ task convert-from-julian-day-to-gregorian-day
       call subtract
         read jb
         read jd
-      call floor
+      call round-down
         call multiply
           code 30.6001
           read je
@@ -464,9 +473,10 @@ task calculate-four-year-cycle-table
           bust fork3
 
       fork test
-        call is-equal
-          read month
-          code 1
+        hook test
+          call is-equal
+            read month
+            code 1
 
         hook hold
           save next-position

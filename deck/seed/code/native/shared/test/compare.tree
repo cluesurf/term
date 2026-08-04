@@ -10,8 +10,10 @@ load @term/seed/code/text
   find substring
 
 task deep-equal
-  take a
-  take b
+  # a and b are of any shape: `shape/is-list` narrows at runtime, and the recursive call descends into elements,
+  # so the params cannot be pinned to the list type inference would otherwise deduce from `size` / `get`
+  take a, like unknown
+  take b, like unknown
   like boolean
 
   fork test

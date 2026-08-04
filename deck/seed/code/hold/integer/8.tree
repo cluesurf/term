@@ -12,12 +12,12 @@ task reverse
   take n
   call bitwise-or
     call shift-left
-      call reversal-table/get
+      call reverse-bits-8
         call bitwise-and
           read n
           code 15
       code 4
-    call reversal-table/get
+    call reverse-bits-8
       call shift-right
         read n
         code 4
@@ -25,53 +25,56 @@ task reverse
 task is-bit-count-odd
   take x, like integer-8
   save x
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read x
         code 4
       read x
   save x
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read x
         code 2
       read x
   save x
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read x
         code 1
       read x
-  call intersect-bitwise
+  call bitwise-and
     read x
     code 1
 
 task count-zeroes-in-integer-8
+  take i
+
   call count-ones-in-integer-8
-    call bitwise-negate
+    call bitwise-not
       read i
 
 task count-ones-in-integer-8
+  take i
   free seed, like integer-8
   call add
     call add
       call add
-        call self/bitwise-intersect
-          call self/bitwise-shift-right
+        call bitwise-and
+          call shift-right
             read i
             code 3
           code 1
-        call self/bitwise-intersect
-          call self/bitwise-shift-right
+        call bitwise-and
+          call shift-right
             read i
             code 2
           code 1
-      call self/bitwise-intersect
-        call self/bitwise-shift-right
+      call bitwise-and
+        call shift-right
           read i
           code 1
         code 1
-    call self/bitwise-intersect
+    call bitwise-and
       read i
       code 1
 

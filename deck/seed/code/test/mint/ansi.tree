@@ -1,7 +1,10 @@
 
-load ../../view/tint
-  find make
-    save make-zone
+note draft
+dock load
+  load <global:shape>, name shape
+
+load ../view/tint
+  find make, name make-zone
 
 task make-mint
   note private
@@ -17,9 +20,9 @@ mint make-ansi-text-from-zone
   save text-fill
     call tint-hash/read
       read zone/text-fill
-  fork test, call is-present, read text-fill
+  fork test, call shape/is-present, read text-fill
     mint form, form text-fill
-  fork test, call is-present, read zone/text-bold
+  fork test, call shape/is-present, read zone/text-bold
     mint form, form set-bold-mode
   mint text, read zone/text
   mint form, form reset-all-modes

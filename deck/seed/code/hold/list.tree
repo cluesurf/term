@@ -1,13 +1,19 @@
 
+load @term/seed/code/math
+  find maximum
+
+load @term/seed/code/void
+  find void
+
 task make
   head item-type
   take capacity
   save length, code 0
-  save list, make list, like item-type
-  save list/growth-factor, flex 2
+  save list, make list
+  save list/growth-factor, code 2
   save list/length, read length
   save list/capacity
-    call math/max
+    call maximum
       read length
       read capacity
   save list/line
@@ -22,9 +28,10 @@ form list
     take index
     take item, like item-type
     fork test
-      call is-below
-        read self/length
-        read index
+      hook test
+        call is-below
+          read self/length
+          read index
       hook hold
         send back, make error
     call self/line/set
@@ -35,9 +42,10 @@ form list
     take self
     take index
     fork test
-      call is-below
-        read self/length
-        read index
+      hook test
+        call is-below
+          read self/length
+          read index
       hook hold
         send back, make error
     send back
@@ -48,16 +56,18 @@ form list
     take self
     take capacity
     fork test
-      call is-equal
-        read capacity
-        read self/capacity
+      hook test
+        call is-equal
+          read capacity
+          read self/capacity
       hook hold
         send back, read self
     save old-line, read self/line
     fork test
-      call is-above
-        read capacity
-        read self/capacity
+      hook test
+        call is-above
+          read capacity
+          read self/capacity
       hook hold
         save self/line
           make line, like item-type
@@ -71,9 +81,10 @@ form list
             code 0
             read capacity
     fork test
-      call is-below
-        read capacity
-        read self/length
+      hook test
+        call is-below
+          read capacity
+          read self/length
       hook hold
         save self/length, read capacity
     save self/capacity, read capacity
@@ -82,10 +93,11 @@ form list
   task grow
     take self
     take capacity
-    call test
-      call is-minimum
-        read self/capacity
-        read capacity
+    fork test
+      hook test
+        call is-minimum
+          read self/capacity
+          read capacity
       hook hold
         send back, read self
     save new-capacity, read self/capacity
@@ -96,7 +108,7 @@ form list
           read capacity
       hook hold
         save new-capacity
-          call scale
+          call multiply
             read new-capacity
             read self/growth-factor
     call self/reallocate
@@ -106,7 +118,7 @@ form list
   task grow
     take self
     save new-capacity
-      call scale
+      call multiply
         read self/capacity
         read self/growth-factor
     call self/reallocate
@@ -117,16 +129,18 @@ form list
     take self
     take length
     fork test
-      call is-equal
-        read length
-        read self/length
+      hook test
+        call is-equal
+          read length
+          read self/length
       hook hold
         send back, read self
 
     fork test
-      call is-below
-        read length
-        read self/length
+      hook test
+        call is-below
+          read length
+          read self/length
       hook hold
         save i
           call subtract
@@ -138,7 +152,7 @@ form list
               read i
               read length
           hook hold
-            save self/line/{i}, read void
+            save self/line/{i}, make void
             save i, call decrement, read i
         save self/length, read length
         send back, read self
@@ -151,9 +165,10 @@ form list
     take self
     take value
     fork test
-      call is-equal
-        read self/capacity
-        read self/length
+      hook test
+        call is-equal
+          read self/capacity
+          read self/length
       hook hold
         call self/grow
 
@@ -166,9 +181,10 @@ form list
   task pop
     take self
     fork test
-      call is-equal
-        read self/length
-        code 0
+      hook test
+        call is-equal
+          read self/length
+          code 0
       hook hold
         send back, make none
     save self/length, call decrement, read self/length

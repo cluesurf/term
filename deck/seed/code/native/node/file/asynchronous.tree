@@ -1,5 +1,8 @@
 
 dock load
+  load <global:shape>, name shape
+
+dock load
   load <node:fs/promises>, name fs-promise
   load <node:fs>, name fs
 
@@ -103,7 +106,7 @@ task test
     read path
     halt kink
 
-  fork test, call is-null, read kind
+  fork test, call shape/is-null, read kind
     hook hold
       send back, true
 

@@ -1,4 +1,10 @@
 
+# A spawned child process. Forwards to the linked child runtime shim, which owns the event-plus-promise plumbing.
+# Internal: reached only through the public process API.
+
+dock load
+  load <global:child>, name child-runtime
+
 load @term/seed/code/process
   find child
 
@@ -7,45 +13,42 @@ task wait
   take child, like child
   like size
 
-  save code
-    call promise/make
+  send back
+    call child-runtime/wait
       wait true
-      take resolve, like task
-      call child/dock/on
-        text <exit>
-        take exit-code
-        call resolve, read exit-code
-
-  send back, read code
+      read child/dock
 
 task stop
   take child, like child
   take form, like text, fall text <gentle>
 
   fork test
-    call is-equal
-      bind a, read form
-      bind b, text <force>
+    hook test
+      call is-equal
+        read form
+        text <force>
     hook hold
-      call child/dock/kill
-        text <SIGKILL>
+      call child-runtime/kill
+        read child/dock
     hook miss
-      call child/dock/kill
-        text <SIGTERM>
+      call child-runtime/stop
+        read child/dock
 
 task write
   note async
   take child, like child
   take data, like text
 
-  call child/dock/stdin/write
+  call child-runtime/write
+    read child/dock
     read data
 
 task close
   note async
   take child, like child
 
-  call child/dock/stdin/end
+  call child-runtime/close
+    read child/dock
 
 task read
   note async
@@ -54,61 +57,8 @@ task read
   take format, like text, fall text <text>
   like text
 
-  save stream
-    fork test
-      call is-equal
-        bind a, read kind
-        bind b, text <stderr>
-      hook hold
-        send back, read child/dock/stderr
-      hook miss
-        send back, read child/dock/stdout
-
-  save chunks, make list
-
-  save output
-    call promise/make
+  send back
+    call child-runtime/read
       wait true
-      take resolve, like task
-
-      call stream/on
-        text <data>
-        take chunk
-        call chunks/push
-          read chunk
-
-      call stream/on
-        text <end>
-        call resolve
-          call buffer/concat
-            read chunks
-
-  fork test
-    call is-equal
-      bind a, read format
-      bind b, text <text>
-    hook hold
-      send back
-        call output/to-string
-          text <utf8>
-    hook miss
-      send back, read output
-
-task stream
-  note async
-  take child, like child
-  take kind, like text, fall text <stdout>
-  take format, like text, fall text <bytes>
-  like list
-
-  save source
-    fork test
-      call is-equal
-        bind a, read kind
-        bind b, text <stderr>
-      hook hold
-        send back, read child/dock/stderr
-      hook miss
-        send back, read child/dock/stdout
-
-  send back, read source
+      read child/dock
+      read kind

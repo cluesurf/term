@@ -1,5 +1,5 @@
 
-load ../n
+load ./n
   find integer
 
 fuse integer, 32

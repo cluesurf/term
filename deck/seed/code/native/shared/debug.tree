@@ -17,11 +17,17 @@ task trace-entry-make
 task trace-entry-name
   take e, like trace-entry
   fork case, read e
-    hook trace-entry, base name, base duration, base depth
+    case trace-entry
+      link name
+      link duration
+      link depth
       send back, read name
 
 task trace-entry-duration
   take e, like trace-entry
   fork case, read e
-    hook trace-entry, base name, base duration, base depth
+    case trace-entry
+      link name
+      link duration
+      link depth
       send back, read duration

@@ -11,45 +11,46 @@ load @term/seed/code/bit
 task is-bit-count-odd
   take x, like mark-32
   save x
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read x
         code 16
       read x
   save x
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read x
         code 8
       read x
   save x
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read x
         code 4
       read x
   save x
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read x
         code 2
       read x
   save x
-    call oppose-bitwise
+    call bitwise-exclusive-or
       call shift-right
         read x
         code 1
       read x
-  call intersect-bitwise
+  call bitwise-and
     read x
     code 1
 
 task get-next-power-of-two
   take n
   fork test
-    call is-equal
-      read n
-      code 0
+    hook test
+      call is-equal
+        read n
+        code 0
     hook hold
       send back, read 1
   save n, call decrement, read n

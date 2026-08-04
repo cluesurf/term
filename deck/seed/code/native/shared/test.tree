@@ -5,8 +5,8 @@ load @term/seed/code/test/suite
 task make-failure
   take name, like text
   take message, like text
-  take expected
-  take actual
+  take expected, like unknown
+  take actual, like unknown
   like failure
   send back
     make failure

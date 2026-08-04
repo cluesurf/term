@@ -1,4 +1,7 @@
 
+# Not ordinary code: `role` and its glob patterns belong to the deck-manifest dialect, which the ordinary compile
+# path does not handle. Excluded from the build rather than left reporting errors it can never satisfy.
+note draft
 load @term/code
   find code
   find book

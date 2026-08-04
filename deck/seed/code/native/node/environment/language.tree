@@ -1,4 +1,7 @@
 
+load @term/seed/code/text
+  find split
+
 dock load
   load <node:os>, name os
   load <global:locale>, name locale

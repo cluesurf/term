@@ -1,11 +1,22 @@
 
-load @term/seed/code/shared/hash
-  take task hash-djb2-xor
-    save task hash
+# Not built: this depends on `code/hold`, which is unfinished and excluded from the build. Bring it back once the
+# hash / bit utilities it imports have finished homes.
+note draft
+load @term/seed/code/boolean
+  find not
+
+load @term/seed/code/void
+  find void
+
+dock load
+  load <global:shape>, name shape
+
+load @term/seed/code/hold/hash
+  find hash-djb2-xor, name hash
 
 form hash-table
-  take capacity
-  take list
+  link capacity
+  link list
 
   hook make
     take self
@@ -34,7 +45,7 @@ form hash-table
     fuse initialize-loop
     walk test
       hook test
-        call is-present
+        call shape/is-present
           read self/list/{i}
       hook hold
         fuse update-hash
@@ -53,12 +64,14 @@ form hash-table
     walk test
       hook step
         fork test
-          call not, read self/list/{i}
+          hook test
+            call not, read self/list/{i}
           hook hold, back seed
         fork test
-          call is-equal
-            read self/list/{i}/key
-            read key
+          hook test
+            call is-equal
+              read self/list/{i}/key
+              read key
           hook hold
             send back, read self/list/{i}/value
         fuse update-hash
@@ -71,14 +84,16 @@ form hash-table
     walk test
       hook step
         fork test
-          call not, read self/list/{i}
+          hook test
+            call not, read self/list/{i}
           hook hold, back seed
         fork test
-          call is-equal
-            read self/list/{i}/key
-            read key
+          hook test
+            call is-equal
+              read self/list/{i}/key
+              read key
           hook hold
-            save self/list/{i}, read void
+            save self/list/{i}, make void
             save self/size
               call decrement
                 read self/size
@@ -86,8 +101,8 @@ form hash-table
         fuse increment-step
 
 form leaf
-  take key
-  take value
+  link key
+  link value
 
 tree update-hash
   hook bind

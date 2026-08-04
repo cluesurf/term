@@ -1,15 +1,16 @@
 
+note draft
 tree gray
   hook fuse
-    bind text-fill, term gray
+    text-fill, term gray
 
 tree green
   hook fuse
-    bind text-fill, term green
+    text-fill, term green
 
 tree red
   hook fuse
-    bind text-fill, term red
+    text-fill, term red
 
 task make
   fold make-zone

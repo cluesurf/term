@@ -1,4 +1,7 @@
 
+dock load
+  load <global:shape>, name shape
+
 load @term/seed/code/bit
   find bitwise-and
   find shift-left
@@ -9,7 +12,7 @@ task fnv-hash-32-1a
   take v
   take seed
   save a
-    call bitwise-xor
+    call bitwise-exclusive-or
       code 2166136261
       call or
         read seed
@@ -28,19 +31,20 @@ task fnv-hash-32-1a
           read c
           code 0xff00
       fork test
-        call is-present
-          read d
+        hook test
+          call shape/is-present
+            read d
         hook hold
           save a
             call fnv-hash-32-multiply
-              call bitwise-xor
+              call bitwise-exclusive-or
                 read a
                 call shift-right
                   read d
                   code 8
       save a
         call fnv-hash-32-multiply
-          call bitwise-xor
+          call bitwise-exclusive-or
             read a
             call bitwise-and
               read c
@@ -52,31 +56,31 @@ task fnv-hash-32-mixer
   take a
   save a
     call add
-      bind a
+      read a
       call shift-left
         read a
         code 13
   save a
-    call bitwise-xor
-      bind a
+    call bitwise-exclusive-or
+      read a
       call unsigned-shift-right
         read a
         code 7
   save a
     call add
-      bind a
+      read a
       call shift-left
         read a
         code 3
   save a
-    call bitwise-xor
-      bind a
+    call bitwise-exclusive-or
+      read a
       call unsigned-shift-right
         read a
         code 17
   save a
     call add
-      bind a
+      read a
       call shift-left
         read a
         code 5

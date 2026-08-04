@@ -1,75 +1,54 @@
 
+# Key/value storage. Forwards to the linked storage runtime shim, which picks the store by name and owns the key
+# enumeration. Internal: reached only through the public storage API.
+
 dock load
   load <global:storage>, name storage
 
 task get
   take key, like text
   take store, like text, fall text <local>
+  like text
 
-  fork test, call is-equal, read store, text <session>
-    hook hold
-      send back
-        call session-storage/get-item
-          read key
-    hook miss
-      send back
-        call local-storage/get-item
-          read key
+  send back
+    call storage/get
+      read key
+      read store
 
 task set
   take key, like text
   take value, like text
   take store, like text, fall text <local>
 
-  fork test, call is-equal, read store, text <session>
-    hook hold
-      call session-storage/set-item
-        read key
-        read value
-    hook miss
-      call local-storage/set-item
-        read key
-        read value
+  call storage/set
+    read key
+    read value
+    read store
 
 task remove
   take key, like text
   take store, like text, fall text <local>
 
-  fork test, call is-equal, read store, text <session>
-    hook hold
-      call session-storage/remove-item
-        read key
-    hook miss
-      call local-storage/remove-item
-        read key
+  call storage/remove
+    read key
+    read store
 
 task clear
   take store, like text, fall text <local>
 
-  fork test, call is-equal, read store, text <session>
-    hook hold
-      call session-storage/clear
-    hook miss
-      call local-storage/clear
+  call storage/clear
+    read store
 
 task list-keys
   take store, like text, fall text <local>
 
-  fork test, call is-equal, read store, text <session>
-    hook hold
-      send back
-        call storage/keys
-          read session-storage
-    hook miss
-      send back
-        call storage/keys
-          read local-storage
+  send back
+    call storage/keys
+      read store
 
 task length
   take store, like text, fall text <local>
 
-  fork test, call is-equal, read store, text <session>
-    hook hold
-      send back, read session-storage/length
-    hook miss
-      send back, read local-storage/length
+  send back
+    call storage/length
+      read store

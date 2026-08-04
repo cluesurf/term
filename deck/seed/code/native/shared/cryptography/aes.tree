@@ -1,3 +1,11 @@
+
+# Not built: this is a half-finished translation. It calls a bit vocabulary that does not exist
+# (`oppose-bitwise` / `unite-bitwise` / `intersect-bitwise` for xor / or / and) and has malformed statements
+# (`save x2, d/{x}` is missing its `read`, and line 112 nests a `save` inside a `save`). 114 errors.
+note draft
+load @term/seed/code/boolean
+  find not
+
 save sbox, make list
 save invsbox, make list
 save submix0, make list
@@ -83,7 +91,7 @@ task create-tables
       save tmp1, call x8/oppose-bitwise, read x2
       save x, call x2/oppose-bitwise, read d/{d/{d/{tmp1}}}
       save xi
-        call oppose-bitwise
+        call bitwise-exclusive-or
           read xi
           d/{d/{xi}}
       save i, call increment, read i
@@ -146,14 +154,15 @@ task do-reset
             call ks-row/divide, read key-size
               link unite-bitwise, code 0
           save t
-            call oppose-bitwise
+            call bitwise-exclusive-or
               read t
               call rcon/{tmp8}/shift-left, code 24
       fork test
-        call key-size/is-above, code 6
-          link intersect
-            call ks-row/remainder, read key-size
-              link is-equal, code 4
+        hook test
+          call key-size/is-above, code 6
+            link intersect
+              call ks-row/remainder, read key-size
+                link is-equal, code 4
         hook hold
           save tmp9, call t/unsigned-shift-right, code 24
           save tmp10
@@ -184,8 +193,9 @@ task do-reset
       save tmp15, call ks-row/subtract, code 4
       save t, key-schedule/{tmp15}
       fork test
-        call inv-ks-row/is-below, code 4
-          link unite, call ks-row/is-max, code 4
+        hook test
+          call inv-ks-row/is-below, code 4
+            link unite, call ks-row/is-max, code 4
         hook hold
           save inv-key-schedule/{inv-ks-row}, read t
       save tmp16, call t/unsigned-shift-right, code 24
@@ -252,13 +262,13 @@ task do-crypt-block
   take submix3
   take sbox
   save n-rounds, self/n-rounds
-  save s0, call m/{offset}/oppose-bitwise, read key-schedule/{0}
+  save s0, call m/{offset}/oppose-bitwise, read key-schedule/0
   save tmp29, call offset/add, code 1
-  save s1, call m/{tmp29}/oppose-bitwise, read key-schedule/{1}
+  save s1, call m/{tmp29}/oppose-bitwise, read key-schedule/1
   save tmp30, call offset/add, code 2
-  save s2, call m/{tmp30}/oppose-bitwise, read key-schedule/{2}
+  save s2, call m/{tmp30}/oppose-bitwise, read key-schedule/2
   save tmp31, call offset/add, code 3
-  save s3, call m/{tmp31}/oppose-bitwise, read key-schedule/{3}
+  save s3, call m/{tmp31}/oppose-bitwise, read key-schedule/3
   save ks-row, code 4
   save round, code 1
   walk test

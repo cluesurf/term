@@ -31,6 +31,7 @@ task make-server
 
 form server
   task listen
+    take self
     free seed, like self
 
 task host

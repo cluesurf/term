@@ -40,4 +40,4 @@ form balanced-tree
     like void
 
   task to-string
-    like string
+    like text

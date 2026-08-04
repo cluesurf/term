@@ -57,3 +57,11 @@ task log
   send back
     call math/log
       read value
+
+task sin
+  take value, like number
+  like number
+  send back
+    call math/sin
+      read value
+

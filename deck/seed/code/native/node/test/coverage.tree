@@ -2,8 +2,15 @@
 load @term/seed/code/list
   find push
 
+load @term/seed/code/text/util
+  find join, name text-join
+
+load @term/seed/code/json
+  find stringify, name json-serialize
+
 load @term/seed/code/text/string
   find concat
+  find to-text
 
 dock load
   load <node:v8>, name v8
@@ -111,5 +118,5 @@ task format
 
   send back
     call text-join
-      bind list, read lines
+      bind items, read lines
       bind separator, text <\n>

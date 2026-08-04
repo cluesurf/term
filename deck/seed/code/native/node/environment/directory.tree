@@ -1,12 +1,18 @@
 
-load @term/bind/code/node/process
-  find process
+# The working directory. Forwards to the linked directory runtime shim. Internal: reached only through the public
+# environment API.
+
+dock load
+  load <global:directory>, name directory
 
 task get
+  like text
+
   send back
-    call process/cwd
+    call directory/get
 
 task set
   take path, like text
-  call process/chdir
+
+  call directory/set
     read path

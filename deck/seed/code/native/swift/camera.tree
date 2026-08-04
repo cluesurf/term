@@ -1,52 +1,40 @@
 
+# The camera. Forwards to the linked camera runtime shim, which maps AVFoundation's authorization and flash enums to
+# plain text. Internal: reached only through the public camera API.
+
+dock load
+  load <global:camera>, name camera
+
 task check-authorization-status
-  fork case
-    call av-capture-device/authorization-status
-      read av-media-type/video
-    case read av-authorization-atatus/authorized
-      # The user has previously granted access to the camera.
-    case read av-authorization-atatus/not-determined
-      # The user has not yet been asked for camera access.
-    case read av-authorization-atatus/denied
-      # The user has previously denied access.
-    case read av-authorization-atatus/restricted
-      # The user can't grant access due to restrictions.
+  like text
+
+  send back
+    call camera/authorization
 
 task request-access
   note async
+  like boolean
 
-  free granted, like boolean
-
-  call av-capture-device/request-access
-    read av-media-type/video
-    wait true
+  send back
+    call camera/request-access
+      wait true
 
 task get-default-device
-  call av-capture-device/default
-    read av-media-type/video
+  send back
+    call camera/default-device
 
-task clear-take-photo-settings
+task has-flash
+  take device
+  like boolean
 
-task is-auto-red-eye-reduction-enabled
-  # A Boolean value that determines whether to use auto red-eye reduction on flash captures.
+  send back
+    call camera/has-flash
+      read device
 
-form camera
-  take native
-    note private
+task set-flash
+  take settings
+  take mode, like text
 
-  task has-flash
-    read self/native/has-flash
-
-  task set-flash
-    take mode
-    save self/native-settings/flash-mode
-      fork case
-        read mode
-        case auto
-          read av-capture-device/flash-mode/auto
-        case on
-          read av-capture-device/flash-mode/on
-        case off
-          read av-capture-device/flash-mode/off
-
-  task clear-settings
+  call camera/set-flash
+    read settings
+    read mode

@@ -5,37 +5,46 @@ tree integer
 
   hook fuse
     task seek-add
+      take self
       take a, like self-type
       take b, like self-type
       fuse free-result, like self-type
 
     task seek-add-signed
+      take self
       take a, like self-type
       take b, like self-type
 
     task seek-divide-base
+      take self
       take a, like self-type
       take b, like self-type
 
     task seek-divide-head
+      take self
       take a, like self-type
       take b, like self-type
 
     task seek-divide-euclid
+      take self
       take a, like self-type
       take b, like self-type
 
     task seek-fall
+      take self
       take a, like self-type
       take base, like self-type
 
     task seek-fall-10
+      take self
       take a, like self-type
 
     task seek-fall-2
+      take self
       take a, like self-type
 
     task seek-multiply
+      take self
       take a, like self-type
       take b, like self-type
 
@@ -51,6 +60,7 @@ tree integer
 
     # checked
     task test-add
+      take self
       take a, like self-type
       take b, like self-type
       like maybe, like self-type
@@ -156,14 +166,17 @@ tree integer
     task swap-bytes
     task reverse-bits
     task bitwise-intersect
+      take self
       take a, like self-type
       take b, like self-type
 
     task bitwise-unify
+      take self
       take a, like self-type
       take b, like self-type
 
     task bitwise-miss
+      take self
       take a, like self-type
       take b, like self-type
 

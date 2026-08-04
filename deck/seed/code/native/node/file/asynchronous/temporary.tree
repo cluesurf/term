@@ -1,4 +1,7 @@
 
+load @term/seed/code/text/string
+  find concat
+
 dock load
   load <node:fs/promises>, name fs-promise
   load <node:path>, name path

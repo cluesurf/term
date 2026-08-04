@@ -17,9 +17,10 @@ task stop
   take form, like text, fall text <gentle>
 
   fork test
-    call is-equal
-      bind a, read form
-      bind b, text <force>
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <force>
     hook hold
       call child/kill
         read child/dock

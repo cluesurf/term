@@ -3,8 +3,8 @@ form decimal
   dock cg-float
 
 form alignment
-  take anchor
-  take offset
+  link anchor
+  link offset
 
 form vertical-align
   case top

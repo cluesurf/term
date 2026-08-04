@@ -1,3 +1,11 @@
+
+# Not built: a half-finished translation, the same state as `aes.tree`. It calls a bit vocabulary that does not
+# exist (`unite-bitwise` / `intersect-bitwise` / `bitflip` for or / and / not), omits `read` before dynamic paths
+# (`save m-offset-i, m/{offset-i}`), and reads `self` in tasks that never take it.
+note draft
+load @term/seed/code/math
+  find round-up
+
 save rhooffsets, call compute-rho-offset-constants
 save piindexes, call compute-pi-index-constants
 save roundconstants, call compute-round-constants
@@ -92,13 +100,13 @@ task compute-round-constants
               fork test, call bit-position/is-below, code 32
                 hook hold
                   save round-constant-lsw
-                    call oppose-bitwise
+                    call bitwise-exclusive-or
                       read round-constant-lsw
                       call shift-left
                         code 1
                         read bit-position
               save round-constant-msw
-                call oppose-bitwise
+                call bitwise-exclusive-or
                   read round-constant-msw
                   call shift-left
                     code 1
@@ -144,11 +152,13 @@ task do-reset
       save state/{i}, make x64-word/init
       save i, call increment, read i
   save self/block-size
-    call subtract
-      code 1600
-      call 2/multiply
-      read output-length
-      link divide, code 32
+    call divide
+      call subtract
+        code 1600
+        call multiply
+          code 2
+          read output-length
+      code 32
 
 task do-process-block
   take m
@@ -191,11 +201,11 @@ task do-process-block
               link intersect-bitwise, code 4278255360
       save lane, state/{i}
       save lane/high
-        call oppose-bitwise
+        call bitwise-exclusive-or
           read lane/high
           read m2i1
       save lane/low
-        call oppose-bitwise
+        call bitwise-exclusive-or
           read lane/low
           read m2i
       save i, call increment, read i
@@ -223,11 +233,11 @@ task do-process-block
                     read y
               save lane, state/{tmp12}
               save t-msw
-                call oppose-bitwise
+                call bitwise-exclusive-or
                   read t-msw
                   lane/high
               save t-lsw
-                call oppose-bitwise
+                call bitwise-exclusive-or
                   read t-lsw
                   lane/low
               save y, call increment, read y
@@ -270,11 +280,11 @@ task do-process-block
                     read y
               save lane, state/{tmp17}
               save lane/high
-                call oppose-bitwise
+                call bitwise-exclusive-or
                   read lane/high
                   read t-msw
               save lane/low
-                call oppose-bitwise
+                call bitwise-exclusive-or
                   read lane/low
                   read t-lsw
               save y, call increment, read y
@@ -374,11 +384,11 @@ task do-process-block
       save lane, state/0
       save round-constant, roundconstants/{round}
       save lane/high
-        call oppose-bitwise
+        call bitwise-exclusive-or
           read lane/high
           round-constant/high
       save lane/low
-        call oppose-bitwise
+        call bitwise-exclusive-or
           read lane/low
           round-constant/low
       save round, call increment, read round
@@ -391,22 +401,24 @@ task do-finalize
   save block-size-bits, call self/block-size/multiply, code 32
   save tmp26, call n-bits-left/unsigned-shift-right, code 5
   save data-words/{tmp26}
-    call unite-bitwise
+    call bitwise-or
       read data-words/{tmp26}
       call shift-left
         code 1
-        call 24/subtract
-        call n-bits-left/remainder
-        code 32
+        call subtract
+          code 24
+          call remainder
+            read n-bits-left
+            code 32
   save tmp27
-    call math/ceil
+    call round-up
       call n-bits-left/add, code 1
         link divide, read block-size-bits
       link multiply, read block-size-bits
       link unsigned-shift-right, code 5
       link subtract, code 1
   save data-words/{tmp27}
-    call unite-bitwise
+    call bitwise-or
       read data-words/{tmp27}
       code 128
   save data/sig-bytes, call data-words/length/multiply, code 4

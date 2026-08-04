@@ -19,7 +19,7 @@ load @term/seed/code/bit
 # https://github.com/brix/crypto-js/blob/develop/src/md5.js
 
 form integer
-  take list, list integer-32
+  link list, list integer-32
     note private
 
 task round-down-to-power-of-two-8
@@ -182,39 +182,43 @@ task mix-for-power-rounding
       read a
       read b
 
+# Euclidean algorithm. The swaps were written as assignments nested inside call arguments, which is not an
+# expression, so each is now its own statement through a temporary.
 task gcd
   take a
   take b
-  call test
-    call is-above
-      read b
-      read a
+
+  fork test
+    hook test
+      call is-above
+        read b
+        read a
     hook hold
-      save b
-        call subtract
-          call add
-            read a
-            save a, read b
-          read b
+      save swap, read a
+      save a, read b
+      save b, read swap
+
   walk test
     hook test
-      call test
-        true
+      true
     hook hold
-      call test
-        call is-equal
-          call modulo
-            read a
-            read b
-          code 0
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read a
+              read b
+            code 0
         hook hold
           send back
             call absolute
               read b
-      save b
+      save rest
         call modulo
           read a
-          save a, read b
+          read b
+      save a, read b
+      save b, read rest
 
 task lcm
   take a
@@ -235,7 +239,7 @@ tree is-even
   task is-even
     take n, like mark-{size}
     call is-equal
-      call intersect-bitwise
+      call bitwise-and
         read n
         code 1
       code 0
@@ -246,7 +250,7 @@ tree is-odd
   task is-odd
     take n, like mark-{size}
     call is-unequal
-      call intersect-bitwise
+      call bitwise-and
         read n
         code 1
       code 0
@@ -262,7 +266,7 @@ tree is-power-of-two
           read n
           code 0
         call is-equal
-          call intersect-bitwise
+          call bitwise-and
             read n
             call subtract
               read n
@@ -277,7 +281,7 @@ tree rotate
       take a, like mark-{size}
       take b, like mark-{size}
 
-      call unify-bitwise
+      call bitwise-or
         call shift-left
           read a
           read b
@@ -291,7 +295,7 @@ tree rotate
       take a, like mark-{size}
       take b, like mark-{size}
 
-      call unify-bitwise
+      call bitwise-or
         call shift-right
           read a
           read b
@@ -320,17 +324,18 @@ task make-reversal-table
       save s, code 7
       walk test
         hook test
-          call is-not-zero
+          call is-unequal
             read v
+            code 0
         hook hold
           save r
             call shift-left
               read r
               code 1
           save r
-            call unify-bitwise
+            call bitwise-or
               read r
-              call intersect-bitwise
+              call bitwise-and
                 read v
                 code 1
           save s
@@ -343,7 +348,7 @@ task make-reversal-table
               code 1
       call table/set
         read i
-        call intersect-bitwise
+        call bitwise-and
           call shift-left
             read r
             read s
@@ -365,7 +370,8 @@ task count-trailing-zeroes-32
       call multiply
         call bitwise-and
           read n
-          call negate
+          call subtract
+            code 0
             read n
         read binary-trailing-zero-magic-number
       code 27
@@ -414,9 +420,10 @@ task count-leading-zeroes-32
         code 24
 
   fork test
-    call is-equal
-      read r
-      code 8
+    hook test
+      call is-equal
+        read r
+        code 8
     hook hold
       save r
         call add
@@ -427,9 +434,10 @@ task count-leading-zeroes-32
               code 16
 
   fork test
-    call is-equal
-      read r
-      code 16
+    hook test
+      call is-equal
+        read r
+        code 16
     hook hold
       save r
         call add
@@ -440,9 +448,10 @@ task count-leading-zeroes-32
               code 8
 
   fork test
-    call is-equal
-      read r
-      code 24
+    hook test
+      call is-equal
+        read r
+        code 24
     hook hold
       save r
         call add
@@ -461,13 +470,14 @@ task count-leading-zeroes-16
         code 8
 
   fork test
-    call is-equal
-      read r
-      code 8
+    hook test
+      call is-equal
+        read r
+        code 8
     hook hold
       save r
         call add
-          bind r
+          read r
           call binary-leading-zero-table/get
             read n
 
@@ -545,7 +555,7 @@ task make-de-bruijn-trailing-zero-table
   take de-bruijn-constant
   save n
     call power
-      bind code 2
+      code 2
       read exponent
   save table, make array, read n
   save i, code 0
@@ -637,7 +647,7 @@ task count-one-bits-16
           code 8
         code 0xff
 
-task count-one-bits8
+task count-one-bits-8
   take x
   call binary-count-one-table/get
     call bitwise-and
@@ -736,8 +746,8 @@ task reverse-bits-32
               read n
               code 0xff
           call power
-            bind code 2
-            bind code 24
+            code 2
+            code 24
         call multiply
           call reverse-bits-8
             call bitwise-and
@@ -746,8 +756,8 @@ task reverse-bits-32
                 code 8
               code 0xff
           call power
-            bind code 2
-            bind code 16
+            code 2
+            code 16
       call multiply
         call reverse-bits-8
           call bitwise-and
@@ -756,8 +766,8 @@ task reverse-bits-32
               code 16
             code 0xff
         call power
-          bind code 2
-          bind code 8
+          code 2
+          code 8
     call reverse-bits-8
       call bitwise-and
         call unsigned-shift-right
@@ -769,7 +779,7 @@ task has-flag
   take flags
   take flag
 
-  test is-equal
+  call is-equal
     call bitwise-and
       read flags
       read flag
@@ -802,6 +812,11 @@ task toggle-flag
 
 task walk-bits
   take self
+  # the callback the walk hands each bit to; it was called but never declared
+  take step
+    like task
+      take value
+      take index
   save i, code 0
   save n, read self/bit-capacity
   walk test
@@ -814,7 +829,7 @@ task walk-bits
         call is-bit-set
           read self
           read i
-      kick step
+      call step
         read v
         read i
       save i, call add, read i

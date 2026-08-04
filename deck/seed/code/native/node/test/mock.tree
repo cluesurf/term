@@ -1,9 +1,8 @@
 
 load @term/seed/code/native/shared/test/mock
-  find make as shared-make
-  find read as shared-read
-  find reset as shared-reset
-
+  find make, name shared-make
+  find read, name shared-read
+  find reset, name shared-reset
 load @term/seed/code/test/mock
   find mock
 

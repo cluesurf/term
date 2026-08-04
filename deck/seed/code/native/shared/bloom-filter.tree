@@ -1,14 +1,26 @@
 
+# Not built: this depends on `code/hold`, which is unfinished and excluded from the build. Bring it back once the
+# hash / bit utilities it imports have finished homes.
+note draft
+load @term/seed/code/hold/integer
+  find count-one-bits-32
+
+load @term/seed/code/bit
+  find shift-left
+
+load @term/seed/code/hold/hash/fnv
+  find fnv-hash-32-1a
+
 load @term/seed/code/math
   find round-down
   find round-up
   find logarithm
 
 form bloom-filter
-  take m
-  take k
-  take buckets
-  take locations
+  link m
+  link k
+  link buckets
+  link locations
 
   task get-locations
     take self
@@ -17,12 +29,12 @@ form bloom-filter
     save m, read self/m
     save r, read self/locations
     save a
-      call fnv-1a
+      call fnv-hash-32-1a
         read v
     save b
-      call fnv-1a
+      call fnv-hash-32-1a
         read v
-        bind code 1576284489
+        code 1576284489
     save x
       call modulo
         read a
@@ -43,8 +55,9 @@ form bloom-filter
             read x
             read m
         save tmp8
-        call test
-          tmp6
+        fork test
+          hook test
+            tmp6
           hook hold
             save tmp8, read tmp7
           hook miss
@@ -85,8 +98,8 @@ form bloom-filter
               read l/{i}
               code 32
         save buckets/{tmp11}
-          call assign-bitwise-or
-            bind buckets/{tmp11}
+          call bitwise-or
+            read buckets/{tmp11}
             call shift-left
               code 1
               call modulo
@@ -120,16 +133,17 @@ form bloom-filter
             call divide
               read b
               code 32
-        call test
-          call is-strictly-equal
-            call bitwise-and
-              read buckets/{tmp14}
-              call shift-left
-                code 1
-                call modulo
-                  read b
-                  code 32
-            code 0
+        fork test
+          hook test
+            call is-equal
+              call bitwise-and
+                read buckets/{tmp14}
+                call shift-left
+                  code 1
+                  call modulo
+                    read b
+                    code 32
+              code 0
           hook hold
             send back, read false
         save i
@@ -152,10 +166,10 @@ form bloom-filter
             read n
       hook hold
         save bits
-          call assign-increment
-            bind bits
-            call popcnt
-              bind read buckets/{i}
+          call add
+            read bits
+            call count-one-bits-32
+              read buckets/{i}
         save i
           call increment
             bind value, read i
@@ -164,8 +178,9 @@ form bloom-filter
     send back
       call divide
         call multiply
-          call negative
-            bind bits, read self/m
+          call subtract
+            code 0
+            read self/m
           call logarithm
             call subtract
               code 1
@@ -183,8 +198,9 @@ task make-bloom-filter
         read m
         code 32
   save i
-    call negative
-      bind bits, code 1
+    call subtract
+      code 0
+      code 1
   save m
     call multiply
       read n

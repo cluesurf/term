@@ -75,31 +75,47 @@ task command-argument-make
 task command-result-is-okay
   take r, like command-result
   fork case, read r
-    hook okay, base command, base flags, base arguments
+    case okay
+      link command
+      link flags
+      link arguments
       send back, true
-    hook error, base errors
+    case error
+      link errors
       send back, false
 
 task command-result-command
   take r, like command-result
   fork case, read r
-    hook okay, base command, base flags, base arguments
+    case okay
+      link command
+      link flags
+      link arguments
       send back, read command
-    hook error, base errors
+    case error
+      link errors
       send back, text <>
 
 task command-result-flags
   take r, like command-result
   fork case, read r
-    hook okay, base command, base flags, base arguments
+    case okay
+      link command
+      link flags
+      link arguments
       send back, read flags
-    hook error, base errors
+    case error
+      link errors
       send back, make hash
 
 task command-result-errors
   take r, like command-result
   fork case, read r
-    hook okay, base command, base flags, base arguments
+    case okay
+      link command
+      link flags
+      link arguments
       send back, make list
-    hook error, base errors
+    case error
+      link errors
       send back, read errors

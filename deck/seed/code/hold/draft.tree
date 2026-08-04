@@ -1,0 +1,5 @@
+# This module is unfinished and is not built.
+#
+# `draft.tree` takes this directory and everything under it out of the build. Nothing here is imported, so the rest
+# of the stdlib compiles without waiting on it. Delete this file to bring the module back in.
+note draft

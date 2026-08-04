@@ -1,80 +1,89 @@
 
-load @term/base
-  take face array
-    save face native-array
+# An array-backed list. Forwards to the linked line runtime shim, which owns the iteration: every traversal needs a
+# callback, and a callback cannot be written inline here. Internal: reached only through the public list API.
+
+dock load
+  load <global:line>, name line
 
 form line
   head item-type
 
-  link dock, like native-array
+  link dock
     note private
 
   task get
-    like item-type
+    take self
     take position, like mark-32
-    call javascript-dynamic-get
-      read self/dock
-      read position
+    like item-type
+
+    send back
+      call line/get
+        read self/dock
+        read position
 
   task set
+    take self
     take position, like mark-32
     take item, like item-type
-    call javascript-dynamic-set
+
+    call line/set
       read self/dock
       read position
       read item
 
-  task walk
-    take step, like task
+  task size
+    take self
+    like mark-32
 
-    save i, code 0
-    save n
-      call get-size
-        read self
+    send back
+      call line/size
+        read self/dock
 
-    call loop-javascript
-      fork loop
-      hook test
-        test is-below
-          read i
-          read n
-      hook step
-        kick step
-          call get-at-index
-            read self
-            read i
-          read i
+  task push
+    take self
+    take item, like item-type
 
-          hook bust
-            bust loop
-
-        call increment
-          read i, lock free
+    call line/push
+      read self/dock
+      read item
 
   task reverse
-    call self/dock/reverse
-    like self
+    take self
 
-  task find-first
+    call line/reverse
+      read self/dock
 
-  task filter
+  task walk
+    take self
+    take step, like task
+
+    call line/walk
+      read self/dock
+      read step
 
   task map
-    take hook
-    free seed
-      like line
-        like item-type
+    take self
+    take hook, like task
 
-    save result
-      make line
+    send back
+      call line/map
+        read self/dock
+        read hook
 
-    call self/walk
-      hook step
-        take item
-        take position
-        call result/push
-          call hook
-            read item
-            read position
+  task filter
+    take self
+    take hook, like task
 
-    move result
+    send back
+      call line/filter
+        read self/dock
+        read hook
+
+  task find-first
+    take self
+    take hook, like task
+
+    send back
+      call line/find-first
+        read self/dock
+        read hook

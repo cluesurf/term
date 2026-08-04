@@ -1,8 +1,8 @@
 
-load ../text
+load ./text
   find text
 
-load ../term
+load ./term
   find term
 
 form deck

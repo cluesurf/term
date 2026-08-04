@@ -4,9 +4,11 @@ mask conversion
   head like, like like
 
   task cast
+    take self
     link self, like self
     free seed, like like
 
   task is-cast
+    take self
     link self, like self
     free seed, like sink

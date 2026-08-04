@@ -15,18 +15,20 @@ task create
   save options, make object
 
   fork test
-    call is-above
-      bind a, read start
-      bind b, code 0
+    hook test
+      call is-above
+        bind a, read start
+        bind b, code 0
     hook hold
       call options/set
         text <start>
         read start
 
   fork test
-    call is-above
-      bind a, read size
-      bind b, code 0
+    hook test
+      call is-above
+        bind a, read size
+        bind b, code 0
     hook hold
       call options/set
         text <end>

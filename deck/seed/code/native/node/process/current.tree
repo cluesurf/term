@@ -1,4 +1,10 @@
 
+# The current process. Forwards to the linked current runtime shim, which owns the signal-name mapping and the event
+# registration. Internal: reached only through the public process API.
+
+dock load
+  load <global:current>, name current
+
 load @term/seed/code/process/current
   find process-info
 
@@ -7,49 +13,25 @@ task read
 
   send back
     make process-info
-      bind id, read process/pid
-      bind arguments, read process/argv
+      bind id
+        call current/id
+      bind arguments
+        call current/arguments
       bind directory
-        call process/cwd
-      bind executable, read process/exec-path
+        call current/directory
+      bind executable
+        call current/executable
 
 task exit
   take code, like size, fall 0
 
-  call process/exit
+  call current/exit
     read code
 
 task listen
   take signal, like text
   take handler, like task
 
-  save signal-name
-    fork test
-      hook test
-        call is-equal
-          bind a, read signal
-          bind b, text <terminate>
-      hook hold
-        send back, text <SIGTERM>
-      hook miss
-        fork test
-          hook test
-            call is-equal
-              bind a, read signal
-              bind b, text <interrupt>
-          hook hold
-            send back, text <SIGINT>
-          hook miss
-            fork test
-              hook test
-                call is-equal
-                  bind a, read signal
-                  bind b, text <hangup>
-              hook hold
-                send back, text <SIGHUP>
-              hook miss
-                send back, read signal
-
-  call process/on
-    read signal-name
+  call current/listen
+    read signal
     read handler

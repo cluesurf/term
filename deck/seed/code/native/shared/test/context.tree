@@ -3,7 +3,7 @@ load @term/seed/code/list
   find push
   find size
 
-host current
+host current, like context
 
 form context
   link name, like text
@@ -26,7 +26,7 @@ task set
   take ctx, like context
   save current, read ctx
 
-task get
+task get-context
   like context
   send back, read current
 
@@ -69,7 +69,7 @@ task is-passed
         hook miss
           send back, false
 
-task skip
+task skip-context
   take ctx, like context
   fork case, read ctx
     case context

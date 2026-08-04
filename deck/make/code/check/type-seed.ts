@@ -73,6 +73,13 @@ export function makeSeedType(
         return { kind: 'named', name: type.name }
       }
 
+      // `unknown` is the GRADUAL type: consistent with every type, in both directions. It is what a function that
+      // genuinely accepts any Term value declares (`deep-equal` narrows its args with a runtime shape test), and is
+      // distinct from `dynamic`, which is the host's `any` at the FFI boundary.
+      if (type.name === 'unknown') {
+        return UNKNOWN
+      }
+
       // `type` is the UNIVERSE (the type of types): kept named, so a function may take or return one (`El : U -> type`,
       // the decoder of a universe-as-data / induction-recursion) rather than inferring it as a fresh variable.
       if (type.name === 'type') {

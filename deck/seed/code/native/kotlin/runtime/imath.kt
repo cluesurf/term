@@ -8,4 +8,5 @@ object imath {
     fun signum(value: Long): Long = value.compareTo(0L).toLong()
     fun sqrt(value: Long): Long = Math.sqrt(value.toDouble()).toLong()
     fun log(value: Long): Long = kotlin.math.ln(value.toDouble()).toLong()
+    fun sin(value: Long): Long = kotlin.math.sin(value.toDouble()).toLong()
 }
