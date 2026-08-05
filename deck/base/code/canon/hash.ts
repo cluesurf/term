@@ -26,10 +26,22 @@ export function hashCanonicalBytes(bytes: Uint8Array): string {
   return `${HASH_FUNCTION}:${hex}`
 }
 
-// The hash of an opaque string payload. Used by the chunk store for blobs and
-// for the string-keyed objects the store holds, which are not record graphs.
-export function hashBytes(bytes: string): string {
-  const hex = createHash(HASH_FUNCTION).update(bytes, 'utf8').digest('hex')
+// The hash of an opaque payload. Used by the chunk store for blobs and for the
+// string-keyed objects the store holds, which are not record graphs.
+//
+// Takes STRING OR BYTES, and that matters. Content addressing has to be over
+// bytes: a caller holding binary content (a font, an image, a compressed pack)
+// that decoded it to a string first would hash mangled input, because bytes
+// outside valid UTF-8 become U+FFFD on the way in. The address would then name
+// content that no longer exists, and nothing would fail loudly. A string is
+// still accepted and still encoded as UTF-8, so every existing address is
+// unchanged: this widens the domain rather than moving it.
+export function hashBytes(bytes: string | Uint8Array): string {
+  const hex =
+    typeof bytes === 'string'
+      ? createHash(HASH_FUNCTION).update(bytes, 'utf8').digest('hex')
+      : createHash(HASH_FUNCTION).update(bytes).digest('hex')
+
   return `${HASH_FUNCTION}:${hex}`
 }
 
