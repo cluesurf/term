@@ -2,7 +2,7 @@
   "name": "@cluesurf/term",
   "main": "./host/line.js",
   "type": "module",
-  "version": "2.0.2",
+  "version": "2.0.4",
   "bin": {
     "term": "./host/line.js"
   },
@@ -45,15 +45,15 @@
   "exports": {
     ".": {
       "types": "./host/line.d.ts",
-      "import": "./host/line.js"
+      "default": "./host/line.js"
     },
     "./base": {
       "types": "./deck/base/host/index.d.ts",
-      "import": "./deck/base/host/index.js"
+      "default": "./deck/base/host/index.js"
     },
     "./base/*": {
       "types": "./deck/base/host/*.d.ts",
-      "import": "./deck/base/host/*.js"
+      "default": "./deck/base/host/*.js"
     }
   },
   "files": [
