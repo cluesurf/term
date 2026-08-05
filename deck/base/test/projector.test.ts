@@ -121,7 +121,7 @@ describe('ddl', () => {
     const statements = createTable({ form: FORM, dialect: 'postgres' })
 
     expect(statements).toHaveLength(2)
-    expect(statements[1]).toMatch(/CREATE INDEX "word_text" ON "word" \("text"\)/)
+    expect(statements[1]).toMatch(/CREATE INDEX IF NOT EXISTS "word_text" ON "word" \("text"\)/)
   })
 
   it('renders a partial index with its closed-vocabulary condition', () => {

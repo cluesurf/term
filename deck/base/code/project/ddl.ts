@@ -175,7 +175,7 @@ export function createTable(input: {
   }
 
   const statements = [
-    `CREATE TABLE ${quote(form.table)} (\n  ${body.join(',\n  ')}\n)`,
+    `CREATE TABLE IF NOT EXISTS ${quote(form.table)} (\n  ${body.join(',\n  ')}\n)`,
   ]
 
   for (const index of form.indexes ?? []) {
@@ -185,7 +185,7 @@ export function createTable(input: {
       // CockroachDB calls this an inverted index but accepts `USING GIN`, so one spelling
       // serves both engines.
       statements.push(
-        `CREATE INDEX ${quote(index.name)} ON ${quote(form.table)} USING GIN (${columns})`,
+        `CREATE INDEX IF NOT EXISTS ${quote(index.name)} ON ${quote(form.table)} USING GIN (${columns})`,
       )
       continue
     }
@@ -197,7 +197,7 @@ export function createTable(input: {
         : ''
 
     statements.push(
-      `CREATE ${unique}INDEX ${quote(index.name)} ON ${quote(form.table)} (${columns})${where}`,
+      `CREATE ${unique}INDEX IF NOT EXISTS ${quote(index.name)} ON ${quote(form.table)} (${columns})${where}`,
     )
   }
 
@@ -214,13 +214,13 @@ export function createBookkeeping(dialect: Dialect): Array<string> {
   const text = TYPES[dialect].text
 
   return [
-    `CREATE TABLE ${quote(BOOKKEEPING_TABLE)} (
+    `CREATE TABLE IF NOT EXISTS ${quote(BOOKKEEPING_TABLE)} (
   "repository" ${uuid} NOT NULL,
   "commit" ${text} NOT NULL,
   "applied" TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("repository")
 )`,
-    `CREATE TABLE ${quote(`${BOOKKEEPING_TABLE}_log`)} (
+    `CREATE TABLE IF NOT EXISTS ${quote(`${BOOKKEEPING_TABLE}_log`)} (
   "repository" ${uuid} NOT NULL,
   "commit" ${text} NOT NULL,
   "applied" TIMESTAMPTZ NOT NULL DEFAULT now(),
