@@ -1,12 +1,12 @@
 {
   "name": "@cluesurf/base.tree",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "license": "MIT",
   "description": "Version control for structured knowledge data: the base protocol library.",
   "type": "module",
   "main": "./host/index.js",
   "scripts": {
-    "make": "rm -rf host && tsc && tsc-alias",
+    "make": "rm -rf host && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint \"code/**/*.ts\" \"test/**/*.ts\"",
@@ -20,5 +20,19 @@
     "tsx": "^4.22.4",
     "typescript": "^5.8.3",
     "vitest": "^4.1.9"
-  }
+  },
+  "types": "./host/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./host/index.d.ts",
+      "import": "./host/index.js"
+    },
+    "./*": {
+      "types": "./host/*.d.ts",
+      "import": "./host/*.js"
+    }
+  },
+  "files": [
+    "host"
+  ]
 }

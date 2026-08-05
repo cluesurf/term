@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./code",
+    "outDir": "./host",
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "@/*": [
+        "./code/*"
+      ],
+      "@term/base/code/*": [
+        "./code/*"
+      ]
+    }
+  },
+  "include": [
+    "code/**/*.ts"
+  ]
+}

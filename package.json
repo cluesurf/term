@@ -1,28 +1,29 @@
 {
   "name": "@cluesurf/term",
-  "main": "./host/index.js",
+  "main": "./host/line.js",
   "type": "module",
-  "version": "2.0.0",
+  "version": "2.0.2",
   "bin": {
     "term": "./host/line.js"
   },
   "scripts": {
-    "make": "npx esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --outfile=host/line.js --banner:js='#!/usr/bin/env node'",
+    "make": "pnpm run make:base && pnpm run make:line",
     "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
     "test": "vitest run",
     "lint": "bash task/lint.sh",
     "format": "prettier --write \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
-    "host": "pnpm make && npm publish --access=public",
-    "install:all": "pnpm install && (cd deck/base && pnpm install) && (cd deck/deck && pnpm install) && (cd deck/mill && pnpm install) && (cd deck/seed && pnpm install) && (cd deck/flow/editor/vscode && pnpm install)"
+    "host": "pnpm run make && pnpm publish --access public",
+    "install:all": "pnpm install && (cd deck/base && pnpm install) && (cd deck/deck && pnpm install) && (cd deck/mill && pnpm install) && (cd deck/seed && pnpm install) && (cd deck/flow/editor/vscode && pnpm install)",
+    "make:base": "cd deck/base && pnpm make",
+    "make:line": "pnpm exec esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --outfile=host/line.js --banner:js='#!/usr/bin/env node'",
+    "prepublishOnly": "pnpm run make"
   },
   "prettier": "@cluesurf/wash/flow.json",
   "dependencies": {
-    "@cluesurf/deck.tree": "file:./deck/deck",
     "@hono/node-server": "^2.0.5",
     "chalk": "^5.4.1",
     "esbuild": "^0.28.1",
     "hono": "^4.12.27",
-    "pg": "^8.13.1",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
@@ -39,5 +40,24 @@
     "vite": "^7.3.5",
     "vitest": "^4.1.9",
     "z3-solver": "^4.16.0"
-  }
+  },
+  "types": "./host/line.d.ts",
+  "exports": {
+    ".": {
+      "types": "./host/line.d.ts",
+      "import": "./host/line.js"
+    },
+    "./base": {
+      "types": "./deck/base/host/index.d.ts",
+      "import": "./deck/base/host/index.js"
+    },
+    "./base/*": {
+      "types": "./deck/base/host/*.d.ts",
+      "import": "./deck/base/host/*.js"
+    }
+  },
+  "files": [
+    "host",
+    "deck/base/host"
+  ]
 }
