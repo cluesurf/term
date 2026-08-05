@@ -2,5 +2,5 @@
 deck @term/make
   head <The Term compiler>
   bear ./code
-  code <0.0.2>
+  code <0.0.16>
   lock mit

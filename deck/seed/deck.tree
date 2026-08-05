@@ -3,6 +3,6 @@ deck @term/seed
   head <The Term standard library>
   bear ./code
   test ./test
-  code <0.0.4>
+  code <0.0.16>
   lock mit
   link @term/bind, code <0.0.x>

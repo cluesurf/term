@@ -1,6 +1,6 @@
 
 deck @term/base
   head <Version control for structured knowledge data>
-  code <0.0.2>
+  code <0.0.16>
   sort tool
   lock mit

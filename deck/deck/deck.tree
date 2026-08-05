@@ -1,5 +1,5 @@
 
 deck @term/deck
   head <The Term package manager>
-  code <0.0.2>
+  code <0.0.16>
   lock mit

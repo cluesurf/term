@@ -2,6 +2,6 @@
 deck @term/flow
   head <The Term language server>
   bear ./code
-  code <0.0.2>
+  code <0.0.16>
   lock mit
   link @term/make, code <0.0.x>

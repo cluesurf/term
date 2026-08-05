@@ -1,5 +1,5 @@
 
 deck @term/mill
   head <The Term DSL Library>
-  code <0.0.2>
+  code <0.0.16>
   lock mit

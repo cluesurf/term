@@ -1,7 +1,7 @@
 
 deck @term/face
   head <Headless user interface components for Term>
-  code <0.0.6>
+  code <0.0.16>
   lock mit
   link @term/base, code <0.0.x>
   link @term/bind, code <0.0.x>

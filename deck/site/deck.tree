@@ -1,7 +1,7 @@
 
 deck @term/site
   head <The Term application framework>
-  code <0.0.14>
+  code <0.0.16>
   lock mit
   link @term/base, code <0.0.x>
   link @term/bind, code <0.0.x>
