@@ -15,18 +15,22 @@ import { compile } from '@term/make/code/compile/compile'
 import type { Source } from '@term/make/code/compile/load'
 import type { Statement } from '@term/make/code/compile/node'
 
-const baseTree = join(process.cwd(), 'deck', 'base')
+const baseTree = join(process.cwd(), 'deck', 'seed')
+
+// the stdlib's own modules import each other as `@term/seed/...` (the Term rename); older test programs still say
+// `@cluesurf/seed/...`. Both spell the same package, so the resolver accepts either prefix.
+const STDLIB_PREFIX = /^@(?:cluesurf|term)\/seed\//
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/seed/'
-
-  if (!path.startsWith(prefix)) {
+  if (!STDLIB_PREFIX.test(path)) {
     return undefined
   }
 
+  const rest = path.replace(STDLIB_PREFIX, '')
+
   for (const candidate of [
-    join(baseTree, `${path.slice(prefix.length)}.tree`),
-    join(baseTree, path.slice(prefix.length), 'base.tree'),
+    join(baseTree, `${rest}.tree`),
+    join(baseTree, rest, 'base.tree'),
   ]) {
     if (existsSync(candidate)) {
       return { file: candidate, text: readFileSync(candidate, 'utf8') }
@@ -38,7 +42,7 @@ const stdlib = (path: string): Source | undefined => {
 
 // relative loads within the stdlib tree resolve against the importing file
 const resolve = (path: string, from: string): Source | undefined => {
-  if (path.startsWith('@cluesurf/seed/')) {
+  if (STDLIB_PREFIX.test(path)) {
     return stdlib(path)
   }
 

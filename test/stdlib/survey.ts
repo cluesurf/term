@@ -11,11 +11,12 @@ import { withNativeEnv } from '@term/make/code/compile/native'
 import type { Source } from '@term/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const base = join(here, '..', '..', 'deck', 'base')
+const base = join(here, '..', '..', 'deck', 'seed')
 const codeDir = join(base, 'code')
 
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/seed/'
+  path = path.replace(/^@term\/seed\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 

@@ -14,10 +14,11 @@ import type { Source } from '@term/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const seedRoot = resolvePath(here, '..', '..')
-const baseTree = resolvePath(seedRoot, 'deck', 'base')
+const baseTree = resolvePath(seedRoot, 'deck', 'seed')
 
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/seed/'
+  path = path.replace(/^@term\/seed\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -30,6 +31,7 @@ const stdlib = (path: string): Source | undefined => {
 
 const readRuntime = (path: string): string | undefined => {
   const prefix = '@cluesurf/seed/'
+  path = path.replace(/^@term\/seed\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 

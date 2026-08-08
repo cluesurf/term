@@ -70,14 +70,19 @@ function have(tool: string): boolean {
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'seed-roundtrip-'))
-const baseTree = join(process.cwd(), 'deck', 'base')
+const baseTree = join(process.cwd(), 'deck', 'seed')
+
+// the stdlib's own modules import each other as `@term/seed/...` (the Term rename); older test programs still say
+// `@cluesurf/seed/...`. Both spell the same package, so the resolver accepts either prefix.
+const STDLIB_PREFIX = /^@(?:cluesurf|term)\/seed\//
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/seed/'
+  if (!STDLIB_PREFIX.test(path)) {return undefined}
 
-  if (!path.startsWith(prefix)) {return undefined}
-
-  const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
+  const file = join(
+    baseTree,
+    `${path.replace(STDLIB_PREFIX, '')}.tree`,
+  )
 
   return existsSync(file)
     ? { file, text: readFileSync(file, 'utf8') }
@@ -90,11 +95,9 @@ const stdlib = (path: string): Source | undefined => {
 const readRuntime = (path: string): string | undefined => {
   if (existsSync(path)) {return readFileSync(path, 'utf8')}
 
-  const prefix = '@cluesurf/seed/'
+  if (!STDLIB_PREFIX.test(path)) {return undefined}
 
-  if (!path.startsWith(prefix)) {return undefined}
-
-  const file = join(baseTree, path.slice(prefix.length))
+  const file = join(baseTree, path.replace(STDLIB_PREFIX, ''))
 
   return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }
@@ -1513,7 +1516,7 @@ load @cluesurf/seed/code/bytes
   find to-hex
 
 task compute
-  mark async
+  note async
   like text
   send back
     call to-hex
@@ -1555,7 +1558,7 @@ load @cluesurf/seed/code/bytes
   find to-hex
 
 task compute
-  mark async
+  note async
   like text
   send back
     call to-hex
@@ -1654,7 +1657,7 @@ load @cluesurf/seed/code/bytes
   find from-hex
 
 task compute
-  mark async
+  note async
   like boolean
   save sealed
     call encrypt
@@ -1691,7 +1694,7 @@ load @cluesurf/seed/code/bytes
   find from-text
 
 task compute
-  mark async
+  note async
   like boolean
   save pair
     call make-key-pair
@@ -2185,7 +2188,7 @@ load @cluesurf/seed/code/bytes
   find to-hex
 
 task compute
-  mark async
+  note async
   like boolean
   save a
     call make-key-pair
@@ -2217,7 +2220,7 @@ const DNS_PROG = `load @cluesurf/seed/code/network/dns
   find resolve-one
 
 task compute
-  mark async
+  note async
   like boolean
   save ip
     call resolve-one
@@ -2684,13 +2687,26 @@ function runNodeExpr(
     file,
     `${emitTypeScript(program)}\nconsole.log(${call})\n`,
   )
-  ok(
-    name,
-    execFileSync('node', ['--experimental-strip-types', file])
-      .toString()
-      .trim(),
-    want,
-  )
+
+  // a runtime error in the emitted module is a FAIL for this test, never an abort of the whole harness
+  try {
+    ok(
+      name,
+      execFileSync('node', ['--experimental-strip-types', file], {
+        stdio: 'pipe',
+      })
+        .toString()
+        .trim(),
+      want,
+    )
+  } catch (e) {
+    fail++
+    console.log(
+      `FAIL  ${name}  (node error: ${String(
+        (e as { stderr?: Buffer }).stderr ?? e,
+      ).slice(0, 300)})`,
+    )
+  }
 }
 
 // run the emitted Rust on rustc: print the given call (Display prints 3.0 as "3"), assert stdout
@@ -3830,7 +3846,7 @@ function main(): void {
   }
 
   if (port) {
-    const httpProg = `load @cluesurf/seed/code/network/http\n  find get\n\ntask compute\n  mark async\n  like text\n  save r\n    call get\n      text <http://127.0.0.1:${port}/>\n      wait true\n  send back\n    read r/body\n`
+    const httpProg = `load @cluesurf/seed/code/network/http\n  find get\n\ntask compute\n  note async\n  like text\n  save r\n    call get\n      text <http://127.0.0.1:${port}/>\n      wait true\n  send back\n    read r/body\n`
     runSwiftCrypto(
       'swift + http: GET a real server via URLSession',
       frontEnd(httpProg, true, 'swift'),

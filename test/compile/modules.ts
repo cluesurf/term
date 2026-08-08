@@ -171,8 +171,8 @@ fs.rmSync(dir, { recursive: true, force: true })
 
 // ---- real multi-module app: the blog (native delegation + bear + types + methods) ----
 const blogEntry = path.join(
-  DECK,
-  'seed/deck/site/test/site/hook/blog.tree',
+  SEED,
+  'deck/site/test/site/hook/blog.tree',
 )
 
 const blog = compile(

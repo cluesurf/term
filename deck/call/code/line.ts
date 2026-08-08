@@ -481,6 +481,19 @@ const cli = yargs(hideBin(process.argv))
           description: 'Bearer token for the remote cache',
         }),
     async argv => {
+      // arguments for a command-line program: everything after a literal
+      // `--` passes through untouched (`term boot cli.tree -- code save
+      // development`), and bare extra positionals work for the simple
+      // cases (`term boot cli.tree show`)
+      const marker = process.argv.indexOf('--')
+      const args =
+        marker >= 0
+          ? process.argv.slice(marker + 1)
+          : (argv._ as (string | number)[])
+              .slice(1)
+              .map(String)
+              .filter(a => a !== argv.entry)
+
       await callBoot({
         root,
         entry: argv.entry,
@@ -488,6 +501,7 @@ const cli = yargs(hideBin(process.argv))
         env: argv.env as never,
         remote: argv.remote,
         remoteToken: argv['remote-token'],
+        args,
       })
     },
   )

@@ -9,10 +9,11 @@ import { Repl } from '@term/call/code/walk'
 import type { Source } from '@term/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'base')
+const baseTree = join(here, '..', '..', 'deck', 'seed')
 
 const resolver = (path: string): Source | undefined => {
   const prefix = '@cluesurf/seed/'
+  path = path.replace(/^@term\/seed\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 

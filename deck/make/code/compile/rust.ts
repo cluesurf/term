@@ -23,7 +23,7 @@ import {
   collectionCall,
   collectionRead,
   exhausted,
-  unsupported,
+  reassigned,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 
@@ -829,6 +829,40 @@ export function emitRust(program: Program): string {
       }
 
       case 'match': {
+        // a match whose labels are only true/false is a match over a NATIVE bool (booleans lower to `bool` here, not
+        // an ADT), so the arms are the literal patterns `true` / `false`, not enum variants. Rust's bool match with
+        // both literal arms is exhaustive; an `otherwise` becomes the wildcard arm.
+        const labels = node.cases.map(branch => branch.label)
+        const booleans =
+          labels.length > 0 &&
+          labels.every(label => label === 'true' || label === 'false')
+
+        if (booleans) {
+          const arms = node.cases.map(
+            b =>
+              `${pad(d + 1)}${b.label} => {\n${block(
+                b.body,
+                d + 2,
+              )}\n${pad(d + 1)}}`,
+          )
+
+          // a single-literal match needs the wildcard arm to be exhaustive, even without an `otherwise`
+          if (node.otherwise) {
+            arms.push(
+              `${pad(d + 1)}_ => {\n${block(
+                node.otherwise,
+                d + 2,
+              )}\n${pad(d + 1)}}`,
+            )
+          } else if (node.cases.length < 2) {
+            arms.push(`${pad(d + 1)}_ => {}`)
+          }
+
+          return `match ${expr(node.subject)} {\n${arms.join(
+            '\n',
+          )}\n${pad(d)}}`
+        }
+
         // match a clone of the subject: a variant pattern binds (moves out) the variant's fields, so matching the
         // original would partially move it and break a branch that also uses the whole subject (`return self`). Our
         // ADTs all derive Clone, so this is always valid; the bound fields come from the clone, the original is intact.
@@ -1246,7 +1280,6 @@ export function emitRust(program: Program): string {
   return [...uses, ...body].join('\n\n') + '\n'
 }
 
-// names reassigned anywhere in a body (a reassigned parameter needs a `let mut` shadow)
 // MOVE-ON-LAST-USE analysis. A variable that is read EXACTLY ONCE across the whole function body, where that single
 // read is NOT inside a loop or a nested closure, can be moved at that read instead of cloned (no later use can be
 // invalidated, so the borrow checker always accepts the move). Returns the set of such variable names. `reads` counts
@@ -1386,41 +1419,6 @@ function moveOnLastUse(body: Statement[]): Set<string> {
   }
 
   return out
-}
-
-function reassigned(body: Statement[], into: Set<string>): void {
-  for (const s of body) {
-    switch (s.form) {
-      case 'assign':
-        if (s.target.form === 'variable') {
-          into.add(s.target.name)
-        }
-
-        break
-      case 'if':
-        s.branches.forEach(b => reassigned(b.body, into))
-
-        if (s.otherwise) {
-          reassigned(s.otherwise, into)
-        }
-
-        break
-      case 'match':
-        s.cases.forEach(c => reassigned(c.body, into))
-
-        if (s.otherwise) {
-          reassigned(s.otherwise, into)
-        }
-
-        break
-      case 'while':
-      case 'for-each':
-        reassigned(s.body, into)
-        break
-      default:
-        break
-    }
-  }
 }
 
 // the extra element-type bounds a function body needs from its array ops: equality (`includes` / `indexOf`) or display

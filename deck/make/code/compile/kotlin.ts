@@ -15,12 +15,15 @@ import {
   collectionCall,
   collectionRead,
   exhausted,
+  reassigned,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
   bindGap,
+  bindImports,
+  referencedBinds,
 } from '@term/make/code/compile/bind'
 
 function camel(name: string): string {
@@ -693,10 +696,24 @@ export function emitKotlin(program: Program): string {
         )}) {\n${block(node.body, d + 1)}\n${pad(d)}}`
 
       case 'match': {
+        // a match whose labels are only true/false is a match over a NATIVE Boolean (booleans lower to `Boolean`
+        // here, not a sealed class), so the arms are the literal conditions `true` / `false`, not `is` patterns.
+        const labels = node.cases.map(branch => branch.label)
+        const booleans =
+          labels.length > 0 &&
+          labels.every(label => label === 'true' || label === 'false')
+
         // an exhaustive `when` on the sealed type: each `is` arm smart-casts the subject, so its fields are directly
         // accessible in the body with no rewrite. A return-position match becomes `return when (...)`.
         const subject = expr(node.subject)
         const arms = node.cases.map(b => {
+          if (booleans) {
+            return `${pad(d + 1)}${b.label} -> {\n${block(
+              b.body,
+              d + 2,
+            )}\n${pad(d + 1)}}`
+          }
+
           const cls = variantClass.get(b.label) ?? pascal(b.label)
 
           return `${pad(d + 1)}is ${cls} -> {\n${block(
@@ -908,6 +925,22 @@ export function emitKotlin(program: Program): string {
           .replace(/\//g, '.')}`,
     )
 
+  // plus the import each rendered `bind` needs (e.g. `import kotlin.math.pow` for a `case kotlin` that calls `pow`).
+  // Only binds actually called contribute, matching the other backends.
+  for (const need of bindImports(
+    referencedBinds(program, binds),
+    'kotlin',
+  )) {
+    const path = need.module.replace(/^[a-z]+:/, '').replace(/\//g, '.')
+    const line = need.alias
+      ? `import ${path} as ${camel(need.alias)}`
+      : `import ${path}`
+
+    if (!imports.includes(line)) {
+      imports.push(line)
+    }
+  }
+
   const body = program
     .filter(n => n.form !== 'native')
     .map(n => stmt(n, 0))
@@ -918,42 +951,6 @@ export function emitKotlin(program: Program): string {
     : []
 
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'
-}
-
-// the names reassigned anywhere in a body (Kotlin parameters are immutable, so a reassigned one needs a var shadow)
-function reassigned(body: Statement[], into: Set<string>): void {
-  for (const s of body) {
-    switch (s.form) {
-      case 'assign':
-        if (s.target.form === 'variable') {
-          into.add(s.target.name)
-        }
-
-        break
-      case 'if':
-        s.branches.forEach(b => reassigned(b.body, into))
-
-        if (s.otherwise) {
-          reassigned(s.otherwise, into)
-        }
-
-        break
-      case 'match':
-        s.cases.forEach(c => reassigned(c.body, into))
-
-        if (s.otherwise) {
-          reassigned(s.otherwise, into)
-        }
-
-        break
-      case 'while':
-      case 'for-each':
-        reassigned(s.body, into)
-        break
-      default:
-        break
-    }
-  }
 }
 
 // does a type mention a given generic parameter name?

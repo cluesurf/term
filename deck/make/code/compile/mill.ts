@@ -3496,17 +3496,27 @@ export function mill(tree: RootNode, file: string): MillResult {
           take.masked = true
         }
 
-        // help text: `note <Directory to hunt>`
-        const noteGroup = rest(child).find(
-          (n): n is GroupNode =>
-            n.kind === 'group' && headName(n) === 'note',
-        )
+        // help text: the `#` comment above the take. A `note <text>`
+        // child still reads as a deprecated fallback so old trees keep
+        // their help while they migrate.
+        const commentNote = leadingNote(child)
 
-        if (noteGroup) {
-          const textNode = rest(noteGroup)[0]
+        if (commentNote !== undefined) {
+          take.note = commentNote
+        }
 
-          if (textNode?.kind === 'text') {
-            take.note = textOf(textNode)
+        if (take.note === undefined) {
+          const noteGroup = rest(child).find(
+            (n): n is GroupNode =>
+              n.kind === 'group' && headName(n) === 'note',
+          )
+
+          if (noteGroup) {
+            const textNode = rest(noteGroup)[0]
+
+            if (textNode?.kind === 'text') {
+              take.note = textOf(textNode)
+            }
           }
         }
 
@@ -4101,6 +4111,25 @@ export function mill(tree: RootNode, file: string): MillResult {
   // DSL (replacing the routing dock for command-line tools): each `hook` is a command, its `take`s are arguments /
   // flags, its `task` binds the implementation that runs it, and nested `hook`s are subcommands. Reuses the route
   // structure (a CLI command is a route whose `path` is the command name and whose `calls` is the bound task).
+  // help text for a CLI command or take: the `#` comment lines written
+  // directly above it. Comments are the one comment format; the parser
+  // attaches them to the group as leading trivia. Multi-line comments
+  // join with a space so a wrapped sentence stays one help line.
+  function leadingNote(group: GroupNode): string | undefined {
+    const comments = group.comments
+
+    if (!comments || comments.length === 0) {
+      return undefined
+    }
+
+    const text = comments
+      .map(c => c.text.replace(/^#\s?/, '').trim())
+      .filter(t => t.length > 0)
+      .join(' ')
+
+    return text.length > 0 ? text : undefined
+  }
+
   function buildHookCommand(group: GroupNode): DockRoute {
     const span = spanOf(group)
     const nameGroup = rest(group)[0]
@@ -4132,19 +4161,22 @@ export function mill(tree: RootNode, file: string): MillResult {
       )
       .map(buildHookCommand)
 
-    // command help text: a direct `note <text>` child of the hook
-    let note: string | undefined
+    // command help text: the `#` comment above the hook. A direct
+    // `note <text>` child still reads as a deprecated fallback.
+    let note: string | undefined = leadingNote(group)
 
-    const cmdNote = rest(group).find(
-      (n): n is GroupNode =>
-        n.kind === 'group' && headName(n) === 'note',
-    )
+    if (note === undefined) {
+      const cmdNote = rest(group).find(
+        (n): n is GroupNode =>
+          n.kind === 'group' && headName(n) === 'note',
+      )
 
-    if (cmdNote) {
-      const textNode = rest(cmdNote)[0]
+      if (cmdNote) {
+        const textNode = rest(cmdNote)[0]
 
-      if (textNode?.kind === 'text') {
-        note = textOf(textNode)
+        if (textNode?.kind === 'text') {
+          note = textOf(textNode)
+        }
       }
     }
 

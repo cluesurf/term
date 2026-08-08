@@ -26,10 +26,11 @@ import type { Source } from '@term/make/code/compile/load'
 import { render } from '@term/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'base')
+const baseTree = join(here, '..', '..', 'deck', 'seed')
 
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/seed/'
+  path = path.replace(/^@term\/seed\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -63,6 +64,7 @@ function expect(name: string, got: unknown, want: unknown): void {
 // read a native runtime shim's raw source from base.tree (the path carries its real extension, no `.tree`)
 const readRuntime = (path: string): string | undefined => {
   const prefix = '@cluesurf/seed/'
+  path = path.replace(/^@term\/seed\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 

@@ -255,6 +255,17 @@ function collectAssignedExpr(
     case 'await':
       collectAssignedExpr(expr.expr, into)
       break
+    case 'conditional':
+      expr.branches.forEach(b => {
+        collectAssignedExpr(b.cond, into)
+        collectAssignedExpr(b.value, into)
+      })
+
+      if (expr.otherwise) {
+        collectAssignedExpr(expr.otherwise, into)
+      }
+
+      break
     default:
       break
   }
@@ -773,7 +784,55 @@ function makeEmitter(
         )}) ${block(node.body, depth)}`
 
       case 'match': {
-        const subject = expression(node.subject)
+        const raw = expression(node.subject)
+        // `.form` binds tighter than any operator, so a compound
+        // subject (`listSize(x) > 0`) must be parenthesized or the
+        // member access attaches to its last operand. Simple
+        // identifiers / calls / member chains stay bare to keep the
+        // output readable.
+        const subject = /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*|\((?:[^()]|\([^()]*\))*\))*$/.test(
+          raw,
+        )
+          ? raw
+          : `(${raw})`
+
+        // Booleans lower to NATIVE JS booleans in this backend (a
+        // comparison emits `>`, an `if` tests truthiness), so a
+        // match whose labels are only true/false must test the
+        // value itself. Reading `.form` off a primitive boolean
+        // yields undefined and every branch silently misses.
+        const labels = node.cases.map(branch => branch.label)
+        const booleans =
+          labels.length > 0 &&
+          labels.every(label => label === 'true' || label === 'false')
+
+        if (booleans) {
+          // when the second literal arm is the negation of the first (both true and false are covered), close the
+          // chain with a plain `else`: the control flow is exhaustive, and TypeScript's return analysis sees it.
+          const closed =
+            !node.otherwise &&
+            node.cases.length === 2 &&
+            labels[0] !== labels[1]
+
+          let out = ''
+          node.cases.forEach((branch, i) => {
+            const cond =
+              branch.label === 'true' ? subject : `!${subject}`
+            out +=
+              closed && i === 1
+                ? ` else ${block(branch.body, depth)}`
+                : `${i ? ' else ' : ''}if (${cond}) ${block(
+                    branch.body,
+                    depth,
+                  )}`
+          })
+
+          if (node.otherwise) {
+            out += ` else ${block(node.otherwise, depth)}`
+          }
+
+          return out
+        }
 
         let out = ''
         node.cases.forEach((branch, i) => {

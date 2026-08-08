@@ -10,10 +10,11 @@ import { pathToFileURL } from 'node:url'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { Source } from '@term/make/code/compile/load'
 
-const baseTree = join(process.cwd(), 'deck', 'base')
+const baseTree = join(process.cwd(), 'deck', 'seed')
 
 const stdlib = (p: string): Source | undefined => {
   const pre = '@cluesurf/seed/'
+  p = p.replace(/^@term\/seed\//, pre)
 
   if (!p.startsWith(pre)) {
     return undefined
@@ -42,7 +43,7 @@ function eq(name: string, got: unknown, want: unknown): void {
 }
 
 async function main(): Promise<void> {
-  const text = readFileSync('deck/base/code/csv.tree', 'utf8')
+  const text = readFileSync('deck/seed/code/csv.tree', 'utf8')
   const r = compile(
     { file: 'main.tree', text },
     { resolve: withNativeEnv('node', stdlib) },

@@ -12,11 +12,12 @@ import type { Source } from '@term/make/code/compile/load'
 import { render } from '@term/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'base') // deck/seed/deck/base.tree
+const baseTree = join(here, '..', '..', 'deck', 'seed') // the stdlib package
 
-// resolve `@cluesurf/seed/code/<path>` to the stdlib .tree file on disk
+// resolve `@cluesurf/seed/code/<path>` (or the renamed `@term/seed/...`) to the stdlib .tree file on disk
 function resolveStdlib(importPath: string): Source | undefined {
   const prefix = '@cluesurf/seed/'
+  importPath = importPath.replace(/^@term\/seed\//, prefix)
 
   if (!importPath.startsWith(prefix)) {return undefined}
 

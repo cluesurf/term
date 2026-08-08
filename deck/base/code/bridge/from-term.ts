@@ -1,7 +1,7 @@
 // Lift compiled term-lang (@term/make) declarations into base schemas and records.
 //
 // A repository's .tree files are term-lang source. `@term/make` parses and mills them into a typed
-// Program. This module translates the DATA-ONLY (function-free) part of that Program into base: a
+// program. This module translates the DATA-ONLY (function-free) part of that program into base: a
 // `form` becomes a Form, a `make` becomes a RecordNode, and a `host` path binding becomes an asset
 // record referencing bytes by hash. Behaviour (functions, tasks) is not data and is not lifted.
 //
@@ -9,12 +9,17 @@
 // things it cannot do purely are injected: reading and hashing a host file's bytes (`resolveBlob`),
 // and reconciling a natural key to a durable mark by find-or-create, always a uuidv4 (`resolveMark`).
 //
-// The make AST is imported for its TYPES only, so this adds no runtime dependency on the compiler.
-// The compiler runs in the editing session and hands the milled Program here.
+// The compiler runs in the editing session and hands the milled program here. Base reads it through
+// a local contract (`term-ast.ts`) rather than depending on the compiler, so it stays self-contained.
 //
 // See note/library/base/design/asset-repositories-and-font-projection.md.
 
-import type { Expression, Program, Type } from '@term/make/code/compile/node'
+import type {
+  TermExpression,
+  TermField,
+  TermProgram,
+  TermType,
+} from '@term/base/code/bridge/term-ast'
 import type { Constraint, Form, Like, Property } from '@term/base/code/form/form'
 import { form, hold, property } from '@term/base/code/form/form'
 import type { CollectionKind, Mark, RecordNode, Value } from '@term/base/code/base/type'
@@ -75,7 +80,7 @@ const NAMED_BASE: Record<string, Like> = {
 }
 
 // A term field type as a base `Like`, plus the collection kind when the field is a list or map.
-function likeOf(type: Type): { like: Like; collection?: CollectionKind } {
+function likeOf(type: TermType): { like: Like; collection?: CollectionKind } {
   switch (type.kind) {
     case 'string':
       return { like: { base: 'text' } }
@@ -86,13 +91,21 @@ function likeOf(type: Type): { like: Like; collection?: CollectionKind } {
     case 'boolean':
       return { like: { base: 'boolean' } }
     case 'array':
-      return { like: likeOf(type.element).like, collection: 'list' }
+      return {
+        like: type.element ? likeOf(type.element).like : { base: 'text' },
+        collection: 'list',
+      }
     case 'map':
-      return { like: likeOf(type.value).like, collection: 'map' }
-    case 'named':
-      return { like: NAMED_BASE[type.name] ?? { ref: type.name } }
+      return {
+        like: type.value ? likeOf(type.value).like : { base: 'text' },
+        collection: 'map',
+      }
+    case 'named': {
+      const name = type.name ?? ''
+      return { like: NAMED_BASE[name] ?? { ref: name } }
+    }
     default:
-      // unknown / dynamic / unit / bytes / variable: default to text, the safe carrier
+      // unknown / dynamic / unit / bytes / function / variable: default to text, the safe carrier
       return { like: { base: 'text' } }
   }
 }
@@ -100,7 +113,7 @@ function likeOf(type: Type): { like: Like; collection?: CollectionKind } {
 // A record-type node as a base Form. Returns undefined for a form that carries behaviour.
 export function liftForm(node: {
   name: string
-  fields: Array<{ name: string; type: Type; identity?: boolean }>
+  fields: ReadonlyArray<TermField>
   functionFree?: boolean
 }): Form | undefined {
   if (node.functionFree === false) {
@@ -128,16 +141,22 @@ export function liftForm(node: {
 
 // The raw scalar string of a literal expression, or undefined when it is not a plain scalar (a nested
 // record, a call, a closure). A non-scalar is not pure data and is not lifted into a field.
-function scalarString(expr: Expression): string | undefined {
+function scalarString(expr: TermExpression): string | undefined {
   switch (expr.form) {
     case 'string':
-      return expr.value
+      return typeof expr.value === 'string' ? expr.value : undefined
     case 'integer':
-      return expr.value.toString()
+      return typeof expr.value === 'bigint' || typeof expr.value === 'number'
+        ? expr.value.toString()
+        : undefined
     case 'float':
-      return String(expr.value)
+      return typeof expr.value === 'number' ? String(expr.value) : undefined
     case 'boolean':
-      return expr.value ? 'true' : 'false'
+      return typeof expr.value === 'boolean'
+        ? expr.value
+          ? 'true'
+          : 'false'
+        : undefined
     default:
       return undefined
   }
@@ -148,7 +167,11 @@ class CoerceError extends Error {}
 // A bound literal as a base Value, coerced to the field's declared type. Angle-bracket literals mill
 // as strings, so the form declaration is the authority for the value's kind. With no declared type,
 // the literal's own form decides.
-function valueOf(expr: Expression, like: Like | undefined, field: string): Value {
+function valueOf(
+  expr: TermExpression,
+  like: Like | undefined,
+  field: string,
+): Value {
   const raw = scalarString(expr)
 
   if (raw === undefined) {
@@ -182,11 +205,11 @@ function valueOf(expr: Expression, like: Like | undefined, field: string): Value
       // no declared type: carry the literal in its own kind
       switch (expr.form) {
         case 'integer':
-          return integer(expr.value)
+          return integer(BigInt(raw))
         case 'float':
-          return decimal(String(expr.value))
+          return decimal(raw)
         case 'boolean':
-          return boolean(expr.value)
+          return boolean(raw === 'true')
         default:
           return text(raw)
       }
@@ -198,7 +221,7 @@ function valueOf(expr: Expression, like: Like | undefined, field: string): Value
 export function liftRecord(
   node: {
     name: string
-    fields: Array<{ name: string; value: Expression }>
+    fields: ReadonlyArray<{ name: string; value: TermExpression }>
     functionFree?: boolean
   },
   forms: Map<string, Form>,
@@ -230,11 +253,11 @@ export function liftRecord(
   return record
 }
 
-// A whole milled Program lifted into base forms and records. Forms are lifted first, so records can
+// A whole milled program lifted into base forms and records. Forms are lifted first, so records can
 // be coerced against their declared field types. A node that carries behaviour, or a value that does
 // not fit, is skipped with a reason rather than silently dropped or half-applied.
 export function liftProgram(
-  program: Program,
+  program: TermProgram,
   opts?: LiftOptions,
 ): LiftResult {
   const forms: Array<Form> = []
@@ -248,16 +271,22 @@ export function liftProgram(
       continue
     }
 
+    const name = stmt.name ?? ''
+
     if (stmt.functionFree === false) {
       skipped.push({
         kind: 'form',
-        name: stmt.name,
+        name,
         reason: 'has a function-typed field, so it is code, not data',
       })
       continue
     }
 
-    const lifted = liftForm(stmt)
+    const lifted = liftForm({
+      name,
+      fields: stmt.fields ?? [],
+      functionFree: stmt.functionFree,
+    })
 
     if (lifted) {
       forms.push(lifted)
@@ -267,29 +296,44 @@ export function liftProgram(
 
   // pass 2: records (a top-level `make` is an expression statement) and host asset bindings
   for (const stmt of program) {
-    if (stmt.form === 'expression' && stmt.expr.form === 'record') {
+    if (
+      stmt.form === 'expression' &&
+      stmt.expr !== undefined &&
+      stmt.expr.form === 'record'
+    ) {
       const expr = stmt.expr
+      const name = expr.name ?? ''
 
       if (expr.functionFree === false) {
         skipped.push({
           kind: 'record',
-          name: expr.name,
+          name,
           reason: 'has a function value, so it is not pure data',
         })
         continue
       }
 
       try {
-        records.push(liftRecord(expr, formMap, opts))
+        records.push(
+          liftRecord(
+            { name, fields: expr.fields ?? [], functionFree: expr.functionFree },
+            formMap,
+            opts,
+          ),
+        )
       } catch (error) {
         skipped.push({
           kind: 'record',
-          name: expr.name,
+          name,
           reason: error instanceof Error ? error.message : String(error),
         })
       }
-    } else if (stmt.form === 'let' && !stmt.mutable) {
-      liftHost(stmt, opts, records, skipped)
+    } else if (
+      stmt.form === 'let' &&
+      stmt.mutable !== true &&
+      stmt.init !== undefined
+    ) {
+      liftHost(stmt.name ?? '', stmt.init, opts, records, skipped)
     }
   }
 
@@ -299,29 +343,30 @@ export function liftProgram(
 // A `host <name>, <path>` binding as an asset record referencing the file's bytes by hash. A
 // value-less or non-path host is not an asset and is ignored.
 function liftHost(
-  stmt: { name: string; init: Expression; mutable: boolean },
+  name: string,
+  init: TermExpression,
   opts: LiftOptions | undefined,
   records: Array<RecordNode>,
   skipped: Array<Skip>,
 ): void {
-  if (stmt.init.form !== 'string') {
+  if (init.form !== 'string' || typeof init.value !== 'string') {
     return
   }
 
-  const path = stmt.init.value
+  const path = init.value
   const hash = opts?.resolveBlob?.(path)
 
   if (hash === undefined) {
     skipped.push({
       kind: 'host',
-      name: stmt.name,
+      name,
       reason: `could not resolve bytes for ${path}`,
     })
     return
   }
 
   const fields = new Map<string, Value>([
-    ['name', text(stmt.name)],
+    ['name', text(name)],
     ['path', text(path)],
     ['blob', blob(hash)],
   ])
@@ -333,7 +378,7 @@ function liftHost(
   const record: RecordNode = { type: 'asset', fields }
 
   if (opts?.resolveMark) {
-    record.mark = opts.resolveMark('asset', stmt.name)
+    record.mark = opts.resolveMark('asset', name)
   }
 
   records.push(record)

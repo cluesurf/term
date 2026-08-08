@@ -16,6 +16,7 @@ import {
   collectionCall,
   collectionRead,
   exhausted,
+  reassigned,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import {
@@ -617,6 +618,18 @@ export function emitSwift(program: Program): string {
     }
   }
 
+  // the functions whose body throws directly: their signatures carry `throws`, and every CALL to one is emitted as
+  // `try!`. The language has no catch construct, so a thrown SeedError is always fatal -- exactly what `try!` does --
+  // and no caller has to propagate `throws` through its own signature (which would cascade through the whole program).
+  // This matches the other targets: an uncaught JS Error, a Rust `panic!`, an uncaught Kotlin RuntimeException.
+  const throwingFns = new Set<string>()
+
+  for (const node of program) {
+    if (node.form === 'function' && bodyThrows(node.body)) {
+      throwingFns.add(node.name)
+    }
+  }
+
   const subSelf = (
     t: Type | undefined,
     target: string,
@@ -697,10 +710,11 @@ export function emitSwift(program: Program): string {
       )
 
     const callArgs = ['self', ...restNames].join(', ')
+    const invoke = throwingFns.has(fn.name)
+      ? `try! ${camel(fn.name)}(${callArgs})`
+      : `${camel(fn.name)}(${callArgs})`
 
-    return `${protocolMethod0(fn, target, rest)} { return ${camel(
-      fn.name,
-    )}(${callArgs}) }`
+    return `${protocolMethod0(fn, target, rest)} { return ${invoke} }`
   }
 
   // shared header builder so the extension method matches the protocol method exactly
@@ -781,6 +795,17 @@ export function emitSwift(program: Program): string {
           return `${expr(node.args[0]!, bind)}.${camel(
             node.callee.name,
           )}(${rest.join(', ')})`
+        }
+
+        // a call to a throwing function is `try!`: fatal on error (there is no catch construct), and the caller's own
+        // signature stays clean. Parenthesized so the call composes inside any surrounding expression.
+        if (
+          node.callee.form === 'variable' &&
+          throwingFns.has(node.callee.name)
+        ) {
+          return `(try! ${expr(node.callee, bind)}(${node.args
+            .map(a => expr(a, bind))
+            .join(', ')}))`
         }
 
         return `${expr(node.callee, bind)}(${node.args
@@ -1065,7 +1090,22 @@ export function emitSwift(program: Program): string {
             ? node.subject.name
             : undefined
 
+        // a match whose labels are only true/false is a switch over a NATIVE Bool (booleans lower to `Bool` here,
+        // not an enum), so the patterns are the literals `true` / `false`, not leading-dot cases.
+        const labels = node.cases.map(branch => branch.label)
+        const booleans =
+          labels.length > 0 &&
+          labels.every(label => label === 'true' || label === 'false')
+
         const arms = node.cases.map(b => {
+          if (booleans) {
+            return `${pad(d + 1)}case ${b.label}:\n${block(
+              b.body,
+              d + 2,
+              bind,
+            )}`
+          }
+
           const fields = variantFields.get(b.label) ?? []
           const branchBind: Bindings = new Map(bind)
 
@@ -1095,6 +1135,9 @@ export function emitSwift(program: Program): string {
               bind,
             )}`,
           )
+        } else if (booleans && node.cases.length < 2) {
+          // a Bool switch with a single literal arm still has to be exhaustive
+          arms.push(`${pad(d + 1)}default:\n${pad(d + 2)}break`)
         }
 
         return `switch ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
@@ -1322,43 +1365,6 @@ export function emitSwift(program: Program): string {
   }
 
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'
-}
-
-// the names reassigned anywhere in a body (so a reassigned parameter can be shadowed by a mutable local, since Swift
-// and Kotlin function parameters are immutable)
-function reassigned(body: Statement[], into: Set<string>): void {
-  for (const s of body) {
-    switch (s.form) {
-      case 'assign':
-        if (s.target.form === 'variable') {
-          into.add(s.target.name)
-        }
-
-        break
-      case 'if':
-        s.branches.forEach(b => reassigned(b.body, into))
-
-        if (s.otherwise) {
-          reassigned(s.otherwise, into)
-        }
-
-        break
-      case 'match':
-        s.cases.forEach(c => reassigned(c.body, into))
-
-        if (s.otherwise) {
-          reassigned(s.otherwise, into)
-        }
-
-        break
-      case 'while':
-      case 'for-each':
-        reassigned(s.body, into)
-        break
-      default:
-        break
-    }
-  }
 }
 
 // does a function body contain a throw? (then its Swift signature needs `throws`)

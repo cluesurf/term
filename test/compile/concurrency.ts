@@ -22,16 +22,21 @@ import type { Source } from '@term/make/code/compile/load'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import type { Program } from '@term/make/code/compile/node'
 
-const baseTree = join(process.cwd(), 'deck', 'base')
+const baseTree = join(process.cwd(), 'deck', 'seed')
+
+// the stdlib's own modules import each other as `@term/seed/...` (the Term rename); older test programs still say
+// `@cluesurf/seed/...`. Both spell the same package, so the resolver accepts either prefix.
+const STDLIB_PREFIX = /^@(?:cluesurf|term)\/seed\//
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/seed/'
-
-  if (!path.startsWith(prefix)) {
+  if (!STDLIB_PREFIX.test(path)) {
     return undefined
   }
 
-  const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
+  const file = join(
+    baseTree,
+    `${path.replace(STDLIB_PREFIX, '')}.tree`,
+  )
 
   return existsSync(file)
     ? { file, text: readFileSync(file, 'utf8') }
@@ -43,13 +48,11 @@ const readRuntime = (path: string): string | undefined => {
     return readFileSync(path, 'utf8')
   }
 
-  const prefix = '@cluesurf/seed/'
-
-  if (!path.startsWith(prefix)) {
+  if (!STDLIB_PREFIX.test(path)) {
     return undefined
   }
 
-  const file = join(baseTree, path.slice(prefix.length))
+  const file = join(baseTree, path.replace(STDLIB_PREFIX, ''))
 
   return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }

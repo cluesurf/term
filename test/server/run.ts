@@ -481,7 +481,7 @@ const nav = (
 
 expect(
   'definition: cross-file jump to the imported module',
-  nav?.uri.endsWith('deck/base/code/text.tree'),
+  nav?.uri.endsWith('deck/seed/code/text.tree'),
   true,
 )
 

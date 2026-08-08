@@ -24,5 +24,11 @@
     }
   },
   "include": ["code/**/*.ts"],
-  "exclude": ["node_modules", "host", "tmp", "test"]
+  "exclude": [
+    "node_modules",
+    "host",
+    "tmp",
+    "test",
+    "code/native/*/runtime"
+  ]
 }

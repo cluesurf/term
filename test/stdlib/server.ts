@@ -25,10 +25,11 @@ import {
 import { render } from '@term/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'base')
+const baseTree = join(here, '..', '..', 'deck', 'seed')
 
 const stdlib = (path: string): Source | undefined => {
   const prefix = '@cluesurf/seed/'
+  path = path.replace(/^@term\/seed\//, prefix)
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -47,6 +48,7 @@ const readRuntime = (path: string): string | undefined => {
   }
 
   const prefix = '@cluesurf/seed/'
+  path = path.replace(/^@term\/seed\//, prefix)
 
   if (!path.startsWith(prefix)) {
     return undefined

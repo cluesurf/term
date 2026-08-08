@@ -15,7 +15,7 @@
     "host": "pnpm run make && pnpm publish --access public",
     "install:all": "pnpm install && (cd deck/base && pnpm install) && (cd deck/deck && pnpm install) && (cd deck/mill && pnpm install) && (cd deck/seed && pnpm install) && (cd deck/flow/editor/vscode && pnpm install)",
     "make:base": "cd deck/base && pnpm make",
-    "make:line": "pnpm exec esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --outfile=host/line.js --banner:js='#!/usr/bin/env node'",
+    "make:line": "pnpm exec esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --outfile=host/line.js --banner:js='#!/usr/bin/env node' && pnpm exec esbuild deck/call/code/hook-dispatch.ts --bundle --platform=node --format=esm --packages=external --outfile=host/dock.mjs",
     "prepublishOnly": "pnpm run make"
   },
   "prettier": "@cluesurf/wash/flow.json",

@@ -14,6 +14,7 @@ import {
 } from 'fs'
 import { build, buildSync, version as esbuildVersion } from 'esbuild'
 import { spawn } from 'node:child_process'
+import { commandRoutes } from '@term/call/code/hook-dispatch'
 import type { ChildProcess } from 'node:child_process'
 import { compile } from '@term/make/code/compile/compile'
 import {
@@ -563,6 +564,9 @@ export async function callBoot(input: {
   port?: number
   remote?: string
   remoteToken?: string
+  /** arguments forwarded to a command-line program (an entry whose
+   * top level declares `hook` commands). Ignored for servers. */
+  args?: string[]
 }): Promise<void> {
   logStep('Booting app...')
 
@@ -631,6 +635,25 @@ export async function callBoot(input: {
       installRoot,
     )
 
+    // the program name a command-line tool prints in its usage and help
+    // lines: the tail of the `deck <name>` declaration in the app's
+    // deck.tree (`@term/zone` names the `zone` binary), falling back to
+    // the entry file's directory name
+    const binName = ((): string => {
+      const deckFile = path.join(appDir ?? projectRoot, 'deck.tree')
+
+      if (existsSync(deckFile)) {
+        const m = /^deck\s+(\S+)/m.exec(readFileSync(deckFile, 'utf8'))
+        const tail = m?.[1]?.split('/').pop()
+
+        if (tail) {
+          return tail.replace(/\.tree$/, '')
+        }
+      }
+
+      return path.basename(path.dirname(entry))
+    })()
+
     // the server runs as a MANAGED CHILD process so the dev watcher can rebuild and restart it on an app-code edit. The
     // port is chosen ONCE (here) so every restart re-binds the same address.
     const port = input.port ?? (await findFreePort(BASE_PORT))
@@ -643,11 +666,15 @@ export async function callBoot(input: {
     // its parse + mill, and an unchanged graph returns its whole result instantly -- the same reuse `seed make` gets.
     const cache = projectCache(projectRoot)
 
-    // build the app ONCE: compile the entry, (re)build the client bundle + styles, bundle to ESM, and write the server
-    // entry `run.mjs`. Returns its path, or null on a compile error (the rich diagnostics are printed and any running
-    // server is left up). This is the SAME incremental compile (shared `.base/term/cache`) and the SAME diagnostic renderer
-    // (`report.ts`) that `seed make` uses; only the output step (esbuild bundle + server entry) differs.
-    const buildOnce = async (): Promise<string | null> => {
+    // build the app ONCE: compile the entry, (re)build the client bundle + styles, bundle to ESM, and write the run
+    // entry `run.mjs`. Returns its path plus whether the program is a command-line tool (top-level `hook` commands),
+    // or null on a compile error (the rich diagnostics are printed and any running server is left up). This is the
+    // SAME incremental compile (shared `.base/term/cache`) and the SAME diagnostic renderer (`report.ts`) that
+    // `seed make` uses; only the output step (esbuild bundle + run entry) differs.
+    const buildOnce = async (): Promise<{
+      run: string
+      cli: boolean
+    } | null> => {
       const result = compile(
         { file: entry, text: readFileSync(entry, 'utf8') },
         { resolve, cache, env },
@@ -664,9 +691,15 @@ export async function callBoot(input: {
         return null
       }
 
+      // a program whose top level declares `hook` commands is a command-line
+      // tool: it gets a dispatching run entry instead of the server harness,
+      // and none of the SSR client machinery
+      const cliRoutes = commandRoutes(result.program)
+      const cli = cliRoutes.length > 0
+
       // for an SSR server (the node host), also build the browser CLIENT bundle the rendered page loads, so the
       // server-rendered HTML becomes interactive. The app must have a deck.tree root (appDir) to hold `build/`.
-      if (env === 'node' && appDir) {
+      if (!cli && env === 'node' && appDir) {
         const prod = process.env.NODE_ENV === 'production'
         buildStyles(appDir)
         await buildClientBundle({
@@ -741,6 +774,57 @@ export async function callBoot(input: {
         }
       }
 
+      if (cli) {
+        // the dispatch engine, placed beside the app so the generated
+        // entry and the compiler share ONE implementation of parsing,
+        // help, and execution. The published CLI ships it prebuilt as
+        // `host/dock.mjs` (see make:line); a source checkout builds it
+        // from hook-dispatch.ts directly. Refreshed every build: it is
+        // milliseconds, and a stale copy after an upgrade is a real bug.
+        const here = path.dirname(fileURLToPath(import.meta.url))
+        const shipped = path.join(here, 'dock.mjs')
+
+        if (existsSync(shipped)) {
+          copyFileSync(shipped, path.join(out, 'dock.mjs'))
+        } else {
+          buildSync({
+            entryPoints: [
+              path.join(here, '../deck/call/code/hook-dispatch.ts'),
+            ],
+            outfile: path.join(out, 'dock.mjs'),
+            bundle: true,
+            format: 'esm',
+            platform: 'node',
+            packages: 'external',
+          })
+        }
+
+        // the route tree the program declared, embedded as data. Spans
+        // are dropped: the runner never reports source positions.
+        const routes = JSON.stringify(cliRoutes, (key, value) =>
+          key === 'span' ? undefined : (value as unknown),
+        )
+
+        writeFileSync(
+          path.join(out, 'run.mjs'),
+          [
+            `import * as app from './app.mjs'`,
+            `import { runCommandLine, toCamel } from './dock.mjs'`,
+            `const routes = ${routes}`,
+            `const code = await runCommandLine({`,
+            `  name: ${JSON.stringify(binName)},`,
+            `  routes,`,
+            `  argv: process.argv.slice(2),`,
+            `  resolve: task => app[toCamel(task)],`,
+            `})`,
+            `process.exit(code)`,
+            '',
+          ].join('\n'),
+        )
+
+        return { run: path.join(out, 'run.mjs'), cli: true }
+      }
+
       writeFileSync(
         path.join(out, 'run.mjs'),
         [
@@ -754,13 +838,32 @@ export async function callBoot(input: {
         ].join('\n'),
       )
 
-      return path.join(out, 'run.mjs')
+      return { run: path.join(out, 'run.mjs'), cli: false }
     }
 
-    const runPath = await buildOnce()
+    const built = await buildOnce()
 
-    if (!runPath) {
+    if (!built) {
       process.exit(1)
+    }
+
+    const runPath = built.run
+
+    // a command-line program runs ONCE with the forwarded arguments and
+    // exits with the command's own code. No port, no watcher, no server
+    // lifecycle - `term boot cli.tree -- show` behaves like `zone show`.
+    if (built.cli) {
+      const child = spawn(
+        'node',
+        [runPath, ...(input.args ?? [])],
+        { cwd: serverCwd, stdio: 'inherit' },
+      )
+
+      const code = await new Promise<number>(done =>
+        child.once('exit', c => done(c ?? 1)),
+      )
+
+      process.exit(code)
     }
 
     // push freshly-built artifacts to the remote (Tier 5), once, after the first successful build
@@ -823,7 +926,7 @@ export async function callBoot(input: {
           const next = await buildOnce()
 
           if (next) {
-            await restart(next)
+            await restart(next.run)
             logGood('reloaded')
           }
         },

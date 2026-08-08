@@ -1,4 +1,7 @@
-import type { Expression } from '@term/make/code/compile/node'
+import type {
+  Expression,
+  Statement,
+} from '@term/make/code/compile/node'
 
 // `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
 // Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),
@@ -108,6 +111,122 @@ export function collectionRead(
   }
 
   return undefined
+}
+
+// the names reassigned anywhere in a body. Rust, Swift, and Kotlin parameters are immutable, so a reassigned one is
+// shadowed by a mutable local at the top of the function. This descends into closure bodies: a parameter reassigned
+// only inside a nested closure still needs the shadow, since the closure captures the enclosing (mutable) local,
+// never the parameter itself. Shared by the three native backends so the analysis cannot drift between them.
+function reassignedExpr(expr: Expression, into: Set<string>): void {
+  switch (expr.form) {
+    case 'closure':
+      reassigned(expr.body, into)
+      break
+    case 'call':
+      reassignedExpr(expr.callee, into)
+      expr.args.forEach(a => reassignedExpr(a, into))
+      break
+    case 'binary':
+      reassignedExpr(expr.left, into)
+      reassignedExpr(expr.right, into)
+      break
+    case 'unary':
+      reassignedExpr(expr.operand, into)
+      break
+    case 'array':
+      expr.items.forEach(i => reassignedExpr(i, into))
+      break
+    case 'map':
+      expr.entries.forEach(e => {
+        reassignedExpr(e.key, into)
+        reassignedExpr(e.value, into)
+      })
+      break
+    case 'record':
+      expr.fields.forEach(f => reassignedExpr(f.value, into))
+      break
+    case 'member':
+      reassignedExpr(expr.target, into)
+      break
+    case 'await':
+      reassignedExpr(expr.expr, into)
+      break
+    case 'conditional':
+      expr.branches.forEach(b => {
+        reassignedExpr(b.cond, into)
+        reassignedExpr(b.value, into)
+      })
+
+      if (expr.otherwise) {
+        reassignedExpr(expr.otherwise, into)
+      }
+
+      break
+    default:
+      break
+  }
+}
+
+export function reassigned(
+  body: Statement[],
+  into: Set<string>,
+): void {
+  for (const s of body) {
+    switch (s.form) {
+      case 'let':
+        reassignedExpr(s.init, into)
+        break
+      case 'assign':
+        if (s.target.form === 'variable') {
+          into.add(s.target.name)
+        }
+
+        reassignedExpr(s.value, into)
+        break
+      case 'expression':
+        reassignedExpr(s.expr, into)
+        break
+      case 'return':
+        if (s.value) {
+          reassignedExpr(s.value, into)
+        }
+
+        break
+      case 'throw':
+        reassignedExpr(s.value, into)
+        break
+      case 'if':
+        s.branches.forEach(b => {
+          reassignedExpr(b.cond, into)
+          reassigned(b.body, into)
+        })
+
+        if (s.otherwise) {
+          reassigned(s.otherwise, into)
+        }
+
+        break
+      case 'match':
+        reassignedExpr(s.subject, into)
+        s.cases.forEach(c => reassigned(c.body, into))
+
+        if (s.otherwise) {
+          reassigned(s.otherwise, into)
+        }
+
+        break
+      case 'while':
+        reassignedExpr(s.cond, into)
+        reassigned(s.body, into)
+        break
+      case 'for-each':
+        reassignedExpr(s.iterable, into)
+        reassigned(s.body, into)
+        break
+      default:
+        break
+    }
+  }
 }
 
 // Shared backend machinery. Every code generator must handle every AST form, on every target.
