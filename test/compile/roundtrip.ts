@@ -1139,6 +1139,31 @@ task compute
       code 10
 `
 
+// a closure that MUTATES a captured outer variable, called twice, with the mutation visible after the closure.
+// Exercises mutable capture on every backend: Rust boxes the local in Rc<RefCell> (reads borrow + clone, writes go
+// through borrow_mut, the closure clones the handle before the move), Swift and Kotlin capture the mutable local
+// directly. compute(0) -> bump(5) -> bump(7) -> 12.
+const MUTATE_CAPTURE = `task compute
+  take start, like number
+  like number
+  save total, read start
+  save bump
+    task grow
+      take amount, like number
+      like number
+      save total
+        call add
+          read total
+          read amount
+      send back, read total
+  call bump
+    code 5
+  call bump
+    code 7
+  send back
+    read total
+`
+
 // an ASYNC closure that awaits and CAPTURES an outer variable, invoked through a local binding. Exercises the
 // async-closure lowering on every backend: Rust `move |..| Box::pin(async move {..})` returning `Pin<Box<dyn Future>>`,
 // Swift `{ (x) async -> Int in .. }`, Kotlin `suspend (Long) -> Long`. run(3) -> f(7) -> delay(7 + 3) -> 10.
@@ -2765,6 +2790,26 @@ function main(): void {
     frontEnd(CAPTURE),
     'compute(7)',
     17,
+  )
+
+  const mutateCapture = frontEnd(MUTATE_CAPTURE)
+  runRust(
+    'rust: a closure mutating a captured variable (Rc<RefCell> cell)',
+    mutateCapture,
+    'compute(0)',
+    12,
+  )
+  runSwift(
+    'swift: a closure mutating a captured variable',
+    mutateCapture,
+    'compute(0)',
+    12,
+  )
+  runKotlin(
+    'kotlin: a closure mutating a captured variable',
+    mutateCapture,
+    'compute(0)',
+    12,
   )
   runRust(
     'rust: a closure stored in a struct field, called through it',

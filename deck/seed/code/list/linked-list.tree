@@ -32,6 +32,7 @@ form linked-list
   task head
     take self
     like maybe
+      head t
     fork case, read self
       case empty
         send back

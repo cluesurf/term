@@ -73,7 +73,7 @@ function nodeValue(group: GroupNode): string {
 
 // bump to invalidate every boot cache at once (turborepo's `global_cache_key`). Change this on any boot-pipeline change
 // that the per-build hash does not already capture (e.g. a new prelude assembly rule).
-const BOOT_CACHE_EPOCH = '3'
+const BOOT_CACHE_EPOCH = '8'
 
 // the default port range: `seed boot` scans 2400..2499 for the first free port, so an app always starts on a good port
 // no matter where (or how many) you boot, with no manual `--port`.
@@ -728,6 +728,17 @@ export async function callBoot(input: {
         platform:
           env === 'browser' ? ('browser' as const) : ('node' as const),
         packages: 'external' as const,
+        // native `case node` templates call `require(...)`. The output
+        // is ESM, where esbuild's require shim just throws - so give
+        // node bundles a real one. Browser bundles get none: a
+        // `require` there is a genuine error.
+        ...(env === 'browser'
+          ? {}
+          : {
+              banner: {
+                js: `import { createRequire as __createRequire } from 'node:module'\nconst require = __createRequire(import.meta.url)`,
+              },
+            }),
       }
 
       // incremental cache in `.base/term/boot/<hash>`. The key folds in everything that can change the output.
@@ -853,10 +864,15 @@ export async function callBoot(input: {
     // exits with the command's own code. No port, no watcher, no server
     // lifecycle - `term boot cli.tree -- show` behaves like `zone show`.
     if (built.cli) {
+      // A command-line tool runs in the USER'S cwd, not the app dir. A
+      // server needs the app dir (its `build/` and `deck.tree` live
+      // there), but a CLI resolves the user's relative paths -- a
+      // `.zone.tree` in the directory they invoked from, an output
+      // file they named -- so it must inherit the invocation cwd.
       const child = spawn(
         'node',
         [runPath, ...(input.args ?? [])],
-        { cwd: serverCwd, stdio: 'inherit' },
+        { cwd: input.root, stdio: 'inherit' },
       )
 
       const code = await new Promise<number>(done =>

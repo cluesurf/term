@@ -42,9 +42,17 @@ export type Property = {
   constraints: Array<Constraint>
 }
 
+// Whether a form's records travel with a package or are queried remotely. `definition` records are
+// small, bounded configuration that is cloned on install (a handful of enum or settings rows).
+// `data` records are unbounded bulk (language strings, font records) that stay remote and are
+// queried per-record. The default is `data`. See note/library/base/design/packages-and-installation.md.
+export type FormTier = 'definition' | 'data'
+
 export type Form = {
   name: string
   properties: Array<Property>
+  // the package tier of this form's records; absent means `data`
+  tier?: FormTier
 }
 
 // A per-pattern text-diff rule: which files to diff at which granularity.
@@ -112,6 +120,19 @@ export function property(
   return p
 }
 
-export function form(name: string, properties: Array<Property>): Form {
-  return { name, properties }
+export function form(
+  name: string,
+  properties: Array<Property>,
+  opts?: { tier?: FormTier },
+): Form {
+  const f: Form = { name, properties }
+  if (opts?.tier !== undefined) {
+    f.tier = opts.tier
+  }
+  return f
+}
+
+/** A form's package tier, defaulting to `data` (queried remotely, not cloned on install). */
+export function tierOf(form: Form): FormTier {
+  return form.tier ?? 'data'
 }

@@ -304,6 +304,37 @@ function parseType(node: Node): Type {
     return { ...base, args: headArgs }
   }
 
+  // a WORD-CHAIN application: `like linked-list t` parses as linked-list > t (each word nests under the one before),
+  // so the chain under the type name supplies the type arguments in order. Without this the argument was silently
+  // DROPPED: the annotation reached the checker as the bare form, seedType minted one fresh variable shared by every
+  // call site, and the first concrete call poisoned the signature program-wide. Only plain type words join the chain;
+  // `head` / `like` children are the other application forms (handled above / by the caller), and a value-expression
+  // head is an index, never a type argument.
+  if (base.kind === 'named') {
+    const chainArgs: Type[] = []
+    let link: GroupNode | undefined = rest(node).find(
+      (n): n is GroupNode =>
+        n.kind === 'group' &&
+        headName(n) !== undefined &&
+        headName(n) !== 'head' &&
+        headName(n) !== 'like' &&
+        !isValueExpressionHead(headName(n)),
+    )
+
+    while (link) {
+      const word = headName(link)!
+      chainArgs.push(TYPE_NAME[word] ?? { kind: 'named', name: word })
+      link = rest(link).find(
+        (n): n is GroupNode =>
+          n.kind === 'group' && headName(n) !== undefined,
+      )
+    }
+
+    if (chainArgs.length > 0) {
+      return { ...base, args: chainArgs }
+    }
+  }
+
   return base
 }
 

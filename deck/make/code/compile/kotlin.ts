@@ -653,17 +653,17 @@ export function emitKotlin(program: Program): string {
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
       case 'let': {
-        // a suspend lambda only becomes suspend when its expected type says so: annotate an async-closure binding with
-        // the `suspend (..) -> R` function type, otherwise Kotlin infers an ordinary (non-suspending) lambda.
+        // a lambda binding is annotated with its full function type: Kotlin cannot infer a lambda's parameter types
+        // without an expected type, and a suspend lambda only becomes suspend when the expected type says so.
         const ann =
-          node.init.form === 'closure' && node.init.async
+          node.init.form === 'closure'
             ? `: ${kotlinType({
                 kind: 'function',
                 params: node.init.params.map(
                   (p): Type => p.type ?? { kind: 'unknown' },
                 ),
                 result: node.init.result ?? { kind: 'unknown' },
-                effects: ['async'],
+                ...(node.init.async ? { effects: ['async'] } : {}),
               })}`
             : ''
 

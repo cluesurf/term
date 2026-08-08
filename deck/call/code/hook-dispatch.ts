@@ -93,10 +93,28 @@ export function dispatch(
   const args: Record<string, ArgValue> = {}
   const positionals: string[] = []
 
+  // a variadic command (`zone call npm run dev`) carries a child command
+  // line in its trailing take. Once the child's argv begins, its own
+  // flags (`node -e`, `npm --version`) must NOT be read as this
+  // command's flags. So for a variadic route, flag parsing stops at the
+  // first bare token (or a literal `--`), and everything after is raw
+  // positional. A non-variadic command keeps interspersed flags.
+  const variadic = current.takes.some(take => take.variadic)
+  let raw = false
+
   while (i < argv.length) {
     const token = argv[i]!
-    const isLong = token.startsWith('--')
-    const isShort = !isLong && token.startsWith('-') && token.length > 1
+
+    // a literal `--` ends option parsing: the remainder is verbatim
+    if (token === '--') {
+      raw = true
+      i++
+      continue
+    }
+
+    const isLong = !raw && token.startsWith('--')
+    const isShort =
+      !raw && !isLong && token.startsWith('-') && token.length > 1
 
     if (isLong || isShort) {
       const body = token.slice(isLong ? 2 : 1)
@@ -130,11 +148,20 @@ export function dispatch(
     } else {
       positionals.push(token)
       i++
+
+      // first bare token of a variadic command: the child's argv starts
+      // here, so stop reading its flags as ours
+      if (variadic && !raw) {
+        raw = true
+      }
     }
   }
 
-  // bind positionals to the command's declared takes, in order. A variadic
-  // take collects all remaining positionals from its index onward.
+  // bind positionals to the command's declared takes, in order. A take
+  // already filled by a flag does NOT consume a positional: otherwise
+  // `zone call --tier dev node script.js` would spend `node` on the
+  // (already-set) tier slot and mis-bind the command name. The cursor
+  // only advances when a positional is actually taken.
   let posCursor = 0
 
   for (const take of current.takes) {
@@ -147,13 +174,18 @@ export function dispatch(
       continue
     }
 
-    const value = positionals[posCursor]
-
-    if (value !== undefined && args[take.name] === undefined) {
-      args[take.name] = value
+    // a flag already supplied this value: leave the positionals for the
+    // remaining takes
+    if (args[take.name] !== undefined) {
+      continue
     }
 
-    posCursor++
+    const value = positionals[posCursor]
+
+    if (value !== undefined) {
+      args[take.name] = value
+      posCursor++
+    }
   }
 
   // coerce by declared type, validate choices, then apply defaults

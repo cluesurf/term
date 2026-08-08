@@ -343,6 +343,13 @@ export function emitRust(program: Program): string {
   // in any doubt the value is still cloned, so the output always compiles. Recomputed per function body.
   let moveArgs = new Set<string>()
 
+  // MUTABLE CAPTURES. A closure is a `Box<dyn Fn>`, which cannot mutate captured state, so a variable ASSIGNED inside
+  // a closure body is boxed in `Rc<RefCell<T>>` instead: the declaration wraps the value, every read borrows and
+  // clones, every assignment writes through `borrow_mut`, and each capturing closure clones the handle before the
+  // `move` (so the original stays usable after the closure is built). This is the same interior-mutability currency
+  // the collections already use, applied to a scalar/struct local. Recomputed per function body.
+  let cellVars = new Set<string>()
+
   const isNativeCall = (node: Expression): boolean => {
     if (node.form !== 'call' || node.callee.form !== 'member') {
       return false
@@ -441,7 +448,10 @@ export function emitRust(program: Program): string {
         return 'serde_json::Value::Null'
       case 'variable':
       case 'hole':
-        return vname(node.name)
+        // a mutated capture lives in an Rc<RefCell> handle: a read borrows and clones the value out
+        return cellVars.has(node.name)
+          ? `${vname(node.name)}.borrow().clone()`
+          : vname(node.name)
       case 'unary':
         return `${node.op}${expr(node.operand)}`
       case 'binary':
@@ -494,6 +504,11 @@ export function emitRust(program: Program): string {
             a.type.kind !== 'function' &&
             moveArgs.has(a.name)
           ) {
+            return expr(a)
+          }
+
+          // a mutated capture's read already clones the value out of its cell; no second clone
+          if (a.form === 'variable' && cellVars.has(a.name)) {
             return expr(a)
           }
 
@@ -589,14 +604,23 @@ export function emitRust(program: Program): string {
 
       case 'closure': {
         // a `move` closure boxed as `Box<dyn Fn>` (owns its captures, so it is `'static` and storable). Reassigned
-        // parameters get the same `let mut` shadow functions use, since closure parameters are immutable too.
+        // parameters get the same `let mut` shadow functions use, since closure parameters are immutable too. A
+        // reassigned name that is a MUTATED CAPTURE keeps its Rc<RefCell> handle instead (no `let mut` shadow).
         const params = node.params.map(p => vname(p.name)).join(', ')
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
 
         const shadows = node.params
-          .filter(p => mutated.has(p.name))
+          .filter(p => mutated.has(p.name) && !cellVars.has(p.name))
           .map(p => `let mut ${vname(p.name)} = ${vname(p.name)};`)
+
+        // a closure parameter SHADOWS a same-named cell handle: inside this body the name is the parameter
+        const previousCells = cellVars
+
+        if (node.params.some(p => cellVars.has(p.name))) {
+          cellVars = new Set(cellVars)
+          node.params.forEach(p => cellVars.delete(p.name))
+        }
 
         // inside a closure body, the move-on-last-use set of the enclosing function does not apply (a captured variable
         // cannot be moved out of an `Fn`, and a shadowing closure-local of the same name has different liveness), so
@@ -608,12 +632,26 @@ export function emitRust(program: Program): string {
           .join(' ')
         moveArgs = outerMoveArgs
 
+        // each captured cell handle is cloned BEFORE the `move`, so the closure owns its own Rc and the original
+        // handle stays usable after the closure is built (mutations flow both ways through the shared cell)
+        const used = new Set<string>()
+        usedNames(node.body, used)
+
+        const handleClones = [...cellVars]
+          .filter(name => used.has(name))
+          .map(name => `let ${vname(name)} = ${vname(name)}.clone();`)
+          .join(' ')
+
+        cellVars = previousCells
+
         // an async closure becomes a plain `Fn` whose body is a pinned async block: calling it returns a future the
         // caller `.await`s (Rust closures can't themselves be `async`). The `let`/parameter type annotation supplies
         // the `Pin<Box<dyn Future>>` return so the concrete async block coerces to the boxed trait object.
-        return node.async
+        const boxed = node.async
           ? `Box::new(move |${params}| std::boxed::Box::pin(async move { ${body} }))`
           : `Box::new(move |${params}| { ${body} })`
+
+        return handleClones ? `{ ${handleClones} ${boxed} }` : boxed
       }
 
       case 'conditional': {
@@ -738,6 +776,35 @@ export function emitRust(program: Program): string {
     }
   }
 
+  // the assignment-target text when the target is (rooted at) a mutated capture: the bare variable writes through
+  // `*x.borrow_mut()`, a plain field chain through `x.borrow_mut().field`. Undefined when the target is not cell-boxed
+  // (or is an indexed segment, which keeps the default rendering).
+  const cellAssignTarget = (target: Expression): string | undefined => {
+    if (target.form === 'variable' && cellVars.has(target.name)) {
+      return `*${vname(target.name)}.borrow_mut()`
+    }
+
+    if (target.form === 'member') {
+      const fields: string[] = []
+      let node: Expression = target
+
+      while (node.form === 'member' && !node.index) {
+        fields.unshift(snake(node.name))
+        node = node.target
+      }
+
+      if (
+        node.form === 'variable' &&
+        cellVars.has(node.name) &&
+        fields.length > 0
+      ) {
+        return `${vname(node.name)}.borrow_mut().${fields.join('.')}`
+      }
+    }
+
+    return undefined
+  }
+
   // a member chain. A native module alias path (`fs/read-to-string`) is a Rust `::` path; a value field access is `.`
   const memberPath = (node: Expression): string => {
     if (node.form === 'member') {
@@ -771,6 +838,15 @@ export function emitRust(program: Program): string {
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
       case 'let': {
+        // a MUTATED CAPTURE is declared as its Rc<RefCell> handle (reads / writes go through the cell)
+        if (cellVars.has(node.name)) {
+          return `let ${vname(
+            node.name,
+          )} = std::rc::Rc::new(std::cell::RefCell::new(${expr(
+            node.init,
+          )}));`
+        }
+
         // an async closure stored in a local needs its boxed-future type spelled out, so the concrete async block
         // coerces to `Box<dyn Fn(..) -> Pin<Box<dyn Future>>>` and the parameter types are pinned down.
         const ann =
@@ -787,10 +863,24 @@ export function emitRust(program: Program): string {
 
         return `let mut ${vname(node.name)}${ann} = ${expr(node.init)};`
       }
-      case 'assign':
+      case 'assign': {
+        // an assignment to a mutated capture writes through the cell: `*x.borrow_mut() = v`, and a field of a
+        // cell-boxed struct writes through the borrowed root: `x.borrow_mut().field = v`. The value computes into a
+        // temporary FIRST: a `x.borrow()` inside it is a temporary `Ref` guard that lives to the end of its whole
+        // statement, so evaluating it in the same statement as the `borrow_mut` would panic at run time
+        // (`RefCell already borrowed`). The inner `let` scopes that guard to its own statement.
+        const cellTarget = cellAssignTarget(node.target)
+
+        if (cellTarget) {
+          return `{ let __cell_value = ${expr(
+            node.value,
+          )}; ${cellTarget} ${node.op} __cell_value; }`
+        }
+
         return node.op === '='
           ? `${expr(node.target)} = ${expr(node.value)};`
           : `${expr(node.target)} ${node.op} ${expr(node.value)};`
+      }
       case 'expression':
         return `${expr(node.expr)};`
       case 'return':
@@ -1103,25 +1193,37 @@ export function emitRust(program: Program): string {
             ? ` -> ${rustType(node.result)}`
             : ''
 
-        // reassigned parameters are shadowed by `let mut` (Rust parameters are immutable)
+        // names a nested closure ASSIGNS to are boxed in Rc<RefCell> for this whole function body
+        const previousCellVars = cellVars
+        cellVars = mutatedCaptures(node.body)
+
+        // reassigned parameters are shadowed by `let mut` (Rust parameters are immutable). A parameter that is a
+        // MUTATED CAPTURE gets its Rc<RefCell> handle shadow instead.
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
         // a parameter mutated in place by a `push` / `pop` is also rebound `let mut` (Rust parameters are immutable)
         arrayBounds.mutated.forEach(name => mutated.add(name))
 
         const shadows = node.params
-          .filter(p => mutated.has(p.name))
-          .map(
-            p =>
-              `${pad(d + 1)}let mut ${vname(p.name)} = ${vname(
-                p.name,
-              )};`,
+          .filter(p => mutated.has(p.name) || cellVars.has(p.name))
+          .map(p =>
+            cellVars.has(p.name)
+              ? `${pad(d + 1)}let ${vname(
+                  p.name,
+                )} = std::rc::Rc::new(std::cell::RefCell::new(${vname(
+                  p.name,
+                )}));`
+              : `${pad(d + 1)}let mut ${vname(p.name)} = ${vname(
+                  p.name,
+                )};`,
           )
 
         const previousReturnsArray = fnReturnsArray
         fnReturnsArray = node.result?.kind === 'array'
         const previousMoveArgs = moveArgs
         moveArgs = moveOnLastUse(node.body)
+        // a cell-boxed name is read through its handle on every use; it can never be moved at a use site
+        cellVars.forEach(name => moveArgs.delete(name))
 
         const bodyText = [...shadows, block(node.body, d + 1)]
           .filter(Boolean)
@@ -1129,6 +1231,7 @@ export function emitRust(program: Program): string {
 
         fnReturnsArray = previousReturnsArray
         moveArgs = previousMoveArgs
+        cellVars = previousCellVars
 
         const asyncMark = node.async ? 'async ' : ''
 
@@ -1278,6 +1381,318 @@ export function emitRust(program: Program): string {
     .filter(Boolean)
 
   return [...uses, ...body].join('\n\n') + '\n'
+}
+
+// MUTATED-CAPTURE analysis: the names a function must box in `Rc<RefCell>` because a nested closure assigns to them.
+// Walks every closure body (any nesting), collecting assignment targets -- a bare variable, or the root variable of a
+// member target (`x/field = v` mutates x through the capture too). Names the closure itself declares (`let`) or takes
+// as parameters are its own locals, not captures, so they are excluded. Function-typed names are left alone (a stored
+// closure is never sensibly reassigned through a capture, and `Box<dyn Fn>` is not `Clone`).
+function mutatedCaptures(body: Statement[]): Set<string> {
+  const out = new Set<string>()
+
+  // collect assign targets in a CLOSURE body, minus the closure's own locals
+  const insideClosure = (
+    stmts: Statement[],
+    locals: Set<string>,
+  ): void => {
+    for (const s of stmts) {
+      switch (s.form) {
+        case 'let':
+          locals.add(s.name)
+          exprWalk(s.init, locals, true)
+          break
+        case 'assign': {
+          let target: Expression = s.target
+
+          while (target.form === 'member') {
+            target = target.target
+          }
+
+          if (
+            target.form === 'variable' &&
+            !locals.has(target.name) &&
+            target.type?.kind !== 'function'
+          ) {
+            out.add(target.name)
+          }
+
+          exprWalk(s.value, locals, true)
+          break
+        }
+        case 'expression':
+          exprWalk(s.expr, locals, true)
+          break
+        case 'return':
+          if (s.value) {
+            exprWalk(s.value, locals, true)
+          }
+
+          break
+        case 'throw':
+          exprWalk(s.value, locals, true)
+          break
+        case 'if':
+          s.branches.forEach(b => {
+            exprWalk(b.cond, locals, true)
+            insideClosure(b.body, locals)
+          })
+
+          if (s.otherwise) {
+            insideClosure(s.otherwise, locals)
+          }
+
+          break
+        case 'match':
+          exprWalk(s.subject, locals, true)
+          s.cases.forEach(c => insideClosure(c.body, locals))
+
+          if (s.otherwise) {
+            insideClosure(s.otherwise, locals)
+          }
+
+          break
+        case 'while':
+          exprWalk(s.cond, locals, true)
+          insideClosure(s.body, locals)
+          break
+        case 'for-each':
+          exprWalk(s.iterable, locals, true)
+          insideClosure(s.body, locals)
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  const exprWalk = (
+    e: Expression,
+    locals: Set<string>,
+    inClosure: boolean,
+  ): void => {
+    switch (e.form) {
+      case 'closure': {
+        const inner = new Set(inClosure ? locals : [])
+        e.params.forEach(p => inner.add(p.name))
+        insideClosure(e.body, inner)
+        break
+      }
+      case 'call':
+        exprWalk(e.callee, locals, inClosure)
+        e.args.forEach(a => exprWalk(a, locals, inClosure))
+        break
+      case 'binary':
+        exprWalk(e.left, locals, inClosure)
+        exprWalk(e.right, locals, inClosure)
+        break
+      case 'unary':
+        exprWalk(e.operand, locals, inClosure)
+        break
+      case 'array':
+        e.items.forEach(i => exprWalk(i, locals, inClosure))
+        break
+      case 'map':
+        e.entries.forEach(en => {
+          exprWalk(en.key, locals, inClosure)
+          exprWalk(en.value, locals, inClosure)
+        })
+        break
+      case 'record':
+        e.fields.forEach(f => exprWalk(f.value, locals, inClosure))
+        break
+      case 'member':
+        exprWalk(e.target, locals, inClosure)
+        break
+      case 'await':
+        exprWalk(e.expr, locals, inClosure)
+        break
+      case 'conditional':
+        e.branches.forEach(b => {
+          exprWalk(b.cond, locals, inClosure)
+          exprWalk(b.value, locals, inClosure)
+        })
+
+        if (e.otherwise) {
+          exprWalk(e.otherwise, locals, inClosure)
+        }
+
+        break
+      default:
+        break
+    }
+  }
+
+  const topWalk = (stmts: Statement[]): void => {
+    for (const s of stmts) {
+      switch (s.form) {
+        case 'let':
+          exprWalk(s.init, new Set(), false)
+          break
+        case 'assign':
+          exprWalk(s.target, new Set(), false)
+          exprWalk(s.value, new Set(), false)
+          break
+        case 'expression':
+          exprWalk(s.expr, new Set(), false)
+          break
+        case 'return':
+          if (s.value) {
+            exprWalk(s.value, new Set(), false)
+          }
+
+          break
+        case 'throw':
+          exprWalk(s.value, new Set(), false)
+          break
+        case 'if':
+          s.branches.forEach(b => {
+            exprWalk(b.cond, new Set(), false)
+            topWalk(b.body)
+          })
+
+          if (s.otherwise) {
+            topWalk(s.otherwise)
+          }
+
+          break
+        case 'match':
+          exprWalk(s.subject, new Set(), false)
+          s.cases.forEach(c => topWalk(c.body))
+
+          if (s.otherwise) {
+            topWalk(s.otherwise)
+          }
+
+          break
+        case 'while':
+          exprWalk(s.cond, new Set(), false)
+          topWalk(s.body)
+          break
+        case 'for-each':
+          exprWalk(s.iterable, new Set(), false)
+          topWalk(s.body)
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  topWalk(body)
+
+  return out
+}
+
+// every variable name READ or written anywhere in a body (used to decide which Rc<RefCell> handles a closure captures)
+function usedNames(body: Statement[], into: Set<string>): void {
+  const exprNames = (e: Expression): void => {
+    switch (e.form) {
+      case 'variable':
+      case 'hole':
+        into.add(e.name)
+        break
+      case 'call':
+        exprNames(e.callee)
+        e.args.forEach(exprNames)
+        break
+      case 'binary':
+        exprNames(e.left)
+        exprNames(e.right)
+        break
+      case 'unary':
+        exprNames(e.operand)
+        break
+      case 'array':
+        e.items.forEach(exprNames)
+        break
+      case 'map':
+        e.entries.forEach(en => {
+          exprNames(en.key)
+          exprNames(en.value)
+        })
+        break
+      case 'record':
+        e.fields.forEach(f => exprNames(f.value))
+        break
+      case 'member':
+        exprNames(e.target)
+        break
+      case 'await':
+        exprNames(e.expr)
+        break
+      case 'closure':
+        usedNames(e.body, into)
+        break
+      case 'conditional':
+        e.branches.forEach(b => {
+          exprNames(b.cond)
+          exprNames(b.value)
+        })
+
+        if (e.otherwise) {
+          exprNames(e.otherwise)
+        }
+
+        break
+      default:
+        break
+    }
+  }
+
+  for (const s of body) {
+    switch (s.form) {
+      case 'let':
+        exprNames(s.init)
+        break
+      case 'assign':
+        exprNames(s.target)
+        exprNames(s.value)
+        break
+      case 'expression':
+        exprNames(s.expr)
+        break
+      case 'return':
+        if (s.value) {
+          exprNames(s.value)
+        }
+
+        break
+      case 'throw':
+        exprNames(s.value)
+        break
+      case 'if':
+        s.branches.forEach(b => {
+          exprNames(b.cond)
+          usedNames(b.body, into)
+        })
+
+        if (s.otherwise) {
+          usedNames(s.otherwise, into)
+        }
+
+        break
+      case 'match':
+        exprNames(s.subject)
+        s.cases.forEach(c => usedNames(c.body, into))
+
+        if (s.otherwise) {
+          usedNames(s.otherwise, into)
+        }
+
+        break
+      case 'while':
+        exprNames(s.cond)
+        usedNames(s.body, into)
+        break
+      case 'for-each':
+        exprNames(s.iterable)
+        usedNames(s.body, into)
+        break
+      default:
+        break
+    }
+  }
 }
 
 // MOVE-ON-LAST-USE analysis. A variable that is read EXACTLY ONCE across the whole function body, where that single

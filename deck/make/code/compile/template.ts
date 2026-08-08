@@ -528,6 +528,9 @@ function expandBody(nodes: Node[], ctx: Context): Node[] {
         kind: 'group',
         nodes: expandBody(node.nodes, ctx) as GroupNode['nodes'],
         optional: node.optional,
+        // leading `#` comments ride through expansion: they are the
+        // CLI help text the mill reads off hook / take groups
+        ...(node.comments ? { comments: node.comments } : {}),
       })
     } else if (node.kind === 'name') {
       out.push(substituteName(node, ctx.subs))
@@ -593,6 +596,9 @@ function expandTop(node: Node, ctx: Context): Node[] {
       kind: 'group',
       nodes: nodes as GroupNode['nodes'],
       optional: node.optional,
+      // leading `#` comments ride through expansion: they are the
+      // CLI help text the mill reads off hook / take groups
+      ...(node.comments ? { comments: node.comments } : {}),
     },
   ]
 }

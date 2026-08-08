@@ -834,6 +834,35 @@ function makeEmitter(
           return out
         }
 
+        // A match on an enum tests the `.form` discriminant. A match on
+        // a plain STRING value (`fork case, read kind` where kind is
+        // text: "keychain" / "secret" / ...) tests the value itself.
+        // The two are told apart by the labels: enum arms name known
+        // variants, so if NONE of these labels is a program-wide
+        // variant, the subject is a value and `.form` would read
+        // undefined off a string and silently miss every arm. This is
+        // the string analogue of the boolean case above.
+        const values =
+          labels.length > 0 &&
+          labels.every(label => !variants.has(label))
+
+        if (values) {
+          let out = ''
+          node.cases.forEach((branch, i) => {
+            out += `${
+              i ? ' else ' : ''
+            }if (${subject} === ${JSON.stringify(
+              branch.label,
+            )}) ${block(branch.body, depth)}`
+          })
+
+          if (node.otherwise) {
+            out += ` else ${block(node.otherwise, depth)}`
+          }
+
+          return out
+        }
+
         let out = ''
         node.cases.forEach((branch, i) => {
           out += `${
