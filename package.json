@@ -2,7 +2,7 @@
   "name": "@cluesurf/term",
   "main": "./host/line.js",
   "type": "module",
-  "version": "2.0.8",
+  "version": "2.1.0",
   "bin": {
     "term": "./host/line.js"
   },
@@ -56,8 +56,5 @@
       "default": "./deck/base/host/*.js"
     }
   },
-  "files": [
-    "host",
-    "deck/base/host"
-  ]
+  "files": ["host", "deck/base/host"]
 }
