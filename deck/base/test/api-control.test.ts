@@ -212,3 +212,46 @@ describe('controlStatus and routes', () => {
     }
   })
 })
+
+describe('atomic last-member removal', () => {
+  it('routes through dropMemberIfNotLast when the store provides it', async () => {
+    const members: Array<{ user: string; resourceForm: string; resource: string; role: string }> = []
+    let atomicCalls = 0
+    const s: ControlStore = {
+      async workspaces() { return [] },
+      async workspaceBySlug() { return undefined },
+      async putWorkspace() {},
+      async repositories() { return [] },
+      async repositoryBySlug() { return undefined },
+      async putRepository() {},
+      async members(input) {
+        return members.filter(m => m.resourceForm === input.resourceForm && m.resource === input.resource) as never
+      },
+      async putMember(m) { members.push(m as never) },
+      async dropMember() { throw new Error('should use the atomic path') },
+      async dropMemberIfNotLast(input) {
+        atomicCalls++
+        const here = members.filter(m => m.resourceForm === input.resourceForm && m.resource === input.resource)
+        if (here.length <= 1) return { dropped: false, wasLast: true }
+        const at = members.findIndex(m => m.user === input.user && m.resourceForm === input.resourceForm && m.resource === input.resource)
+        if (at >= 0) members.splice(at, 1)
+        return { dropped: true, wasLast: false }
+      },
+      async database() { return undefined },
+      async putDatabase() {},
+      async contracts() { return [] },
+      async putContract() {},
+    }
+    // owner + a second member so a removal is allowed
+    members.push({ user: 'lance', resourceForm: 'workspace', resource: 'w', role: 'owner' })
+    members.push({ user: 'ada', resourceForm: 'workspace', resource: 'w', role: 'writer' })
+
+    const ok = await removeMember(s, { user: 'ada', resourceForm: 'workspace', resource: 'w', by: 'lance' })
+    expect(ok.ok).toBe(true)
+    expect(atomicCalls).toBe(1) // used the atomic conditional delete, not read-then-drop
+
+    // removing the last one is declined by the same atomic call
+    const last = await removeMember(s, { user: 'lance', resourceForm: 'workspace', resource: 'w', by: 'lance' })
+    expect(last).toMatchObject({ ok: false, fault: 'forbidden' })
+  })
+})

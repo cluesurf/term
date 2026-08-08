@@ -18,7 +18,6 @@
 import type { Change } from '@term/base/code/diff/change'
 import { emptyDataset } from '@term/base/code/diff/change'
 import { applyChanges } from '@term/base/code/patch/patch'
-import { parseChanges, WireError } from '@term/base/code/api/wire'
 import type { Conflict } from '@term/base/code/merge/merge'
 import type { Diagnostic } from '@term/base/code/form/validate'
 import type { RecordNode } from '@term/base/code/base/type'
@@ -226,25 +225,16 @@ export function commit(
     author: string
     message: string
     time: number
-    // the raw JSON `changes` from the request; parsed and validated here so a
-    // malformed body is a clean client error, not a 500 from deep in applyChanges
-    changes: unknown
+    // typed changes. A caller crossing the HTTP boundary parses the raw JSON body into
+    // these with `parseChanges` (code/api/wire.ts) first, so a malformed body is a 422
+    // there rather than a crash here.
+    changes: Array<Change>
     user?: string
   },
 ): Result<{ commit: string; diagnostics: Array<Diagnostic> }> {
-  let changes: Array<Change>
-  try {
-    changes = parseChanges(input.changes)
-  } catch (error) {
-    return fail({
-      fault: 'invalid',
-      message: error instanceof WireError ? error.message : 'malformed changes',
-    })
-  }
-
   const base = repo.head(input.branch)
   const current = base ? repo.checkout(base) : emptyDataset()
-  const next = applyChanges(current, changes)
+  const next = applyChanges(current, input.changes)
 
   const result = repo.commit(
     input.branch,

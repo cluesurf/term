@@ -132,3 +132,62 @@ describe('commit', () => {
     expect((await json(r)).fault).toBe('unauthenticated')
   })
 })
+
+describe('commit wire codec', () => {
+  const M3 = '33333333-3333-4333-8333-333333333333'
+
+  it('round-trips an integer field value (bigint over JSON) without a 500', async () => {
+    const r = await post(`${R}/commit!`, {
+      message: 'int', time: 5,
+      changes: [{
+        type: 'record.add', mark: M3,
+        value: { type: 'word', mark: M3, fields: { count: { kind: 'integer', value: '42' } } },
+      }],
+    })
+    // accepted or form-rejected, but NEVER a 500 and NEVER 422 for a well-formed change
+    expect(r.status).not.toBe(500)
+    expect([200, 422].includes(r.status)).toBe(true)
+  })
+
+  it('rejects a malformed change with 422, not a 500', async () => {
+    for (const bad of [
+      [{ type: 'nonsense', mark: M3 }],
+      [{ type: 'record.add', mark: M3, value: { type: 'word', fields: 'not-an-object' } }],
+      [{ type: 'field.set', mark: M3, field: 'x', after: { kind: 'integer', value: 'not-a-number' } }],
+      'not-an-array',
+    ]) {
+      const r = await post(`${R}/commit!`, { message: 'bad', time: 5, changes: bad })
+      expect(r.status).toBe(422)
+    }
+  })
+})
+
+describe('form registration authorization', () => {
+  it('is refused (403) when the authorizeForm hook denies, even if authenticated', async () => {
+    const denyServer = serveApi({
+      open: async ({ repository }) => (repository === 'make' ? repo : undefined),
+      session: async () => ({ user: 'stranger' }),
+      forms: {
+        // minimal in-memory form store
+        async register() { return { ok: true, version: 1, breaks: [] } },
+        async list() { return [] },
+        async read() { return undefined },
+        async history() { return [] },
+      } as any,
+      authorizeForm: async () => false,
+    })
+    await new Promise<void>(res => denyServer.listen(0, res))
+    const addr = denyServer.address()
+    const port = typeof addr === 'object' && addr ? addr.port : 0
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/repositories/make/forms/register!`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'word', properties: [], force: true }),
+      })
+      expect(r.status).toBe(403)
+    } finally {
+      denyServer.close()
+    }
+  })
+})

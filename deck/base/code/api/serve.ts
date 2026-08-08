@@ -14,6 +14,7 @@ import type { Repository } from '@term/base/code/repo/repo'
 import type { RecordNode, Value } from '@term/base/code/base/type'
 import type { Change } from '@term/base/code/diff/change'
 import * as api from '@term/base/code/api/routes'
+import { parseChanges, WireError } from '@term/base/code/api/wire'
 import * as control from '@term/base/code/api/control'
 import type { ControlStore } from '@term/base/code/api/control'
 import * as forms from '@term/base/code/api/form'
@@ -88,6 +89,16 @@ export type ServeOptions = {
   }): Promise<Repository | undefined>
   control?: ControlStore
   forms?: FormStore
+  // Authorize a schema (form) WRITE against a repository, before register! runs. A form
+  // registration can force a breaking schema change, so it is a privileged write and must
+  // be authorized against the repository the caller named — authentication alone is not
+  // enough. Returning false is a 403. When omitted, form writes are gated only by
+  // authentication, so a deployment with non-public schemas MUST supply this (it is the
+  // schema-write analogue of `open()` for repository reads).
+  authorizeForm?(input: {
+    repository: string
+    session: Session
+  }): Promise<boolean>
   // Contracts a form registration is checked against. Separate from the store because a
   // deployment may hold contracts somewhere other than its form registry.
   contracts?(repository: string): Promise<Array<Contract>>
@@ -261,6 +272,22 @@ export function serveApi(options: ServeOptions): http.Server {
             })
           }
 
+          // parse the raw JSON changes into typed changes here, at the boundary: this
+          // normalizes fields to a Map and integers to bigint, and rejects a malformed
+          // body with 422 instead of casting it and crashing deep in applyChanges
+          let changes
+          try {
+            changes = parseChanges(input.changes)
+          } catch (parseError) {
+            return send(response, 422, {
+              fault: 'invalid',
+              message:
+                parseError instanceof WireError
+                  ? parseError.message
+                  : 'malformed changes',
+            })
+          }
+
           const result = api.commit(repo, {
             branch,
             author: session.user,
@@ -270,9 +297,7 @@ export function serveApi(options: ServeOptions): http.Server {
             // attacker-chosen (or NaN) commit time corrupts ordering and provenance in
             // an append-only audit history
             time: Date.now(),
-            // raw JSON changes; api.commit validates + normalizes them (fields to a Map,
-            // integers to bigint) and returns a 422 fault on anything malformed
-            changes: input.changes,
+            changes,
           })
 
           return finish(response, result)
@@ -372,6 +397,7 @@ export function serveApi(options: ServeOptions): http.Server {
         const handled = await serveForms({
           store: options.forms,
           contracts: options.contracts,
+          authorizeForm: options.authorizeForm,
           request,
           response,
           path,
@@ -513,6 +539,10 @@ async function serveControl(input: {
 async function serveForms(input: {
   store: FormStore
   contracts?: (repository: string) => Promise<Array<Contract>>
+  authorizeForm?: (input: {
+    repository: string
+    session: Session
+  }) => Promise<boolean>
   request: http.IncomingMessage
   response: http.ServerResponse
   path: string
@@ -545,8 +575,19 @@ async function serveForms(input: {
       return true
     }
 
-    const data = await body(input.request)
     const repository = register.repository!
+
+    // a form registration can force a breaking schema change on the repository, so it
+    // must be authorized against that repository, not merely authenticated
+    if (
+      input.authorizeForm &&
+      !(await input.authorizeForm({ repository, session }))
+    ) {
+      send(response, 403, { fault: 'forbidden', action: 'register form' })
+      return true
+    }
+
+    const data = await body(input.request)
 
     return answer(
       await forms.registerForm(store, {

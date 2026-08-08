@@ -78,6 +78,16 @@ export type ControlStore = {
     resourceForm: Member['resourceForm']
     resource: string
   }): Promise<void>
+  // Optional ATOMIC "drop unless this is the last member". A real store implements it
+  // as one conditional delete so two concurrent removals cannot both pass a separate
+  // count-check and orphan the resource (a TOCTOU race). Returns whether the member was
+  // dropped, and whether the removal was declined because it was the last one. A store
+  // without it falls back to the non-atomic read-count-then-drop below.
+  dropMemberIfNotLast?(input: {
+    user: string
+    resourceForm: Member['resourceForm']
+    resource: string
+  }): Promise<{ dropped: boolean; wasLast: boolean }>
 
   database(workspace: string): Promise<ProjectionDatabase | undefined>
   putDatabase(database: ProjectionDatabase): Promise<void>
@@ -368,6 +378,28 @@ export async function removeMember(
     return no({ fault: 'forbidden', user: input.by, action: 'remove member' })
   }
 
+  const target = {
+    user: input.user,
+    resourceForm: input.resourceForm,
+    resource: input.resource,
+  }
+
+  // Atomic path: one conditional delete decides last-member and removal together, so
+  // two concurrent removes cannot both slip past a separate count check.
+  if (store.dropMemberIfNotLast) {
+    const result = await store.dropMemberIfNotLast(target)
+    if (result.wasLast) {
+      return no({
+        fault: 'forbidden',
+        user: input.by,
+        action: 'remove the last member',
+      })
+    }
+    return yes({ removed: input.user })
+  }
+
+  // Fallback: read the count, then drop. Not atomic — a store that can race concurrent
+  // writers should provide dropMemberIfNotLast above.
   const members = await store.members({
     resourceForm: input.resourceForm,
     resource: input.resource,
@@ -381,11 +413,7 @@ export async function removeMember(
     })
   }
 
-  await store.dropMember({
-    user: input.user,
-    resourceForm: input.resourceForm,
-    resource: input.resource,
-  })
+  await store.dropMember(target)
 
   return yes({ removed: input.user })
 }
