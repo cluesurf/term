@@ -15,7 +15,7 @@ task process-result-make
   take stderr, like text
   send back
     make process-result
-      code, read code
+      bind code, read code
       bind stdout, read stdout
       bind stderr, read stderr
 

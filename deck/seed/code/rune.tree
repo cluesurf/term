@@ -162,5 +162,5 @@ task make-rune
   like rune
   send back
     make rune
-      code, read code
+      bind code, read code
 

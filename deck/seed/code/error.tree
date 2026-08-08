@@ -14,7 +14,7 @@ task make
   like error
   send back
     make error
-      code, read code
+      bind code, read code
       bind note, read message
       bind hint, read hint
 

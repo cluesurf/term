@@ -13,7 +13,7 @@ task make
   take trace, like bool, fall false
   send back
     make kink
-      code, read code
+      bind code, read code
       bind note, read message
       bind hint, read fields
 

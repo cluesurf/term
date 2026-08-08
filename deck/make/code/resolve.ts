@@ -25,8 +25,11 @@ export function stdlibResolver(): Resolver | undefined {
   let dir = here
 
   for (let depth = 0; depth < 10; depth++) {
-    // the canonical stdlib (deck/base/code) and the legacy sibling (base.tree/code)
+    // the canonical stdlib (deck/seed/code), the pre-rename location (deck/base/code), and the legacy sibling
+    // (base.tree/code). deck/seed is probed first: after the Term rename the stdlib package is `@term/seed` at
+    // deck/seed, while deck/base may still exist holding something else entirely.
     for (const candidate of [
+      join(dir, 'deck', 'seed'),
       join(dir, 'deck', 'base'),
       join(dir, 'base.tree'),
     ]) {
@@ -53,10 +56,14 @@ export function stdlibResolver(): Resolver | undefined {
     return undefined
   }
 
-  return (path: string): Source | undefined => {
-    const prefix = '@cluesurf/seed/'
+  // the stdlib's own modules import each other as `@term/seed/...` (the Term rename); older programs still say
+  // `@cluesurf/seed/...`. Both spell the same package.
+  const prefixes = ['@term/seed/', '@cluesurf/seed/']
 
-    if (!path.startsWith(prefix)) {
+  return (path: string): Source | undefined => {
+    const prefix = prefixes.find(p => path.startsWith(p))
+
+    if (!prefix) {
       return undefined
     }
 

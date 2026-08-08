@@ -20,7 +20,7 @@ task make
   take hint, like text, need false
   send back
     make network-kink
-      code, read code
+      bind code, read code
       bind note, read note
       bind hint, read hint
 
@@ -30,6 +30,6 @@ task throw
   take hint, like text, need false
   halt kink
     call make
-      code, read code
+      bind code, read code
       bind note, read note
       bind hint, read hint

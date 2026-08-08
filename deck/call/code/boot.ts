@@ -73,7 +73,7 @@ function nodeValue(group: GroupNode): string {
 
 // bump to invalidate every boot cache at once (turborepo's `global_cache_key`). Change this on any boot-pipeline change
 // that the per-build hash does not already capture (e.g. a new prelude assembly rule).
-const BOOT_CACHE_EPOCH = '2'
+const BOOT_CACHE_EPOCH = '3'
 
 // the default port range: `seed boot` scans 2400..2499 for the first free port, so an app always starts on a good port
 // no matter where (or how many) you boot, with no manual `--port`.
