@@ -21,15 +21,18 @@ export function parentOf(node: RecordNode): Mark | undefined {
   return v !== undefined && v.kind === 'ref' ? v.target : undefined
 }
 
-// Move a record under a new parent (or to a root with `undefined`), keeping its mark.
-export function moveRecord(
+// Set a record's parent in a dataset that is already a private working copy,
+// mutating it in place. `moveRecord` clones the whole dataset per call, which is
+// O(n) each; a loop over m moves therefore costs O(n*m). The batch operations
+// below clone once and reparent in place through this instead.
+function setParentInPlace(
   dataset: Dataset,
   mark: Mark,
   parent: Mark | undefined,
-): Dataset {
+): void {
   const node = dataset.get(mark)
   if (node === undefined) {
-    return dataset
+    return
   }
   const fields = new Map(node.fields)
   if (parent === undefined) {
@@ -37,8 +40,21 @@ export function moveRecord(
   } else {
     fields.set(PARENT, ref(parent))
   }
+  dataset.set(mark, { ...node, fields })
+}
+
+// Move a record under a new parent (or to a root with `undefined`), keeping its
+// mark. Pure: returns a new dataset, the input is untouched.
+export function moveRecord(
+  dataset: Dataset,
+  mark: Mark,
+  parent: Mark | undefined,
+): Dataset {
+  if (dataset.get(mark) === undefined) {
+    return dataset
+  }
   const out: Dataset = new Map(dataset)
-  out.set(mark, { ...node, fields })
+  setParentInPlace(out, mark, parent)
   return out
 }
 
@@ -121,7 +137,8 @@ export function applyMoves(base: Dataset, moves: Array<TreeMove>): Dataset {
     return a.actor < b.actor ? -1 : a.actor > b.actor ? 1 : 0
   })
 
-  let out = base
+  // clone once, then reparent in place per move: O(n + m) instead of O(n*m)
+  const out: Dataset = new Map(base)
   for (const move of ordered) {
     if (!parentMap.has(move.mark)) {
       continue // moving an unknown record
@@ -134,7 +151,7 @@ export function applyMoves(base: Dataset, moves: Array<TreeMove>): Dataset {
       continue
     }
     parentMap.set(move.mark, move.parent)
-    out = moveRecord(out, move.mark, move.parent)
+    setParentInPlace(out, move.mark, move.parent)
   }
   return out
 }
@@ -179,14 +196,15 @@ export function mergeTree(base: Dataset, ours: Dataset, theirs: Dataset): Datase
   // break any cycles deterministically: detach the smaller mark in each cycle to a root
   breakCycles(parentMap)
 
-  // materialize onto the merged records
-  let out: Dataset = new Map()
+  // materialize onto the merged records. `out` is a fresh private map, so the
+  // reparenting is done in place (one clone total, not one per node)
+  const out: Dataset = new Map()
   for (const mark of marks) {
     const node = ours.get(mark) ?? theirs.get(mark)!
     out.set(mark, node)
   }
   for (const [mark, parent] of parentMap) {
-    out = moveRecord(out, mark, parent)
+    setParentInPlace(out, mark, parent)
   }
   return out
 }
@@ -199,11 +217,15 @@ export function recoverOrphans(
   recoveryRoot?: Mark,
 ): { dataset: Dataset; recovered: Array<Mark> } {
   const recovered: Array<Mark> = []
+  // clone lazily: only pay for a copy if there is actually an orphan to move
   let out = dataset
   for (const [mark, node] of dataset) {
     const parent = parentOf(node)
     if (parent !== undefined && !dataset.has(parent)) {
-      out = moveRecord(out, mark, recoveryRoot)
+      if (out === dataset) {
+        out = new Map(dataset)
+      }
+      setParentInPlace(out, mark, recoveryRoot)
       recovered.push(mark)
     }
   }
@@ -211,11 +233,21 @@ export function recoverOrphans(
 }
 
 function breakCycles(parentMap: Map<Mark, Mark | undefined>): void {
+  // `settled` memoizes nodes already proven to reach a root without a cycle, so a
+  // deep chain is walked once in total instead of re-walked from every node (which
+  // was O(n^2) on a single long parent chain).
+  const settled = new Set<Mark>()
   for (const start of parentMap.keys()) {
+    if (settled.has(start)) {
+      continue
+    }
     const path: Array<Mark> = []
     const onPath = new Set<Mark>()
     let cur: Mark | undefined = start
     while (cur !== undefined) {
+      if (settled.has(cur)) {
+        break // reaches a node already known to be acyclic
+      }
       if (onPath.has(cur)) {
         // found a cycle: detach the smallest mark on it to a root
         const cycle = path.slice(path.indexOf(cur))
@@ -229,6 +261,11 @@ function breakCycles(parentMap: Map<Mark, Mark | undefined>): void {
       onPath.add(cur)
       path.push(cur)
       cur = parentMap.get(cur)
+    }
+    // every node just walked now reaches a root (either directly, via a settled
+    // node, or via the node just detached), so it is acyclic from here on
+    for (const m of path) {
+      settled.add(m)
     }
   }
 }

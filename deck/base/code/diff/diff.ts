@@ -1,6 +1,35 @@
 import type { RecordNode } from '@term/base/code/base/type'
 import { valueEqual } from '@term/base/code/base/equal'
-import type { Change, Dataset } from '@term/base/code/diff/change'
+import type { Change, Comments, Dataset } from '@term/base/code/diff/change'
+
+// Two comment maps are equal when they hold the same lines under the same keys.
+// Order of lines under a key is meaningful (it is how they render), so it is
+// compared positionally; key order is not.
+export function commentsEqual(
+  a: Comments | undefined,
+  b: Comments | undefined,
+): boolean {
+  const aSize = a?.size ?? 0
+  const bSize = b?.size ?? 0
+  if (aSize !== bSize) {
+    return false
+  }
+  if (a === undefined || b === undefined) {
+    return aSize === 0
+  }
+  for (const [key, aLines] of a) {
+    const bLines = b.get(key)
+    if (bLines === undefined || bLines.length !== aLines.length) {
+      return false
+    }
+    for (let i = 0; i < aLines.length; i++) {
+      if (aLines[i] !== bLines[i]) {
+        return false
+      }
+    }
+  }
+  return true
+}
 
 // Semantic diff. Given two datasets, produce the field-level change set that turns
 // one into the other, matched by mark, not by position or line. A record moved,
@@ -30,6 +59,28 @@ export function diffRecord(
     ) {
       changes.push({ type: 'field.set', mark, field, before, after })
     }
+  }
+  // header (type, label, comments) is hashed content, so a change to it is a real
+  // change; emit it after the fields in a deterministic order. Without these a
+  // pure rename / retype / comment edit diffs to nothing and cannot be committed.
+  if (base.type !== next.type) {
+    changes.push({ type: 'record.retype', mark, before: base.type, after: next.type })
+  }
+  if (base.label !== next.label) {
+    changes.push({
+      type: 'record.relabel',
+      mark,
+      before: base.label,
+      after: next.label,
+    })
+  }
+  if (!commentsEqual(base.comments, next.comments)) {
+    changes.push({
+      type: 'record.recomment',
+      mark,
+      before: base.comments,
+      after: next.comments,
+    })
   }
   return changes
 }

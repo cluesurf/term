@@ -106,6 +106,15 @@ function writeTree(entries: Array<Entry>, store: ChunkStore): string {
     if (parents.length === 1) {
       return parents[0]![1]
     }
+    // Guaranteed progress. When every entry at a level is a content-defined
+    // boundary, `chunk` makes each its own singleton group, so `buildLevel`
+    // returns as many parents as it had entries — no reduction. Nodes are
+    // content-addressed, so the next iteration reproduces the identical level
+    // and the loop never terminates (it permanently wedges the commit). Collapse
+    // the level into one branch node instead, which always reduces to a root.
+    if (parents.length >= level.length) {
+      return storeNode({ kind: 'B', children: parents }, store)
+    }
     level = parents
     kind = 'B'
   }
@@ -218,7 +227,6 @@ export function collectMissingChunks(
   if (has(root)) {
     return into // receiver has this node and its entire subtree
   }
-  into.add(root)
   const node = loadNode(root, store)
   if (node.kind === 'L') {
     for (const [, recordHash] of node.entries) {
@@ -231,6 +239,11 @@ export function collectMissingChunks(
       collectMissingChunks(childHash, store, has, into)
     }
   }
+  // add this node AFTER its children/records, so the set iterates in post-order.
+  // The receiver stores in this order, so an interrupted transfer leaves complete
+  // subtrees and never a parent node whose children are missing — which the next
+  // sync would prune as "already present" and leave a permanent hole.
+  into.add(root)
   return into
 }
 

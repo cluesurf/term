@@ -189,3 +189,29 @@ describe('statusOf', () => {
     expect(statusOf({ ok: false, fault: 'rejected' } as never)).toBe(422)
   })
 })
+
+describe('cross-repository read isolation (IDOR)', () => {
+  it('refuses a commit that is not reachable from THIS repository, even if it exists in a shared store', () => {
+    // two repositories sharing ONE chunk store (the flat content-addressed namespace),
+    // each with its own refs
+    const chunks = new MemoryChunkStore()
+    const repoA = new Repository(chunks, new MemoryRefStore(), roleBase([wordForm]))
+    const repoB = new Repository(chunks, new MemoryRefStore(), roleBase([wordForm]))
+
+    repoA.commit('main', { author: 'a', time: 1, message: 'a1' },
+      datasetOf([record({ type: 'word', mark: M1, fields: { term: text('A') } })]))
+    const bCommit = repoB.commit('main', { author: 'b', time: 1, message: 'b1' },
+      datasetOf([record({ type: 'word', mark: M1, fields: { term: text('secret') } })]))
+    if (!bCommit.ok) throw new Error('b commit failed')
+
+    // repo B's commit bytes are in the shared store, but repo A must NOT serve them
+    const viaA = state(repoA, { branch: 'main', commit: bCommit.commit })
+    expect(viaA.ok).toBe(false)
+
+    const changesViaA = changes(repoA, { branch: 'main', to: bCommit.commit })
+    expect(changesViaA.ok).toBe(false)
+
+    // repo B itself serves its own commit fine
+    expect(state(repoB, { branch: 'main', commit: bCommit.commit }).ok).toBe(true)
+  })
+})

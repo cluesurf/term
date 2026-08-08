@@ -1,4 +1,4 @@
-import type { Change } from '@term/base/code/diff/change'
+import type { Change, Comments } from '@term/base/code/diff/change'
 import type { Canon } from '@term/base/code/canon/json'
 import {
   toCanonValue,
@@ -13,9 +13,46 @@ import type { ChunkStore } from '@term/base/code/store/chunk-store'
 // on its own and lets a projection advance by reading the change set directly, instead
 // of re-diffing two full checkouts. See note/library/base/04-commit-and-patch.md.
 
+// An optional value is wrapped in a 0-or-1 element array: [] means absent
+// (distinct from a value of null / empty), [v] means present. Used for the
+// field.set before-value and the label header change.
+function encodeOptionalText(text: string | undefined): Array<Canon> {
+  return text === undefined ? [] : [text]
+}
+
+function decodeOptionalText(wrap: Array<Canon>): string | undefined {
+  return wrap.length === 0 ? undefined : (wrap[0] as string)
+}
+
+// Comments encode as an object (key -> lines) when present, or an empty array
+// when absent, so undefined round-trips distinctly from an empty map.
+function encodeComments(comments: Comments | undefined): Canon {
+  if (comments === undefined) {
+    return []
+  }
+  const out: { [key: string]: Canon } = {}
+  for (const [key, lines] of comments) {
+    out[key] = [...lines]
+  }
+  return out
+}
+
+function decodeComments(canon: Canon): Comments | undefined {
+  if (Array.isArray(canon)) {
+    return undefined
+  }
+  const obj = canon as { [key: string]: Canon }
+  const out: Comments = new Map()
+  for (const key of Object.keys(obj)) {
+    out.set(key, (obj[key] as Array<Canon>).map(l => l as string))
+  }
+  return out
+}
+
 // Each change is encoded as a tagged array so the serialization is compact and
 // deterministic (canonical JSON), reusing the value and record canonicalizers.
-function encodeChange(change: Change): Array<Canon> {
+// Exported so the live-draft segment codec encodes operation changes identically.
+export function encodeChange(change: Change): Array<Canon> {
   switch (change.type) {
     case 'record.add':
       return ['+', change.mark, toCanonRecord(change.value)]
@@ -33,10 +70,26 @@ function encodeChange(change: Change): Array<Canon> {
       ]
     case 'field.remove':
       return ['x', change.mark, change.field, toCanonValue(change.before)]
+    case 'record.relabel':
+      return [
+        'rl',
+        change.mark,
+        encodeOptionalText(change.before),
+        encodeOptionalText(change.after),
+      ]
+    case 'record.retype':
+      return ['rt', change.mark, change.before, change.after]
+    case 'record.recomment':
+      return [
+        'rc',
+        change.mark,
+        encodeComments(change.before),
+        encodeComments(change.after),
+      ]
   }
 }
 
-function decodeChange(enc: Array<Canon>): Change {
+export function decodeChange(enc: Array<Canon>): Change {
   const tag = enc[0] as string
   const mark = enc[1] as string
   switch (tag) {
@@ -60,6 +113,27 @@ function decodeChange(enc: Array<Canon>): Change {
         mark,
         field: enc[2] as string,
         before: fromCanonValue(enc[3] as Canon),
+      }
+    case 'rl':
+      return {
+        type: 'record.relabel',
+        mark,
+        before: decodeOptionalText(enc[2] as Array<Canon>),
+        after: decodeOptionalText(enc[3] as Array<Canon>),
+      }
+    case 'rt':
+      return {
+        type: 'record.retype',
+        mark,
+        before: enc[2] as string,
+        after: enc[3] as string,
+      }
+    case 'rc':
+      return {
+        type: 'record.recomment',
+        mark,
+        before: decodeComments(enc[2]!),
+        after: decodeComments(enc[3]!),
       }
     default:
       throw new Error(`unknown change tag ${tag}`)

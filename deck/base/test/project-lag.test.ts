@@ -339,3 +339,30 @@ describe('reading through the lag contract', () => {
     expect(engine.transactions).toBe(1)
   })
 })
+
+describe('read-your-writes across a batched advance', () => {
+  it('records every commit folded into one apply, not just the head', async () => {
+    const { projector } = await install()
+
+    // a batched advance from empty to c3 that folds c1, c2, c3 into one change set
+    // (as the follow/sync path does): all three must be recorded as applied
+    await projector.apply({
+      commit: 'c3',
+      changes: [add(A, 'one', 1), add(B, 'two', 2)],
+      covers: ['c1', 'c2', 'c3'],
+    })
+
+    expect(await projector.hasApplied('c1')).toBe(true)
+    expect(await projector.hasApplied('c2')).toBe(true) // the intermediate commit
+    expect(await projector.hasApplied('c3')).toBe(true)
+    // and the served commit is the head
+    expect(await projector.serving()).toBe('c3')
+  })
+
+  it('defaults covers to just the commit when not batched', async () => {
+    const { projector } = await install()
+    await projector.apply({ commit: 'c1', changes: [add(A, 'one', 1)] })
+    expect(await projector.hasApplied('c1')).toBe(true)
+    expect(await projector.hasApplied('c2')).toBe(false)
+  })
+})

@@ -36,6 +36,10 @@ import {
   offHistoryId,
   type OffHistoryStore,
 } from '@term/base/code/offhistory/store'
+import { partitionSensitive } from '@term/base/code/offhistory/sensitive'
+import { coalesce, materialize, type Segment } from '@term/base/code/live/draft'
+import { encodeSegment, decodeSegment } from '@term/base/code/live/segment'
+import type { Op } from '@term/base/code/sync/op-sync'
 import { RevocationList } from '@term/base/code/erase/revocation'
 import { hashRecord } from '@term/base/code/canon/hash'
 import type { RefLog, RefLogEntry } from '@term/base/code/reflog/reflog'
@@ -70,6 +74,9 @@ export type RepoOptions = {
   signer?: Keypair
   // if set, every ref move is recorded here for recovery
   reflog?: RefLog
+  // if set (with a role), a commit routes every `seal`-marked field value into this
+  // side store before writing, so regulated plaintext never enters immutable history
+  offHistory?: OffHistoryStore
 }
 
 export type CommitResult =
@@ -82,6 +89,11 @@ export type MergeResultOut =
 
 const MAX_CAS_RETRIES = 8
 
+// How many recent reflog entries per ref are kept as GC roots. Bounds the recovery
+// window so old history is still collectable while a recent reset / rebase / erase is
+// recoverable.
+const REFLOG_ROOT_LIMIT = 50
+
 function refName(branch: string): string {
   return `branch/${branch}`
 }
@@ -90,7 +102,20 @@ function tagRefName(name: string): string {
   return `tag/${name}`
 }
 
+// The ref that names a branch's live-draft `pending` segment chain tip. A separate
+// ref namespace from `branch/`, so a draft's uncommitted work never appears as a
+// branch head to history, packages, or the log.
+const DRAFT_REF_PREFIX = 'draft/'
+
+function draftRefName(branch: string): string {
+  return `${DRAFT_REF_PREFIX}${branch}`
+}
+
 export class Repository {
+  // Chunk hashes written but not yet reachable from a ref (an in-flight fetch), kept
+  // out of a concurrent gc()'s reach so it cannot sweep them before the ref moves.
+  private readonly pendingChunks = new Set<string>()
+
   constructor(
     private readonly chunks: ChunkStore,
     private readonly refs: RefStore,
@@ -257,9 +282,20 @@ export class Repository {
       return { ok: false, diagnostics: check.diagnostics }
     }
 
+    // Route `seal`-marked field values into the off-history side store BEFORE writing,
+    // so regulated plaintext (a national id, a private note) never enters immutable
+    // content-addressed history — the whole point of `seal`, which the commit path
+    // previously bypassed, leaving the value permanently un-deletable. Validation above
+    // ran on the real values; the stored records keep only off-history references, and
+    // the diff / changeset are computed on those references too.
+    const partitioned =
+      this.opts.offHistory !== undefined && this.role !== undefined
+        ? partitionSensitive(working, this.role, this.opts.offHistory).dataset
+        : working
+
     let head = this.head(branch)
     let base = head ? this.checkout(head) : emptyDataset()
-    let desired = working
+    let desired = partitioned
 
     for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt++) {
       const changes = diffDataset(base, desired)
@@ -407,35 +443,45 @@ export class Repository {
     source: string,
     meta: CommitMeta,
   ): MergeResultOut {
-    const th = this.head(target)
     const sh = this.head(source)
     if (sh === undefined) {
       return { ok: false, conflicts: [] }
     }
-    if (th === undefined) {
-      this.moveRef(refName(target), undefined, sh, 'merge', meta.message, meta.time)
-      return { ok: true, commit: sh, alreadyUpToDate: true }
+    // Retry on a lost compare-and-swap, exactly like commit: the target head can
+    // move under us between reading it and advancing the ref, and ignoring the CAS
+    // result would orphan the merge commit while falsely reporting success.
+    for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt++) {
+      const th = this.head(target)
+      if (th === undefined) {
+        if (this.moveRef(refName(target), undefined, sh, 'merge', meta.message, meta.time)) {
+          return { ok: true, commit: sh, alreadyUpToDate: true }
+        }
+        continue // someone created the branch under us
+      }
+      if (th === sh || this.ancestors(th).has(sh)) {
+        return { ok: true, commit: th, alreadyUpToDate: true }
+      }
+      const baseCommit = this.lca(th, sh)
+      const baseDS = baseCommit ? this.checkout(baseCommit) : emptyDataset()
+      const targetDS = this.checkout(th)
+      const sourceDS = this.checkout(sh)
+      const { merged, conflicts } = mergeDataset(baseDS, targetDS, sourceDS, this.mergeOpts())
+      if (conflicts.length > 0) {
+        return { ok: false, conflicts }
+      }
+      if (this.validate(merged).blocked) {
+        return { ok: false, conflicts: [] } // merge would violate an invariant
+      }
+      const root = writeDataset(merged, this.chunks)
+      // the merge commit's change set is what it added on top of the target branch
+      const mergeChanges = diffDataset(targetDS, merged)
+      const commitHash = this.buildCommit(root, [th, sh], meta, [], mergeChanges)
+      if (this.moveRef(refName(target), th, commitHash, 'merge', meta.message, meta.time)) {
+        return { ok: true, commit: commitHash }
+      }
+      // target advanced under us: recompute against the new head
     }
-    if (th === sh || this.ancestors(th).has(sh)) {
-      return { ok: true, commit: th, alreadyUpToDate: true }
-    }
-    const baseCommit = this.lca(th, sh)
-    const baseDS = baseCommit ? this.checkout(baseCommit) : emptyDataset()
-    const targetDS = this.checkout(th)
-    const sourceDS = this.checkout(sh)
-    const { merged, conflicts } = mergeDataset(baseDS, targetDS, sourceDS, this.mergeOpts())
-    if (conflicts.length > 0) {
-      return { ok: false, conflicts }
-    }
-    if (this.validate(merged).blocked) {
-      return { ok: false, conflicts: [] } // merge would violate an invariant
-    }
-    const root = writeDataset(merged, this.chunks)
-    // the merge commit's change set is what it added on top of the target branch
-    const mergeChanges = diffDataset(targetDS, merged)
-    const commitHash = this.buildCommit(root, [th, sh], meta, [], mergeChanges)
-    this.moveRef(refName(target), th, commitHash, 'merge', meta.message, meta.time)
-    return { ok: true, commit: commitHash }
+    return { ok: false, conflicts: [] }
   }
 
   // The state before and at a commit, for applying its change semantically.
@@ -521,92 +567,141 @@ export class Repository {
     return { ok: true, replayed }
   }
 
-  // Send the chunks under a commit to a remote, pruning any subtree the remote already
-  // has (a chunk it holds implies its whole subtree, since sync transfers transitively).
-  // So a push moves only the difference.
-  private async transferToRemote(head: string, remote: RemoteRepo): Promise<number> {
-    let sent = 0
-    const seen = new Set<string>()
-    const stack: Array<{ hash: string; kind: 'commit' | 'node' | 'record' }> = [
-      { hash: head, kind: 'commit' },
-    ]
+  // The chunks a commit / node references, as typed child descriptors. A record
+  // chunk is terminal. Used by the transfer walks to know what to recurse into.
+  private chunkChildren(
+    bytes: string,
+    kind: 'commit' | 'node' | 'record',
+  ): Array<{ hash: string; kind: 'commit' | 'node' | 'record' }> {
+    if (kind === 'commit') {
+      const commit = parseCommit(bytes)
+      const out: Array<{ hash: string; kind: 'commit' | 'node' | 'record' }> = [
+        { hash: commit.root, kind: 'node' },
+      ]
+      if (commit.changes !== undefined) {
+        out.push({ hash: commit.changes, kind: 'record' })
+      }
+      for (const parent of commit.parents) {
+        out.push({ hash: parent, kind: 'commit' })
+      }
+      return out
+    }
+    if (kind === 'node') {
+      const { leaf, refs } = treeNodeRefs(bytes)
+      return refs.map(ref => ({
+        hash: ref,
+        kind: (leaf ? 'record' : 'node') as 'commit' | 'node' | 'record',
+      }))
+    }
+    return []
+  }
+
+  // Order the chunks reachable from `head` so that every chunk comes AFTER all the
+  // chunks it references (post-order over the object DAG). Writing in this order is
+  // what keeps an interrupted transfer safe: a referencing chunk is only stored once
+  // its whole subtree is present, so presence-pruning ("has parent => has subtree")
+  // stays sound and a crash leaves complete subtrees, never a parent with a missing
+  // child that the next sync would skip forever. A subtree the destination already
+  // holds is pruned. A required chunk missing from the SOURCE aborts, rather than
+  // producing an incomplete destination whose ref would then be advanced.
+  private async transferOrder(
+    head: string,
+    hasAtDestination: (hash: string) => Promise<boolean>,
+    getFromSource: (hash: string) => Promise<string | undefined>,
+  ): Promise<Array<{ hash: string; bytes: string }>> {
+    const order: Array<{ hash: string; bytes: string }> = []
+    const done = new Set<string>()
+    type Frame = {
+      hash: string
+      kind: 'commit' | 'node' | 'record'
+      expanded: boolean
+      bytes?: string
+    }
+    const stack: Array<Frame> = [{ hash: head, kind: 'commit', expanded: false }]
+
     while (stack.length > 0) {
-      const { hash, kind } = stack.pop()!
-      if (seen.has(hash)) {
-        continue
-      }
-      seen.add(hash)
-      if (await remote.hasChunk(hash)) {
-        continue // remote has this and its subtree
-      }
-      const bytes = this.chunks.get(hash)
-      if (bytes === undefined) {
-        continue
-      }
-      await remote.putChunk(bytes)
-      sent++
-      if (kind === 'commit') {
-        const commit = parseCommit(bytes)
-        stack.push({ hash: commit.root, kind: 'node' })
-        if (commit.changes !== undefined) {
-          stack.push({ hash: commit.changes, kind: 'record' })
+      const frame = stack[stack.length - 1]!
+      if (!frame.expanded) {
+        frame.expanded = true
+        if (done.has(frame.hash)) {
+          stack.pop()
+          continue
         }
-        for (const parent of commit.parents) {
-          stack.push({ hash: parent, kind: 'commit' })
+        if (await hasAtDestination(frame.hash)) {
+          done.add(frame.hash) // destination has this and, transitively, its subtree
+          stack.pop()
+          continue
         }
-      } else if (kind === 'node') {
-        const { leaf, refs } = treeNodeRefs(bytes)
-        for (const ref of refs) {
-          stack.push({ hash: ref, kind: leaf ? 'record' : 'node' })
+        const bytes = await getFromSource(frame.hash)
+        if (bytes === undefined) {
+          throw new Error(
+            `transfer aborted: source is missing chunk ${frame.hash}`,
+          )
+        }
+        frame.bytes = bytes
+        for (const child of this.chunkChildren(bytes, frame.kind)) {
+          if (!done.has(child.hash)) {
+            stack.push({ ...child, expanded: false })
+          }
+        }
+      } else {
+        stack.pop()
+        if (!done.has(frame.hash)) {
+          done.add(frame.hash)
+          order.push({ hash: frame.hash, bytes: frame.bytes! })
         }
       }
     }
-    return sent
+    return order
   }
 
-  // Fetch the chunks under a remote commit into the local store, pruning any subtree the
-  // local store already has, and re-hashing every chunk on receipt.
-  private async fetchFromRemote(head: string, remote: RemoteRepo): Promise<number> {
-    let got = 0
-    const seen = new Set<string>()
-    const stack: Array<{ hash: string; kind: 'commit' | 'node' | 'record' }> = [
-      { hash: head, kind: 'commit' },
-    ]
-    while (stack.length > 0) {
-      const { hash, kind } = stack.pop()!
-      if (seen.has(hash)) {
-        continue
-      }
-      seen.add(hash)
-      if (this.chunks.has(hash)) {
-        continue // we have this and its subtree
-      }
-      const bytes = await remote.getChunk(hash)
-      if (bytes === undefined) {
-        continue
-      }
+  // Send the chunks under a commit to a remote, children before parents, pruning any
+  // subtree the remote already has. So a push moves only the difference and an
+  // interrupted push never poisons the remote (see transferOrder).
+  private async transferToRemote(head: string, remote: RemoteRepo): Promise<number> {
+    const order = await this.transferOrder(
+      head,
+      hash => remote.hasChunk(hash),
+      async hash => this.chunks.get(hash),
+    )
+    for (const { bytes } of order) {
+      await remote.putChunk(bytes)
+    }
+    return order.length
+  }
+
+  // Fetch the chunks under a remote commit into the local store, children before
+  // parents, pruning any subtree the local store already has, and re-hashing every
+  // chunk on receipt.
+  private async fetchFromRemote(head: string, remote: RemoteRepo): Promise<Array<string>> {
+    const order = await this.transferOrder(
+      head,
+      async hash => this.chunks.has(hash),
+      hash => remote.getChunk(hash),
+    )
+    const fetched: Array<string> = []
+    // A fetched chunk is not yet reachable from any ref, so a garbage collection that
+    // runs (in this process) between the fetch and the ref move would sweep it.
+    // Register each as a pending root while the fetch is in flight; the caller clears
+    // them once the ref has moved. (Cross-PROCESS concurrent GC needs a store-level
+    // write-time grace window instead — see the note on gc().)
+    for (const { hash, bytes } of order) {
       const actual = this.chunks.put(bytes)
       if (actual !== hash) {
         throw new Error(`chunk integrity failure on fetch: claimed ${hash}, got ${actual}`)
       }
-      got++
-      if (kind === 'commit') {
-        const commit = parseCommit(bytes)
-        stack.push({ hash: commit.root, kind: 'node' })
-        if (commit.changes !== undefined) {
-          stack.push({ hash: commit.changes, kind: 'record' })
-        }
-        for (const parent of commit.parents) {
-          stack.push({ hash: parent, kind: 'commit' })
-        }
-      } else if (kind === 'node') {
-        const { leaf, refs } = treeNodeRefs(bytes)
-        for (const ref of refs) {
-          stack.push({ hash: ref, kind: leaf ? 'record' : 'node' })
-        }
-      }
+      this.pendingChunks.add(hash)
+      fetched.push(hash)
     }
-    return got
+    return fetched
+  }
+
+  // Drop a fetch's chunks from the pending-root set once its ref has moved (or the
+  // pull failed), so they are protected only for the window they are unreachable.
+  private releasePending(hashes: Array<string>): void {
+    for (const hash of hashes) {
+      this.pendingChunks.delete(hash)
+    }
   }
 
   // Push a branch to a remote. Fast-forward only: if the remote head has diverged, the
@@ -648,31 +743,173 @@ export class Repository {
     if (localHead === remoteHead) {
       return { ok: true, status: 'up-to-date', transferred: 0 }
     }
-    const transferred = await this.fetchFromRemote(remoteHead, remote)
+    const fetched = await this.fetchFromRemote(remoteHead, remote)
+    const transferred = fetched.length
+    try {
+      if (localHead === undefined || this.ancestors(remoteHead).has(localHead)) {
+        // fast-forward. A lost CAS means the local branch moved under us, so this
+        // pull did NOT land — report it raced rather than claim a false fast-forward.
+        if (this.moveRef(name, localHead, remoteHead, 'pull', 'pull', meta?.time ?? 0)) {
+          return { ok: true, status: 'fast-forward', commit: remoteHead, transferred }
+        }
+        return { ok: false, status: 'raced', transferred }
+      }
 
-    if (localHead === undefined || this.ancestors(remoteHead).has(localHead)) {
-      this.moveRef(name, localHead, remoteHead, 'pull', 'pull', meta?.time ?? 0)
-      return { ok: true, status: 'fast-forward', commit: remoteHead, transferred }
+      // diverged: three-way merge the remote head into the local head
+      const baseCommit = this.lca(localHead, remoteHead)
+      const baseDS = baseCommit ? this.checkout(baseCommit) : emptyDataset()
+      const localDS = this.checkout(localHead)
+      const remoteDS = this.checkout(remoteHead)
+      const { merged, conflicts } = mergeDataset(baseDS, localDS, remoteDS, this.mergeOpts())
+      if (conflicts.length > 0) {
+        return { ok: false, status: 'conflict', conflicts: conflicts.length }
+      }
+      if (this.validate(merged).blocked) {
+        return { ok: false, status: 'conflict', conflicts: 0 } // merge violates an invariant
+      }
+      const root = writeDataset(merged, this.chunks)
+      const changes = diffDataset(localDS, merged)
+      const m = meta ?? { author: 'sync', time: 0, message: `merge ${branch} from remote` }
+      const commitHash = this.buildCommit(root, [localHead, remoteHead], m, [], changes)
+      // the merge commit is orphaned if the CAS loses; report raced, not merged
+      if (this.moveRef(name, localHead, commitHash, 'pull', m.message, m.time)) {
+        return { ok: true, status: 'merged', commit: commitHash, transferred }
+      }
+      return { ok: false, status: 'raced', transferred }
+    } finally {
+      // the ref has moved (or not); the fetched chunks are now reachable or garbage,
+      // so they no longer need the pending-root protection
+      this.releasePending(fetched)
     }
+  }
 
-    // diverged: three-way merge the remote head into the local head
-    const baseCommit = this.lca(localHead, remoteHead)
-    const baseDS = baseCommit ? this.checkout(baseCommit) : emptyDataset()
-    const localDS = this.checkout(localHead)
-    const remoteDS = this.checkout(remoteHead)
-    const { merged, conflicts } = mergeDataset(baseDS, localDS, remoteDS, this.mergeOpts())
-    if (conflicts.length > 0) {
-      return { ok: false, status: 'conflict', conflicts: conflicts.length }
+  // ----- live drafts: realtime editing between commits ------------------------
+  //
+  // A draft is this same branch with a second pointer, `pending`, naming a chain of
+  // immutable operation SEGMENTS in the object store (see live-drafts.md). Editing
+  // appends coalesced operations to that chain in realtime; the branch head only moves
+  // when the draft is published (settled) into one commit. Reads fold `pending` over
+  // the committed head, so an author sees their edits immediately without a commit per
+  // keystroke. This is what a guide editor rides: type -> append segment -> read live
+  // -> publish -> one commit.
+
+  // The current `pending` segment hash for a branch, or undefined when it has no live
+  // draft.
+  draftPending(branch: string): string | undefined {
+    return this.refs.get(draftRefName(branch))
+  }
+
+  // The segments of a branch's pending chain, oldest first.
+  private draftSegments(branch: string): Array<Segment> {
+    const segments: Array<Segment> = []
+    let hash = this.draftPending(branch)
+    const seen = new Set<string>()
+    while (hash !== undefined && !seen.has(hash)) {
+      seen.add(hash)
+      const bytes = this.chunks.get(hash)
+      if (bytes === undefined) {
+        break
+      }
+      const segment = decodeSegment(bytes)
+      segments.push(segment)
+      hash = segment.previous
     }
-    if (this.validate(merged).blocked) {
-      return { ok: false, status: 'conflict', conflicts: 0 } // merge violates an invariant
+    return segments.reverse()
+  }
+
+  // Append a batch of edit operations to a branch's live draft. The batch is coalesced
+  // (five keystrokes into one field become one operation), written as one immutable
+  // content-addressed segment naming the current tip, and the `pending` pointer is
+  // advanced by compare-and-swap. Idempotent under retry: identical operations produce
+  // an identical segment hash. Returns the new pending hash.
+  appendDraft(branch: string, ops: Array<Op>): { pending: string } {
+    if (ops.length === 0) {
+      const current = this.draftPending(branch)
+      if (current !== undefined) {
+        return { pending: current }
+      }
     }
-    const root = writeDataset(merged, this.chunks)
-    const changes = diffDataset(localDS, merged)
-    const m = meta ?? { author: 'sync', time: 0, message: `merge ${branch} from remote` }
-    const commitHash = this.buildCommit(root, [localHead, remoteHead], m, [], changes)
-    this.moveRef(name, localHead, commitHash, 'pull', m.message, m.time)
-    return { ok: true, status: 'merged', commit: commitHash, transferred }
+    const name = draftRefName(branch)
+    for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt++) {
+      const current = this.refs.get(name)
+      // coalescing runs WITHIN a segment only, never back across the immutable chain
+      const segment: Segment = { previous: current, ops: coalesce(ops) }
+      const hash = this.chunks.put(encodeSegment(segment))
+      if (hash === current) {
+        return { pending: hash } // no-op append (empty coalesce over same tip)
+      }
+      if (this.refs.compareAndSwap(name, current, hash)) {
+        return { pending: hash }
+      }
+    }
+    throw new Error(`could not append draft segment on ${branch} after retries`)
+  }
+
+  // The dataset a branch actually shows an editor: the committed head with the pending
+  // operations folded on top. Cost is proportional to the pending operations, not the
+  // repository.
+  draftDataset(branch: string): Dataset {
+    return materialize({
+      committed: this.checkoutBranch(branch),
+      segments: this.draftSegments(branch),
+    })
+  }
+
+  // Publish (settle) a branch's live draft: fold the pending operations onto the
+  // committed head, write ONE commit for the whole burst, advance the head, and clear
+  // `pending`. Reuses the full commit path — validation, sealed-field routing, and the
+  // three-way-merge-on-race retry — so a publish that races another writer merges
+  // instead of failing. A publish with nothing pending is a no-op success.
+  publishDraft(branch: string, meta: CommitMeta): CommitResult {
+    const pending = this.draftPending(branch)
+    if (pending === undefined) {
+      const head = this.head(branch)
+      if (head === undefined) {
+        return { ok: false, diagnostics: [] }
+      }
+      return { ok: true, commit: head, diagnostics: [] }
+    }
+    const result = this.commit(branch, meta, this.draftDataset(branch))
+    if (result.ok) {
+      // clear the pending pointer, but only if no new edits arrived while we settled
+      // (which would have advanced it): those stay pending for the next publish, so a
+      // concurrent edit is never dropped
+      if (this.refs.get(draftRefName(branch)) === pending) {
+        this.refs.delete(draftRefName(branch))
+      }
+    }
+    return result
+  }
+
+  // Discard a branch's live draft without committing it: drop the pending pointer so
+  // the segments become unreachable and a later gc reclaims them.
+  discardDraft(branch: string): void {
+    const name = draftRefName(branch)
+    if (this.refs.get(name) !== undefined) {
+      this.refs.delete(name)
+    }
+  }
+
+  // Every segment hash reachable through a live-draft pending chain. These are held out
+  // of gc's reach (segments are loose objects, never referenced by a commit) so an
+  // in-flight draft is not swept, matching the "branch.pending is a gc root" rule.
+  private draftSegmentHashes(): Set<string> {
+    const hashes = new Set<string>()
+    for (const ref of this.refs.list()) {
+      if (!ref.startsWith(DRAFT_REF_PREFIX)) {
+        continue
+      }
+      let hash: string | undefined = this.refs.get(ref)
+      while (hash !== undefined && !hashes.has(hash)) {
+        hashes.add(hash)
+        const bytes = this.chunks.get(hash)
+        if (bytes === undefined) {
+          break
+        }
+        hash = decodeSegment(bytes).previous
+      }
+    }
+    return hashes
   }
 
   // The first-parent commit history of a branch, newest first.
@@ -688,6 +925,28 @@ export class Repository {
   }
 
   // Marks whose record differs between two commits.
+  // The commits `to` includes that `from` does not — the set folded into a batched
+  // projection advance from `from` to `to`. A projection records ALL of these as
+  // applied, so a read-your-writes query for any intermediate commit sees its effects
+  // as present rather than reporting "behind".
+  // Whether a commit belongs to THIS repository: reachable from one of its branch
+  // heads or tags. The chunk store may be shared across repositories (a flat
+  // content-addressed namespace), so "the commit exists in the store" does NOT mean
+  // "this repository may serve it" — a caller who learns another repository's commit
+  // hash could otherwise read it through a repository they can see. Reads that accept a
+  // client-supplied commit gate on this, not on mere presence.
+  containsCommit(commit: string): boolean {
+    return this.reachableCommits([
+      ...this.branchHeads(),
+      ...this.tagTargets(),
+    ]).has(commit)
+  }
+
+  commitsBetween(from: string, to: string): Array<string> {
+    const fromAncestors = this.ancestors(from)
+    return [...this.ancestors(to)].filter(c => !fromAncestors.has(c))
+  }
+
   diffCommits(a: string, b: string): Set<string> {
     return diffRoots(
       readCommit(a, this.chunks).root,
@@ -717,10 +976,32 @@ export class Repository {
     return heads
   }
 
-  // The garbage-collection roots: every branch head and every tag, so a tagged release
-  // is never collected even after its branch moves on.
+  // The garbage-collection roots: every branch head and every tag, plus the recent
+  // reflog targets, so a tagged release is never collected even after its branch moves
+  // on, AND a head that a reset / bad rebase / erasure moved off of stays recoverable
+  // via the reflog (which is exactly what resetBranch reads to recover). Only the most
+  // recent REFLOG_ROOT_LIMIT entries per ref are rooted, so genuinely old history is
+  // still reclaimable — the reflog is a bounded recovery window, not a retention leak.
+  // Erasure clears the reflog for the refs it rewrites, so erased content is not kept
+  // alive here.
   private retainedRoots(): Array<string> {
-    return [...this.branchHeads(), ...this.tagTargets()]
+    const roots = new Set<string>([...this.branchHeads(), ...this.tagTargets()])
+    const reflog = this.opts.reflog
+    if (reflog !== undefined) {
+      const refs = [
+        ...this.branches().map(refName),
+        ...this.tags().map(tagRefName),
+      ]
+      for (const ref of refs) {
+        for (const entry of reflog.entries(ref).slice(0, REFLOG_ROOT_LIMIT)) {
+          roots.add(entry.to)
+          if (entry.from !== undefined) {
+            roots.add(entry.from)
+          }
+        }
+      }
+    }
+    return [...roots]
   }
 
   // Every chunk reachable from the given roots (default: all branch heads and tags).
@@ -740,11 +1021,30 @@ export class Repository {
   // Reclaim chunks not reachable from any retained commit. Roots default to every
   // branch head; pass explicit roots to keep additional commits (tags, releases) alive.
   // Requires a chunk store that supports enumeration and deletion.
+  // Reclaim chunks not reachable from any retained commit, PLUS any chunk registered
+  // as pending by an in-flight fetch in this process, so a garbage collection on a
+  // timer cannot race a sync and delete just-fetched-but-not-yet-referenced chunks.
+  //
+  // This guards the single-process case (a worker that syncs and GCs concurrently).
+  // A GC in a DIFFERENT process sharing the same store is not covered by an in-memory
+  // pending set: that needs a store-level write-time grace window (keep chunks younger
+  // than a grace interval), the mechanism `code/gc/refcount.ts` describes and which a
+  // timestamped backend would supply. Tracked as remaining hardening.
   gc(opts: { roots?: Array<string> } = {}): GcReport {
     if (!isPrunable(this.chunks)) {
       throw new Error('chunk store does not support garbage collection (not prunable)')
     }
-    return sweep(this.chunks, this.reachableChunkHashes(opts.roots))
+    const reachable = this.reachableChunkHashes(opts.roots)
+    for (const hash of this.pendingChunks) {
+      reachable.add(hash)
+    }
+    // live-draft segments are loose objects never referenced by a commit, so they are
+    // rooted explicitly here (branch.pending is a gc root) or an in-flight draft would
+    // be swept out from under its editor
+    for (const hash of this.draftSegmentHashes()) {
+      reachable.add(hash)
+    }
+    return sweep(this.chunks, reachable)
   }
 
   // All commits reachable from the given heads.
@@ -885,7 +1185,22 @@ export class Repository {
       moved.push({ branch: name, from, to })
     }
     if (raced.length > 0) {
+      // roll back every ref already repointed, so a raced erasure leaves the repo
+      // EXACTLY as it was (all-or-nothing) — the docstring's "deleted nothing"
+      // guarantee was false before, since earlier refs stayed on rewritten history
+      // while a later one raced, splitting the repo across erased/unerased heads.
+      for (const m of moved) {
+        this.moveRef(m.branch, m.to, m.from, 'erase-rollback', 'erase aborted', 0)
+      }
       throw new ConcurrentErasureError(raced)
+    }
+
+    // The erasure succeeded. Clear the reflog line for each rewritten ref: its old
+    // entries name the ORIGINAL commits that still contain the erased content, and
+    // those hashes are GC roots (see retainedRoots), so leaving them would keep the
+    // erased content alive and recoverable — the opposite of an erasure.
+    for (const m of moved) {
+      this.opts.reflog?.clear(m.branch)
     }
 
     // now that no reachable commit references it, delete the off-history content

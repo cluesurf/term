@@ -11,10 +11,31 @@ import { normalizeDecimal } from '@term/base/code/canon/canonicalize'
 
 const IND = '  '
 
-function encodeScalar(value: Value): string {
+// A bare text value is emitted verbatim, but some strings would re-parse as
+// something else: one beginning with `@` reads as a typed marker (`@integer`,
+// `@list`, `@record`, ...), a lone `|` opens a multi-line block, and inside a
+// collection item ` ^` reads as a mark and `: ` as a key. Any of those is written
+// with an explicit `@text ` prefix, which the parser strips back to the literal
+// string, so every string round-trips. (Multi-line text keeps the readable `|`
+// block; this covers single-line values only.)
+function textNeedsTag(value: string, inItem: boolean): boolean {
+  if (value.startsWith('@') || value === '|') {
+    return true
+  }
+  if (inItem && (value.includes(' ^') || value.includes(': '))) {
+    return true
+  }
+  return false
+}
+
+function encodeText(value: string, inItem: boolean): string {
+  return textNeedsTag(value, inItem) ? `@text ${value}` : value
+}
+
+function encodeScalar(value: Value, inItem = false): string {
   switch (value.kind) {
     case 'text':
-      return value.value
+      return encodeText(value.value, inItem)
     case 'integer':
       return `@integer ${value.value.toString()}`
     case 'decimal':
@@ -74,7 +95,7 @@ function writeItem(it: Item, depth: number, out: Array<string>): void {
   const suffix = it.mark ? ` ^${it.mark}` : ''
   const keyPrefix = it.key !== undefined ? `${it.key}: ` : ''
   if (isScalar(it.value)) {
-    out.push(`${pad}- ${keyPrefix}${encodeScalar(it.value)}${suffix}`.trimEnd())
+    out.push(`${pad}- ${keyPrefix}${encodeScalar(it.value, true)}${suffix}`.trimEnd())
     return
   }
   if (it.value.kind === 'record') {

@@ -104,6 +104,16 @@ export function markToBytes(mark: Mark): Uint8Array {
   }
 
   const nibbles = new Array<number>(32)
+  // A FLAT (unhyphenated) mark made only of the letters the tone and hex alphabets
+  // share ({b,c,d,f}) is valid as BOTH, and the two readings give different bytes —
+  // so silently preferring tone would mis-decode a flat hex id to the wrong identity.
+  // Reject it; the caller must use the hyphenated form (which is unambiguous: tone is
+  // 8-8-8-8, hex is 8-4-4-4-12). Hyphenated marks never reach this branch ambiguously.
+  if (FLAT_TONE_PATTERN.test(mark) && FLAT_HEX_PATTERN.test(mark)) {
+    throw new Error(
+      `ambiguous flat mark valid as both tone and hex; use the hyphenated form: ${mark}`,
+    )
+  }
   // Prefer the tone reading, since that is the platform form. Fall back to hex
   // so ids minted as UUIDs are accepted unchanged.
   if (isToneMark(mark)) {

@@ -7,7 +7,8 @@ import type {
 } from '@term/base/code/base/type'
 import { valueEqual, recordEqual } from '@term/base/code/base/equal'
 import { canonicalizeValue } from '@term/base/code/canon/canonicalize'
-import type { Dataset } from '@term/base/code/diff/change'
+import type { Comments, Dataset } from '@term/base/code/diff/change'
+import { commentsEqual } from '@term/base/code/diff/diff'
 import { merge3Text } from '@term/base/code/text/merge'
 import { applyFieldPolicy, type FieldPolicyResolver } from '@term/base/code/merge/policy'
 import type { MergePolicy } from '@term/base/code/form/form'
@@ -20,12 +21,20 @@ import type { MergePolicy } from '@term/base/code/form/form'
 // See note/library/base/05-diff-and-merge.md and
 // note/library/base/design/merge-formal-spec.md.
 
+// What a conflict is about. 'field' is the default (a field value). The header
+// scopes carry the label / type text (or a null value when absent) as `a`/`b`.
+// 'record' is a whole-record delete-vs-edit: the surviving edited record travels
+// as a { kind: 'record' } value on the side that kept it, and { kind: 'null' } on
+// the side that deleted it, so a resolver can restore or delete deliberately.
+export type ConflictScope = 'field' | 'label' | 'type' | 'record'
+
 export type Conflict = {
   mark: Mark
   path: string
   base: Value | undefined
   a: Value
   b: Value
+  scope?: ConflictScope
 }
 
 export type MergeResult = {
@@ -101,6 +110,33 @@ function mergeCollection(
       continue
     }
 
+    const itA = aIx.get(id)
+    const itB = bIx.get(id)
+
+    // A base item that one side edited and the other removed is an edit-vs-delete
+    // conflict, exactly as at the record level — the add-wins membership formula
+    // alone would silently drop it (present=false) and lose the surviving edit.
+    // Keep the edited value provisionally and surface the conflict.
+    if (inBase && inA !== inB) {
+      const itBase = baseIx.get(id)
+      const survivor = itA ?? itB
+      if (
+        survivor &&
+        itBase &&
+        !valueEqual(survivor.value, itBase.value)
+      ) {
+        kept.set(id, survivor)
+        conflicts.push({
+          mark,
+          path: `${path}/${id}`,
+          base: itBase.value,
+          a: itA ? itA.value : { kind: 'null' },
+          b: itB ? itB.value : { kind: 'null' },
+        })
+        continue
+      }
+    }
+
     // add-wins membership for set, map, and list item presence
     const present =
       (inA && inB) || (inA && !inBase) || (inB && !inBase)
@@ -110,8 +146,6 @@ function mergeCollection(
 
     // if the item value differs between sides, merge it (maps and lists carry
     // values that can themselves change); for a plain set the value is the id
-    const itA = aIx.get(id)
-    const itB = bIx.get(id)
     if (itA && itB && !valueEqual(itA.value, itB.value)) {
       const itBase = baseIx.get(id)
       const fr = mergeField(mark, `${path}/${id}`, itBase?.value, itA.value, itB.value)
@@ -122,10 +156,36 @@ function mergeCollection(
     }
   }
 
-  // ordering: sets and logs are ordered canonically at serialization, so any
-  // deterministic array is fine; a list keeps a's order then appends b's new items
+  // Ordering. Sets and maps are re-sorted canonically at serialization, so their
+  // array order here does not affect the hash. But LIST and LOG order IS preserved
+  // canonically, so the merged order must be a deterministic function of the inputs
+  // or two replicas merging in opposite orders diverge.
   let items: Array<Item>
-  if (kind === 'list') {
+  if (kind === 'log') {
+    // grow-only log: keep the base entries in their original (chronological) order,
+    // then append the entries new to either side in a side-independent order (by
+    // item id), so merge(base,a,b) and merge(base,b,a) produce identical bytes and
+    // the log actually converges.
+    const ordered: Array<Item> = []
+    const seen = new Set<string>()
+    if (base) {
+      for (const it of base) {
+        const id = itemId(kind, it)
+        if (kept.has(id)) {
+          ordered.push(kept.get(id)!)
+          seen.add(id)
+        }
+      }
+    }
+    for (const id of [...kept.keys()].filter(id => !seen.has(id)).sort()) {
+      ordered.push(kept.get(id)!)
+    }
+    items = ordered
+  } else if (kind === 'list') {
+    // A list's order is authored, so the merge is intentionally NOT commutative:
+    // a's order is primary, then b's new items append. Two replicas that merge in
+    // opposite orders can differ here — this is the documented cost of a merge over
+    // an ordered sequence without a sequence CRDT (see live-drafts.md).
     const ordered: Array<Item> = []
     const seen = new Set<string>()
     for (const it of a) {
@@ -215,6 +275,67 @@ function present(value: Value | undefined): FieldResult {
   return { present: value !== undefined, value, conflicts: [] }
 }
 
+// A header value as a merge Value, so a header conflict rides the same Conflict
+// shape as a field: text when present, null when absent.
+function headerValue(text: string | undefined): Value {
+  return text === undefined ? { kind: 'null' } : { kind: 'text', value: text }
+}
+
+// Three-way merge one optional header string (label). Returns the merged value
+// and, when both sides changed it differently, a conflict under the given scope.
+function mergeHeaderText(
+  mark: Mark,
+  scope: 'label' | 'type',
+  base: string | undefined,
+  a: string | undefined,
+  b: string | undefined,
+): { value: string | undefined; conflict?: Conflict } {
+  if (a === b) {
+    return { value: a }
+  }
+  if (a === base) {
+    return { value: b }
+  }
+  if (b === base) {
+    return { value: a }
+  }
+  // both changed the header differently: keep a provisionally, surface it — a
+  // concurrent rename or retype is a real conflict, not a silent last-writer-wins
+  return {
+    value: a,
+    conflict: {
+      mark,
+      path: `@${scope}`,
+      scope,
+      base: headerValue(base),
+      a: headerValue(a),
+      b: headerValue(b),
+    },
+  }
+}
+
+// Three-way merge the comment map as a unit. Comments are authored annotations,
+// not queryable data, so a genuine concurrent divergence keeps `a` rather than
+// surfacing a field-style conflict (there is nothing to resolve through the field
+// machinery); the point of the three-way is to PRESERVE comments and to keep a
+// one-sided edit, which the old code dropped entirely.
+function mergeComments(
+  base: Comments | undefined,
+  a: Comments | undefined,
+  b: Comments | undefined,
+): Comments | undefined {
+  if (commentsEqual(a, b)) {
+    return a
+  }
+  if (commentsEqual(a, base)) {
+    return b
+  }
+  if (commentsEqual(b, base)) {
+    return a
+  }
+  return a
+}
+
 function mergeRecords(
   mark: Mark,
   base: RecordNode | undefined,
@@ -243,9 +364,32 @@ function mergeRecords(
       fields.set(name, fr.value!)
     }
   }
-  const record: RecordNode = { mark, type: a.type, fields }
-  if (a.label !== undefined) {
-    record.label = a.label
+
+  // header (type, label, comments) is hashed content and merges three-way like a
+  // field, so a one-sided rename / retype / comment edit is kept and a concurrent
+  // divergent one conflicts, instead of the old behaviour that always took a's
+  // and silently dropped b's header and every comment.
+  const typeMerge = mergeHeaderText(mark, 'type', base?.type, a.type, b.type)
+  if (typeMerge.conflict) {
+    conflicts.push(typeMerge.conflict)
+  }
+  const labelMerge = mergeHeaderText(mark, 'label', base?.label, a.label, b.label)
+  if (labelMerge.conflict) {
+    conflicts.push(labelMerge.conflict)
+  }
+  const comments = mergeComments(base?.comments, a.comments, b.comments)
+
+  const record: RecordNode = {
+    mark,
+    // type is required; a divergent retype keeps a's value provisionally
+    type: typeMerge.value ?? a.type,
+    fields,
+  }
+  if (labelMerge.value !== undefined) {
+    record.label = labelMerge.value
+  }
+  if (comments !== undefined && comments.size > 0) {
+    record.comments = comments
   }
   return { record, conflicts }
 }
@@ -276,13 +420,17 @@ export function mergeDataset(
       if (inBase && recordEqual(rBase!, rA)) {
         // b removed it and a left it unchanged: honor the removal
       } else if (inBase) {
-        // a edited, b removed: remove-edit conflict, keep a provisionally
+        // a edited, b removed: record delete-vs-edit conflict. Keep a's edited
+        // record provisionally and carry both dispositions so a resolver can
+        // restore (a) or delete (b) — the old conflict used a=b={null}, so the
+        // resolver could neither tell the sides apart nor actually delete.
         merged.set(mark, rA)
         conflicts.push({
           mark,
           path: '',
+          scope: 'record',
           base: undefined,
-          a: { kind: 'null' },
+          a: { kind: 'record', record: rA },
           b: { kind: 'null' },
         })
       } else {
@@ -293,13 +441,15 @@ export function mergeDataset(
       if (inBase && recordEqual(rBase!, rB)) {
         // a removed it, b unchanged: honor removal
       } else if (inBase) {
+        // b edited, a removed: symmetric record delete-vs-edit conflict
         merged.set(mark, rB)
         conflicts.push({
           mark,
           path: '',
+          scope: 'record',
           base: undefined,
           a: { kind: 'null' },
-          b: { kind: 'null' },
+          b: { kind: 'record', record: rB },
         })
       } else {
         merged.set(mark, rB)

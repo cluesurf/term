@@ -40,8 +40,13 @@ describe('bundle', () => {
     const bundle = createBundle(chunks, { 'branch/main': c1.commit })
     const someHash = Object.keys(bundle.chunks)[0]!
     bundle.chunks[someHash] = 'tampered'
-    const report = applyBundle(bundle, new MemoryChunkStore(), new MemoryRefStore())
+    const refs = new MemoryRefStore()
+    const report = applyBundle(bundle, new MemoryChunkStore(), refs)
     expect(report.rejected).toContain(someHash)
+    // the branch must NOT be advanced to a head whose subtree is now incomplete
+    expect(report.refs).toEqual([])
+    expect(report.refConflicts).toContain('branch/main')
+    expect(refs.get('branch/main')).toBeUndefined()
   })
 })
 

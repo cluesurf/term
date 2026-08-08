@@ -291,3 +291,39 @@ describe('base16 view', () => {
     expect(base16ToBytes(bytesToBase16(bytes))).toEqual(bytes)
   })
 })
+
+describe('canonical form hardening', () => {
+  it('rejects a record whose field keys collide after NFC, at encode time', () => {
+    // "e" + combining acute (NFD) and precomposed "é" (NFC) are distinct JS map
+    // keys but equal after NFC; encoding both would produce a chunk the decoder
+    // cannot read back, so encode must refuse.
+    const fields = new Map([
+      ['é', text('one')],
+      ['é', text('two')],
+    ])
+    const node = { type: 'w', fields }
+    expect(() => canonicalBytes(node)).toThrow(/NFC/)
+  })
+
+  it('rejects hostile deeply-nested CBOR instead of overflowing the stack', () => {
+    // a long run of array-of-length-1 heads (0x81) then a 0 — would recurse to the
+    // stack limit before the depth cap
+    const deep = new Uint8Array(5000).fill(0x81)
+    const bytes = new Uint8Array(deep.length + 1)
+    bytes.set(deep, 0)
+    bytes[deep.length] = 0x00
+    expect(() => decodeOne(bytes)).toThrow(/too deep/)
+  })
+})
+
+describe('mark alphabet ambiguity', () => {
+  it('rejects a flat mark valid as both tone and hex, rather than mis-decoding it', async () => {
+    const { markToBytes } = await import('@term/base/code/canon/mark')
+    // 32 chars all in {b,c,d,f}: a legal flat hex string AND a legal flat tone string,
+    // which decode to different bytes — must be rejected, not silently read as tone
+    const ambiguous = 'bcdf'.repeat(8)
+    expect(() => markToBytes(ambiguous)).toThrow(/ambiguous/)
+    // the hyphenated hex form is unambiguous and still works
+    expect(() => markToBytes('bcdfbcdf-bcdf-bcdf-bcdf-bcdfbcdfbcdf')).not.toThrow()
+  })
+})

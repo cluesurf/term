@@ -105,6 +105,17 @@ function absorb(list: Array<Op>, op: Op): Array<Op> {
     return [...list, op]
   }
 
+  // Record-header changes (relabel / retype / recomment) are not field edits and do not
+  // coalesce with them; they pass through unmerged. Live edits are field-level, so these
+  // are rare here, but the type system (and correctness) require handling them.
+  if (
+    change.type === 'record.relabel' ||
+    change.type === 'record.retype' ||
+    change.type === 'record.recomment'
+  ) {
+    return [...list, op]
+  }
+
   // A field change on a record created in this same window is not a separate edit: the
   // record was simply created that way. The creation keeps its own clock, so it does not
   // drift later than anything that references it.

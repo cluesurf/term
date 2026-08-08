@@ -174,6 +174,10 @@ function invert(change: Op['change']): Op['change'] {
         before: undefined,
         after: change.before,
       }
+    default:
+      // header changes (relabel / retype / recomment) are not part of this test's
+      // operation alphabet, which is field-level edits only
+      throw new Error(`invert not defined for ${change.type}`)
   }
 }
 

@@ -124,6 +124,7 @@ export class Projector {
   async apply(input: {
     commit: string
     changes: Array<Change>
+    covers?: Array<string>
   }): Promise<{ applied: boolean; writes: number }> {
     if (await this.hasApplied(input.commit)) {
       return { applied: false, writes: 0 }
@@ -133,12 +134,21 @@ export class Projector {
       writesFor({ mapping: this.mapping, changes: input.changes }),
     )
 
+    // every commit this change set folds becomes present at once, so ALL of them are
+    // logged as applied — a batched advance from `at` to `head` records every commit in
+    // between, not just `head`, so a client that committed an intermediate commit reads
+    // it as applied rather than "behind".
+    const covers = input.covers ?? [input.commit]
+
     await this.engine.transact(async tx => {
       for (const write of writes) {
         await tx.run(toStatement(write))
       }
 
-      await this.record(tx, input.commit)
+      for (const commit of covers) {
+        await this.recordLog(tx, commit)
+      }
+      await this.recordServing(tx, input.commit)
     })
 
     return { applied: true, writes: writes.length }
@@ -220,18 +230,29 @@ export class Projector {
    * against it would fold in clock skew between the projector and its engine, and would
    * differ between engines for no reason the caller could see.
    */
-  private async record(tx: Transaction, commit: string): Promise<void> {
+  // Record a commit as applied in the per-commit log (idempotent). Used for every
+  // commit an application makes present, so read-your-writes membership is exact.
+  private async recordLog(tx: Transaction, commit: string): Promise<void> {
     const applied = new Date(this.now()).toISOString()
-
     await tx.run({
       sql: `INSERT INTO ${quote(`${BOOKKEEPING_TABLE}_log`)} ("repository", "commit", "applied") VALUES ($1, $2, $3) ON CONFLICT ("repository", "commit") DO NOTHING`,
       params: [this.repository, commit, applied],
     })
+  }
 
+  // Record the commit the projection now serves (the target head), one row per
+  // repository. Distinct from the log, which records every applied commit.
+  private async recordServing(tx: Transaction, commit: string): Promise<void> {
+    const applied = new Date(this.now()).toISOString()
     await tx.run({
       sql: `INSERT INTO ${quote(BOOKKEEPING_TABLE)} ("repository", "commit", "applied") VALUES ($1, $2, $3) ON CONFLICT ("repository") DO UPDATE SET "commit" = EXCLUDED."commit", "applied" = EXCLUDED."applied"`,
       params: [this.repository, commit, applied],
     })
+  }
+
+  private async record(tx: Transaction, commit: string): Promise<void> {
+    await this.recordLog(tx, commit)
+    await this.recordServing(tx, commit)
   }
 
   /** What the projection knows about its own currency. */

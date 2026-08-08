@@ -81,3 +81,28 @@ describe('op delta sync (realtime)', () => {
     expect(caughtUp.size).toBe(3)
   })
 })
+
+describe('interrupted transfer safety (post-order)', () => {
+  it('an interrupted chunk apply heals on the next pull instead of poisoning', () => {
+    const source = new MemoryChunkStore()
+    const target = new MemoryChunkStore()
+    const ds = bigDataset(60)
+    const root = writeDataset(ds, source)
+
+    // pack the missing chunks (post-order: children before parents)
+    const chunks = packMissing(root, source, h => target.has(h))
+    expect(chunks.length).toBeGreaterThan(3)
+
+    // simulate a crash partway: apply only the first half, then stop
+    const half = Math.floor(chunks.length / 2)
+    applyChunks(chunks.slice(0, half), target)
+
+    // the root is NOT yet present (it is written last), so a re-pull re-sends the
+    // remainder rather than pruning the root's subtree as already-present
+    expect(target.has(root)).toBe(false)
+
+    pull(root, source, target)
+    const back = readDataset(root, target)
+    expect(back.size).toBe(60)
+  })
+})

@@ -60,9 +60,15 @@ function canonItems(
       .map(x => x.e)
   }
   if (order === 'map') {
+    // sort by key, then break ties by the item's full canonical string. Sorting
+    // by key alone leaned on the runtime's stable sort, so items with equal or
+    // missing keys kept INPUT order and two semantically equal map collections
+    // hashed differently (the CBOR record form already tie-breaks this way).
     return encoded
-      .map(e => ({ e, k: keyOf(e) }))
-      .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0))
+      .map(e => ({ e, k: keyOf(e), s: canonicalString(e) }))
+      .sort((a, b) =>
+        a.k < b.k ? -1 : a.k > b.k ? 1 : a.s < b.s ? -1 : a.s > b.s ? 1 : 0,
+      )
       .map(x => x.e)
   }
   return encoded
@@ -97,6 +103,16 @@ export function toCanonRecord(node: RecordNode): { [key: string]: Canon } {
   }
   if (node.label !== undefined) {
     out.label = node.label
+  }
+  // comments are part of the record's hash, so a changeset that stored a record
+  // without them (record.add / record.remove) would replay into a record whose
+  // hash differs from a full checkout
+  if (node.comments !== undefined && node.comments.size > 0) {
+    const comments: { [key: string]: Canon } = {}
+    for (const [key, lines] of node.comments) {
+      comments[key] = [...lines]
+    }
+    out.comments = comments
   }
   return out
 }
@@ -186,6 +202,16 @@ export function fromCanonRecord(canon: {
   }
   if (canon.label !== undefined) {
     node.label = canon.label as string
+  }
+  if (canon.comments !== undefined) {
+    const commentObj = canon.comments as { [key: string]: Canon }
+    const comments = new Map<string, Array<string>>()
+    for (const key of Object.keys(commentObj)) {
+      comments.set(key, (commentObj[key] as Array<Canon>).map(l => l as string))
+    }
+    if (comments.size > 0) {
+      node.comments = comments
+    }
   }
   return node
 }

@@ -130,6 +130,9 @@ export async function syncAsync(
   await projection.apply({
     commit: head,
     changes: commitChanges(repo, at, head),
+    // record every commit folded into this advance, so a read-your-writes query for
+    // an intermediate commit sees its effects as applied
+    covers: repo.commitsBetween(at, head),
   })
 
   return head

@@ -1,5 +1,21 @@
 import type { Value } from '@term/base/code/base/type'
-import { canonicalizeValue } from '@term/base/code/canon/canonicalize'
+import {
+  canonicalizeValue,
+  parseDecimal,
+} from '@term/base/code/canon/canonicalize'
+
+// Compare two decimal strings EXACTLY, by aligning their base-10 exponents and
+// comparing bigint mantissas. `Number()` would collapse a high-precision or
+// large-magnitude decimal to a double, so two 20-digit decimals differing in the
+// last digit compared equal and a range query silently dropped one.
+function compareDecimal(a: string, b: string): number {
+  const pa = parseDecimal(a)
+  const pb = parseDecimal(b)
+  const shared = Math.min(pa.exponent, pb.exponent)
+  const ma = pa.mantissa * 10n ** BigInt(pa.exponent - shared)
+  const mb = pb.mantissa * 10n ** BigInt(pb.exponent - shared)
+  return ma < mb ? -1 : ma > mb ? 1 : 0
+}
 
 // Ordering for query comparisons and ordered indexes. Same-kind scalars order
 // naturally (numbers numerically, text and dates lexically); anything else falls back
@@ -11,9 +27,7 @@ export function compareValues(a: Value, b: Value): number {
     return a.value < b.value ? -1 : a.value > b.value ? 1 : 0
   }
   if (a.kind === 'decimal' && b.kind === 'decimal') {
-    const x = Number(a.value)
-    const y = Number(b.value)
-    return x < y ? -1 : x > y ? 1 : 0
+    return compareDecimal(a.value, b.value)
   }
   if (a.kind === 'text' && b.kind === 'text') {
     return a.value < b.value ? -1 : a.value > b.value ? 1 : 0

@@ -9,6 +9,7 @@
 // See note/library/base/design/control-plane-and-projections.md.
 
 import http from 'http'
+import { once } from 'events'
 import type { Repository } from '@term/base/code/repo/repo'
 import type { RecordNode, Value } from '@term/base/code/base/type'
 import type { Change } from '@term/base/code/diff/change'
@@ -121,11 +122,32 @@ export function match(pattern: string, path: string): Params | undefined {
   return params
 }
 
+// The largest request body accepted. Every write body (a commit's changes, a state or
+// changes query) is small; a multi-gigabyte or unbounded chunked body is a
+// memory-exhaustion attack, so reading stops and the request is rejected past this.
+const MAX_BODY_BYTES = 8 * 1024 * 1024
+
+// Thrown by `body` when the request exceeds the size cap, so the handler answers 413
+// instead of buffering an unbounded body into memory.
+class BodyTooLargeError extends Error {}
+
 async function body(request: http.IncomingMessage): Promise<Record<string, unknown>> {
+  // reject up front on a declared oversize length
+  const declared = Number(request.headers['content-length'] ?? 0)
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    throw new BodyTooLargeError()
+  }
+
   const chunks: Array<Buffer> = []
+  let total = 0
 
   for await (const chunk of request) {
-    chunks.push(chunk as Buffer)
+    const buffer = chunk as Buffer
+    total += buffer.length
+    if (total > MAX_BODY_BYTES) {
+      throw new BodyTooLargeError()
+    }
+    chunks.push(buffer)
   }
 
   if (!chunks.length) {
@@ -142,12 +164,21 @@ async function body(request: http.IncomingMessage): Promise<Record<string, unkno
   }
 }
 
+// Session-dependent responses (what `open()` reveals varies by caller) must never be
+// cached by a shared CDN under their URL alone, or one caller's private repository would
+// be served to another from cache. Every response this API sends is private to its
+// session, so the cache header is set unconditionally.
+const PRIVATE_CACHE = 'private, no-store'
+
 function send(
   response: http.ServerResponse,
   status: number,
   payload: unknown,
 ): void {
-  response.writeHead(status, { 'content-type': 'application/json' })
+  response.writeHead(status, {
+    'content-type': 'application/json',
+    'cache-control': PRIVATE_CACHE,
+  })
   response.end(JSON.stringify(payload))
 }
 
@@ -235,8 +266,13 @@ export function serveApi(options: ServeOptions): http.Server {
             author: session.user,
             user: session.user,
             message: String(input.message ?? ''),
-            time: Number(input.time ?? Date.now()),
-            changes: (input.changes ?? []) as Array<Change>,
+            // the timestamp is stamped server-side, never taken from the client: an
+            // attacker-chosen (or NaN) commit time corrupts ordering and provenance in
+            // an append-only audit history
+            time: Date.now(),
+            // raw JSON changes; api.commit validates + normalizes them (fields to a Map,
+            // integers to bigint) and returns a 422 fault on anything malformed
+            changes: input.changes,
           })
 
           return finish(response, result)
@@ -297,18 +333,35 @@ export function serveApi(options: ServeOptions): http.Server {
           return send(response, 404, { fault: 'no-branch', branch: archive.branch! })
         }
 
-        const name = `${archive.repository}-${commit.slice(0, 12)}.zip`
+        // Validate the commit BEFORE writing the 200, and require it to belong to THIS
+        // repository (reachable from a ref), not merely exist in the possibly-shared
+        // store — otherwise a caller could download another repository's tree by hash.
+        // Validating here also avoids throwing AFTER the 200 headers were sent (which
+        // would truncate the body and double-write the header).
+        if (!repo.containsCommit(commit)) {
+          return send(response, 404, { fault: 'no-commit', commit })
+        }
+
+        // filename derived from the hash only (hex-safe) plus a sanitized repository
+        // slug, so a repository name containing a quote or CR/LF cannot break the header
+        const safeRepository = String(archive.repository).replace(/[^A-Za-z0-9._-]/g, '_')
+        const name = `${safeRepository}-${commit.slice(0, 12)}.zip`
 
         response.writeHead(200, {
           'content-type': 'application/zip',
           'content-disposition': `attachment; filename="${name}"`,
+          'cache-control': PRIVATE_CACHE,
         })
 
-        // written chunk by chunk, so a repository larger than memory still downloads
+        // written chunk by chunk, respecting backpressure, so a repository larger than
+        // memory still downloads instead of buffering the whole archive in the socket's
+        // write queue on a slow connection
         for (const chunk of encodeZip(
           exportArchive({ repo, commit, repository: archive.repository! }),
         )) {
-          response.write(chunk)
+          if (!response.write(chunk)) {
+            await once(response, 'drain')
+          }
         }
 
         return response.end()
@@ -349,10 +402,18 @@ export function serveApi(options: ServeOptions): http.Server {
 
       send(response, 404, { fault: 'not-found', what: 'route' })
     } catch (error) {
-      send(response, 500, {
-        fault: 'internal',
-        message: error instanceof Error ? error.message : String(error),
-      })
+      if (error instanceof BodyTooLargeError) {
+        return send(response, 413, { fault: 'too-large' })
+      }
+      // never return the raw internal error text: it can carry hashes, invariants, or
+      // store-driver details. Log it server-side, answer with a generic fault.
+      // eslint-disable-next-line no-console
+      console.error('base api internal error', error)
+      if (!response.headersSent) {
+        send(response, 500, { fault: 'internal' })
+      } else {
+        response.destroy()
+      }
     }
   })
 }
@@ -403,7 +464,6 @@ async function serveControl(input: {
 
     return answer(
       await control.createWorkspace(store, {
-        id: String(data.id ?? ''),
         slug: String(data.slug ?? ''),
         name: String(data.name ?? ''),
         owner: session.user,
@@ -435,7 +495,6 @@ async function serveControl(input: {
 
     return answer(
       await control.createRepository(store, {
-        id: String(data.id ?? ''),
         workspaceSlug: create.workspace!,
         slug: String(data.slug ?? ''),
         name: String(data.name ?? ''),

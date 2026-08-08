@@ -48,11 +48,19 @@ export type ApplyBundleReport = {
   rejected: Array<string>
   // refs set
   refs: Array<string>
+  // refs NOT set because a concurrent local move failed the compare-and-swap
+  refConflicts: Array<string>
 }
 
 // Apply a bundle into a store and ref store. Each chunk is verified by re-hashing; a
-// chunk whose bytes do not match its hash is rejected, not stored. Refs are set to the
-// bundle's hashes (forced), so a bundle can seed or advance a replica.
+// chunk whose bytes do not match its hash is rejected, not stored. Refs are advanced
+// to the bundle's hashes by compare-and-swap.
+//
+// A ref is advanced ONLY if the bundle applied cleanly. If any chunk was rejected the
+// bundle's tree is incomplete, so advancing a ref to a head whose subtree is missing a
+// chunk would create a corrupt branch (checkout would throw). And the compare-and-swap
+// result is honoured: a ref a concurrent writer moved is reported as a conflict, not
+// silently clobbered and reported as set.
 export function applyBundle(
   bundle: Bundle,
   chunks: ChunkStore,
@@ -69,9 +77,22 @@ export function applyBundle(
     stored++
   }
   const setRefs: Array<string> = []
-  for (const [name, hash] of Object.entries(bundle.refs)) {
-    refs.compareAndSwap(name, refs.get(name), hash)
-    setRefs.push(name)
+  const refConflicts: Array<string> = []
+  if (rejected.length === 0) {
+    for (const [name, hash] of Object.entries(bundle.refs)) {
+      const ok = refs.compareAndSwap(name, refs.get(name), hash)
+      if (ok) {
+        setRefs.push(name)
+      } else {
+        refConflicts.push(name)
+      }
+    }
+  } else {
+    // the bundle is incomplete: name every ref it wanted to move as unmet rather
+    // than pointing a branch at a head whose objects are not all present
+    for (const name of Object.keys(bundle.refs)) {
+      refConflicts.push(name)
+    }
   }
-  return { stored, rejected, refs: setRefs }
+  return { stored, rejected, refs: setRefs, refConflicts }
 }

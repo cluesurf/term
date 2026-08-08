@@ -54,9 +54,11 @@ export class MergeSession {
     }
   }
 
-  // The merged dataset with all recorded resolutions applied. A field is set to the
-  // chosen side's value (or a custom value); choosing a value that clears the field
-  // removes it.
+  // The merged dataset with all recorded resolutions applied. How a resolution
+  // is applied depends on the conflict's scope: a field value is set or removed,
+  // a header (label / type) is rewritten, and a record delete-vs-edit is either
+  // restored or deleted. The merge kept `ours` (a) provisionally, so a resolution
+  // only has to move away from that.
   result(): Dataset {
     let out = this.merged
     for (const [key, conflict] of this.open) {
@@ -70,6 +72,57 @@ export class MergeSession {
           : resolution.choose === 'ours'
             ? conflict.a
             : conflict.b
+
+      const scope = conflict.scope ?? 'field'
+
+      if (scope === 'record') {
+        // the provisional merged state holds the edited record; 'ours'/'theirs'
+        // pick the record (restore) or null (delete)
+        if (value.kind === 'record') {
+          out = applyChanges(out, [
+            { type: 'record.add', mark: conflict.mark, value: value.record },
+          ])
+        } else {
+          out = applyChanges(out, [
+            {
+              type: 'record.remove',
+              mark: conflict.mark,
+              before: out.get(conflict.mark)!,
+            },
+          ])
+        }
+        continue
+      }
+
+      if (scope === 'label') {
+        out = applyChanges(out, [
+          {
+            type: 'record.relabel',
+            mark: conflict.mark,
+            before: undefined,
+            after: value.kind === 'text' ? value.value : undefined,
+          },
+        ])
+        continue
+      }
+
+      if (scope === 'type') {
+        // type is required, so a resolution that clears it keeps the current type
+        if (value.kind === 'text') {
+          const current = out.get(conflict.mark)
+          out = applyChanges(out, [
+            {
+              type: 'record.retype',
+              mark: conflict.mark,
+              before: current?.type ?? value.value,
+              after: value.value,
+            },
+          ])
+        }
+        continue
+      }
+
+      // scope 'field'
       if (value.kind === 'null') {
         out = applyChanges(out, [
           { type: 'field.remove', mark: conflict.mark, field: conflict.path, before: conflict.a },

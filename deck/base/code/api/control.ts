@@ -13,6 +13,7 @@
 // See note/library/base/design/model.md and
 // note/library/base/design/control-plane-and-projections.md.
 
+import { randomUUID } from 'crypto'
 import type { Contract } from '@term/base/code/project/contract'
 
 export type Workspace = {
@@ -61,6 +62,11 @@ export type ControlStore = {
     slug: string
   }): Promise<RepositoryRow | undefined>
   putRepository(repository: RepositoryRow): Promise<void>
+  // Optional single-lookup: the workspace id that contains a repository. When present,
+  // an authorization check resolves the container in one indexed read instead of
+  // scanning every workspace's repositories (O(workspaces x repos) per check). A store
+  // without it falls back to the scan.
+  workspaceOfRepository?(repository: string): Promise<string | undefined>
 
   members(input: {
     resourceForm: Member['resourceForm']
@@ -132,7 +138,7 @@ export function checkSlug(slug: string): ControlFault | undefined {
  */
 export async function createWorkspace(
   store: ControlStore,
-  input: { id: string; slug: string; name: string; owner: string },
+  input: { slug: string; name: string; owner: string },
 ): Promise<Answer<Workspace>> {
   const bad = checkSlug(input.slug)
 
@@ -145,7 +151,10 @@ export async function createWorkspace(
   }
 
   const workspace: Workspace = {
-    id: input.id,
+    // the id is server-generated, never taken from the request: authorization is
+    // keyed on it, so a client-chosen id could collide with an existing resource's
+    // membership grants. The slug is the natural key the uniqueness check guards.
+    id: randomUUID(),
     slug: input.slug,
     name: input.name,
     owner: input.owner,
@@ -190,7 +199,6 @@ export async function readWorkspace(
 export async function createRepository(
   store: ControlStore,
   input: {
-    id: string
     workspaceSlug: string
     slug: string
     name: string
@@ -220,7 +228,8 @@ export async function createRepository(
   }
 
   const repository: RepositoryRow = {
-    id: input.id,
+    // server-generated id, never from the request (see createWorkspace)
+    id: randomUUID(),
     workspace: workspace.id,
     slug: input.slug,
     name: input.name,
@@ -289,7 +298,20 @@ export async function mayAct(
     return false
   }
 
-  // inherit from the containing workspace
+  // inherit from the containing workspace. Prefer the single indexed lookup when the
+  // store provides it; otherwise fall back to scanning workspaces for the container.
+  if (store.workspaceOfRepository) {
+    const workspaceId = await store.workspaceOfRepository(resource)
+    if (workspaceId === undefined) {
+      return false
+    }
+    const above = await store.members({
+      resourceForm: 'workspace',
+      resource: workspaceId,
+    })
+    return above.some(member => member.user === user)
+  }
+
   for (const workspace of await store.workspaces()) {
     const found = await store.repositories(workspace.id)
 

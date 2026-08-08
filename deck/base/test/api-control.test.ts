@@ -46,7 +46,15 @@ function store(): ControlStore {
 }
 
 const make = async (s: ControlStore) =>
-  createWorkspace(s, { id: 'w1', slug: 'term', name: 'Term', owner: 'lance' })
+  createWorkspace(s, { slug: 'term', name: 'Term', owner: 'lance' })
+
+// ids are server-generated now, so tests resolve them from the store by slug
+const wid = async (s: ControlStore): Promise<string> =>
+  (await s.workspaceBySlug('term'))!.id
+const rid = async (s: ControlStore): Promise<string> => {
+  const w = await s.workspaceBySlug('term')
+  return (await s.repositoryBySlug({ workspace: w!.id, slug: 'make' }))!.id
+}
 
 describe('checkSlug', () => {
   it('accepts a normal slug', () => expect(checkSlug('term-surf')).toBeUndefined())
@@ -67,13 +75,13 @@ describe('workspaces', () => {
     const s = store()
     const r = await make(s)
     expect(r.ok && r.value.slug).toBe('term')
-    expect(await mayAct(s, 'lance', 'workspace', 'w1')).toBe(true)
+    expect(await mayAct(s, 'lance', 'workspace', await wid(s))).toBe(true)
   })
 
   it('refuses a duplicate slug', async () => {
     const s = store()
     await make(s)
-    const again = await createWorkspace(s, { id: 'w2', slug: 'term', name: 'Other', owner: 'x' })
+    const again = await createWorkspace(s, { slug: 'term', name: 'Other', owner: 'x' })
     expect(again).toMatchObject({ ok: false, fault: 'taken' })
   })
 
@@ -89,7 +97,7 @@ describe('workspaces', () => {
 
 describe('repositories', () => {
   const repo = (s: ControlStore, user = 'lance') =>
-    createRepository(s, { id: 'r1', workspaceSlug: 'term', slug: 'make', name: 'Make', user })
+    createRepository(s, { workspaceSlug: 'term', slug: 'make', name: 'Make', user })
 
   it('creates one inside a workspace', async () => {
     const s = store(); await make(s)
@@ -105,14 +113,14 @@ describe('repositories', () => {
 
   it('refuses a duplicate slug within the workspace', async () => {
     const s = store(); await make(s); await repo(s)
-    const again = await createRepository(s, { id: 'r2', workspaceSlug: 'term', slug: 'make', name: 'X', user: 'lance' })
+    const again = await createRepository(s, { workspaceSlug: 'term', slug: 'make', name: 'X', user: 'lance' })
     expect(again).toMatchObject({ ok: false, fault: 'taken' })
   })
 
   it('resolves @workspace/repository', async () => {
     const s = store(); await make(s); await repo(s)
     const r = await resolve(s, { workspace: 'term', repository: 'make' })
-    expect(r.ok && r.value.repository.id).toBe('r1')
+    expect(r.ok && r.value.repository.id).toBe(await rid(s))
     expect(await resolve(s, { workspace: 'term', repository: 'ghost' }))
       .toMatchObject({ ok: false, what: 'repository' })
   })
@@ -128,53 +136,53 @@ describe('repositories', () => {
 describe('membership', () => {
   it('adds a member when the actor is one', async () => {
     const s = store(); await make(s)
-    const r = await addMember(s, { user: 'ada', resourceForm: 'workspace', resource: 'w1', role: 'writer', by: 'lance' })
+    const r = await addMember(s, { user: 'ada', resourceForm: 'workspace', resource: await wid(s), role: 'writer', by: 'lance' })
     expect(r.ok).toBe(true)
-    expect(await mayAct(s, 'ada', 'workspace', 'w1')).toBe(true)
+    expect(await mayAct(s, 'ada', 'workspace', await wid(s))).toBe(true)
   })
 
   it('refuses a stranger adding members', async () => {
     const s = store(); await make(s)
-    expect(await addMember(s, { user: 'x', resourceForm: 'workspace', resource: 'w1', role: 'writer', by: 'stranger' }))
+    expect(await addMember(s, { user: 'x', resourceForm: 'workspace', resource: await wid(s), role: 'writer', by: 'stranger' }))
       .toMatchObject({ ok: false, fault: 'forbidden' })
   })
 
   it('refuses to remove the last member, which would orphan the resource', async () => {
     const s = store(); await make(s)
-    const r = await removeMember(s, { user: 'lance', resourceForm: 'workspace', resource: 'w1', by: 'lance' })
+    const r = await removeMember(s, { user: 'lance', resourceForm: 'workspace', resource: await wid(s), by: 'lance' })
     expect(r).toMatchObject({ ok: false, fault: 'forbidden' })
-    expect(await mayAct(s, 'lance', 'workspace', 'w1')).toBe(true)
+    expect(await mayAct(s, 'lance', 'workspace', await wid(s))).toBe(true)
   })
 
   it('removes one when others remain', async () => {
     const s = store(); await make(s)
-    await addMember(s, { user: 'ada', resourceForm: 'workspace', resource: 'w1', role: 'writer', by: 'lance' })
-    const r = await removeMember(s, { user: 'ada', resourceForm: 'workspace', resource: 'w1', by: 'lance' })
+    await addMember(s, { user: 'ada', resourceForm: 'workspace', resource: await wid(s), role: 'writer', by: 'lance' })
+    const r = await removeMember(s, { user: 'ada', resourceForm: 'workspace', resource: await wid(s), by: 'lance' })
     expect(r.ok).toBe(true)
-    expect(await mayAct(s, 'ada', 'workspace', 'w1')).toBe(false)
+    expect(await mayAct(s, 'ada', 'workspace', await wid(s))).toBe(false)
   })
 
   it('scopes to a repository without granting the workspace', async () => {
     const s = store(); await make(s)
-    await createRepository(s, { id: 'r1', workspaceSlug: 'term', slug: 'make', name: 'Make', user: 'lance' })
-    await addMember(s, { user: 'ada', resourceForm: 'repository', resource: 'r1', role: 'writer', by: 'lance' })
-    expect(await mayAct(s, 'ada', 'repository', 'r1')).toBe(true)
-    expect(await mayAct(s, 'ada', 'workspace', 'w1')).toBe(false)
+    await createRepository(s, { workspaceSlug: 'term', slug: 'make', name: 'Make', user: 'lance' })
+    await addMember(s, { user: 'ada', resourceForm: 'repository', resource: await rid(s), role: 'writer', by: 'lance' })
+    expect(await mayAct(s, 'ada', 'repository', await rid(s))).toBe(true)
+    expect(await mayAct(s, 'ada', 'workspace', await wid(s))).toBe(false)
   })
 })
 
 describe('projection database', () => {
   it('records and reads where a workspace projects', async () => {
     const s = store(); await make(s)
-    const r = await setDatabase(s, { workspace: 'w1', handle: 'shared-01', tier: 'shared', by: 'lance' })
+    const r = await setDatabase(s, { workspace: await wid(s), handle: 'shared-01', tier: 'shared', by: 'lance' })
     expect(r.ok).toBe(true)
-    const got = await getDatabase(s, 'w1')
+    const got = await getDatabase(s, await wid(s))
     expect(got.ok && got.value?.handle).toBe('shared-01')
   })
 
   it('refuses a non-member', async () => {
     const s = store(); await make(s)
-    expect(await setDatabase(s, { workspace: 'w1', handle: 'x', tier: 'shared', by: 'stranger' }))
+    expect(await setDatabase(s, { workspace: await wid(s), handle: 'x', tier: 'shared', by: 'stranger' }))
       .toMatchObject({ ok: false, fault: 'forbidden' })
   })
 })

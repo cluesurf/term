@@ -139,3 +139,54 @@ describe('prolly-tree store', () => {
     expect(diffRoots(root, root, store).size).toBe(0)
   })
 })
+
+// A store whose every chunk hash ends in a content-defined boundary byte, which
+// makes `chunk` produce all-singleton groups so a tree level never shrinks. Before
+// the no-progress guard in writeTree, this wedged the build in an infinite loop.
+class BoundaryStore {
+  private map = new Map<string, string>()
+  private byBytes = new Map<string, string>()
+  private n = 0
+  put(bytes: string): string {
+    const existing = this.byBytes.get(bytes)
+    if (existing !== undefined) {
+      return existing
+    }
+    // 40 hex chars ending in "00": (0x00 & 0x3) === 0, so isBoundary is always true
+    const hash = (this.n++).toString(16).padStart(38, '0') + '00'
+    this.map.set(hash, bytes)
+    this.byBytes.set(bytes, hash)
+    return hash
+  }
+  get(hash: string): string | undefined {
+    return this.map.get(hash)
+  }
+  has(hash: string): boolean {
+    return this.map.has(hash)
+  }
+  size(): number {
+    return this.map.size
+  }
+}
+
+describe('writeTree termination', () => {
+  it('terminates and round-trips when every entry is a chunk boundary', () => {
+    const store = new BoundaryStore()
+    const records: Array<RecordNode> = []
+    for (let i = 0; i < 12; i++) {
+      records.push(
+        record({ type: 'word', mark: markOf(i), fields: { n: integer(BigInt(i)) } }),
+      )
+    }
+    const dataset = datasetOf(records)
+
+    // would hang forever before the fix
+    const root = writeDataset(dataset, store)
+    const back = readDataset(root, store)
+
+    expect(back.size).toBe(dataset.size)
+    for (const [mark, r] of dataset) {
+      expect(canonicalizeRecord(back.get(mark)!)).toBe(canonicalizeRecord(r))
+    }
+  })
+})

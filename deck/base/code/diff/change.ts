@@ -7,6 +7,10 @@ import type { Mark, RecordNode, Value } from '@term/base/code/base/type'
 //
 // See note/library/base/04-commit-and-patch.md.
 
+// Authored comments on a record, keyed by the field they sit above (the empty
+// key holds the record-level comments). Part of the record's hash.
+export type Comments = Map<string, Array<string>>
+
 export type Change =
   | { type: 'record.add'; mark: Mark; value: RecordNode }
   | { type: 'record.remove'; mark: Mark; before: RecordNode }
@@ -22,6 +26,24 @@ export type Change =
       mark: Mark
       field: string
       before: Value
+    }
+  // The record header (label, type, comments) is content and part of the hash,
+  // so a change to any of it must be representable, or a pure rename / retype /
+  // comment edit produces an empty diff and cannot be committed, and an
+  // incremental projection drifts from a full checkout. Each header field is its
+  // own change so blame reads "relabeled" / "retyped" rather than a blob.
+  | {
+      type: 'record.relabel'
+      mark: Mark
+      before: string | undefined
+      after: string | undefined
+    }
+  | { type: 'record.retype'; mark: Mark; before: string; after: string }
+  | {
+      type: 'record.recomment'
+      mark: Mark
+      before: Comments | undefined
+      after: Comments | undefined
     }
 
 // A dataset is a set of marked records, addressed by mark. This is the unit that

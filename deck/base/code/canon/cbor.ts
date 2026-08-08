@@ -52,27 +52,42 @@ export const CANONICAL_FORM_VERSION = 1
 // Writing
 // ---------------------------------------------------------------------------
 
+// A growable byte buffer. Backed by ONE Uint8Array that doubles as needed, so a head
+// byte, a boolean, or a null costs a single array-store rather than a fresh
+// one-element Uint8Array and a later concat. Encoding runs on every field-set and
+// commit (it is the hash input), so this is the hottest allocation path in the engine.
 export class ByteWriter {
-  private parts: Array<Uint8Array> = []
-  private size = 0
+  private buffer = new Uint8Array(64)
+  private length = 0
+
+  private ensure(extra: number): void {
+    const needed = this.length + extra
+    if (needed <= this.buffer.length) {
+      return
+    }
+    let capacity = this.buffer.length * 2
+    while (capacity < needed) {
+      capacity *= 2
+    }
+    const grown = new Uint8Array(capacity)
+    grown.set(this.buffer.subarray(0, this.length))
+    this.buffer = grown
+  }
 
   push(bytes: Uint8Array): void {
-    this.parts.push(bytes)
-    this.size += bytes.length
+    this.ensure(bytes.length)
+    this.buffer.set(bytes, this.length)
+    this.length += bytes.length
   }
 
   byte(value: number): void {
-    this.push(Uint8Array.from([value & 0xff]))
+    this.ensure(1)
+    this.buffer[this.length++] = value & 0xff
   }
 
   done(): Uint8Array {
-    const out = new Uint8Array(this.size)
-    let at = 0
-    for (const part of this.parts) {
-      out.set(part, at)
-      at += part.length
-    }
-    return out
+    // a copy sized to exactly the written bytes, so callers own an independent array
+    return this.buffer.slice(0, this.length)
   }
 }
 
@@ -209,6 +224,16 @@ export function writeMap(
     return { key: keyOut.done(), sort: keySortBytes(key), writeValue }
   })
   encoded.sort((a, b) => compareBytes(a.sort, b.sort))
+  // Two keys that are distinct JS strings but equal after NFC (e.g. "é"
+  // and "é") encode to identical key bytes. The decoder's canonical-order
+  // guard would then reject the chunk as "keys out of order", making a record
+  // that stored fine permanently unreadable. Reject it here at encode time
+  // instead, symmetric with the decoder, so the collision never reaches storage.
+  for (let i = 1; i < encoded.length; i++) {
+    if (compareBytes(encoded[i - 1]!.sort, encoded[i]!.sort) === 0) {
+      throw new Error('duplicate map key after NFC normalization')
+    }
+  }
   writeHead(out, MAJOR_MAP, BigInt(encoded.length))
   for (const entry of encoded) {
     out.push(entry.key)
@@ -317,7 +342,16 @@ function assertMinimalHead(info: number, argument: bigint): void {
   }
 }
 
-export function readValue(reader: ByteReader): CborValue {
+// The deepest a canonical value may nest on decode. A real record graph nests a
+// handful of levels; this is far above that and far below the call-stack limit, so
+// hostile CBOR (a long run of array/map/tag heads from an untrusted peer or a CDN
+// read) is rejected with a catchable error instead of overflowing the stack.
+const MAX_DECODE_DEPTH = 1024
+
+export function readValue(reader: ByteReader, depth = 0): CborValue {
+  if (depth > MAX_DECODE_DEPTH) {
+    throw new Error('canonical value nests too deep')
+  }
   const head = reader.takeByte()
   const major = head >> 5
   const info = head & 0x1f
@@ -356,7 +390,7 @@ export function readValue(reader: ByteReader): CborValue {
     case MAJOR_ARRAY: {
       const items: Array<CborValue> = []
       for (let i = 0n; i < argument; i++) {
-        items.push(readValue(reader))
+        items.push(readValue(reader, depth + 1))
       }
       return { kind: 'array', value: items }
     }
@@ -365,7 +399,7 @@ export function readValue(reader: ByteReader): CborValue {
       let previous: Uint8Array | undefined
       for (let i = 0n; i < argument; i++) {
         const keyStart = reader.offset
-        const key = readValue(reader)
+        const key = readValue(reader, depth + 1)
         if (key.kind !== 'text') {
           throw new Error('canonical map keys must be text strings')
         }
@@ -377,7 +411,7 @@ export function readValue(reader: ByteReader): CborValue {
           )
         }
         previous = keyBytes
-        entries.push([key.value, readValue(reader)])
+        entries.push([key.value, readValue(reader, depth + 1)])
       }
       return { kind: 'map', value: entries }
     }
@@ -385,7 +419,7 @@ export function readValue(reader: ByteReader): CborValue {
       return {
         kind: 'tag',
         tag: Number(argument),
-        value: readValue(reader),
+        value: readValue(reader, depth + 1),
       }
     default:
       throw new Error(`unsupported major type ${major}`)

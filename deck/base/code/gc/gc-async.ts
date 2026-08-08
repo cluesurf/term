@@ -4,6 +4,22 @@ import { chunkKey, R2ChunkStore, type AsyncChunkStore } from '@term/base/code/st
 import type { ObjectStore } from '@term/base/code/store/object-store'
 import { sweepObjectStore, type GcReport } from '@term/base/code/gc/gc'
 
+// Thrown when a chunk that the reachability walk followed a reference into cannot be
+// read back. Under an eventually-consistent object store (R2), or a transient network
+// error, a live chunk can momentarily read as absent. Continuing would omit its whole
+// subtree from the reachable set and then sweep those live chunks — unrecoverable data
+// loss. So the walk aborts and NOTHING is deleted; the next GC run retries once the
+// store is consistent again.
+export class GcAbortedError extends Error {
+  constructor(hash: string) {
+    super(
+      `garbage collection aborted: reachable chunk ${hash} is unavailable; ` +
+        `deleting nothing to avoid removing live data`,
+    )
+    this.name = 'GcAbortedError'
+  }
+}
+
 // Asynchronous garbage collection for an object-store-only deployment (an R2-backed
 // store with no local sync mirror to drive the walk). It reads commit and tree chunks
 // over the network to compute the reachable set, then sweeps the object store. This is
@@ -28,7 +44,8 @@ async function collectTreeAsync(
     into.add(hash)
     const bytes = await store.get(hash)
     if (bytes === undefined) {
-      continue
+      // a node we followed a reference into is unreadable: abort, do not prune
+      throw new GcAbortedError(hash)
     }
     const { leaf, refs } = treeNodeRefs(bytes)
     if (leaf) {
@@ -60,7 +77,8 @@ export async function reachableChunksAsync(
     reachable.add(hash)
     const bytes = await store.get(hash)
     if (bytes === undefined) {
-      continue
+      // a commit reachable from a root is unreadable: abort, do not prune
+      throw new GcAbortedError(hash)
     }
     const commit = parseCommit(bytes)
     await collectTreeAsync(commit.root, store, reachable)

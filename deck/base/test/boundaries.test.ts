@@ -144,3 +144,42 @@ describe('reversible redaction', () => {
     expect(isRedacted(unredact(dataset, ticket!, vault).get(A)!)).toBe(true)
   })
 })
+
+describe('commit routes sealed fields off-history (write path)', () => {
+  const role = roleBase([
+    form('person', [
+      property('name', { base: 'text' }, {}),
+      property('ssn', { base: 'text' }, { constraints: [hold('seal')] }),
+    ]),
+  ])
+  const PERSON = '33333333-3333-4333-8333-333333333333'
+  const SSN = 'SSN-999-88-7777'
+  const meta = (t: number, m: string) => ({ author: 'a', time: t, message: m })
+
+  it('never writes sealed plaintext into a committed chunk', () => {
+    const chunks = new MemoryChunkStore()
+    const off = new MemoryOffHistoryStore()
+    const repo = new Repository(chunks, new MemoryRefStore(), role, { offHistory: off })
+
+    const c = repo.commit(
+      'main',
+      meta(1, 'c1'),
+      datasetOf([
+        record({ type: 'person', mark: PERSON, fields: { name: text('Ada'), ssn: text(SSN) } }),
+      ]),
+    )
+    expect(c.ok).toBe(true)
+
+    // the secret is NOT in any committed chunk
+    expect(chunks.keys().every(k => !chunks.get(k)!.includes(SSN))).toBe(true)
+
+    // the checked-out record carries an off-history reference, not the plaintext,
+    // and the reference resolves to the secret in the side store
+    const rec = repo.checkoutBranch('main').get(PERSON)!
+    expect(rec.fields.get('name')).toEqual(text('Ada'))
+    const sealed = rec.fields.get('ssn')!
+    const id = offHistoryId(sealed)
+    expect(id).toBeDefined()
+    expect(off.get(id!)).toContain(SSN)
+  })
+})

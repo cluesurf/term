@@ -57,3 +57,6 @@ export type PushResult =
 export type PullResult =
   | { ok: true; status: 'up-to-date' | 'fast-forward' | 'merged'; commit?: string; transferred: number }
   | { ok: false; status: 'conflict'; conflicts: number }
+  // the local branch moved between reading its head and advancing it, so the pull
+  // did not land; the caller retries
+  | { ok: false; status: 'raced'; transferred: number }

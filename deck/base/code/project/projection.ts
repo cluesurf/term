@@ -31,6 +31,11 @@ export interface AsyncProjection {
   apply(input: {
     commit: string
     changes: Array<Change>
+    // every commit this application makes present. When a batched advance folds several
+    // commits into one change set, ALL of them are recorded as applied, so a
+    // read-your-writes query for an intermediate commit is not reported as behind.
+    // Defaults to just `commit`.
+    covers?: Array<string>
   }): Promise<{ applied: boolean }>
   serving(): Promise<string | undefined>
   rebuild(input: { commit: string; dataset: Dataset }): Promise<unknown>

@@ -18,6 +18,7 @@
 import type { Change } from '@term/base/code/diff/change'
 import { emptyDataset } from '@term/base/code/diff/change'
 import { applyChanges } from '@term/base/code/patch/patch'
+import { parseChanges, WireError } from '@term/base/code/api/wire'
 import type { Conflict } from '@term/base/code/merge/merge'
 import type { Diagnostic } from '@term/base/code/form/validate'
 import type { RecordNode } from '@term/base/code/base/type'
@@ -41,6 +42,9 @@ export type Fault =
   | { fault: 'no-branch'; branch: string }
   | { fault: 'no-commit'; commit: string }
   | { fault: 'no-record'; mark: string }
+  // the request body was malformed (e.g. a change that is not a well-formed change).
+  // A client error, distinct from a semantically-refused write.
+  | { fault: 'invalid'; message: string }
   // a write the repository refused. Carries BOTH diagnostics and conflicts because they
   // mean different things to a caller: a diagnostic is "your data is wrong", a conflict
   // is "someone else changed this too", and only the second is worth retrying.
@@ -167,13 +171,12 @@ export function history(
   })
 }
 
+// Whether a client-supplied commit may be served by this repository: it must be
+// REACHABLE from one of the repository's own refs, not merely present in the (possibly
+// shared) chunk store. Otherwise a caller could read another repository's commit by its
+// hash through a repository they can see.
 function has(repo: Repository, commit: string): boolean {
-  try {
-    repo.readCommit(commit)
-    return true
-  } catch {
-    return false
-  }
+  return repo.containsCommit(commit)
 }
 
 // The route table, so a server binds paths once and cannot drift from the operations.
@@ -198,8 +201,9 @@ export function statusOf(result: { ok: boolean } & Partial<Fault>): number {
     return 200
   }
 
-  // A rejected write is the caller's problem to fix, not a missing resource.
-  return result.fault === 'rejected' ? 422 : 404
+  // A rejected write or a malformed body is the caller's problem to fix (422), not a
+  // missing resource (404).
+  return result.fault === 'rejected' || result.fault === 'invalid' ? 422 : 404
 }
 
 // ── the write side ───────────────────────────────────────────────────────────
@@ -222,13 +226,25 @@ export function commit(
     author: string
     message: string
     time: number
-    changes: Array<Change>
+    // the raw JSON `changes` from the request; parsed and validated here so a
+    // malformed body is a clean client error, not a 500 from deep in applyChanges
+    changes: unknown
     user?: string
   },
 ): Result<{ commit: string; diagnostics: Array<Diagnostic> }> {
+  let changes: Array<Change>
+  try {
+    changes = parseChanges(input.changes)
+  } catch (error) {
+    return fail({
+      fault: 'invalid',
+      message: error instanceof WireError ? error.message : 'malformed changes',
+    })
+  }
+
   const base = repo.head(input.branch)
   const current = base ? repo.checkout(base) : emptyDataset()
-  const next = applyChanges(current, input.changes)
+  const next = applyChanges(current, changes)
 
   const result = repo.commit(
     input.branch,

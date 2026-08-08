@@ -24,6 +24,9 @@ export interface RefLog {
   record(entry: RefLogEntry): void
   // entries for one ref, newest first
   entries(ref: string): Array<RefLogEntry>
+  // forget a ref's entire history. Used by erasure: the rewritten ref's old entries
+  // name the original (pre-erasure) commits, which must not survive the erasure.
+  clear(ref: string): void
 }
 
 export class MemoryRefLog implements RefLog {
@@ -40,5 +43,9 @@ export class MemoryRefLog implements RefLog {
 
   entries(ref: string): Array<RefLogEntry> {
     return [...(this.log.get(ref) ?? [])].reverse()
+  }
+
+  clear(ref: string): void {
+    this.log.delete(ref)
   }
 }
