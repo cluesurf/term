@@ -1354,7 +1354,12 @@ export function mill(tree: RootNode, file: string): MillResult {
         }
       })
 
-    return { form: 'record', name: kind ?? '', fields, span }
+    // function-free when no bound value is a function literal (a closure), so the record is pure data the base bridge
+    // can lift into a `RecordNode`. A value that resolves to a function through a variable is caught later, at the
+    // form level, by the form's own `functionFree` flag.
+    const functionFree = fields.every(f => f.value.form !== 'closure')
+
+    return { form: 'record', name: kind ?? '', fields, span, functionFree }
   }
 
   // a collection item: either a bare value or a `save item, <value>` wrapper
@@ -2982,8 +2987,13 @@ export function mill(tree: RootNode, file: string): MillResult {
 
     const linkFields = (
       g: GroupNode,
-    ): { name: string; type: Type; nick?: string }[] => {
-      const out: { name: string; type: Type; nick?: string }[] = []
+    ): { name: string; type: Type; nick?: string; identity?: boolean }[] => {
+      const out: {
+        name: string
+        type: Type
+        nick?: string
+        identity?: boolean
+      }[] = []
 
       // the field names in scope, so a value-index argument in one field's type can reference a sibling field (the
       // recursive `link rest, like vec / head a / head / read count` refers to the field `count`).
@@ -3125,8 +3135,20 @@ export function mill(tree: RootNode, file: string): MillResult {
           }
         }
 
+        // `note id` marks this field as the record's identity: the field whose value becomes the durable mark. It is
+        // metadata, so it reads through `note` (a sibling of the field name under the `link`), the same as `note
+        // private`. The base bridge maps an identity field to a `mark` constraint, which is what makes re-compiling
+        // the same source idempotent.
+        const identity = inner.some(
+          c =>
+            c.kind === 'group' &&
+            headName(c) === 'note' &&
+            rest(c)[0]?.kind === 'group' &&
+            headName(rest(c)[0] as GroupNode) === 'id',
+        )
+
         if (fieldName) {
-          out.push({ name: fieldName, type, nick })
+          out.push({ name: fieldName, type, nick, identity })
         }
       }
 
@@ -3237,6 +3259,13 @@ export function mill(tree: RootNode, file: string): MillResult {
           headName(rest(child)[0] as GroupNode) === 'prop',
       )
 
+    // a form is function-free when no field's type is a function (on the form itself or on any variant), so its
+    // instances are pure data. The base bridge lifts only function-free forms into records; a form with a
+    // function-typed field is code and stays in the source.
+    const functionFree =
+      fields.every(f => f.type.kind !== 'function') &&
+      variants.every(v => v.fields.every(f => f.type.kind !== 'function'))
+
     return {
       form: 'record-type',
       name,
@@ -3246,6 +3275,7 @@ export function mill(tree: RootNode, file: string): MillResult {
       variants,
       alias,
       truncation,
+      functionFree,
       span,
     }
   }

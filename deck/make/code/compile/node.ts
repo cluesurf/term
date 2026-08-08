@@ -130,6 +130,9 @@ export type Expression =
       fields: { name: string; value: Expression }[]
       span: Span
       type?: Type
+      // true when no bound value is a function literal (a closure), so the constructed record is pure data and
+      // serialises to JSON. The base bridge lifts a function-free record into a `RecordNode`. Computed at mill time.
+      functionFree?: boolean
     }
   | {
       form: 'member'
@@ -275,10 +278,12 @@ export type Statement =
       // VALUE indices: relevant value parameters of the type former (`head n, like natural-number`), making this an
       // indexed family `T <params> <indices>`. Each variant supplies its output index in `indexValues`.
       indices?: { name: string; type: Type }[]
-      fields: { name: string; type: Type; nick?: string }[]
+      // `identity` marks the field declared with `note id`: the field whose value is the record's durable identity
+      // (its mark), so the base bridge maps it to a `mark` constraint and re-compiling the same source is idempotent.
+      fields: { name: string; type: Type; nick?: string; identity?: boolean }[]
       variants: {
         name: string
-        fields: { name: string; type: Type; nick?: string }[]
+        fields: { name: string; type: Type; nick?: string; identity?: boolean }[]
         // the output index expressions of this constructor (one per declared index, in order): `vnil` outputs `zero`,
         // `vcons` outputs `succ count`. Present only on an indexed family; the constructor's result type is
         // `T <params> <indexValues>`.
@@ -290,6 +295,9 @@ export type Statement =
       // a PROPOSITIONAL TRUNCATION (hProp): declared with `mark prop`, any two inhabitants are equal (proof
       // irrelevance). Its constructors are kept rigid (no reduction) and registered so `convert` equates them.
       truncation?: boolean
+      // true when no field's type is a function, so instances are pure data (a base `RecordNode` / JSON). The base
+      // bridge lifts only function-free forms into records; a form with a function-typed field stays code.
+      functionFree?: boolean
       span: Span
     }
   // a trait: a named set of method signatures (mask)

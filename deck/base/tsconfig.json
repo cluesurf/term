@@ -19,7 +19,8 @@
     "typeRoots": ["node_modules/@types"],
     "paths": {
       "@/*": ["./code/*"],
-      "@term/base/*": ["./*"]
+      "@term/base/*": ["./*"],
+      "@term/make/*": ["../make/*"]
     }
   },
   "include": ["code/**/*.ts", "test/**/*.ts"],
