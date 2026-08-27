@@ -13,7 +13,7 @@ set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ZONE="$(cd "$HERE/.." && pwd)"
-TERM_HOST="$ZONE/../term/host/line.js"
+TERM_HOST="$ZONE/../../host/line.js"
 FIX="$HERE/fixture"
 WORK="$(mktemp -d)"
 PROJ="$WORK/proj"
@@ -21,7 +21,7 @@ SBOX="$WORK/home"
 mkdir -p "$PROJ" "$SBOX"
 cp "$FIX/manifest.zone.tree" "$PROJ/.zone.tree"
 
-cleanup(){ rm -rf "$WORK" "$ZONE/.base/term"; }
+cleanup(){ rm -rf "$WORK"; }
 trap cleanup EXIT
 
 export PATH="$FIX/bin:$PATH"

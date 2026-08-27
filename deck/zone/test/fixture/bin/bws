@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Fake Bitwarden Secrets Manager for the zone e2e. Returns canned
+# secrets so the whole pipeline runs without a real Bitwarden account.
+case "$1 $2" in
+  "--version"*) echo "bws 1.0.0-fake"; exit 0 ;;
+  "project get") exit 0 ;;
+  "secret list")
+    cat <<'JSON'
+[{"key":"openai-api-key","value":"sk-fake-123"},
+ {"key":"database-url","value":"postgres://fake/db"},
+ {"key":"sentry-dsn","value":"https://fake@sentry"}]
+JSON
+    exit 0 ;;
+esac
+echo "fake bws: unhandled $*" >&2; exit 1

@@ -1,0 +1,6 @@
+zone <1>
+name talk
+tier development
+  hold bitwarden
+  bind cluesurf-talk-development
+  need nonexistent-secret

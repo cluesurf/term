@@ -1,0 +1,12 @@
+# Shelve this directory out of the build and test walk.
+#
+# It holds sample `.zone.tree` manifests that the end to end harness
+# copies into a temporary project. They are FIXTURES, not zone package
+# source, so `term make` must not compile them and `term test` must not
+# run them.
+#
+# The marker shelves this directory and everything under it, and nothing
+# else. `test/base.tree` beside it is real and stays in the walk. See
+# the draft marker rules in `deck/term/CLAUDE.md`.
+
+note draft

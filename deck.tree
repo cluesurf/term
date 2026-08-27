@@ -24,6 +24,7 @@ deck @term/term
   deck ./deck/seed
   deck ./deck/site
   deck ./deck/test
+  deck ./deck/zone
   link @term/bind, code <0.0.x>
   task ./task
   # the task loader
