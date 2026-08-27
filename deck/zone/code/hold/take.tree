@@ -1,0 +1,126 @@
+load @term/seed/code/maybe
+  find maybe
+  find unwrap
+
+
+# Narrowing a project down to what a repository declared.
+#
+# A manifest lists names. The provider returns a project. This is the step
+# between them, and it is where a missing requirement becomes a refusal
+# rather than a half-populated command.
+
+load ../base
+  find hold
+  find need
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/list
+  find list
+  find push
+  find find
+
+load @term/seed/code/boolean
+  find boolean
+
+load ../tool/base
+  find equal
+
+# The declared names that the project did not supply. A `want` that is
+# absent is fine. A `need` that is absent is not.
+task miss-need
+  take have, like list
+  take want, like list
+  like list
+
+  save gone
+    make list
+
+  walk list, read want
+    hook next
+      take item, name one
+      save got
+        call find
+          bind list, read have
+          bind test
+            task same
+              take it, like hold
+              like boolean
+              send back
+                call equal
+                  read it/name
+                  read one/name
+      fork case, read got
+        case none
+          fork test
+            hook test
+              read one/must
+            hook hold
+              call push
+                bind list, read gone
+                bind item, read one
+        case some
+          turn next
+
+  send back
+    read gone
+
+# Keep only what was asked for. A project may hold far more than one
+# repository needs, and passing the rest into a child process would widen
+# the blast radius for no reason.
+# The environment-variable form of a declared name: kebab-case becomes
+# SCREAMING_SNAKE (`database-url` -> `DATABASE_URL`), the same rule the
+# Term config system uses so a name means the same thing in both.
+task env-name
+  take from, like text
+  like text
+  send back
+    call to-upper-case
+      call replace-all
+        read from
+        text <->
+        text <_>
+
+task take-need
+  take have, like list
+  take want, like list
+  like list
+
+  save kept
+    make list
+
+  walk list, read want
+    hook next
+      take item, name one
+      save got
+        call find
+          bind list, read have
+          bind test
+            task same
+              take it, like hold
+              like boolean
+              send back
+                call equal
+                  read it/name
+                  read one/name
+      fork case, read got
+        case some
+          save got-in
+            call unwrap
+              read got
+          call push
+            bind list, read kept
+            bind item
+              make hold
+                bind name
+                  call env-name
+                    read got-in/name
+                bind body, read got-in/body
+        case none
+          turn next
+
+  send back
+    read kept

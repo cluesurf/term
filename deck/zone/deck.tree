@@ -1,0 +1,15 @@
+
+deck @term/zone
+  head <Secret access: bind a machine, hold its credential in the system keystore, call commands with temporary secrets>
+  text <The Term Secret Access Library>
+  mark <0.0.1>
+  bear ./code
+  test ./test
+  line ./code/line
+  make <security>
+  make <secrets>
+  make <configuration>
+  make <library>
+  cite <Lance Pollard>, base <lp@elk.fm>
+  term <Apache 2.0>
+  link @term/seed, mark <0.0.x>

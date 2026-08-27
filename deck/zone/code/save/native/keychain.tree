@@ -1,0 +1,82 @@
+
+# macOS Keychain, reached through the `security` tool.
+#
+# The credential is passed to `security` on stdin, never as an argument.
+# `security add-generic-password -w` with no value makes the tool read the
+# secret itself, so it never appears in the process table or in shell
+# history. Reading uses `-w`, which prints only the password, so nothing
+# else has to be parsed off the output.
+#
+# Only the node target is bound. A machine running the zone console is a
+# developer machine, and the other targets have their own stores.
+
+load ../../base
+  find seat
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+
+# Whether this machine has the Keychain tool at all.
+bind do-keychain-open
+  like boolean
+  case node
+    text <(function () { try { require("node:child_process").execFileSync("security", ["help"], { stdio: "ignore" }); return process.platform === "darwin" } catch (e) { return false } })()>
+
+# File a credential under service `zone` and account `<host>:<tier>`.
+# `-U` updates in place when one is already there.
+bind do-keychain-save
+  take spot, like seat
+  take body, like text
+  case node
+    text <require("node:child_process").execFileSync("security", ["add-generic-password", "-U", "-s", "zone", "-a", $spot.name, "-w"], { input: $body, stdio: ["pipe", "ignore", "ignore"] })>
+
+# Read it back. A miss exits non-zero, which becomes `none` rather than a
+# thrown error, because "no credential yet" is an ordinary state.
+bind do-keychain-read
+  take spot, like seat
+  like maybe
+  case node
+    text <(function () { try { return { form: "some", value: require("node:child_process").execFileSync("security", ["find-generic-password", "-s", "zone", "-a", $spot.name, "-w"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trimEnd() } } catch (e) { return { form: "none" } } })()>
+
+# Drop the local copy. A miss is not an error: tossing something already
+# gone is the state the caller wanted.
+bind do-keychain-toss
+  take spot, like seat
+  case node
+    text <(function () { try { require("node:child_process").execFileSync("security", ["delete-generic-password", "-s", "zone", "-a", $spot.name], { stdio: "ignore" }) } catch (e) {} })()>
+
+# Exportable wrapper: a native `bind` is file-local.
+task keychain-open
+  like boolean
+  send back
+    call do-keychain-open
+
+# Exportable wrapper: a native `bind` is file-local.
+task keychain-save
+  take spot, like seat
+  take body, like text
+  call do-keychain-save
+    bind spot, read spot
+    bind body, read body
+
+# Exportable wrapper: a native `bind` is file-local.
+task keychain-read
+  take spot, like seat
+  like maybe
+  send back
+    call do-keychain-read
+      bind spot, read spot
+
+# Exportable wrapper: a native `bind` is file-local.
+task keychain-toss
+  take spot, like seat
+  call do-keychain-toss
+    bind spot, read spot

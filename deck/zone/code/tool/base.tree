@@ -1,0 +1,173 @@
+
+# The small helpers zone needs that the stdlib does not supply.
+#
+# Text joining, console output, filesystem paths, and a `.tree` reader.
+# Each is a native bind because the stdlib equivalents either do not exist
+# or, in the case of `path/join`, are currently broken upstream
+# (`deck/seed/code/path.tree` calls an undefined `do-join`).
+#
+# Nothing here renders a credential. `show-line` is for configuration and
+# status only.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+
+load ../base
+  find bond
+  find deck
+
+# Join text pieces with no separator.
+bind join-text
+  take list, like list
+  like text
+  case node
+    text <$list.join("")>
+
+# Join text pieces with a newline between each, for multi-line output.
+bind join-line
+  take list, like list
+  like text
+  case node
+    text <$list.join("\\n")>
+
+# Write one line to stdout. Configuration and status only.
+bind show-line
+  take text, like text
+  case node
+    text <process.stdout.write($text + "\\n")>
+
+# Stop with a message on stderr and a non-zero exit.
+bind halt
+  take text, like text
+  case node
+    text <(function () { process.stderr.write($text + "\\n"); process.exit(1) })()>
+
+# The directory the command was run from.
+bind here
+  like text
+  case node
+    text <process.cwd()>
+
+# The directory part of a path.
+bind dir-of
+  take path, like text
+  like text
+  case node
+    text <require("node:path").dirname($path)>
+
+# Create a directory and any missing parents.
+bind make-dir
+  take path, like text
+  case node
+    text <require("node:fs").mkdirSync($path, { recursive: true })>
+
+# Remove a file. A missing file is not an error.
+bind drop-file
+  take path, like text
+  case node
+    text <(function () { try { require("node:fs").unlinkSync($path) } catch (e) {} })()>
+
+# Read a whole file as text.
+bind read-file
+  take path, like text
+  like text
+  case node
+    text <require("node:fs").readFileSync($path, "utf8")>
+
+# Write text to a file.
+bind save-text
+  take path, like text
+  take text, like text
+  case node
+    text <require("node:fs").writeFileSync($path, $text)>
+
+# Whether a path exists.
+bind have-file
+  take path, like text
+  like boolean
+  case node
+    text <require("node:fs").existsSync($path)>
+
+# Two texts are the same.
+bind equal
+  take a, like text
+  take b, like text
+  like boolean
+  case node
+    text <$a === $b>
+
+bind not-equal
+  take a, like text
+  take b, like text
+  like boolean
+  case node
+    text <$a !== $b>
+
+# The first number exceeds the second.
+bind more
+  take a, like number
+  take b, like number
+  like boolean
+  case node
+    text <$a \> $b>
+
+# Whether a maybe holds something.
+bind some
+  head t
+  take it
+    like maybe
+      head t
+  like boolean
+  case node
+    text <$it && $it.form === "some">
+
+# Render a present-or-absent fact.
+bind yes-no
+  take it, like boolean
+  like text
+  case node
+    text <$it ? "yes" : "no">
+
+# Print one check result from `zone test`.
+bind mark-test
+  take name, like text
+  take good, like boolean
+  case node
+    text <process.stdout.write(($good ? "  ok    " : "  FAIL  ") + $name + "\\n")>
+
+# Explain which declared secrets the project did not supply.
+bind show-miss
+  take gone, like list
+  take bind, like text
+  take tier, like text
+  like text
+  case node
+    text <"Unable to call.\\n\\nMissing:\\n" + $gone.map(function (g) { return "  " + g.name }).join("\\n") + "\\n\\nProject:\\n  " + $bind + "\\n\\nTier:\\n  " + $tier>
+
+# Read a machine binding out of `.tree` text.
+#
+# The format is the manifest shape used across Term: a head word, its
+# argument, and two-space indentation for nesting. Parsed here rather than
+# through the compiler's own reader because a config file is a handful of
+# flat keys and pulling the whole parser in for that would be heavy.
+bind mine-bond
+  take text, like text
+  like bond
+  case node
+    text <(function () { var out = { mind: "", host: "", base: "development", hold: "bitwarden", save: "keychain", name: "zone", seat: [] }; var tier = null; $text.split("\\n").forEach(function (raw) { var line = raw.trim(); if (!line || line.charAt(0) === "#") { return } var deep = raw.length - raw.replace(/^ +/, "").length; var at = line.indexOf(" "); var head = at === -1 ? line : line.slice(0, at); var body = at === -1 ? "" : line.slice(at + 1).trim(); if (deep === 0) { tier = null; if (head === "mind") { out.mind = body } else if (head === "host") { out.host = body } else if (head === "base") { out.base = body } else if (head === "hold") { out.hold = body } else if (head === "save") { out.save = body } else if (head === "tier") { tier = { name: body, bind: "" }; out.seat.push(tier) } } else if (tier && head === "bind") { tier.bind = body } }); return out })()>
+
+# Read a repository declaration out of `.tree` text.
+bind mine-deck
+  take text, like text
+  like deck
+  case node
+    text <(function () { var out = { name: "", tier: [] }; var at = null; $text.split("\\n").forEach(function (raw) { var line = raw.trim(); if (!line || line.charAt(0) === "#") { return } var deep = raw.length - raw.replace(/^ +/, "").length; var i = line.indexOf(" "); var head = i === -1 ? line : line.slice(0, i); var body = i === -1 ? "" : line.slice(i + 1).trim(); if (deep === 0) { at = null; if (head === "name") { out.name = body } else if (head === "tier") { at = { name: body, hold: "bitwarden", bind: "", need: [] }; out.tier.push(at) } } else if (at) { if (head === "hold") { at.hold = body } else if (head === "bind") { at.bind = body } else if (head === "need") { at.need.push({ name: body, must: true }) } else if (head === "want") { at.need.push({ name: body, must: false }) } } }); return out })()>

@@ -1,0 +1,99 @@
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+  find unwrap
+
+
+# `zone toss` — unbind this machine.
+#
+# Removes every local code and the binding itself. It does not revoke
+# anything remotely, and the closing message says so plainly, because a
+# retired laptop is only safe once its tokens are dead in the provider too.
+#
+# The confirmation asks for the machine name typed back. A machine name is
+# specific enough that you cannot give it by reflex, and it makes the
+# transcript of a mistake unambiguous afterwards.
+
+load ../config/machine
+  find read-bond
+  find spot-bond
+  find berth
+
+load ../save/base
+  find pick
+  find burn
+
+load ../tool/ask
+  find word
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+load @term/seed/code/file
+  find drop-file
+
+load ../tool/base
+  find join-text
+  find join-line
+  find show-line
+  find drop-file
+
+task toss
+  note async
+  save bond
+    call read-bond
+  fork test
+    hook test
+      call is-none
+        read bond
+    hook hold
+      send back
+        call show-line
+          text <This machine is not bound. Nothing to toss.>
+  save bond-in
+    call unwrap
+      read bond
+
+  call word
+    wait true
+    bind text
+      call join-line
+        make list
+          text <This will remove the binding and every locally stored code.>
+          text <>
+          call join-text
+            make list
+              text <  machine  >
+              read bond-in/host
+          text <>
+          call join-text
+            make list
+              text <Type "toss >
+              read bond-in/host
+              text <" to continue: >
+    bind word
+      call join-text
+        make list
+          text <toss >
+          read bond-in/host
+
+  save kind
+    call pick
+
+  walk read bond-in/seat
+    call burn
+      bind kind, read kind
+      bind spot
+        call berth
+          bind bond, read bond-in
+          bind tier, read item/name
+
+  call drop-file
+    call spot-bond
+
+  call show-line
+    call join-line
+      make list
+        text <Tossed the local binding.>
+        text <Remote access tokens may still need revoking in the provider.>

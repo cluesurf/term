@@ -1,0 +1,57 @@
+
+# Asking, without leaking.
+#
+# Three ways to ask, matched to how much damage a wrong answer does:
+#
+#   hide   read a value with the terminal echo off
+#   sure   a yes or no
+#   word   type a word back, for the dangerous ones
+#
+# `hide` is the one that matters. A credential typed with echo on sits in
+# the scrollback, and scrollback ends up in screenshots and screen shares.
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/boolean
+  find boolean
+
+# Read a value with echo off. The prompt goes to stderr so that piping the
+# command's output somewhere does not swallow it.
+bind hide
+  take text, like text
+  like text
+  case node
+    text <(async () =\> { const rl = require("node:readline"); const i = rl.createInterface({ input: process.stdin, output: process.stderr, terminal: true }); const was = i._writeToOutput; i._writeToOutput = () =\> {}; process.stderr.write($text); const out = await new Promise(r =\> i.question("", r)); i._writeToOutput = was; i.close(); process.stderr.write("\\n"); return out.trim() })()>
+
+# A yes or no, defaulting to no. Anything but an explicit yes stops the
+# command, because the safe answer should be the one you get by hitting
+# return.
+bind sure
+  take text, like text
+  case node
+    text <(async () =\> { const rl = require("node:readline"); const i = rl.createInterface({ input: process.stdin, output: process.stderr }); const a = await new Promise(r =\> i.question($text + " [y/N] ", r)); i.close(); if (a.trim().toLowerCase() !== "y") { process.stderr.write("Stopped.\\n"); process.exit(1) } })()>
+
+# Type the word back. Used where a mistake is expensive, so the answer
+# cannot be given by reflex.
+bind word
+  take text, like text
+  take word, like text
+  case node
+    text <(async () =\> { const rl = require("node:readline"); const i = rl.createInterface({ input: process.stdin, output: process.stderr }); const a = await new Promise(r =\> i.question($text, r)); i.close(); if (a.trim() !== $word) { process.stderr.write("Stopped.\\n"); process.exit(1) } })()>
+
+# How much ceremony a tier demands. Development asks nothing, so ordinary
+# work stays fast. Production asks for its own name typed back, so nobody
+# runs against it by scrolling up in their shell history.
+task gate
+  take tier, like text
+  fork case, read tier
+    case production
+      call word
+        bind text, text <Calling with production secrets. Type "production" to continue: >
+        bind word, read tier
+    case staging
+      call sure
+        bind text, text <Calling with staging secrets. Continue?>

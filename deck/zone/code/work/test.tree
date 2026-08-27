@@ -1,0 +1,166 @@
+
+# `zone test` — check the setup without using it.
+#
+# Every check answers a question someone would otherwise answer by running
+# the real command and reading a confusing failure. Nothing here reads a
+# secret value: access is proven by opening the project, not by fetching
+# from it.
+
+load @term/seed/code/maybe
+  find is-some
+  find is-none
+  find unwrap
+load @term/seed/code/boolean
+  find and
+load ../config/machine
+  find read-bond
+  find berth
+  find pick-tier
+
+load ../config/manifest
+  find read-deck
+  find stake
+
+load ../save/base
+  find pick
+  find read-code
+
+load ../hold/base
+  find good
+  find read-hold
+
+load ../hold/take
+  find miss-need
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+load @term/seed/code/list
+  find is-empty
+
+load ../tool/base
+  find here
+  find not-equal
+  find show-line
+  find mark-test
+
+task vet
+  note async
+  take tier, like text
+
+  save bond
+    call read-bond
+  call mark-test
+    bind name, text <binding>
+    bind good
+      call is-some
+        read bond
+  # an unbound machine has nothing further to check: every later
+  # probe would only cascade from this one failure
+  fork test
+    hook test
+      call is-none
+        read bond
+    hook hold
+      send back
+        call show-line
+          text <Not bound. Run `zone bind`, then test again.>
+  save bond-in
+    call unwrap
+      read bond
+
+  save tier-in
+    call pick-tier
+      bind bond, read bond-in
+      bind tier, read tier
+
+  save kind
+    call pick
+  call mark-test
+    bind name, text <store>
+    bind good
+      call not-equal
+        read kind
+        text <prompt>
+
+  save spot
+    call berth
+      bind bond, read bond-in
+      bind tier, read tier-in
+  save pass
+    call read-code
+      wait true
+      bind kind, read kind
+      bind spot, read spot
+  call mark-test
+    bind name, text <code>
+    bind good
+      call is-some
+        read pass
+
+  save deck
+    call read-deck
+      bind dir
+        call here
+  call mark-test
+    bind name, text <declaration>
+    bind good
+      call is-some
+        read deck
+
+  # The remaining checks read the project's real names, so a missing
+  # requirement surfaces here rather than halfway through a deploy.
+  # They need BOTH a stored credential and a repo manifest, so when
+  # either is absent the checks above have already reported it and
+  # these are skipped rather than crashing on an empty value.
+  fork test
+    hook test
+      call and
+        call is-some
+          read pass
+        call is-some
+          read deck
+    hook hold
+      save pass-in
+        call unwrap
+          read pass
+      save deck-in
+        call unwrap
+          read deck
+      save deal
+        call stake
+          bind deck, read deck-in
+          bind tier, read tier-in
+      fork test
+        hook test
+          call is-none
+            read deal
+        hook hold
+          send back
+            call show-line
+              text <  ....  no binding for this tier in .zone.tree>
+      save claim-in
+        call unwrap
+          read deal
+      call mark-test
+        bind name, text <access>
+        bind good
+          call good
+            bind kind, read bond-in/hold
+            bind body, read pass-in/body
+            bind bind, read claim-in/bind
+      save all
+        call read-hold
+          bind kind, read claim-in/hold
+          bind body, read pass-in/body
+          bind bind, read claim-in/bind
+      save gone
+        call miss-need
+          bind have, read all
+          bind want, read claim-in/need
+      call mark-test
+        bind name, text <secrets>
+        bind good
+          call is-empty
+            read gone

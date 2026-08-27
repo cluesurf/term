@@ -1,0 +1,40 @@
+
+# Keeping values out of output.
+#
+# There is no partial masking here on purpose. A fragment like
+# `sk-proj-...abcd` still identifies the service and often the account, and
+# once a masked form is printable someone will paste it into an issue. The
+# only rendering of a secret this library offers is whether one exists.
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/boolean
+  find boolean
+
+# How a present-or-absent fact is rendered everywhere in the console.
+task yes-no
+  take it, like boolean
+  like text
+  fork case, read it
+    case true
+      send back
+        text <yes>
+    case false
+      send back
+        text <no>
+
+# Strip anything that looks like a stored value out of a message before it
+# is shown. Used on provider errors, which have been known to echo the
+# credential they were given back in the failure text.
+task wipe
+  take from, like text
+  take body, like text
+  like text
+  send back
+    call replace-all
+      read from
+      read body
+      text <[hidden]>

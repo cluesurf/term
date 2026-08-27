@@ -1,0 +1,147 @@
+
+# The machine binding, at `~/.config/zone/zone.tree`.
+#
+# This file says who this machine is, which provider it talks to, which
+# store holds the bootstrap credential, and what each tier maps to. It holds
+# no credential and no secret, so it is safe to read, copy, and inspect.
+#
+#   zone <1>
+#
+#   mind lance
+#   host lance-macbook
+#   base development
+#
+#   hold bitwarden
+#     team cluesurf
+#
+#   save keychain
+#
+#   tier development
+#     bind cluesurf-development
+#   tier staging
+#     bind cluesurf-staging
+#   tier production
+#     bind cluesurf-production
+
+load ../base
+  find bond
+  find tier
+  find seat
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/path
+  find join
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/list
+  find list
+  find push
+  find find
+
+load @term/seed/code/maybe
+  find maybe
+
+load @term/seed/code/file
+  find read
+  find write
+  find test
+
+load ../tool/base
+  find join-text
+  find equal
+  find mine-bond
+
+# Where the binding lives. One fixed place, so a machine has one answer
+# about what it is bound to.
+bind spot-bond
+  like text
+  case node
+    text <require("node:path").join(require("node:os").homedir(), ".config", "zone", "zone.tree")>
+
+# Whether this machine is bound at all.
+task have
+  like boolean
+  send back
+    call test
+      call spot-bond
+
+# Read the binding. A machine that is not bound is an ordinary state, not an
+# error, because `zone show` has to be able to say so.
+task read-bond
+  note async
+  like maybe
+    head bond
+  save at
+    call spot-bond
+  fork case
+    call test
+      read at
+    case false
+      send back
+        make none
+  save text
+    call read
+      read at
+  send back
+    make some
+      bind value
+        call mine-bond
+          read text
+
+# The seat a tier files its credential under. Keyed by host as well as tier,
+# so two machines bound to the same tier keep separate credentials and one
+# can be revoked without touching the other.
+# The tier a command should use: the one named, or the machine's
+# default when the name is empty. Every command that takes an optional
+# tier resolves it through here, so "no flag means the bound default"
+# behaves identically across the whole console.
+task pick-tier
+  take bond, like bond
+  take tier, like text
+  like text
+  fork test
+    hook test
+      call equal
+        bind a, read tier
+        bind b, text <>
+    hook hold
+      send back
+        read bond/base
+    hook miss
+      send back
+        read tier
+
+task berth
+  take bond, like bond
+  take tier, like text
+  like seat
+  send back
+    make seat
+      bind tier, read tier
+      bind name
+        call join-text
+          make list
+            read bond/host
+            text <:>
+            read tier
+
+# The project a tier points at.
+task bind-tier
+  take bond, like bond
+  take tier, like text
+  like maybe
+    head tier
+  send back
+    call find
+      bind list, read bond/seat
+      bind test
+        task same
+          take it, like tier
+          like boolean
+          send back
+            call equal
+              read it/name
+              read tier

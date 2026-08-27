@@ -1,0 +1,106 @@
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+  find unwrap
+
+
+# `zone show` — what this machine is bound to.
+#
+# It prints configuration and never a value, not even a masked fragment. A
+# prefix like `sk-proj-...` still says which service the key belongs to and
+# which account minted it, so masking is not as safe as it looks.
+
+load ../base
+  find bond
+
+load ../config/machine
+  find read-bond
+  find berth
+  find bind-tier
+  find pick-tier
+
+
+load ../save/base
+  find pick
+  find keep
+  find get
+
+load ../hold/base
+  find good
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+load @term/seed/code/boolean
+  find boolean
+
+load ../tool/base
+  find join-text
+  find show-line
+  find yes-no
+
+task show
+  note async
+  take tier, like text
+
+  save bond
+    call read-bond
+  fork test
+    hook test
+      call is-none
+        read bond
+    hook hold
+      send back
+        call show-line
+          text <Not bound. Run `zone bind` to configure this machine.>
+  save bond-in
+    call unwrap
+      read bond
+
+  save tier-in
+    call pick-tier
+      bind bond, read bond-in
+      bind tier, read tier
+
+  save kind
+    call pick
+  save spot
+    call berth
+      bind bond, read bond-in
+      bind tier, read tier-in
+
+  call show-line
+    call join-text
+      make list
+        text <mind    >
+        read bond-in/mind
+  call show-line
+    call join-text
+      make list
+        text <host    >
+        read bond-in/host
+  call show-line
+    call join-text
+      make list
+        text <tier    >
+        read tier-in
+  call show-line
+    call join-text
+      make list
+        text <hold    >
+        read bond-in/hold
+  call show-line
+    call join-text
+      make list
+        text <save    >
+        read kind
+  call show-line
+    call join-text
+      make list
+        text <code    >
+        call yes-no
+          call keep
+            wait true
+            bind kind, read kind
+            bind spot, read spot

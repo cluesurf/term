@@ -1,0 +1,164 @@
+
+# Tests for the parts of zone that are pure logic.
+#
+# The store, the provider, and the child-process call all reach outside the
+# program, so they are exercised by hand rather than here. What is tested
+# is everything that decides WHAT happens: the environment-variable naming
+# rule, which declared secrets are missing, and which of a project's
+# secrets get passed on.
+#
+# Run with: term test
+
+load @term/seed/code/list
+  find list
+  find push
+  find size
+
+load ../code/base
+  find need
+  find hold
+
+load ../code/call/base
+  find name
+
+load ../code/hold/take
+  find miss-need
+  find take-need
+
+# A declared name becomes the environment variable a program expects.
+# This is the same rule the Term config system uses, so a name means the
+# same thing in both places.
+test name-rule
+  want hold
+    call is-equal
+      call name
+        text <database-url>
+      text <DATABASE_URL>
+
+test name-one-word
+  want hold
+    call is-equal
+      call name
+        text <port>
+      text <PORT>
+
+test name-many-words
+  want hold
+    call is-equal
+      call name
+        text <my-app-secret-key>
+      text <MY_APP_SECRET_KEY>
+
+# A required declaration the project did not supply is reported.
+test miss-required
+  save held
+    make list
+
+  save asked
+    make list
+  call push
+    bind list, read asked
+    make need
+      bind name, text <database-url>
+      bind must, true
+
+  save gone
+    call miss-need
+      bind have, read held
+      bind want, read asked
+
+  want hold
+    call is-equal
+      call size
+        read gone
+      code 1
+
+# An optional declaration the project did not supply is not reported. This
+# is the difference between `need` and `want` in a manifest.
+test miss-optional
+  save held
+    make list
+
+  save asked
+    make list
+  call push
+    bind list, read asked
+    make need
+      bind name, text <sentry-dsn>
+      bind must, false
+
+  save gone
+    call miss-need
+      bind have, read held
+      bind want, read asked
+
+  want hold
+    call is-equal
+      call size
+        read gone
+      code 0
+
+# Nothing is missing when the project supplied it.
+test miss-none
+  save held
+    make list
+  call push
+    bind list, read held
+    make hold
+      bind name, text <database-url>
+      bind body, text <postgres://localhost/app>
+
+  save asked
+    make list
+  call push
+    bind list, read asked
+    make need
+      bind name, text <database-url>
+      bind must, true
+
+  save gone
+    call miss-need
+      bind have, read held
+      bind want, read asked
+
+  want hold
+    call is-equal
+      call size
+        read gone
+      code 0
+
+# Only the declared names are passed on. A project may hold far more than
+# one repository needs, and handing the rest to a child process would
+# widen the blast radius for no reason.
+test take-narrows
+  save held
+    make list
+  call push
+    bind list, read held
+    make hold
+      bind name, text <database-url>
+      bind body, text <one>
+  call push
+    bind list, read held
+    make hold
+      bind name, text <unrelated-key>
+      bind body, text <two>
+
+  save asked
+    make list
+  call push
+    bind list, read asked
+    make need
+      bind name, text <database-url>
+      bind must, true
+
+  save kept
+    call take-need
+      bind have, read held
+      bind want, read asked
+
+  want hold
+    call is-equal
+      call size
+        read kept
+      code 1

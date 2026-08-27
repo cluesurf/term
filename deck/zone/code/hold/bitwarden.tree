@@ -1,0 +1,78 @@
+
+# Bitwarden Secrets Manager, reached through the `bws` tool.
+#
+# The bootstrap credential goes to `bws` in its environment, not on its
+# command line, because `--access-token` on a command line is readable by any
+# process that can list the process table. It lives in that child's
+# environment for the length of one lookup and is not inherited by anything
+# else.
+#
+# `bws secret list` is asked for one project and returns every secret in it.
+# Filtering to the declared names happens on this side, so a manifest that
+# asks for three names never carries the rest of the project into a command.
+
+load ../base
+  find pass
+  find hold
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/list
+  find list
+
+load @term/seed/code/boolean
+  find boolean
+
+# Whether the provider tool is installed.
+bind do-bitwarden-open
+  like boolean
+  case node
+    text <(function () { try { require("node:child_process").execFileSync("bws", ["--version"], { stdio: "ignore" }); return true } catch (e) { return false } })()>
+
+# Confirm the credential opens the project, without reading any values.
+# This is what `zone code show` and `zone test` use, so a check never pulls
+# secrets it does not need.
+bind do-bitwarden-good
+  take body, like text
+  take bind, like text
+  like boolean
+  case node
+    text <(function () { try { require("node:child_process").execFileSync("bws", ["project", "get", $bind], { env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }), stdio: "ignore" }); return true } catch (e) { return false } })()>
+
+# Every secret in one project, as name and value pairs. The caller narrows
+# to what the manifest declared.
+bind do-bitwarden-read
+  take body, like text
+  take bind, like text
+  like list
+  case node
+    text <(function () { var out = require("node:child_process").execFileSync("bws", ["secret", "list", $bind, "--output", "json"], { encoding: "utf8", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).map(function (s) { return { name: s.key, body: s.value } }) })()>
+
+# Exportable wrapper: a native `bind` is file-local.
+task bitwarden-open
+  like boolean
+  send back
+    call do-bitwarden-open
+
+# Exportable wrapper: a native `bind` is file-local.
+task bitwarden-good
+  take body, like text
+  take bind, like text
+  like boolean
+  send back
+    call do-bitwarden-good
+      bind body, read body
+      bind bind, read bind
+
+# Exportable wrapper: a native `bind` is file-local.
+task bitwarden-read
+  take body, like text
+  take bind, like text
+  like list
+  send back
+    call do-bitwarden-read
+      bind body, read body
+      bind bind, read bind

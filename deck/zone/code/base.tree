@@ -1,0 +1,86 @@
+
+# The shapes zone works with. Three of them are deliberately distinct types
+# rather than one "secret" type, because collapsing them is how a bootstrap
+# credential ends up treated like an ordinary variable and printed.
+#
+#   code    the bootstrap credential that opens a provider
+#   hold    a value retrieved from that provider
+#   need    a declared requirement, carrying no value at all
+#
+# Nothing in this file holds a value that may be shown. `show` on any of
+# these renders the record, never the secret.
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/list
+  find list
+
+load @term/seed/code/boolean
+  find boolean
+
+# Where a machine keeps its bootstrap credential. The name is the label the
+# store files it under, never the credential itself.
+form seat
+  link tier, like text
+  link name, like text
+
+# The bootstrap credential. Held only for the moment a provider is opened.
+# It is never written to a file, an argument, or the terminal.
+form pass
+  link tier, like text
+  link body, like text
+
+# What the store knows about a credential without opening it. This is what
+# `zone code show` renders.
+form mark
+  link tier, like text
+  link keep, like boolean
+  link good, like boolean
+  link bind, like text
+
+# A value retrieved from the provider, on its way to one child process.
+form hold
+  link name, like text
+  link body, like text
+
+# A declared requirement from a repository manifest. Carries a name and
+# whether the command may run without it, and never a value.
+form need
+  link name, like text
+  link must, like boolean
+
+# The machine binding, read from the machine config.
+form bond
+  link mind, like text
+  link host, like text
+  link base, like text
+  link hold, like text
+  link save, like text
+  link name, like text
+  link seat, like list
+
+# One tier of a binding: development, staging, production.
+form tier
+  link name, like text
+  link bind, like text
+
+# What a repository declares it requires.
+form deck
+  link name, like text
+  link tier, like list
+
+# One tier of a repository declaration.
+form claim
+  link name, like text
+  link hold, like text
+  link bind, like text
+  link need, like list
+
+# How much ceremony a tier demands before it will run.
+form gate
+  link name, like text
+  link ask, like text
+  link home, like boolean

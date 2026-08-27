@@ -1,0 +1,69 @@
+
+# Calling a command with secrets that exist only while it runs.
+#
+# The whole point of the tool is here. Secrets are put into one child
+# process's environment and nowhere else. The parent shell is never
+# modified, nothing is written to disk, and when the child exits the values
+# are gone with it.
+#
+# The child's exit code is returned unchanged, so `zone call npm test` fails
+# a build exactly as `npm test` would.
+
+load ../base
+  find hold
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/list
+  find list
+
+load @term/seed/code/integer
+  find integer
+
+# Turn a kebab-case declared name into the environment variable a program
+# expects. This is the same rule the Term config system uses, so a name
+# means the same thing in both places.
+#
+#   database-url  becomes  DATABASE_URL
+#   api-key       becomes  API_KEY
+task name
+  take from, like text
+  like text
+  send back
+    call to-upper-case
+      call replace-all
+        read from
+        text <->
+        text <_>
+
+# Run the command with the given secrets in its environment, and nothing
+# else added.
+#
+# `stdio` is inherited so an interactive command stays interactive: a dev
+# server keeps its colours, a prompt still prompts, ctrl-c still reaches the
+# child. Anything less would make the tool unpleasant enough to route
+# around, and a tool people route around protects nothing.
+task run
+  take name, like text
+  take list, like list
+  take hold, like list
+  like number
+  send back
+    call spawn
+      bind name, read name
+      bind list, read list
+      bind hold, read hold
+
+# The native spawn. Secrets are merged over the inherited environment rather
+# than replacing it, because a child still needs PATH and HOME to run at
+# all.
+bind spawn
+  take name, like text
+  take list, like list
+  take hold, like list
+  like number
+  case node
+    text <(function () { var extra = {}; for (var i = 0; i \< $hold.length; i++) { extra[$hold[i].name] = $hold[i].body } var r = require("node:child_process").spawnSync($name, $list, { stdio: "inherit", env: Object.assign({}, process.env, extra) }); return r.status === null ? 1 : r.status })()>

@@ -1,0 +1,247 @@
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+  find unwrap
+
+
+# `zone code` — the bootstrap credential.
+#
+# save   put one in the store, read from a hidden prompt
+# show   describe the record without revealing it
+# list   describe every tier's record
+# toss   remove the local copy
+#
+# There is deliberately no way to print a credential. A value that can be
+# shown casually ends up in a log, a screenshot, or a chat message, and the
+# only way to stop that is not to build the path.
+
+load ../base
+  find bond
+  find mark
+  find seat
+
+load ../config/machine
+  find read-bond
+  find berth
+
+load ../save/base
+  find put
+  find read-code
+  find burn
+  find keep
+  find pick
+
+
+
+load ../tool/ask
+  find hide
+  find sure
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/list
+  find list
+  find push
+
+load @term/seed/code/boolean
+  find boolean
+
+load ../tool/base
+  find join-text
+  find show-line
+  find yes-no
+
+# Store a credential for one tier. The value is read with echo off and goes
+# straight to the store, never through an argument or a file.
+task bank
+  note async
+  take tier, like text
+  take over, like boolean
+
+  save bond
+    call read-bond
+  save bond-in
+    call unwrap
+      read bond
+  save spot
+    call berth
+      bind bond, read bond-in
+      bind tier, read tier
+  save kind
+    call pick
+
+  # The env and prompt stores hold nothing of their own: env reads
+  # $ZONE_CODE, prompt asks per run. Saving to them is meaningless, so
+  # say so and stop before the interactive paste path below.
+  fork case, read kind
+    case env
+      send back
+        call show-line
+          text <This machine uses the env store. Set ZONE_CODE (or ZONE_CODE_<TIER>) in the environment. Nothing to store here.>
+    case prompt
+      send back
+        call show-line
+          text <This machine uses the prompt store. The code is asked for on each call. Nothing to store here.>
+
+  # Replacing an existing credential is a real decision, so it is asked
+  # unless the caller already said `--over`.
+  fork case
+    call keep
+      wait true
+      bind kind, read kind
+      bind spot, read spot
+    case true
+      fork case, read over
+        case false
+          call sure
+            wait true
+            bind text
+              call join-text
+                make list
+                  text <A >
+                  read tier
+                  text < code is already stored. Replace it?>
+
+  save body
+    call hide
+      wait true
+      bind text
+        call join-text
+          make list
+            text <Paste access code for >
+            read tier
+            text <: >
+
+  call put
+    bind kind, read kind
+    bind spot, read spot
+    bind body, read body
+
+  call show-line
+    call join-text
+      make list
+        text <Saved code for >
+        read tier
+        text <.>
+
+# Describe one tier's record. Never the value.
+task tell
+  note async
+  take tier, like text
+
+  save bond
+    call read-bond
+  fork test
+    hook test
+      call is-none
+        read bond
+    hook hold
+      send back
+        call show-line
+          text <Not bound. Run `zone bind` first.>
+  save bond-in
+    call unwrap
+      read bond
+
+  save spot
+    call berth
+      bind bond, read bond-in
+      bind tier, read tier
+  save kind
+    call pick
+
+  # Report only what can be known without a project: whether a
+  # credential is filed for this tier. Whether it actually opens the
+  # provider is `zone test`'s job, since that needs the project id
+  # from the repo's own `.zone.tree`.
+  save yes
+    call keep
+      wait true
+      bind kind, read kind
+      bind spot, read spot
+
+  call show-line
+    call join-text
+      make list
+        text <tier    >
+        read tier
+  call show-line
+    call join-text
+      make list
+        text <code    >
+        call yes-no
+          read yes
+
+# Every tier this machine knows about.
+task poll
+  note async
+  like list
+  save bond
+    call read-bond
+  save bond-in
+    call unwrap
+      read bond
+  save out
+    make list
+  walk read bond-in/seat
+    call push
+      bind list, read out
+      bind item
+        call tell
+          bind tier, read item/name
+  send back
+    read out
+
+# Remove the local copy. The remote token stays live until someone revokes
+# it in the provider, and the message says so, because believing otherwise
+# is how a leaked credential stays usable.
+task shed
+  note async
+  take tier, like text
+
+  save bond
+    call read-bond
+  save bond-in
+    call unwrap
+      read bond
+  save spot
+    call berth
+      bind bond, read bond-in
+      bind tier, read tier
+  save kind
+    call pick
+
+  # env and prompt hold nothing locally, so there is nothing to remove
+  # and nothing to confirm.
+  fork case, read kind
+    case env
+      send back
+        call show-line
+          text <This machine uses the env store. Nothing is stored locally to remove.>
+    case prompt
+      send back
+        call show-line
+          text <This machine uses the prompt store. Nothing is stored locally to remove.>
+
+  call sure
+    wait true
+    bind text
+      call join-text
+        make list
+          text <Remove the locally stored >
+          read tier
+          text < code?>
+
+  call burn
+    bind kind, read kind
+    bind spot, read spot
+
+  call show-line
+    call join-text
+      make list
+        text <Tossed local >
+        read tier
+        text < code. Remote access is still active until it is revoked.>

@@ -1,0 +1,64 @@
+# The environment store: the bootstrap credential comes from an
+# environment variable, not a system keystore.
+#
+# This is the store for a machine that has no desktop keychain: a CI
+# runner, a container, a headless server. The one thing such a machine
+# already has is its environment, populated from whatever secret store
+# the platform provides (GitHub Actions secrets, a Kubernetes secret, a
+# systemd credential). zone takes the bootstrap token from there and
+# fetches everything else, so the platform holds ONE secret instead of
+# a whole `.env`.
+#
+# The variable is `ZONE_CODE` for the default tier, or
+# `ZONE_CODE_<TIER>` for a specific one (`ZONE_CODE_PRODUCTION`), so a
+# runner can carry a token per tier. The tier-specific name wins.
+#
+# There is nothing to save or remove: the value lives in the
+# environment for the life of the process and is owned by whatever set
+# it. `zone code save` / `toss` say so rather than pretending.
+
+load ../../base
+  find seat
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+
+# The seat name is `<host>:<tier>`. The environment variable keys off
+# the tier alone (the part after the colon), uppercased, so a runner
+# names its token by tier without knowing the machine's host name.
+bind do-environment-read
+  take spot, like seat
+  like maybe
+  case node
+    text <(function () { var tier = String($spot.name).split(":").pop().toUpperCase().replace(/[^A-Z0-9]+/g, "_"); var v = process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE; return (v && v.length \> 0) ? { form: "some", value: v } : { form: "none" } })()>
+
+# Whether the environment carries a token for this seat.
+bind do-environment-have
+  take spot, like seat
+  like boolean
+  case node
+    text <(function () { var tier = String($spot.name).split(":").pop().toUpperCase().replace(/[^A-Z0-9]+/g, "_"); return Boolean((process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE || "").length) })()>
+
+# Exportable wrapper: a native `bind` is file-local.
+task environment-read
+  take spot, like seat
+  like maybe
+  send back
+    call do-environment-read
+      bind spot, read spot
+
+# Exportable wrapper: a native `bind` is file-local.
+task environment-have
+  take spot, like seat
+  like boolean
+  send back
+    call do-environment-have
+      bind spot, read spot

@@ -1,0 +1,142 @@
+# The zone console.
+#
+#   zone bind                    configure this machine
+#   zone call <command>          run a command with secrets
+#   zone code save <tier>        store a bootstrap credential
+#   zone code show <tier>        describe it without revealing it
+#   zone code list               describe every tier
+#   zone code toss <tier>        remove the local copy
+#   zone show                    what this machine is bound to
+#   zone test                    check the setup
+#   zone toss                    unbind this machine
+#
+# The whole tool is nine commands, which is few enough to learn from
+# `zone --help` without reading anything else.
+#
+# Each `hook` is one command: its `take`s are the arguments and flags,
+# its `task` names the implementation, nested `hook`s are subcommands.
+# The runner passes arguments to the implementation in `take` order, so
+# every `hook` here lists its takes in the same order as the task it
+# binds. The `#` comment above a hook or take is its `--help` text.
+#
+# `call` takes the child command as ordinary arguments (the trailing
+# take is `many`, a rest parameter), so `zone call npm run dev` works
+# with no `--`.
+
+load ../work/bind
+  find moor
+
+load ../work/call
+  find call
+
+load ../work/code
+  find bank
+  find tell
+  find poll
+  find shed
+
+load ../work/show
+  find show
+
+load ../work/test
+  find vet
+
+load ../work/toss
+  find toss
+
+# Configure this machine: who you are, where secrets live
+hook bind
+  # who you are on this team
+  take mind
+    like text
+    need true
+  # this machine's name, used to key its credentials
+  take host
+    like text
+    need true
+  # the tier this machine defaults to
+  take tier
+    like text
+    bind <development>
+  # which provider holds the secrets
+  take hold
+    like text
+    bind <bitwarden>
+  # the organization in that provider
+  take team
+    like text
+    need true
+  task moor
+
+# Run a command with secrets in its environment
+hook call
+  # which tier to call with, default from the binding
+  take tier
+    code t
+    like text
+    bind <>
+  # the command to run
+  take name
+    like text
+    need true
+  # the command's own arguments
+  take list
+    many
+  task call
+
+# Manage this machine's bootstrap credentials
+hook code
+
+  # Store a credential for one tier, read from a hidden prompt
+  hook save
+    # which tier this code opens
+    take tier
+      like text
+      need true
+    # replace an existing code without asking
+    take over
+      like boolean
+      bind code false
+    task bank
+
+  # Describe a stored credential without revealing it
+  hook show
+    # which tier to describe
+    take tier
+      like text
+      need true
+    task tell
+
+  # Describe every tier's stored credential
+  hook list
+    task poll
+
+  # Remove the local copy, remote access stays live
+  hook toss
+    # which tier's local code to remove
+    take tier
+      like text
+      need true
+    task shed
+
+# What this machine is bound to
+hook show
+  # which tier to describe, default from the binding
+  take tier
+    code t
+    like text
+    bind <>
+  task show
+
+# Check the whole setup without revealing anything
+hook test
+  # which tier to check, default from the binding
+  take tier
+    code t
+    like text
+    bind <>
+  task vet
+
+# Unbind this machine and remove every stored code
+hook toss
+  task toss

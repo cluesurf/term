@@ -1,0 +1,72 @@
+
+# The provider: where secrets actually live.
+#
+# One shape, several backings, so a manifest that says `hold bitwarden` can
+# say `hold vault` later without any command changing. Only bitwarden is
+# bound today.
+#
+# Every task takes a `code` and drops it when the lookup ends. Nothing here
+# keeps a credential, caches a value, or writes either to disk.
+
+load ../base
+  find pass
+  find hold
+  find need
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/list
+  find list
+  find push
+
+load @term/seed/code/boolean
+  find boolean
+
+load ./bitwarden
+  find bitwarden-open
+  find bitwarden-good
+  find bitwarden-read
+
+# Whether this machine can reach the named provider.
+task open
+  take kind, like text
+  like boolean
+  fork case, read kind
+    case bitwarden
+      send back
+        call bitwarden-open
+  send back
+    false
+
+# Whether the credential opens the project. No values are read.
+task good
+  take kind, like text
+  take body, like text
+  take bind, like text
+  like boolean
+  fork case, read kind
+    case bitwarden
+      send back
+        call bitwarden-good
+          bind body, read body
+          bind bind, read bind
+  send back
+    false
+
+# Everything the project holds, before narrowing.
+task read-hold
+  take kind, like text
+  take body, like text
+  take bind, like text
+  like list
+  fork case, read kind
+    case bitwarden
+      send back
+        call bitwarden-read
+          bind body, read body
+          bind bind, read bind
+  send back
+    make list

@@ -1,0 +1,185 @@
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+  find unwrap
+
+
+# `zone call` — the command people run all day.
+#
+#   read the binding
+#   read the repository declaration
+#   take the bootstrap credential out of the store
+#   open the provider
+#   fetch the project
+#   narrow it to what was declared
+#   refuse if anything required is missing
+#   run the command with those values and nothing else
+#
+# The refusal matters. A half-populated command fails somewhere deeper, in a
+# library, with a worse message. Failing here says exactly which name is
+# absent and from which project.
+
+load ../base
+  find bond
+  find claim
+  find need
+  find hold
+
+load ../config/machine
+  find read-bond
+  find berth
+  find bind-tier
+  find pick-tier
+
+load ../config/manifest
+  find read-deck
+  find stake
+
+load ../save/base
+  find read-code
+  find pick
+
+load ../hold/base
+  find open
+  find read-hold
+
+load ../hold/take
+  find miss-need
+  find take-need
+
+load ../call/base
+  find run
+  find name
+
+load ../tool/ask
+  find gate
+
+load @term/seed/code/text
+  find text
+  find to-upper-case
+  find replace-all
+
+load @term/seed/code/list
+  find list
+  find size
+
+load @term/seed/code/integer
+  find integer
+
+load ../tool/base
+  find join-text
+  find halt
+  find here
+  find more
+  find show-miss
+
+task call
+  note async
+  take tier, like text
+  take name, like text
+  take list, like list
+  like number
+
+  save bond
+    call read-bond
+  fork test
+    hook test
+      call is-none
+        read bond
+    hook hold
+      send back
+        call halt
+          text <This machine is not bound. Run `zone bind` first.>
+  save bond-in
+    call unwrap
+      read bond
+
+  save tier-in
+    call pick-tier
+      bind bond, read bond-in
+      bind tier, read tier
+
+  save deck
+    call read-deck
+      bind dir
+        call here
+  save deck-in
+    call unwrap
+      read deck
+
+  # Production, and anything else the policy guards, asks before it runs.
+  call gate
+    bind tier, read tier-in
+
+  save spot
+    call berth
+      bind bond, read bond-in
+      bind tier, read tier-in
+
+  save kind
+    call pick
+
+  save pass
+    call read-code
+      wait true
+      bind kind, read kind
+      bind spot, read spot
+  save pass-in
+    call unwrap
+      read pass
+  fork test
+    hook test
+      call is-none
+        read pass
+    hook hold
+      send back
+        call halt
+          call join-text
+            make list
+              text <No code stored for >
+              read tier-in
+              text <. Run `zone code save >
+              read tier-in
+              text <`.>
+
+  save deal
+    call stake
+      bind deck, read deck-in
+      bind tier, read tier-in
+  save claim-in
+    call unwrap
+      read deal
+
+  save all
+    call read-hold
+      bind kind, read claim-in/hold
+      bind body, read pass-in/body
+      bind bind, read claim-in/bind
+  save gone
+    call miss-need
+      bind have, read all
+      bind want, read claim-in/need
+
+  fork case
+    call more
+      call size
+        read gone
+      code 0
+    case true
+      send back
+        call halt
+          call show-miss
+            bind gone, read gone
+            bind bind, read claim-in/bind
+            bind tier, read tier-in
+
+  save held
+    call take-need
+      bind have, read all
+      bind want, read claim-in/need
+
+  send back
+    call run
+      bind name, read name
+      bind list, read list
+      bind hold, read held
