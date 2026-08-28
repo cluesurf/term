@@ -1,0 +1,35 @@
+
+# `need database-url` is required, `want sentry-dsn` is optional. Both carry
+# the same shape, so one rule mines each and only `must` differs.
+#
+# `from` names the value at the provider when it differs from the local
+# name. `also` publishes the same value under an extra spelling, which is
+# how six names for one secret collapse to one stored value without every
+# reader being renamed at once. Both may be written inline after a comma or
+# indented beneath, because a comma chain nests exactly like an indent does.
+#
+#   need database-url
+#   need google-client-id, from word-google-client-id
+#   need cloudflare-r2-access-key-id
+#     also cloudflare-r2-access-key
+#     also cloudflare-r2-token
+
+mine zone-need
+  mine term, term need
+    slot name
+    mine maybe
+      mine term, term from
+        slot from
+    mine list
+      mine term, term also
+        slot also
+
+mine zone-want
+  mine term, term want
+    slot name
+    mine maybe
+      mine term, term from
+        slot from
+    mine list
+      mine term, term also
+        slot also

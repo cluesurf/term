@@ -1,0 +1,33 @@
+
+load @term/seed/code/zone-file
+  find zone-need
+
+# `must` is the whole difference between the two, and it is set here rather
+# than mined, because it is carried by which head word was written.
+mint zone-need, like zone-need
+  case name
+    slot name
+  case from
+    slot from
+  case also
+    slot also
+  hook make
+    make zone-need
+      bind name, read name
+      bind must, true
+      bind from, read from
+      bind also, read also
+
+mint zone-want, like zone-need
+  case name
+    slot name
+  case from
+    slot from
+  case also
+    slot also
+  hook make
+    make zone-need
+      bind name, read name
+      bind must, false
+      bind from, read from
+      bind also, read also

@@ -1,0 +1,122 @@
+# Tone codes: the 16-symbol form over hex, and the 32-symbol form over bytes.
+#
+# The 32-symbol form is what seals a value in `@term/zone`, so a defect here
+# is a cache nobody can open, or worse, one that opens the wrong value under
+# the wrong name. The vectors below were computed independently and are
+# checked against, rather than being whatever the implementation happened to
+# print.
+#
+# Run with: term test
+
+load @term/seed/code/tone
+  find tone-encode
+  find tone-pack
+  find tone-unpack
+
+load @term/seed/code/bytes
+  find to-hex
+  find from-hex
+
+load @term/seed/code/text
+  find text
+
+# Sixteen symbols, one per hex nibble, grouped in fours. Unchanged.
+test tone-encode-relabels-hex
+  want hold
+    call is-equal
+      call tone-encode
+        text <0123456789abcdef>
+      text <mndb-tkhs-fvzx-cwlr>
+
+# Thirty-two symbols over bytes. Five bits a character, so eight characters
+# carry exactly five bytes and every full group is a whole number of bytes.
+test tone-pack-empty
+  want hold
+    call is-equal
+      call tone-pack
+        call from-hex
+          text <>
+      text <>
+
+test tone-pack-one-zero-byte
+  want hold
+    call is-equal
+      call tone-pack
+        call from-hex
+          text <00>
+      text <mm>
+
+test tone-pack-one-full-byte
+  want hold
+    call is-equal
+      call tone-pack
+        call from-hex
+          text <ff>
+      text <RC>
+
+test tone-pack-four-bytes
+  want hold
+    call is-equal
+      call tone-pack
+        call from-hex
+          text <deadbeef>
+      text <XZHXWXF>
+
+# Eight bytes crosses the first group boundary, so this is where a wrong
+# dash rule would show.
+test tone-pack-groups-in-eights
+  want hold
+    call is-equal
+      call tone-pack
+        call from-hex
+          text <0123456789abcdef>
+      text <mtNTzVCv-KrhLL>
+
+test tone-pack-twelve-bytes
+  want hold
+    call is-equal
+      call tone-pack
+        call from-hex
+          text <deadbeef0123456789abcdef>
+      text <XZHXWXFn-twdHrdwx-VSSM>
+
+# What matters most: the value that goes in is the value that comes out.
+test tone-round-trip
+  want hold
+    call is-equal
+      call to-hex
+        call tone-unpack
+          call tone-pack
+            call from-hex
+              text <deadbeef0123456789abcdef>
+      text <deadbeef0123456789abcdef>
+
+test tone-round-trip-one-byte
+  want hold
+    call is-equal
+      call to-hex
+        call tone-unpack
+          call tone-pack
+            call from-hex
+              text <7f>
+      text <7f>
+
+test tone-round-trip-empty
+  want hold
+    call is-equal
+      call to-hex
+        call tone-unpack
+          call tone-pack
+            call from-hex
+              text <>
+      text <>
+
+# A dash carries no meaning, so a code may be regrouped or run together and
+# still says the same thing.
+test tone-unpack-ignores-dashes
+  want hold
+    call is-equal
+      call to-hex
+        call tone-unpack
+          text <XZHXWXFntwdHrdwxVSSM>
+      text <deadbeef0123456789abcdef>

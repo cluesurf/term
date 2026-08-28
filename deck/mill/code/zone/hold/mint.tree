@@ -1,0 +1,41 @@
+
+load @term/seed/code/zone-file
+  find zone-hold
+
+load @term/mill/code/zone/need/mint
+  find zone-need
+  find zone-want
+
+load @term/mill/code/zone/code/mint
+  find zone-code
+
+mint zone-hold, like zone-hold
+  case name
+    slot name
+  case base
+    slot base
+  case bind
+    slot bind
+  case root
+    slot root
+  case cast
+    slot cast
+  case load
+    slot load
+  case need, mint zone-need
+    slot need
+  case code, mint zone-code
+    slot code
+  case zone, mint zone-hold
+    slot zone
+  hook make
+    make zone-hold
+      bind name, read name
+      bind base, read base
+      bind bind, read bind
+      bind root, read root
+      bind need, read need
+      bind cast, read cast
+      bind load, read load
+      bind code, read code
+      bind zone, read zone

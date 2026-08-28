@@ -1,0 +1,67 @@
+
+load @term/seed/code/zone-file
+  find zone-file
+  find zone-hold
+
+load @term/mill/code/zone/hold/mint
+  find zone-hold
+
+load @term/mill/code/zone/need/mint
+  find zone-need
+  find zone-want
+
+load @term/mill/code/zone/code/mint
+  find zone-code
+
+mint zone-file, like zone-file
+  case mark
+    slot mark
+  case made
+    slot made
+  case good
+    slot good
+  case seal
+    slot seal
+  case deck
+    slot deck
+  case hold, mint zone-root
+    slot hold
+  hook make
+    make zone-file
+      bind mark, read mark
+      bind made, read made
+      bind good, read good
+      bind seal, read seal
+      bind deck, read deck
+      bind hold, read hold
+
+# The root carries an empty name, so every zone in the tree is the same shape
+# and a walk never has a first-step special case.
+mint zone-root, like zone-hold
+  case base
+    slot base
+  case bind
+    slot bind
+  case root
+    slot root
+  case cast
+    slot cast
+  case load
+    slot load
+  case need, mint zone-need
+    slot need
+  case code, mint zone-code
+    slot code
+  case zone, mint zone-hold
+    slot zone
+  hook make
+    make zone-hold
+      bind name, text <>
+      bind base, read base
+      bind bind, read bind
+      bind root, read root
+      bind need, read need
+      bind cast, read cast
+      bind load, read load
+      bind code, read code
+      bind zone, read zone

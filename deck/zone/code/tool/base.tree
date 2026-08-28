@@ -97,6 +97,19 @@ bind have-file
   case node
     text <require("node:fs").existsSync($path)>
 
+# How many characters a text holds.
+#
+# `@term/seed/code/text` has no length verb at all: `index-of`, `substring`
+# and the rest are there, but nothing reports a size. The obvious names are
+# both taken at the top level of the package (`length` by `bytes`, `count` by
+# a `list` method) and Term names are package-global, so adding one upstream
+# needs a naming decision rather than a patch. Kept here until that is made.
+bind text-size
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+
 # Two texts are the same.
 bind equal
   take a, like text

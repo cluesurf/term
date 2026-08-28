@@ -8,21 +8,25 @@ task encrypt-aes-gcm
   take key, like bytes
   take nonce, like bytes
   take plain, like bytes
+  take extra, like bytes
   like bytes
   send back
     call cipher/encrypt
       read key
       read nonce
       read plain
+      read extra
 
 task decrypt-aes-gcm
   note async
   take key, like bytes
   take nonce, like bytes
   take sealed, like bytes
+  take extra, like bytes
   like bytes
   send back
     call cipher/decrypt
       read key
       read nonce
       read sealed
+      read extra

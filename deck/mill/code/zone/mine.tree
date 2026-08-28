@@ -1,0 +1,98 @@
+
+load @term/mill/code/zone/hold/mine
+  find zone-hold
+
+load @term/mill/code/zone/need/mine
+  find zone-need
+  find zone-want
+
+load @term/mill/code/zone/code/mine
+  find zone-code
+
+# The `zone` role: the grammar of a `zone.tree` and a `zone.code.tree`.
+#
+# ONE ROLE FOR BOTH FILES, on purpose. A declaration and the cache that
+# answers it read the same way, nest the same way, and inherit the same way,
+# so one grammar covers both and neither can drift into a shape the other
+# cannot express. A `zone.tree` never carries `bind <name>, <value>` lines
+# and a `zone.code.tree` never carries `need`, but nothing has to forbid it:
+# what a file means is decided by which of the two it is.
+#
+#   # zone.tree, committed. Names, never values.
+#   base bitwarden
+#   need database-url
+#   want sentry-dsn
+#
+#   zone word.surf
+#     zone star
+#       load star
+#       need sentry-dsn
+#
+#   # zone.code.tree, gitignored. Values, sealed.
+#   made <2026-08-27T18:04:11Z>
+#   good <2026-08-28T06:04:11Z>
+#   seal aes-256-gcm
+#   deck <kvmtnhbs-rzdxfwlc>
+#
+#   bind database-url, <tvkmhnzr-bdlscwfx>
+#
+#   zone word.surf
+#     zone star
+#       bind sentry-dsn, <crzbnths-zxwlcrfd>
+#
+# The root is not written. Everything before the first `zone` line belongs to
+# it, which is what makes `base` a real address rather than a special case.
+
+mine zone-file
+  mine maybe
+    mine term, term mark
+      mine text
+        slot mark
+  mine maybe
+    mine term, term made
+      mine text
+        slot made
+  mine maybe
+    mine term, term good
+      mine text
+        slot good
+  mine maybe
+    mine term, term seal
+      slot seal
+  mine maybe
+    mine term, term deck
+      mine text
+        slot deck
+  mine form, like zone-root
+    slot hold
+
+# The root zone, which has no `zone <name>` line above it. Same body as any
+# other zone, with an empty name.
+mine zone-root
+  mine maybe
+    mine term, term base
+      slot base
+  mine maybe
+    mine term, term bind
+      slot bind
+  mine maybe
+    mine term, term root
+      slot root
+  mine list
+    mine term, term cast
+      slot cast
+  mine list
+    mine term, term load
+      slot load
+  mine list
+    mine any
+      mine form, like zone-need
+        slot need
+      mine form, like zone-want
+        slot need
+  mine list
+    mine form, like zone-code
+      slot code
+  mine list
+    mine form, like zone-hold
+      slot zone

@@ -1,4 +1,8 @@
 # Authenticated symmetric encryption (AES-256-GCM). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/cipher`). Input and output stay in the currency types.
+#
+# `extra` is the additional authenticated data: bytes that are covered by the tag but are not part of the ciphertext. It binds a sealed value to the context it belongs in, so a ciphertext moved to another slot fails to open rather than opening as the wrong thing. It is REQUIRED rather than optional, because an authentication scope that can be forgotten is one that gets forgotten. Pass empty bytes to authenticate nothing, which is what GCM does by default.
+#
+# No cryptography is implemented here. Every backend forwards to the platform's own AES-GCM (Web Crypto, javax.crypto, the aes-gcm crate, CryptoKit), and `extra` is a parameter each of those already defines.
 
 load @term/seed/code/native/cryptography/cipher
   find encrypt-aes-gcm
@@ -9,24 +13,28 @@ task encrypt
   take key, like bytes
   take nonce, like bytes
   take plain, like bytes
+  take extra, like bytes
   like bytes
   send back
     call encrypt-aes-gcm
       read key
       read nonce
       read plain
+      read extra
       wait true
 
-# open ciphertext || tag under the same key and nonce, returning the plaintext (fails if the tag does not verify)
+# open ciphertext || tag under the same key, nonce and extra, returning the plaintext (fails if the tag does not verify, which includes the case where `extra` differs from the one it was sealed with)
 task decrypt
   note async
   take key, like bytes
   take nonce, like bytes
   take sealed, like bytes
+  take extra, like bytes
   like bytes
   send back
     call decrypt-aes-gcm
       read key
       read nonce
       read sealed
+      read extra
       wait true

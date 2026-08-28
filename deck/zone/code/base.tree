@@ -84,3 +84,21 @@ form gate
   link name, like text
   link ask, like text
   link home, like boolean
+
+# One line of a `.tree` file and everything hanging under it.
+#
+# The shape `@term/deck/code/read.ts` flattens the compiler's parser into,
+# reproduced here so a `zone.tree` reads the same way a `deck.tree` does:
+#
+#   need google-client-id, from word-google-client-id
+#     -> head <need>, term [google-client-id],
+#        leaf [ head <from>, term [word-google-client-id] ]
+#
+# A comma chain and an indented block both become `leaf`, because both mean
+# the same thing. The grammar this implements is the `zone` role at
+# `@term/mill/code/zone`.
+form leaf
+  link head, like text
+  link term, list text
+  link code, like text
+  link leaf, list leaf

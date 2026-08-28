@@ -60,3 +60,239 @@ task tone-encode
     call join
       read out
       text <>
+
+
+# Tone at 32 symbols, for a PAYLOAD rather than an identifier.
+#
+# `tone-encode` above is 16 symbols, one per hex nibble, so it is exactly as long as hex. Adding the uppercase letters
+# gives 32 symbols and five bits a character, which is a fifth shorter. Eight characters carry exactly five bytes, so
+# grouping in eights leaves every group a whole number of bytes.
+#
+# WHICH ALPHABET TO USE. Sixteen, lowercase, for anything a person types, dictates or compares by eye: a uuid, a
+# sha256, a request id. Those stay case-insensitive and keep their shapes. Thirty-two, mixed case, for a payload
+# nobody reads, where the density is free. A sealed secret is the case this was written for.
+#
+# There is no padding character. The decoder takes the byte count from the character count, which is unambiguous
+# because the encoder emits exactly ceil(n * 8 / 5) characters and leaves the trailing bits zero. So the output holds
+# nothing outside the alphabet and the dash.
+
+load @term/seed/code/bit
+  find bitwise-and
+  find bitwise-or
+  find shift-left
+  find unsigned-shift-right
+
+load @term/seed/code/bytes
+  find bytes
+  find to-hex
+  find from-hex
+
+host tone-wide-alpha, text <mndbtkhsfvzxcwlrMNDBTKHSFVZXCWLR>
+
+# bytes -> 32-symbol tone, grouped in eights. Reads the input as hex so it never indexes bytes directly, which keeps
+# this portable across every backend.
+task tone-pack
+  take value, like bytes
+  like text
+  save hex
+    call to-hex
+      read value
+  save chars
+    call split
+      read hex
+      text <>
+  save out
+    make list
+  save buffer, code 0
+  save bits, code 0
+  save count, code 0
+  save half, code 0
+  save held, code 0
+  walk list, read chars
+    hook next
+      take site, name ch
+      save nibble
+        call index-of
+          read hex-alpha
+          read ch
+          code 0
+      fork test
+        hook test
+          call is-equal
+            read held
+            code 0
+        hook hold
+          save half, read nibble
+          save held, code 1
+        hook miss
+          save held, code 0
+          save buffer
+            call bitwise-or
+              call shift-left
+                read buffer
+                code 8
+              call bitwise-or
+                call shift-left
+                  read half
+                  code 4
+                read nibble
+          save bits
+            call add
+              read bits
+              code 8
+          walk test
+            hook test
+              call is-minimum
+                read bits
+                code 5
+            hook hold
+              save bits
+                call subtract
+                  read bits
+                  code 5
+              fork test
+                hook test
+                  call is-equal
+                    call modulo
+                      read count
+                      code 8
+                    code 0
+                hook hold
+                  fork test
+                    hook test
+                      call is-above
+                        read count
+                        code 0
+                    hook hold
+                      call push
+                        bind list, read out
+                        bind item, text <->
+              call push
+                bind list, read out
+                bind item
+                  call char-at
+                    read tone-wide-alpha
+                    call bitwise-and
+                      call unsigned-shift-right
+                        read buffer
+                        read bits
+                      code 31
+              save count
+                call add
+                  read count
+                  code 1
+  fork test
+    hook test
+      call is-above
+        read bits
+        code 0
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read count
+              code 8
+            code 0
+        hook hold
+          fork test
+            hook test
+              call is-above
+                read count
+                code 0
+            hook hold
+              call push
+                bind list, read out
+                bind item, text <->
+      call push
+        bind list, read out
+        bind item
+          call char-at
+            read tone-wide-alpha
+            call bitwise-and
+              call shift-left
+                read buffer
+                call subtract
+                  code 5
+                  read bits
+              code 31
+  send back
+    call join
+      read out
+      text <>
+
+# 32-symbol tone -> bytes. Dashes are ignored wherever they fall, so a code may be regrouped or joined without
+# changing what it means. Trailing bits shorter than a byte are the encoder's zero padding and are dropped.
+task tone-unpack
+  take code, like text
+  like bytes
+  save chars
+    call split
+      read code
+      text <>
+  save out
+    make list
+  save buffer, code 0
+  save bits, code 0
+  walk list, read chars
+    hook next
+      take site, name ch
+      fork test
+        hook test
+          call is-equal
+            read ch
+            text <->
+        hook hold
+          turn next
+      save value
+        call index-of
+          read tone-wide-alpha
+          read ch
+          code 0
+      save buffer
+        call bitwise-or
+          call shift-left
+            read buffer
+            code 5
+          read value
+      save bits
+        call add
+          read bits
+          code 5
+      fork test
+        hook test
+          call is-minimum
+            read bits
+            code 8
+        hook hold
+          save bits
+            call subtract
+              read bits
+              code 8
+          save byte
+            call bitwise-and
+              call unsigned-shift-right
+                read buffer
+                read bits
+              code 255
+          call push
+            bind list, read out
+            bind item
+              call char-at
+                read hex-alpha
+                call unsigned-shift-right
+                  read byte
+                  code 4
+          call push
+            bind list, read out
+            bind item
+              call char-at
+                read hex-alpha
+                call bitwise-and
+                  read byte
+                  code 15
+  send back
+    call from-hex
+      call join
+        read out
+        text <>

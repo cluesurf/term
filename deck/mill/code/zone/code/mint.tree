@@ -1,0 +1,13 @@
+
+load @term/seed/code/zone-file
+  find zone-code
+
+mint zone-code, like zone-code
+  case name
+    slot name
+  case code
+    slot code
+  hook make
+    make zone-code
+      bind name, read name
+      bind code, read code

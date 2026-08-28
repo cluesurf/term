@@ -1,0 +1,13 @@
+
+# One sealed value, in a `zone.code.tree` only.
+#
+#   bind database-url, <tvkmhnzr-bdlscwfx-mntkhbsv>
+#
+# The head word is `bind` because that is what the line does: it binds a
+# declared name to a value, which is the one thing a `zone.tree` never does.
+
+mine zone-code
+  mine term, term bind
+    slot name
+    mine text
+      slot code

@@ -1,0 +1,71 @@
+# The shape of a `zone.tree` and a `zone.code.tree`.
+#
+# `zone.tree` is committed and names what a project needs, never what those things are. `zone.code.tree` is
+# gitignored, mirrors the same nesting, and holds the sealed values. One shape covers both, because a declaration and
+# its cache reading the same way is what stops the two drifting.
+#
+# The grammar that produces these is the `zone` role at `@term/mill/code/zone`. The tool that consumes them is
+# `@term/zone`. Named `zone-file` rather than `zone` because `./zone` is the view component AST and Term form names
+# are package-global.
+#
+#   base bitwarden
+#   need database-url
+#   want sentry-dsn
+#
+#   zone word.surf
+#     zone star
+#       load star
+#       need sentry-dsn
+
+load ./text
+  find text
+
+load ./list
+  find list
+
+load ./boolean
+  find boolean
+
+# One declared requirement. Carries a name and never a value.
+#
+# `must` is the difference between `need` and `want`: a missing `need` refuses to start the command, a missing `want`
+# is fine. `from` is the name this value has at the provider when it differs from the local one. `also` is the extra
+# spellings the same value is published under, which is how six names for one secret collapse to one stored value
+# without every reader being renamed at once.
+form zone-need
+  link name, like text
+  link must, like boolean
+  link from, like text
+  link also, like list
+
+# One sealed value, in a `zone.code.tree` only. `code` is the nonce, ciphertext and tag, tone-packed at 32 symbols.
+form zone-code
+  link name, like text
+  link code, like text
+
+# One zone, at any depth. The root is a `zone-hold` with an empty name.
+#
+# `base` and `bind` are inherited by every zone below. `cast` is a list because a zone may publish the same value
+# under more than one spelling, which is how `land` gets both the plain name and the `TF_VAR_` name from one fetch.
+form zone-hold
+  link name, like text
+  link base, like text
+  link bind, like text
+  link root, like boolean
+  link need, like list
+  link cast, like list
+  link load, like list
+  link code, like list
+  link zone, like list
+
+# A whole file. The four cache fields are empty in a `zone.tree` and filled in a `zone.code.tree`.
+#
+# `deck` is the tone code of the sha256 of the `zone.tree` this cache was built from, so a cache built against an
+# older declaration is detectable with no key at all.
+form zone-file
+  link mark, like text
+  link made, like text
+  link good, like text
+  link seal, like text
+  link deck, like text
+  link hold, like zone-hold

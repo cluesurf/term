@@ -1,0 +1,56 @@
+
+load @term/mill/code/zone/need/mine
+  find zone-need
+  find zone-want
+
+load @term/mill/code/zone/code/mine
+  find zone-code
+
+# One zone, at any depth.
+#
+#   zone word.surf
+#     bind cluesurf-shared
+#     cast tf
+#     load star
+#     need sentry-dsn
+#
+#     zone star
+#       need better-auth-secret
+#
+# The zone's own name is its last path segment. The full address is built by
+# the nesting, so `zone star` inside `zone word.surf` is `base/word.surf/star`
+# and nothing writes that path out.
+#
+# `zone` recurses into itself, which is what makes the nesting arbitrary
+# depth rather than the two levels a flat reader can manage.
+
+mine zone-hold
+  mine term, term zone
+    slot name
+    mine maybe
+      mine term, term base
+        slot base
+    mine maybe
+      mine term, term bind
+        slot bind
+    mine maybe
+      mine term, term root
+        slot root
+    mine list
+      mine term, term cast
+        slot cast
+    mine list
+      mine term, term load
+        slot load
+    mine list
+      mine any
+        mine form, like zone-need
+          slot need
+        mine form, like zone-want
+          slot need
+    mine list
+      mine form, like zone-code
+        slot code
+    mine list
+      mine form, like zone-hold
+        slot zone

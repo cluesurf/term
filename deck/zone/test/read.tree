@@ -1,0 +1,153 @@
+# Tests for the `.tree` reader.
+#
+# Every case renders the parsed tree back to one line of text and compares
+# it, so a failure shows the whole shape rather than one field of it. The
+# rendering is `head[terms]<code>(children)`.
+#
+# Run with: term test
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find push
+  find join
+  find size
+
+load ../code/base
+  find leaf
+
+load ../code/tool/read
+  find mine-tree
+
+load ../code/tool/base
+  find join-text
+  find equal
+  find not-equal
+  find more
+
+task show-leaf
+  take one, like leaf
+  like text
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item, read one/head
+  fork test
+    hook test
+      call more
+        call size
+          read one/term
+        code 0
+    hook hold
+      call push
+        bind list, read out
+        bind item, text <[>
+      call push
+        bind list, read out
+        bind item
+          call join
+            read one/term
+            text < >
+      call push
+        bind list, read out
+        bind item, text <]>
+  fork test
+    hook test
+      call not-equal
+        read one/code
+        text <>
+    hook hold
+      call push
+        bind list, read out
+        bind item, text <<>
+      call push
+        bind list, read out
+        bind item, read one/code
+      call push
+        bind list, read out
+        bind item, text <>>
+  fork test
+    hook test
+      call more
+        call size
+          read one/leaf
+        code 0
+    hook hold
+      call push
+        bind list, read out
+        bind item, text <(>
+      call push
+        bind list, read out
+        bind item
+          call show-list
+            read one/leaf
+      call push
+        bind list, read out
+        bind item, text <)>
+  send back
+    call join-text
+      read out
+
+task show-list
+  take all, like list
+  like text
+  save out
+    make list
+  walk list, read all
+    hook next
+      take site, name one
+      call push
+        bind list, read out
+        bind item
+          call show-leaf
+            read one
+  send back
+    call join
+      read out
+      text < >
+
+task show
+  take body, like text
+  like text
+  send back
+    call show-list
+      call mine-tree
+        read body
+
+test read-bare-head
+  want hold
+    call equal
+      call show
+        text <root>
+      text <root>
+
+test read-head-and-term
+  want hold
+    call equal
+      call show
+        text <base bitwarden>
+      text <base[bitwarden]>
+
+test read-value
+  want hold
+    call equal
+      call show
+        text <mark <1>>
+      text <mark<1>>
+
+test read-comma-chain
+  want hold
+    call equal
+      call show
+        text <need google-client-id, from word-google-client-id>
+      text <need[google-client-id](from[word-google-client-id])>
+
+test read-comma-value
+  want hold
+    call equal
+      call show
+        text <bind database-url, <sealed>>
+      text <bind[database-url](<sealed>)>
