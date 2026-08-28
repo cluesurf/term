@@ -586,6 +586,10 @@ function parseLikeType(likeGroup: GroupNode): Type {
 // no definition to bind to and are never imported, so the resolver has to know them by name.
 export const UNARY_BUILTIN = new Set(['increment', 'decrement'])
 
+// the `halt` arguments that are control flow rather than an exception to raise. An exception form may not take one
+// of these names.
+export const HALT_WORDS = new Set(['fork', 'flow', 'code', 'kink', 'take'])
+
 export const BINARY_BUILTIN: Record<string, BinaryOp> = {
   add: '+',
   subtract: '-',
@@ -2118,8 +2122,11 @@ export function mill(tree: RootNode, file: string): MillResult {
           break
         }
 
-        // `halt` (and `halt fork`) break the current loop or block. `halt flow` (program exit) and `halt code`
-        // (debugger) are distinguished by their argument.
+        // `halt` is the one word for stopping the current flow, and its argument says how: bare (or `halt fork`)
+        // breaks the loop, `halt flow` exits the program, `halt code` stops in the debugger, `halt kink` on a call
+        // propagates (handled in callExpression), `halt take` is the handler of a `note unsafe` body, `halt <text>`
+        // throws the text, and `halt <form>` with `bind` children RAISES that exception. See
+        // note/term/hive/03-exception.md.
         case 'halt': {
           const arg = rest(node)[0]
           const which =
@@ -2129,6 +2136,50 @@ export function mill(tree: RootNode, file: string): MillResult {
             out.push({ form: 'exit', span })
           } else if (which === 'code') {
             out.push({ form: 'debug', span })
+          } else if (arg?.kind === 'text') {
+            out.push({
+              form: 'throw',
+              value: toExpression(arg, scope),
+              span,
+            })
+          } else if (
+            which !== undefined &&
+            !HALT_WORDS.has(which)
+          ) {
+            // `halt <form>`: the raise. The record carries the `bind` props as written plus `base` for a cause;
+            // extendForms fills the rest and checks the form is an exception.
+            const fields = rest(node)
+              .slice(1)
+              .filter(
+                (it): it is GroupNode =>
+                  it.kind === 'group' &&
+                  (headName(it) === 'bind' || headName(it) === 'base'),
+              )
+              .map(it => {
+                const inner = rest(it)
+                const isBase = headName(it) === 'base'
+                const fieldNode = inner[0]
+                const fieldName = isBase
+                  ? 'base'
+                  : fieldNode?.kind === 'group'
+                    ? headName(fieldNode) ?? ''
+                    : ''
+                const valueNode = isBase ? inner[0] : inner[1]
+
+                return {
+                  name: fieldName,
+                  value: valueNode
+                    ? toExpression(valueNode, scope)
+                    : { form: 'unit' as const, span },
+                }
+              })
+
+            out.push({
+              form: 'throw',
+              value: { form: 'record', name: which, fields, span },
+              span,
+              raise: which,
+            })
           } else {
             out.push({ form: 'break', span })
           }
@@ -3016,15 +3067,17 @@ export function mill(tree: RootNode, file: string): MillResult {
       return undefined
     }
 
-    const linkFields = (
-      g: GroupNode,
-    ): { name: string; type: Type; nick?: string; identity?: boolean }[] => {
-      const out: {
-        name: string
-        type: Type
-        nick?: string
-        identity?: boolean
-      }[] = []
+    type Field = {
+      name: string
+      type: Type
+      nick?: string
+      identity?: boolean
+      optional?: boolean
+      fallback?: Expression
+    }
+
+    const linkFields = (g: GroupNode): Field[] => {
+      const out: Field[] = []
 
       // the field names in scope, so a value-index argument in one field's type can reference a sibling field (the
       // recursive `link rest, like vec / head a / head / read count` refers to the field `count`).
@@ -3198,8 +3251,32 @@ export function mill(tree: RootNode, file: string): MillResult {
             headName(rest(c)[0] as GroupNode) === 'id',
         )
 
+        // `need false` marks the field optional and `fall <value>` gives it a default. In the comma form
+        // (`link limit, like size, fall 0`) the parser nests them inside the `like` group; in the indented form they sit
+        // at the field level. Check both, as the task-parameter parser does.
+        const modifiers = [
+          ...inner,
+          ...(likeGroup ? rest(likeGroup) : []),
+        ].filter((n): n is GroupNode => n.kind === 'group')
+        const needGroup = modifiers.find(n => headName(n) === 'need')
+        const needArg = needGroup ? rest(needGroup)[0] : undefined
+        const optional =
+          needArg?.kind === 'group' && headName(needArg) === 'false'
+        const fallGroup = modifiers.find(n => headName(n) === 'fall')
+        const fallArg = fallGroup ? rest(fallGroup)[0] : undefined
+        const fallback = fallArg
+          ? toExpression(fallArg, new Set<string>())
+          : undefined
+
         if (fieldName) {
-          out.push({ name: fieldName, type, nick, identity })
+          out.push({
+            name: fieldName,
+            type,
+            nick,
+            identity,
+            ...(optional ? { optional } : {}),
+            ...(fallback ? { fallback } : {}),
+          })
         }
       }
 
@@ -3291,10 +3368,92 @@ export function mill(tree: RootNode, file: string): MillResult {
     // primitive aliases use this (`form g-luint, like native-number`). Only meaningful when the form has no own
     // fields or variants; the checker treats such a form as interchangeable with its base.
     let alias: Type | undefined
+    let extend: Extract<Statement, { form: 'record-type' }>['extend']
 
     for (const child of parts.slice(1)) {
       if (child.kind === 'group' && headName(child) === 'like') {
-        alias = parseLikeType(child)
+        // `like <base>` whose children carry `head <name>, like ...` / `head <name>` over `link`s (named type
+        // arguments), `bind` (pinned fields) or `link` (added props) is an EXTENSION of the base, not an alias. A plain
+        // `like list / like text` (positional `like` children, or `head <type>` positional arguments) stays an alias.
+        const kids = rest(child).slice(1)
+        const isNamedHead = (n: Node): n is GroupNode =>
+          n.kind === 'group' &&
+          headName(n) === 'head' &&
+          rest(n).some(
+            k =>
+              k.kind === 'group' &&
+              (headName(k) === 'like' || headName(k) === 'link'),
+          )
+        const heads = kids.filter(isNamedHead)
+        const pinNodes = kids.filter(
+          (n): n is GroupNode =>
+            n.kind === 'group' && headName(n) === 'bind',
+        )
+        const hasLinks = kids.some(
+          n => n.kind === 'group' && headName(n) === 'link',
+        )
+
+        if (heads.length > 0 || pinNodes.length > 0 || hasLinks) {
+          const baseGroup = rest(child)[0]
+
+          // the base type with only its POSITIONAL arguments (named heads are handled here, not by parseLikeType)
+          const positionalLike: GroupNode = {
+            ...child,
+            nodes: [
+              child.nodes[0]!,
+              ...(baseGroup ? [baseGroup] : []),
+              ...kids.filter(
+                (n): n is GroupNode =>
+                  n.kind === 'group' &&
+                  !isNamedHead(n) &&
+                  headName(n) !== 'bind' &&
+                  headName(n) !== 'link',
+              ),
+            ],
+          }
+
+          extend = {
+            base: parseLikeType(positionalLike),
+            heads: heads.map(h => {
+              const nameGroup = rest(h)[0]
+              const hName =
+                nameGroup?.kind === 'group' ? headName(nameGroup) ?? '' : ''
+              const likeGroup = rest(h).find(
+                (k): k is GroupNode =>
+                  k.kind === 'group' && headName(k) === 'like',
+              )
+              const links = linkFields(h)
+
+              return {
+                name: hName,
+                ...(likeGroup ? { type: parseLikeType(likeGroup) } : {}),
+                ...(links.length > 0
+                  ? { links: links.map(f => ({ name: f.name, type: f.type })) }
+                  : {}),
+                span: spanOf(h),
+              }
+            }),
+            links: linkFields(child),
+            pins: pinNodes.map(b => {
+              const inner = rest(b)
+              const fieldNode = inner[0]
+              const pinName =
+                fieldNode?.kind === 'group' ? headName(fieldNode) ?? '' : ''
+              const valueNode = inner[1]
+
+              return {
+                name: pinName,
+                value: valueNode
+                  ? toExpression(valueNode, new Set<string>())
+                  : { form: 'unit' as const, span: spanOf(b) },
+              }
+            }),
+            span: spanOf(child),
+          }
+        } else {
+          alias = parseLikeType(child)
+        }
+
         break
       }
     }
@@ -3325,6 +3484,7 @@ export function mill(tree: RootNode, file: string): MillResult {
       fields,
       variants,
       alias,
+      ...(extend ? { extend } : {}),
       truncation,
       functionFree,
       span,
@@ -3867,7 +4027,9 @@ export function mill(tree: RootNode, file: string): MillResult {
 
         // `site` (formerly `slot`): the outlet where a caller's children render. The AST keeps the form name `slot`;
         // the surface word moved so `slot` can name a positional field or parameter (see the hive design notes).
-        case 'site': {
+        // `slot` is still accepted here while the face components are migrated by their owner.
+        case 'site':
+        case 'slot': {
           const n = rest(node)[0]
           const nm = n?.kind === 'group' ? headName(n) : undefined
           out.push(

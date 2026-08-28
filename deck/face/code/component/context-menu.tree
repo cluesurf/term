@@ -17,7 +17,7 @@ zone context-menu
   zone div
     bind data-slot, text <context-menu>
     bind class, read class
-    site
+    slot
 
 zone context-menu-trigger
   take host, like view
@@ -33,7 +33,7 @@ zone context-menu-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    site
+    slot
 
 zone context-menu-content
   take host, like view
@@ -51,7 +51,7 @@ zone context-menu-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        site
+        slot
 
 zone context-menu-item
   take host, like view
@@ -60,4 +60,4 @@ zone context-menu-item
     bind data-slot, text <context-menu-item>
     bind role, text <menuitem>
     bind class, read class
-    site
+    slot

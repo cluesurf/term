@@ -12,7 +12,7 @@ zone field
   zone div
     bind data-slot, text <field>
     bind class, read class
-    site
+    slot
 
 zone field-label
   take host, like view
@@ -20,7 +20,7 @@ zone field-label
   zone div
     bind data-slot, text <field-label>
     bind class, read class
-    site
+    slot
 
 zone field-description
   take host, like view
@@ -28,7 +28,7 @@ zone field-description
   zone div
     bind data-slot, text <field-description>
     bind class, read class
-    site
+    slot
 
 zone field-error
   take host, like view
@@ -36,7 +36,7 @@ zone field-error
   zone div
     bind data-slot, text <field-error>
     bind class, read class
-    site
+    slot
 
 zone field-group
   take host, like view
@@ -44,4 +44,4 @@ zone field-group
   zone div
     bind data-slot, text <field-group>
     bind class, read class
-    site
+    slot

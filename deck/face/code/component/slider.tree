@@ -15,7 +15,7 @@ zone slider
   zone span
     bind data-slot, text <slider>
     bind class, read class
-    site
+    slot
 
 zone slider-track
   take host, like view
@@ -23,7 +23,7 @@ zone slider-track
   zone span
     bind data-slot, text <slider-track>
     bind class, read class
-    site
+    slot
 
 zone slider-range
   take host, like view

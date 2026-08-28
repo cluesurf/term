@@ -18,7 +18,7 @@ zone sheet
   zone div
     bind data-slot, text <sheet>
     bind class, read class
-    site
+    slot
 
 zone sheet-trigger
   take host, like view
@@ -31,7 +31,7 @@ zone sheet-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    site
+    slot
 
 zone sheet-content
   take host, like view
@@ -50,7 +50,7 @@ zone sheet-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        site
+        slot
 
 zone sheet-header
   take host, like view
@@ -58,7 +58,7 @@ zone sheet-header
   zone div
     bind data-slot, text <sheet-header>
     bind class, read class
-    site
+    slot
 
 zone sheet-title
   take host, like view
@@ -66,7 +66,7 @@ zone sheet-title
   zone div
     bind data-slot, text <sheet-title>
     bind class, read class
-    site
+    slot
 
 zone sheet-description
   take host, like view
@@ -74,7 +74,7 @@ zone sheet-description
   zone div
     bind data-slot, text <sheet-description>
     bind class, read class
-    site
+    slot
 
 zone sheet-footer
   take host, like view
@@ -82,7 +82,7 @@ zone sheet-footer
   zone div
     bind data-slot, text <sheet-footer>
     bind class, read class
-    site
+    slot
 
 zone sheet-close
   take host, like view
@@ -96,4 +96,4 @@ zone sheet-close
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    site
+    slot

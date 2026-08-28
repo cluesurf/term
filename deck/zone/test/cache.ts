@@ -11,22 +11,9 @@
 // machine this was written on. A tool that costs a second per command gets
 // worked around within a week.
 
-import { createRequire } from 'node:module'
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { transformSync } from 'esbuild'
-
-const HERE = dirname(fileURLToPath(import.meta.url))
-const require_ = createRequire(import.meta.url)
-;(globalThis as any).require = require_
-for (const [file, name] of Object.entries({ bytes: 'octets', cipher: 'cipher', bit: 'bit', digest: 'digest' })) {
-  let src: string
-  try { src = readFileSync(resolve(HERE, `../../seed/code/native/node/runtime/${file}.ts`), 'utf8') } catch { continue }
-  const js = transformSync(src, { loader: 'ts', format: 'cjs' }).code
-  ;(globalThis as any)[name] = new Function('require', `${js}; return ${file}`)(require_)
-}
-Object.defineProperty(globalThis, 'crypto', { value: require_('node:crypto'), configurable: true, writable: true })
+// The globals `term boot` prepends, installed by hand. FIRST, before any
+// import of ../host/**. See test/shim.ts.
+import './shim'
 
 const { mineFile, findLock, mineZone, pullNeed } = await import('../host/code/config/zone')
 const { showFile, markDeck } = await import('../host/code/seal/cache')

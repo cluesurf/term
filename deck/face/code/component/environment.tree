@@ -17,4 +17,4 @@ load ./layout
 zone environment
   take host, like view
   zone layout
-    site
+    slot

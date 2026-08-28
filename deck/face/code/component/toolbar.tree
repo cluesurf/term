@@ -18,7 +18,7 @@ zone toolbar
     bind data-slot, text <toolbar>
     bind role, text <toolbar>
     bind class, read class
-    site
+    slot
 
 zone toolbar-button
   take host, like view
@@ -33,7 +33,7 @@ zone toolbar-button
         bind self, read registry
         bind key, read key
     bind class, read class
-    site
+    slot
 
 zone toolbar-separator
   take host, like view

@@ -17,7 +17,7 @@ zone dropdown-menu
   zone div
     bind data-slot, text <dropdown-menu>
     bind class, read class
-    site
+    slot
 
 zone dropdown-menu-trigger
   take host, like view
@@ -33,7 +33,7 @@ zone dropdown-menu-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    site
+    slot
 
 zone dropdown-menu-content
   take host, like view
@@ -51,7 +51,7 @@ zone dropdown-menu-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        site
+        slot
 
 zone dropdown-menu-item
   take host, like view
@@ -60,4 +60,4 @@ zone dropdown-menu-item
     bind data-slot, text <dropdown-menu-item>
     bind role, text <menuitem>
     bind class, read class
-    site
+    slot

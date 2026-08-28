@@ -14,7 +14,7 @@ zone table-header
   zone thead
     bind data-slot, text <table-header>
     bind class, read class
-    site
+    slot
 
 zone table-body
   take host, like view
@@ -22,7 +22,7 @@ zone table-body
   zone tbody
     bind data-slot, text <table-body>
     bind class, read class
-    site
+    slot
 
 zone table-footer
   take host, like view
@@ -30,7 +30,7 @@ zone table-footer
   zone tfoot
     bind data-slot, text <table-footer>
     bind class, read class
-    site
+    slot
 
 zone table-row
   take host, like view
@@ -38,7 +38,7 @@ zone table-row
   zone tr
     bind data-slot, text <table-row>
     bind class, read class
-    site
+    slot
 
 zone table-head
   take host, like view
@@ -46,7 +46,7 @@ zone table-head
   zone th
     bind data-slot, text <table-head>
     bind class, read class
-    site
+    slot
 
 zone table-cell
   take host, like view
@@ -54,7 +54,7 @@ zone table-cell
   zone td
     bind data-slot, text <table-cell>
     bind class, read class
-    site
+    slot
 
 zone table-caption
   take host, like view
@@ -62,4 +62,4 @@ zone table-caption
   zone caption
     bind data-slot, text <table-caption>
     bind class, read class
-    site
+    slot

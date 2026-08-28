@@ -18,7 +18,7 @@ zone alert
     bind data-variant, read variant
     bind role, text <alert>
     bind class, read class
-    site
+    slot
 
 zone alert-title
   take host, like view
@@ -26,7 +26,7 @@ zone alert-title
   zone div
     bind data-slot, text <alert-title>
     bind class, read class
-    site
+    slot
 
 zone alert-description
   take host, like view
@@ -34,4 +34,4 @@ zone alert-description
   zone div
     bind data-slot, text <alert-description>
     bind class, read class
-    site
+    slot

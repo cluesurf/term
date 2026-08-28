@@ -86,7 +86,7 @@ const SLOTTED = `tree wrapper
   take name
   hook fuse
     form {name}
-      slot fields
+      site fields
 
 fuse wrapper
   bind name, point
@@ -109,11 +109,11 @@ function main(): void {
   // the type parameter is substituted
   expectContains('accessor type u64', ACCESSOR, 'u64')
 
-  // slot/beam: the beamed fields are injected at the slot, inside the substituted form name
-  expectContains('slot/beam form name', SLOTTED, 'point')
-  expectContains('slot/beam injects fields', SLOTTED, 'link')
-  expectContains('slot/beam injects x', SLOTTED, 'x')
-  expectAbsent('slot keyword gone', SLOTTED, 'slot')
+  // site/beam: the beamed fields are injected at the site, inside the substituted form name
+  expectContains('site/beam form name', SLOTTED, 'point')
+  expectContains('site/beam injects fields', SLOTTED, 'link')
+  expectContains('site/beam injects x', SLOTTED, 'x')
+  expectAbsent('site keyword gone', SLOTTED, 'site fields')
 
   // injected template code flows through the full compile (expand -> mill -> resolve -> CHECK -> emit)
   const cleanFuse = `tree make-adder

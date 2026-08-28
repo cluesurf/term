@@ -19,7 +19,7 @@ zone calendar
   zone div
     bind data-slot, text <calendar>
     bind class, read class
-    site
+    slot
 
 zone calendar-header
   take host, like view
@@ -27,7 +27,7 @@ zone calendar-header
   zone div
     bind data-slot, text <calendar-header>
     bind class, read class
-    site
+    slot
 
 zone calendar-title
   take host, like view
@@ -35,7 +35,7 @@ zone calendar-title
   zone div
     bind data-slot, text <calendar-title>
     bind class, read class
-    site
+    slot
 
 zone calendar-nav
   take host, like view
@@ -43,7 +43,7 @@ zone calendar-nav
   zone div
     bind data-slot, text <calendar-nav>
     bind class, read class
-    site
+    slot
 
 zone calendar-grid
   take host, like view
@@ -52,7 +52,7 @@ zone calendar-grid
     bind data-slot, text <calendar-grid>
     bind role, text <grid>
     bind class, read class
-    site
+    slot
 
 zone calendar-row
   take host, like view
@@ -61,7 +61,7 @@ zone calendar-row
     bind data-slot, text <calendar-row>
     bind role, text <row>
     bind class, read class
-    site
+    slot
 
 zone calendar-cell
   take host, like view
@@ -70,7 +70,7 @@ zone calendar-cell
     bind data-slot, text <calendar-cell>
     bind role, text <gridcell>
     bind class, read class
-    site
+    slot
 
 zone calendar-day
   take host, like view
@@ -94,4 +94,4 @@ zone calendar-day
         bind self, read control
         bind value, read value
     bind class, read class
-    site
+    slot

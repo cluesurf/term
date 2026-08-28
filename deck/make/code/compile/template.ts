@@ -487,7 +487,7 @@ function expandBody(nodes: Node[], ctx: Context): Node[] {
       const head = headName(node)
 
       // `site <name>` (formerly `slot`) marks the injection point a `beam <name>` at the fuse site fills
-      if (head === 'site') {
+      if (head === 'site' || head === 'slot') {
         const slotArg = rest(node)[0]
         const slotName =
           slotArg?.kind === 'group' ? headName(slotArg) : undefined

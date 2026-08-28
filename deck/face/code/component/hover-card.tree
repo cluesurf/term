@@ -17,7 +17,7 @@ zone hover-card
   zone div
     bind data-slot, text <hover-card>
     bind class, read class
-    site
+    slot
 
 zone hover-card-trigger
   take host, like view
@@ -33,7 +33,7 @@ zone hover-card-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    site
+    slot
 
 zone hover-card-content
   take host, like view
@@ -51,7 +51,7 @@ zone hover-card-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        site
+        slot
 
 zone hover-card-item
   take host, like view
@@ -60,4 +60,4 @@ zone hover-card-item
     bind data-slot, text <hover-card-item>
     bind role, text <menuitem>
     bind class, read class
-    site
+    slot

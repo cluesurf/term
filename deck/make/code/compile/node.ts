@@ -234,8 +234,11 @@ export type Statement =
   | { form: 'exit'; span: Span }
   // a debugger breakpoint (`halt code`)
   | { form: 'debug'; span: Span }
-  // throw an error value (the `bust` keyword)
-  | { form: 'throw'; value: Expression; span: Span }
+  // throw an error value. `halt <form>` with `bind` children raises a declared exception: `value` is the record as
+  // written and `raise` names the form, so `extendForms` can check the form is an exception, refuse a pinned field,
+  // wrap the props into the `link` record and fill `host` / `form` / `code` / `time`. A bare `halt <text>` (and the
+  // retired `bust`) throws its value as-is with no `raise`.
+  | { form: 'throw'; value: Expression; span: Span; raise?: string }
   // a verification condition: the expression must be provably true (refinement layer 2). An optional `name` makes
   // it a citable lemma; an optional `proof` is the explicit proof tree (heads from hold/base/terms.json).
   | {
@@ -280,7 +283,16 @@ export type Statement =
       indices?: { name: string; type: Type }[]
       // `identity` marks the field declared with `note id`: the field whose value is the record's durable identity
       // (its mark), so the base bridge maps it to a `mark` constraint and re-compiling the same source is idempotent.
-      fields: { name: string; type: Type; nick?: string; identity?: boolean }[]
+      // `optional` is `need false` (the field may be absent), `fallback` is `fall <value>` (the value a construction
+      // that omits the field gets). Both are read at a `make` / `halt <form>` by extendForms.
+      fields: {
+        name: string
+        type: Type
+        nick?: string
+        identity?: boolean
+        optional?: boolean
+        fallback?: Expression
+      }[]
       variants: {
         name: string
         fields: { name: string; type: Type; nick?: string; identity?: boolean }[]
@@ -292,6 +304,37 @@ export type Statement =
       // the `like <type>` base of a transparent alias form (`form g-luint, like native-number`): a form with this base
       // and no fields/variants is an alias that unifies with its base. Undefined for ordinary forms.
       alias?: Type
+      // `like <base>` WITH children: the form EXTENDS `base`. `head` children name type arguments (`head a, like
+      // text`, or `head a` over `link` lines for an anonymous record), `bind` children PIN fields of the base (fixed by
+      // this type, refused at a construction), and `link` children add props to the base's record parameter. Resolved
+      // into plain `fields`, `pins`, `chain` and `props` by `extendForms` (check/extend.ts) before resolution, so every
+      // later pass sees an ordinary record. See note/term/hive/03-exception.md.
+      extend?: {
+        base: Type
+        heads: {
+          name: string
+          type?: Type
+          links?: { name: string; type: Type }[]
+          span: Span
+        }[]
+        links: {
+          name: string
+          type: Type
+          nick?: string
+          identity?: boolean
+          optional?: boolean
+          fallback?: Expression
+        }[]
+        pins: { name: string; value: Expression }[]
+        span: Span
+      }
+      // filled by extendForms: the fields this type fixes (inherited and own, later pins winning), in declaration order
+      pins?: { name: string; value: Expression }[]
+      // filled by extendForms: the base chain, root first (`exception`, `excess` for `upload-excess`)
+      chain?: string[]
+      // filled by extendForms: the name of the synthesized props record (`upload-excess-link`), when the chain's root
+      // takes a record parameter that this form's `link` lines extend
+      props?: string
       // a PROPOSITIONAL TRUNCATION (hProp): declared with `mark prop`, any two inhabitants are equal (proof
       // irrelevance). Its constructors are kept rigid (no reduction) and registered so `convert` equates them.
       truncation?: boolean

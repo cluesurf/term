@@ -15,7 +15,7 @@ zone avatar
   zone span
     bind data-slot, text <avatar>
     bind class, read class
-    site
+    slot
 
 zone avatar-image
   take host, like view
@@ -34,4 +34,4 @@ zone avatar-fallback
   zone span
     bind data-slot, text <avatar-fallback>
     bind class, read class
-    site
+    slot

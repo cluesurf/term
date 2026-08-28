@@ -13,7 +13,7 @@ zone scroll-area
   zone div
     bind data-slot, text <scroll-area>
     bind class, read class
-    site
+    slot
 
 zone scroll-area-viewport
   take host, like view
@@ -21,7 +21,7 @@ zone scroll-area-viewport
   zone div
     bind data-slot, text <scroll-area-viewport>
     bind class, read class
-    site
+    slot
 
 zone scroll-area-scrollbar
   take host, like view
@@ -29,7 +29,7 @@ zone scroll-area-scrollbar
   zone div
     bind data-slot, text <scroll-area-scrollbar>
     bind class, read class
-    site
+    slot
 
 zone scroll-area-thumb
   take host, like view

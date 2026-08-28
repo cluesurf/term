@@ -17,7 +17,7 @@ zone collapsible
   zone div
     bind data-slot, text <collapsible>
     bind class, read class
-    site
+    slot
 
 zone collapsible-trigger
   take host, like view
@@ -33,7 +33,7 @@ zone collapsible-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    site
+    slot
 
 zone collapsible-content
   take host, like view
@@ -50,4 +50,4 @@ zone collapsible-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        site
+        slot

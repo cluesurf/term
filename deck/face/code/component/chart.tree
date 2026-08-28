@@ -15,7 +15,7 @@ zone chart
     bind data-slot, text <chart>
     bind role, text <img>
     bind class, read class
-    site
+    slot
 
 zone chart-tooltip
   take host, like view
@@ -23,7 +23,7 @@ zone chart-tooltip
   zone div
     bind data-slot, text <chart-tooltip>
     bind class, read class
-    site
+    slot
 
 zone chart-legend
   take host, like view
@@ -31,4 +31,4 @@ zone chart-legend
   zone div
     bind data-slot, text <chart-legend>
     bind class, read class
-    site
+    slot

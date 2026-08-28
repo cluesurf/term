@@ -73,4 +73,4 @@ zone layout
       zone div
         bind data-slot, text <layout-middle>
         bind style, call middle-style, read vp
-        site
+        slot

@@ -27,7 +27,7 @@ zone popover
   zone div
     bind data-slot, text <popover>
     bind class, read class
-    site
+    slot
 
 zone popover-trigger
   take host, like view
@@ -43,7 +43,7 @@ zone popover-trigger
     hook click
       call toggle-disclosure
         bind self, read control
-    site
+    slot
 
 zone popover-content
   take host, like view
@@ -61,4 +61,4 @@ zone popover-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        site
+        slot

@@ -15,8 +15,8 @@ Maps to: a Rust macro, a C++ template, a code generator. The expansion happens d
 | `fuse <name>` | instantiate a template |
 | `bind <param>, <value>` | pass a named argument to a `fuse` |
 | `fuse read <param>` | resolve the template name from a parameter (dynamic fuse) |
-| `slot <name>` | an injection point inside a template body |
-| `beam <name>` | at the fuse site, the block of code injected at the matching `slot` |
+| `site <name>` | an injection point inside a template body |
+| `beam <name>` | at the fuse site, the block of code injected at the matching `site` |
 | `{param}` | compile-time substitution of a parameter inside the body |
 | `{{name}}` | runtime string interpolation (left untouched by expansion) |
 
@@ -81,14 +81,14 @@ This emits `get-age` (returning a `number`) and `set-age` (taking a `number` val
 
 ## Slots and beams: injecting a block
 
-A `{param}` hole fills in a single name. A `slot` fills in a whole block of code. Mark the injection point in the body with `slot <name>`, then supply the block at the fuse site with `beam <name>` and its children.
+A `{param}` hole fills in a single name. A `site` fills in a whole block of code. Mark the injection point in the body with `site <name>`, then supply the block at the fuse site with `beam <name>` and its children.
 
 ```tree
 tree wrapper
   take name
   hook fuse
     form {name}
-      slot fields
+      site fields
 
 fuse wrapper
   bind name, point
@@ -97,7 +97,7 @@ fuse wrapper
     link y, like number
 ```
 
-The `beam fields` block is injected where `slot fields` sits, inside the substituted form name. The result:
+The `beam fields` block is injected where `site fields` sits, inside the substituted form name. The result:
 
 ```tree
 form point

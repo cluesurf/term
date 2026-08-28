@@ -28,7 +28,7 @@ zone grid
     bind class, read class
     zone div
       bind class, text <row>
-      site
+      slot
 
 # one grid cell — a flex column so its child can grow to fill the row-stretched height (matches the React `.bcqg-cell`).
 # The per-config `@container` rules in the theme size this `.cell` via its `flex` basis + `min-width` (scoped under the
@@ -39,4 +39,4 @@ zone grid-item
   zone div
     bind data-slot, text <grid-item>
     bind class, text <cell>
-    site
+    slot

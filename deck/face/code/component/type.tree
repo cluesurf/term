@@ -67,7 +67,7 @@ zone text-span
         bind node, read text-node
         bind family, read font
         bind opacity, read opacity
-    site
+    slot
 
 # heading-tag variants — React `<TypeText tag="h1">` etc. Same typography contract, different rendered element. The
 # renderer needs a literal tag name, so each tag is its own zone (callers pick the one matching the React `tag` prop).
@@ -98,7 +98,7 @@ zone text-h1
         bind node, read text-node
         bind family, read font
         bind opacity, read opacity
-    site
+    slot
 
 zone text-h2
   take host, like view
@@ -127,7 +127,7 @@ zone text-h2
         bind node, read text-node
         bind family, read font
         bind opacity, read opacity
-    site
+    slot
 
 zone text-h3
   take host, like view
@@ -156,7 +156,7 @@ zone text-h3
         bind node, read text-node
         bind family, read font
         bind opacity, read opacity
-    site
+    slot
 
 zone text-p
   take host, like view
@@ -185,7 +185,7 @@ zone text-p
         bind node, read text-node
         bind family, read font
         bind opacity, read opacity
-    site
+    slot
 
 # anchor-tag variant — React `<TypeText tag="a" href=...>`. Adds the href / target / rel passthroughs from the React
 # prop surface alongside the typography contract.
@@ -222,7 +222,7 @@ zone text-a
         bind node, read text-node
         bind family, read font
         bind opacity, read opacity
-    site
+    slot
 
 # balanced wrapping — the theme applies `text-wrap: balance` on [data-slot=balanced]. Pure CSS, fully headless.
 zone balanced
@@ -231,7 +231,7 @@ zone balanced
   zone span
     bind data-slot, text <balanced>
     bind class, read class
-    site
+    slot
 
 # truncate to `lines` lines with an ellipsis — the theme applies line-clamp keyed off data-lines. Pure CSS.
 zone truncated
@@ -242,7 +242,7 @@ zone truncated
     bind data-slot, text <truncated>
     bind data-lines, read lines
     bind class, read class
-    site
+    slot
 
 # fit the text to fill its container (the font size scales to the box). The measurement + resize loop is a dom
 # primitive (ResizeObserver + a binary-search on font size), the remaining piece; this is the themeable shell.
@@ -252,4 +252,4 @@ zone fitted
   zone span
     bind data-slot, text <fitted>
     bind class, read class
-    site
+    slot

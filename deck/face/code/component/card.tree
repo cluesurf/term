@@ -17,7 +17,7 @@ zone card
   zone div
     bind data-slot, text <card>
     bind class, read class
-    site
+    slot
 
 zone card-header
   take host, like view
@@ -25,7 +25,7 @@ zone card-header
   zone div
     bind data-slot, text <card-header>
     bind class, read class
-    site
+    slot
 
 zone card-title
   take host, like view
@@ -33,7 +33,7 @@ zone card-title
   zone div
     bind data-slot, text <card-title>
     bind class, read class
-    site
+    slot
 
 zone card-description
   take host, like view
@@ -41,7 +41,7 @@ zone card-description
   zone div
     bind data-slot, text <card-description>
     bind class, read class
-    site
+    slot
 
 zone card-action
   take host, like view
@@ -49,7 +49,7 @@ zone card-action
   zone div
     bind data-slot, text <card-action>
     bind class, read class
-    site
+    slot
 
 zone card-content
   take host, like view
@@ -57,7 +57,7 @@ zone card-content
   zone div
     bind data-slot, text <card-content>
     bind class, read class
-    site
+    slot
 
 zone card-footer
   take host, like view
@@ -65,4 +65,4 @@ zone card-footer
   zone div
     bind data-slot, text <card-footer>
     bind class, read class
-    site
+    slot

@@ -20,7 +20,7 @@ zone toggle-group
     bind data-slot, text <toggle-group>
     bind role, text <group>
     bind class, read class
-    site
+    slot
 
 zone toggle-group-item
   take host, like view
@@ -43,4 +43,4 @@ zone toggle-group-item
         bind self, read control
         bind value, read value
     bind class, read class
-    site
+    slot

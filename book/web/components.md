@@ -20,7 +20,7 @@ Maps to: a SolidJS component (the same signals plus real-DOM model), but written
 | `bind <name>, <value>` | An attribute (on an element) or a prop (on a component) | `attribute(node, name, value)` |
 | `hook <event>, call <fn>` | An event handler | `event(node, "event", () => fn())` |
 | `name <ref>` | Bind the element to a local | a `view` local you can `read` |
-| `slot` | The outlet where a caller's children render | append children thunk |
+| `site` | The outlet where a caller's children render | append children thunk |
 | `fork` (with `hook test` / `hook hold` / `hook miss`) | Reactive conditional | `show(parent, cond, then, else)` |
 | `walk list, read <xs>` | Reactive list | `each(parent, () => xs, item => view)` |
 | `save x / call make-signal` | Local reactive state | `const x = makeSignal(init)` |
@@ -185,7 +185,7 @@ zone menu
 
 ## Slots
 
-`slot` marks where a caller's children render. A component with a slot automatically takes a trailing children thunk.
+`site` marks where a caller's children render. A component with a site automatically takes a trailing children thunk.
 
 ```tree
 zone card
@@ -194,12 +194,12 @@ zone card
   zone div
     bind data-slot, text <card>
     bind class, read class
-    slot
+    site
 ```
 
 ## Composition
 
-A `zone <name>` whose name is another component is a component call, not an element. Props pass with `bind`. The nested content becomes the slot children.
+A `zone <name>` whose name is another component is a component call, not an element. Props pass with `bind`. The nested content becomes the site children.
 
 ```tree
 zone page
@@ -210,7 +210,7 @@ zone page
       text <Hello>
 ```
 
-`card` mounts itself into its host, fills `class` by name, and renders the passed `h1` at its `slot`. This is the headless-component foundation.
+`card` mounts itself into its host, fills `class` by name, and renders the passed `h1` at its `site`. This is the headless-component foundation.
 
 ## Mounting
 

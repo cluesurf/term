@@ -25,7 +25,7 @@ zone tabs
   zone div
     bind data-slot, text <tabs>
     bind class, read class
-    site
+    slot
 
 zone tabs-list
   take host, like view
@@ -34,7 +34,7 @@ zone tabs-list
     bind data-slot, text <tabs-list>
     bind role, text <tablist>
     bind class, read class
-    site
+    slot
 
 zone tabs-trigger
   take host, like view
@@ -58,7 +58,7 @@ zone tabs-trigger
       call select-value
         bind self, read control
         bind value, read value
-    site
+    slot
 
 zone tabs-content
   take host, like view
@@ -75,4 +75,4 @@ zone tabs-content
         bind data-slot, text <tabs-content>
         bind role, text <tabpanel>
         bind class, read class
-        site
+        slot

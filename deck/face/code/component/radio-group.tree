@@ -16,7 +16,7 @@ zone radio-group
     bind data-slot, text <radio-group>
     bind role, text <radiogroup>
     bind class, read class
-    site
+    slot
 
 zone radio-group-item
   take host, like view

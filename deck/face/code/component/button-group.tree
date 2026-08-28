@@ -12,4 +12,4 @@ zone button-group
   zone div
     bind data-slot, text <button-group>
     bind class, read class
-    site
+    slot

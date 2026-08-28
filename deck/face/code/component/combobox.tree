@@ -23,7 +23,7 @@ zone combobox
   zone div
     bind data-slot, text <combobox>
     bind class, read class
-    site
+    slot
 
 zone combobox-trigger
   take host, like view
@@ -44,7 +44,7 @@ zone combobox-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    site
+    slot
 
 zone combobox-content
   take host, like view
@@ -61,7 +61,7 @@ zone combobox-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        site
+        slot
 
 zone combobox-input
   take host, like view
@@ -82,7 +82,7 @@ zone combobox-empty
     bind data-slot, text <combobox-empty>
     bind role, text <presentation>
     bind class, read class
-    site
+    slot
 
 zone combobox-group
   take host, like view
@@ -91,7 +91,7 @@ zone combobox-group
     bind data-slot, text <combobox-group>
     bind role, text <group>
     bind class, read class
-    site
+    slot
 
 zone combobox-label
   take host, like view
@@ -99,7 +99,7 @@ zone combobox-label
   zone div
     bind data-slot, text <combobox-label>
     bind class, read class
-    site
+    slot
 
 zone combobox-item
   take host, like view
@@ -111,4 +111,4 @@ zone combobox-item
     bind role, text <option>
     hook click, call press
     bind class, read class
-    site
+    slot

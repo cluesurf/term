@@ -10,4 +10,4 @@ zone ztmp
   take host, like view
   zone div
     bind class, text <a [&\>tr]:b ['*_'] c>
-    site
+    slot

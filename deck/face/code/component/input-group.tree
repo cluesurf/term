@@ -12,7 +12,7 @@ zone input-group
   zone div
     bind data-slot, text <input-group>
     bind class, read class
-    site
+    slot
 
 zone input-group-addon
   take host, like view
@@ -20,4 +20,4 @@ zone input-group-addon
   zone div
     bind data-slot, text <input-group-addon>
     bind class, read class
-    site
+    slot

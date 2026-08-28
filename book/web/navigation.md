@@ -11,7 +11,7 @@ Maps to: a single-page-app router (React Router, Solid Router), but it shares th
 | Page route | `dock /path` mapping to a `zone` |
 | Dynamic segment | `dock /users/:id` with `take path` |
 | Catch-all / 404 | `dock /**` to a fallback zone |
-| Layout | a parent `zone` with `slot`, nested `dock` children render into it |
+| Layout | a parent `zone` with `site`, nested `dock` children render into it |
 | A link | an `a` element with `bind href` (intercepted for SPA nav) |
 | Navigate in code | `call navigate` with `bind path` |
 | Back / forward | `call navigate` with `bind back` / `bind forward` |
@@ -42,13 +42,13 @@ dock /**
 
 ## Layouts
 
-A parent `zone` with a `slot` is a layout. Nested `dock` children render into the slot, so shared chrome (nav, footer) stays mounted while the inner page changes.
+A parent `zone` with a `site` is a layout. Nested `dock` children render into the site, so shared chrome (nav, footer) stays mounted while the inner page changes.
 
 ```tree
 zone main-layout
   take host, like view
   zone nav-bar
-  slot
+  site
   zone footer
 ```
 

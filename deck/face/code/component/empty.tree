@@ -12,7 +12,7 @@ zone empty
   zone div
     bind data-slot, text <empty>
     bind class, read class
-    site
+    slot
 
 zone empty-media
   take host, like view
@@ -20,7 +20,7 @@ zone empty-media
   zone div
     bind data-slot, text <empty-media>
     bind class, read class
-    site
+    slot
 
 zone empty-title
   take host, like view
@@ -28,7 +28,7 @@ zone empty-title
   zone div
     bind data-slot, text <empty-title>
     bind class, read class
-    site
+    slot
 
 zone empty-description
   take host, like view
@@ -36,7 +36,7 @@ zone empty-description
   zone div
     bind data-slot, text <empty-description>
     bind class, read class
-    site
+    slot
 
 zone empty-content
   take host, like view
@@ -44,4 +44,4 @@ zone empty-content
   zone div
     bind data-slot, text <empty-content>
     bind class, read class
-    site
+    slot
