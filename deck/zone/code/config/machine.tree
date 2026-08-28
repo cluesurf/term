@@ -2,7 +2,7 @@
 # The machine binding, at `~/.config/zone/zone.tree`.
 #
 # This file says who this machine is, which provider it talks to, which
-# store holds the bootstrap credential, and what each tier maps to. It holds
+# store holds the bootstrap credential, and what each sort maps to. It holds
 # no credential and no secret, so it is safe to read, copy, and inspect.
 #
 #   zone <1>
@@ -16,16 +16,16 @@
 #
 #   save keychain
 #
-#   tier development
+#   sort development
 #     bind cluesurf-development
-#   tier staging
+#   sort staging
 #     bind cluesurf-staging
-#   tier production
+#   sort production
 #     bind cluesurf-production
 
 load ../base
   find bond
-  find tier
+  find sort
   find seat
 
 load @term/seed/code/text
@@ -69,7 +69,7 @@ task have
       call spot-bond
 
 # Read the binding. A machine that is not bound is an ordinary state, not an
-# error, because `zone show` has to be able to say so.
+# error, because `term zone show` has to be able to say so.
 task read-bond
   note async
   like maybe
@@ -91,57 +91,57 @@ task read-bond
         call mine-bond
           read text
 
-# The seat a tier files its credential under. Keyed by host as well as tier,
-# so two machines bound to the same tier keep separate credentials and one
+# The seat a sort files its credential under. Keyed by host as well as sort,
+# so two machines bound to the same sort keep separate credentials and one
 # can be revoked without touching the other.
-# The tier a command should use: the one named, or the machine's
+# The sort a command should use: the one named, or the machine's
 # default when the name is empty. Every command that takes an optional
-# tier resolves it through here, so "no flag means the bound default"
+# sort resolves it through here, so "no flag means the bound default"
 # behaves identically across the whole console.
-task pick-tier
+task pick-sort
   take bond, like bond
-  take tier, like text
+  take sort, like text
   like text
   fork test
     hook test
       call equal
-        bind a, read tier
+        bind a, read sort
         bind b, text <>
     hook hold
       send back
         read bond/base
     hook miss
       send back
-        read tier
+        read sort
 
 task berth
   take bond, like bond
-  take tier, like text
+  take sort, like text
   like seat
   send back
     make seat
-      bind tier, read tier
+      bind sort, read sort
       bind name
         call join-text
           make list
             read bond/host
             text <:>
-            read tier
+            read sort
 
-# The project a tier points at.
-task bind-tier
+# The project a sort points at.
+task bind-sort
   take bond, like bond
-  take tier, like text
+  take sort, like text
   like maybe
-    head tier
+    head sort
   send back
     call find
       bind list, read bond/seat
       bind test
         task same
-          take it, like tier
+          take it, like sort
           like boolean
           send back
             call equal
               read it/name
-              read tier
+              read sort

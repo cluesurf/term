@@ -4,7 +4,7 @@ load @term/seed/code/maybe
   find unwrap
 
 
-# `zone toss` — unbind this machine.
+# `term zone toss` — unbind this machine.
 #
 # Removes every local code and the binding itself. It does not revoke
 # anything remotely, and the closing message says so plainly, because a
@@ -87,7 +87,7 @@ task toss
       bind spot
         call berth
           bind bond, read bond-in
-          bind tier, read item/name
+          bind sort, read item/name
 
   call drop-file
     call spot-bond

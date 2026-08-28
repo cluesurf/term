@@ -6,38 +6,57 @@ load @term/seed/code/native/network/http
 load @term/seed/code/network/response
   find http-response
 
+load @term/seed/code/hash
+  find hash
+
+# `header` is a map of name to value, and may be empty.
+#
+# WITHOUT IT NOTHING AUTHENTICATED CAN BE CALLED. Every API worth reaching
+# wants `Authorization`, and any that takes a body wants `Content-Type`. This
+# client could send a method, a url and a body and nothing else, so the answer
+# to "call an API with a bearer token" was to write a native beside it and not
+# use this at all.
 task request
   note async
   take method, like text
   take url, like text
   take body, like text
+  take header, like hash
+    need false
   like http-response
   send back
     call do-request
       read method
       read url
       read body
+      read header
       wait true
 
 task get
   note async
   take url, like text
+  take header, like hash
+    need false
   like http-response
   send back
     call request
       text <GET>
       read url
       text <>
+      read header
       wait true
 
 task post
   note async
   take url, like text
   take body, like text
+  take header, like hash
+    need false
   like http-response
   send back
     call request
       text <POST>
       read url
       read body
+      read header
       wait true

@@ -120,7 +120,7 @@ task mine-spot
                     bind path, read path
             hook miss
               save bind, read word
-        case root
+        case self
           save root, true
         case cast
           call push
@@ -183,7 +183,11 @@ task first-term
   send back
     read out
 
-# One `need` or `want`, with its `from` and any `also` spellings.
+# One `need` or `want`, with its `from` and any `name` spellings.
+#
+# `name` is the head word a person writes. The field it fills is `alias`,
+# because `need` already owns a `name` field for the secret's own name and
+# a form cannot hold two.
 task mine-need
   take one, like leaf
   take must, like boolean
@@ -192,7 +196,7 @@ task mine-need
     call first-term
       read one
   save from, text <>
-  save also
+  save alias
     make list
   walk list, read one/leaf
     hook next
@@ -203,16 +207,16 @@ task mine-need
       fork case, read kid/head
         case from
           save from, read word
-        case also
+        case name
           call push
-            bind list, read also
+            bind list, read alias
             bind item, read word
   send back
     make need
       bind name, read name
       bind must, read must
       bind from, read from
-      bind also, read also
+      bind alias, read alias
 
 # `base` and `word.surf` join as `base/word.surf`. The root joins to itself.
 task join-path

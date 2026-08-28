@@ -327,8 +327,21 @@ export type RunInput = {
  * a non-number result is 0, and a usage error is 2 without ever
  * reaching the task.
  */
+/**
+ * What to call this program in its own usage and help.
+ *
+ * A console compiled from `deck.tree` knows its package name, which is right
+ * when it is run directly and wrong when it is run as a subcommand of
+ * something else. `term zone` sets this so the help says `term zone read`
+ * rather than `zone read`, and a person can paste what they are shown.
+ */
+function shownName(name: string): string {
+  return process.env.TERM_LINE_NAME || name
+}
+
 export async function runCommandLine(input: RunInput): Promise<number> {
-  const { name, routes, argv, resolve } = input
+  const { name: given, routes, argv, resolve } = input
+  const name = shownName(given)
   const out = input.out ?? ((line: string) => console.log(line))
   const err = input.err ?? ((line: string) => console.error(line))
 

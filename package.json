@@ -58,6 +58,12 @@
   },
   "files": [
     "host",
-    "deck/base/host"
+    "deck/base/host",
+    "deck/zone/code",
+    "deck/zone/deck.tree",
+    "deck/seed/code",
+    "!deck/seed/code/native/*/.build",
+    "!deck/seed/code/native/*/target",
+    "!**/*.tsbuildinfo*"
   ]
 }

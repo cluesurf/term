@@ -1,4 +1,4 @@
-# `zone load` — the command people run all day.
+# `term zone load` — the command people run all day.
 #
 #   zone load -- pnpm boot
 #   zone load word.surf/moon -- pnpm boot
@@ -206,7 +206,7 @@ task load
   # FIRST RUN FETCHES, ONCE, AND SAYS SO.
   #
   # Someone who has just cloned the repository has a declaration and no cache.
-  # Refusing here would send them to `zone seal make` and `zone read` before
+  # Refusing here would send them to `term zone seal make` and `term zone read` before
   # anything works, and the two commands are exactly what this would have
   # done. So it does them, out loud, and gets on with it.
   #
@@ -275,7 +275,7 @@ task load
                 text <The cached values went stale >
                 call gap-text
                   read cache/good
-                text <. Run `zone read`.>
+                text <. Run `term zone read`.>
 
   save bond
     call read-bond
@@ -287,7 +287,7 @@ task load
     hook hold
       send back
         call halt
-          text <This machine is not bound. Run `zone bind` first.>
+          text <This machine is not bound. Run `term zone bind` first.>
   save bond-in
     call unwrap
       read bond
@@ -307,7 +307,7 @@ task load
     hook hold
       send back
         call halt
-          text <No master key on this machine, so the cache cannot be opened. Run `zone seal make`.>
+          text <No master key on this machine, so the cache cannot be opened. Run `term zone seal make`.>
   save key
     call unwrap
       read key-got
@@ -369,7 +369,7 @@ task load
           wait true
 
       # One value, published under every spelling this zone asks for: each
-      # cast, and each `also` name under each cast. That is how six names for
+      # cast, and each `name` spelling under each cast. That is how six names for
       # one secret are served from one stored value, and how `land` gets both
       # the plain name and the TF_VAR_ one without a second copy.
       save spellings
@@ -377,7 +377,7 @@ task load
       call push
         bind list, read spellings
         bind item, read one/name
-      walk list, read one/also
+      walk list, read one/alias
         hook next
           take site, name other
           call push

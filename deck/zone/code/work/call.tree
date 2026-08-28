@@ -4,7 +4,7 @@ load @term/seed/code/maybe
   find unwrap
 
 
-# `zone call` — the command people run all day.
+# `term zone call` — the command people run all day.
 #
 #   read the binding
 #   read the repository declaration
@@ -28,8 +28,8 @@ load ../base
 load ../config/machine
   find read-bond
   find berth
-  find bind-tier
-  find pick-tier
+  find bind-sort
+  find pick-sort
 
 load ../config/manifest
   find read-deck
@@ -75,7 +75,7 @@ load ../tool/base
 
 task call
   note async
-  take tier, like text
+  take sort, like text
   take name, like text
   take list, like list
   like number
@@ -89,15 +89,15 @@ task call
     hook hold
       send back
         call halt
-          text <This machine is not bound. Run `zone bind` first.>
+          text <This machine is not bound. Run `term zone bind` first.>
   save bond-in
     call unwrap
       read bond
 
-  save tier-in
-    call pick-tier
+  save sort-in
+    call pick-sort
       bind bond, read bond-in
-      bind tier, read tier
+      bind sort, read sort
 
   save deck
     call read-deck
@@ -109,12 +109,12 @@ task call
 
   # Production, and anything else the policy guards, asks before it runs.
   call gate
-    bind tier, read tier-in
+    bind sort, read sort-in
 
   save spot
     call berth
       bind bond, read bond-in
-      bind tier, read tier-in
+      bind sort, read sort-in
 
   save kind
     call pick
@@ -137,15 +137,15 @@ task call
           call join-text
             make list
               text <No code stored for >
-              read tier-in
-              text <. Run `zone code save >
-              read tier-in
+              read sort-in
+              text <. Run `term zone code save >
+              read sort-in
               text <`.>
 
   save deal
     call stake
       bind deck, read deck-in
-      bind tier, read tier-in
+      bind sort, read sort-in
   save claim-in
     call unwrap
       read deal
@@ -171,7 +171,7 @@ task call
           call show-miss
             bind gone, read gone
             bind bind, read claim-in/bind
-            bind tier, read tier-in
+            bind sort, read sort-in
 
   save held
     call take-need

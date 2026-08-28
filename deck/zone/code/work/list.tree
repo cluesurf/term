@@ -1,4 +1,4 @@
-# `zone list` — the names a path resolves to, and never their values.
+# `term zone list` — the names a path resolves to, and never their values.
 #
 # NEEDS NO KEY, and that is the point. The declaration is committed and the
 # cache's structure is plaintext, so this works on a machine that has never
@@ -183,12 +183,12 @@ task list
         hook test
           read alias
         hook hold
-          walk list, read one/also
+          walk list, read one/alias
             hook next
               take site, name other
               call push
                 bind list, read row
-                bind item, text <  also >
+                bind item, text <  name >
               call push
                 bind list, read row
                 bind item

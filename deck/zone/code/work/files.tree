@@ -1,4 +1,4 @@
-# `zone files` — which declarations are in force here, in order.
+# `term zone files` — which declarations are in force here, in order.
 #
 # Answers "which zone.tree am I actually running" in one command, which is
 # otherwise a guess. The search walks up from the working directory and stops
@@ -86,7 +86,7 @@ task files
                 read at-cache
         hook miss
           call show-line
-            text <    cache  none yet. `zone read` makes one.>
+            text <    cache  none yet. `term zone read` makes one.>
 
   send back
     code 0

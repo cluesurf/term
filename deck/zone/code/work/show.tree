@@ -4,7 +4,7 @@ load @term/seed/code/maybe
   find unwrap
 
 
-# `zone show` — what this machine is bound to.
+# `term zone show` — what this machine is bound to.
 #
 # It prints configuration and never a value, not even a masked fragment. A
 # prefix like `sk-proj-...` still says which service the key belongs to and
@@ -16,8 +16,8 @@ load ../base
 load ../config/machine
   find read-bond
   find berth
-  find bind-tier
-  find pick-tier
+  find bind-sort
+  find pick-sort
 
 
 load ../save/base
@@ -42,7 +42,7 @@ load ../tool/base
 
 task show
   note async
-  take tier, like text
+  take sort, like text
 
   save bond
     call read-bond
@@ -53,22 +53,22 @@ task show
     hook hold
       send back
         call show-line
-          text <Not bound. Run `zone bind` to configure this machine.>
+          text <Not bound. Run `term zone bind` to configure this machine.>
   save bond-in
     call unwrap
       read bond
 
-  save tier-in
-    call pick-tier
+  save sort-in
+    call pick-sort
       bind bond, read bond-in
-      bind tier, read tier
+      bind sort, read sort
 
   save kind
     call pick
   save spot
     call berth
       bind bond, read bond-in
-      bind tier, read tier-in
+      bind sort, read sort-in
 
   call show-line
     call join-text
@@ -83,8 +83,8 @@ task show
   call show-line
     call join-text
       make list
-        text <tier    >
-        read tier-in
+        text <sort    >
+        read sort-in
   call show-line
     call join-text
       make list

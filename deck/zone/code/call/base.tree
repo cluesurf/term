@@ -6,7 +6,7 @@
 # modified, nothing is written to disk, and when the child exits the values
 # are gone with it.
 #
-# The child's exit code is returned unchanged, so `zone call npm test` fails
+# The child's exit code is returned unchanged, so `term zone call npm test` fails
 # a build exactly as `npm test` would.
 
 load ../base

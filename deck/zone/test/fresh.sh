@@ -27,7 +27,7 @@ no(){ printf '  FAIL  %s\n' "$1"; FAIL=$((FAIL+1)); }
 strip(){ grep -vE '→ Booting|✓ Built|✓ Cached|Compiling|No build script'; }
 
 cat > "$PROJ/zone.tree" <<'EOF'
-root true
+self true
 
 base bitwarden
 
@@ -44,7 +44,7 @@ cat > "$SBOX/.config/zone/zone.tree" <<'EOF'
 mind lance
 host freshbox
 team cluesurf
-tier moon
+sort moon
 save env
 EOF
 
@@ -96,7 +96,7 @@ hours=$(node -e 'const g=Date.parse(process.argv[1]); console.log(Math.round((g-
 
 # A tree with no star zone gets the long window.
 cat > "$PROJ/zone.tree" <<'EOF'
-root true
+self true
 
 base bitwarden
 
@@ -110,6 +110,39 @@ good=$(grep -o 'good <[^>]*>' "$PROJ/.base/@cluesurf/zone/zone.code.tree" | head
 hours=$(node -e 'const g=Date.parse(process.argv[1]); console.log(Math.round((g-Date.now())/3600000))' "$good")
 [ "$hours" -ge 11 ] && ok "a tree with no star zone is good for about 12 hours (got $hours)" \
                     || no "expected about 12 hours for a moon-only tree, got $hours"
+
+echo
+echo "=== read <path> fetches only that zone and what it inherits ==="
+# A three-zone tree, so narrowing is measurable. An earlier check left a
+# two-zone one in place, where `word.surf` and the whole tree are the same
+# two projects and the comparison proves nothing.
+cat > "$PROJ/zone.tree" <<'EOF'
+self true
+
+base bitwarden
+
+need database-url
+
+zone word.surf
+  need google-client-id
+
+  zone star
+    need sentry-dsn
+EOF
+: > "$ZONE_FAKE_LOG"
+zone read --fresh >/dev/null 2>&1
+whole=$(grep -c "secret list" "$ZONE_FAKE_LOG")
+
+: > "$ZONE_FAKE_LOG"
+zone read word.surf --fresh >/dev/null 2>&1
+narrow=$(grep -c "secret list" "$ZONE_FAKE_LOG")
+
+[ "$whole" -gt "$narrow" ] && ok "a named path fetches fewer projects ($narrow vs $whole)" \
+                           || no "naming a path fetched $narrow, same as the whole tree ($whole)"
+grep -q "secret list base " "$ZONE_FAKE_LOG" && ok "it still fetches the zones it inherits from" \
+                                             || no "it skipped an ancestor, so inherited names would be missing"
+grep -q "word.surf/star" "$ZONE_FAKE_LOG" && no "it fetched a zone BELOW the one asked for" \
+                                          || ok "it does not fetch below the named zone"
 
 echo
 echo "=== load with no cache at all: fetches once, loudly, and runs ==="

@@ -42,16 +42,16 @@ bind word
   case node
     text <(async () =\> { const rl = require("node:readline"); const i = rl.createInterface({ input: process.stdin, output: process.stderr }); const a = await new Promise(r =\> i.question($text, r)); i.close(); if (a.trim() !== $word) { process.stderr.write("Stopped.\\n"); process.exit(1) } })()>
 
-# How much ceremony a tier demands. Development asks nothing, so ordinary
+# How much ceremony a sort demands. Development asks nothing, so ordinary
 # work stays fast. Production asks for its own name typed back, so nobody
 # runs against it by scrolling up in their shell history.
 task gate
-  take tier, like text
-  fork case, read tier
+  take sort, like text
+  fork case, read sort
     case production
       call word
         bind text, text <Calling with production secrets. Type "production" to continue: >
-        bind word, read tier
+        bind word, read sort
     case staging
       call sure
         bind text, text <Calling with staging secrets. Continue?>

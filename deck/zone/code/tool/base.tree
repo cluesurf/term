@@ -208,6 +208,30 @@ bind put-secret
   case node
     text <(function () { try { require("node:child_process").execFileSync($name, $list, { input: $body, stdio: ["pipe", "ignore", "pipe"], timeout: 60000, killSignal: "SIGKILL" }); return "" } catch (e) { var why = String((e && e.stderr) || (e && e.message) || e).trim().split("\\n")[0]; return why || "failed" } })()>
 
+# Read a secret from the terminal WITHOUT ECHOING IT.
+#
+# The way `ssh` asks for a passphrase. The value never appears on screen, in
+# the shell history, or in a process argument. Passing a secret as
+# `--value <secret>` would put it in the process table for anything on the box
+# to read, which is the whole reason this exists.
+#
+# READS FROM /dev/tty, not from stdin. A person may well be piping something
+# into the command, and the prompt has to reach the human either way. When
+# there is no terminal at all this returns empty rather than silently reading
+# a line of piped data as though it were the secret.
+#
+# NO CHILD PROCESS. Echo is turned off through node's own tty.ReadStream
+# rather than by shelling out to `stty`, so nothing exists mid-read that could
+# be inspected, and there is no dependency on a `stty` that behaves the same
+# everywhere. Raw mode is restored in a `finally`, so a Ctrl-C cannot leave
+# the terminal mute. Ctrl-C exits 130 the way a shell would, and backspace
+# works, because a prompt that cannot be corrected gets pasted into instead.
+bind ask-secret
+  take word, like text
+  like text
+  case node
+    text <(function () { var fs = require("node:fs"), tty = require("node:tty"), fd; try { fd = fs.openSync("/dev/tty", "r+") } catch (e) { return "" } var rs, raw = false; try { fs.writeSync(fd, $word); rs = new tty.ReadStream(fd); if (rs.isTTY) { rs.setRawMode(true); raw = true } var out = "", one = Buffer.alloc(1); for (;;) { var n = fs.readSync(fd, one, 0, 1, null); if (n === 0) { break } var c = one.toString("utf8"); if (c === "\\n" || c === "\\r") { break } if (c === "\\u0003") { if (raw) { rs.setRawMode(false) } fs.writeSync(fd, "\\n"); process.exit(130) } if (c === "\\u007f" || c === "\\b") { out = out.slice(0, -1); continue } out += c } fs.writeSync(fd, "\\n"); return out } finally { try { if (raw) { rs.setRawMode(false) } } catch (e) {} try { if (rs) { rs.destroy() } } catch (e) {} try { fs.closeSync(fd) } catch (e) {} } })()>
+
 # This machine's name. Detected rather than asked: a person setting up a
 # laptop knows its name and typing it again is a question that answers
 # itself.
@@ -263,7 +287,7 @@ bind yes-no
   case node
     text <$it ? "yes" : "no">
 
-# Print one check result from `zone test`.
+# Print one check result from `term zone test`.
 bind mark-test
   take name, like text
   take good, like boolean
@@ -274,10 +298,10 @@ bind mark-test
 bind show-miss
   take gone, like list
   take bind, like text
-  take tier, like text
+  take sort, like text
   like text
   case node
-    text <"Unable to call.\\n\\nMissing:\\n" + $gone.map(function (g) { return "  " + g.name }).join("\\n") + "\\n\\nProject:\\n  " + $bind + "\\n\\nTier:\\n  " + $tier>
+    text <"Unable to call.\\n\\nMissing:\\n" + $gone.map(function (g) { return "  " + g.name }).join("\\n") + "\\n\\nProject:\\n  " + $bind + "\\n\\nTier:\\n  " + $sort>
 
 # Read a machine binding out of `.tree` text.
 #
@@ -289,11 +313,11 @@ bind mine-bond
   take text, like text
   like bond
   case node
-    text <(function () { var out = { mind: "", host: "", base: "development", hold: "bitwarden", save: "keychain", name: "zone", seat: [] }; var tier = null; $text.split("\\n").forEach(function (raw) { var line = raw.trim(); if (!line || line.charAt(0) === "#") { return } var deep = raw.length - raw.replace(/^ +/, "").length; var at = line.indexOf(" "); var head = at === -1 ? line : line.slice(0, at); var body = at === -1 ? "" : line.slice(at + 1).trim(); if (deep === 0) { tier = null; if (head === "mind") { out.mind = body } else if (head === "host") { out.host = body } else if (head === "base") { out.base = body } else if (head === "hold") { out.hold = body } else if (head === "save") { out.save = body } else if (head === "tier") { tier = { name: body, bind: "" }; out.seat.push(tier) } } else if (tier && head === "bind") { tier.bind = body } }); return out })()>
+    text <(function () { var out = { mind: "", host: "", base: "development", hold: "bitwarden", save: "keychain", name: "zone", seat: [] }; var sort = null; $text.split("\\n").forEach(function (raw) { var line = raw.trim(); if (!line || line.charAt(0) === "#") { return } var deep = raw.length - raw.replace(/^ +/, "").length; var at = line.indexOf(" "); var head = at === -1 ? line : line.slice(0, at); var body = at === -1 ? "" : line.slice(at + 1).trim(); if (deep === 0) { sort = null; if (head === "mind") { out.mind = body } else if (head === "host") { out.host = body } else if (head === "base") { out.base = body } else if (head === "hold") { out.hold = body } else if (head === "save") { out.save = body } else if (head === "sort") { sort = { name: body, bind: "" }; out.seat.push(sort) } } else if (sort && head === "bind") { sort.bind = body } }); return out })()>
 
 # Read a repository declaration out of `.tree` text.
 bind mine-deck
   take text, like text
   like deck
   case node
-    text <(function () { var out = { name: "", tier: [] }; var at = null; $text.split("\\n").forEach(function (raw) { var line = raw.trim(); if (!line || line.charAt(0) === "#") { return } var deep = raw.length - raw.replace(/^ +/, "").length; var i = line.indexOf(" "); var head = i === -1 ? line : line.slice(0, i); var body = i === -1 ? "" : line.slice(i + 1).trim(); if (deep === 0) { at = null; if (head === "name") { out.name = body } else if (head === "tier") { at = { name: body, hold: "bitwarden", bind: "", need: [] }; out.tier.push(at) } } else if (at) { if (head === "hold") { at.hold = body } else if (head === "bind") { at.bind = body } else if (head === "need") { at.need.push({ name: body, must: true }) } else if (head === "want") { at.need.push({ name: body, must: false }) } } }); return out })()>
+    text <(function () { var out = { name: "", sort: [] }; var at = null; $text.split("\\n").forEach(function (raw) { var line = raw.trim(); if (!line || line.charAt(0) === "#") { return } var deep = raw.length - raw.replace(/^ +/, "").length; var i = line.indexOf(" "); var head = i === -1 ? line : line.slice(0, i); var body = i === -1 ? "" : line.slice(i + 1).trim(); if (deep === 0) { at = null; if (head === "name") { out.name = body } else if (head === "sort") { at = { name: body, hold: "bitwarden", bind: "", need: [] }; out.sort.push(at) } } else if (at) { if (head === "hold") { at.hold = body } else if (head === "bind") { at.bind = body } else if (head === "need") { at.need.push({ name: body, must: true }) } else if (head === "want") { at.need.push({ name: body, must: false }) } } }); return out })()>

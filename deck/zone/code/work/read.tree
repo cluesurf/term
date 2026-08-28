@@ -1,4 +1,4 @@
-# `zone read` — fetch from the provider and fill the local cache.
+# `term zone read` — fetch from the provider and fill the local cache.
 #
 #   zone read                    every zone in the tree
 #   zone read word.surf/star     one path and what it inherits
@@ -12,12 +12,13 @@
 # copy cannot be opened as another's. That also means a shared value is
 # stored once rather than once per zone that reads it.
 #
-# The provider is touched here and by `zone save`, and by nothing anyone runs
-# in a loop. `zone load` never reaches the network.
+# The provider is touched here and by `term zone save`, and by nothing anyone runs
+# in a loop. `term zone load` never reaches the network.
 
 load @term/seed/code/text
   find text
   find ends-with
+  find split
 
 load @term/seed/code/bytes
   find bytes
@@ -91,6 +92,47 @@ load ../tool/base
   find then-stamp
 
 # Every zone path in the tree, which is every project to fetch.
+# The chain of paths from the root down to one zone, root first.
+#
+# "one path and what it inherits" is exactly this list: a name declared at
+# `base` is inherited by `base/word.surf/star`, so fetching that zone means
+# fetching every zone above it too, and nothing else.
+#
+# Built from the path text rather than by walking the tree, because a zone
+# path IS its address: `base/word.surf/star` has exactly the ancestors
+# `base` and `base/word.surf`, and no lookup can disagree with that.
+task path-chain
+  take want, like text
+  like list
+  save out
+    make list
+  save at, text <>
+  walk list
+    call split
+      bind value, read want
+      bind on, text </>
+    hook next
+      take site, name part
+      fork test
+        hook test
+          call equal
+            read at
+            text <>
+        hook hold
+          save at, read part
+        hook miss
+          save at
+            call join-text
+              make list
+                read at
+                text </>
+                read part
+      call push
+        bind list, read out
+        bind item, read at
+  send back
+    read out
+
 task all-paths
   take at, like spot
   like list
@@ -278,7 +320,7 @@ task pull
 
   # THE CACHE IS SKIPPED WHEN IT IS STILL GOOD.
   #
-  # `zone read` is safe to put in a shell profile, a makefile or a `pnpm boot`
+  # `term zone read` is safe to put in a shell profile, a makefile or a `pnpm boot`
   # only if calling it when nothing has changed costs nothing. A cache inside
   # its window is left alone and the provider is never touched.
   #
@@ -314,7 +356,7 @@ task pull
               call show-line
                 text <>
               call show-line
-                text <Run `zone read --fresh` to fetch anyway.>
+                text <Run `term zone read --fresh` to fetch anyway.>
               send back
                 code 0
 
@@ -328,7 +370,7 @@ task pull
     hook hold
       send back
         call halt
-          text <This machine is not bound. Run `zone bind` first.>
+          text <This machine is not bound. Run `term zone bind` first.>
   save bond
     call unwrap
       read bond-got
@@ -350,7 +392,7 @@ task pull
     hook hold
       send back
         call halt
-          text <No master key on this machine, so there is nowhere to put what is fetched. Run `zone seal make`.>
+          text <No master key on this machine, so there is nowhere to put what is fetched. Run `term zone seal make`.>
   save key
     call unwrap
       read key-got
@@ -361,7 +403,7 @@ task pull
       bind spot
         call berth
           bind bond, read bond
-          bind tier, read bond/base
+          bind sort, read bond/base
       wait true
   fork test
     hook test
@@ -370,7 +412,7 @@ task pull
     hook hold
       send back
         call halt
-          text <No bootstrap credential for this machine, so the provider cannot be opened. Run `zone code save`.>
+          text <No bootstrap credential for this machine, so the provider cannot be opened. Run `term zone code save`.>
   save token
     call unwrap
       read code-got
@@ -379,16 +421,70 @@ task pull
   # its own project, named after its path, and three hundred secrets in one
   # of them cost one request. Eight zones cost one wall clock round trip
   # rather than eight, because the requests overlap.
+  # The named path, resolved. `word.surf` and `base/word.surf` both name the
+  # same zone, and only the resolved form has the ancestors in it, so chaining
+  # the raw argument would fetch the zone and skip everything it inherits.
+  save want, read root/path
+  fork test
+    hook test
+      call equal
+        read spot
+        read root/path
+    hook miss
+      save got
+        call find-spot
+          bind root, read root
+          bind path, read spot
+      fork test
+        hook test
+          call is-none
+            read got
+        hook hold
+          send back
+            call halt
+              call join-text
+                make list
+                  text <No zone at >
+                  read spot
+                  text <.>
+        hook miss
+          save got-in
+            call unwrap
+              read got
+          save want
+            read got-in/path
+
+  # WHICH PROJECTS TO FETCH.
+  #
+  # The whole tree by default. When a path was named, only that zone and the
+  # zones it inherits from, which is what `term zone read word.surf/star` has
+  # always claimed to do and did not: the argument was taken and never read,
+  # so every zone was fetched however narrow the request.
   save binds
     make list
-  walk list
-    call all-paths
-      read root
-    hook next
-      take site, name one
-      call push
-        bind list, read binds
-        bind item, read one
+  fork test
+    hook test
+      call equal
+        read want
+        read root/path
+    hook hold
+      walk list
+        call all-paths
+          read root
+        hook next
+          take site, name one
+          call push
+            bind list, read binds
+            bind item, read one
+    hook miss
+      walk list
+        call path-chain
+          read want
+        hook next
+          take site, name one
+          call push
+            bind list, read binds
+            bind item, read one
 
   save have
     call read-hold-many

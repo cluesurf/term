@@ -1,4 +1,4 @@
-# `zone save` — the declaration, saved to the provider.
+# `term zone save` — the declaration, saved to the provider.
 #
 #   zone save                  the whole tree
 #   zone save word.surf        one branch
@@ -163,7 +163,7 @@ task keep-zone
     hook hold
       send back
         call halt
-          text <This machine is not bound. Run `zone bind` first.>
+          text <This machine is not bound. Run `term zone bind` first.>
   save bond
     call unwrap
       read bond-got
@@ -176,7 +176,7 @@ task keep-zone
       bind spot
         call berth
           bind bond, read bond
-          bind tier, read bond/base
+          bind sort, read bond/base
       wait true
   fork test
     hook test
@@ -185,7 +185,7 @@ task keep-zone
     hook hold
       send back
         call halt
-          text <No bootstrap credential for this machine, so the provider cannot be opened. Run `zone code save`.>
+          text <No bootstrap credential for this machine, so the provider cannot be opened. Run `term zone code save`.>
   save token
     call unwrap
       read code-got

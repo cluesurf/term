@@ -1,4 +1,4 @@
-# `zone send` — values, to a platform that keeps its own copy.
+# `term zone send` — values, to a platform that keeps its own copy.
 #
 #   zone send wrangler word.surf/star
 #   zone send wrangler word.surf/star --commit
@@ -210,7 +210,7 @@ task post
     hook miss
       send back
         call halt
-          text <Nothing is cached here. Run `zone read` first.>
+          text <Nothing is cached here. Run `term zone read` first.>
   save file
     call mine-file
       call read-file
@@ -226,7 +226,7 @@ task post
     hook hold
       send back
         call halt
-          text <This machine is not bound. Run `zone bind` first.>
+          text <This machine is not bound. Run `term zone bind` first.>
   save bond
     call unwrap
       read bond-got
@@ -246,7 +246,7 @@ task post
     hook hold
       send back
         call halt
-          text <No master key on this machine, so the cache cannot be opened. Run `zone seal make`.>
+          text <No master key on this machine, so the cache cannot be opened. Run `term zone seal make`.>
   save key
     call unwrap
       read key-got
@@ -362,7 +362,7 @@ task post
           make list
             call text-of
               read gone
-            text < declared name(s) are not cached. Run `zone read` first.>
+            text < declared name(s) are not cached. Run `term zone read` first.>
 
   fork test
     hook test

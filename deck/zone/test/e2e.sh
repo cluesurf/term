@@ -40,10 +40,10 @@ zone(){ ( cd "$ZONE" && node "$TERM_HOST" boot code/line/base.tree -- "$@" 2>&1 
 zonep(){ ( cd "$PROJ" && node "$TERM_HOST" boot "$ZONE/code/line/base.tree" -- "$@" 2>&1 | strip ); }
 
 say "bind"
-# `--tier development` is explicit because this harness exercises the LEGACY
-# `.zone.tree` path, whose fixture declares `tier development`. The default
+# `--sort development` is explicit because this harness exercises the LEGACY
+# `.zone.tree` path, whose fixture declares `sort development`. The default
 # is now `moon`, which is what the zone.tree world calls the same thing.
-out=$(zone bind --mind lance --host e2ebox --team cluesurf --tier development); echo "$out"
+out=$(zone bind --mind lance --host e2ebox --team cluesurf --sort development); echo "$out"
 [ -f "$SBOX/.config/zone/zone.tree" ] && ok "config written" || no "config missing"
 
 say "show (env store, code present via ZONE_CODE)"
@@ -59,7 +59,7 @@ for check in binding code access secrets; do
 done
 
 say "call: child sees ONLY the declared names, nothing else"
-out=$(zonep call --tier development -- node -e 'console.log("OPENAI="+process.env.OPENAI_API_KEY); console.log("DB="+process.env.DATABASE_URL); console.log("SENTRY="+process.env.SENTRY_DSN); console.log("EXTRA="+(process.env.SOME_OTHER_SECRET||"none"))')
+out=$(zonep call --sort development -- node -e 'console.log("OPENAI="+process.env.OPENAI_API_KEY); console.log("DB="+process.env.DATABASE_URL); console.log("SENTRY="+process.env.SENTRY_DSN); console.log("EXTRA="+(process.env.SOME_OTHER_SECRET||"none"))')
 echo "$out"
 echo "$out" | grep -q 'OPENAI=sk-fake-123'         && ok "OPENAI_API_KEY injected"      || no "OPENAI_API_KEY missing"
 echo "$out" | grep -q 'DB=postgres://fake/db'      && ok "DATABASE_URL injected"        || no "DATABASE_URL missing"
@@ -67,12 +67,12 @@ echo "$out" | grep -q 'SENTRY=https://fake@sentry' && ok "SENTRY_DSN (want) inje
 echo "$out" | grep -q 'EXTRA=none'                 && ok "undeclared name not injected" || no "an undeclared name leaked"
 
 say "call: child exit code passes through"
-( cd "$PROJ" && node "$TERM_HOST" boot "$ZONE/code/line/base.tree" -- call --tier development -- node -e 'process.exit(7)' ) >/dev/null 2>&1
+( cd "$PROJ" && node "$TERM_HOST" boot "$ZONE/code/line/base.tree" -- call --sort development -- node -e 'process.exit(7)' ) >/dev/null 2>&1
 ec=$?; [ "$ec" = "7" ] && ok "child exit 7 propagated" || no "exit was $ec, not 7"
 
 say "call: refuses when a required name is absent from the project"
 cp "$FIX/manifest-missing.zone.tree" "$PROJ/.zone.tree"
-out=$(zonep call --tier development -- node -e 'console.log("SHOULD NOT RUN")' 2>&1); echo "$out"
+out=$(zonep call --sort development -- node -e 'console.log("SHOULD NOT RUN")' 2>&1); echo "$out"
 echo "$out" | grep -q 'SHOULD NOT RUN' && no "ran despite a missing secret" || ok "refused to start"
 echo "$out" | grep -qi 'nonexistent-secret' && ok "names the missing secret" || no "did not name it"
 cp "$FIX/manifest.zone.tree" "$PROJ/.zone.tree"

@@ -1,6 +1,6 @@
-# `zone deep` — every zone path in the declaration, one per line.
+# `term zone deep` — every zone path in the declaration, one per line.
 #
-# The machine-readable half of `zone list`. Shell completion calls it, so a
+# The machine-readable half of `term zone list`. Shell completion calls it, so a
 # path is completed from the declaration itself rather than from a list
 # somebody has to keep in step.
 #

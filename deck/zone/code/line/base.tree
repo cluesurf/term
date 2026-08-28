@@ -2,16 +2,16 @@
 #
 #   zone bind                    configure this machine
 #   zone call <command>          run a command with secrets
-#   zone code save <tier>        store a bootstrap credential
-#   zone code show <tier>        describe it without revealing it
-#   zone code list               describe every tier
-#   zone code toss <tier>        remove the local copy
+#   zone code save <sort>        store a bootstrap credential
+#   zone code show <sort>        describe it without revealing it
+#   zone code list               describe every sort
+#   zone code toss <sort>        remove the local copy
 #   zone show                    what this machine is bound to
 #   zone test                    check the setup
 #   zone toss                    unbind this machine
 #
 # The whole tool is nine commands, which is few enough to learn from
-# `zone --help` without reading anything else.
+# `term zone --help` without reading anything else.
 #
 # Each `hook` is one command: its `take`s are the arguments and flags,
 # its `task` names the implementation, nested `hook`s are subcommands.
@@ -20,7 +20,7 @@
 # binds. The `#` comment above a hook or take is its `--help` text.
 #
 # `call` takes the child command as ordinary arguments (the trailing
-# take is `many`, a rest parameter), so `zone call npm run dev` works
+# take is `many`, a rest parameter), so `term zone call npm run dev` works
 # with no `--`.
 
 load ../work/bind
@@ -85,7 +85,7 @@ hook bind
     like text
     bind <>
   # the environment this machine defaults to
-  take tier
+  take sort
     like text
     bind <moon>
   # which provider holds the secrets
@@ -96,8 +96,8 @@ hook bind
 
 # Run a command with secrets in its environment
 hook call
-  # which tier to call with, default from the binding
-  take tier
+  # which sort to call with, default from the binding
+  take sort
     code t
     like text
     bind <>
@@ -113,10 +113,10 @@ hook call
 # Manage this machine's bootstrap credentials
 hook code
 
-  # Store a credential for one tier, read from a hidden prompt
+  # Store a credential for one sort, read from a hidden prompt
   hook save
-    # which tier this code opens
-    take tier
+    # which sort this code opens
+    take sort
       like text
       need true
     # replace an existing code without asking
@@ -127,20 +127,20 @@ hook code
 
   # Describe a stored credential without revealing it
   hook show
-    # which tier to describe
-    take tier
+    # which sort to describe
+    take sort
       like text
       need true
     task tell
 
-  # Describe every tier's stored credential
+  # Describe every sort's stored credential
   hook list
     task poll
 
   # Remove the local copy, remote access stays live
   hook toss
-    # which tier's local code to remove
-    take tier
+    # which sort's local code to remove
+    take sort
       like text
       need true
     task shed
@@ -169,7 +169,7 @@ hook list
   # which zone path, for instance `word.surf/star`. Default is the root.
   # NOT named `path`. The route table keys every command by a field of that
   # name, so a take called `path` is dropped from it and the argument never
-  # binds. `zone list word.surf/star` silently arrived with nothing.
+  # binds. `term zone list word.surf/star` silently arrived with nothing.
   take spot
     like text
     bind <base>
@@ -204,7 +204,7 @@ hook read
   task pull
 
 # Values, to a platform that keeps its own copy
-hook send
+hook move
   # which target: wrangler
   take target
     like text
@@ -224,15 +224,15 @@ hook send
   task post
 
 # Every zone path, one per line, for shell completion
-hook deep
+hook walk
   task deep
 
 # Which declarations are in force here, and their caches
-hook files
+hook deck
   task files
 
 # The master key that opens this machine's local cache
-hook seal
+hook lock
 
   # Make a key, replacing any that is already there
   hook make
@@ -248,8 +248,8 @@ hook seal
 
 # What this machine is bound to
 hook show
-  # which tier to describe, default from the binding
-  take tier
+  # which sort to describe, default from the binding
+  take sort
     code t
     like text
     bind <>

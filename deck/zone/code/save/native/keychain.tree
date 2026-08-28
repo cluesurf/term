@@ -30,7 +30,7 @@ bind do-keychain-open
   case node
     text <(function () { try { require("node:child_process").execFileSync("security", ["help"], { stdio: "ignore" }); return process.platform === "darwin" } catch (e) { return false } })()>
 
-# File a credential under service `zone` and account `<host>:<tier>`.
+# File a credential under service `zone` and account `<host>:<sort>`.
 # `-U` updates in place when one is already there.
 bind do-keychain-save
   take spot, like seat

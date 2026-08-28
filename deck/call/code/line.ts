@@ -4,6 +4,7 @@ import { hideBin } from 'yargs/helpers'
 import { showBanner, showInfo } from '@term/make/code/show'
 import { callLoad } from '@term/call/code/load'
 import { callSave } from '@term/call/code/save'
+import { callZone } from '@term/call/code/zone'
 import { callToss } from '@term/call/code/toss'
 import { callHost } from '@term/call/code/host'
 import { callSeek } from '@term/call/code/seek'
@@ -58,6 +59,7 @@ const COMMANDS = [
   'hold',
   'hunt',
   'look',
+  'zone',
   'fill',
 ]
 
@@ -829,6 +831,28 @@ const cli = yargs(hideBin(process.argv))
       } else {
         showInfo(readVersion())
       }
+    },
+  )
+  .command(
+    'zone [rest..]',
+    'Secrets and environment: run a command with a zone\'s values, and manage them',
+    yargs =>
+      yargs
+        .positional('rest', {
+          type: 'string',
+          array: true,
+          description: 'The zone verb and its arguments',
+        })
+        // Everything after `zone` belongs to the zone console, including
+        // flags this parser would otherwise claim, and the `--` that
+        // separates a zone path from the command to run.
+        .parserConfiguration({ 'unknown-options-as-args': true })
+        // `--help` belongs to the zone console too, so this parser must not
+        // claim it and print its own one-line summary instead.
+        .help(false)
+        .strict(false),
+    async () => {
+      await callZone({ root, argv: process.argv })
     },
   )
   .completion(

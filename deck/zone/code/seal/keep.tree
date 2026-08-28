@@ -53,22 +53,22 @@ load ../tool/base
   find join-text
   find equal
 
-host seal-tier, text <seal>
+host seal-sort, text <seal>
 
 # The seat the master key files under. Separate from the bootstrap
-# credential's seat by its tier, so the two never overwrite each other.
+# credential's seat by its sort, so the two never overwrite each other.
 task seal-seat
   take bond, like bond
   like seat
   send back
     make seat
-      bind tier, read seal-tier
+      bind sort, read seal-sort
       bind name
         call join-text
           make list
             read bond/host
             text <:>
-            read seal-tier
+            read seal-sort
 
 # Make a key and store it. Returns the key, so the caller can use it at once
 # without a second read.

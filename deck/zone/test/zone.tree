@@ -29,6 +29,8 @@ load ../code/tool/base
   find join-text
 
 
+host aliased, text <base bitwarden\nneed database-url\n  name postgresql-url\n  name old-postgresql-url\n\nzone land\n  need b2-key\n    name b2-application-key\n>
+
 host sample, text <base bitwarden\nneed database-url\nwant sentry-dsn\n\nzone moon\n  need postgresql-url\n\nzone star\n  need better-auth-secret\n\nzone word.surf\n  need google-client-id, from word-google-client-id\n\n  zone moon\n    load moon\n    need better-auth-url\n\n  zone star\n    load star\n    need sentry-dsn\n>
 
 task show-need
@@ -65,12 +67,12 @@ task show-need
 task show
   take path, like text
   like text
-  save root
+  save self
     call mine-zone
       read sample
   save all
     call pull-need
-      bind root, read root
+      bind self, read self
       bind path, read path
   save out
     make list
@@ -87,16 +89,16 @@ task show
       read out
       text < >
 
-# The root zone is `base`, and it carries what everything inherits.
-test zone-root
+# The self zone is `base`, and it carries what everything inherits.
+test zone-self
   want hold
     call equal
       call show
         text <base>
       text <database-url ?sentry-dsn>
 
-# A nested zone inherits the root and adds its own.
-test zone-inherits-root
+# A nested zone inherits the self and adds its own.
+test zone-inherits-self
   want hold
     call equal
       call show
@@ -120,7 +122,7 @@ test zone-load-splices
         text <base/word.surf/moon>
       text <database-url ?sentry-dsn google-client-id\<-word-google-client-id postgresql-url better-auth-url>
 
-# THE OVERRIDE. The root wants `sentry-dsn` and word.surf's production zone
+# THE OVERRIDE. The self wants `sentry-dsn` and word.surf's production zone
 # needs it, so the later declaration wins: it is required, and it appears
 # once, in the position the override put it.
 test zone-override-wins
@@ -129,3 +131,53 @@ test zone-override-wins
       call show
         text <base/word.surf/star>
       text <database-url google-client-id\<-word-google-client-id better-auth-secret sentry-dsn>
+
+
+# The alias list on a need, read back.
+task show-alias
+  take path, like text
+  take want, like text
+  like number
+  save root
+    call mine-zone
+      read aliased
+  save out, code 0
+  walk list
+    call pull-need
+      bind root, read root
+      bind path, read path
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read one/name
+            read want
+        hook hold
+          save out
+            call size
+              read one/alias
+  send back
+    read out
+
+# A `name` child on a TOP-LEVEL need is an alias of it.
+#
+# This is the shape the real declaration uses: fifteen canonical names sit at
+# the self zone, each with its other spellings under it. Nothing covered it,
+# because the only fixture that had an alias put it on a NESTED need, and that
+# path works.
+test alias-on-a-top-level-need
+  want hold
+    call is-equal
+      call show-alias
+        bind path, text <base>
+        bind want, text <database-url>
+      code 2
+
+test alias-on-a-nested-need
+  want hold
+    call is-equal
+      call show-alias
+        bind path, text <base/land>
+        bind want, text <b2-key>
+      code 1

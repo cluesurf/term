@@ -1,7 +1,7 @@
 zone <1>
 name talk
 
-tier development
+sort development
   hold bitwarden
   bind cluesurf-talk-development
   need openai-api-key

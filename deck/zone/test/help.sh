@@ -70,7 +70,7 @@ EMPTY="$(mktemp -d)"
 say_no_deck(){ ( cd "$EMPTY" && node "$TERM_HOST" boot "$ZONE/code/line/base.tree" -- "$@" 2>&1 \
   | grep -vE '→ Booting|✓ Built|✓ Cached|Compiling|No build script' ); }
 
-for spec in "list" "read" "files" "save" "load base -- true" "send wrangler --place x"; do
+for spec in "list" "read" "deck" "save" "load base -- true" "move wrangler --place x"; do
   name="${spec%% *}"
   # shellcheck disable=SC2086
   out="$(say_no_deck $spec)"

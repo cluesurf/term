@@ -9,13 +9,13 @@
 # fetches everything else, so the platform holds ONE secret instead of
 # a whole `.env`.
 #
-# The variable is `ZONE_CODE` for the default tier, or
+# The variable is `ZONE_CODE` for the default sort, or
 # `ZONE_CODE_<TIER>` for a specific one (`ZONE_CODE_PRODUCTION`), so a
-# runner can carry a token per tier. The tier-specific name wins.
+# runner can carry a token per sort. The sort-specific name wins.
 #
 # There is nothing to save or remove: the value lives in the
 # environment for the life of the process and is owned by whatever set
-# it. `zone code save` / `toss` say so rather than pretending.
+# it. `term zone code save` / `toss` say so rather than pretending.
 
 load ../../base
   find seat
@@ -31,22 +31,22 @@ load @term/seed/code/boolean
 load @term/seed/code/maybe
   find maybe
 
-# The seat name is `<host>:<tier>`. The environment variable keys off
-# the tier alone (the part after the colon), uppercased, so a runner
-# names its token by tier without knowing the machine's host name.
+# The seat name is `<host>:<sort>`. The environment variable keys off
+# the sort alone (the part after the colon), uppercased, so a runner
+# names its token by sort without knowing the machine's host name.
 bind do-environment-read
   take spot, like seat
   like maybe
     head text
   case node
-    text <(function () { var tier = String($spot.name).split(":").pop().toUpperCase().replace(/[^A-Z0-9]+/g, "_"); var v = process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE; return (v && v.length \> 0) ? { form: "some", value: v } : { form: "none" } })()>
+    text <(function () { var sort = String($spot.name).split(":").pop().toUpperCase().replace(/[^A-Z0-9]+/g, "_"); var v = process.env["ZONE_CODE_" + sort] || process.env.ZONE_CODE; return (v && v.length \> 0) ? { form: "some", value: v } : { form: "none" } })()>
 
 # Whether the environment carries a token for this seat.
 bind do-environment-have
   take spot, like seat
   like boolean
   case node
-    text <(function () { var tier = String($spot.name).split(":").pop().toUpperCase().replace(/[^A-Z0-9]+/g, "_"); return Boolean((process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE || "").length) })()>
+    text <(function () { var sort = String($spot.name).split(":").pop().toUpperCase().replace(/[^A-Z0-9]+/g, "_"); return Boolean((process.env["ZONE_CODE_" + sort] || process.env.ZONE_CODE || "").length) })()>
 
 # Exportable wrapper: a native `bind` is file-local.
 task environment-read

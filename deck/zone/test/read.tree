@@ -121,8 +121,8 @@ test read-bare-head
   want hold
     call equal
       call show
-        text <root>
-      text <root>
+        text <self>
+      text <self>
 
 test read-head-and-term
   want hold

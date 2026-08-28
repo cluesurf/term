@@ -1,5 +1,5 @@
 
-# `zone test` — check the setup without using it.
+# `term zone test` — check the setup without using it.
 #
 # Every check answers a question someone would otherwise answer by running
 # the real command and reading a confusing failure. Nothing here reads a
@@ -15,7 +15,7 @@ load @term/seed/code/boolean
 load ../config/machine
   find read-bond
   find berth
-  find pick-tier
+  find pick-sort
 
 load ../config/manifest
   find read-deck
@@ -47,7 +47,7 @@ load ../tool/base
 
 task vet
   note async
-  take tier, like text
+  take sort, like text
 
   save bond
     call read-bond
@@ -65,15 +65,15 @@ task vet
     hook hold
       send back
         call show-line
-          text <Not bound. Run `zone bind`, then test again.>
+          text <Not bound. Run `term zone bind`, then test again.>
   save bond-in
     call unwrap
       read bond
 
-  save tier-in
-    call pick-tier
+  save sort-in
+    call pick-sort
       bind bond, read bond-in
-      bind tier, read tier
+      bind sort, read sort
 
   save kind
     call pick
@@ -87,7 +87,7 @@ task vet
   save spot
     call berth
       bind bond, read bond-in
-      bind tier, read tier-in
+      bind sort, read sort-in
   save pass
     call read-code
       wait true
@@ -131,7 +131,7 @@ task vet
       save deal
         call stake
           bind deck, read deck-in
-          bind tier, read tier-in
+          bind sort, read sort-in
       fork test
         hook test
           call is-none
@@ -139,7 +139,7 @@ task vet
         hook hold
           send back
             call show-line
-              text <  ....  no binding for this tier in .zone.tree>
+              text <  ....  no binding for this sort in .zone.tree>
       save claim-in
         call unwrap
           read deal

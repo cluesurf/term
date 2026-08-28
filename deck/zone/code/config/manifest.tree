@@ -8,7 +8,7 @@
 #   zone <1>
 #   name talk
 #
-#   tier development
+#   sort development
 #     hold bitwarden
 #     bind cluesurf-talk-development
 #     need openai-api-key
@@ -58,7 +58,7 @@ bind spot-deck
     text <require("node:path").join($dir, ".zone.tree")>
 
 # Read a project's declaration. A project without one is fine: the command
-# then runs with whatever the tier provides, and `zone test` says so.
+# then runs with whatever the sort provides, and `term zone test` says so.
 task read-deck
   note async
   take dir, like text
@@ -82,15 +82,15 @@ task read-deck
         call mine-deck
           read text
 
-# What this project declares for one tier.
+# What this project declares for one sort.
 task stake
   take deck, like deck
-  take tier, like text
+  take sort, like text
   like maybe
     head claim
   send back
     call find
-      bind list, read deck/tier
+      bind list, read deck/sort
       bind test
         task same
           take it, like claim
@@ -98,4 +98,4 @@ task stake
           send back
             call equal
               read it/name
-              read tier
+              read sort

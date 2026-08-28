@@ -4,7 +4,7 @@
 # shape rendered back out. One value per line, nested under the zone that
 # owns it, with the header in plaintext above.
 #
-# WHY NOT ONE BLOB. `zone list` needs no key, because which names are cached
+# WHY NOT ONE BLOB. `term zone list` needs no key, because which names are cached
 # and when is readable without unlocking anything. One value refreshes on its
 # own, so rotating a secret rewrites one line. Only what a path resolves to
 # is ever decrypted, so less plaintext exists for less time. And a rotation

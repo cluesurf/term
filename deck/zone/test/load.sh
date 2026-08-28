@@ -26,7 +26,7 @@ no(){ printf '  FAIL  %s\n' "$1"; FAIL=$((FAIL+1)); }
 strip(){ grep -vE '→ Booting|✓ Built|✓ Cached|Compiling|No build script'; }
 
 cat > "$PROJ/zone.tree" <<'EOF'
-root true
+self true
 
 base bitwarden
 
@@ -44,7 +44,7 @@ zone land
   cast snake
   cast tf
   need database-url
-    also legacy-database-url
+    name legacy-database-url
 EOF
 
 cat > "$SBOX/.config/zone/zone.tree" <<'EOF'
@@ -104,8 +104,8 @@ out="$(zone load land -- node -e 'console.log([
 ].join(" "))')"
 echo "$out" | grep -q 'SNAKE=postgres://sealed/db'   && ok "the plain name"        || no "plain name missing: $out"
 echo "$out" | grep -q 'TF=postgres://sealed/db'      && ok "the tf cast"           || no "tf cast missing: $out"
-echo "$out" | grep -q 'ALIAS=postgres://sealed/db'   && ok "the also spelling"     || no "also missing: $out"
-echo "$out" | grep -q 'TFALIAS=postgres://sealed/db' && ok "the also, tf cast too" || no "also under tf missing: $out"
+echo "$out" | grep -q 'ALIAS=postgres://sealed/db'   && ok "the name spelling"     || no "the name spelling missing: $out"
+echo "$out" | grep -q 'TFALIAS=postgres://sealed/db' && ok "the name spelling, tf cast too" || no "the name spelling under tf missing: $out"
 
 echo
 echo "=== load: a zone with no cast still gets the plain name ==="

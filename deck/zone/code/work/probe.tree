@@ -1,4 +1,4 @@
-# `zone test` — check the whole setup, and say what is wrong with it.
+# `term zone test` — check the whole setup, and say what is wrong with it.
 #
 # Every line is a question a person would otherwise ask by hand: is there a
 # declaration, does this path exist, is this machine bound, is there a key,
@@ -108,7 +108,7 @@ task probe
     hook miss
       send back
         call vet
-          bind tier, text <>
+          bind sort, text <>
           wait true
 
   call mark-test
@@ -193,7 +193,7 @@ task probe
         call join-line
           make list
             text <>
-            text <Run `zone bind` first. Nothing below this can be checked without it.>
+            text <Run `term zone bind` first. Nothing below this can be checked without it.>
       send back
         code 1
 
@@ -243,7 +243,7 @@ task probe
         call join-line
           make list
             text <>
-            text <Run `zone read` to fill it.>
+            text <Run `term zone read` to fill it.>
       send back
         read bad
 
@@ -271,7 +271,7 @@ task probe
           read bad
           code 1
       call show-line
-        text <  the declaration changed since the cache was made. Run `zone read`.>
+        text <  the declaration changed since the cache was made. Run `term zone read`.>
 
   fork test
     hook test

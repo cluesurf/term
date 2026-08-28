@@ -1,16 +1,16 @@
-# `zone seal` — the master key that opens the local cache.
+# `term zone seal` — the master key that opens the local cache.
 #
 #   zone seal make     make one, replacing any that is there
 #   zone seal show     say whether this machine has one, never what it is
 #   zone seal toss     remove it
 #
-# SEPARATE FROM `zone code`, which manages the bootstrap credential that
+# SEPARATE FROM `term zone code`, which manages the bootstrap credential that
 # opens the provider. Two secrets, two keystore items, two commands. Losing
 # the master key must not revoke remote access, and revoking remote access
 # must not brick the cache.
 #
 # LOSING IT IS CHEAP. The cache is a speed layer, so a new key plus a
-# `zone read` restores everything. That is why `make` replaces without
+# `term zone read` restores everything. That is why `make` replaces without
 # ceremony and `toss` does not warn: neither destroys a value that exists
 # only here.
 
@@ -66,7 +66,7 @@ task seal-bond
       # none. It is a statement rather than a `send back` because this task
       # returns a bond and halt returns a number.
       call halt
-        text <This machine is not bound. Run `zone bind` first.>
+        text <This machine is not bound. Run `term zone bind` first.>
   send back
     call unwrap
       read got
@@ -116,7 +116,7 @@ task mint
             text < store for this machine.>
             text <>
             text <Anything already in the cache was sealed with the old key and cannot be>
-            text <opened now. Run `zone read` to fill it again.>
+            text <opened now. Run `term zone read` to fill it again.>
   send back
     code 0
 
@@ -150,7 +150,7 @@ task tell-seal
       call show-line
         call join-text
           make list
-            text <  seal  no. Run `zone seal make` to make one.>
+            text <  seal  no. Run `term zone seal make` to make one.>
   send back
     code 0
 
@@ -168,6 +168,6 @@ task shed-seal
         read bond
     wait true
   call show-line
-    text <The master key is gone from this machine. The cache it opened is now unreadable, which costs nothing: the values are still at the provider. `zone seal make` then `zone read` restores it.>
+    text <The master key is gone from this machine. The cache it opened is now unreadable, which costs nothing: the values are still at the provider. `term zone seal make` then `term zone read` restores it.>
   send back
     code 0

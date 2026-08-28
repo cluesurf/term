@@ -1,17 +1,17 @@
 # Finding the declaration.
 #
 # Walk up from the working directory collecting every `zone.tree`, innermost
-# first, and stop at one that says `root true`.
+# first, and stop at one that says `self true`.
 #
 # WHY THE STOP EXISTS. `mesh`, `land`, `base`, `dock` and `lock` are each
 # their own git repository sitting inside the `cluesurf` checkout, so a
 # declaration at the cluesurf base is reachable from all of them on a laptop
 # and from none of them inside a container that copied only one. A repository
-# that has to build standalone carries its own `zone.tree` with `root true`,
+# that has to build standalone carries its own `zone.tree` with `self true`,
 # and the search stops there rather than reaching for a parent that will not
 # be present in the image.
 #
-# `zone show --files` prints what this found, in order, so "which declaration
+# `term zone show --files` prints what this found, in order, so "which declaration
 # am I actually running" is one command rather than a guess.
 
 load @term/seed/code/text
@@ -46,7 +46,7 @@ load ../tool/base
 # flat reader in `./manifest`, which looks for `.zone.tree` with a leading
 # dot. Term names are package-global, so a per-file build keeps the two apart
 # and the bundled `boot` build silently picks one. That cost an afternoon:
-# `zone list` reported no declaration anywhere while the same code found one
+# `term zone list` reported no declaration anywhere while the same code found one
 # perfectly when imported directly.
 host deck-file, text <zone.tree>
 
@@ -131,14 +131,14 @@ task read-decks
 # The one message for "there is no declaration here".
 #
 # SIX COMMANDS CAN HIT THIS, and they used to say four different things: two
-# named the directory and offered `zone lift`, two named the directory and
+# named the directory and offered `term zone lift`, two named the directory and
 # offered nothing, and two said "at or above this directory" without saying
 # WHICH directory. Someone who has just cloned a repository and typed the
 # first command they read about deserves the same answer whichever one it was.
 #
 # Names where it looked, and what to run. Both matter: the path because a zone
 # resolves by walking UP, so the answer depends on where you are standing, and
-# the fix because `zone lift` is not a command anyone guesses.
+# the fix because `term zone lift` is not a command anyone guesses.
 task halt-no-deck
   like number
   send back
@@ -154,4 +154,4 @@ task halt-no-deck
             make list
               text <>
               text <>
-              text <Write one there, or run `zone lift` to make one from the .env files already in the tree.>
+              text <Write one there, or run `term zone lift` to make one from the .env files already in the tree.>
