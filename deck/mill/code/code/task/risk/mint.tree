@@ -1,7 +1,7 @@
 
 mint risk
   case text
-    slot text
+    site text
   hook make
     make risk
       bind text, read text

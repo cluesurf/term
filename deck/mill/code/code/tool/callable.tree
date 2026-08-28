@@ -9,15 +9,15 @@ tree callable
   take kind
   hook fuse
     mine term
-      slot name
+      site name
     mine case
       mine form, like wait
     mine list
       mine form, like bind
-        slot bind
+        site bind
     mine maybe
       mine form, like save
-        slot save
+        site save
     mine list
       mine form, like hook
-        slot hook
+        site hook

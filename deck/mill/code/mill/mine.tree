@@ -3,177 +3,177 @@ mine mill
   mine list
     mine any
       mine form, like mill-mine
-        slot mine
+        site mine
       mine form, like mill-mint
-        slot mint
+        site mint
       mine form, like mill-mill
-        slot mill
+        site mill
 
 mine mill-mine
   mine term, term mine
     mine term
-      slot name
+      site name
     mine list
       mine form, like mill-mine-child
-        slot child
+        site child
 
 mine mill-mine-child
   mine any
     mine form, like mill-mine-term
-      slot term
+      site term
     mine form, like mill-mine-list
-      slot list
+      site list
     mine form, like mill-mine-maybe
-      slot maybe
+      site maybe
     mine form, like mill-mine-case
-      slot case
+      site case
     mine form, like mill-mine-any
-      slot any
+      site any
     mine form, like mill-mine-text
-      slot text
+      site text
     mine form, like mill-mine-path
-      slot path
+      site path
     mine form, like mill-mine-form
-      slot form
+      site form
 
 mine mill-mine-term
   mine term, term term
     mine maybe
       mine term, term term
-        slot term
+        site term
     mine list
       mine form, like mill-mine-child
-        slot child
+        site child
 
 mine mill-mine-list
   mine term, term list
     mine list
       mine form, like mill-mine-child
-        slot child
+        site child
 
 mine mill-mine-maybe
   mine term, term maybe
     mine list
       mine form, like mill-mine-child
-        slot child
+        site child
 
 mine mill-mine-case
   mine term, term case
     mine list
       mine form, like mill-mine-child
-        slot child
+        site child
 
 mine mill-mine-any
   mine term, term any
     mine list
       mine form, like mill-mine-child
-        slot child
+        site child
 
 mine mill-mine-text
   mine term, term text
-    slot name
+    site name
 
 mine mill-mine-path
   mine term, term path
-    slot name
+    site name
 
 mine mill-mine-form
   mine term, term form
     mine maybe
       mine term, term like
-        slot like
-    slot name
+        site like
+    site name
 
 mine mill-mint
   mine term, term mint
     mine term
-      slot name
+      site name
     mine maybe
       mine term, term like
         mine term
-          slot like
+          site like
     mine list
       mine form, like mill-mint-child
-        slot child
+        site child
 
 mine mill-mint-child
   mine any
     mine form, like mill-mint-case
-      slot case
+      site case
     mine form, like mill-mint-hook
-      slot hook
+      site hook
 
 mine mill-mint-case
   mine term, term case
     mine term
-      slot name
+      site name
     mine maybe
       mine term, term mint
         mine term
-          slot mint
+          site mint
     mine list
       mine form, like mill-mint-child
-        slot child
+        site child
 
 mine mill-mint-hook
   mine term, term hook
     mine term
-      slot name
+      site name
     mine list
       mine form, like mill-mint-hook-child
-        slot child
+        site child
 
 mine mill-mint-hook-child
   mine any
     mine form, like mill-mint-make
-      slot make
+      site make
     mine form, like mill-mint-bind
-      slot bind
+      site bind
 
 mine mill-mint-make
   mine term, term make
     mine term
-      slot name
+      site name
     mine list
       mine form, like mill-mint-bind
-        slot bind
+        site bind
 
 mine mill-mint-bind
   mine term, term bind
     mine term
-      slot name
+      site name
     mine form, like mill-mint-bind-value
-      slot value
+      site value
 
 mine mill-mint-bind-value
   mine any
     mine form, like mill-mint-read
-      slot read
+      site read
     mine form, like mill-mint-slot
-      slot slot
+      site slot
 
 mine mill-mint-read
   mine term, term read
     mine term
-      slot name
+      site name
 
 mine mill-mint-slot
   mine term, term slot
     mine term
-      slot name
+      site name
 
 mine mill-mill
   mine term, term mill
     mine term
-      slot name
+      site name
     mine list
       mine form, like mill-mill-bind
-        slot bind
+        site bind
 
 mine mill-mill-bind
   mine term, term bind
     mine term
-      slot name
+      site name
     mine term, term load
       mine text
-        slot path
+        site path

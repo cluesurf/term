@@ -8,88 +8,88 @@ load @term/mill/code/line/mill/mine
 mine dock-take
   mine term, term take
     mine term
-      slot name
+      site name
     mine maybe
       mine term, term code
         mine term
-          slot code
+          site code
     mine maybe
       mine form, like dock-take-like
-        slot like
+        site like
     mine maybe
       mine form, like dock-take-list
-        slot list
+        site list
     mine maybe
       mine term, term need
         mine term
-          slot need
+          site need
     mine maybe
       mine term, term base
         mine any
           mine form, like seed
-            slot base
+            site base
           mine term
-            slot base-term
+            site base-term
     mine list
       mine form, like dock-take-case
-        slot case
+        site case
     mine maybe
       mine form, like dock-mill
-        slot mill
+        site mill
     mine maybe
       mine form, like dock-take-seed
-        slot seed
+        site seed
     mine maybe
       mine form, like dock-take-mark
-        slot mark
+        site mark
 
 mine dock-take-like
   mine term, term like
     mine term
-      slot name
+      site name
 
 mine dock-take-list
   mine term, term list
     mine term
-      slot name
+      site name
 
 mine dock-take-case
   mine term, term case
     mine term
-      slot name
+      site name
 
 mine dock-take-seed
   mine any
     mine form, like dock-take-seed-env
-      slot env
+      site env
     mine form, like dock-take-seed-call
-      slot call
+      site call
 
 mine dock-take-seed-env
   mine term, term seed
     mine term, term env
       mine text
-        slot name
+        site name
 
 mine dock-take-seed-call
   mine term, term seed
     mine term, term call
       mine form, like dock-take-seed-call-bind
-        slot call
+        site call
 
 mine dock-take-seed-call-bind
   mine term, term call
     mine term
-      slot name
+      site name
 
 mine dock-take-mark
   mine any
     mine form, like dock-take-mark-private
-      slot private
+      site private
     mine form, like dock-take-mark-deprecated
-      slot deprecated
+      site deprecated
     mine form, like dock-take-mark-experimental
-      slot experimental
+      site experimental
 
 mine dock-take-mark-private
   mine term, term mark
@@ -100,12 +100,12 @@ mine dock-take-mark-deprecated
     mine term, term deprecated
       mine maybe
         mine form, like dock-take-mark-deprecated-call
-          slot call
+          site call
 
 mine dock-take-mark-deprecated-call
   mine term, term call
     mine term
-      slot name
+      site name
 
 mine dock-take-mark-experimental
   mine term, term mark

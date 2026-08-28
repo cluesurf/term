@@ -21,7 +21,7 @@ zone select
   zone div
     bind data-slot, text <select>
     bind class, read class
-    slot
+    site
 
 zone select-trigger
   take host, like view
@@ -41,7 +41,7 @@ zone select-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    slot
+    site
 
 zone select-value
   take host, like view
@@ -49,7 +49,7 @@ zone select-value
   zone span
     bind data-slot, text <select-value>
     bind class, read class
-    slot
+    site
 
 zone select-content
   take host, like view
@@ -67,7 +67,7 @@ zone select-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        slot
+        site
 
 zone select-item
   take host, like view
@@ -79,7 +79,7 @@ zone select-item
     bind role, text <option>
     hook click, call press
     bind class, read class
-    slot
+    site
 
 zone select-group
   take host, like view
@@ -88,7 +88,7 @@ zone select-group
     bind data-slot, text <select-group>
     bind role, text <group>
     bind class, read class
-    slot
+    site
 
 zone select-label
   take host, like view
@@ -96,4 +96,4 @@ zone select-label
   zone div
     bind data-slot, text <select-label>
     bind class, read class
-    slot
+    site

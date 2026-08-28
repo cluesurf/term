@@ -10,10 +10,10 @@ tree hook
   hook fuse
     mine term, term hook
       mine term, term {name}
-        slot name
+        site name
       mine list
         mine form, like base
-          slot base
+          site base
       mine list
         mine form, like flow
-          slot flow
+          site flow

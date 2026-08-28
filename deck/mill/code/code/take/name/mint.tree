@@ -1,7 +1,7 @@
 
 mint name
   case name
-    slot name
+    site name
   hook make
     make name
       bind name, read name

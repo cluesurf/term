@@ -5,7 +5,7 @@ load @term/mill/code/deck/deck/link/mine
 mine deck-host
   mine term, term host
     mine text
-      slot site
+      site site
     mine list
       mine form, like deck-link
-        slot link
+        site link

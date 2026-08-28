@@ -2,7 +2,7 @@
 // `tree` defines a parameterized body with `{param}` interpolations; a `fuse` instantiates it, substituting the bound
 // values. Expansion is fully compile-time and supports:
 //   - parameter substitution, both `{name}` interpolation and `read name` value positions
-//   - `slot` / `beam` (a fuse beams content into a named slot of the template)
+//   - `site` / `beam` (a fuse beams content into a named site of the template; the head was `slot` until 2026-08-28)
 //   - dynamic fuse: `fuse read <param>` takes the template name from a bound parameter
 //   - compile-time meta-loops: `walk <kind>, read <enum>` inside a template body unrolls over a `host` enumeration
 //     (`host interval / term year / term month / ...`), binding the loop item for each iteration. This is how one
@@ -241,7 +241,7 @@ function substituteText(
 export type Template = { params: string[]; body: Node[] }
 type Beams = Map<string, Node[]>
 // the expansion context threaded through a fuse body: the template registry, the enumerations, the current parameter
-// substitutions, and the beamed slot contents
+// substitutions, and the beamed site contents
 type Context = {
   templates: Map<string, Template>
   enums: Map<string, string[]>
@@ -469,7 +469,7 @@ function unrollWalk(
   return out
 }
 
-// expand a template body within a context: slots, nested fuses, meta-loops, and parameter substitution
+// expand a template body within a context: sites, nested fuses, meta-loops, and parameter substitution
 function expandBody(nodes: Node[], ctx: Context): Node[] {
   const out: Node[] = []
 
@@ -486,7 +486,8 @@ function expandBody(nodes: Node[], ctx: Context): Node[] {
 
       const head = headName(node)
 
-      if (head === 'slot') {
+      // `site <name>` (formerly `slot`) marks the injection point a `beam <name>` at the fuse site fills
+      if (head === 'site') {
         const slotArg = rest(node)[0]
         const slotName =
           slotArg?.kind === 'group' ? headName(slotArg) : undefined

@@ -16,7 +16,7 @@ zone breadcrumb
     bind data-slot, text <breadcrumb>
     bind aria-label, text <breadcrumb>
     bind class, read class
-    slot
+    site
 
 zone breadcrumb-list
   take host, like view
@@ -24,7 +24,7 @@ zone breadcrumb-list
   zone ol
     bind data-slot, text <breadcrumb-list>
     bind class, read class
-    slot
+    site
 
 zone breadcrumb-item
   take host, like view
@@ -32,7 +32,7 @@ zone breadcrumb-item
   zone li
     bind data-slot, text <breadcrumb-item>
     bind class, read class
-    slot
+    site
 
 zone breadcrumb-link
   take host, like view
@@ -42,7 +42,7 @@ zone breadcrumb-link
     bind data-slot, text <breadcrumb-link>
     bind href, read href
     bind class, read class
-    slot
+    site
 
 zone breadcrumb-page
   take host, like view
@@ -52,7 +52,7 @@ zone breadcrumb-page
     bind role, text <link>
     bind aria-current, text <page>
     bind class, read class
-    slot
+    site
 
 zone breadcrumb-separator
   take host, like view
@@ -62,4 +62,4 @@ zone breadcrumb-separator
     bind role, text <presentation>
     bind aria-hidden, text <true>
     bind class, read class
-    slot
+    site

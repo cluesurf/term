@@ -8,10 +8,10 @@ load @term/mill/code/code/seed/seed/mine
 mine tune
   mine term, term tune
     mine term
-      slot name
+      site name
     mine list
       mine form, like head
-        slot head
+        site head
     mine list
       mine form, like host
-        slot host
+        site host

@@ -4,11 +4,11 @@ load @term/seed/code/meet
 
 mint meet
   case mode
-    slot mode
+    site mode
   case seed, mint seed
-    slot seed
+    site seed
   case meet, mint meet
-    slot meet
+    site meet
   hook make
     make meet
       bind mode, read mode

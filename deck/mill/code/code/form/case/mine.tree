@@ -2,72 +2,72 @@
 mine base
   mine term, term base
     mine term
-      slot name
+      site name
     mine maybe
       mine any
         mine form, like list
-          slot list
+          site list
         mine form, like draw
-          slot draw
+          site draw
         mine form, like form
-          slot form
+          site form
         mine form, like take
-          slot take
+          site take
     mine maybe
       mine form, like free
-        slot free
+        site free
     mine maybe
       mine form, like fall
-        slot fall
+        site fall
 
 mine head
   mine term, term head
     mine term
-      slot name
+      site name
     mine maybe
       mine any
         mine form, like list
-          slot list
+          site list
         mine form, like draw
-          slot draw
+          site draw
         mine form, like form
-          slot form
+          site form
         mine form, like take
-          slot take
+          site take
     mine maybe
       mine form, like free
-        slot free
+        site free
     mine maybe
       mine form, like fall
-        slot fall
+        site fall
 
 mine host
   mine term, term host
     mine term
-      slot name
+      site name
     mine maybe
       mine any
         mine form, like list
-          slot list
+          site list
         mine form, like draw
-          slot draw
+          site draw
         mine form, like form
-          slot form
+          site form
     mine maybe
       mine form, like fall
-        slot fall
+        site fall
 
 mine list
   mine term, term list
     mine term
-      slot form
+      site form
 
 mine draw
   mine term, term draw
     mine term
-      slot form
+      site form
 
 mine free
   mine term, term free
     mine term
-      slot term
+      site term

@@ -1,7 +1,7 @@
 
 mint bust
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make bust
       bind seed, read seed

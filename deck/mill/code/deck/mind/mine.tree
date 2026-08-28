@@ -2,12 +2,12 @@
 mine deck-mind
   mine term, term mind
     mine text
-      slot name
+      site name
     mine maybe
       mine term, term base
         mine text
-          slot base
+          site base
     mine maybe
       mine term, term site
         mine text
-          slot site
+          site site

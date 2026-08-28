@@ -4,7 +4,7 @@ load @term/seed/code/bear
 
 mint bear
   case path
-    slot path
+    site path
   hook make
     make bear
       bind path, read path

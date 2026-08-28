@@ -8,6 +8,6 @@
 
 mine zone-code
   mine term, term bind
-    slot name
+    site name
     mine text
-      slot code
+      site code

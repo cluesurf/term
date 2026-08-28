@@ -5,11 +5,11 @@ load @term/mill/code/code/lock/link
 
 mint link, like lock-link
   case name
-    slot name
+    site name
   case hash
-    slot hash
+    site hash
   case load, mint link-load
-    slot load
+    site load
   hook make
     make lock-link
       bind name, read name
@@ -18,9 +18,9 @@ mint link, like lock-link
 
 mint link-load, like lock-link-load
   case path
-    slot path
+    site path
   case mark
-    slot mark
+    site mark
   hook make
     make lock-link-load
       bind path, read path

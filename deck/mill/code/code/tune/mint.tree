@@ -4,11 +4,11 @@ load @term/seed/code/tune
 
 mint tune
   case name
-    slot name
+    site name
   case head, mint head
-    slot head
+    site head
   case host
-    slot host
+    site host
   hook make
     make tune
       bind name, read name

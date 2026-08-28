@@ -5,7 +5,7 @@ load @term/mill/code/code/bind/mine
 mine dock-mill
   mine term, term mill
     mine term
-      slot name
+      site name
     mine list
       mine form, like bind
-        slot bind
+        site bind

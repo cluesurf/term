@@ -4,11 +4,11 @@ load @term/mill/code/book/code
 
 mint code, like book-code
   case lang
-    slot lang
+    site lang
   case text
-    slot text
+    site text
   case tree
-    slot tree
+    site tree
   hook make
     make book-code
       bind lang, read lang

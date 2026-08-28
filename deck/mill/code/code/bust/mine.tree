@@ -5,4 +5,4 @@ load @term/mill/code/code/seed/mine
 mine bust
   mine term, term bust
     mine form, like seed
-      slot seed
+      site seed

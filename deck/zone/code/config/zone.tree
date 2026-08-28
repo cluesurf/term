@@ -62,6 +62,14 @@ host root-name, text <base>
 task mine-spot
   take one, like leaf
   take up, like text
+  # Whether this is the CACHE rather than the declaration.
+  #
+  # `bind <name>, <value>` means two things depending on which file it is in:
+  # a sealed value in `zone.code.tree`, and a config value in `zone.tree`.
+  # Both files are read by this one parser, so it has to be told which it is
+  # holding. Deciding by shape would work until a config value happened to
+  # look like a tone code.
+  take code, like boolean
   like spot
 
   save name, text <>
@@ -162,6 +170,21 @@ task mine-spot
         case bind
           fork test
             hook test
+              read code
+            hook miss
+              # the declaration: a config value, kept as it is written
+              call push
+                bind list, read fact
+                bind item
+                  make hold
+                    bind name, read word
+                    bind body
+                      call bind-value
+                        read kid
+                    bind note, text <>
+              turn next
+          fork test
+            hook test
               call not-equal
                 read kid/code
                 text <>
@@ -185,25 +208,6 @@ task mine-spot
           call push
             bind list, read load
             bind item, read word
-        # `mark <name>, <value>` is CONFIG: a value that is not secret and
-        # belongs in the committed declaration.
-        #
-        # NOT `bind`, which is taken twice over: the cache file uses it for a
-        # sealed value and `base` uses it for the provider settings. The same
-        # parser reads all three files, so a third meaning would be decided by
-        # whichever arm came first, which is how config silently never loaded.
-        case mark
-          call push
-            bind list, read fact
-            bind item
-              make hold
-                bind name
-                  call first-term
-                    read kid
-                bind body
-                  call bind-value
-                    read kid
-                bind note, text <>
         case need
           call push
             bind list, read need
@@ -225,6 +229,7 @@ task mine-spot
               call mine-spot
                 bind one, read kid
                 bind up, read path
+                bind code, read code
 
   send back
     make spot
@@ -400,6 +405,7 @@ task mine-zone
     call mine-spot
       bind one, read one
       bind up, read root-name
+      bind code, false
 
 # Resolve a path against the tree.
 #
@@ -702,11 +708,41 @@ task mine-file
     hook next
       take site, name one
       fork case, read one/head
-        case made
-          save made, read one/code
-        case good
+        # Both stamps are `time`, told apart by the word that NAMES them:
+        #
+        #   time made <when>   when the cache was fetched
+        #   time toss <when>   when it stops being trusted
+        #
+        # Named rather than a range on one line. `time <a>, <b>` parses
+        # correctly and both stamps arrive in `more`, but then reading one
+        # means knowing which index it sits at, and nothing in the file says
+        # which is which. The word says it instead.
+        case time
+          # `time made <when>` parses as time > made{when}: every word after
+          # a head is a head of its own, so the NAME is a nested leaf and
+          # the stamp hangs off it. Not a term on the `time` line.
+          walk list, read one/leaf
+            hook next
+              take site, name two
+              fork case, read two/head
+                case made
+                  save made, read two/code
+                case toss
+                  save good, read two/code
+          # The older unnamed form, `time <when>`, meant the fetch stamp.
+          # Read so a cache written before the rename still opens instead of
+          # reading as stale and forcing a fetch nobody asked for.
+          fork test
+            hook test
+              call not-equal
+                read one/code
+                text <>
+            hook hold
+              save made, read one/code
+        # The older spelling of the staleness stamp, for the same reason.
+        case toss
           save good, read one/code
-        case seal
+        case code
           save seal
             call first-term
               read one
@@ -729,6 +765,7 @@ task mine-file
         call mine-spot
           bind one, read one
           bind up, read root-name
+          bind code, true
 
 # The sealed value a path holds for a name, if any.
 #

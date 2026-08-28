@@ -4,11 +4,11 @@ load @term/mill/code/code/lock/load
 
 mint load, like lock-load
   case path
-    slot path
+    site path
   case mark
-    slot mark
+    site mark
   case lock
-    slot lock
+    site lock
   hook make
     make lock-load
       bind path, read path

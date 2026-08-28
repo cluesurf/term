@@ -232,6 +232,17 @@ hook move
     bind code false
   task post
 
+# Put one value on the clipboard, without printing it
+hook hook
+  # which secret
+  take name
+    like text
+  task hook-one
+
+# What is wrong across the tree. Needs no provider
+hook scan
+  task scan-all
+
 # Every zone path, one per line, for shell completion
 hook walk
   task deep

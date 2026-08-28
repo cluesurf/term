@@ -6,11 +6,11 @@ load @term/mill/code/book/bind
 
 mint bind, like book-bind
   case kind
-    slot kind
+    site kind
   case mind, mint bind-mind
-    slot mind
+    site mind
   case cite, mint bind-cite
-    slot cite
+    site cite
   hook make
     make book-bind
       bind kind, read kind
@@ -19,9 +19,9 @@ mint bind, like book-bind
 
 mint bind-mind, like book-bind-mind
   case key
-    slot key
+    site key
   case name
-    slot name
+    site name
   hook make
     make book-bind-mind
       bind key, read key
@@ -29,15 +29,15 @@ mint bind-mind, like book-bind-mind
 
 mint bind-cite, like book-bind-cite
   case key
-    slot key
+    site key
   case date
-    slot date
+    site date
   case name
-    slot name
+    site name
   case site
-    slot site
+    site site
   case mind
-    slot mind
+    site mind
   hook make
     make book-bind-cite
       bind key, read key

@@ -4,9 +4,9 @@ load @term/mill/code/book/flow
 
 mint flow, like book-flow
   case text
-    slot text
+    site text
   case fill
-    slot fill
+    site fill
   hook make
     make book-flow
       bind text, read text

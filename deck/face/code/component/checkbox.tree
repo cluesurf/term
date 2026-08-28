@@ -41,4 +41,4 @@ zone checkbox
       bind data-state
         call disclosure-state
           bind self, read control
-      slot
+      site

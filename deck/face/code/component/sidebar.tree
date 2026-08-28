@@ -22,7 +22,7 @@ zone sidebar
       call disclosure-state
         bind self, read control
     bind class, read class
-    slot
+    site
 
 zone sidebar-trigger
   take host, like view
@@ -36,7 +36,7 @@ zone sidebar-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    slot
+    site
 
 zone sidebar-header
   take host, like view
@@ -44,7 +44,7 @@ zone sidebar-header
   zone div
     bind data-slot, text <sidebar-header>
     bind class, read class
-    slot
+    site
 
 zone sidebar-content
   take host, like view
@@ -52,7 +52,7 @@ zone sidebar-content
   zone div
     bind data-slot, text <sidebar-content>
     bind class, read class
-    slot
+    site
 
 zone sidebar-footer
   take host, like view
@@ -60,7 +60,7 @@ zone sidebar-footer
   zone div
     bind data-slot, text <sidebar-footer>
     bind class, read class
-    slot
+    site
 
 zone sidebar-group
   take host, like view
@@ -68,7 +68,7 @@ zone sidebar-group
   zone div
     bind data-slot, text <sidebar-group>
     bind class, read class
-    slot
+    site
 
 zone sidebar-menu
   take host, like view
@@ -76,7 +76,7 @@ zone sidebar-menu
   zone ul
     bind data-slot, text <sidebar-menu>
     bind class, read class
-    slot
+    site
 
 zone sidebar-menu-item
   take host, like view
@@ -84,4 +84,4 @@ zone sidebar-menu-item
   zone li
     bind data-slot, text <sidebar-menu-item>
     bind class, read class
-    slot
+    site

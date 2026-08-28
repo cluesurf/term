@@ -79,7 +79,7 @@ const load = (Module as unknown as { _load: (...a: unknown[]) => unknown })._loa
 import { readFileSync } from 'node:fs'
 import { transformSync } from 'esbuild'
 
-const source = readFileSync('code/native/node/runtime/vault.ts', 'utf8')
+const source = readFileSync('code/hold/runtime/vault.ts', 'utf8')
 const js = transformSync(source, { loader: 'ts', format: 'cjs' }).code
 const vault = new Function('require', `${js}; return vault`)(need) as {
   put: (t: string, o: string, p: string, n: string, v: string) => Promise<string>

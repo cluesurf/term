@@ -1,11 +1,11 @@
 
 mine beam
   mine term, term beam
-    slot name
+    site name
     mine list
       mine form, like beam-body
-        slot body
+        site body
 
 mine beam-body
   mine any
-    slot node
+    site node

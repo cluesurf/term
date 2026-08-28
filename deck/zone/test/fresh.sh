@@ -89,7 +89,7 @@ after=$(calls)
 echo
 echo "=== the window is set by the strictest tier the cache covers ==="
 # This tree has a `star` zone, so the window is the short one.
-good=$(grep -o 'good <[^>]*>' "$PROJ/.base/@cluesurf/zone/zone.code.tree" | head -1 | sed 's/good <//;s/>//')
+good=$(grep -o 'toss <[^>]*>' "$PROJ/.base/@cluesurf/zone/zone.code.tree" | head -1 | sed 's/toss <//;s/>//')
 hours=$(node -e 'const g=Date.parse(process.argv[1]); console.log(Math.round((g-Date.now())/3600000))' "$good")
 [ "$hours" -le 1 ] && ok "a tree containing a star zone is good for about 1 hour (got $hours)" \
                    || no "expected about 1 hour for a star tree, got $hours"
@@ -106,7 +106,7 @@ zone word.surf
   need google-client-id
 EOF
 zone read --fresh >/dev/null 2>&1
-good=$(grep -o 'good <[^>]*>' "$PROJ/.base/@cluesurf/zone/zone.code.tree" | head -1 | sed 's/good <//;s/>//')
+good=$(grep -o 'toss <[^>]*>' "$PROJ/.base/@cluesurf/zone/zone.code.tree" | head -1 | sed 's/toss <//;s/>//')
 hours=$(node -e 'const g=Date.parse(process.argv[1]); console.log(Math.round((g-Date.now())/3600000))' "$good")
 [ "$hours" -ge 11 ] && ok "a tree with no star zone is good for about 12 hours (got $hours)" \
                     || no "expected about 12 hours for a moon-only tree, got $hours"

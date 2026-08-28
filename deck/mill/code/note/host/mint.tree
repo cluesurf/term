@@ -5,9 +5,9 @@ load @term/mill/code/book/host
 
 mint host, like book-host
   case name
-    slot name
+    site name
   case bind, mint host-bind
-    slot bind
+    site bind
   hook make
     make book-host
       bind name, read name
@@ -15,11 +15,11 @@ mint host, like book-host
 
 mint host-bind, like book-host-bind
   case name
-    slot name
+    site name
   case size
-    slot size
+    site size
   case unit
-    slot unit
+    site unit
   hook make
     make book-host-bind
       bind name, read name

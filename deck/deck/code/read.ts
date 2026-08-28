@@ -35,8 +35,17 @@ export type Form = {
   head: string
   // bare-word arguments in order: a package name, a path, a keyword
   terms: string[]
-  // the `<...>` value, when the line carries one
+  // the `<...>` value, when the line carries one. The FIRST one: see
+  // `values` for a line that carries several.
   value?: string
+  // every `<...>` on the line, in order.
+  //
+  // A line may carry more than one -- `time <made>, <toss>` is a range -- and
+  // the parser keeps them all. Flattening to a single `value` silently kept
+  // the LAST and dropped the rest, which reads as a value that was never
+  // written rather than as an error. Anything reading a multi-value line
+  // reads this.
+  values: string[]
   // nested forms, whether written inline after a comma or indented beneath
   forms: Form[]
 }
@@ -167,6 +176,7 @@ function toForm(group: GroupNode, source: Source): Form | undefined {
   const form: Form = {
     head: literal(first, source),
     terms: [],
+    values: [],
     forms: [],
   }
 
@@ -179,9 +189,17 @@ function toForm(group: GroupNode, source: Source): Form | undefined {
 
 function readInto(form: Form, node: Node, source: Source): void {
   switch (node.kind) {
-    case 'text':
-      form.value = literal(node, source)
+    case 'text': {
+      const text = literal(node, source)
+
+      form.values.push(text)
+
+      if (form.value === undefined) {
+        form.value = text
+      }
+
       break
+    }
 
     case 'name':
       form.terms.push(literal(node, source))
@@ -189,9 +207,17 @@ function readInto(form: Form, node: Node, source: Source): void {
 
     case 'integer':
     case 'decimal':
-    case 'radix':
-      form.value = String(node.value)
+    case 'radix': {
+      const text = String(node.value)
+
+      form.values.push(text)
+
+      if (form.value === undefined) {
+        form.value = text
+      }
+
       break
+    }
 
     case 'group': {
       if (isTerm(node)) {

@@ -6,11 +6,11 @@ load @term/seed/code/lace
 
 mint lace
   case name
-    slot name
+    site name
   case base, mint base
-    slot base
+    site base
   case flow, mint flow
-    slot flow
+    site flow
   hook make
     make lace
       bind name, read name
@@ -19,25 +19,25 @@ mint lace
 
 mint flow
   case text
-    slot text
+    site text
   case walk, mint walk
-    slot walk
+    site walk
   case test, mint test
-    slot test
+    site test
   case form, mint form
-    slot form
+    site form
   case call, mint call
-    slot call
+    site call
   case task, mint task
-    slot task
+    site task
 
 mint walk
   case road
-    slot road
+    site road
   case base, mint base
-    slot base
+    site base
   case flow, mint flow
-    slot flow
+    site flow
   hook make
     make walk
       bind road, read road
@@ -46,13 +46,13 @@ mint walk
 
 mint test
   case road
-    slot road
+    site road
   case bind, mint bind
-    slot bind
+    site bind
   case flow, mint flow
-    slot flow
+    site flow
   case hook, mint hook
-    slot hook
+    site hook
   hook make
     make test
       bind road, read road

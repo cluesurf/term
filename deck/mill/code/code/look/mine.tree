@@ -10,32 +10,32 @@ load @term/mill/code/code/seed/mine
 mine look
   mine list
     mine form, like look-rule
-      slot rule
+      site rule
 
 mine look-rule
   mine any
     mine form, like face-rule
-      slot face
+      site face
     mine form, like style-rule
-      slot style
+      site style
     mine form, like font-face-rule
-      slot font
+      site font
     mine form, like media-rule
-      slot media
+      site media
     mine form, like tone-rule
-      slot tone
+      site tone
 
 # `face <name>` with `have` declarations and `case` variant blocks
 mine face-rule
   mine term, term face
     mine term
-      slot name
+      site name
     mine list
       mine form, like look-have
-        slot have
+        site have
     mine list
       mine form, like look-case
-        slot case
+        site case
 
 # `base style` -> a selector rule: `find` elements (the selector), then `have` declarations
 mine style-rule
@@ -43,10 +43,10 @@ mine style-rule
     mine term, term style
       mine list
         mine form, like look-element
-          slot find
+          site find
       mine list
         mine form, like look-have
-          slot have
+          site have
 
 # one element in a selector, `find <tag>` or `link <tag>`: its tag, an optional `like` combinator, its `have`
 # qualifiers, and nested combined `link` elements
@@ -54,26 +54,26 @@ mine look-element
   mine any
     mine term, term find
       mine term
-        slot name
+        site name
       mine list
         mine form, like look-have
-          slot have
+          site have
       mine list
         mine form, like look-element
-          slot link
+          site link
     mine term, term link
       mine term
-        slot name
+        site name
       mine maybe
         mine term, term like
           mine term
-            slot like
+            site like
       mine list
         mine form, like look-have
-          slot have
+          site have
       mine list
         mine form, like look-element
-          slot link
+          site link
 
 # `base font-face` -> an @font-face block of declarations
 mine font-face-rule
@@ -81,46 +81,46 @@ mine font-face-rule
     mine term, term font-face
       mine list
         mine form, like look-have
-          slot have
+          site have
 
 # `base media` (or `base container`) -> the feature conditions (`have`) then the nested rules
 mine media-rule
   mine term, term base
     mine any
       mine term, term media
-        slot kind
+        site kind
       mine term, term container
-        slot kind
+        site kind
     mine list
       mine form, like look-have
-        slot have
+        site have
     mine list
       mine form, like look-rule
-        slot rule
+        site rule
 
 # `have <property>, <value>` -> one CSS declaration, or (inside a `find`/`link`) one selector qualifier
 mine look-have
   mine term, term have
     mine term
-      slot name
+      site name
     mine form, like seed
-      slot bond
+      site bond
 
 # `case <variant>` -> a variant block (hover / focus / dark / md / open / ...) with its own declarations
 mine look-case
   mine term, term case
     mine term
-      slot name
+      site name
     mine list
       mine form, like look-have
-        slot have
+        site have
 
 # `tone base` (or `tone dark`) -> theme tokens emitted as :root (or .dark) custom properties
 mine tone-rule
   mine term, term tone
     mine maybe
       mine term
-        slot name
+        site name
     mine list
       mine form, like look-have
-        slot have
+        site have

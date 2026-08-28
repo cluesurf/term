@@ -1,58 +1,58 @@
 
 mint code
   case form, mint form
-    slot form
+    site form
   case task, mint task
-    slot task
+    site task
   case call, mint call
-    slot call
+    site call
   case hook, mint hook
-    slot hook
+    site hook
   case host, mint host
-    slot host
+    site host
   case load, mint load
-    slot load
+    site load
   case dock, mint dock
-    slot dock
+    site dock
   case test, mint test
-    slot test
+    site test
   case hold, mint hold
-    slot hold
+    site hold
   case suit, mint suit
-    slot suit
+    site suit
   case mask, mint mask
-    slot mask
+    site mask
   case wear, mint wear
-    slot wear
+    site wear
   case bear, mint bear
-    slot bear
+    site bear
   case book, mint book
-    slot book
+    site book
   case tree, mint tree
-    slot tree
+    site tree
   case kink, mint kink
-    slot kink
+    site kink
   case fuse, mint fuse
-    slot fuse
+    site fuse
   case beam, mint beam
-    slot beam
+    site beam
   case slot, mint slot
-    slot slot
+    site slot
   case note, mint note
-    slot note
+    site note
   case halt, mint halt
-    slot halt
+    site halt
   case save, mint save
-    slot save
+    site save
   case seed, mint seed
-    slot seed
+    site seed
   case lace, mint lace
-    slot lace
+    site lace
   case cast, mint cast
-    slot cast
+    site cast
   case tune, mint tune
-    slot tune
+    site tune
   case view, mint view
-    slot view
+    site view
   case zone, mint zone
-    slot zone
+    site zone

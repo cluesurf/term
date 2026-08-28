@@ -5,15 +5,15 @@ load @term/seed/code/import
 
 mint load, like deck-load
   case path
-    slot path
+    site path
   case name
-    slot name
+    site name
   case host
-    slot host
+    site host
   case find, mint find
-    slot find
+    site find
   case load, mint load
-    slot load
+    site load
   hook make
     make deck-load
       bind path, read path
@@ -24,9 +24,9 @@ mint load, like deck-load
 
 mint find, like deck-load-find
   case name
-    slot name
+    site name
   case alias
-    slot alias
+    site alias
   hook make
     make deck-load-find
       bind name, read name

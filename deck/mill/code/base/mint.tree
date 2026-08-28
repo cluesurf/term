@@ -11,15 +11,15 @@ load @term/seed/code/deck
 
 mint hold, like deck-hold
   case name
-    slot name
+    site name
   case mark
-    slot mark
+    site mark
   case hash
-    slot hash
+    site hash
   case file, mint hold-file
-    slot file
+    site file
   case shard, mint hold-shard
-    slot shard
+    site shard
   hook make
     make deck-hold
       bind name, read name
@@ -30,17 +30,17 @@ mint hold, like deck-hold
 
 mint hold-file, like deck-file
   case name
-    slot name
+    site name
   case hash
-    slot hash
+    site hash
   case size
-    slot size
+    site size
   case mime
-    slot mime
+    site mime
   case base
-    slot base
+    site base
   case site
-    slot site
+    site site
   hook make
     make deck-file
       bind name, read name
@@ -52,13 +52,13 @@ mint hold-file, like deck-file
 
 mint hold-shard, like deck-shard
   case hash
-    slot hash
+    site hash
   case foot
-    slot foot
+    site foot
   case head
-    slot head
+    site head
   case size
-    slot size
+    site size
   hook make
     make deck-shard
       bind hash, read hash

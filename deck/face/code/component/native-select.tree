@@ -19,7 +19,7 @@ zone native-select
     bind data-slot, text <native-select>
     hook change, call change
     bind class, read class
-    slot
+    site
 
 zone native-option
   take host, like view
@@ -29,7 +29,7 @@ zone native-option
     bind data-slot, text <native-option>
     bind value, read value
     bind class, read class
-    slot
+    site
 
 zone native-optgroup
   take host, like view
@@ -39,4 +39,4 @@ zone native-optgroup
     bind data-slot, text <native-optgroup>
     bind label, read label
     bind class, read class
-    slot
+    site

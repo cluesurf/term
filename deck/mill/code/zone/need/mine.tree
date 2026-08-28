@@ -16,20 +16,20 @@
 
 mine zone-need
   mine term, term need
-    slot name
+    site name
     mine maybe
       mine term, term from
-        slot from
+        site from
     mine list
       mine term, term also
-        slot also
+        site also
 
 mine zone-want
   mine term, term want
-    slot name
+    site name
     mine maybe
       mine term, term from
-        slot from
+        site from
     mine list
       mine term, term also
-        slot also
+        site also

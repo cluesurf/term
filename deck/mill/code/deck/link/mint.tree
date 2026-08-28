@@ -6,13 +6,13 @@ load @term/seed/code/deck
 
 mint deck-link, like deck-deck-link
   case name
-    slot name
+    site name
   case mark
-    slot mark
+    site mark
   case site
-    slot site
+    site site
   case base
-    slot base
+    site base
   hook make
     make deck-deck-link
       bind name, read name
@@ -22,14 +22,14 @@ mint deck-link, like deck-deck-link
 
 mint deck-term, like deck-deck-term
   case name
-    slot name
+    site name
   hook make
     make deck-deck-term
       bind name, read name
 
 mint deck-deck, like deck-deck-deck
   case path
-    slot path
+    site path
   hook make
     make deck-deck-deck
       bind path, read path

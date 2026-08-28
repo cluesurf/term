@@ -4,7 +4,7 @@ load @term/mill/code/book/fuse
 
 mint fuse, like book-fuse
   case path
-    slot path
+    site path
   hook make
     make book-fuse
       bind path, read path

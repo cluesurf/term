@@ -4,4 +4,4 @@ load @term/mill/code/code/rule/hold/mint
 
 mint rule
   case hold, mint hold
-    slot hold
+    site hold

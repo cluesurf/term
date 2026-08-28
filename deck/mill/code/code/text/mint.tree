@@ -4,13 +4,13 @@ load @term/seed/code/text
 
 mint text
   case text, mint text-def
-    slot text
+    site text
 
 mint text-def, like text-def
   case name
-    slot name
+    site name
   case text
-    slot text
+    site text
   hook make
     make text-def
       bind name, read name

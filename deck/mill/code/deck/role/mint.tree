@@ -6,9 +6,9 @@ load @term/mill/code/deck/role
 
 mint role, like deck-role
   case name
-    slot name
+    site name
   case take, mint role-take
-    slot take
+    site take
   hook make
     make deck-role
       bind name, read name
@@ -16,9 +16,9 @@ mint role, like deck-role
 
 mint role-take, like deck-role-take
   case glob
-    slot glob
+    site glob
   case miss, mint role-miss
-    slot miss
+    site miss
   hook make
     make deck-role-take
       bind glob, read glob
@@ -26,7 +26,7 @@ mint role-take, like deck-role-take
 
 mint role-miss, like deck-role-miss
   case glob
-    slot glob
+    site glob
   hook make
     make deck-role-miss
       bind glob, read glob

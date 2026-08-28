@@ -8,14 +8,14 @@
 
 mine code
   mine term, term code
-    slot lang
+    site lang
     mine any
       mine text
-        slot text
+        site text
       mine form, like code-tree
-        slot tree
+        site tree
 
 mine code-tree
   mine list
     mine term
-      slot node
+      site node

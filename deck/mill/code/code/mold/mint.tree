@@ -4,17 +4,17 @@ load @term/seed/code/case-type
 
 mint case-type, like case-type
   case name
-    slot name
+    site name
   case like, mint like
-    slot like
+    site like
   case head, mint head
-    slot head
+    site head
   case link, mint link
-    slot link
+    site link
   case bind, mint bind
-    slot bind
+    site bind
   case hide
-    slot hide
+    site hide
   hook make
     make case-type
       bind name, read name

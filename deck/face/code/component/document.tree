@@ -28,4 +28,4 @@ zone document
           read title
     zone div
       bind data-slot, text <document-body>
-      slot
+      site

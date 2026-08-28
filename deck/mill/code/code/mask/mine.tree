@@ -7,10 +7,10 @@ load @term/mill/code/code/task/mine
 mine mask
   mine term, term mask
     mine term
-      slot name
+      site name
     mine list
       mine form, like head
-        slot head
+        site head
     mine list
       mine form, like task
-        slot task
+        site task

@@ -4,7 +4,7 @@ load @term/seed/code/slot
 
 mint slot, like code-slot
   case name
-    slot name
+    site name
   hook make
     make code-slot
       bind name, read name

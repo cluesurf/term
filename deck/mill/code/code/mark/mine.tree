@@ -2,24 +2,24 @@
 mine mark
   mine term, term mark
     mine term
-      slot kind
+      site kind
     mine list
       mine form, like mark-bind
-        slot bind
+        site bind
 
 mine mark-bind
   mine term, term bind
     mine term
-      slot key
+      site key
     mine any
       mine text
-        slot text-value
+        site text-value
       mine number
-        slot number-value
+        site number-value
       mine form, like mark-bind-term
-        slot term-value
+        site term-value
 
 mine mark-bind-term
   mine term, term term
     mine term
-      slot name
+      site name

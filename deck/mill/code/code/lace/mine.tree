@@ -2,57 +2,57 @@
 mine lace
   mine term, term lace
     mine term
-      slot name
+      site name
     mine list
       mine form, like base
-        slot base
+        site base
     mine list
       mine form, like flow
-        slot flow
+        site flow
 
 mine flow
   mine any
     mine form, like text
-      slot text
+      site text
     mine form, like walk
-      slot walk
+      site walk
     mine form, like test
-      slot test
+      site test
     mine form, like form
-      slot form
+      site form
     mine form, like call
-      slot call
+      site call
     mine form, like task
-      slot task
+      site task
 
 mine text
   mine term, term lace
     mine term, term text
     mine term, term text
       mine text
-        slot text
+        site text
 
 mine walk
   mine term, term walk
     mine term
-      slot road
+      site road
     mine list
       mine form, like base
-        slot base
+        site base
     mine list
       mine form, like flow
-        slot flow
+        site flow
 
 mine test
   mine term, term test
     mine term
-      slot road
+      site road
     mine list
       mine form, like bind
-        slot bind
+        site bind
     mine list
       mine form, like flow
-        slot flow
+        site flow
     mine list
       mine form, like hook
-        slot hook
+        site hook

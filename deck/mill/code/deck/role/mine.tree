@@ -1,20 +1,20 @@
 
 mine role
   mine term, term role
-    slot name
+    site name
     mine list
       mine form, like role-take
-        slot take
+        site take
 
 mine role-take
   mine term, term take
     mine text
-      slot glob
+      site glob
     mine list
       mine form, like role-miss
-        slot miss
+        site miss
 
 mine role-miss
   mine term, term miss
     mine text
-      slot glob
+      site glob

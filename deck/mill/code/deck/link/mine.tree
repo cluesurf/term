@@ -1,23 +1,23 @@
 
 mine deck-link
   mine term, term link
-    slot name
+    site name
     mine maybe
       mine term, term mark
         mine text
-          slot mark
+          site mark
     mine maybe
       mine term, term site
         mine text
-          slot site
+          site site
     mine maybe
       mine term, term base
-        slot base
+        site base
 
 mine deck-term
   mine term, term term
-    slot name
+    site name
 
 mine deck-deck
   mine term, term deck
-    slot path
+    site path

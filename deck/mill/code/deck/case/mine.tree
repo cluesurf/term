@@ -7,10 +7,10 @@ load @term/mill/code/deck/deck/host/mine
 
 mine deck-case
   mine term, term case
-    slot name
+    site name
     mine list
       mine form, like deck-link
-        slot link
+        site link
     mine list
       mine form, like deck-host
-        slot host
+        site host

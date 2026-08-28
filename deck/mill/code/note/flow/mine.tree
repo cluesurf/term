@@ -6,10 +6,10 @@
 mine flow
   mine term, term flow
     mine text
-      slot text
+      site text
     mine maybe
       mine form, like flow-fill
-        slot fill
+        site fill
 
 mine flow-fill
   mine term, term bind

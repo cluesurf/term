@@ -1,7 +1,7 @@
 
 mint dock-send
   case name
-    slot name
+    site name
   hook make
     make dock-send
       bind name, read name

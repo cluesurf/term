@@ -4,7 +4,7 @@ load @term/mill/code/code/task/mine
 mine wear
   mine term, term wear
     mine term
-      slot name
+      site name
     mine list
       mine form, like task
-        slot task
+        site task

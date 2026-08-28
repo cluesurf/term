@@ -24,49 +24,49 @@ load @term/mill/code/deck/load/mint
 
 mint deck
   case deck, mint deck-def
-    slot deck
+    site deck
   case role, mint role
-    slot role
+    site role
   case load, mint load
-    slot load
+    site load
 
 mint deck-def, like deck-deck
   case name
-    slot name
+    site name
   case mark
-    slot mark
+    site mark
   case head
-    slot head
+    site head
   case lock
-    slot lock
+    site lock
   case sort
-    slot sort
+    site sort
   case site
-    slot site
+    site site
   case view
-    slot view
+    site view
   case hide
-    slot hide
+    site hide
   case task
-    slot task
+    site task
   case book
-    slot book
+    site book
   case role
-    slot role
+    site role
   case call
-    slot call
+    site call
   case term, mint deck-term
-    slot term
+    site term
   case mind, mint deck-mind
-    slot mind
+    site mind
   case link, mint deck-link
-    slot link
+    site link
   case host, mint deck-host
-    slot host
+    site host
   case deck, mint deck-deck
-    slot deck
+    site deck
   case case, mint deck-case
-    slot case
+    site case
   hook make
     make deck-deck
       bind name, read name

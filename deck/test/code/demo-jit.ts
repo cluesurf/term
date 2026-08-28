@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   take host, like view
   zone div
     bind class, text <flex gap-2 p-4 md:flex>
-    slot`)
+    site`)
   const used = prog
     ? collectUsedClasses(prog)
     : { classes: [], dynamic: false }
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
   take host, like view
   zone div
     bind class, read theme
-    slot`)
+    site`)
   ok(
     'flags a dynamic (non-literal) class',
     !!dyn && collectUsedClasses(dyn).dynamic === true,
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
   take host, like view
   zone div
     bind class, text <flex gap-2>
-    slot`,
+    site`,
   )
   const u1 = (await runUsed()).join(' ')
   qc.setSource(
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
   zone div
     bind class, text <flex gap-2>
     zone span
-      slot`,
+      site`,
   )
   const u2 = (await runUsed()).join(' ')
   qc.setSource(
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   take host, like view
   zone div
     bind class, text <flex gap-2 bg-zinc-900>
-    slot`,
+    site`,
   )
   const u3 = (await runUsed()).join(' ')
   ok('usedClasses stable across a non-class edit', u1 === u2, u2)
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
   take host, like view
   zone div
     bind class, text <flex gap-2>
-    slot`,
+    site`,
   )
   await subs.flush()
   const afterInitial = fires
@@ -153,7 +153,7 @@ async function main(): Promise<void> {
   zone div
     bind class, text <flex gap-2>
     zone span
-      slot`,
+      site`,
   )
   await subs.flush()
   const afterNonClass = fires
@@ -163,7 +163,7 @@ async function main(): Promise<void> {
   take host, like view
   zone div
     bind class, text <flex gap-2 p-4>
-    slot`,
+    site`,
   )
   await subs.flush()
   const afterClass = fires

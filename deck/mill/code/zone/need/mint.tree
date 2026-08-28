@@ -6,11 +6,11 @@ load @term/seed/code/zone-file
 # than mined, because it is carried by which head word was written.
 mint zone-need, like zone-need
   case name
-    slot name
+    site name
   case from
-    slot from
+    site from
   case also
-    slot also
+    site also
   hook make
     make zone-need
       bind name, read name
@@ -20,11 +20,11 @@ mint zone-need, like zone-need
 
 mint zone-want, like zone-need
   case name
-    slot name
+    site name
   case from
-    slot from
+    site from
   case also
-    slot also
+    site also
   hook make
     make zone-need
       bind name, read name

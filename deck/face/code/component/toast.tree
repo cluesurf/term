@@ -16,7 +16,7 @@ zone toaster
     bind role, text <region>
     bind aria-live, text <polite>
     bind class, read class
-    slot
+    site
 
 zone toast
   take host, like view
@@ -25,7 +25,7 @@ zone toast
     bind data-slot, text <toast>
     bind role, text <status>
     bind class, read class
-    slot
+    site
 
 zone toast-title
   take host, like view
@@ -33,7 +33,7 @@ zone toast-title
   zone div
     bind data-slot, text <toast-title>
     bind class, read class
-    slot
+    site
 
 zone toast-description
   take host, like view
@@ -41,7 +41,7 @@ zone toast-description
   zone div
     bind data-slot, text <toast-description>
     bind class, read class
-    slot
+    site
 
 zone toast-action
   take host, like view
@@ -49,7 +49,7 @@ zone toast-action
   zone div
     bind data-slot, text <toast-action>
     bind class, read class
-    slot
+    site
 
 zone toast-close
   take host, like view
@@ -61,4 +61,4 @@ zone toast-close
     bind aria-label, text <Close>
     hook click, call press
     bind class, read class
-    slot
+    site

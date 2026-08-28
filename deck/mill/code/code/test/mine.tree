@@ -7,7 +7,7 @@ load @term/mill/code/code/tool/flow/mine
 mine test
   mine term, term test
     mine text
-      slot name
+      site name
     mine list
       mine form, like flow
-        slot work
+        site work

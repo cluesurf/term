@@ -2,31 +2,31 @@
 mine load
   mine term, term load
     mine load-path
-      slot path
+      site path
     mine maybe
       mine term, term name
         mine term
-          slot name
+          site name
     mine maybe
       mine form, like host
-        slot host
+        site host
     mine list
       mine form, like find
-        slot find
+        site find
     mine list
       mine form, like load
-        slot load
+        site load
 
 mine host
   mine term, term host
     mine term
-      slot value
+      site value
 
 mine find
   mine term, term find
     mine term
-      slot text
+      site text
     mine maybe
       mine term, term name
         mine term
-          slot name
+          site name

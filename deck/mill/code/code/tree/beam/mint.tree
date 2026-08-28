@@ -5,9 +5,9 @@ load @term/seed/code/beam
 
 mint beam, like code-beam
   case name
-    slot name
+    site name
   case body, mint beam-body
-    slot body
+    site body
   hook make
     make code-beam
       bind name, read name
@@ -15,7 +15,7 @@ mint beam, like code-beam
 
 mint beam-body, like code-beam-body
   case node
-    slot node
+    site node
   hook make
     make code-beam-body
       bind node, read node

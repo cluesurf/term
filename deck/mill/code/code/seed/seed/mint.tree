@@ -4,9 +4,9 @@ load @term/seed/code/seed
 
 mint host, like seed-item
   case name
-    slot name
+    site name
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make seed-item
       bind name, read name

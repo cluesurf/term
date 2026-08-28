@@ -9,21 +9,21 @@
 mine hold
   mine term, term deck
     mine text
-      slot name
+      site name
     mine maybe
       mine term, term mark
         mine text
-          slot mark
+          site mark
         mine maybe
           mine term, term hash
             mine text
-              slot hash
+              site hash
     mine list
       mine form, like hold-file
-        slot file
+        site file
     mine list
       mine form, like hold-shard
-        slot shard
+        site shard
 
 # one file entry: `link <path>` with its content hash, size, optional mime, and
 # optional pack placement (`base <pack-hash>` with a nested `site <offset>`).
@@ -31,43 +31,43 @@ mine hold
 mine hold-file
   mine term, term link
     mine text
-      slot name
+      site name
     mine maybe
       mine term, term hash
         mine text
-          slot hash
+          site hash
     mine maybe
       mine term, term size
         mine text
-          slot size
+          site size
     mine maybe
       mine term, term mime
         mine text
-          slot mime
+          site mime
     mine maybe
       mine term, term base
         mine text
-          slot base
+          site base
         mine maybe
           mine term, term site
             mine text
-              slot site
+              site site
 
 # one shard entry in a large manifest's index: `base <shard-hash>` with the
 # path range it covers (`foot` first, `head` last) and its `size` (file count).
 mine hold-shard
   mine term, term base
     mine text
-      slot hash
+      site hash
     mine maybe
       mine term, term foot
         mine text
-          slot foot
+          site foot
     mine maybe
       mine term, term head
         mine text
-          slot head
+          site head
     mine maybe
       mine term, term size
         mine text
-          slot size
+          site size

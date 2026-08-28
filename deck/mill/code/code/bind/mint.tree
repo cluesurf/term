@@ -4,9 +4,9 @@ load @term/seed/code/bind
 
 mint bind, like bind
   case name
-    slot term
+    site term
   case seed, mint seed
-    slot bond
+    site bond
   hook make
     make bind
       bind term, read term

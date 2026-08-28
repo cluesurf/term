@@ -1,8 +1,8 @@
 
 mint lockfile
   case base
-    slot base
+    site base
   case load, mint load
-    slot load
+    site load
   case link, mint link
-    slot link
+    site link

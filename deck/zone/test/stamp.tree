@@ -1,0 +1,88 @@
+# The cache header: the two stamps, and reading a cache written before they
+# had names.
+#
+# This is the exact thing that broke silently once. The header carries when
+# the cache was fetched and when it stops being trusted, and if either is
+# lost on the way back in, the cache reads as stale the instant it is
+# written and every command refetches. Nothing fails loudly when that
+# happens, which is why it is tested here rather than noticed later.
+#
+# Run with: term test
+
+load @term/seed/code/text
+  find text
+  find contains
+
+load @term/seed/code/list
+  find list
+
+load ../code/config/zone
+  find mine-file
+
+load ../code/seal/cache
+  find show-file
+
+load ../code/tool/base
+  find is-equal
+
+# What `show-file` writes, read straight back. Both stamps have to survive.
+#
+# The file is built by PARSING one rather than by hand, so the test exercises
+# the same path a real cache takes and cannot drift from it.
+test stamp-round-trip
+  save one
+    call mine-file
+      text <time made \<2026-08-28T20:19:40Z\>\ntime toss \<2026-08-29T08:19:40Z\>\ncode aes-256-gcm\n>
+  want hold
+    call is-equal
+      read one/made
+      text <2026-08-28T20:19:40Z>
+  want hold
+    call is-equal
+      read one/good
+      text <2026-08-29T08:19:40Z>
+  save back
+    call mine-file
+      call show-file
+        read one
+  want hold
+    call is-equal
+      read back/made
+      text <2026-08-28T20:19:40Z>
+  want hold
+    call is-equal
+      read back/good
+      text <2026-08-29T08:19:40Z>
+
+# The header NAMES each stamp, so neither is read by position.
+test stamp-named-in-file
+  save one
+    call mine-file
+      text <time made \<2026-08-28T20:19:40Z\>\ntime toss \<2026-08-29T08:19:40Z\>\ncode aes-256-gcm\n>
+  save out
+    call show-file
+      read one
+  want hold
+    call contains
+      read out
+      text <time made \<2026-08-28T20:19:40Z\>>
+  want hold
+    call contains
+      read out
+      text <time toss \<2026-08-29T08:19:40Z\>>
+
+# A cache written before the stamps had names still opens. `time <when>` was
+# the fetch stamp and `toss <when>` the staleness one. Failing to read them
+# would not error: it would silently refetch everything, once per command.
+test stamp-older-form
+  save back
+    call mine-file
+      text <time \<2026-08-28T20:19:40Z\>\ntoss \<2026-08-29T08:19:40Z\>\ncode aes-256-gcm\n>
+  want hold
+    call is-equal
+      read back/made
+      text <2026-08-28T20:19:40Z>
+  want hold
+    call is-equal
+      read back/good
+      text <2026-08-29T08:19:40Z>

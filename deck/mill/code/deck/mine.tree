@@ -23,68 +23,68 @@ mine deck
   mine list
     mine any
       mine form, like deck-def
-        slot deck
+        site deck
       mine form, like role
-        slot role
+        site role
       mine form, like load
-        slot load
+        site load
 
 mine deck-def
   mine term, term deck
     mine text
-      slot name
+      site name
     mine maybe
       mine term, term mark
         mine text
-          slot mark
+          site mark
     mine maybe
       mine term, term head
         mine text
-          slot head
+          site head
     mine maybe
       mine term, term lock
-        slot lock
+        site lock
     mine maybe
       mine term, term sort
-        slot sort
+        site sort
     mine maybe
       mine term, term site
         mine text
-          slot site
+          site site
     mine maybe
       mine term, term view
-        slot view
+        site view
     mine maybe
       mine term, term mark
         mine term, term private
-          slot hide
+          site hide
     mine maybe
       mine term, term task
-        slot task
+        site task
     mine maybe
       mine term, term book
-        slot book
+        site book
     mine maybe
       mine term, term role
-        slot role
+        site role
     mine maybe
       mine term, term call
-        slot call
+        site call
     mine list
       mine form, like deck-term
-        slot term
+        site term
     mine list
       mine form, like deck-mind
-        slot mind
+        site mind
     mine list
       mine form, like deck-link
-        slot link
+        site link
     mine list
       mine form, like deck-host
-        slot host
+        site host
     mine list
       mine form, like deck-deck
-        slot deck
+        site deck
     mine list
       mine form, like deck-case
-        slot case
+        site case

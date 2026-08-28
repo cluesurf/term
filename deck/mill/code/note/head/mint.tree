@@ -4,9 +4,9 @@ load @term/mill/code/book/head
 
 mint head, like book-head
   case level
-    slot level
+    site level
   case title
-    slot title
+    site title
   hook make
     make book-head
       bind level, read level

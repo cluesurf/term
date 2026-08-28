@@ -26,31 +26,31 @@ load @term/mill/code/zone/code/mine
 
 mine zone-hold
   mine term, term zone
-    slot name
+    site name
     mine maybe
       mine term, term base
-        slot base
+        site base
     mine maybe
       mine term, term bind
-        slot bind
+        site bind
     mine maybe
       mine term, term root
-        slot root
+        site root
     mine list
       mine term, term cast
-        slot cast
+        site cast
     mine list
       mine term, term load
-        slot load
+        site load
     mine list
       mine any
         mine form, like zone-need
-          slot need
+          site need
         mine form, like zone-want
-          slot need
+          site need
     mine list
       mine form, like zone-code
-        slot code
+        site code
     mine list
       mine form, like zone-hold
-        slot zone
+        site zone

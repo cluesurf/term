@@ -14,4 +14,4 @@ zone spinner
     bind role, text <status>
     bind aria-label, text <Loading>
     bind class, read class
-    slot
+    site

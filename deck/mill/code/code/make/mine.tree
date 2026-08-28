@@ -11,10 +11,10 @@ load @term/mill/code/code/turn/mine
 mine make
   mine term, term make
     mine term
-      slot name
+      site name
     mine list
       mine form, like bind
-        slot bind
+        site bind
     mine list
       mine form, like save
-        slot save
+        site save

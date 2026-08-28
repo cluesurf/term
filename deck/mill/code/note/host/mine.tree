@@ -4,18 +4,18 @@
 
 mine host
   mine term, term host
-    slot name
+    site name
     mine list
       mine form, like host-bind
-        slot bind
+        site bind
 
 mine host-bind
   mine term, term host
-    slot name
+    site name
     mine maybe
       mine term, term size
-        slot size
+        site size
     mine maybe
       mine term, term code
         mine text
-          slot unit
+          site unit

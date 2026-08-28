@@ -11,23 +11,23 @@ load @term/mill/code/zone/code/mint
 
 mint zone-hold, like zone-hold
   case name
-    slot name
+    site name
   case base
-    slot base
+    site base
   case bind
-    slot bind
+    site bind
   case root
-    slot root
+    site root
   case cast
-    slot cast
+    site cast
   case load
-    slot load
+    site load
   case need, mint zone-need
-    slot need
+    site need
   case code, mint zone-code
-    slot code
+    site code
   case zone, mint zone-hold
-    slot zone
+    site zone
   hook make
     make zone-hold
       bind name, read name

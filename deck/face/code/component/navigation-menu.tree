@@ -18,7 +18,7 @@ zone navigation-menu
   zone div
     bind data-slot, text <navigation-menu>
     bind class, read class
-    slot
+    site
 
 zone navigation-menu-list
   take host, like view
@@ -26,7 +26,7 @@ zone navigation-menu-list
   zone div
     bind data-slot, text <navigation-menu-list>
     bind class, read class
-    slot
+    site
 
 zone navigation-menu-item
   take host, like view
@@ -34,7 +34,7 @@ zone navigation-menu-item
   zone div
     bind data-slot, text <navigation-menu-item>
     bind class, read class
-    slot
+    site
 
 zone navigation-menu-trigger
   take host, like view
@@ -50,7 +50,7 @@ zone navigation-menu-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    slot
+    site
 
 zone navigation-menu-content
   take host, like view
@@ -67,7 +67,7 @@ zone navigation-menu-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        slot
+        site
 
 zone navigation-menu-link
   take host, like view
@@ -77,4 +77,4 @@ zone navigation-menu-link
     bind data-slot, text <navigation-menu-link>
     bind href, read href
     bind class, read class
-    slot
+    site

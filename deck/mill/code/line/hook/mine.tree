@@ -5,20 +5,20 @@ load @term/mill/code/code/call/mine
 mine dock-hook
   mine any
     mine form, like dock-hook-boot
-      slot boot
+      site boot
     mine form, like dock-hook-halt
-      slot halt
+      site halt
 
 mine dock-hook-boot
   mine term, term hook
     mine term, term boot
       mine list
         mine form, like call
-          slot call
+          site call
 
 mine dock-hook-halt
   mine term, term hook
     mine term, term halt
       mine list
         mine form, like call
-          slot call
+          site call

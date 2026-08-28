@@ -4,23 +4,23 @@ load @term/seed/code/zone
 
 mint zone
   case zone, mint zone-def
-    slot zone
+    site zone
 
 mint zone-def, like zone-def
   case name
-    slot name
+    site name
   case take, mint take
-    slot take
+    site take
   case hook, mint hook
-    slot hook
+    site hook
   case view, mint view
-    slot view
+    site view
   case tune, mint tune
-    slot tune
+    site tune
   case zone, mint zone-def
-    slot zone
+    site zone
   case note, mint note
-    slot note
+    site note
   hook make
     make zone-def
       bind name, read name

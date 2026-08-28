@@ -6,9 +6,9 @@ load @term/seed/code/test
 
 mint test
   case name
-    slot name
+    site name
   case work, mint flow
-    slot work
+    site work
   hook make
     make test
       bind name, read name

@@ -1,9 +1,9 @@
 
 mint save
   case name
-    slot name
+    site name
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make save
       bind name, read name

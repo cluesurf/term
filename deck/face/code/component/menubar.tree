@@ -17,7 +17,7 @@ zone menubar
   zone div
     bind data-slot, text <menubar>
     bind class, read class
-    slot
+    site
 
 zone menubar-menu
   take host, like view
@@ -25,7 +25,7 @@ zone menubar-menu
   zone div
     bind data-slot, text <menubar-menu>
     bind class, read class
-    slot
+    site
 
 zone menubar-trigger
   take host, like view
@@ -41,7 +41,7 @@ zone menubar-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    slot
+    site
 
 zone menubar-content
   take host, like view
@@ -59,7 +59,7 @@ zone menubar-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        slot
+        site
 
 zone menubar-item
   take host, like view
@@ -68,4 +68,4 @@ zone menubar-item
     bind data-slot, text <menubar-item>
     bind role, text <menuitem>
     bind class, read class
-    slot
+    site

@@ -4,9 +4,9 @@ load @term/seed/code/zone-file
 
 mint zone-code, like zone-code
   case name
-    slot name
+    site name
   case code
-    slot code
+    site code
   hook make
     make zone-code
       bind name, read name

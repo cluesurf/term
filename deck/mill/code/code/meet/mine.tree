@@ -4,10 +4,10 @@ load @term/mill/code/code/seed/mine
 mine meet
   mine term, term meet
     mine term
-      slot mode
+      site mode
     mine list
       mine form, like seed
-        slot seed
+        site seed
     mine list
       mine form, like meet
-        slot meet
+        site meet

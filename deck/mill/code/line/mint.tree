@@ -10,25 +10,25 @@ load @term/mill/code/code/save/mint
 
 mint dock
   case name
-    slot name
+    site name
   case dock, mint dock
-    slot dock
+    site dock
   case take, mint dock-take
-    slot take
+    site take
   case seed, mint dock-seed
-    slot seed
+    site seed
   case show, mint dock-show
-    slot show
+    site show
   case send, mint dock-send
-    slot send
+    site send
   case hook, mint dock-hook
-    slot hook
+    site hook
   case fuse, mint fuse
-    slot fuse
+    site fuse
   case save, mint save
-    slot save
+    site save
   case call, mint call
-    slot call
+    site call
   hook make
     make dock
       bind name, read name

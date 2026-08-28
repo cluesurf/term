@@ -11,39 +11,39 @@ load @term/mill/code/code/tag/mine
 mine link
   mine term, term link
     mine term
-      slot name
+      site name
     mine maybe
       mine form, like like
-        slot like
+        site like
     mine maybe
       mine term, term mark
         mine term, term private
-          slot hide
+          site hide
     mine maybe
       mine term, term need
-        slot need
+        site need
     mine maybe
       mine term, term base
         mine form, like seed
-          slot base
+          site base
     mine list
       mine form, like tag
-        slot tag
+        site tag
     mine list
       mine form, like link-take
-        slot take
+        site take
 
 mine link-take
   mine term, term take
     mine any
       mine term
-        slot term
+        site term
       mine text
-        slot text
+        site text
       mine form, like link-take-mark
-        slot mark
+        site mark
 
 mine link-take-mark
   mine term, term mark
     mine term
-      slot value
+      site value

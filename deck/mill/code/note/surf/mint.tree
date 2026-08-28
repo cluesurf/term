@@ -9,9 +9,9 @@ load @term/mill/code/book/surf
 
 mint surf, like book-surf
   case link
-    slot link
+    site link
   case title
-    slot title
+    site title
   hook make
     make book-surf
       bind link, read link
@@ -19,35 +19,35 @@ mint surf, like book-surf
 
 mint bold, like book-bold
   case text
-    slot text
+    site text
   hook make
     make book-bold
       bind text, read text
 
 mint tilt, like book-tilt
   case text
-    slot text
+    site text
   hook make
     make book-tilt
       bind text, read text
 
 mint line, like book-line
   case text
-    slot text
+    site text
   hook make
     make book-line
       bind text, read text
 
 mint rise, like book-rise
   case text
-    slot text
+    site text
   hook make
     make book-rise
       bind text, read text
 
 mint fall, like book-fall
   case text
-    slot text
+    site text
   hook make
     make book-fall
       bind text, read text

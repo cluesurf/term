@@ -14,16 +14,16 @@ load @term/mill/code/code/task/mine
 mine hook
   mine term, term hook
     mine term
-      slot name
+      site name
     mine maybe
       mine term, term name
-        slot fork-name
+        site fork-name
     mine list
       mine form, like base
-        slot base
+        site base
     mine list
       mine form, like flow
-        slot flow
+        site flow
     mine list
       mine form, like task
-        slot task
+        site task

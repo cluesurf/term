@@ -11,6 +11,15 @@
 # Filtering to the declared names happens on this side, so a manifest that
 # asks for three names never carries the rest of the project into a command.
 
+# The Bitwarden SDK, reached through a runtime shim. `hold/runtime/vault.ts`.
+#
+# WITHOUT THIS DOCK THE SHIM IS NEVER PREPENDED. The `case node` templates
+# below call `vault.put` and friends, the bundle builds clean, and the first
+# command to reach one dies with `ReferenceError: vault is not defined`. The
+# dock is what tells the build a global is needed and where its source is.
+dock load
+  load <global:vault>, name vault
+
 load ../base
   find pass
   find hold

@@ -5,13 +5,13 @@ load @term/seed/code/walk
 
 mint walk
   case mode
-    slot mode
+    site mode
   case seed, mint seed
-    slot seed
+    site seed
   case bind, mint bind
-    slot bind
+    site bind
   case hook, mint hook
-    slot hook
+    site hook
   hook make
     make walk
       bind mode, read mode
@@ -21,11 +21,11 @@ mint walk
 
 mint hook
   case name
-    slot name
+    site name
   case base, mint base
-    slot base
+    site base
   case flow, mint flow
-    slot flow
+    site flow
   hook make
     make hook
       bind name, read name

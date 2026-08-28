@@ -27,7 +27,7 @@ zone h1
   take class
   zone h1
     bind class, text <text-h1 sm:text-h1-large uppercase w-full scale-y-90 tracking-wide-015 font-bold theme-h1-1-colors text-center>
-    slot
+    site
 
 # H2 — section heading. React: tag h2, leading-heading, `text-h2 sm:text-h2-large`, then
 # `mb-8 mt-16 px-16 first:mt-0 uppercase w-full scale-y-87`, themeClass('h2', 1) -> theme-h2-1-colors (zinc-800/normal),
@@ -37,7 +37,7 @@ zone h2
   take class
   zone h2
     bind class, text <text-h2 sm:text-h2-large mb-8 mt-16 px-16 first:mt-0 uppercase w-full scale-y-87 theme-h2-1-colors>
-    slot
+    site
 
 # H3 — subsection heading. React: tag h3, `text-h3 sm:text-h3-large`,
 # `mb-8 mt-16 px-16 uppercase w-full scale-y-87 tracking-wide-015 pt-8`, themeClass('h3', 1) -> theme-h3-1-colors
@@ -47,7 +47,7 @@ zone h3
   take class
   zone h3
     bind class, text <text-h3 sm:text-h3-large mb-8 mt-16 px-16 uppercase w-full scale-y-87 tracking-wide-015 pt-8 theme-h3-1-colors>
-    slot
+    site
 
 # H4 — React: tag h4, `text-h4 sm:text-h4-large px-16 mb-16`, themeClass('h4', 1) -> theme-h4-1-colors
 # (zinc-700/semibold).
@@ -56,7 +56,7 @@ zone h4
   take class
   zone h4
     bind class, text <text-h4 sm:text-h4-large px-16 mb-16 theme-h4-1-colors>
-    slot
+    site
 
 # H5 — React: tag h5, `text-h5 sm:text-h5-large px-16 w-full mb-16 text-zinc-900 dark:text-zinc-300` (a hard-coded
 # color, NOT a themeClass call).
@@ -65,7 +65,7 @@ zone h5
   take class
   zone h5
     bind class, text <text-h5 sm:text-h5-large px-16 w-full mb-16 text-zinc-900 dark:text-zinc-300>
-    slot
+    site
 
 # H6 — React: tag h6, `text-h6 sm:text-h6-large px-16 w-full mb-16 text-zinc-900 dark:text-zinc-300` (hard-coded color).
 zone h6
@@ -73,7 +73,7 @@ zone h6
   take class
   zone h6
     bind class, text <text-h6 sm:text-h6-large px-16 w-full mb-16 text-zinc-900 dark:text-zinc-300>
-    slot
+    site
 
 # P — paragraph. React: tag p, `text-base sm:text-base-large mb-8 last:mb-0 px-16`, align (default left -> none),
 # `dark:font-semibold`, then for kind=secondary themeClass('tagline', 1) -> theme-tagline-1-colors (zinc-500/opacity-80)
@@ -86,7 +86,7 @@ zone p
   take kind
   zone p
     bind class, text <text-base sm:text-base-large mb-8 last:mb-0 px-16 dark:font-semibold theme-body-1-colors>
-    slot
+    site
 
 # A — anchor. React: builds the link class list (cursor-pointer, dotted underline, print + hover + active states,
 # transition duration-200), then color: default violet (color !== 'base'), `base` -> zinc. Renders a router Link when
@@ -99,7 +99,7 @@ zone a
   zone a
     bind href, read href
     bind class, text <cursor-pointer underline decoration-dotted underline-offset-3 print:text-zinc-800 dark:print:text-zinc-300 print:no-underline print:active:text-zinc-800 dark:print:active:text-zinc-300 hover:opacity-70 active:text-blue-500 active:hover:opacity-70 transition duration-200 text-violet-500 dark:text-violet-400 decoration-violet-500 dark:decoration-violet-400>
-    slot
+    site
 
 # Ul — unordered list. React: raw ul, `list-['*_'] list-inside relative m-0 p-0 sm:ml-16 ml-0 mb-32 last:mb-0`,
 # nested-list margin resets, themeClass('ul', 1) -> theme-ul-1-colors (zinc-400 markers).
@@ -108,7 +108,7 @@ zone ul
   take class
   zone ul
     bind class, text <list-['*_'] list-inside relative m-0 p-0 sm:ml-16 ml-0 mb-32 last:mb-0 [&\>li\>ul]:mb-0 [&\>li\>ol]:mb-0 sm:mr-32 mr-16 [&\>li\>ul]:mr-0 [&\>li\>ol]:mr-0 theme-ul-1-colors>
-    slot
+    site
 
 # Ol — ordered list. React: raw ol, `relative list-decimal ml-24 list-inside mb-16` + nested margin resets +
 # `[&>li>ol]:ml-8`, themeClass('ol', 1) -> theme-ol-1-colors.
@@ -117,7 +117,7 @@ zone ol
   take class
   zone ol
     bind class, text <relative list-decimal ml-24 list-inside mb-16 [&\>li\>ul]:mb-0 [&\>li\>ol]:mb-0 mr-16 [&\>li\>ul]:mr-0 [&\>li\>ol]:mr-0 [&\>li\>ol]:ml-8 theme-ol-1-colors>
-    slot
+    site
 
 # Li — list item. React: tag li, `text-base sm:text-base-large relative m-0 ml-8 p-0 list-item mb-8` + nested-list
 # padding + inline-p resets, themeClass('li', 1) -> theme-li-1-colors (zinc-800).
@@ -126,7 +126,7 @@ zone li
   take class
   zone li
     bind class, text <text-base sm:text-base-large relative m-0 ml-8 p-0 list-item mb-8 [&\>ul]:pl-24 [&\>ol]:pl-24 [&\>ul\>li]:ml-0 [&\>ol\>li]:ml-0 [&&\>p]:inline-block [&&\>p]:pointer-events-auto [&&\>p]:mb-0 [&&\>p]:px-0 theme-li-1-colors>
-    slot
+    site
 
 # Em — emphasis. React: tag em, `italic`.
 zone em
@@ -134,7 +134,7 @@ zone em
   take class
   zone em
     bind class, text <italic>
-    slot
+    site
 
 # Strong — bold. React: tag strong, `font-bold`.
 zone strong
@@ -142,7 +142,7 @@ zone strong
   take class
   zone strong
     bind class, text <font-bold>
-    slot
+    site
 
 # Code — inline code. React: tag code, `inline-block bg-inherit text-inherit relative py-2 text-base sm:text-base-large`,
 # with an absolutely-positioned background span and an inner relative text span (`relative sm:text-base-large
@@ -157,7 +157,7 @@ zone code
       text < >
     zone span
       bind class, text <relative sm:text-base-large text-zinc-600>
-      slot
+      site
 
 # Pre — code block. React: tag pre, `mx-16 mb-32 last:mb-0 p-16 block overflow-auto whitespace-pre text-base
 # sm:text-base-large [&>code]:bg-none [&>code]:p-0`, themeClass('code-block', 1) -> theme-code-block-1-colors
@@ -167,7 +167,7 @@ zone pre
   take class
   zone pre
     bind class, text <mx-16 mb-32 last:mb-0 p-16 block overflow-auto whitespace-pre text-base sm:text-base-large [&\>code]:bg-none [&\>code]:p-0 theme-code-block-1-colors>
-    slot
+    site
 
 # BlockQuote — React: tag blockquote, `mt-16 mb-24 w-full p-16`, themeClass('blockquote', 1) ->
 # theme-blockquote-1-colors (zinc-100 bg / zinc-700 text / zinc-200 left rule).
@@ -176,7 +176,7 @@ zone block-quote
   take class
   zone blockquote
     bind class, text <mt-16 mb-24 w-full p-16 theme-blockquote-1-colors>
-    slot
+    site
 
 # Sup — superscript. React: tag sup, leading-base, `text-sm -top-6`.
 zone sup
@@ -184,7 +184,7 @@ zone sup
   take class
   zone sup
     bind class, text <text-sm -top-6>
-    slot
+    site
 
 # HR — horizontal rule. React: raw hr, `relative h-16 bg-zinc-50 dark:bg-zinc-900`.
 zone hr
@@ -197,14 +197,14 @@ zone hr
 zone content
   take host, like view
   zone div
-    slot
+    site
 
 # Whole — non-breaking inline run. React: span, `whitespace-pre`.
 zone whole
   take host, like view
   zone span
     bind class, text <whitespace-pre>
-    slot
+    site
 
 # Table — React: raw table, `border-collapse w-full h-1 table-fixed-header no-scrollbar mb-32 last:mb-0` plus the
 # edge-to-edge band rule `mb-32 last:mb-0 border-0 border-t-1 border-b-1 border-solid border-zinc-200 dark:border-zinc-800`
@@ -214,7 +214,7 @@ zone table
   take class
   zone table
     bind class, text <border-collapse w-full h-1 table-fixed-header no-scrollbar mb-32 last:mb-0 border-0 border-t-1 border-b-1 border-solid border-zinc-200 dark:border-zinc-800>
-    slot
+    site
 
 # THead — React: raw thead, no extra classes (only the passed className).
 zone t-head
@@ -222,7 +222,7 @@ zone t-head
   take class
   zone thead
     bind class, read class
-    slot
+    site
 
 # TBody — React: raw tbody carrying the striped-row + hairline-separator class block.
 zone t-body
@@ -230,7 +230,7 @@ zone t-body
   take class
   zone tbody
     bind class, text <h-full [&\>tr]:dark:text-zinc-300 [&\>tr:nth-child(odd)]:bg-white [&\>tr:nth-child(even)]:bg-zinc-50 [&\>tr:nth-child(odd)]:dark:bg-zinc-950 [&\>tr:nth-child(even)]:dark:bg-zinc-900 [&\>tr]:border-b-1 [&\>tr:last-child]:border-b-0 [&\>tr]:border-solid [&\>tr]:border-zinc-200 [&\>tr]:dark:border-zinc-800>
-    slot
+    site
 
 # TR — table row. React: raw tr, `h-full dark:text-zinc-300`.
 zone t-row
@@ -238,7 +238,7 @@ zone t-row
   take class
   zone tr
     bind class, text <h-full dark:text-zinc-300>
-    slot
+    site
 
 # TH — header cell. React: raw th wrapping `<T>`, `bg-zinc-100 dark:bg-zinc-900` + border block +
 # `text-zinc-800 dark:text-zinc-300 font-bold text-base sm:text-base-large h-full px-16 py-8 lowercase`, align default
@@ -248,7 +248,7 @@ zone t-head-cell
   take class
   zone th
     bind class, text <bg-zinc-100 dark:bg-zinc-900 border-0 border-r-1 last:border-r-0 border-b-1 border-solid border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-300 font-bold text-base sm:text-base-large h-full px-16 py-8 lowercase text-center>
-    slot
+    site
 
 # TD — data cell. React: raw td wrapping `<T>`, border block +
 # `h-full text-base sm:text-base-large text-zinc-800 dark:text-zinc-400 bg-inherit` + (wrap=false default) whitespace-pre
@@ -258,4 +258,4 @@ zone t-cell
   take class
   zone td
     bind class, text <border-0 border-r-1 last:border-r-0 border-solid border-zinc-200 dark:border-zinc-800 h-full text-base sm:text-base-large text-zinc-800 dark:text-zinc-400 bg-inherit whitespace-pre py-12 px-16>
-    slot
+    site

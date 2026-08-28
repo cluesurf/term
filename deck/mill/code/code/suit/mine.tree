@@ -4,7 +4,7 @@ load @term/mill/code/code/wear/mine
 mine suit
   mine term, term suit
     mine term
-      slot name
+      site name
     mine list
       mine form, like wear
-        slot wear
+        site wear

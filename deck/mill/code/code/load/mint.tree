@@ -6,9 +6,9 @@ load @term/seed/code/import
 # `like load` references the import form
 mint load, like import
   case path
-    slot path
+    site path
   case find, mint reference
-    slot reference
+    site reference
   hook make
     make import
       bind path, read path
@@ -16,9 +16,9 @@ mint load, like import
 
 mint reference, like import-reference
   case text
-    slot name
+    site name
   case name
-    slot alias
+    site alias
   hook make
     make import-reference
       bind name, read name

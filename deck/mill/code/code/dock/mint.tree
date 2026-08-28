@@ -15,27 +15,27 @@ load @term/seed/code/seed
 
 mint dock
   case dock, mint dock-def
-    slot dock
+    site dock
 
 mint dock-def, like dock
   case path
-    slot path
+    site path
   case take, mint take
-    slot take
+    site take
   case task, mint dock-task
-    slot task
+    site task
   case call, mint dock-call
-    slot call
+    site call
   case zone, mint dock-zone
-    slot zone
+    site zone
   case seed, mint dock-seed
-    slot seed
+    site seed
   case send, mint dock-send
-    slot send
+    site send
   case hook, mint dock-hook
-    slot hook
+    site hook
   case dock, mint dock-def
-    slot dock
+    site dock
   hook make
     make dock
       bind path, read path
@@ -50,15 +50,15 @@ mint dock-def, like dock
 
 mint dock-task, like dock-task
   case name
-    slot name
+    site name
   case take, mint take
-    slot take
+    site take
   case call, mint dock-call
-    slot call
+    site call
   case send, mint dock-send
-    slot send
+    site send
   case seed, mint dock-seed
-    slot seed
+    site seed
   hook make
     make dock-task
       bind name, read name
@@ -69,9 +69,9 @@ mint dock-task, like dock-task
 
 mint dock-call, like seed-call
   case name
-    slot name
+    site name
   case bind, mint bind
-    slot bind
+    site bind
   hook make
     make seed-call
       bind name, read name
@@ -79,9 +79,9 @@ mint dock-call, like seed-call
 
 mint dock-zone, like dock-zone
   case name
-    slot name
+    site name
   case bind, mint bind
-    slot bind
+    site bind
   hook make
     make dock-zone
       bind name, read name
@@ -89,9 +89,9 @@ mint dock-zone, like dock-zone
 
 mint dock-seed, like dock-seed
   case name
-    slot name
+    site name
   case bond, mint seed
-    slot bond
+    site bond
   hook make
     make dock-seed
       bind name, read name
@@ -99,9 +99,9 @@ mint dock-seed, like dock-seed
 
 mint dock-send, like dock-send
   case name
-    slot name
+    site name
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make dock-send
       bind name, read name
@@ -109,9 +109,9 @@ mint dock-send, like dock-send
 
 mint dock-hook, like dock-hook
   case name
-    slot name
+    site name
   case call, mint dock-call
-    slot call
+    site call
   hook make
     make dock-hook
       bind name, read name

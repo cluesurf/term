@@ -8,10 +8,10 @@ load @term/mill/code/code/fall/mine
 mine head
   mine term, term head
     mine term
-      slot name
+      site name
     mine maybe
       mine form, like need
-        slot need
+        site need
     mine maybe
       mine form, like fall
-        slot fall
+        site fall

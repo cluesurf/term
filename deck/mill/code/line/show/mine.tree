@@ -2,6 +2,6 @@
 mine dock-show
   mine term, term show
     mine text
-      slot name
+      site name
     mine text
-      slot text
+      site text

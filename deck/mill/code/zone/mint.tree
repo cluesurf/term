@@ -15,17 +15,17 @@ load @term/mill/code/zone/code/mint
 
 mint zone-file, like zone-file
   case mark
-    slot mark
+    site mark
   case made
-    slot made
+    site made
   case good
-    slot good
+    site good
   case seal
-    slot seal
+    site seal
   case deck
-    slot deck
+    site deck
   case hold, mint zone-root
-    slot hold
+    site hold
   hook make
     make zone-file
       bind mark, read mark
@@ -39,21 +39,21 @@ mint zone-file, like zone-file
 # and a walk never has a first-step special case.
 mint zone-root, like zone-hold
   case base
-    slot base
+    site base
   case bind
-    slot bind
+    site bind
   case root
-    slot root
+    site root
   case cast
-    slot cast
+    site cast
   case load
-    slot load
+    site load
   case need, mint zone-need
-    slot need
+    site need
   case code, mint zone-code
-    slot code
+    site code
   case zone, mint zone-hold
-    slot zone
+    site zone
   hook make
     make zone-hold
       bind name, text <>

@@ -1,22 +1,22 @@
 
 mint dock-seed
   case code, mint dock-seed-code
-    slot code
+    site code
   case policy, mint dock-seed-policy
-    slot policy
+    site policy
 
 mint dock-seed-code
   case case, mint dock-seed-code-case
-    slot case
+    site case
   hook make
     make dock-seed-code
       bind case, read case
 
 mint dock-seed-code-case
   case name
-    slot name
+    site name
   case value
-    slot value
+    site value
   hook make
     make dock-seed-code-case
       bind name, read name
@@ -24,9 +24,9 @@ mint dock-seed-code-case
 
 mint dock-seed-policy
   case name
-    slot name
+    site name
   case value
-    slot value
+    site value
   hook make
     make dock-seed-policy
       bind name, read name

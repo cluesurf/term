@@ -47,52 +47,52 @@ mine zone-file
   mine maybe
     mine term, term mark
       mine text
-        slot mark
+        site mark
   mine maybe
     mine term, term made
       mine text
-        slot made
+        site made
   mine maybe
     mine term, term good
       mine text
-        slot good
+        site good
   mine maybe
     mine term, term seal
-      slot seal
+      site seal
   mine maybe
     mine term, term deck
       mine text
-        slot deck
+        site deck
   mine form, like zone-root
-    slot hold
+    site hold
 
 # The root zone, which has no `zone <name>` line above it. Same body as any
 # other zone, with an empty name.
 mine zone-root
   mine maybe
     mine term, term base
-      slot base
+      site base
   mine maybe
     mine term, term bind
-      slot bind
+      site bind
   mine maybe
     mine term, term root
-      slot root
+      site root
   mine list
     mine term, term cast
-      slot cast
+      site cast
   mine list
     mine term, term load
-      slot load
+      site load
   mine list
     mine any
       mine form, like zone-need
-        slot need
+        site need
       mine form, like zone-want
-        slot need
+        site need
   mine list
     mine form, like zone-code
-      slot code
+      site code
   mine list
     mine form, like zone-hold
-      slot zone
+      site zone

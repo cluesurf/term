@@ -4,20 +4,20 @@ load @term/mill/code/code/call/mint
 
 mint dock-hook
   case boot, mint dock-hook-boot
-    slot boot
+    site boot
   case halt, mint dock-hook-halt
-    slot halt
+    site halt
 
 mint dock-hook-boot
   case call, mint call
-    slot call
+    site call
   hook make
     make dock-hook-boot
       bind call, read call
 
 mint dock-hook-halt
   case call, mint call
-    slot call
+    site call
   hook make
     make dock-hook-halt
       bind call, read call

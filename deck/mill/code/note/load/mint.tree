@@ -5,9 +5,9 @@ load @term/mill/code/book/load
 
 mint load, like book-load
   case path
-    slot path
+    site path
   case find, mint find
-    slot find
+    site find
   hook make
     make book-load
       bind path, read path
@@ -15,9 +15,9 @@ mint load, like book-load
 
 mint find, like book-load-find
   case text
-    slot name
+    site name
   case name
-    slot alias
+    site alias
   hook make
     make book-load-find
       bind name, read name

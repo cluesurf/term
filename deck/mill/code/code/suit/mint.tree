@@ -4,9 +4,9 @@ load @term/seed/code/suit
 
 mint suit
   case name
-    slot name
+    site name
   case wear, mint wear
-    slot wear
+    site wear
   hook make
     make suit
       bind name, read name

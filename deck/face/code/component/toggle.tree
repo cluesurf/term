@@ -28,4 +28,4 @@ zone toggle
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    slot
+    site

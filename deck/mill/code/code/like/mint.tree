@@ -6,24 +6,24 @@ load @term/seed/code/like
 
 mint like
   case or, mint or
-    slot value
+    site value
   case and, mint and
-    slot value
+    site value
   case task, mint task
-    slot value
+    site value
   case name
-    slot value
+    site value
 
 mint or
   case like, mint like
-    slot like
+    site like
   hook make
     make or
       bind like, read like
 
 mint and
   case like, mint like
-    slot like
+    site like
   hook make
     make and
       bind like, read like

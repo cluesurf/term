@@ -4,29 +4,29 @@ load @term/mill/code/code/tool/flow/mint
 
 mint task, like task
   case name
-    slot name
+    site name
   case head, mint head
-    slot head
+    site head
   case take, mint take
-    slot take
+    site take
   case flow, mint flow
-    slot flow
+    site flow
   case task, mint task
-    slot task
+    site task
   case like, mint like
-    slot like
+    site like
   case wait
-    slot wait
+    site wait
   case risk
-    slot risk
+    site risk
   case hide
-    slot hide
+    site hide
   case fold
-    slot fold
+    site fold
   case note, mint note
-    slot note
+    site note
   case tag, mint tag
-    slot tag
+    site tag
   hook make
     make task
       bind name, read name
@@ -44,11 +44,11 @@ mint task, like task
 
 mint head
   case name
-    slot name
+    site name
   case form, mint form
-    slot form
+    site form
   case fall
-    slot fall
+    site fall
   hook make
     make head
       bind name, read name
@@ -57,11 +57,11 @@ mint head
 
 mint take
   case name
-    slot name
+    site name
   case like, mint like
-    slot like
+    site like
   case base, mint seed
-    slot base
+    site base
   hook make
     make take
       bind name, read name

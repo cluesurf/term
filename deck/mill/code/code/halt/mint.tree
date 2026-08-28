@@ -1,9 +1,9 @@
 
 mint halt
   case mode
-    slot mode
+    site mode
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make halt
       bind mode, read mode

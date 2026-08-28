@@ -1,11 +1,11 @@
 
 mint head
   case name
-    slot name
+    site name
   case need
-    slot need
+    site need
   case fall
-    slot fall
+    site fall
   hook make
     make head
       bind name, read name

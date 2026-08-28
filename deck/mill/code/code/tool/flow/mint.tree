@@ -13,86 +13,86 @@ load @term/seed/code/flow
 
 mint flow
   case call, mint call
-    slot call
+    site call
   case make, mint make
-    slot make
+    site make
   case save, mint save
-    slot save
+    site save
   case fork, mint fork
-    slot fork
+    site fork
   case walk, mint walk
-    slot walk
+    site walk
   case back, mint back
-    slot back
+    site back
   case meet, mint meet
-    slot meet
+    site meet
   case turn, mint turn
-    slot turn
+    site turn
   case next
-    slot next
+    site next
   case rest
-    slot rest
+    site rest
   case rein
-    slot rein
+    site rein
   case show, mint show
-    slot show
+    site show
   case dive, mint dive
-    slot dive
+    site dive
   case hint, mint hint
-    slot hint
+    site hint
   case tell, mint tell
-    slot tell
+    site tell
   case bust, mint bust
-    slot bust
+    site bust
   case halt, mint halt
-    slot halt
+    site halt
   case fuse, mint fuse
-    slot fuse
+    site fuse
   case slot, mint slot
-    slot slot
+    site slot
   case beam, mint beam
-    slot beam
+    site beam
 
 mint show
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make show
       bind seed, read seed
 
 mint dive
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make dive
       bind seed, read seed
 
 mint hint
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make hint
       bind seed, read seed
 
 mint tell
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make tell
       bind seed, read seed
 
 mint bust
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make bust
       bind seed, read seed
 
 mint halt
   case mode
-    slot mode
+    site mode
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make halt
       bind mode, read mode
@@ -100,9 +100,9 @@ mint halt
 
 mint save
   case name
-    slot name
+    site name
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make save
       bind name, read name
@@ -110,11 +110,11 @@ mint save
 
 mint turn
   case name
-    slot name
+    site name
   case seed, mint seed
-    slot seed
+    site seed
   case line
-    slot line
+    site line
   hook make
     make turn
       bind name, read name
@@ -123,7 +123,7 @@ mint turn
 
 mint back
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make back
       bind seed, read seed

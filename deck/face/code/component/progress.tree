@@ -20,7 +20,7 @@ zone progress
     bind aria-valuemax, text <100>
     bind aria-valuenow, read value
     bind class, read class
-    slot
+    site
 
 zone progress-indicator
   take host, like view

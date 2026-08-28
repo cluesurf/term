@@ -18,7 +18,7 @@ zone drawer
   zone div
     bind data-slot, text <drawer>
     bind class, read class
-    slot
+    site
 
 zone drawer-trigger
   take host, like view
@@ -31,7 +31,7 @@ zone drawer-trigger
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    slot
+    site
 
 zone drawer-content
   take host, like view
@@ -50,7 +50,7 @@ zone drawer-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        slot
+        site
 
 zone drawer-header
   take host, like view
@@ -58,7 +58,7 @@ zone drawer-header
   zone div
     bind data-slot, text <drawer-header>
     bind class, read class
-    slot
+    site
 
 zone drawer-title
   take host, like view
@@ -66,7 +66,7 @@ zone drawer-title
   zone div
     bind data-slot, text <drawer-title>
     bind class, read class
-    slot
+    site
 
 zone drawer-description
   take host, like view
@@ -74,7 +74,7 @@ zone drawer-description
   zone div
     bind data-slot, text <drawer-description>
     bind class, read class
-    slot
+    site
 
 zone drawer-footer
   take host, like view
@@ -82,7 +82,7 @@ zone drawer-footer
   zone div
     bind data-slot, text <drawer-footer>
     bind class, read class
-    slot
+    site
 
 zone drawer-close
   take host, like view
@@ -96,4 +96,4 @@ zone drawer-close
       call toggle-disclosure
         bind self, read control
     bind class, read class
-    slot
+    site

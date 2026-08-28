@@ -8,136 +8,136 @@ load @term/mill/code/code/like/mine
 mine hold
   mine term, term hold
     mine term
-      slot name
+      site name
     mine list
       mine form, like step
-        slot step
+        site step
 
 mine step
   mine any
     mine form, like show
-      slot show
+      site show
     mine form, like mark
-      slot mark
+      site mark
     mine form, like take
-      slot take
+      site take
     mine form, like have
-      slot have
+      site have
     mine form, like fold
-      slot fold
+      site fold
     mine form, like case
-      slot case
+      site case
     mine form, like calm
-      slot calm
+      site calm
     mine form, like melt
-      slot melt
+      site melt
     mine form, like cite
-      slot cite
+      site cite
     mine form, like find
-      slot find
+      site find
 
 mine show
   mine term, term show
     mine form, like call
-      slot claim
+      site claim
 
 mine mark
   mine term, term mark
     mine term
-      slot name
+      site name
     mine form, like like
-      slot like
+      site like
 
 mine fold
   mine term, term fold
     mine term
-      slot arg
+      site arg
     mine list
       mine form, like step
-        slot step
+        site step
 
 mine case
   mine term, term case
     mine term
-      slot arg
+      site arg
     mine list
       mine form, like step
-        slot step
+        site step
 
 mine melt
   mine term, term melt
     mine term
-      slot arg
+      site arg
 
 mine calm
   mine term, term calm
     mine term
-      slot arg
+      site arg
 
 mine cite
   mine term, term cite
     mine term
-      slot arg
+      site arg
 
 mine turn
   mine term, term turn
     mine term
-      slot arg
+      site arg
 
 mine take
   mine term, term take
     mine term
-      slot arg
+      site arg
 
 mine find
   mine term, term find
     mine term
-      slot arg
+      site arg
 
 mine self
   mine term, term self
     mine term
-      slot arg
+      site arg
     mine list
       mine form, like step
-        slot step
+        site step
 
 mine seed
   mine term, term seed
     mine term
-      slot arg
+      site arg
     mine list
       mine form, like step
-        slot step
+        site step
 
 mine rest
   mine term, term rest
     mine term
-      slot arg
+      site arg
     mine list
       mine form, like step
-        slot step
+        site step
 
 mine weld
   mine term, term weld
     mine term
-      slot arg
+      site arg
     mine list
       mine form, like step
-        slot step
+        site step
 
 mine link
   mine term, term link
     mine term
-      slot arg
+      site arg
     mine list
       mine form, like step
-        slot step
+        site step
 
 mine have
   mine term, term have
     mine term
-      slot arg
+      site arg
     mine list
       mine form, like step
-        slot step
+        site step

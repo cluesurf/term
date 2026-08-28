@@ -4,11 +4,11 @@ load @term/seed/code/deck
 
 mint deck-mind, like deck-deck-mind
   case name
-    slot name
+    site name
   case base
-    slot base
+    site base
   case site
-    slot site
+    site site
   hook make
     make deck-deck-mind
       bind name, read name

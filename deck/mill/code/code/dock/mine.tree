@@ -15,90 +15,90 @@ load @term/mill/code/code/seed/mine
 mine dock
   mine list
     mine form, like dock-def
-      slot dock
+      site dock
 
 mine dock-def
   mine term, term dock
     mine term
-      slot path
+      site path
     mine list
       mine form, like take
-        slot take
+        site take
     mine list
       mine form, like dock-task
-        slot task
+        site task
     mine list
       mine form, like dock-call
-        slot call
+        site call
     mine maybe
       mine form, like dock-zone
-        slot zone
+        site zone
     mine list
       mine form, like dock-seed
-        slot seed
+        site seed
     mine list
       mine form, like dock-send
-        slot send
+        site send
     mine list
       mine form, like dock-hook
-        slot hook
+        site hook
     mine list
       mine form, like dock-def
-        slot dock
+        site dock
 
 mine dock-task
   mine term, term task
     mine term
-      slot name
+      site name
     mine list
       mine form, like take
-        slot take
+        site take
     mine list
       mine form, like dock-call
-        slot call
+        site call
     mine list
       mine form, like dock-send
-        slot send
+        site send
     mine list
       mine form, like dock-seed
-        slot seed
+        site seed
 
 mine dock-call
   mine term, term call
     mine term
-      slot name
+      site name
     mine list
       mine form, like bind
-        slot bind
+        site bind
 
 mine dock-zone
   mine term, term zone
     mine term
-      slot name
+      site name
     mine list
       mine form, like bind
-        slot bind
+        site bind
 
 mine dock-seed
   mine term, term seed
     mine term
-      slot name
+      site name
     mine maybe
       mine form, like seed
-        slot bond
+        site bond
 
 mine dock-send
   mine term, term send
     mine term
-      slot name
+      site name
     mine maybe
       mine form, like seed
-        slot seed
+        site seed
 
 mine dock-hook
   mine term, term hook
     mine term
-      slot name
+      site name
     mine list
       mine form, like dock-call
-        slot call
+        site call

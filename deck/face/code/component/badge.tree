@@ -17,4 +17,4 @@ zone badge
     bind data-slot, text <badge>
     bind data-variant, read variant
     bind class, read class
-    slot
+    site

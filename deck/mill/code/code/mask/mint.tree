@@ -4,11 +4,11 @@ load @term/seed/code/mask
 
 mint mask
   case name
-    slot name
+    site name
   case head, mint head
-    slot head
+    site head
   case task, mint task
-    slot task
+    site task
   hook make
     make mask
       bind name, read name

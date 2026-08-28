@@ -41,6 +41,9 @@ load ../config/zone
   find mine-zone
   find find-spot
   find pull-need
+  find all-paths
+  find find-lock
+  find mine-file
 
 load ../config/machine
   find read-bond
@@ -49,6 +52,9 @@ load ../config/machine
 load ../save/base
   find pick
   find read-code
+
+load ./load
+  find spot-cache
 
 load ../hold/bitwarden
   find bitwarden-put
@@ -61,16 +67,26 @@ load ../tool/base
   find show-line
   find warn-line
   find ask-secret
+  find hook-text
   find halt
   find equal
   find not-equal
   find read-file
+  find have-file
+  find here
+  find show-size
+  find show-count
+  find add
+  find more
+  find is-equal
 
 # Everything the three commands need before they can do anything: the
 # declaration, the machine binding and the provider credential.
 form gear
   link root, like spot
   link token, like text
+  # the declaration file itself, because the cache sits beside it
+  link deck, like text
 
 task gear-up
   note async
@@ -158,6 +174,7 @@ task gear-up
   send back
     make gear
       bind root, read root
+      bind deck, read deck
       bind token
         call unwrap
           read code-got
@@ -381,3 +398,187 @@ task see-one
         text <Run `term zone read --fresh` to bring it into the local cache.>
   send back
     code 0
+
+# `term zone hook <name>` — put one value on the clipboard, never on screen.
+#
+# The safer half of showing a value: it goes where a paste can reach it and
+# nowhere a scrollback, a screen recording or a shoulder can.
+task hook-one
+  note async
+  take name, like text
+  like number
+
+  save it
+    call gear-up
+      wait true
+  save home
+    call home-or-halt
+      bind root, read it/root
+      bind name, read name
+
+  save body
+    call bitwarden-one
+      bind body, read it/token
+      bind team, read it/root/team
+      bind name, read name
+      wait true
+
+  fork test
+    hook test
+      call equal
+        read body
+        text <>
+    hook hold
+      send back
+        call halt
+          call join-text
+            make list
+              text <No value for >
+              read name
+              text < at the provider.>
+
+  save bad
+    call hook-text
+      read body
+
+  fork test
+    hook test
+      call not-equal
+        read bad
+        text <>
+    hook hold
+      send back
+        call halt
+          read bad
+
+  call show-line
+    call join-text
+      make list
+        read name
+        text < is on the clipboard. It was not printed.>
+  send back
+    code 0
+
+# `term zone scan` — what is wrong across the whole tree.
+#
+# `term zone test` asks whether THIS machine works. This asks whether the
+# declaration and the cache agree, for every zone rather than one, and it
+# needs no provider and no network: everything it reads is already on disk.
+#
+# What it reports, per zone:
+#
+#   a required name with nothing sealed for it     the command will refuse
+#   a sealed value nothing declares any more       dead weight, and a hint
+#                                                  that a name was renamed
+task scan-all
+  note async
+  like number
+
+  save it
+    call gear-up
+      wait true
+  save root, read it/root
+
+  save at-cache
+    call spot-cache
+      read it/deck
+  save cache
+    call mine-file
+      text <>
+  fork test
+    hook test
+      call have-file
+        read at-cache
+    hook hold
+      save cache
+        call mine-file
+          call read-file
+            read at-cache
+
+  save bad, code 0
+  save seen, code 0
+
+  walk list
+    call all-paths
+      read root
+    hook next
+      take site, name path
+      save gone
+        make list
+      walk list
+        call pull-need
+          bind root, read root
+          bind path, read path
+        hook next
+          take site, name one
+          save got
+            call find-lock
+              bind root, read cache/root
+              bind path, read path
+              bind name, read one/name
+          fork test
+            hook test
+              call is-none
+                read got
+            hook hold
+              fork test
+                hook test
+                  read one/must
+                hook hold
+                  call push
+                    bind list, read gone
+                    bind item, read one/name
+            hook miss
+              save seen
+                call add
+                  read seen
+                  code 1
+
+      fork test
+        hook test
+          call more
+            call size
+              read gone
+            code 0
+        hook hold
+          save bad
+            call add
+              read bad
+              code 1
+          call show-line
+            call join-text
+              make list
+                read path
+                text <  >
+                call show-size
+                  read gone
+                text < required and not sealed>
+          walk list, read gone
+            hook next
+              take site, name one
+              call show-line
+                call join-text
+                  make list
+                    text <    >
+                    read one
+
+  call show-line
+    text <>
+  fork test
+    hook test
+      call is-equal
+        read bad
+        code 0
+    hook hold
+      call show-line
+        call join-text
+          make list
+            text <every zone is whole. >
+            call show-count
+              read seen
+            text < values sealed.>
+    hook miss
+      call show-line
+        text <Run `term zone read` to fetch what is missing.>
+  send back
+    read bad

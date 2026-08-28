@@ -1,22 +1,22 @@
 
 mint basic-value
   case number
-    slot value
+    site value
   case text
-    slot value
+    site value
   case code
-    slot value
+    site value
 
 mint computed-value
   case read, mint read
-    slot value
+    site value
   case call, mint call
-    slot value
+    site value
   case meet, mint meet
-    slot value
+    site value
 
 mint value
   case basic, mint basic-value
-    slot value
+    site value
   case computed, mint computed-value
-    slot value
+    site value

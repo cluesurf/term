@@ -5,11 +5,11 @@
 
 mine cast
   mine term, term cast
-    slot kind
+    site kind
     mine maybe
       mine term, term size
-        slot size
+        site size
     mine maybe
       mine term, term code
         mine text
-          slot unit
+          site unit

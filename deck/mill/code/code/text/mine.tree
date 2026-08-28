@@ -2,11 +2,11 @@
 mine text
   mine list
     mine form, like text-def
-      slot text
+      site text
 
 mine text-def
   mine term, term text
     mine term
-      slot name
+      site name
     mine text
-      slot text
+      site text

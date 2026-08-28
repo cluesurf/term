@@ -5,31 +5,31 @@ load @term/seed/code/form
 
 mint form
   case name
-    slot name
+    site name
   case head, mint head
-    slot head
+    site head
   case like, mint like
-    slot like
+    site like
   case link, mint link
-    slot link
+    site link
   case case, mint case
-    slot case
+    site case
   case bond, mint bond
-    slot bond
+    site bond
   case rein
-    slot rein
+    site rein
   case task, mint task
-    slot task
+    site task
   case hold, mint hold
-    slot hold
+    site hold
   case hide
-    slot hide
+    site hide
   case fold
-    slot fold
+    site fold
   case note, mint note
-    slot note
+    site note
   case tag, mint tag
-    slot tag
+    site tag
   hook make
     make form
       bind name, read name
@@ -48,11 +48,11 @@ mint form
 
 mint bond
   case name
-    slot name
+    site name
   case line
-    slot line
+    site line
   case call, mint call
-    slot call
+    site call
   hook make
     make bond
       bind name, read name

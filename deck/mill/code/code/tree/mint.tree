@@ -6,11 +6,11 @@ load @term/seed/code/tree
 
 mint tree, like code-tree
   case name
-    slot name
+    site name
   case take, mint tree-take
-    slot take
+    site take
   case body, mint tree-body
-    slot body
+    site body
   hook make
     make code-tree
       bind name, read name
@@ -19,14 +19,14 @@ mint tree, like code-tree
 
 mint tree-take, like code-tree-take
   case name
-    slot name
+    site name
   hook make
     make code-tree-take
       bind name, read name
 
 mint tree-body, like code-tree-body
   case node
-    slot node
+    site node
   hook make
     make code-tree-body
       bind node, read node

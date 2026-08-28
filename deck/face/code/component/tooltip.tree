@@ -15,7 +15,7 @@ zone tooltip
   zone div
     bind data-slot, text <tooltip>
     bind class, read class
-    slot
+    site
 
 zone tooltip-trigger
   take host, like view
@@ -23,7 +23,7 @@ zone tooltip-trigger
   zone span
     bind data-slot, text <tooltip-trigger>
     bind class, read class
-    slot
+    site
 
 zone tooltip-content
   take host, like view
@@ -34,4 +34,4 @@ zone tooltip-content
     bind data-state, read state
     bind role, text <tooltip>
     bind class, read class
-    slot
+    site

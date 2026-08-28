@@ -1,50 +1,50 @@
 
 mint book
   case head, mint head
-    slot head
+    site head
   case flow, mint flow
-    slot flow
+    site flow
   case list, mint list
-    slot list
+    site list
   case code, mint code
-    slot code
+    site code
   case surf, mint surf
-    slot surf
+    site surf
   case view, mint view
-    slot view
+    site view
   case tell, mint tell
-    slot tell
+    site tell
   case cast, mint cast
-    slot cast
+    site cast
   case wall, mint wall
-    slot wall
+    site wall
   case film, mint film
-    slot film
+    site film
   case fuse, mint fuse
-    slot fuse
+    site fuse
   case bind, mint bind
-    slot bind
+    site bind
   case load, mint load
-    slot load
+    site load
   case host, mint host
-    slot host
+    site host
   case mind, mint mind
-    slot mind
+    site mind
   case date, mint date
-    slot date
+    site date
   case term, mint term
-    slot term
+    site term
   case bold, mint bold
-    slot bold
+    site bold
   case tilt, mint tilt
-    slot tilt
+    site tilt
   case line, mint line
-    slot line
+    site line
   case rise, mint rise
-    slot rise
+    site rise
   case fall, mint fall
-    slot fall
+    site fall
   case draw, mint draw
-    slot draw
+    site draw
   case walk, mint walk
-    slot walk
+    site walk

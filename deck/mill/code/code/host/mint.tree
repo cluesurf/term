@@ -7,23 +7,23 @@ load @term/seed/code/host
 
 mint host
   case form, mint host-form
-    slot form
+    site form
   case task, mint host-task
-    slot task
+    site task
   case hook, mint host-hook
-    slot hook
+    site hook
   case bind, mint host-bind
-    slot bind
+    site bind
 
 mint host-form, like host-form
   case name
-    slot name
+    site name
   case head, mint head
-    slot head
+    site head
   case link, mint host-form-link
-    slot link
+    site link
   case note, mint note
-    slot note
+    site note
   hook make
     make host-form
       bind name, read name
@@ -33,9 +33,9 @@ mint host-form, like host-form
 
 mint host-form-link
   case name
-    slot name
+    site name
   case like, mint like
-    slot like
+    site like
   hook make
     make host-form-link
       bind name, read name
@@ -43,17 +43,17 @@ mint host-form-link
 
 mint host-task, like host-task
   case name
-    slot name
+    site name
   case head, mint head
-    slot head
+    site head
   case take, mint take
-    slot take
+    site take
   case like, mint like
-    slot like
+    site like
   case flow
-    slot flow
+    site flow
   case note, mint note
-    slot note
+    site note
   hook make
     make host-task
       bind name, read name
@@ -65,13 +65,13 @@ mint host-task, like host-task
 
 mint host-hook, like host-hook
   case name
-    slot name
+    site name
   case take, mint take
-    slot take
+    site take
   case flow
-    slot flow
+    site flow
   case note, mint note
-    slot note
+    site note
   hook make
     make host-hook
       bind name, read name
@@ -81,9 +81,9 @@ mint host-hook, like host-hook
 
 mint host-bind, like host-bind
   case name
-    slot name
+    site name
   case seed
-    slot seed
+    site seed
   hook make
     make host-bind
       bind name, read name

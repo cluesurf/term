@@ -3865,7 +3865,9 @@ export function mill(tree: RootNode, file: string): MillResult {
           break
         }
 
-        case 'slot': {
+        // `site` (formerly `slot`): the outlet where a caller's children render. The AST keeps the form name `slot`;
+        // the surface word moved so `slot` can name a positional field or parameter (see the hive design notes).
+        case 'site': {
           const n = rest(node)[0]
           const nm = n?.kind === 'group' ? headName(n) : undefined
           out.push(

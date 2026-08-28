@@ -2,59 +2,59 @@
 mine view
   mine term, term view
     mine term
-      slot name
+      site name
     mine list
       mine form, like latch
-        slot latch
+        site latch
     mine list
       mine form, like child
-        slot child
+        site child
 
 mine check
   mine term, term check
     mine term
-      slot name
+      site name
     mine list
       mine form, like child
-        slot child
+        site child
 
 mine list
   mine term, term list
     mine term
-      slot trace
+      site trace
     mine list
       mine form, like start
-        slot start
+        site start
     mine list
       mine form, like child
-        slot child
+        site child
 
 mine start
   mine term, term start
     mine term
-      slot term
+      site term
     mine term, term term
       mine term
-        slot start
+        site start
 
 mine child
   mine term, term view
     mine term
-      slot name
+      site name
     mine list
       mine form, like mount
-        slot mount
+        site mount
     mine list
       mine form, like watch
-        slot watch
+        site watch
     mine list
       mine form, like child
-        slot child
+        site child
 
 mine watch
   mine term, term watch
     mine term
-      slot name
+      site name
     mine list
       mine form, like cause
-        slot cause
+        site cause

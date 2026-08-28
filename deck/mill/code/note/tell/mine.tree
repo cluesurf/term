@@ -5,8 +5,8 @@
 mine tell
   mine term, term tell
     mine text
-      slot text
+      site text
     mine maybe
       mine term, term cite
         mine text
-          slot cite
+          site cite

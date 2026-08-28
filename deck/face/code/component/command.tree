@@ -14,7 +14,7 @@ zone command
   zone div
     bind data-slot, text <command>
     bind class, read class
-    slot
+    site
 
 zone command-list
   take host, like view
@@ -22,7 +22,7 @@ zone command-list
   zone div
     bind data-slot, text <command-list>
     bind class, read class
-    slot
+    site
 
 zone command-group
   take host, like view
@@ -30,7 +30,7 @@ zone command-group
   zone div
     bind data-slot, text <command-group>
     bind class, read class
-    slot
+    site
 
 zone command-empty
   take host, like view
@@ -38,7 +38,7 @@ zone command-empty
   zone div
     bind data-slot, text <command-empty>
     bind class, read class
-    slot
+    site
 
 zone command-separator
   take host, like view
@@ -46,7 +46,7 @@ zone command-separator
   zone div
     bind data-slot, text <command-separator>
     bind class, read class
-    slot
+    site
 
 zone command-input
   take host, like view
@@ -65,4 +65,4 @@ zone command-item
     bind role, text <option>
     hook click, call press
     bind class, read class
-    slot
+    site

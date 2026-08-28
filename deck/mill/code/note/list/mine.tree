@@ -17,21 +17,21 @@
 
 mine list
   mine term, term list
-    slot kind
+    site kind
     mine any
       mine form, like list-mesh
-        slot mesh
+        site mesh
       mine form, like list-link
-        slot link
+        site link
       mine form, like list-turn
-        slot turn
+        site turn
       mine form, like list-items
-        slot items
+        site items
 
 mine list-items
   mine list
     mine form, like flow
-      slot flow
+      site flow
 
 mine list-mesh
   mine maybe
@@ -39,40 +39,40 @@ mine list-mesh
       mine term, term head
         mine list
           mine form, like flow
-            slot head
+            site head
   mine maybe
     mine term, term bind
       mine term, term base
         mine list
           mine form, like list-mesh-line
-            slot line
+            site line
 
 mine list-mesh-line
   mine term, term make
     mine term, term line
       mine list
         mine form, like flow
-          slot cell
+          site cell
 
 mine list-link
   mine list
     mine form, like list-link-item
-      slot link
+      site link
 
 mine list-link-item
   mine term, term link
     mine text
-      slot path
+      site path
     mine list
       mine form, like list-link-item
-        slot link
+        site link
 
 mine list-turn
   mine list
     mine form, like list-turn-item
-      slot turn
+      site turn
 
 mine list-turn-item
   mine term, term turn
     mine text
-      slot name
+      site name

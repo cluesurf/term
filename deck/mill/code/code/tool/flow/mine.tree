@@ -20,14 +20,14 @@ load @term/mill/code/code/save/bust
 mine flow
   mine any
     mine form, like call
-      slot call
+      site call
     mine form, like save
-      slot save
+      site save
     mine form, like send
-      slot send
+      site send
     mine form, like fork
-      slot fork
+      site fork
     mine form, like halt
-      slot halt
+      site halt
     mine form, like bust
-      slot bust
+      site bust

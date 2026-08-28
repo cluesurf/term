@@ -2,12 +2,12 @@
 mine load
   mine term, term load
     mine text
-      slot path
+      site path
     mine maybe
       mine term, term mark
         mine text
-          slot mark
+          site mark
     mine maybe
       mine term, term lock
         mine text
-          slot lock
+          site lock

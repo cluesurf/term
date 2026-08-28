@@ -3,50 +3,50 @@ mine book
   mine list
     mine any
       mine form, like head
-        slot head
+        site head
       mine form, like flow
-        slot flow
+        site flow
       mine form, like list
-        slot list
+        site list
       mine form, like code
-        slot code
+        site code
       mine form, like surf
-        slot surf
+        site surf
       mine form, like view
-        slot view
+        site view
       mine form, like tell
-        slot tell
+        site tell
       mine form, like cast
-        slot cast
+        site cast
       mine form, like wall
-        slot wall
+        site wall
       mine form, like film
-        slot film
+        site film
       mine form, like fuse
-        slot fuse
+        site fuse
       mine form, like bind
-        slot bind
+        site bind
       mine form, like load
-        slot load
+        site load
       mine form, like host
-        slot host
+        site host
       mine form, like mind
-        slot mind
+        site mind
       mine form, like date
-        slot date
+        site date
       mine form, like term
-        slot term
+        site term
       mine form, like bold
-        slot bold
+        site bold
       mine form, like tilt
-        slot tilt
+        site tilt
       mine form, like line
-        slot line
+        site line
       mine form, like rise
-        slot rise
+        site rise
       mine form, like fall
-        slot fall
+        site fall
       mine form, like draw
-        slot draw
+        site draw
       mine form, like walk
-        slot walk
+        site walk

@@ -27,7 +27,7 @@ zone accordion
   zone div
     bind data-slot, text <accordion>
     bind class, read class
-    slot
+    site
 
 zone accordion-item
   take host, like view
@@ -39,7 +39,7 @@ zone accordion-item
       call disclosure-state
         bind self, read control
     bind class, read class
-    slot
+    site
 
 zone accordion-trigger
   take host, like view
@@ -58,7 +58,7 @@ zone accordion-trigger
     hook click
       call toggle-disclosure
         bind self, read control
-    slot
+    site
 
 zone accordion-content
   take host, like view
@@ -76,4 +76,4 @@ zone accordion-content
           call disclosure-state
             bind self, read control
         bind class, read class
-        slot
+        site

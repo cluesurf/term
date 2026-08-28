@@ -5,9 +5,9 @@ load @term/seed/code/fuse
 
 mint fuse, like code-fuse
   case name
-    slot name
+    site name
   case bind, mint fuse-bind
-    slot bind
+    site bind
   hook make
     make code-fuse
       bind name, read name
@@ -15,9 +15,9 @@ mint fuse, like code-fuse
 
 mint fuse-bind, like code-fuse-bind
   case name
-    slot name
+    site name
   case value
-    slot value
+    site value
   hook make
     make code-fuse-bind
       bind name, read name

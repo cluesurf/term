@@ -19,7 +19,7 @@ zone dialog
   zone div
     bind data-slot, text <dialog>
     bind class, read class
-    slot
+    site
 
 zone dialog-trigger
   take host, like view
@@ -30,7 +30,7 @@ zone dialog-trigger
     bind data-slot, text <dialog-trigger>
     bind class, read class
     hook click, call press
-    slot
+    site
 
 zone dialog-overlay
   take host, like view
@@ -51,7 +51,7 @@ zone dialog-content
     bind role, text <dialog>
     bind aria-modal, text <true>
     bind class, read class
-    slot
+    site
 
 zone dialog-header
   take host, like view
@@ -59,7 +59,7 @@ zone dialog-header
   zone div
     bind data-slot, text <dialog-header>
     bind class, read class
-    slot
+    site
 
 zone dialog-title
   take host, like view
@@ -67,7 +67,7 @@ zone dialog-title
   zone div
     bind data-slot, text <dialog-title>
     bind class, read class
-    slot
+    site
 
 zone dialog-description
   take host, like view
@@ -75,7 +75,7 @@ zone dialog-description
   zone div
     bind data-slot, text <dialog-description>
     bind class, read class
-    slot
+    site
 
 zone dialog-footer
   take host, like view
@@ -83,7 +83,7 @@ zone dialog-footer
   zone div
     bind data-slot, text <dialog-footer>
     bind class, read class
-    slot
+    site
 
 zone dialog-close
   take host, like view
@@ -95,4 +95,4 @@ zone dialog-close
     bind aria-label, text <Close>
     bind class, read class
     hook click, call press
-    slot
+    site

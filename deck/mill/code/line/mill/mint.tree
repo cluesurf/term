@@ -4,9 +4,9 @@ load @term/mill/code/code/bind/mint
 
 mint dock-mill
   case name
-    slot name
+    site name
   case bind, mint bind
-    slot bind
+    site bind
   hook make
     make dock-mill
       bind name, read name

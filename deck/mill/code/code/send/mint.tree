@@ -4,7 +4,7 @@ load @term/seed/code/back
 
 mint back
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make back
       bind seed, read seed

@@ -5,9 +5,9 @@ load @term/mill/code/book/film
 
 mint film, like book-film
   case kind
-    slot kind
+    site kind
   case bind, mint film-bind
-    slot bind
+    site bind
   hook make
     make book-film
       bind kind, read kind
@@ -15,9 +15,9 @@ mint film, like book-film
 
 mint film-bind, like book-film-bind
   case name
-    slot name
+    site name
   case value
-    slot value
+    site value
   hook make
     make book-film-bind
       bind name, read name

@@ -9,17 +9,17 @@ load @term/seed/code/fork
 
 mint fork
   case test, mint fork-test
-    slot test
+    site test
   case case, mint fork-case
-    slot case
+    site case
   case tree, mint fork-tree
-    slot tree
+    site tree
 
 mint fork-test, like fork-test
   case pair, mint fork-test-pair
-    slot pair
+    site pair
   case miss, mint fork-miss
-    slot miss
+    site miss
   hook make
     make fork-test
       bind pair, read pair
@@ -27,9 +27,9 @@ mint fork-test, like fork-test
 
 mint fork-test-pair, like fork-test-pair
   case test
-    slot test
+    site test
   case hold
-    slot hold
+    site hold
   hook make
     make fork-test-pair
       bind test, read test
@@ -37,16 +37,16 @@ mint fork-test-pair, like fork-test-pair
 
 mint fork-miss, like fork-miss
   case flow
-    slot flow
+    site flow
   hook make
     make fork-miss
       bind flow, read flow
 
 mint fork-case, like fork-case
   case seed, mint seed
-    slot seed
+    site seed
   case arm, mint fork-arm
-    slot arm
+    site arm
   hook make
     make fork-case
       bind seed, read seed
@@ -54,11 +54,11 @@ mint fork-case, like fork-case
 
 mint fork-arm, like fork-arm
   case name
-    slot name
+    site name
   case base
-    slot base
+    site base
   case flow
-    slot flow
+    site flow
   hook make
     make fork-arm
       bind name, read name
@@ -67,7 +67,7 @@ mint fork-arm, like fork-arm
 
 mint fork-tree, like fork-tree
   case flow
-    slot flow
+    site flow
   hook make
     make fork-tree
       bind flow, read flow

@@ -6,7 +6,7 @@ mine halt
   mine term, term halt
     mine maybe
       mine term
-        slot mode
+        site mode
     mine maybe
       mine form, like seed
-        slot seed
+        site seed

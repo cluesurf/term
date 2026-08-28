@@ -5,7 +5,7 @@ load @term/mill/code/code/seed/mine
 mine host
   mine term, term host
     mine term
-      slot name
+      site name
     mine maybe
       mine form, like seed
-        slot seed
+        site seed

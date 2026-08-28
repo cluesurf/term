@@ -5,7 +5,7 @@ load @term/mill/code/code/seed/mine
 mine save
   mine term, term save
     mine save-path
-      slot name
+      site name
     mine maybe
       mine form, like seed
-        slot seed
+        site seed

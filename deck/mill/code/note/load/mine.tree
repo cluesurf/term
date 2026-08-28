@@ -2,16 +2,16 @@
 mine load
   mine term, term load
     mine text
-      slot path
+      site path
     mine list
       mine form, like find
-        slot find
+        site find
 
 mine find
   mine term, term find
     mine term
-      slot text
+      site text
     mine maybe
       mine term, term name
         mine term
-          slot name
+          site name

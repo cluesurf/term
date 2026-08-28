@@ -1,286 +1,58 @@
 # Reading a `.tree` file.
 #
-# Zone's dialect is a strict subset of Term syntax: a head word, bare words
-# after it, one optional `<value>`, an inline comma chain, two-space nesting,
-# and `#` comments. That subset is small enough to read here, which keeps
-# zone a `@term/seed`-only package with no build-order dependency on the
-# compiler.
+# THROUGH THE COMPILER, never by hand. Every custom `.tree` dialect is parsed
+# by the Term compiler into a CST and an AST, and integrated by defining a
+# mill. Zone's grammar is at `@term/mill/code/zone`, beside every other
+# dialect's, and this file is the one call that reaches it.
 #
-# THE GRAMMAR IS WRITTEN DOWN, at `@term/mill/code/zone`, beside every other
-# `.tree` dialect. This is an implementation of it, not a second definition
-# of it. When the two disagree the grammar is right.
+# WHAT WAS HERE BEFORE, and why it is gone. 286 lines that split on spaces,
+# tracked indent depth by hand and kept ONE `<...>` per line. It read as "a
+# strict subset of Term syntax", which is the excuse that makes a second
+# implementation of a grammar sound safe. It was not: a line carrying two
+# values silently lost the first, so `time <made>, <toss>` parsed as a cache
+# with no fetch time and read as stale the instant it was written. The file
+# format was then bent around a limitation the language never had.
 #
-# What it produces is the shape `@term/deck/code/read.ts` flattens the
-# compiler's own parser into, so a reader written against one works against
-# the other:
+# A second implementation of a grammar disagrees with the grammar eventually.
+# There is one parser now, and it is the compiler's.
+#
+# The shape produced is what `@term/deck/code/read.ts` flattens the compiler's
+# parse into:
 #
 #   head   the first word
 #   term   the bare words after it, in order
-#   code   the `<...>` value, empty when the line carries none
+#   code   the FIRST `<...>` value, empty when the line carries none
+#   more   EVERY `<...>` value, in order, so a multi-value line keeps them all
 #   leaf   nested lines, from an indent or from a comma, in written order
 
 load @term/seed/code/text
   find text
-  find split
-  find trim
-  find index-of
-  find substring
-  find starts-with
-  find contains
 
 load @term/seed/code/list
   find list
-  find push
-  find pop
-  find size
-  find last
-
-load @term/seed/code/boolean
-  find boolean
-
-load @term/seed/code/maybe
-  find maybe
-  find unwrap
 
 load ../base
   find leaf
 
-load ./base
-  find equal
-  find not-equal
-  find more
-  find text-units
+# The shim that carries the compiler's parser. `native/node/runtime/mill.ts`.
+dock load
+  load <global:mill>, name mill
 
-# One comma segment: a head, its bare words, and an optional `<value>`.
-task mine-part
-  take part, like text
-  like leaf
-  save body
-    call trim
-      read part
-  save seal, text <>
-  save lead, text <>
-  save bits
-    make list
-
-  # The `<...>` value, when the segment carries one. Taken from the first
-  # `<` to the last `>` so a value may hold either character itself.
-  fork test
-    hook test
-      call contains
-        read body
-        text <\<>
-    hook hold
-      save at
-        call index-of
-          read body
-          text <\<>
-          code 0
-      save to
-        call subtract
-          call text-units
-            read body
-          code 1
-      save seal
-        call substring
-          read body
-          call add
-            read at
-            code 1
-          read to
-      save body
-        call trim
-          call substring
-            read body
-            code 0
-            read at
-
-  save words
-    call split
-      read body
-      text < >
-
-  walk list, read words
-    hook next
-      take site, name word
-      fork test
-        hook test
-          call equal
-            read word
-            text <>
-        hook hold
-          turn next
-      fork test
-        hook test
-          call equal
-            read lead
-            text <>
-        hook hold
-          save lead, read word
-        hook miss
-          call push
-            bind list, read bits
-            bind item, read word
-
-  send back
-    make leaf
-      bind head, read lead
-      bind term, read bits
-      bind code, read seal
-      bind leaf
-        make list
-
-# One line. The first comma segment is the line itself, and each segment
-# after it hangs under it as a leaf, which is what a comma chain means.
+# The compiler's reader, reached as a native call.
 #
-# A segment that carries only a value and no head word belongs to the head,
-# which is where the compiler's own parser puts it too. That is the
-# `bind database-url, <sealed>` case: the value is written last and belongs
-# to `bind`.
-task mine-line
-  take line, like text
-  like leaf
-  save parts
-    call split
-      read line
-      text <,>
-  save lead, text <>
-  save seal, text <>
-  save bits
-    make list
-  save kids
-    make list
-  save seen, code 0
+# It is bundled self-contained by `pnpm run make:read` in the deck package,
+# so it carries its own parser and needs nothing resolvable beside it.
+bind do-mine-tree
+  take body, like text
+  like list
+  case node
+    text <mill.read($body)>
 
-  walk list, read parts
-    hook next
-      take site, name part
-      save one
-        call mine-part
-          read part
-
-      fork test
-        hook test
-          call equal
-            read one/head
-            text <>
-        hook hold
-          fork test
-            hook test
-              call not-equal
-                read one/code
-                text <>
-            hook hold
-              save seal, read one/code
-          turn next
-
-      fork test
-        hook test
-          call is-equal
-            read seen
-            code 0
-        hook hold
-          save seen, code 1
-          save lead, read one/head
-          save bits, read one/term
-          save seal, read one/code
-        hook miss
-          call push
-            bind list, read kids
-            bind item, read one
-
-  send back
-    make leaf
-      bind head, read lead
-      bind term, read bits
-      bind code, read seal
-      bind leaf, read kids
-
-# A whole file: the top-level lines, each carrying its own nesting.
-#
-# Depth comes from the indent, two spaces to a level. A stack holds the leaf
-# open at each depth, so a line attaches to whichever line most recently sat
-# one level above it. Only the end of that stack is ever read, which is why
-# it is a stack and not an index.
+# Parse a `.tree` file into leaves. A native `bind` is file-local, so this
+# wrapper is what the rest of zone imports.
 task mine-tree
   take body, like text
   like list
-  save lines
-    call split
-      read body
-      text <\n>
-  save roots
-    make list
-  save stack
-    make list
-
-  walk list, read lines
-    hook next
-      take site, name line
-      save flat
-        call trim
-          read line
-      fork test
-        hook test
-          call equal
-            read flat
-            text <>
-        hook hold
-          turn next
-      fork test
-        hook test
-          call starts-with
-            read flat
-            text <#>
-        hook hold
-          turn next
-
-      # The indent is where the trimmed content starts, so no character
-      # counting is needed and a tab would be one level like a space.
-      save deep
-        call divide
-          call index-of
-            read line
-            read flat
-            code 0
-          code 2
-
-      walk test
-        hook test
-          call more
-            call size
-              read stack
-            read deep
-        hook hold
-          call pop
-            read stack
-
-      save one
-        call mine-line
-          read flat
-
-      fork test
-        hook test
-          call is-equal
-            call size
-              read stack
-            code 0
-        hook hold
-          call push
-            bind list, read roots
-            bind item, read one
-        hook miss
-          save up
-            call unwrap
-              call last
-                read stack
-          call push
-            bind list, read up/leaf
-            bind item, read one
-
-      call push
-        bind list, read stack
-        bind item, read one
-
   send back
-    read roots
+    call do-mine-tree
+      read body

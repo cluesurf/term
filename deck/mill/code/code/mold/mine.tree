@@ -17,12 +17,12 @@ load @term/mill/code/code/seed/mine
 mine mold
   mine term, term mold
     mine term
-      slot name
+      site name
     mine form, like like
-      slot like
+      site like
     mine list
       mine form, like head
-        slot head
+        site head
     mine list
       mine form, like bind
-        slot bind
+        site bind

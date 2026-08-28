@@ -15,7 +15,7 @@ zone pagination
     bind role, text <navigation>
     bind aria-label, text <pagination>
     bind class, read class
-    slot
+    site
 
 zone pagination-content
   take host, like view
@@ -23,7 +23,7 @@ zone pagination-content
   zone ul
     bind data-slot, text <pagination-content>
     bind class, read class
-    slot
+    site
 
 zone pagination-item
   take host, like view
@@ -31,7 +31,7 @@ zone pagination-item
   zone li
     bind data-slot, text <pagination-item>
     bind class, read class
-    slot
+    site
 
 zone pagination-link
   take host, like view
@@ -41,4 +41,4 @@ zone pagination-link
     bind data-slot, text <pagination-link>
     bind href, read href
     bind class, read class
-    slot
+    site

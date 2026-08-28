@@ -5,17 +5,17 @@ load @term/seed/code/take
 
 mint take
   case name
-    slot name
+    site name
   case like, mint like
-    slot like
+    site like
   case alias
-    slot alias
+    site alias
   case need
-    slot need
+    site need
   case base, mint seed
-    slot base
+    site base
   case take, mint take-value
-    slot take
+    site take
   hook make
     make take
       bind name, read name
@@ -27,11 +27,11 @@ mint take
 
 mint take-value, like take-value
   case term
-    slot term
+    site term
   case text
-    slot text
+    site text
   case mark
-    slot mark
+    site mark
   hook make
     make take-value
       bind term, read term

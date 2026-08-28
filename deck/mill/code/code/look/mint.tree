@@ -18,27 +18,27 @@ load @term/mill/code/code/seed/mint
 
 mint look
   case rule, mint look-rule
-    slot rule
+    site rule
 
 mint look-rule
   case face, mint face-rule
-    slot face
+    site face
   case style, mint style-rule
-    slot style
+    site style
   case font, mint font-face-rule
-    slot font
+    site font
   case media, mint media-rule
-    slot media
+    site media
   case tone, mint tone-rule
-    slot tone
+    site tone
 
 mint face-rule, like face-rule
   case name
-    slot name
+    site name
   case have, mint look-have
-    slot have
+    site have
   case case, mint look-case
-    slot case
+    site case
   hook make
     make face-rule
       bind name, read name
@@ -47,9 +47,9 @@ mint face-rule, like face-rule
 
 mint style-rule, like style-rule
   case find, mint look-element
-    slot find
+    site find
   case have, mint look-have
-    slot have
+    site have
   hook make
     make style-rule
       bind find, read find
@@ -57,13 +57,13 @@ mint style-rule, like style-rule
 
 mint look-element, like look-element
   case name
-    slot name
+    site name
   case like
-    slot like
+    site like
   case have, mint look-have
-    slot have
+    site have
   case link, mint look-element
-    slot link
+    site link
   hook make
     make look-element
       bind name, read name
@@ -73,18 +73,18 @@ mint look-element, like look-element
 
 mint font-face-rule, like font-face-rule
   case have, mint look-have
-    slot have
+    site have
   hook make
     make font-face-rule
       bind have, read have
 
 mint media-rule, like media-rule
   case kind
-    slot kind
+    site kind
   case have, mint look-have
-    slot have
+    site have
   case rule, mint look-rule
-    slot rule
+    site rule
   hook make
     make media-rule
       bind kind, read kind
@@ -93,9 +93,9 @@ mint media-rule, like media-rule
 
 mint look-have, like look-have
   case name
-    slot name
+    site name
   case bond, mint seed
-    slot bond
+    site bond
   hook make
     make look-have
       bind name, read name
@@ -103,9 +103,9 @@ mint look-have, like look-have
 
 mint look-case, like look-case
   case name
-    slot name
+    site name
   case have, mint look-have
-    slot have
+    site have
   hook make
     make look-case
       bind name, read name
@@ -113,9 +113,9 @@ mint look-case, like look-case
 
 mint tone-rule, like tone-rule
   case name
-    slot name
+    site name
   case have, mint look-have
-    slot have
+    site have
   hook make
     make tone-rule
       bind name, read name

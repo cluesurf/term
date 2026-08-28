@@ -4,7 +4,7 @@ load @term/mill/code/book/wall
 
 mint wall, like book-wall
   case count
-    slot count
+    site count
   hook make
     make book-wall
       bind count, read count

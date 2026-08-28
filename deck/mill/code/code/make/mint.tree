@@ -4,11 +4,11 @@ load @term/seed/code/make
 
 mint make
   case name
-    slot name
+    site name
   case bind, mint bind
-    slot bind
+    site bind
   case save, mint save
-    slot save
+    site save
   hook make
     make make
       bind name, read name

@@ -8,19 +8,19 @@ load @term/seed/code/case
 
 mint head
   case name
-    slot name
+    site name
   case list, mint list
-    slot form
+    site form
   case draw, mint draw
-    slot form
+    site form
   case form, mint form
-    slot form
+    site form
   case take, mint take
-    slot form
+    site form
   case free
-    slot free
+    site free
   case fall
-    slot fall
+    site fall
   hook make
     make head
       bind name, read name
@@ -30,19 +30,19 @@ mint head
 
 mint base
   case name
-    slot name
+    site name
   case list, mint list
-    slot form
+    site form
   case draw, mint draw
-    slot form
+    site form
   case form, mint form
-    slot form
+    site form
   case take, mint take
-    slot form
+    site form
   case free
-    slot free
+    site free
   case fall
-    slot fall
+    site fall
   hook make
     make base
       bind name, read name
@@ -52,21 +52,21 @@ mint base
 
 mint list
   case form
-    slot form
+    site form
   hook make
     make list
       bind form, read form
 
 mint draw
   case form
-    slot form
+    site form
   hook make
     make draw
       bind form, read form
 
 mint free
   case term
-    slot term
+    site term
   hook make
     make free
       bind term, read term

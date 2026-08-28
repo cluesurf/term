@@ -8,15 +8,15 @@ load @term/mill/code/book/list
 
 mint list, like book-list
   case kind
-    slot kind
+    site kind
   case mesh, mint list-mesh
-    slot mesh
+    site mesh
   case link, mint list-link-item
-    slot link
+    site link
   case turn, mint list-turn-item
-    slot turn
+    site turn
   case items, mint flow
-    slot items
+    site items
   hook make
     make book-list
       bind kind, read kind
@@ -27,9 +27,9 @@ mint list, like book-list
 
 mint list-mesh, like book-list-mesh
   case head, mint flow
-    slot head
+    site head
   case line, mint list-mesh-line
-    slot line
+    site line
   hook make
     make book-list-mesh
       bind head, read head
@@ -37,16 +37,16 @@ mint list-mesh, like book-list-mesh
 
 mint list-mesh-line, like book-list-mesh-line
   case cell, mint flow
-    slot cell
+    site cell
   hook make
     make book-list-mesh-line
       bind cell, read cell
 
 mint list-link-item, like book-list-link
   case path
-    slot path
+    site path
   case link, mint list-link-item
-    slot link
+    site link
   hook make
     make book-list-link
       bind path, read path
@@ -54,7 +54,7 @@ mint list-link-item, like book-list-link
 
 mint list-turn-item, like book-list-turn
   case name
-    slot name
+    site name
   hook make
     make book-list-turn
       bind name, read name

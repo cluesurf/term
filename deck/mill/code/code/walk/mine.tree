@@ -11,15 +11,15 @@ mine walk
   mine term, term walk
     mine maybe
       mine term
-        slot mode
+        site mode
     mine maybe
       mine form, like seed
-        slot seed
+        site seed
     mine list
       mine form, like bind
-        slot bind
+        site bind
     mine list
       mine form, like hook
-        slot hook
+        site hook
 
 fuse hook

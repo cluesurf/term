@@ -9,11 +9,11 @@ load @term/seed/code/view
 
 mint view
   case name
-    slot name
+    site name
   case latch, mint latch
-    slot latch
+    site latch
   case child, mint child
-    slot child
+    site child
   hook make
     make view
       bind name, read name
@@ -22,9 +22,9 @@ mint view
 
 mint check
   case name
-    slot name
+    site name
   case child, mint child
-    slot child
+    site child
   hook make
     make view-check
       bind name, read name
@@ -32,11 +32,11 @@ mint check
 
 mint list
   case trace
-    slot trace
+    site trace
   case start, mint start
-    slot start
+    site start
   case child, mint child
-    slot child
+    site child
   hook make
     make view-list
       bind trace, read trace
@@ -45,9 +45,9 @@ mint list
 
 mint start
   case term
-    slot term
+    site term
   case start
-    slot start
+    site start
   hook make
     make view-start
       bind term, read term
@@ -55,13 +55,13 @@ mint start
 
 mint child
   case name
-    slot name
+    site name
   case mount, mint mount
-    slot mount
+    site mount
   case watch, mint watch
-    slot watch
+    site watch
   case child, mint child
-    slot child
+    site child
   hook make
     make view-child
       bind name, read name
@@ -71,9 +71,9 @@ mint child
 
 mint watch
   case name
-    slot name
+    site name
   case cause, mint cause
-    slot cause
+    site cause
   hook make
     make view-watch
       bind name, read name

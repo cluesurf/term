@@ -4,7 +4,7 @@ load @term/mill/code/book/walk
 
 mint walk, like book-walk
   case link
-    slot link
+    site link
   hook make
     make book-walk
       bind link, read link

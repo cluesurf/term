@@ -5,19 +5,19 @@ load @term/seed/code/link
 
 mint link
   case name
-    slot name
+    site name
   case like, mint like
-    slot like
+    site like
   case hide
-    slot hide
+    site hide
   case need
-    slot need
+    site need
   case base, mint seed
-    slot base
+    site base
   case tag, mint tag
-    slot tag
+    site tag
   case take, mint link-take
-    slot take
+    site take
   hook make
     make link
       bind name, read name
@@ -30,11 +30,11 @@ mint link
 
 mint link-take, like link-take
   case term
-    slot term
+    site term
   case text
-    slot text
+    site text
   case mark
-    slot mark
+    site mark
   hook make
     make link-take
       bind term, read term

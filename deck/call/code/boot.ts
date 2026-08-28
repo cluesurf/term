@@ -736,7 +736,24 @@ export async function callBoot(input: {
           ? {}
           : {
               banner: {
-                js: `import { createRequire as __createRequire } from 'node:module'\nconst require = __createRequire(import.meta.url)`,
+                // ANCHORED AT THE PROJECT, NOT THE BUNDLE.
+                //
+                // The bundle lives in `.base/term/boot/<hash>/`, so a
+                // `require` made from `import.meta.url` resolves relative
+                // paths under that directory and finds a project's own
+                // node_modules only by walking up past it. A runtime shim
+                // that needs to reach the project -- to call the compiler's
+                // own reader, say -- then cannot, and the failure reads as a
+                // missing module rather than as a resolution base.
+                //
+                // Anchoring at the project root makes both work: a relative
+                // path is relative to the project, and a package name
+                // resolves through the project's dependencies.
+                js:
+                  `import { createRequire as __createRequire } from 'node:module'\n` +
+                  `const require = __createRequire(${JSON.stringify(
+                    path.join(projectRoot, 'index.js'),
+                  )})`,
               },
             }),
       }

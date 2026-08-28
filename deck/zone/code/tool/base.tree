@@ -365,3 +365,23 @@ bind show-size
   like text
   case node
     text <String($list.length)>
+
+# Put text on the clipboard without printing it.
+#
+# The safer half of showing a value: it goes where a paste can reach it and
+# nowhere a screen recording, a scrollback or a shoulder can. Reads from
+# stdin, never an argument, for the same reason everything else here does.
+#
+# Returns empty on success, or the reason it failed.
+bind hook-text
+  take body, like text
+  like text
+  case node
+    text <(function () { var cp = require("node:child_process"); var tries = [["pbcopy", []], ["wl-copy", []], ["xclip", ["-selection", "clipboard"]], ["xsel", ["--clipboard", "--input"]]]; for (var i = 0; i \< tries.length; i++) { try { cp.execFileSync(tries[i][0], tries[i][1], { input: $body, stdio: ["pipe", "ignore", "ignore"], timeout: 5000 }); return "" } catch (e) {} } return "no clipboard tool found. Tried pbcopy, wl-copy, xclip and xsel" })()>
+
+# A number as text, for a report line.
+bind show-count
+  take size, like number
+  like text
+  case node
+    text <String($size)>

@@ -6,17 +6,17 @@ load @term/seed/code/mill
 
 mint mill
   case mine, mint mill-mine
-    slot mine
+    site mine
   case mint, mint mill-mint
-    slot mint
+    site mint
   case mill, mint mill-mill
-    slot mill
+    site mill
 
 mint mill-mine, like mill-mine
   case name
-    slot name
+    site name
   case child, mint mill-mine-child
-    slot child
+    site child
   hook make
     make mill-mine
       bind name, read name
@@ -24,57 +24,57 @@ mint mill-mine, like mill-mine
 
 mint mill-mine-child
   case term, mint mill-mine-term
-    slot term
+    site term
   case list, mint mill-mine-list
-    slot list
+    site list
   case maybe, mint mill-mine-maybe
-    slot maybe
+    site maybe
   case case, mint mill-mine-case
-    slot case
+    site case
   case any, mint mill-mine-any
-    slot any
+    site any
   case text
-    slot text
+    site text
   case path
-    slot path
+    site path
   case form, mint mill-mine-form
-    slot form
+    site form
 
 mint mill-mine-term
   case term
-    slot term
+    site term
   case child, mint mill-mine-child
-    slot child
+    site child
 
 mint mill-mine-list
   case child, mint mill-mine-child
-    slot child
+    site child
 
 mint mill-mine-maybe
   case child, mint mill-mine-child
-    slot child
+    site child
 
 mint mill-mine-case
   case child, mint mill-mine-child
-    slot child
+    site child
 
 mint mill-mine-any
   case child, mint mill-mine-child
-    slot child
+    site child
 
 mint mill-mine-form
   case like
-    slot like
+    site like
   case name
-    slot name
+    site name
 
 mint mill-mint, like mill-mint
   case name
-    slot name
+    site name
   case like
-    slot like
+    site like
   case child, mint mill-mint-child
-    slot child
+    site child
   hook make
     make mill-mint
       bind name, read name
@@ -83,47 +83,47 @@ mint mill-mint, like mill-mint
 
 mint mill-mint-child
   case case, mint mill-mint-case
-    slot case
+    site case
   case hook, mint mill-mint-hook
-    slot hook
+    site hook
 
 mint mill-mint-case
   case name
-    slot name
+    site name
   case mint
-    slot mint
+    site mint
   case child, mint mill-mint-child
-    slot child
+    site child
 
 mint mill-mint-hook
   case name
-    slot name
+    site name
   case child, mint mill-mint-hook-child
-    slot child
+    site child
 
 mint mill-mint-hook-child
   case make, mint mill-mint-make
-    slot make
+    site make
   case bind, mint mill-mint-bind
-    slot bind
+    site bind
 
 mint mill-mint-make
   case name
-    slot name
+    site name
   case bind, mint mill-mint-bind
-    slot bind
+    site bind
 
 mint mill-mint-bind
   case name
-    slot name
+    site name
   case value
-    slot value
+    site value
 
 mint mill-mill, like mill-mill
   case name
-    slot name
+    site name
   case bind, mint mill-mill-bind
-    slot bind
+    site bind
   hook make
     make mill-mill
       bind name, read name
@@ -131,9 +131,9 @@ mint mill-mill, like mill-mill
 
 mint mill-mill-bind
   case name
-    slot name
+    site name
   case path
-    slot path
+    site path
   hook make
     make mill-mill-bind
       bind name, read name

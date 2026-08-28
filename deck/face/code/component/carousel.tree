@@ -14,7 +14,7 @@ zone carousel
   zone div
     bind data-slot, text <carousel>
     bind class, read class
-    slot
+    site
 
 zone carousel-content
   take host, like view
@@ -22,7 +22,7 @@ zone carousel-content
   zone div
     bind data-slot, text <carousel-content>
     bind class, read class
-    slot
+    site
 
 zone carousel-item
   take host, like view
@@ -30,7 +30,7 @@ zone carousel-item
   zone div
     bind data-slot, text <carousel-item>
     bind class, read class
-    slot
+    site
 
 zone carousel-previous
   take host, like view
@@ -42,7 +42,7 @@ zone carousel-previous
     bind aria-label, text <Previous slide>
     hook click, call press
     bind class, read class
-    slot
+    site
 
 zone carousel-next
   take host, like view
@@ -54,4 +54,4 @@ zone carousel-next
     bind aria-label, text <Next slide>
     hook click, call press
     bind class, read class
-    slot
+    site

@@ -5,4 +5,4 @@ load @term/mill/code/code/rule/hold/mine
 mine rule
   mine list
     mine form, like hold
-      slot hold
+      site hold

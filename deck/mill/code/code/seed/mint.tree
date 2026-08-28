@@ -4,13 +4,13 @@ load @term/seed/code/seed
 
 mint seed
   case seed, mint seed-def
-    slot seed
+    site seed
 
 mint seed-def, like seed-def
   case name
-    slot name
+    site name
   case seed, mint seed
-    slot seed
+    site seed
   hook make
     make seed-def
       bind name, read name

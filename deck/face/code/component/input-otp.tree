@@ -13,7 +13,7 @@ zone input-otp
   zone div
     bind data-slot, text <input-otp>
     bind class, read class
-    slot
+    site
 
 zone input-otp-group
   take host, like view
@@ -21,7 +21,7 @@ zone input-otp-group
   zone div
     bind data-slot, text <input-otp-group>
     bind class, read class
-    slot
+    site
 
 zone input-otp-slot
   take host, like view
@@ -29,7 +29,7 @@ zone input-otp-slot
   zone div
     bind data-slot, text <input-otp-slot>
     bind class, read class
-    slot
+    site
 
 zone input-otp-separator
   take host, like view
@@ -37,4 +37,4 @@ zone input-otp-separator
   zone div
     bind data-slot, text <input-otp-separator>
     bind class, read class
-    slot
+    site

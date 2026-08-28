@@ -9,62 +9,62 @@ mine fork
   mine term, term fork
     mine any
       mine form, like fork-test
-        slot test
+        site test
       mine form, like fork-case
-        slot case
+        site case
       mine form, like fork-tree
-        slot tree
+        site tree
 
 mine fork-test
   mine term, term test
     mine list
       mine form, like fork-test-pair
-        slot pair
+        site pair
     mine maybe
       mine form, like fork-miss
-        slot miss
+        site miss
 
 mine fork-test-pair
   mine term, term hook
     mine term, term test
     mine list
       mine form, like flow
-        slot test
+        site test
   mine term, term hook
     mine term, term hold
     mine list
       mine form, like flow
-        slot hold
+        site hold
 
 mine fork-miss
   mine term, term hook
     mine term, term miss
     mine list
       mine form, like flow
-        slot flow
+        site flow
 
 mine fork-case
   mine term, term case
     mine form, like seed
-      slot seed
+      site seed
     mine list
       mine form, like fork-arm
-        slot arm
+        site arm
 
 mine fork-arm
   mine term, term case
     mine term
-      slot name
+      site name
     mine maybe
       mine term, term base
         mine term
-          slot base
+          site base
     mine list
       mine form, like flow
-        slot flow
+        site flow
 
 mine fork-tree
   mine term, term tree
     mine list
       mine form, like flow
-        slot flow
+        site flow

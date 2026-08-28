@@ -4,9 +4,9 @@ load @term/mill/code/book/tell
 
 mint tell, like book-tell
   case text
-    slot text
+    site text
   case cite
-    slot cite
+    site cite
   hook make
     make book-tell
       bind text, read text

@@ -14,7 +14,7 @@ zone resizable-group
   zone div
     bind data-slot, text <resizable-group>
     bind class, read class
-    slot
+    site
 
 zone resizable-panel
   take host, like view
@@ -22,7 +22,7 @@ zone resizable-panel
   zone div
     bind data-slot, text <resizable-panel>
     bind class, read class
-    slot
+    site
 
 zone resizable-handle
   take host, like view

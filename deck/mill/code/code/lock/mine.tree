@@ -2,10 +2,10 @@
 mine lockfile
   mine maybe
     mine form, like base
-      slot base
+      site base
   mine list
     mine any
       mine form, like load
-        slot load
+        site load
       mine form, like link
-        slot link
+        site link

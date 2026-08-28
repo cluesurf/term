@@ -8,10 +8,10 @@ load @term/mill/code/code/wait/mine
 mine hold
   mine term, term hold
     mine term
-      slot name
+      site name
     mine case
       mine form, like wait
-        slot wait
+        site wait
     mine list
       mine form, like bind
-        slot bind
+        site bind

@@ -1,9 +1,9 @@
 
 mint dock-show
   case name
-    slot name
+    site name
   case text
-    slot text
+    site text
   hook make
     make dock-show
       bind name, read name

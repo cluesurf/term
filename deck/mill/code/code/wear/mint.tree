@@ -4,9 +4,9 @@ load @term/seed/code/wear
 
 mint wear
   case name
-    slot name
+    site name
   case task, mint task
-    slot task
+    site task
   hook make
     make wear
       bind name, read name

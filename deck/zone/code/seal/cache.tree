@@ -143,7 +143,7 @@ task show-file
     bind item
       call join-text
         make list
-          text <made \<>
+          text <time made \<>
           read one/made
           text <\>>
   call push
@@ -151,7 +151,7 @@ task show-file
     bind item
       call join-text
         make list
-          text <good \<>
+          text <time toss \<>
           read one/good
           text <\>>
   call push
@@ -159,7 +159,7 @@ task show-file
     bind item
       call join-text
         make list
-          text <seal >
+          text <code >
           read one/seal
   call push
     bind list, read out

@@ -14,19 +14,19 @@ load @term/mill/code/code/wait/mine
 mine call
   mine term, term call
     mine term
-      slot name
+      site name
     mine case
       mine form, like wait
     mine list
       mine any
         mine form, like base
         mine form, like bind
-          slot bind
+          site bind
     mine list
       mine form, like hook
-        slot hook
+        site hook
 
 mine line
   mine term, term line
     mine term
-      slot name
+      site name

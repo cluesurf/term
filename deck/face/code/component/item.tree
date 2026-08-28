@@ -12,7 +12,7 @@ zone item
   zone div
     bind data-slot, text <item>
     bind class, read class
-    slot
+    site
 
 zone item-media
   take host, like view
@@ -20,7 +20,7 @@ zone item-media
   zone div
     bind data-slot, text <item-media>
     bind class, read class
-    slot
+    site
 
 zone item-content
   take host, like view
@@ -28,7 +28,7 @@ zone item-content
   zone div
     bind data-slot, text <item-content>
     bind class, read class
-    slot
+    site
 
 zone item-title
   take host, like view
@@ -36,7 +36,7 @@ zone item-title
   zone div
     bind data-slot, text <item-title>
     bind class, read class
-    slot
+    site
 
 zone item-description
   take host, like view
@@ -44,7 +44,7 @@ zone item-description
   zone div
     bind data-slot, text <item-description>
     bind class, read class
-    slot
+    site
 
 zone item-actions
   take host, like view
@@ -52,4 +52,4 @@ zone item-actions
   zone div
     bind data-slot, text <item-actions>
     bind class, read class
-    slot
+    site

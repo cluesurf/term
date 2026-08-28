@@ -26,31 +26,31 @@ load @term/mill/code/code/save/mine
 mine dock
   mine term, term dock
     mine term
-      slot name
+      site name
     mine list
       mine form, like dock
-        slot dock
+        site dock
     mine list
       mine form, like dock-take
-        slot take
+        site take
     mine list
       mine form, like dock-seed
-        slot seed
+        site seed
     mine list
       mine form, like dock-show
-        slot show
+        site show
     mine maybe
       mine form, like dock-send
-        slot send
+        site send
     mine list
       mine form, like dock-hook
-        slot hook
+        site hook
     mine list
       mine form, like fuse
-        slot fuse
+        site fuse
     mine list
       mine form, like save
-        slot save
+        site save
     mine list
       mine form, like call
-        slot call
+        site call

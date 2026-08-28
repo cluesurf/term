@@ -260,15 +260,15 @@ export function tokenize(source: {
         // sticky match anchored at the cursor
         pattern.lastIndex = pos
 
-        const found = pattern.exec(lineText)
+        const hit = pattern.exec(lineText)
 
-        if (!found) {
+        if (!hit) {
           continue
         }
 
         matched = true
 
-        let size = found[0].length
+        let size = hit[0].length
         let text = lineText.slice(pos, pos + size)
 
         // a closing }} only consumes as many braces as the matching opener pushed

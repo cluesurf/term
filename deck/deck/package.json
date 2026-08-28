@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:old": "tsx make/test",
     "test:fill": "tsx hack/look/test.ts",
-    "host": "pnpm make && npm publish --access=public"
+    "host": "pnpm make && npm publish --access=public",
+    "make:read": "node task/make-read.mjs"
   },
   "prettier": "@cluesurf/wash/flow.json",
   "devDependencies": {

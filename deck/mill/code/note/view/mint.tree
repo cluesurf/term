@@ -5,9 +5,9 @@ load @term/mill/code/book/view
 
 mint view, like book-view
   case path
-    slot path
+    site path
   case name
-    slot name
+    site name
   hook make
     make book-view
       bind path, read path
@@ -15,7 +15,7 @@ mint view, like book-view
 
 mint draw, like book-draw
   case name
-    slot name
+    site name
   hook make
     make book-draw
       bind name, read name

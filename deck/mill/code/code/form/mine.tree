@@ -35,57 +35,57 @@ load @term/mill/code/code/call/mine
 mine form
   mine term, term form
     mine term
-      slot name
+      site name
     mine list
       mine form, like head
-        slot head
+        site head
     mine maybe
       mine form, like like
-        slot like
+        site like
     mine list
       mine form, like link
-        slot link
+        site link
     mine list
       mine form, like case
-        slot case
+        site case
     mine list
       mine form, like bond
-        slot bond
+        site bond
     mine list
       mine form, like rein
-        slot rein
+        site rein
     mine list
       mine form, like task
-        slot task
+        site task
     mine maybe
       mine form, like hold
-        slot hold
+        site hold
     mine maybe
       mine form, like hide
-        slot hide
+        site hide
     mine maybe
       mine form, like fold
-        slot fold
+        site fold
     mine maybe
       mine form, like note
-        slot note
+        site note
     mine list
       mine form, like tag
-        slot tag
+        site tag
 
 mine rein
   mine term, term rein
     mine term
-      slot task
+      site task
 
 mine bond
   mine term, term bond
     mine term
-      slot name
+      site name
     mine maybe
       mine term, term line
         mine term
-          slot line
+          site line
     mine list
       mine form, like call
-        slot call
+        site call

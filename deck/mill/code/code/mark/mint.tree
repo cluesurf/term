@@ -1,9 +1,9 @@
 
 mint mark
   case kind
-    slot kind
+    site kind
   case bind, mint mark-bind
-    slot bind
+    site bind
   hook make
     make mark
       bind kind, read kind
@@ -11,13 +11,13 @@ mint mark
 
 mint mark-bind
   case key
-    slot key
+    site key
   case text-value
-    slot value
+    site value
   case number-value
-    slot value
+    site value
   case term-value, mint mark-bind-term
-    slot value
+    site value
   hook make
     make mark-bind
       bind key, read key
@@ -25,7 +25,7 @@ mint mark-bind
 
 mint mark-bind-term
   case name
-    slot name
+    site name
   hook make
     make mark-bind-term
       bind name, read name
