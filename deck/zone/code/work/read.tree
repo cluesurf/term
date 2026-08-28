@@ -43,6 +43,9 @@ load ../base
   find need
   find bond
 
+load ./one
+  find see-one
+
 load ../config/find
   find read-decks
   find halt-no-deck
@@ -73,6 +76,7 @@ load ../seal/cache
 load ../hold/base
   find read-hold
   find read-hold-many
+  find list-hold
 
 load ./load
   find spot-cache
@@ -161,9 +165,19 @@ task all-paths
 # sealed once, in the zone that declares it, so the cache stores one copy of
 # a shared value rather than one per zone that reads it.
 # The holds fetched for one zone's own project.
+# The holds that belong to one zone.
+#
+# In `project` mode a zone has its own project, so the answer is the holds
+# fetched under that project's name.
+#
+# In `note` mode there is ONE project and every zone's values come back
+# together, so the answer is every hold whose note says this zone. That is
+# what the note is for: a project is a flat key namespace and cannot keep two
+# zones' values apart on its own.
 task holds-for
   take all, like list
   take path, like text
+  take note, like boolean
   like list
   save out
     make list
@@ -172,11 +186,30 @@ task holds-for
       take site, name one
       fork test
         hook test
-          call equal
-            read one/bind
-            read path
+          read note
         hook hold
-          save out, read one/hold
+          walk list, read one/hold
+            hook next
+              take site, name got
+              fork test
+                hook test
+                  call equal
+                    call note-field
+                      bind note, read got/note
+                      bind name, text <zone>
+                    read path
+                hook hold
+                  call push
+                    bind list, read out
+                    bind item, read got
+        hook miss
+          fork test
+            hook test
+              call equal
+                read one/bind
+                read path
+            hook hold
+              save out, read one/hold
   send back
     read out
 
@@ -185,12 +218,17 @@ task seal-spot
   take key, like bytes
   take at, like spot
   take all, like list
+  # Whether the tree keeps every zone in one project. Threaded down rather
+  # than read off the spot, because only the ROOT carries the provider
+  # settings: a nested zone would read an empty mode and place nothing.
+  take note, like boolean
   like spot
 
   save have
     call holds-for
       bind all, read all
       bind path, read at/path
+      bind note, read note
 
   save locks
     make list
@@ -254,6 +292,7 @@ task seal-spot
           bind key, read key
           bind at, read kid
           bind all, read all
+          bind note, read note
           wait true
       call push
         bind list, read kids
@@ -284,7 +323,20 @@ task pull
   note async
   take spot, like text
   take fresh, like boolean
+  take name, like text
   like number
+
+  # A name given asks about that one name instead of filling the cache.
+  fork test
+    hook test
+      call not-equal
+        read name
+        text <>
+    hook hold
+      send back
+        call see-one
+          read name
+          wait true
 
   save decks
     call read-decks
@@ -460,31 +512,62 @@ task pull
   # zones it inherits from, which is what `term zone read word.surf/star` has
   # always claimed to do and did not: the argument was taken and never read,
   # so every zone was fetched however narrow the request.
+  # WHICH PROJECTS TO FETCH.
+  #
+  # In `note` mode there is one, named by the declaration, and every zone's
+  # values come back together. In `project` mode it is the whole tree, or the
+  # chain down to one zone when a path was named.
   save binds
     make list
   fork test
     hook test
-      call equal
-        read want
-        read root/path
+      call is-note
+        read root
     hook hold
-      walk list
-        call all-paths
-          read root
+      # THE PROVIDER TAKES AN ID, NOT A NAME. The declaration names the
+      # project because a name is what a person reads; the id is looked up
+      # here rather than written down, so a project renamed at the provider
+      # does not silently stop matching.
+      save banks
+        call list-hold
+          bind kind, read root/base
+          bind body, read token
+      walk list, read banks
         hook next
           take site, name one
-          call push
-            bind list, read binds
-            bind item, read one
+          fork test
+            hook test
+              call equal
+                read one/name
+                read root/bank
+            hook hold
+              call push
+                bind list, read binds
+                bind item, read one/body
     hook miss
-      walk list
-        call path-chain
-          read want
-        hook next
-          take site, name one
-          call push
-            bind list, read binds
-            bind item, read one
+      fork test
+        hook test
+          call equal
+            read want
+            read root/path
+        hook hold
+          walk list
+            call all-paths
+              read root
+            hook next
+              take site, name one
+              call push
+                bind list, read binds
+                bind item, read one
+        hook miss
+          walk list
+            call path-chain
+              read want
+            hook next
+              take site, name one
+              call push
+                bind list, read binds
+                bind item, read one
 
   save have
     call read-hold-many
@@ -498,6 +581,9 @@ task pull
       bind key, read key
       bind at, read root
       bind all, read have
+      bind note
+        call is-note
+          read root
       wait true
 
   save at-cache

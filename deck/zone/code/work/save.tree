@@ -40,6 +40,9 @@ load ../base
   find spot
   find bond
 
+load ./one
+  find put-one
+
 load ../config/find
   find read-decks
   find halt-no-deck
@@ -120,7 +123,22 @@ task has-hold
 task keep-zone
   note async
   take spot, like text
+  take name, like text
   take commit, like boolean
+
+  # A name given writes that one value, read from a hidden prompt, instead of
+  # walking the declaration and creating a project per zone.
+  fork test
+    hook test
+      call not-equal
+        read name
+        text <>
+    hook hold
+      send back
+        call put-one
+          read name
+          wait true
+
   like number
 
   save decks
@@ -195,9 +213,31 @@ task keep-zone
       bind kind, read root/base
       bind body, read token
 
+  # IN `note` MODE THERE IS ONE PROJECT, not one per zone.
+  #
+  # Bitwarden caps projects by plan, and a project per zone does not fit. The
+  # zone a secret belongs to is carried in its note instead, so the only
+  # project that has to exist is the one named by `bind project`.
   save spots
-    call all-spots
-      read root
+    make list
+  fork test
+    hook test
+      call equal
+        read root/hold
+        text <note>
+    hook hold
+      call push
+        bind list, read spots
+        bind item, read root/bank
+    hook miss
+      walk list
+        call all-spots
+          read root
+        hook next
+          take site, name one
+          call push
+            bind list, read spots
+            bind item, read one
 
   save made, code 0
   save want, code 0
@@ -209,7 +249,7 @@ task keep-zone
         hook test
           call has-hold
             bind all, read have
-            bind name, read one/path
+            bind name, read one
         hook hold
           turn next
       save want

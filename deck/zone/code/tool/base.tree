@@ -321,3 +321,47 @@ bind mine-deck
   like deck
   case node
     text <(function () { var out = { name: "", sort: [] }; var at = null; $text.split("\\n").forEach(function (raw) { var line = raw.trim(); if (!line || line.charAt(0) === "#") { return } var deep = raw.length - raw.replace(/^ +/, "").length; var i = line.indexOf(" "); var head = i === -1 ? line : line.slice(0, i); var body = i === -1 ? "" : line.slice(i + 1).trim(); if (deep === 0) { at = null; if (head === "name") { out.name = body } else if (head === "sort") { at = { name: body, hold: "bitwarden", bind: "", need: [] }; out.sort.push(at) } } else if (at) { if (head === "hold") { at.hold = body } else if (head === "bind") { at.bind = body } else if (head === "need") { at.need.push({ name: body, must: true }) } else if (head === "want") { at.need.push({ name: body, must: false }) } } }); return out })()>
+
+# One field out of a secret's note.
+#
+# THE NOTE IS YAML, and this reads one key from it:
+#
+#   service: Google Cloud Platform
+#   zone: base/word.surf/star
+#   why: the OAuth client the sign-in flow uses
+#
+# `zone` is the one zone reads, and it is what replaces a project per zone:
+# Bitwarden caps projects by plan and notes are free and unlimited. Everything
+# else in the note is for the person reading it in the web vault, and is
+# carried through untouched.
+#
+# A LINE PARSER, NOT A YAML ENGINE. It reads `key: value` at the top level and
+# nothing else: no nesting, no lists, no anchors, no multi-line scalars. That
+# is all this needs, and a real YAML parser would accept documents this then
+# has to have opinions about. A note that is not in this shape yields empty
+# rather than an error, because a note is a person's field first.
+bind note-field
+  take note, like text
+  take name, like text
+  like text
+  case node
+    text <(function () { var want = String($name).toLowerCase(); var lines = String($note || "").split(/\\r?\\n/); for (var i = 0; i \< lines.length; i++) { var at = lines[i].indexOf(":"); if (at \<= 0) { continue } var key = lines[i].slice(0, at).trim().toLowerCase(); if (key !== want) { continue } var body = lines[i].slice(at + 1).trim(); if ((body.startsWith("\\"") && body.endsWith("\\"")) || (body.startsWith("'") && body.endsWith("'"))) { body = body.slice(1, -1) } return body } return "" })()>
+
+# A note with one field set, the rest kept.
+#
+# Rewrites `name:` if it is there and appends it if it is not, so a note a
+# person wrote by hand keeps everything they put in it.
+bind note-with
+  take note, like text
+  take name, like text
+  take body, like text
+  like text
+  case node
+    text <(function () { var want = String($name).toLowerCase(); var line = $name + ": " + $body; var lines = String($note || "").split(/\\r?\\n/); var out = []; var done = false; for (var i = 0; i \< lines.length; i++) { var at = lines[i].indexOf(":"); var key = at \> 0 ? lines[i].slice(0, at).trim().toLowerCase() : ""; if (key === want) { if (!done) { out.push(line); done = true } continue } if (lines[i].trim() === "" && i === lines.length - 1) { continue } out.push(lines[i]) } if (!done) { out.push(line) } return out.join("\\n") })()>
+
+# A count, as text, for a diagnostic line.
+bind show-size
+  take list, like list
+  like text
+  case node
+    text <String($list.length)>

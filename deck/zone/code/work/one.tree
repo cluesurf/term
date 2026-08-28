@@ -1,0 +1,383 @@
+# One secret at a time.
+#
+#   term zone save some-key      write it, read from a hidden prompt
+#   term zone read some-key      fetch just that one, when it drifted
+#   term zone toss some-key      remove it at the provider
+#
+# THE VALUE IS NEVER SEEN. It is typed with echo off, handed to the provider
+# SDK as a function argument, and never reaches a file, an argument, a log or
+# the terminal. `bws` cannot do this: it takes the value on its command line,
+# where anything that can list processes reads it.
+#
+# WHICH ZONE A NAME BELONGS TO IS NOT ASKED. The declaration already says, and
+# making a person repeat it is how the two come to disagree. A name inherited
+# from the root belongs to the root, because that is where its one stored
+# value lives.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find size
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+  find unwrap
+
+load ../base
+  find spot
+  find bond
+
+load ../config/find
+  find read-decks
+  find halt-no-deck
+
+load ../config/zone
+  find mine-zone
+  find find-spot
+  find pull-need
+
+load ../config/machine
+  find read-bond
+  find berth
+
+load ../save/base
+  find pick
+  find read-code
+
+load ../hold/bitwarden
+  find bitwarden-put
+  find bitwarden-drop
+  find bitwarden-one
+
+load ../tool/base
+  find join-text
+  find join-line
+  find show-line
+  find warn-line
+  find ask-secret
+  find halt
+  find equal
+  find not-equal
+  find read-file
+
+# Everything the three commands need before they can do anything: the
+# declaration, the machine binding and the provider credential.
+form gear
+  link root, like spot
+  link token, like text
+
+task gear-up
+  note async
+  like gear
+
+  save decks
+    call read-decks
+      wait true
+  fork test
+    hook test
+      call is-equal
+        call size
+          read decks
+        code 0
+    hook hold
+      call halt-no-deck
+
+  save deck, text <>
+  walk list, read decks
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read deck
+            text <>
+        hook hold
+          save deck, read one
+
+  save root
+    call mine-zone
+      call read-file
+        read deck
+
+  fork test
+    hook test
+      call equal
+        read root/team
+        text <>
+    hook hold
+      call halt
+        call join-line
+          make list
+            text <The declaration does not say which organization it belongs to.>
+            text <>
+            text <Add a `team` line to zone.tree with the organization id:>
+            text <>
+            text <  team 00000000-0000-0000-0000-000000000000>
+            text <>
+            text <The provider's own command derives it from the credential. The>
+            text <library this uses does not: every call takes it. It is a uuid,>
+            text <not a secret.>
+
+  save bond-got
+    call read-bond
+      wait true
+  fork test
+    hook test
+      call is-none
+        read bond-got
+    hook hold
+      call halt
+        text <This machine is not bound. Run `term zone bind` first.>
+  save bond
+    call unwrap
+      read bond-got
+
+  save code-got
+    call read-code
+      bind kind
+        call pick
+      bind spot
+        call berth
+          bind bond, read bond
+          bind sort, read bond/base
+      wait true
+  fork test
+    hook test
+      call is-none
+        read code-got
+    hook hold
+      call halt
+        text <No bootstrap credential for this machine, so the provider cannot be opened. Run `term zone code save`.>
+
+  send back
+    make gear
+      bind root, read root
+      bind token
+        call unwrap
+          read code-got
+
+# The zone that DECLARES a name, which is where its value lives.
+task home-of
+  take root, like spot
+  take name, like text
+  like text
+  save out, text <>
+  walk list
+    call pull-need
+      bind root, read root
+      bind path, read root/path
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read one/name
+            read name
+        hook hold
+          save out, read root/path
+  send back
+    read out
+
+# Refuse a name the declaration does not carry.
+#
+# Writing a secret nothing declares would put a value at the provider that no
+# command will ever ask for, and it would not be findable from the tree. The
+# declaration is the list of what exists.
+task home-or-halt
+  take root, like spot
+  take name, like text
+  like text
+  save home
+    call home-of
+      bind root, read root
+      bind name, read name
+  fork test
+    hook test
+      call equal
+        read home
+        text <>
+    hook hold
+      call halt
+        call join-line
+          make list
+            call join-text
+              make list
+                text <Nothing declares >
+                read name
+                text <.>
+            text <>
+            text <Add it to zone.tree first, so the tree says it exists:>
+            text <>
+            call join-text
+              make list
+                text <  need >
+                read name
+  send back
+    read home
+
+# `term zone save <name>` — write one value, read from a hidden prompt.
+task put-one
+  note async
+  take name, like text
+  like number
+
+  save it
+    call gear-up
+      wait true
+  save home
+    call home-or-halt
+      bind root, read it/root
+      bind name, read name
+
+  save body
+    call ask-secret
+      call join-text
+        make list
+          read name
+          text <: >
+
+  fork test
+    hook test
+      call equal
+        read body
+        text <>
+    hook hold
+      send back
+        call halt
+          text <Nothing was typed, so nothing was written.>
+
+  save what
+    call bitwarden-put
+      bind body, read it/token
+      bind team, read it/root/team
+      bind path, read home
+      bind name, read name
+      bind code, read body
+      wait true
+
+  call show-line
+    call join-text
+      make list
+        read name
+        text < >
+        read what
+        text < at >
+        read home
+  call show-line
+    text <>
+  call show-line
+    text <Run `term zone read --fresh` to bring it into the local cache.>
+  send back
+    code 0
+
+# `term zone toss <name>` — remove one value at the provider.
+task drop-one
+  note async
+  take name, like text
+  like number
+
+  save it
+    call gear-up
+      wait true
+  save home
+    call home-or-halt
+      bind root, read it/root
+      bind name, read name
+
+  save gone
+    call bitwarden-drop
+      bind body, read it/token
+      bind team, read it/root/team
+      bind path, read home
+      bind name, read name
+      wait true
+
+  fork test
+    hook test
+      read gone
+    hook hold
+      call show-line
+        call join-text
+          make list
+            text <Removed >
+            read name
+            text < from >
+            read home
+      call show-line
+        text <>
+      call show-line
+        text <It is still declared in zone.tree. Remove the `need` line too, or>
+      call show-line
+        text <the next command that wants it will refuse to start.>
+    hook miss
+      call warn-line
+        call join-text
+          make list
+            text <No secret called >
+            read name
+            text < at the provider. Nothing was removed.>
+  send back
+    code 0
+
+# `term zone read <name>` — fetch one value, when it drifted at the provider.
+#
+# Reports whether it is there and whether it matches the cache, and never
+# prints it. The cache is filled by `term zone read`, which is one round trip
+# per project; this is the narrower question of whether one name exists.
+task see-one
+  note async
+  take name, like text
+  like number
+
+  save it
+    call gear-up
+      wait true
+  save home
+    call home-or-halt
+      bind root, read it/root
+      bind name, read name
+
+  save body
+    call bitwarden-one
+      bind body, read it/token
+      bind team, read it/root/team
+      bind name, read name
+      wait true
+
+  fork test
+    hook test
+      call equal
+        read body
+        text <>
+    hook hold
+      call show-line
+        call join-text
+          make list
+            read name
+            text <  declared at >
+            read home
+            text <, and NOT at the provider>
+      call show-line
+        text <>
+      call show-line
+        text <Write it with `term zone save <name>`.>
+    hook miss
+      call show-line
+        call join-text
+          make list
+            read name
+            text <  declared at >
+            read home
+            text <, and present at the provider>
+      call show-line
+        text <>
+      call show-line
+        text <Run `term zone read --fresh` to bring it into the local cache.>
+  send back
+    code 0

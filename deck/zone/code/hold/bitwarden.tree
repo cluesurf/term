@@ -42,6 +42,17 @@ bind do-bitwarden-good
   case node
     text <(function () { try { require("node:child_process").execFileSync("bws", ["project", "get", $bind], { env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }), stdio: "ignore", timeout: 20000, killSignal: "SIGKILL" }); return true } catch (e) { return false } })()>
 
+# THE PROVIDER'S SPELLING DOES NOT MATTER.
+#
+# A secret loaded by hand may be `ARCJET_KEY` while the declaration calls it
+# `arcjet-key`. Both name the same thing, and which one a person typed into a
+# web form is not something zone should have an opinion about, so the key is
+# folded to the declaration's form on the way in.
+#
+# Getting this wrong is not a failed lookup, it is a DUPLICATE: a migration
+# that compares `arcjet-key` against `ARCJET_KEY` finds no match and writes a
+# second copy of every secret beside the first.
+
 # Every secret in one project, as name and value pairs. The caller narrows
 # to what the manifest declared.
 bind do-bitwarden-read
@@ -49,7 +60,7 @@ bind do-bitwarden-read
   take bind, like text
   like list
   case node
-    text <(function () { try { var out = require("node:child_process").execFileSync("bws", ["secret", "list", $bind, "--output", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).map(function (s) { return { name: s.key, body: s.value } }) } catch (e) { var why = (e && (e.code === "ETIMEDOUT" || e.signal === "SIGKILL")) ? "the provider did not answer within 20 seconds" : String((e && e.stderr) || (e && e.message) || e).trim().split("\\n").filter(function (l) { return l.trim() }).slice(0, 3).join("\\n  "); process.stderr.write("The provider refused.\\n\\n  " + why + "\\n\\nThe credential may be wrong, expired or revoked, or the provider may be\\nunreachable. Check the credential with `term zone code show`, replace it with\\n`term zone code save`, and check the network if it timed out.\\n"); process.exit(1) } })()>
+    text <(function () { try { var out = require("node:child_process").execFileSync("bws", ["secret", "list", $bind, "--output", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).map(function (s) { var k = String(s.key); var cut = k.indexOf(":"); if (cut \> 0) { k = k.slice(cut + 1) } return { name: k.toLowerCase().split("_").join("-"), body: s.value, note: s.note || "" } }) } catch (e) { var why = (e && (e.code === "ETIMEDOUT" || e.signal === "SIGKILL")) ? "the provider did not answer within 20 seconds" : String((e && e.stderr) || (e && e.message) || e).trim().split("\\n").filter(function (l) { return l.trim() }).slice(0, 3).join("\\n  "); process.stderr.write("The provider refused.\\n\\n  " + why + "\\n\\n" + (/plan|limit|maximum|quota|upgrade/i.test(why) ? "That is a limit on the account, not a problem with the credential.\\n" : /timed out|did not answer/i.test(why) ? "Check the network.\\n" : "The credential may be wrong, expired or revoked. Check it with\\n`term zone code show`, replace it with `term zone code save`.\\n")); process.exit(1) } })()>
 
 # Every project the credential can see, as name and id pairs. `term zone save`
 # compares the declaration against this to find the zones that have no
@@ -58,7 +69,7 @@ bind do-bitwarden-list
   take body, like text
   like list
   case node
-    text <(function () { try { var out = require("node:child_process").execFileSync("bws", ["project", "list", "--output", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).map(function (p) { return { name: p.name, body: p.id } }) } catch (e) { var why = (e && (e.code === "ETIMEDOUT" || e.signal === "SIGKILL")) ? "the provider did not answer within 20 seconds" : String((e && e.stderr) || (e && e.message) || e).trim().split("\\n").filter(function (l) { return l.trim() }).slice(0, 3).join("\\n  "); process.stderr.write("The provider refused.\\n\\n  " + why + "\\n\\nThe credential may be wrong, expired or revoked, or the provider may be\\nunreachable. Check the credential with `term zone code show`, replace it with\\n`term zone code save`, and check the network if it timed out.\\n"); process.exit(1) } })()>
+    text <(function () { try { var out = require("node:child_process").execFileSync("bws", ["project", "list", "--output", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).map(function (p) { return { name: p.name, body: p.id } }) } catch (e) { var why = (e && (e.code === "ETIMEDOUT" || e.signal === "SIGKILL")) ? "the provider did not answer within 20 seconds" : String((e && e.stderr) || (e && e.message) || e).trim().split("\\n").filter(function (l) { return l.trim() }).slice(0, 3).join("\\n  "); process.stderr.write("The provider refused.\\n\\n  " + why + "\\n\\n" + (/plan|limit|maximum|quota|upgrade/i.test(why) ? "That is a limit on the account, not a problem with the credential.\\n" : /timed out|did not answer/i.test(why) ? "Check the network.\\n" : "The credential may be wrong, expired or revoked. Check it with\\n`term zone code show`, replace it with `term zone code save`.\\n")); process.exit(1) } })()>
 
 # Create a project. Named after the zone path, so what a person sees in the
 # provider is the address the declaration uses.
@@ -67,7 +78,7 @@ bind do-bitwarden-make
   take name, like text
   like text
   case node
-    text <(function () { try { var out = require("node:child_process").execFileSync("bws", ["project", "create", $name, "--output", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).id } catch (e) { var why = (e && (e.code === "ETIMEDOUT" || e.signal === "SIGKILL")) ? "the provider did not answer within 20 seconds" : String((e && e.stderr) || (e && e.message) || e).trim().split("\\n").filter(function (l) { return l.trim() }).slice(0, 3).join("\\n  "); process.stderr.write("The provider refused.\\n\\n  " + why + "\\n\\nThe credential may be wrong, expired or revoked, or the provider may be\\nunreachable. Check the credential with `term zone code show`, replace it with\\n`term zone code save`, and check the network if it timed out.\\n"); process.exit(1) } })()>
+    text <(function () { try { var out = require("node:child_process").execFileSync("bws", ["project", "create", $name, "--output", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).id } catch (e) { var why = (e && (e.code === "ETIMEDOUT" || e.signal === "SIGKILL")) ? "the provider did not answer within 20 seconds" : String((e && e.stderr) || (e && e.message) || e).trim().split("\\n").filter(function (l) { return l.trim() }).slice(0, 3).join("\\n  "); process.stderr.write("The provider refused.\\n\\n  " + why + "\\n\\n" + (/plan|limit|maximum|quota|upgrade/i.test(why) ? "That is a limit on the account, not a problem with the credential.\\n" : /timed out|did not answer/i.test(why) ? "Check the network.\\n" : "The credential may be wrong, expired or revoked. Check it with\\n`term zone code show`, replace it with `term zone code save`.\\n")); process.exit(1) } })()>
 
 # Several projects at once.
 #
@@ -84,7 +95,7 @@ bind do-bitwarden-read-many
   take list, like list
   like list
   case node
-    text <(function () { var cp = require("node:child_process"); var running = $list.map(function (bind) { return new Promise(function (done) { cp.execFile("bws", ["secret", "list", bind, "--output", "json"], { encoding: "utf8", maxBuffer: 33554432, timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }, function (bad, out) { if (bad) { done({ bind: bind, hold: [] }); return } try { done({ bind: bind, hold: JSON.parse(out).map(function (s) { return { name: s.key, body: s.value } }) }) } catch (e) { done({ bind: bind, hold: [] }) } }) }) }); return Promise.all(running) })()>
+    text <(function () { var cp = require("node:child_process"); var running = $list.map(function (bind) { return new Promise(function (done) { cp.execFile("bws", ["secret", "list", bind, "--output", "json"], { encoding: "utf8", maxBuffer: 33554432, timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }, function (bad, out) { if (bad) { done({ bind: bind, hold: [] }); return } try { done({ bind: bind, hold: JSON.parse(out).map(function (s) { var k = String(s.key); var cut = k.indexOf(":"); if (cut \> 0) { k = k.slice(cut + 1) } return { name: k.toLowerCase().split("_").join("-"), body: s.value, note: s.note || "" } }) }) } catch (e) { done({ bind: bind, hold: [] }) } }) }) }); return Promise.all(running) })()>
 
 # Exportable wrapper: a native `bind` is file-local.
 task bitwarden-read-many
@@ -140,3 +151,87 @@ task bitwarden-read
     call do-bitwarden-read
       bind body, read body
       bind bind, read bind
+
+# Write one secret, through the SDK rather than the command line.
+#
+# THE VALUE IS A FUNCTION ARGUMENT. `bws secret create` takes it on argv,
+# where anything that can list processes reads it. This does not.
+#
+# Returns `made` or `grew`, so the caller can say which happened.
+bind do-bitwarden-put
+  note async
+  take body, like text
+  take team, like text
+  take path, like text
+  take name, like text
+  take code, like text
+  like text
+  case node
+    text <vault.put($body, $team, $path, $name, $code)>
+
+# Remove one secret. True if it was there.
+bind do-bitwarden-drop
+  note async
+  take body, like text
+  take team, like text
+  take path, like text
+  take name, like text
+  like boolean
+  case node
+    text <vault.drop($body, $team, $path, $name)>
+
+# Read one secret's value. Empty if it is not there.
+bind do-bitwarden-one
+  note async
+  take body, like text
+  take team, like text
+  take name, like text
+  like text
+  case node
+    text <vault.one($body, $team, $name)>
+
+# Exportable wrappers: a native `bind` is file-local.
+task bitwarden-put
+  note async
+  take body, like text
+  take team, like text
+  take path, like text
+  take name, like text
+  take code, like text
+  like text
+  send back
+    call do-bitwarden-put
+      bind body, read body
+      bind team, read team
+      bind path, read path
+      bind name, read name
+      bind code, read code
+      wait true
+
+task bitwarden-drop
+  note async
+  take body, like text
+  take team, like text
+  take path, like text
+  take name, like text
+  like boolean
+  send back
+    call do-bitwarden-drop
+      bind body, read body
+      bind team, read team
+      bind path, read path
+      bind name, read name
+      wait true
+
+task bitwarden-one
+  note async
+  take body, like text
+  take team, like text
+  take name, like text
+  like text
+  send back
+    call do-bitwarden-one
+      bind body, read body
+      bind team, read team
+      bind name, read name
+      wait true

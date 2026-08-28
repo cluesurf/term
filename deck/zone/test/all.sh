@@ -10,6 +10,7 @@
 #   tree     the language-level tests, run by the Term test runner
 #   seal     sealing and opening, including refusal on a tampered value
 #   cache    the on-disk cache shape and its warm-read budget
+#   sdk      the provider write path, against a fake SDK
 #   help     the console's help surface, and drift between it and the dispatcher
 #   fresh    cache freshness, and that a good cache never calls the provider
 #   load     `zone load` end to end against a local cache
@@ -45,6 +46,7 @@ for t in base read zone; do
 done
 run seal  pnpm exec tsx test/seal.ts
 run cache pnpm exec tsx test/cache.ts
+run sdk   pnpm exec tsx test/sdk.ts
 run help  bash test/help.sh
 run fresh bash test/fresh.sh
 run load  bash test/load.sh

@@ -247,6 +247,7 @@ task load
       call pull
         bind spot, read want
         bind fresh, code true
+        bind name, text <>
         wait true
 
       save cache

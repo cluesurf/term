@@ -185,6 +185,11 @@ hook save
   take spot
     like text
     bind <base>
+  # one name to write, read from a hidden prompt. Without it this walks the
+  # whole declaration and creates a project per zone instead.
+  take name
+    like text
+    bind <>
   # actually write. Without it this reports only
   take commit
     like boolean
@@ -201,6 +206,10 @@ hook read
   take fresh
     like boolean
     bind code false
+  # ask about ONE name instead: is it declared, and is it at the provider
+  take name
+    like text
+    bind <>
   task pull
 
 # Values, to a platform that keeps its own copy
@@ -265,4 +274,8 @@ hook test
 
 # Unbind this machine and remove every stored code
 hook toss
+  # one secret to remove at the provider. Without it this unbinds the machine
+  take name
+    like text
+    bind <>
   task toss

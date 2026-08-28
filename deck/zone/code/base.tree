@@ -45,6 +45,9 @@ form mark
 form hold
   link name, like text
   link body, like text
+  # the secret's note, as written at the provider. In `note` mode its `zone:`
+  # line is what says which zone the value belongs to.
+  link note, like text
 
 # A declared requirement from a repository manifest. Carries a name and
 # whether the command may run without it, and never a value.
@@ -120,6 +123,12 @@ form spot
   link name, like text
   link path, like text
   link base, like text
+  # the organization at the provider
+  link team, like text
+  # how a secret says which zone it belongs to: `note` or `project`
+  link hold, like text
+  # in `note` mode, the one project every secret lives in
+  link bank, like text
   link bind, like text
   link root, like boolean
   link need, list need

@@ -167,6 +167,32 @@ echo "$out" | grep -q 'DB=from-base' && ok "still works from the cache" || no "t
 echo "$out" | grep -qi 'no cached values' && no "it claimed no cache while using one" || ok "it says nothing the second time"
 
 echo
+echo "=== one name at a time: what is refused before any provider call ==="
+# The declaration here has no `team`, so the organization check fires first.
+out="$(zone read --name database-url 2>&1)"
+echo "$out" | grep -qi 'which organization' && ok "a missing organization is named, with the line to add" \
+                                            || no "no organization message: $out"
+
+# With one, a name the declaration does not carry is refused by name.
+cat > "$PROJ/zone.tree" <<'EOF'
+self true
+
+base bitwarden
+  bind organization, <00000000-0000-0000-0000-000000000000>
+  bind mode, note
+
+need database-url
+EOF
+out="$(zone read --name not-declared 2>&1)"
+echo "$out" | grep -qi 'nothing declares not-declared' && ok "an undeclared name is refused by name" \
+                                                       || no "undeclared name not refused: $out"
+echo "$out" | grep -q 'need not-declared' && ok "and it says the line to add" || no "no fix offered"
+
+# A declared name gets past both checks and reaches the provider.
+out="$(zone read --name database-url 2>&1)"
+echo "$out" | grep -qi 'nothing declares' && no "a declared name was refused" || ok "a declared name is not refused"
+
+echo
 echo "=== no value is ever printed ==="
 out="$(zone read --fresh)"
 for v in from-base from-wordsurf from-star fake-machine-token; do

@@ -82,6 +82,9 @@ task mine-spot
       read name
 
   save base, text <>
+  save team, text <>
+  save hold, text <>
+  save bank, text <>
   save bind, text <>
   save root, false
   save lock
@@ -102,8 +105,58 @@ task mine-spot
         call first-term
           read kid
       fork case, read kid/head
+        # The provider, and its settings under it.
+        #
+        #   base bitwarden
+        #     bind organization, <5979a4b2-...>
+        #     bind mode, note
+        #
+        # Settings live UNDER the provider they belong to, rather than as
+        # loose top-level lines, because they mean nothing without it. A
+        # second provider would carry its own, and neither would have to
+        # invent a prefix to keep them apart.
         case base
           save base, read word
+          walk list, read kid/leaf
+            hook next
+              take site, name set
+              fork test
+                hook test
+                  call equal
+                    read set/head
+                    text <bind>
+                hook hold
+                  save what
+                    call first-term
+                      read set
+                  save into
+                    call bind-value
+                      read set
+                  fork case, read what
+                    # The organization the account belongs to. `bws` derives
+                    # it from the credential and the library does not: every
+                    # call takes it, so it is written down once. A uuid, not a
+                    # secret.
+                    case organization
+                      save team, read into
+                    # How a secret says which zone it belongs to.
+                    #
+                    #   note      the zone path is a `zone:` line in the
+                    #             secret's note. Unlimited and free, and gives
+                    #             up isolation: a token that reads the project
+                    #             reads every secret in it.
+                    #
+                    #   project   one project per zone path. A machine account
+                    #             can be scoped to a project, so this is the
+                    #             only shape that isolates. Bitwarden caps
+                    #             projects by plan.
+                    case mode
+                      save hold, read into
+                    # In `note` mode, the one project everything lives in.
+                    # Ignored in `project` mode, where the zone path IS the
+                    # project name.
+                    case project
+                      save bank, read into
         case bind
           fork test
             hook test
@@ -157,6 +210,9 @@ task mine-spot
       bind name, read name
       bind path, read path
       bind base, read base
+      bind team, read team
+      bind hold, read hold
+      bind bank, read bank
       bind bind, read bind
       bind root, read root
       bind need, read need
@@ -166,6 +222,64 @@ task mine-spot
       bind zone, read zone
 
 # The first bare word on a leaf, or empty.
+# The last word on a line.
+task last-term
+  take one, like leaf
+  like text
+  save out, text <>
+  walk list, read one/term
+    hook next
+      take site, name word
+      save out, read word
+  send back
+    read out
+
+# What a `bind <key>, <value>` line binds to.
+#
+# A comma makes what follows a LEAF, not another term, so both spellings put
+# the value in the first leaf:
+#
+#   bind organization, <5979a4b2-...>   -> leaf[0].code
+#   bind mode, note                     -> leaf[0].head
+#
+# The angle form carries a `code`, the bare word carries only a head. Both
+# are ordinary ways to write a value, so both are read.
+task bind-value
+  take one, like leaf
+  like text
+  # the `<...>` on the line itself
+  fork test
+    hook test
+      call not-equal
+        read one/code
+        text <>
+    hook hold
+      send back
+        read one/code
+  # otherwise the first leaf, which is where a comma puts what follows: its
+  # own `<...>` if it has one, else its bare word
+  save out, text <>
+  walk list, read one/leaf
+    hook next
+      take site, name kid
+      fork test
+        hook test
+          call equal
+            read out
+            text <>
+        hook hold
+          fork test
+            hook test
+              call not-equal
+                read kid/code
+                text <>
+            hook hold
+              save out, read kid/code
+            hook miss
+              save out, read kid/head
+  send back
+    read out
+
 task first-term
   take one, like leaf
   like text
@@ -747,3 +861,12 @@ task pull-cast
 
   send back
     read all
+
+# Whether the tree keeps every zone in one project, with the zone in the note.
+task is-note
+  take at, like spot
+  like boolean
+  send back
+    call equal
+      read at/hold
+      text <note>

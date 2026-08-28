@@ -33,7 +33,11 @@ load @term/seed/code/text
 load @term/seed/code/file
   find drop-file
 
+load ./one
+  find drop-one
+
 load ../tool/base
+  find not-equal
   find join-text
   find join-line
   find show-line
@@ -41,6 +45,20 @@ load ../tool/base
 
 task toss
   note async
+  take name, like text
+
+  # A name given means one secret at the provider, not this machine's binding.
+  fork test
+    hook test
+      call not-equal
+        read name
+        text <>
+    hook hold
+      send back
+        call drop-one
+          read name
+          wait true
+
   save bond
     call read-bond
   fork test

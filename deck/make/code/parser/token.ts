@@ -150,6 +150,14 @@ const PATTERN: Record<TokenKind, RegExp> = {
     /(?:\\[<>{}nrt\\]|\\(?![<>{}nrt\\])|\{+(?![a-zA-Z_])|[^>{\\])+/y,
 }
 
+/**
+ * Diagnostics found while lexing, rather than the first one.
+ *
+ * A file with three mistakes should report three. Returning on the first
+ * means a person fixes one, runs again, and finds the next: three round trips
+ * for one sitting's work. The lexer knows how to carry on past every error it
+ * can raise, so it does.
+ */
 export function tokenize(source: {
   file: string
   text: string
@@ -161,6 +169,11 @@ export function tokenize(source: {
   }
 
   const braceStack: string[] = []
+  // EVERY diagnostic, not the first. A file with three mistakes reports
+  // three: returning on the first means a person fixes one, runs again, and
+  // meets the next, which is three round trips for one sitting's work.
+  const found: Diagnostic[] = []
+
   const modeStack: LexMode[] = [LexMode.Default]
   // where each currently-open text literal started. Only used to report one
   // that never closed, which otherwise swallows the rest of the file.
@@ -317,9 +330,7 @@ export function tokenize(source: {
           // Escape them (`\{code,view\}`) to mean the literal characters.
           case TokenKind.Comma:
             if (mode === LexMode.Interpolation) {
-              return {
-                ok: false,
-                diagnostics: [
+              found.push(
                   diagnose('syntax-error', {
                     file: source.file,
                     span: {
@@ -329,9 +340,8 @@ export function tokenize(source: {
                     message:
                       'a comma cannot appear inside `{...}`, which substitutes a single name',
                     hint: 'to mean literal braces, escape them: `\\{a,b\\}`',
-                  }),
-                ],
-              }
+                }),
+              )
             }
 
             break
@@ -358,28 +368,11 @@ export function tokenize(source: {
       // the error at the previous token when there is one, otherwise at
       // the current position.
       if (!matched) {
-        return {
-          ok: false,
-          diagnostics: [
-            diagnose('syntax-error', {
-              file: source.file,
-              span: previous
-                ? previous.span
-                : {
-                    start: { line, column },
-                    end: { line, column: column + 1 },
-                  },
-            }),
-          ],
-        }
-      }
-    }
-
-    // leftover unconsumed input on the line (the cursor did not reach the end)
-    if (pos < lineText.length) {
-      return {
-        ok: false,
-        diagnostics: [
+        // RECORD IT AND SKIP ONE CHARACTER. Returning here abandons the rest
+        // of the file, so a second mistake three lines down is never seen.
+        // Advancing by one guarantees progress, which is what the loop needs,
+        // and lets the remaining lines be lexed and checked.
+        found.push(
           diagnose('syntax-error', {
             file: source.file,
             span: previous
@@ -389,8 +382,30 @@ export function tokenize(source: {
                   end: { line, column: column + 1 },
                 },
           }),
-        ],
+        )
+
+        pos += 1
+        column += 1
+        continue
       }
+    }
+
+    // leftover unconsumed input on the line (the cursor did not reach the end)
+    if (pos < lineText.length) {
+      // The rest of THIS line is not lexable, so the next line is the resync
+      // point. A line is the natural unit to recover at here, because the
+      // structure pass keys nesting off line indentation anyway.
+      found.push(
+        diagnose('syntax-error', {
+          file: source.file,
+          span: previous
+            ? previous.span
+            : {
+                start: { line, column },
+                end: { line, column: column + 1 },
+              },
+        }),
+      )
     }
   }
 
@@ -409,19 +424,20 @@ export function tokenize(source: {
   if (textOpenStack.length > 0) {
     const at = textOpenStack[textOpenStack.length - 1]!
 
-    return {
-      ok: false,
-      diagnostics: [
-        diagnose('syntax-error', {
+    found.push(
+      diagnose('syntax-error', {
           file: source.file,
           hint: 'this text literal is never closed, so it swallows the rest of the file. Inside a literal `<` and `>` balance, so an unescaped one opens a bracket that never closes. Write `\\<` and `\\>` for literal angles',
-          span: {
-            start: { line: at.line, column: at.column },
-            end: { line: at.line, column: at.column + 1 },
-          },
-        }),
-      ],
-    }
+        span: {
+          start: { line: at.line, column: at.column },
+          end: { line: at.line, column: at.column + 1 },
+        },
+      }),
+    )
+  }
+
+  if (found.length > 0) {
+    return { ok: false, diagnostics: found }
   }
 
   return { ok: true, tokens }
