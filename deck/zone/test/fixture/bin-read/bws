@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Fake Bitwarden Secrets Manager, per project, for the freshness tests.
+#
+# Every invocation appends a line to $ZONE_FAKE_LOG, so a test can prove the
+# provider was NOT called rather than merely observing that a command was
+# quick. "It skipped the fetch" and "the fetch was cached upstream" look the
+# same from the outside otherwise.
+echo "$*" >> "${ZONE_FAKE_LOG:-/dev/null}"
+
+case "$1 $2" in
+  "--version"*) echo "bws 1.0.0-fake"; exit 0 ;;
+  "project get") exit 0 ;;
+  "project list")
+    cat <<'JSON'
+[{"id":"p-base","name":"base"},
+ {"id":"p-word","name":"base/word.surf"},
+ {"id":"p-star","name":"base/word.surf/star"}]
+JSON
+    exit 0 ;;
+  "secret list")
+    # zone passes the project NAME here, which is the zone path.
+    case "$3" in
+      base)                 echo '[{"key":"database-url","value":"from-base"}]' ;;
+      base/word.surf)       echo '[{"key":"google-client-id","value":"from-wordsurf"}]' ;;
+      base/word.surf/star)  echo '[{"key":"sentry-dsn","value":"from-star"}]' ;;
+      *)                    echo '[]' ;;
+    esac
+    exit 0 ;;
+esac
+echo "fake bws: unhandled $*" >&2; exit 1

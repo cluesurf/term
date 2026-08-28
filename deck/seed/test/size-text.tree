@@ -1,0 +1,42 @@
+# `size` on text counts CHARACTERS, not UTF-16 units and not bytes.
+#
+# The three agree only on ASCII. Devanagari, an astral character and an emoji
+# each separate them, so those are what is asserted here: a test that only
+# used "abc" would pass on every wrong implementation.
+
+load ../code/text
+  find text
+  find char-count
+
+load ../code/number
+  find number
+
+test ascii-size
+  want hold
+    call is-equal
+      call char-count
+        text <abc>
+      code 3
+
+test devanagari-size
+  want hold
+    call is-equal
+      call char-count
+        text <नमस्ते>
+      code 6
+
+test astral-is-one-character
+  # U+1D11E, outside the basic plane. JavaScript's `.length` says 2 here,
+  # which is the answer this verb exists to avoid.
+  want hold
+    call is-equal
+      call char-count
+        text <𝄞>
+      code 1
+
+test empty-size
+  want hold
+    call is-equal
+      call char-count
+        text <>
+      code 0

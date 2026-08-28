@@ -38,34 +38,60 @@ load ../work/code
 load ../work/show
   find show
 
-load ../work/test
-  find vet
+load ../work/list
+  find list
+
+load ../work/load
+  find load
+
+load ../work/files
+  find files
+
+load ../work/read
+  find pull
+
+load ../work/save
+  find keep-zone
+
+load ../work/seal
+  find mint
+  find tell-seal
+  find shed-seal
+
+load ../work/probe
+  find probe
+
+load ../work/deep
+  find deep
+
+load ../work/send
+  find post
 
 load ../work/toss
   find toss
 
 # Configure this machine: who you are, where secrets live
 hook bind
-  # who you are on this team
+  # the organization at the provider. The one thing that cannot be guessed
+  take team
+    like text
+    need true
+  # who you are. Detected from the git config, or the login name
   take mind
     like text
-    need true
-  # this machine's name, used to key its credentials
+    bind <>
+  # this machine's name, used to key its credentials. Detected from the host
   take host
     like text
-    need true
-  # the tier this machine defaults to
+    bind <>
+  # the environment this machine defaults to
   take tier
     like text
-    bind <development>
+    bind <moon>
   # which provider holds the secrets
   take hold
     like text
     bind <bitwarden>
-  # the organization in that provider
-  take team
-    like text
-    need true
   task moor
 
 # Run a command with secrets in its environment
@@ -119,6 +145,107 @@ hook code
       need true
     task shed
 
+# Run a command with a zone's values in its environment
+hook load
+  # which zone path, for instance `word.surf/moon`. Default is the root.
+  take spot
+    like text
+    bind <base>
+  # the command to run
+  take main
+    like text
+    need true
+  # the command's own arguments
+  take list
+    many
+  # overwrite a name already set in the environment
+  take over
+    like boolean
+    bind code false
+  task load
+
+# The names a path resolves to, never their values
+hook list
+  # which zone path, for instance `word.surf/star`. Default is the root.
+  # NOT named `path`. The route table keys every command by a field of that
+  # name, so a take called `path` is dropped from it and the argument never
+  # binds. `zone list word.surf/star` silently arrived with nothing.
+  take spot
+    like text
+    bind <base>
+  # also print the extra spellings each value is published under
+  take alias
+    like boolean
+    bind code false
+  task list
+
+# Save the declaration to the provider. Never deletes
+hook save
+  # which zone path, for instance `word.surf`. Default is the whole tree.
+  take spot
+    like text
+    bind <base>
+  # actually write. Without it this reports only
+  take commit
+    like boolean
+    bind code false
+  task keep-zone
+
+# Fetch from the provider and fill the local cache
+hook read
+  # which zone path, for instance `word.surf/star`. Default is the root.
+  take spot
+    like text
+    bind <base>
+  # fetch even when the cache is still inside its window
+  take fresh
+    like boolean
+    bind code false
+  task pull
+
+# Values, to a platform that keeps its own copy
+hook send
+  # which target: wrangler
+  take target
+    like text
+    need true
+  # which zone path, for instance `word.surf/star`
+  take spot
+    like text
+    bind <base>
+  # what to fill. For wrangler, the Worker name
+  take place
+    like text
+    bind <>
+  # actually send. Without it this reports only
+  take commit
+    like boolean
+    bind code false
+  task post
+
+# Every zone path, one per line, for shell completion
+hook deep
+  task deep
+
+# Which declarations are in force here, and their caches
+hook files
+  task files
+
+# The master key that opens this machine's local cache
+hook seal
+
+  # Make a key, replacing any that is already there
+  hook make
+    task mint
+
+  # Say whether this machine has one, never what it is
+  hook show
+    task tell-seal
+
+  # Remove it. The values are still at the provider
+  hook toss
+    task shed-seal
+
 # What this machine is bound to
 hook show
   # which tier to describe, default from the binding
@@ -130,12 +257,11 @@ hook show
 
 # Check the whole setup without revealing anything
 hook test
-  # which tier to check, default from the binding
-  take tier
-    code t
+  # which zone path, for instance `word.surf/star`. Default is the root.
+  take spot
     like text
-    bind <>
-  task vet
+    bind <base>
+  task probe
 
 # Unbind this machine and remove every stored code
 hook toss

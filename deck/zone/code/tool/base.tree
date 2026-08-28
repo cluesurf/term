@@ -45,6 +45,14 @@ bind show-line
   case node
     text <process.stdout.write($text + "\\n")>
 
+# Say something on stderr without stopping. A warning belongs on stderr so a
+# command whose stdout is piped somewhere is not corrupted by it, and so the
+# warning still shows when it is.
+bind warn-line
+  take text, like text
+  case node
+    text <process.stderr.write($text + "\\n")>
+
 # Stop with a message on stderr and a non-zero exit.
 bind halt
   take text, like text
@@ -97,18 +105,123 @@ bind have-file
   case node
     text <require("node:fs").existsSync($path)>
 
-# How many characters a text holds.
+# How many UTF-16 CODE UNITS are in the text.
 #
-# `@term/seed/code/text` has no length verb at all: `index-of`, `substring`
-# and the rest are there, but nothing reports a size. The obvious names are
-# both taken at the top level of the package (`length` by `bytes`, `count` by
-# a `list` method) and Term names are package-global, so adding one upstream
-# needs a naming decision rather than a patch. Kept here until that is made.
-bind text-size
+# NOT `size` from @term/seed/code/text, and not interchangeable with it.
+# `size` counts characters, which is the right answer when measuring text for
+# a person. This counts the unit that `substring` and `char-at` INDEX in, and
+# it is only ever used for arithmetic against them.
+#
+# The two agree on everything except astral characters, where a character
+# count is half the unit count. Using `size` here would slice a surrogate pair
+# down the middle the first time a value held an emoji, and the failure would
+# be a mangled secret rather than an error.
+bind text-units
   take value, like text
   like number
   case node
     text <$value.length>
+
+# Whether a name is already set in this process's environment. A value an
+# orchestrator injected is not overwritten by default.
+bind have-env
+  take name, like text
+  like boolean
+  case node
+    text <process.env[$name] !== undefined>
+
+# The moment, as an ISO timestamp. A cache header carries `made` and `good`
+# in this form, which sorts and compares as plain text, so freshness needs no
+# date arithmetic and no timezone.
+bind now-stamp
+  like text
+  case node
+    text <new Date().toISOString().replace(/\\.\\d+Z$/, "Z")>
+
+# The moment, a number of hours from now, in the same form.
+bind then-stamp
+  take hours, like number
+  like text
+  case node
+    text <new Date(Date.now() + $hours * 3600000).toISOString().replace(/\\.\\d+Z$/, "Z")>
+
+# Whether a stamp is in the past. ISO stamps compare as plain text, so this
+# is a string comparison and not date arithmetic.
+bind past-stamp
+  take stamp, like text
+  like boolean
+  case node
+    text <new Date().toISOString().replace(/\\.\\d+Z$/, "Z") \> $stamp>
+
+# How far a stamp is from now, in words: "3 hours ago", "in 40 minutes".
+# A cache header that reads "2026-08-27T09:14:02Z" makes a person do
+# arithmetic to answer "is this old", which is the only question they have.
+bind gap-text
+  take stamp, like text
+  like text
+  case node
+    text <(function () { var d = Date.parse($stamp); if (isNaN(d)) { return $stamp } var s = Math.round((d - Date.now()) / 1000); var back = s \< 0; s = Math.abs(s); var n, u; if (s \< 60) { n = s; u = "second" } else if (s \< 3600) { n = Math.round(s / 60); u = "minute" } else if (s \< 86400) { n = Math.round(s / 3600); u = "hour" } else { n = Math.round(s / 86400); u = "day" } if (u === "minute" && n === 60) { n = 1; u = "hour" } if (u === "hour" && n === 24) { n = 1; u = "day" } var w = n + " " + u + (n === 1 ? "" : "s"); return back ? w + " ago" : "in " + w })()>
+
+# Write a file with an owner-only mode, making its directory owner-only too.
+# A cache of sealed values is still a file worth keeping off a shared box.
+bind save-private
+  take path, like text
+  take text, like text
+  case node
+    text <(function () { var fs = require("node:fs"); fs.mkdirSync(require("node:path").dirname($path), { recursive: true, mode: 0o700 }); fs.writeFileSync($path, $text, { mode: 0o600 }) })()>
+
+# Milliseconds since the epoch, for measuring the warm path. A budget that
+# is not measured is a wish.
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+# Print one measured line: a name, a value and its budget.
+bind mark-time
+  take name, like text
+  take took, like number
+  take cap, like number
+  case node
+    text <process.stdout.write((($took \< $cap) ? "  ok    " : "  OVER  ") + $name + "  " + $took + " ms, budget " + $cap + "\\n")>
+
+# A number as text, so it can join a message. `join-text` takes text only.
+bind text-of
+  take value, like number
+  like text
+  case node
+    text <String($value)>
+
+# Hand one value to a platform that keeps its own copy.
+#
+# THE VALUE GOES ON STDIN, never in an argument. A command line is readable
+# by anything that can list the process table, which is the whole reason zone
+# does not shell out with a secret in argv. `wrangler secret put` and
+# `doctl` both read from stdin, so nothing has to be compromised here.
+#
+# Returns empty on success, or the reason it failed.
+bind put-secret
+  take name, like text
+  take list, like list
+  take body, like text
+  like text
+  case node
+    text <(function () { try { require("node:child_process").execFileSync($name, $list, { input: $body, stdio: ["pipe", "ignore", "pipe"], timeout: 60000, killSignal: "SIGKILL" }); return "" } catch (e) { var why = String((e && e.stderr) || (e && e.message) || e).trim().split("\\n")[0]; return why || "failed" } })()>
+
+# This machine's name. Detected rather than asked: a person setting up a
+# laptop knows its name and typing it again is a question that answers
+# itself.
+bind this-host
+  like text
+  case node
+    text <String(require("node:os").hostname()).split(".")[0]>
+
+# Who this is, from the git config, falling back to the login name. Same
+# reasoning: it is already written down twice on any machine that has git.
+bind this-mind
+  like text
+  case node
+    text <(function () { try { var n = require("node:child_process").execFileSync("git", ["config", "user.name"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); if (n) { return n.toLowerCase().split(/\\s+/).join("-") } } catch (e) {} return process.env.USER || process.env.LOGNAME || "someone" })()>
 
 # Two texts are the same.
 bind equal

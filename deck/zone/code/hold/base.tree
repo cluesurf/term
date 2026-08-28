@@ -29,6 +29,9 @@ load ./bitwarden
   find bitwarden-open
   find bitwarden-good
   find bitwarden-read
+  find bitwarden-list
+  find bitwarden-make
+  find bitwarden-read-many
 
 # Whether this machine can reach the named provider.
 task open
@@ -55,6 +58,51 @@ task good
           bind bind, read bind
   send back
     false
+
+# Several projects at once, each as a bind and the holds it carries.
+task read-hold-many
+  note async
+  take kind, like text
+  take body, like text
+  take list, like list
+  like list
+  fork case, read kind
+    case bitwarden
+      send back
+        call bitwarden-read-many
+          bind body, read body
+          bind list, read list
+          wait true
+  send back
+    make list
+
+# Every project the credential can see, as name and id pairs.
+task list-hold
+  take kind, like text
+  take body, like text
+  like list
+  fork case, read kind
+    case bitwarden
+      send back
+        call bitwarden-list
+          read body
+  send back
+    make list
+
+# Create a project, named after the zone path it answers.
+task make-hold
+  take kind, like text
+  take body, like text
+  take name, like text
+  like text
+  fork case, read kind
+    case bitwarden
+      send back
+        call bitwarden-make
+          bind body, read body
+          bind name, read name
+  send back
+    text <>
 
 # Everything the project holds, before narrowing.
 task read-hold

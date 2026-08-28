@@ -62,13 +62,13 @@ task show-leaf
     hook hold
       call push
         bind list, read out
-        bind item, text <<>
+        bind item, text <\<>
       call push
         bind list, read out
         bind item, read one/code
       call push
         bind list, read out
-        bind item, text <>>
+        bind item, text <\>>
   fork test
     hook test
       call more
@@ -135,8 +135,8 @@ test read-value
   want hold
     call equal
       call show
-        text <mark <1>>
-      text <mark<1>>
+        text <mark \<1\>>
+      text <mark\<1\>>
 
 test read-comma-chain
   want hold
@@ -149,5 +149,5 @@ test read-comma-value
   want hold
     call equal
       call show
-        text <bind database-url, <sealed>>
-      text <bind[database-url](<sealed>)>
+        text <bind database-url, \<sealed\>>
+      text <bind[database-url]\<sealed\>>

@@ -30,7 +30,7 @@ load @term/seed/code/boolean
 bind do-bitwarden-open
   like boolean
   case node
-    text <(function () { try { require("node:child_process").execFileSync("bws", ["--version"], { stdio: "ignore" }); return true } catch (e) { return false } })()>
+    text <(function () { try { require("node:child_process").execFileSync("bws", ["--version"], { stdio: "ignore", timeout: 10000, killSignal: "SIGKILL" }); return true } catch (e) { return false } })()>
 
 # Confirm the credential opens the project, without reading any values.
 # This is what `zone code show` and `zone test` use, so a check never pulls
@@ -40,7 +40,7 @@ bind do-bitwarden-good
   take bind, like text
   like boolean
   case node
-    text <(function () { try { require("node:child_process").execFileSync("bws", ["project", "get", $bind], { env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }), stdio: "ignore" }); return true } catch (e) { return false } })()>
+    text <(function () { try { require("node:child_process").execFileSync("bws", ["project", "get", $bind], { env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }), stdio: "ignore", timeout: 20000, killSignal: "SIGKILL" }); return true } catch (e) { return false } })()>
 
 # Every secret in one project, as name and value pairs. The caller narrows
 # to what the manifest declared.
@@ -49,7 +49,71 @@ bind do-bitwarden-read
   take bind, like text
   like list
   case node
-    text <(function () { var out = require("node:child_process").execFileSync("bws", ["secret", "list", $bind, "--output", "json"], { encoding: "utf8", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).map(function (s) { return { name: s.key, body: s.value } }) })()>
+    text <(function () { try { var out = require("node:child_process").execFileSync("bws", ["secret", "list", $bind, "--output", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).map(function (s) { return { name: s.key, body: s.value } }) } catch (e) { var why = (e && (e.code === "ETIMEDOUT" || e.signal === "SIGKILL")) ? "the provider did not answer within 20 seconds" : String((e && e.stderr) || (e && e.message) || e).trim().split("\\n").filter(function (l) { return l.trim() }).slice(0, 3).join("\\n  "); process.stderr.write("The provider refused.\\n\\n  " + why + "\\n\\nThe credential may be wrong, expired or revoked, or the provider may be\\nunreachable. Check the credential with `zone code show`, replace it with\\n`zone code save`, and check the network if it timed out.\\n"); process.exit(1) } })()>
+
+# Every project the credential can see, as name and id pairs. `zone save`
+# compares the declaration against this to find the zones that have no
+# project yet.
+bind do-bitwarden-list
+  take body, like text
+  like list
+  case node
+    text <(function () { try { var out = require("node:child_process").execFileSync("bws", ["project", "list", "--output", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).map(function (p) { return { name: p.name, body: p.id } }) } catch (e) { var why = (e && (e.code === "ETIMEDOUT" || e.signal === "SIGKILL")) ? "the provider did not answer within 20 seconds" : String((e && e.stderr) || (e && e.message) || e).trim().split("\\n").filter(function (l) { return l.trim() }).slice(0, 3).join("\\n  "); process.stderr.write("The provider refused.\\n\\n  " + why + "\\n\\nThe credential may be wrong, expired or revoked, or the provider may be\\nunreachable. Check the credential with `zone code show`, replace it with\\n`zone code save`, and check the network if it timed out.\\n"); process.exit(1) } })()>
+
+# Create a project. Named after the zone path, so what a person sees in the
+# provider is the address the declaration uses.
+bind do-bitwarden-make
+  take body, like text
+  take name, like text
+  like text
+  case node
+    text <(function () { try { var out = require("node:child_process").execFileSync("bws", ["project", "create", $name, "--output", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }); return JSON.parse(out).id } catch (e) { var why = (e && (e.code === "ETIMEDOUT" || e.signal === "SIGKILL")) ? "the provider did not answer within 20 seconds" : String((e && e.stderr) || (e && e.message) || e).trim().split("\\n").filter(function (l) { return l.trim() }).slice(0, 3).join("\\n  "); process.stderr.write("The provider refused.\\n\\n  " + why + "\\n\\nThe credential may be wrong, expired or revoked, or the provider may be\\nunreachable. Check the credential with `zone code show`, replace it with\\n`zone code save`, and check the network if it timed out.\\n"); process.exit(1) } })()>
+
+# Several projects at once.
+#
+# ONE ROUND TRIP PER PROJECT, and the projects go together. A tree with eight
+# zones is one wall clock round trip rather than eight, because the requests
+# overlap instead of queueing. `zone read` on a whole tree is the only place
+# this matters, and it is the place a person waits.
+#
+# A project that fails is reported as empty rather than taking the run down:
+# the caller already refuses on a missing required name, and that message
+# names the value, which is more use than a provider error naming a project.
+bind do-bitwarden-read-many
+  take body, like text
+  take list, like list
+  like list
+  case node
+    text <(function () { var cp = require("node:child_process"); var running = $list.map(function (bind) { return new Promise(function (done) { cp.execFile("bws", ["secret", "list", bind, "--output", "json"], { encoding: "utf8", maxBuffer: 33554432, timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }, function (bad, out) { if (bad) { done({ bind: bind, hold: [] }); return } try { done({ bind: bind, hold: JSON.parse(out).map(function (s) { return { name: s.key, body: s.value } }) }) } catch (e) { done({ bind: bind, hold: [] }) } }) }) }); return Promise.all(running) })()>
+
+# Exportable wrapper: a native `bind` is file-local.
+task bitwarden-read-many
+  note async
+  take body, like text
+  take list, like list
+  like list
+  send back
+    call do-bitwarden-read-many
+      bind body, read body
+      bind list, read list
+
+# Exportable wrapper: a native `bind` is file-local.
+task bitwarden-list
+  take body, like text
+  like list
+  send back
+    call do-bitwarden-list
+      read body
+
+# Exportable wrapper: a native `bind` is file-local.
+task bitwarden-make
+  take body, like text
+  take name, like text
+  like text
+  send back
+    call do-bitwarden-make
+      bind body, read body
+      bind name, read name
 
 # Exportable wrapper: a native `bind` is file-local.
 task bitwarden-open

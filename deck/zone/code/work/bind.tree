@@ -37,13 +37,43 @@ load ../tool/base
   find dir-of
   find make-dir
   find save-text
+  find equal
+  find this-host
+  find this-mind
 
+# ONE QUESTION, and everything else detected.
+#
+# A setup command that asks five things a machine already knows is a setup
+# command people put off. The host comes from the operating system, the
+# person from the git config, and the provider and default environment have
+# one sensible answer each. Only the team at the provider cannot be guessed,
+# so that is the only argument without a default.
+#
+# Every one can still be given, for the machine where a guess is wrong.
 task moor
+  take team, like text
   take mind, like text
   take host, like text
   take tier, like text
   take hold, like text
-  take team, like text
+
+  fork test
+    hook test
+      call equal
+        read host
+        text <>
+    hook hold
+      save host
+        call this-host
+
+  fork test
+    hook test
+      call equal
+        read mind
+        text <>
+    hook hold
+      save mind
+        call this-mind
 
   fork case
     call have

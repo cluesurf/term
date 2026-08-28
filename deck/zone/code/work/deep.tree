@@ -1,0 +1,95 @@
+# `zone deep` — every zone path in the declaration, one per line.
+#
+# The machine-readable half of `zone list`. Shell completion calls it, so a
+# path is completed from the declaration itself rather than from a list
+# somebody has to keep in step.
+#
+# A path is the one thing that gets mistyped and the one thing the tool can
+# complete perfectly, so this exists for that and nothing else. It prints
+# paths, never names and never values.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find push
+  find size
+
+load ../base
+  find spot
+
+load ../config/find
+  find read-decks
+
+load ../config/zone
+  find mine-zone
+
+load ../tool/base
+  find show-line
+  find equal
+  find read-file
+  find is-equal
+  find more
+
+task walk-spots
+  take at, like spot
+  like list
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item, read at/path
+  walk list, read at/zone
+    hook next
+      take site, name kid
+      walk list
+        call walk-spots
+          read kid
+        hook next
+          take site, name one
+          call push
+            bind list, read out
+            bind item, read one
+  send back
+    read out
+
+task deep
+  note async
+  like number
+  save decks
+    call read-decks
+      wait true
+  fork test
+    hook test
+      call is-equal
+        call size
+          read decks
+        code 0
+    hook hold
+      send back
+        code 0
+  save deck, text <>
+  walk list, read decks
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read deck
+            text <>
+        hook hold
+          save deck, read one
+  save root
+    call mine-zone
+      call read-file
+        read deck
+  walk list
+    call walk-spots
+      read root
+    hook next
+      take site, name one
+      call show-line
+        read one
+  send back
+    code 0

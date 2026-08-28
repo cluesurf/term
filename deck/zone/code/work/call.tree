@@ -153,7 +153,7 @@ task call
   save all
     call read-hold
       bind kind, read claim-in/hold
-      bind body, read pass-in/body
+      bind body, read pass-in
       bind bind, read claim-in/bind
   save gone
     call miss-need

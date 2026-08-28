@@ -17,6 +17,9 @@ load @term/seed/code/text
   find to-upper-case
   find replace-all
 
+load ../tool/base
+  find join-text
+
 load @term/seed/code/list
   find list
 
@@ -29,6 +32,40 @@ load @term/seed/code/integer
 #
 #   database-url  becomes  DATABASE_URL
 #   api-key       becomes  API_KEY
+# A declared name, spelled for one cast.
+#
+#   snake   cloudflare-api-token -> CLOUDFLARE_API_TOKEN
+#   tf      cloudflare-api-token -> TF_VAR_cloudflare_api_token
+#   vite    cloudflare-api-token -> VITE_CLOUDFLARE_API_TOKEN
+#
+# A zone may declare more than one, which is how `land` gets both the plain
+# name its scripts read and the `TF_VAR_` name OpenTofu wants, from one
+# fetched value rather than two copies of the secret.
+task cast-name
+  take form, like text
+  take from, like text
+  like text
+  fork case, read form
+    case tf
+      send back
+        call join-text
+          make list
+            text <TF_VAR_>
+            call replace-all
+              read from
+              text <->
+              text <_>
+    case vite
+      send back
+        call join-text
+          make list
+            text <VITE_>
+            call name
+              read from
+  send back
+    call name
+      read from
+
 task name
   take from, like text
   like text

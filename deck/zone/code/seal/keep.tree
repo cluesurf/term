@@ -1,0 +1,144 @@
+# Where the master key lives.
+#
+# THE MASTER KEY AND THE BOOTSTRAP CREDENTIAL ARE TWO DIFFERENT SECRETS and
+# they stay two different items in the keystore. The bootstrap credential
+# opens the provider. The master key opens the local cache. Collapsing them
+# means losing the cache key revokes remote access, and revoking remote
+# access bricks the cache. Neither is true when they are separate.
+#
+# The key is keyed by host, like the bootstrap credential, so two machines
+# hold different keys and one can be replaced without touching the other.
+#
+# It is stored tone-packed rather than as raw bytes, because a keystore holds
+# text and tone is what this codebase writes a payload as.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/bytes
+  find bytes
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+  find unwrap
+  find is-none
+
+load @term/seed/code/tone
+  find tone-pack
+  find tone-unpack
+
+# The store hands back a maybe holding the credential AS TEXT. `read-code` is
+# annotated `maybe pass`, but every backend returns `{ form: "some", value:
+# "<the string>" }`, so there is no record and no `body` field. Reading
+# `.body` off it yields undefined, which is what `code/work/call.tree` does
+# today and why the end to end harness never noticed: its fake provider does
+# not check the token it is handed.
+load ../base
+  find seat
+  find bond
+  find pass
+
+load ../save/base
+  find put
+  find read-code
+  find burn
+
+load ./base
+  find make-key
+
+load ../tool/base
+  find join-text
+  find equal
+
+host seal-tier, text <seal>
+
+# The seat the master key files under. Separate from the bootstrap
+# credential's seat by its tier, so the two never overwrite each other.
+task seal-seat
+  take bond, like bond
+  like seat
+  send back
+    make seat
+      bind tier, read seal-tier
+      bind name
+        call join-text
+          make list
+            read bond/host
+            text <:>
+            read seal-tier
+
+# Make a key and store it. Returns the key, so the caller can use it at once
+# without a second read.
+task make-seal
+  note async
+  take kind, like text
+  take spot, like seat
+  like bytes
+  save key
+    call make-key
+      wait true
+  call put
+    bind kind, read kind
+    bind spot, read spot
+    bind body
+      call tone-pack
+        read key
+  send back
+    read key
+
+# The key, if this machine has one.
+task read-seal
+  note async
+  take kind, like text
+  take spot, like seat
+  like maybe
+    head bytes
+  save got
+    call read-code
+      bind kind, read kind
+      bind spot, read spot
+      wait true
+  fork case, read got
+    case none
+      send back
+        make none
+    case some
+      send back
+        make some
+          bind value
+            call tone-unpack
+              call unwrap
+                read got
+
+# Whether a key is there, without reading it.
+task have-seal
+  note async
+  take kind, like text
+  take spot, like seat
+  like boolean
+  save got
+    call read-seal
+      bind kind, read kind
+      bind spot, read spot
+      wait true
+  fork case, read got
+    case none
+      send back
+        false
+    case some
+      send back
+        true
+
+# Remove the local key. The cache it opened becomes unreadable, which is not
+# a loss: the cache is a speed layer and the values are still at the provider.
+task toss-seal
+  note async
+  take kind, like text
+  take spot, like seat
+  call burn
+    bind kind, read kind
+    bind spot, read spot
+    wait true

@@ -162,6 +162,9 @@ export function tokenize(source: {
 
   const braceStack: string[] = []
   const modeStack: LexMode[] = [LexMode.Default]
+  // where each currently-open text literal started. Only used to report one
+  // that never closed, which otherwise swallows the rest of the file.
+  const textOpenStack: Array<{ line: number; column: number }> = []
   // running `<` minus `>` balance for each open text literal, so a nested `>` (closing a generic like `Hmac<Sha256>`,
   // not the literal) stays content. One entry per Text frame on the mode stack, so nested texts do not interfere.
   const textDepthStack: number[] = []
@@ -300,10 +303,13 @@ export function tokenize(source: {
           case TokenKind.OpenAngle:
             modeStack.push(LexMode.Text)
             textDepthStack.push(0)
+            // where this literal opened, so an unclosed one can point at it
+            textOpenStack.push({ line, column })
             break
           case TokenKind.CloseAngle:
             modeStack.pop()
             textDepthStack.pop()
+            textOpenStack.pop()
             break
           // A COMMA CANNOT APPEAR IN AN INTERPOLATION. `{name}` substitutes ONE name, so
           // `{code,view}` is not a template: it is data whose braces were not escaped,
@@ -385,6 +391,36 @@ export function tokenize(source: {
           }),
         ],
       }
+    }
+  }
+
+  // A TEXT LITERAL LEFT OPEN AT THE END OF THE FILE IS AN ERROR.
+  //
+  // Inside a literal, `<` and `>` balance, so that a generic like `Hmac<Sha256>`
+  // can be written as content. The cost is that ONE unescaped `<` -- a `s < 60`
+  // in a native body, say -- opens a bracket that never closes, and the literal
+  // eats the rest of the file in silence.
+  //
+  // What that looks like is every later name in the file being undefined, and
+  // the build reporting missing names in a dozen OTHER files that imported
+  // them, with nothing pointing at the line that actually did it. Reporting it
+  // here, at the `<` that opened it, is the difference between a minute and an
+  // afternoon. Write `\<` for a literal one.
+  if (textOpenStack.length > 0) {
+    const at = textOpenStack[textOpenStack.length - 1]!
+
+    return {
+      ok: false,
+      diagnostics: [
+        diagnose('syntax-error', {
+          file: source.file,
+          hint: 'this text literal is never closed, so it swallows the rest of the file. Inside a literal `<` and `>` balance, so an unescaped one opens a bracket that never closes. Write `\\<` and `\\>` for literal angles',
+          span: {
+            start: { line: at.line, column: at.column },
+            end: { line: at.line, column: at.column + 1 },
+          },
+        }),
+      ],
     }
   }
 

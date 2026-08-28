@@ -43,6 +43,7 @@ bind do-keychain-save
 bind do-keychain-read
   take spot, like seat
   like maybe
+    head text
   case node
     text <(function () { try { return { form: "some", value: require("node:child_process").execFileSync("security", ["find-generic-password", "-s", "zone", "-a", $spot.name, "-w"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trimEnd() } } catch (e) { return { form: "none" } } })()>
 
@@ -71,6 +72,7 @@ task keychain-save
 task keychain-read
   take spot, like seat
   like maybe
+    head text
   send back
     call do-keychain-read
       bind spot, read spot

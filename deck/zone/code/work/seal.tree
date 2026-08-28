@@ -1,0 +1,173 @@
+# `zone seal` — the master key that opens the local cache.
+#
+#   zone seal make     make one, replacing any that is there
+#   zone seal show     say whether this machine has one, never what it is
+#   zone seal toss     remove it
+#
+# SEPARATE FROM `zone code`, which manages the bootstrap credential that
+# opens the provider. Two secrets, two keystore items, two commands. Losing
+# the master key must not revoke remote access, and revoking remote access
+# must not brick the cache.
+#
+# LOSING IT IS CHEAP. The cache is a speed layer, so a new key plus a
+# `zone read` restores everything. That is why `make` replaces without
+# ceremony and `toss` does not warn: neither destroys a value that exists
+# only here.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+  find unwrap
+
+load ../base
+  find bond
+
+load ../config/machine
+  find read-bond
+
+load ../save/base
+  find pick
+
+load ../seal/keep
+  find seal-seat
+  find make-seal
+  find have-seal
+  find toss-seal
+
+load ../tool/base
+  find join-text
+  find join-line
+  find show-line
+  find halt
+  find equal
+
+# Every seal command needs the binding, so the read and its refusal live here.
+task seal-bond
+  note async
+  like bond
+  save got
+    call read-bond
+      wait true
+  fork test
+    hook test
+      call is-none
+        read got
+    hook hold
+      # `halt` exits the process, so the unwrap below is never reached with a
+      # none. It is a statement rather than a `send back` because this task
+      # returns a bond and halt returns a number.
+      call halt
+        text <This machine is not bound. Run `zone bind` first.>
+  send back
+    call unwrap
+      read got
+
+task mint
+  note async
+  like number
+  save bond
+    call seal-bond
+      wait true
+  save kind
+    call pick
+
+  # The env store cannot be written to: the environment owns its values and
+  # whatever set them owns them. Saying "a key is stored" here would be a
+  # false success message about a security artifact, which is how somebody
+  # spends an afternoon wondering why nothing opens.
+  fork test
+    hook test
+      call equal
+        read kind
+        text <env>
+    hook hold
+      call show-line
+        call join-line
+          make list
+            text <This machine uses the env store, which zone cannot write to.>
+            text <>
+            text <Set ZONE_CODE_SEAL yourself, to a tone-packed 32-byte key, from whatever>
+            text <secret store the platform gives you. Nothing was made or stored here.>
+      send back
+        code 1
+
+  call make-seal
+    bind kind, read kind
+    bind spot
+      call seal-seat
+        read bond
+    wait true
+  call show-line
+    call join-text
+      make list
+        text <A master key is stored in the >
+        read kind
+        call join-line
+          make list
+            text < store for this machine.>
+            text <>
+            text <Anything already in the cache was sealed with the old key and cannot be>
+            text <opened now. Run `zone read` to fill it again.>
+  send back
+    code 0
+
+# Says whether a key is there. Never what it is, and there is no flag for it.
+task tell-seal
+  note async
+  like number
+  save bond
+    call seal-bond
+      wait true
+  save kind
+    call pick
+  save got
+    call have-seal
+      bind kind, read kind
+      bind spot
+        call seal-seat
+          read bond
+      wait true
+  fork test
+    hook test
+      read got
+    hook hold
+      call show-line
+        call join-text
+          make list
+            text <  seal  yes, in the >
+            read kind
+            text < store>
+    hook miss
+      call show-line
+        call join-text
+          make list
+            text <  seal  no. Run `zone seal make` to make one.>
+  send back
+    code 0
+
+task shed-seal
+  note async
+  like number
+  save bond
+    call seal-bond
+      wait true
+  call toss-seal
+    bind kind
+      call pick
+    bind spot
+      call seal-seat
+        read bond
+    wait true
+  call show-line
+    text <The master key is gone from this machine. The cache it opened is now unreadable, which costs nothing: the values are still at the provider. `zone seal make` then `zone read` restores it.>
+  send back
+    code 0

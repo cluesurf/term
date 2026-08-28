@@ -1,0 +1,745 @@
+# The model: leaves in, resolved requirements out.
+#
+# `../tool/read` turns a `.tree` file into leaves. This turns leaves into
+# zones, resolves a path like `base/word.surf/star` against them, and
+# collects what that path needs.
+#
+# THE PATH IS THE ADDRESS. The root zone is `base`, every zone below it is a
+# segment, and the same path names the declaration, the cache entry, the
+# provider project and whatever an error message has to say. Nothing
+# translates between those, so nothing can drift between them.
+#
+# HOW DECLARATIONS COLLECT, which is the whole of the inheritance rule:
+#
+#   1. everything at the root
+#   2. then each ancestor on the path, outermost first
+#   3. then the target zone, in WRITTEN ORDER
+#
+# and later always wins. A `load` splices another zone's collected
+# declarations in at the point it is written, so lines after it override it
+# and lines before it do not. Written order is the override order, with no
+# special case, because any other rule is one somebody has to remember.
+
+load @term/seed/code/text
+  find text
+  find split
+
+load @term/seed/code/list
+  find list
+  find push
+  find size
+  find reverse
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+  find unwrap
+
+load ../base
+  find leaf
+  find need
+  find spot
+  find lock
+  find file
+
+load ../tool/read
+  find mine-tree
+
+load ../tool/base
+  find equal
+  find not-equal
+  find join-text
+
+host root-name, text <base>
+
+# Build one zone, and everything nested under it, from a leaf.
+#
+# `name` is the zone's own last segment. The full path is handed down rather
+# than stored, so a zone moved in the file cannot disagree with where it
+# says it is.
+task mine-spot
+  take one, like leaf
+  take up, like text
+  like spot
+
+  save name, text <>
+  walk list, read one/term
+    hook next
+      take site, name word
+      fork test
+        hook test
+          call equal
+            read name
+            text <>
+        hook hold
+          save name, read word
+
+  save path
+    call join-path
+      read up
+      read name
+
+  save base, text <>
+  save bind, text <>
+  save root, false
+  save lock
+    make list
+  save need
+    make list
+  save cast
+    make list
+  save load
+    make list
+  save zone
+    make list
+
+  walk list, read one/leaf
+    hook next
+      take site, name kid
+      save word
+        call first-term
+          read kid
+      fork case, read kid/head
+        case base
+          save base, read word
+        case bind
+          fork test
+            hook test
+              call not-equal
+                read kid/code
+                text <>
+            hook hold
+              call push
+                bind list, read lock
+                bind item
+                  make lock
+                    bind name, read word
+                    bind code, read kid/code
+                    bind path, read path
+            hook miss
+              save bind, read word
+        case root
+          save root, true
+        case cast
+          call push
+            bind list, read cast
+            bind item, read word
+        case load
+          call push
+            bind list, read load
+            bind item, read word
+        case need
+          call push
+            bind list, read need
+            bind item
+              call mine-need
+                bind one, read kid
+                bind must, true
+        case want
+          call push
+            bind list, read need
+            bind item
+              call mine-need
+                bind one, read kid
+                bind must, false
+        case zone
+          call push
+            bind list, read zone
+            bind item
+              call mine-spot
+                bind one, read kid
+                bind up, read path
+
+  send back
+    make spot
+      bind name, read name
+      bind path, read path
+      bind base, read base
+      bind bind, read bind
+      bind root, read root
+      bind need, read need
+      bind lock, read lock
+      bind cast, read cast
+      bind load, read load
+      bind zone, read zone
+
+# The first bare word on a leaf, or empty.
+task first-term
+  take one, like leaf
+  like text
+  save out, text <>
+  walk list, read one/term
+    hook next
+      take site, name word
+      fork test
+        hook test
+          call equal
+            read out
+            text <>
+        hook hold
+          save out, read word
+  send back
+    read out
+
+# One `need` or `want`, with its `from` and any `also` spellings.
+task mine-need
+  take one, like leaf
+  take must, like boolean
+  like need
+  save name
+    call first-term
+      read one
+  save from, text <>
+  save also
+    make list
+  walk list, read one/leaf
+    hook next
+      take site, name kid
+      save word
+        call first-term
+          read kid
+      fork case, read kid/head
+        case from
+          save from, read word
+        case also
+          call push
+            bind list, read also
+            bind item, read word
+  send back
+    make need
+      bind name, read name
+      bind must, read must
+      bind from, read from
+      bind also, read also
+
+# `base` and `word.surf` join as `base/word.surf`. The root joins to itself.
+task join-path
+  take up, like text
+  take name, like text
+  like text
+  fork test
+    hook test
+      call equal
+        read name
+        text <>
+    hook hold
+      send back
+        read up
+  fork test
+    hook test
+      call equal
+        read up
+        text <>
+    hook hold
+      send back
+        read name
+  send back
+    call join-text
+      make list
+        read up
+        text </>
+        read name
+
+# A whole file: the root zone, holding every zone below it.
+task mine-zone
+  take body, like text
+  like spot
+  save roots
+    call mine-tree
+      read body
+  save one
+    make leaf
+      bind head, read root-name
+      bind term
+        make list
+      bind code, text <>
+      bind leaf, read roots
+  send back
+    call mine-spot
+      bind one, read one
+      bind up, read root-name
+
+# Resolve a path against the tree.
+#
+# Each segment is looked for inside the current zone first, then at the root,
+# so `base/moon` reaches a top-level `moon` and `base/word.surf/moon` reaches
+# word.surf's own. A leading `base` is optional, because a path can begin
+# nowhere else.
+task find-spot
+  take root, like spot
+  take path, like text
+  like maybe
+    head spot
+
+  save at, read root
+  save parts
+    call split
+      read path
+      text </>
+
+  walk list, read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          call equal
+            read part
+            text <>
+        hook hold
+          turn next
+      fork test
+        hook test
+          call equal
+            read part
+            read root-name
+        hook hold
+          turn next
+
+      save got, text <>
+      walk list, read at/zone
+        hook next
+          take site, name kid
+          fork test
+            hook test
+              call equal
+                read kid/name
+                read part
+            hook hold
+              save at, read kid
+              save got, text <yes>
+
+      fork test
+        hook test
+          call equal
+            read got
+            text <>
+        hook hold
+          walk list, read root/zone
+            hook next
+              take site, name kid
+              fork test
+                hook test
+                  call equal
+                    read kid/name
+                    read part
+                hook hold
+                  save at, read kid
+                  save got, text <yes>
+
+      fork test
+        hook test
+          call equal
+            read got
+            text <>
+        hook hold
+          send back
+            make none
+
+  send back
+    make some
+      bind value, read at
+
+# Is a name already spoken for in this list?
+task has-need
+  take all, like list
+  take name, like text
+  like boolean
+  save out, false
+  walk list, read all
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read one/name
+            read name
+        hook hold
+          save out, true
+  send back
+    read out
+
+# Is a path already on the load trail?
+task has-path
+  take all, like list
+  take path, like text
+  like boolean
+  save out, false
+  walk list, read all
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read one
+            read path
+        hook hold
+          save out, true
+  send back
+    read out
+
+# One zone's own declarations, with whatever it loads spliced in first.
+#
+# A ZONE'S OWN LINES ALWAYS WIN over what it loads. The first draft of the
+# design made written order the override order, so a `load` written at the
+# bottom of a block would beat the lines above it. That is a rule somebody
+# has to remember, it is never what anyone wants, and honouring it would mean
+# keeping every directive in one ordered list purely to answer a question
+# nobody asks. Loading first and declaring second says the same thing and
+# needs no rule.
+#
+# A LOAD IS TRANSITIVE, so a zone that loads one which loads another gets
+# both. `seen` carries the trail, and a path already on it is skipped rather
+# than followed, which is what stops a cycle from running forever. The zone
+# that closed the cycle keeps its own declarations, so a mistake costs a
+# missing inheritance rather than a hang.
+task pull-spot
+  take root, like spot
+  take at, like spot
+  take seen, like list
+  like list
+  save out
+    make list
+  save trail
+    make list
+  walk list, read seen
+    hook next
+      take site, name one
+      call push
+        bind list, read trail
+        bind item, read one
+  call push
+    bind list, read trail
+    bind item, read at/path
+
+  walk list, read at/load
+    hook next
+      take site, name name
+      save got
+        call find-spot
+          bind root, read root
+          bind path, read name
+      fork case, read got
+        case none
+          turn next
+        case some
+          save one
+            call unwrap
+              read got
+          fork test
+            hook test
+              call has-path
+                bind all, read trail
+                bind path, read one/path
+            hook hold
+              turn next
+          walk list
+            call pull-spot
+              bind root, read root
+              bind at, read one
+              bind seen, read trail
+            hook next
+              take site, name need
+              call push
+                bind list, read out
+                bind item, read need
+
+  walk list, read at/need
+    hook next
+      take site, name need
+      call push
+        bind list, read out
+        bind item, read need
+  send back
+    read out
+
+# Everything a path needs: the root, then each ancestor outermost first, then
+# the target. Later wins, so the last declaration of a name is the one that
+# counts and the earlier ones are dropped.
+task pull-need
+  take root, like spot
+  take path, like text
+  like list
+
+  save all
+    make list
+  save at, read root
+
+  walk list, read root/need
+    hook next
+      take site, name need
+      call push
+        bind list, read all
+        bind item, read need
+
+  save parts
+    call split
+      read path
+      text </>
+
+  walk list, read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          call equal
+            read part
+            text <>
+        hook hold
+          turn next
+      fork test
+        hook test
+          call equal
+            read part
+            read root-name
+        hook hold
+          turn next
+      save got
+        call find-spot
+          bind root, read at
+          bind path, read part
+      fork case, read got
+        case none
+          turn next
+        case some
+          save at
+            call unwrap
+              read got
+          walk list
+            call pull-spot
+              bind root, read root
+              bind at, read at
+              bind seen
+                make list
+            hook next
+              take site, name need
+              call push
+                bind list, read all
+                bind item, read need
+
+  # Later wins. Walking backwards and keeping the first sighting of each name
+  # keeps the last declaration and drops everything it overrode.
+  save back
+    call reverse
+      read all
+  save kept
+    make list
+  walk list, read back
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call has-need
+            bind all, read kept
+            bind name, read one/name
+        hook hold
+          turn next
+      call push
+        bind list, read kept
+        bind item, read one
+  send back
+    call reverse
+      read kept
+
+# The header of a cache file, plus its root zone.
+#
+# One reader covers `zone.tree` and `zone.code.tree`, because a declaration
+# and the cache that answers it nest the same way and inherit the same way.
+# What a file means is decided by which of the two it is, not by forbidding
+# head words in one of them.
+task mine-file
+  take body, like text
+  like file
+  save roots
+    call mine-tree
+      read body
+  save made, text <>
+  save good, text <>
+  save seal, text <>
+  save deck, text <>
+  walk list, read roots
+    hook next
+      take site, name one
+      fork case, read one/head
+        case made
+          save made, read one/code
+        case good
+          save good, read one/code
+        case seal
+          save seal
+            call first-term
+              read one
+        case deck
+          save deck, read one/code
+  save one
+    make leaf
+      bind head, read root-name
+      bind term
+        make list
+      bind code, text <>
+      bind leaf, read roots
+  send back
+    make file
+      bind made, read made
+      bind good, read good
+      bind seal, read seal
+      bind deck, read deck
+      bind root
+        call mine-spot
+          bind one, read one
+          bind up, read root-name
+
+# The sealed value a path holds for a name, if any.
+#
+# Lookup follows the declaration's own inheritance: the deepest zone on the
+# path that binds the name wins, and a name bound only at the root is
+# reachable from every zone below it. So one value shared by every zone is
+# stored once, which is the whole reason the cache mirrors the tree rather
+# than being a flat map.
+task find-lock
+  take root, like spot
+  take path, like text
+  take name, like text
+  like maybe
+    head lock
+
+  save got
+    make none
+  save at, read root
+
+  walk list, read root/lock
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read one/name
+            read name
+        hook hold
+          save got
+            make some
+              bind value, read one
+
+  save parts
+    call split
+      read path
+      text </>
+
+  walk list, read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          call equal
+            read part
+            text <>
+        hook hold
+          turn next
+      fork test
+        hook test
+          call equal
+            read part
+            read root-name
+        hook hold
+          turn next
+      save down
+        call find-spot
+          bind root, read at
+          bind path, read part
+      fork case, read down
+        case none
+          turn next
+        case some
+          save at
+            call unwrap
+              read down
+          walk list, read at/lock
+            hook next
+              take site, name one
+              fork test
+                hook test
+                  call equal
+                    read one/name
+                    read name
+                hook hold
+                  save got
+                    make some
+                      bind value, read one
+
+  send back
+    read got
+
+
+# Every cast in force at a path: the root's, then each ancestor's, then the
+# zone's own. A zone that names none inherits whatever was named above it,
+# and a tree that names none anywhere gets `snake`, which is the rule
+# everything else is measured against.
+task pull-cast
+  take root, like spot
+  take path, like text
+  like list
+
+  save all
+    make list
+  walk list, read root/cast
+    hook next
+      take site, name one
+      call push
+        bind list, read all
+        bind item, read one
+
+  save at, read root
+  save parts
+    call split
+      read path
+      text </>
+
+  walk list, read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          call equal
+            read part
+            text <>
+        hook hold
+          turn next
+      fork test
+        hook test
+          call equal
+            read part
+            read root-name
+        hook hold
+          turn next
+      save down
+        call find-spot
+          bind root, read at
+          bind path, read part
+      fork case, read down
+        case none
+          turn next
+        case some
+          save at
+            call unwrap
+              read down
+          walk list, read at/cast
+            hook next
+              take site, name one
+              call push
+                bind list, read all
+                bind item, read one
+
+  fork test
+    hook test
+      call is-equal
+        call size
+          read all
+        code 0
+    hook hold
+      call push
+        bind list, read all
+        bind item, text <snake>
+
+  send back
+    read all

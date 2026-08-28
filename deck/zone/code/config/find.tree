@@ -1,0 +1,157 @@
+# Finding the declaration.
+#
+# Walk up from the working directory collecting every `zone.tree`, innermost
+# first, and stop at one that says `root true`.
+#
+# WHY THE STOP EXISTS. `mesh`, `land`, `base`, `dock` and `lock` are each
+# their own git repository sitting inside the `cluesurf` checkout, so a
+# declaration at the cluesurf base is reachable from all of them on a laptop
+# and from none of them inside a container that copied only one. A repository
+# that has to build standalone carries its own `zone.tree` with `root true`,
+# and the search stops there rather than reaching for a parent that will not
+# be present in the image.
+#
+# `zone show --files` prints what this found, in order, so "which declaration
+# am I actually running" is one command rather than a guess.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find push
+  find size
+
+load @term/seed/code/boolean
+  find boolean
+
+load ../base
+  find spot
+
+load ./zone
+  find mine-zone
+
+load ../tool/base
+  find equal
+  find not-equal
+  find here
+  find dir-of
+  find have-file
+  find read-file
+  find join-text
+  find join-line
+  find halt
+
+# NOT `spot-deck`, and not `deck-name`. Both are already taken by the legacy
+# flat reader in `./manifest`, which looks for `.zone.tree` with a leading
+# dot. Term names are package-global, so a per-file build keeps the two apart
+# and the bundled `boot` build silently picks one. That cost an afternoon:
+# `zone list` reported no declaration anywhere while the same code found one
+# perfectly when imported directly.
+host deck-file, text <zone.tree>
+
+# `<dir>/zone.tree`.
+task spot-file
+  take dir, like text
+  like text
+  send back
+    call join-text
+      make list
+        read dir
+        text </>
+        read deck-file
+
+# Every declaration above a directory, innermost first, stopping at a root.
+#
+# The walk is bounded by the filesystem: `dir-of` on `/` is `/`, so the loop
+# ends when the directory stops changing. A missing file is not an error,
+# because most directories on the way up have none.
+task find-decks
+  note async
+  take dir, like text
+  like list
+  save all
+    make list
+  save at, read dir
+  save going, true
+
+  walk test
+    hook test
+      read going
+    hook hold
+      save at-deck
+        call spot-file
+          read at
+      fork test
+        hook test
+          call have-file
+            read at-deck
+        hook hold
+          call push
+            bind list, read all
+            bind item, read at-deck
+          save one
+            call mine-zone
+              call read-file
+                read at-deck
+          fork test
+            hook test
+              read one/root
+            hook hold
+              save going, false
+      fork test
+        hook test
+          read going
+        hook hold
+          save up
+            call dir-of
+              read at
+          fork test
+            hook test
+              call equal
+                read up
+                read at
+            hook hold
+              save going, false
+            hook miss
+              save at, read up
+
+  send back
+    read all
+
+# The declarations above the working directory.
+task read-decks
+  note async
+  like list
+  send back
+    call find-decks
+      call here
+      wait true
+
+# The one message for "there is no declaration here".
+#
+# SIX COMMANDS CAN HIT THIS, and they used to say four different things: two
+# named the directory and offered `zone lift`, two named the directory and
+# offered nothing, and two said "at or above this directory" without saying
+# WHICH directory. Someone who has just cloned a repository and typed the
+# first command they read about deserves the same answer whichever one it was.
+#
+# Names where it looked, and what to run. Both matter: the path because a zone
+# resolves by walking UP, so the answer depends on where you are standing, and
+# the fix because `zone lift` is not a command anyone guesses.
+task halt-no-deck
+  like number
+  send back
+    call halt
+      call join-text
+        make list
+          call join-line
+            make list
+              text <No zone.tree at or above:>
+              text <>
+          call here
+          call join-line
+            make list
+              text <>
+              text <>
+              text <Write one there, or run `zone lift` to make one from the .env files already in the tree.>

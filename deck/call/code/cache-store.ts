@@ -78,7 +78,15 @@ function compilerCodeHash(): string {
 
   for (const file of candidates) {
     try {
-      if (file && file.endsWith('.js') && existsSync(file)) {
+      // `.mjs` as well as `.js`. The batch build runs in a worker whose entry
+      // is a temp file named `seed-build-worker-<pid>.mjs`, so a `.js`-only
+      // test skipped every candidate and returned '', which silently turned
+      // the whole cache-invalidation scheme off.
+      if (
+        file &&
+        (file.endsWith('.js') || file.endsWith('.mjs')) &&
+        existsSync(file)
+      ) {
         return hashText(readFileSync(file, 'utf8'))
       }
     } catch {
@@ -107,7 +115,13 @@ export function compilerVersion(): string {
           version?: string
         }
 
-        if (pkg.name === '@cluesurf/seed.tree') {
+        // BOTH NAMES. The package was renamed from `@cluesurf/seed.tree` to
+        // `@cluesurf/term`, and this kept looking for the old one, so the walk
+        // never matched and the version stayed at its '0' default.
+        if (
+          pkg.name === '@cluesurf/term' ||
+          pkg.name === '@cluesurf/seed.tree'
+        ) {
           version = pkg.version ?? '0'
           break
         }

@@ -37,6 +37,7 @@ load @term/seed/code/maybe
 bind do-environment-read
   take spot, like seat
   like maybe
+    head text
   case node
     text <(function () { var tier = String($spot.name).split(":").pop().toUpperCase().replace(/[^A-Z0-9]+/g, "_"); var v = process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE; return (v && v.length \> 0) ? { form: "some", value: v } : { form: "none" } })()>
 
@@ -51,6 +52,7 @@ bind do-environment-have
 task environment-read
   take spot, like seat
   like maybe
+    head text
   send back
     call do-environment-read
       bind spot, read spot

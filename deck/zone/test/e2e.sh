@@ -40,7 +40,10 @@ zone(){ ( cd "$ZONE" && node "$TERM_HOST" boot code/line/base.tree -- "$@" 2>&1 
 zonep(){ ( cd "$PROJ" && node "$TERM_HOST" boot "$ZONE/code/line/base.tree" -- "$@" 2>&1 | strip ); }
 
 say "bind"
-out=$(zone bind --mind lance --host e2ebox --team cluesurf); echo "$out"
+# `--tier development` is explicit because this harness exercises the LEGACY
+# `.zone.tree` path, whose fixture declares `tier development`. The default
+# is now `moon`, which is what the zone.tree world calls the same thing.
+out=$(zone bind --mind lance --host e2ebox --team cluesurf --tier development); echo "$out"
 [ -f "$SBOX/.config/zone/zone.tree" ] && ok "config written" || no "config missing"
 
 say "show (env store, code present via ZONE_CODE)"

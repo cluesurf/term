@@ -1,0 +1,202 @@
+# `zone list` — the names a path resolves to, and never their values.
+#
+# NEEDS NO KEY, and that is the point. The declaration is committed and the
+# cache's structure is plaintext, so this works on a machine that has never
+# been bound. It replaces every `.env.example` in a tree, and unlike one it
+# cannot go stale, because it comes from the declaration rather than from
+# somebody remembering to update a sample.
+#
+# There is no flag that prints a value. A value that can be shown casually
+# ends up in a log, a screenshot or a chat message, and the only way to stop
+# that is not to build the path.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find push
+  find size
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+
+load ../base
+  find spot
+  find need
+
+load ../config/find
+  find read-decks
+  find halt-no-deck
+
+load ../config/zone
+  find mine-zone
+  find pull-need
+  find find-spot
+
+load ../call/base
+  find name
+
+load ../tool/base
+  find join-text
+  find join-line
+  find show-line
+  find halt
+  find equal
+  find not-equal
+  find read-file
+  find more
+  find here
+
+# The declaration this directory runs under, innermost first.
+task read-here
+  note async
+  like list
+  send back
+    call read-decks
+      wait true
+
+task list
+  note async
+  take spot, like text
+  take alias, like boolean
+  like number
+
+  save all
+    call read-here
+      wait true
+  fork test
+    hook test
+      call is-equal
+        call size
+          read all
+        code 0
+    hook hold
+      send back
+        call halt-no-deck
+
+  save at, text <>
+  walk list, read all
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read at
+            text <>
+        hook hold
+          save at, read one
+
+  save root
+    call mine-zone
+      call read-file
+        read at
+
+  save want, read spot
+  fork test
+    hook test
+      call equal
+        read want
+        text <>
+    hook hold
+      save want, text <base>
+
+  save got
+    call find-spot
+      bind root, read root
+      bind path, read want
+  fork test
+    hook test
+      call is-none
+        read got
+    hook hold
+      send back
+        call halt
+          call join-text
+            make list
+              text <No zone at >
+              read want
+              call join-line
+                make list
+                  text <.>
+                  text <>
+                  text <Read from:>
+                  text <>
+              read at
+
+  save needs
+    call pull-need
+      bind root, read root
+      bind path, read want
+
+  call show-line
+    call join-text
+      make list
+        read want
+        text < in >
+        read at
+
+  call show-line
+    text <>
+
+  walk list, read needs
+    hook next
+      take site, name one
+      save row
+        make list
+      call push
+        bind list, read row
+        bind item
+          call name
+            read one/name
+      call push
+        bind list, read row
+        bind item, text <  >
+      fork test
+        hook test
+          read one/must
+        hook hold
+          call push
+            bind list, read row
+            bind item, text <need>
+        hook miss
+          call push
+            bind list, read row
+            bind item, text <want>
+      fork test
+        hook test
+          call not-equal
+            read one/from
+            text <>
+        hook hold
+          call push
+            bind list, read row
+            bind item, text <  as >
+          call push
+            bind list, read row
+            bind item, read one/from
+      fork test
+        hook test
+          read alias
+        hook hold
+          walk list, read one/also
+            hook next
+              take site, name other
+              call push
+                bind list, read row
+                bind item, text <  also >
+              call push
+                bind list, read row
+                bind item
+                  call name
+                    read other
+      call show-line
+        call join-text
+          read row
+
+  send back
+    code 0

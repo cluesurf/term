@@ -34,6 +34,7 @@ bind do-manager-save
 bind do-manager-read
   take spot, like seat
   like maybe
+    head text
   case node
     text <(() =\> { try { const out = require("node:child_process").execFileSync("powershell", ["-NoProfile", "-Command", "(Get-StoredCredential -Target ('zone:' + $env:ZONE_SEAT)).GetNetworkCredential().Password"], { encoding: "utf8", env: { ...process.env, ZONE_SEAT: $spot.name } }); const b = out.trimEnd(); return b ? { form: "some", value: b } : { form: "none" } } catch { return { form: "none" } } })()>
 
@@ -60,6 +61,7 @@ task manager-save
 task manager-read
   take spot, like seat
   like maybe
+    head text
   send back
     call do-manager-read
       bind spot, read spot

@@ -66,6 +66,11 @@ export function globalDockNames(program: Program): string[] {
 }
 
 // the posix directory of a path (the resolver yields posix paths; native.ts stays browser-safe, no node `path`)
+// How far up from a docking module to look for its runtime shim. Four covers
+// `native/<env>/<group>/<module>.tree` with room to spare, and stops the walk
+// well short of the filesystem root.
+const RUNTIME_SEARCH_DEPTH = 4
+
 function directoryOf(file: string): string {
   const i = file.lastIndexOf('/')
 
@@ -113,9 +118,41 @@ export function nativePrelude(
       continue
     }
 
-    const candidates = file
-      ? [runtimePathFor(file, env, name), runtimePath(env, name)]
-      : [runtimePath(env, name)]
+    // A shim lives at `<dir>/runtime/<name>`, and the dock that names it is
+    // not always in that directory. `native/node/bytes.tree` docks `octets`
+    // and its shim is one level down at `native/node/runtime/bytes.ts`, but
+    // `native/node/cryptography/cipher.tree` docks `cipher` whose shim is at
+    // `native/node/runtime/cipher.ts`, two levels up from the docking module.
+    //
+    // So each directory on the way up is tried, not only the docking module's
+    // own. Without this every nested native module silently loses its shim:
+    // the bundle builds, and the program dies at runtime with
+    // `ReferenceError: cipher is not defined` the first time it calls one.
+    // That took out the whole `cryptography` surface under `term boot`.
+    //
+    // `runtimePath` stays last as a fallback, though callers that resolve by
+    // filesystem path cannot use it: it returns a package import path.
+    const candidates: string[] = []
+
+    if (file) {
+      let dir = directoryOf(file)
+
+      for (let up = 0; up < RUNTIME_SEARCH_DEPTH; up += 1) {
+        candidates.push(
+          `${dir}/runtime/${name}.${RUNTIME_EXTENSION[env]}`,
+        )
+
+        const above = directoryOf(dir)
+
+        if (above === dir || above === '.') {
+          break
+        }
+
+        dir = above
+      }
+    }
+
+    candidates.push(runtimePath(env, name))
 
     for (const candidate of candidates) {
       if (added.has(candidate)) {
@@ -132,7 +169,27 @@ export function nativePrelude(
     }
   }
 
-  return parts.join('\n')
+  // JOINED WITH SEMICOLONS, DELIBERATELY.
+  //
+  // Nothing here emits a trailing semicolon, and neither does the program
+  // these shims are appended to. A shim whose body starts with `(` -- the
+  // ordinary `(function () { ... })()` wrapper -- then continues the
+  // previous statement instead of starting a new one:
+  //
+  //   const out = showFile(whole)      <- emitted program, no semicolon
+  //   (function () { ... })()          <- shim
+  //
+  // JavaScript reads that as `showFile(whole)(function...)`, calling the
+  // result of showFile. It compiles clean and dies at runtime somewhere
+  // unrelated, which is the worst way for a compiler to be wrong.
+  //
+  // A leading `;` cannot change the meaning of anything that was already
+  // correct: it is an empty statement. So every part is preceded by one.
+  if (parts.length === 0) {
+    return ''
+  }
+
+  return `;\n${parts.join('\n;\n')}`
 }
 
 // rewrite an abstract native import to the env-specific one, or return undefined if it is not an abstract native path

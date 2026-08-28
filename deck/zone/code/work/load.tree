@@ -1,0 +1,466 @@
+# `zone load` — the command people run all day.
+#
+#   zone load -- pnpm boot
+#   zone load word.surf/moon -- pnpm boot
+#
+# What happens, in order:
+#
+#   find the declaration above this directory
+#   resolve the path and collect what it needs
+#   open the master key, and the cache beside the declaration
+#   take out only the declared names
+#   refuse if anything required is missing
+#   run the command with those values and nothing else added
+#
+# THE REFUSAL MATTERS. A half-populated command fails somewhere deeper, in a
+# library, with a worse message. Failing here says which name is absent and
+# which zone declared it.
+#
+# A NAME ALREADY SET IN THE ENVIRONMENT IS NOT OVERWRITTEN unless `--over` is
+# given. An orchestrator that went to the trouble of injecting a value meant
+# it, and that is the safe direction.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find push
+  find size
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+  find unwrap
+
+load ../base
+  find spot
+  find need
+  find hold
+  find bond
+
+load ../config/find
+  find read-decks
+  find halt-no-deck
+
+load ../config/zone
+  find mine-zone
+  find mine-file
+  find pull-need
+  find pull-cast
+  find find-spot
+  find find-lock
+
+load ../config/machine
+  find read-bond
+
+load ../seal/keep
+  find seal-seat
+  find read-seal
+  find make-seal
+
+load ./read
+  find pull
+
+load ../save/base
+  find pick
+
+load ../seal/base
+  find open-value
+
+load ../call/base
+  find run
+  find name
+  find cast-name
+
+load ../tool/base
+  find past-stamp
+  find gap-text
+  find warn-line
+  find join-text
+  find join-line
+  find show-line
+  find halt
+  find equal
+  find not-equal
+  find more
+  find here
+  find dir-of
+  find have-file
+  find read-file
+  find have-env
+
+host cache-spot, text </.base/@cluesurf/zone/zone.code.tree>
+
+# The cache that answers a declaration sits beside it.
+task spot-cache
+  take deck, like text
+  like text
+  send back
+    call join-text
+      make list
+        call dir-of
+          read deck
+        read cache-spot
+
+task load
+  note async
+  take spot, like text
+  take main, like text
+  take list, like list
+  take over, like boolean
+  like number
+
+  save decks
+    call read-decks
+      wait true
+  fork test
+    hook test
+      call is-equal
+        call size
+          read decks
+        code 0
+    hook hold
+      send back
+        call halt-no-deck
+
+  save deck, text <>
+  walk list, read decks
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read deck
+            text <>
+        hook hold
+          save deck, read one
+
+  save root
+    call mine-zone
+      call read-file
+        read deck
+
+  save got
+    call find-spot
+      bind root, read root
+      bind path, read spot
+  fork test
+    hook test
+      call is-none
+        read got
+    hook hold
+      send back
+        call halt
+          call join-text
+            make list
+              text <No zone at >
+              read spot
+              call join-line
+                make list
+                  text <.>
+                  text <>
+                  text <Read from:>
+                  text <>
+              read deck
+
+  save spot-in
+    call unwrap
+      read got
+  save want, read spot-in/path
+
+  save needs
+    call pull-need
+      bind root, read root
+      bind path, read want
+
+  save casts
+    call pull-cast
+      bind root, read root
+      bind path, read want
+
+  # The cache. Absent is an ordinary state, not an error: the answer is then
+  # that nothing is cached and every required name is missing, which the
+  # refusal below says plainly.
+  save at-cache
+    call spot-cache
+      read deck
+  save cache
+    call mine-file
+      text <>
+  save had, code false
+  fork test
+    hook test
+      call have-file
+        read at-cache
+    hook hold
+      save had, code true
+      save cache
+        call mine-file
+          call read-file
+            read at-cache
+
+  # FIRST RUN FETCHES, ONCE, AND SAYS SO.
+  #
+  # Someone who has just cloned the repository has a declaration and no cache.
+  # Refusing here would send them to `zone seal make` and `zone read` before
+  # anything works, and the two commands are exactly what this would have
+  # done. So it does them, out loud, and gets on with it.
+  #
+  # ONLY WHEN THERE IS NO CACHE AT ALL. A missing key WITH a cache present is
+  # a different situation and is refused below: minting a fresh key there
+  # would quietly orphan every value already sealed on this machine.
+  fork test
+    hook test
+      read had
+    hook miss
+      call warn-line
+        text <No cached values here yet. Fetching from the provider, once.>
+
+      save seat
+        call seal-seat
+          call unwrap
+            call read-bond
+              wait true
+      save has-key
+        call read-seal
+          bind kind
+            call pick
+          bind spot, read seat
+          wait true
+      fork test
+        hook test
+          call is-none
+            read has-key
+        hook hold
+          call warn-line
+            text <Making this machine a master key first.>
+          call make-seal
+            bind kind
+              call pick
+            bind spot, read seat
+            wait true
+
+      call pull
+        bind spot, read want
+        bind fresh, code true
+        wait true
+
+      save cache
+        call mine-file
+          call read-file
+            read at-cache
+
+  # A STALE CACHE IS SAID OUT LOUD, EVERY TIME, and does not stop the command.
+  #
+  # Blocking work because a value might be twelve hours old would teach people
+  # to pass whatever flag turns the check off. Saying it on stderr every time
+  # keeps it visible without ever being in the way, and it goes to stderr so a
+  # command whose output is piped is not corrupted by it.
+  fork test
+    hook test
+      read had
+    hook hold
+      fork test
+        hook test
+          call past-stamp
+            read cache/good
+        hook hold
+          call warn-line
+            call join-text
+              make list
+                text <The cached values went stale >
+                call gap-text
+                  read cache/good
+                text <. Run `zone read`.>
+
+  save bond
+    call read-bond
+      wait true
+  fork test
+    hook test
+      call is-none
+        read bond
+    hook hold
+      send back
+        call halt
+          text <This machine is not bound. Run `zone bind` first.>
+  save bond-in
+    call unwrap
+      read bond
+
+  save key-got
+    call read-seal
+      bind kind
+        call pick
+      bind spot
+        call seal-seat
+          read bond-in
+      wait true
+  fork test
+    hook test
+      call is-none
+        read key-got
+    hook hold
+      send back
+        call halt
+          text <No master key on this machine, so the cache cannot be opened. Run `zone seal make`.>
+  save key
+    call unwrap
+      read key-got
+
+  save held
+    make list
+  save gone
+    make list
+
+  walk list, read needs
+    hook next
+      take site, name one
+      save word
+        call name
+          read one/name
+
+      # A value already in the environment is left alone unless told
+      # otherwise, so an orchestrator's injection survives.
+      fork test
+        hook test
+          call have-env
+            read word
+        hook hold
+          fork test
+            hook test
+              read over
+            hook miss
+              turn next
+
+      save lock
+        call find-lock
+          bind root, read cache/root
+          bind path, read want
+          bind name, read one/name
+      fork test
+        hook test
+          call is-none
+            read lock
+        hook hold
+          fork test
+            hook test
+              read one/must
+            hook hold
+              call push
+                bind list, read gone
+                bind item, read one
+          turn next
+
+      save lock-in
+        call unwrap
+          read lock
+
+      save body
+        call open-value
+          bind key, read key
+          bind path, read lock-in/path
+          bind name, read one/name
+          bind code, read lock-in/code
+          wait true
+
+      # One value, published under every spelling this zone asks for: each
+      # cast, and each `also` name under each cast. That is how six names for
+      # one secret are served from one stored value, and how `land` gets both
+      # the plain name and the TF_VAR_ one without a second copy.
+      save spellings
+        make list
+      call push
+        bind list, read spellings
+        bind item, read one/name
+      walk list, read one/also
+        hook next
+          take site, name other
+          call push
+            bind list, read spellings
+            bind item, read other
+
+      walk list, read casts
+        hook next
+          take site, name form
+          walk list, read spellings
+            hook next
+              take site, name each
+              call push
+                bind list, read held
+                bind item
+                  make hold
+                    bind name
+                      call cast-name
+                        bind form, read form
+                        bind from, read each
+                    bind body, read body
+
+  fork test
+    hook test
+      call more
+        call size
+          read gone
+        code 0
+    hook hold
+      save lines
+        make list
+      call push
+        bind list, read lines
+        bind item
+          call join-text
+            make list
+              text <Cannot start. >
+              read spot
+              text < needs a value that is not there.>
+      call push
+        bind list, read lines
+        bind item, text <>
+      walk list, read gone
+        hook next
+          take site, name one
+          call push
+            bind list, read lines
+            bind item
+              call join-text
+                make list
+                  text <  >
+                  call name
+                    read one/name
+      call push
+        bind list, read lines
+        bind item, text <>
+      call push
+        bind list, read lines
+        bind item, text <Fix it with:>
+      call push
+        bind list, read lines
+        bind item, text <  zone read>
+      send back
+        call halt
+          call join-line
+            read lines
+
+  # The child is told which zone it is running under.
+  #
+  # THIS IS A CONTRACT, not a convenience. A process that loads env files of
+  # its own has to know to stand down, or it will read a stale `.env` over
+  # what zone just supplied and the value in effect will depend on which ran
+  # last. `mesh/deck/back/code/tool/env/current.ts` reads this and returns
+  # without touching a file.
+  call push
+    bind list, read held
+    bind item
+      make hold
+        bind name, text <ZONE>
+        bind body, read want
+
+  send back
+    call run
+      bind name, read main
+      bind list, read list
+      bind hold, read held

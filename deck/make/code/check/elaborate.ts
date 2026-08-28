@@ -593,6 +593,31 @@ export function elaborateReport(
   resetMetas()
   resetDefinitions()
 
+  // How many arguments each function DECLARES, and how many it REQUIRES.
+  //
+  // A `need false` parameter may be left out at the call. The inference pass
+  // knows that and accepts the shorter call, but the kernel only sees an
+  // application, and an application with fewer arguments than the arrow chain
+  // has binders IS a partial application. So `call greet / bind name` against
+  // a task whose second parameter is optional came back typed
+  // `(many Boolean) -> String` where a `String` was wanted, and the error was
+  // reported wherever the value was USED rather than at the call.
+  //
+  // Such a call is left for the inference pass to check, which already checks
+  // the arity as a range and the arguments by position. Skipping it here
+  // gives up a kernel proof about that one call; typing it as a partial
+  // application gives a wrong answer, which is worse.
+  const declaredArity = new Map<string, { total: number; need: number }>()
+
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      declaredArity.set(statement.name, {
+        total: statement.params.length,
+        need: statement.params.filter(p => !p.optional).length,
+      })
+    }
+  }
+
   // gate for transparent definitions. Best-effort: a failure here just means no
   // function is treated as transparent (a sound, conservative fallback), never a
   // compiler crash.
@@ -1889,6 +1914,18 @@ export function elaborateReport(
           }
 
           pt = pt.codomain
+        }
+
+        // an omitted trailing `need false` parameter: not a partial
+        // application, and not this pass's to check. See declaredArity above.
+        const arity = declaredArity.get(node.callee.name)
+
+        if (
+          arity &&
+          node.args.length < arity.total &&
+          node.args.length >= arity.need
+        ) {
+          return null
         }
 
         const args: Term[] = []

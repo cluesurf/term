@@ -1,0 +1,92 @@
+# `zone files` — which declarations are in force here, in order.
+#
+# Answers "which zone.tree am I actually running" in one command, which is
+# otherwise a guess. The search walks up from the working directory and stops
+# at the first declaration saying `root true`, so what is in force is not
+# always what is nearest and is never obvious from a listing.
+#
+# Names the cache beside each one too, and whether it exists, because the
+# other half of that question is "and is anything cached for it".
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find size
+
+load @term/seed/code/boolean
+  find boolean
+
+load ../config/find
+  find read-decks
+  find halt-no-deck
+
+load ../work/load
+  find spot-cache
+
+load ../tool/base
+  find join-text
+  find join-line
+  find show-line
+  find halt
+  find here
+  find have-file
+  find is-equal
+
+task files
+  note async
+  like number
+
+  save all
+    call read-decks
+      wait true
+
+  fork test
+    hook test
+      call is-equal
+        call size
+          read all
+        code 0
+    hook hold
+      send back
+        call halt-no-deck
+
+  call show-line
+    call join-text
+      make list
+        call join-line
+          make list
+            text <Read from, nearest first, starting at:>
+            text <>
+        call here
+  call show-line
+    text <>
+
+  walk list, read all
+    hook next
+      take site, name one
+      call show-line
+        call join-text
+          make list
+            text <  >
+            read one
+      save at-cache
+        call spot-cache
+          read one
+      fork test
+        hook test
+          call have-file
+            read at-cache
+        hook hold
+          call show-line
+            call join-text
+              make list
+                text <    cache  >
+                read at-cache
+        hook miss
+          call show-line
+            text <    cache  none yet. `zone read` makes one.>
+
+  send back
+    code 0

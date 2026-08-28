@@ -1,0 +1,422 @@
+# `zone test` — check the whole setup, and say what is wrong with it.
+#
+# Every line is a question a person would otherwise ask by hand: is there a
+# declaration, does this path exist, is this machine bound, is there a key,
+# is there a cache, was it built against this declaration, does every
+# required value open, and is it fast.
+#
+# NOTHING HERE PRINTS A VALUE. It opens each one to prove it can, and reports
+# only that it did.
+#
+# THE BUDGET IS CHECKED, not described. A warm read is measured against 30
+# milliseconds, which is what is left of the 50 ms target after the keychain
+# read and the process spawn that sit outside this measurement.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find push
+  find size
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+  find unwrap
+
+load ../base
+  find spot
+  find bond
+
+load ../config/find
+  find read-decks
+
+load ../config/zone
+  find mine-zone
+  find mine-file
+  find find-spot
+  find pull-need
+  find find-lock
+
+load ../config/machine
+  find read-bond
+
+load ../save/base
+  find pick
+
+load ../seal/keep
+  find seal-seat
+  find have-seal
+  find read-seal
+
+load ../seal/base
+  find open-value
+
+load ../seal/cache
+  find mark-deck
+
+load ./load
+  find spot-cache
+
+load ./test
+  find vet
+
+load ../tool/base
+  find join-text
+  find join-line
+  find show-line
+  find equal
+  find not-equal
+  find here
+  find have-file
+  find read-file
+  find is-equal
+  find more
+  find mark-test
+  find now-ms
+  find mark-time
+  find text-of
+
+host warm-budget, code 30
+
+task probe
+  note async
+  take spot, like text
+  like number
+
+  save bad, code 0
+
+  save decks
+    call read-decks
+      wait true
+  save any
+    call more
+      call size
+        read decks
+      code 0
+
+  # A project still on the old `.zone.tree` gets the old checks. Both worlds
+  # exist while the migration runs, and a command that only understood the new
+  # one would report a working project as broken.
+  fork test
+    hook test
+      read any
+    hook miss
+      send back
+        call vet
+          bind tier, text <>
+          wait true
+
+  call mark-test
+    bind name, text <a declaration is in force>
+    bind good, read any
+
+  save deck, text <>
+  walk list, read decks
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read deck
+            text <>
+        hook hold
+          save deck, read one
+
+  save body
+    call read-file
+      read deck
+  save root
+    call mine-zone
+      read body
+
+  save got
+    call find-spot
+      bind root, read root
+      bind path, read spot
+  save here-ok
+    call not-equal
+      read spot
+      text <>
+  fork test
+    hook test
+      call is-none
+        read got
+    hook hold
+      save here-ok, false
+      save bad
+        call add
+          read bad
+          code 1
+    hook miss
+      save here-ok, true
+  call mark-test
+    bind name
+      call join-text
+        make list
+          text <the path resolves: >
+          read spot
+    bind good, read here-ok
+
+  save bond-got
+    call read-bond
+      wait true
+  save bound
+    call not-equal
+      read spot
+      text <>
+  fork test
+    hook test
+      call is-none
+        read bond-got
+    hook hold
+      save bound, false
+      save bad
+        call add
+          read bad
+          code 1
+    hook miss
+      save bound, true
+  call mark-test
+    bind name, text <this machine is bound>
+    bind good, read bound
+
+  fork test
+    hook test
+      read bound
+    hook miss
+      call show-line
+        call join-line
+          make list
+            text <>
+            text <Run `zone bind` first. Nothing below this can be checked without it.>
+      send back
+        code 1
+
+  save bond
+    call unwrap
+      read bond-got
+  save kind
+    call pick
+
+  save keyed
+    call have-seal
+      bind kind, read kind
+      bind spot
+        call seal-seat
+          read bond
+      wait true
+  call mark-test
+    bind name, text <a master key is stored>
+    bind good, read keyed
+  fork test
+    hook test
+      read keyed
+    hook miss
+      save bad
+        call add
+          read bad
+          code 1
+
+  save at-cache
+    call spot-cache
+      read deck
+  save cached
+    call have-file
+      read at-cache
+  call mark-test
+    bind name, text <a cache is beside the declaration>
+    bind good, read cached
+  fork test
+    hook test
+      read cached
+    hook miss
+      save bad
+        call add
+          read bad
+          code 1
+      call show-line
+        call join-line
+          make list
+            text <>
+            text <Run `zone read` to fill it.>
+      send back
+        read bad
+
+  save file
+    call mine-file
+      call read-file
+        read at-cache
+  save mark
+    call mark-deck
+      read body
+      wait true
+  save fresh-shape
+    call equal
+      read file/deck
+      read mark
+  call mark-test
+    bind name, text <the cache was built against this declaration>
+    bind good, read fresh-shape
+  fork test
+    hook test
+      read fresh-shape
+    hook miss
+      save bad
+        call add
+          read bad
+          code 1
+      call show-line
+        text <  the declaration changed since the cache was made. Run `zone read`.>
+
+  fork test
+    hook test
+      read keyed
+    hook miss
+      send back
+        read bad
+
+  save key
+    call unwrap
+      call read-seal
+        bind kind, read kind
+        bind spot
+          call seal-seat
+            read bond
+        wait true
+
+  save spot-in
+    call unwrap
+      read got
+  save want, read spot-in/path
+  save needs
+    call pull-need
+      bind root, read root
+      bind path, read want
+
+  save began
+    call now-ms
+
+  save gone, code 0
+  save open, code 0
+  save missing
+    make list
+  walk list, read needs
+    hook next
+      take site, name one
+      save lock
+        call find-lock
+          bind root, read file/root
+          bind path, read want
+          bind name, read one/name
+      fork test
+        hook test
+          call is-none
+            read lock
+        hook hold
+          fork test
+            hook test
+              read one/must
+            hook hold
+              save gone
+                call add
+                  read gone
+                  code 1
+              call push
+                bind list, read missing
+                bind item, read one/name
+          turn next
+      save lock-in
+        call unwrap
+          read lock
+      call open-value
+        bind key, read key
+        bind path, read lock-in/path
+        bind name, read one/name
+        bind code, read lock-in/code
+        wait true
+      save open
+        call add
+          read open
+          code 1
+
+  save took
+    call subtract
+      call now-ms
+      read began
+
+  save all-there
+    call is-equal
+      read gone
+      code 0
+  call mark-test
+    bind name
+      call join-text
+        make list
+          text <every required value opens: >
+          call text-of
+            read open
+          text < of >
+          call text-of
+            call add
+              read open
+              read gone
+    bind good, read all-there
+  fork test
+    hook test
+      read all-there
+    hook miss
+      save bad
+        call add
+          read bad
+          code 1
+      walk list, read missing
+        hook next
+          take site, name one
+          call show-line
+            call join-text
+              make list
+                text <          missing: >
+                read one
+      call show-line
+        text <          fix with: zone read>
+
+  call mark-time
+    bind name, text <the warm read is inside its budget>
+    bind took, read took
+    bind cap, read warm-budget
+  fork test
+    hook test
+      call more
+        read took
+        read warm-budget
+    hook hold
+      save bad
+        call add
+          read bad
+          code 1
+
+  call show-line
+    text <>
+  fork test
+    hook test
+      call is-equal
+        read bad
+        code 0
+    hook hold
+      call show-line
+        text <Everything checks out.>
+    hook miss
+      call show-line
+        call join-text
+          make list
+            call text-of
+              read bad
+            text < problem(s) above.>
+
+  send back
+    read bad

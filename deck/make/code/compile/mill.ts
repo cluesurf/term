@@ -3071,6 +3071,26 @@ export function mill(tree: RootNode, file: string): MillResult {
           headName(likeGroup) === 'like'
         ) {
           type = parseLikeType(likeGroup)
+        } else if (
+          likeGroup?.kind === 'group' &&
+          headName(likeGroup) === 'list'
+        ) {
+          // `link need, list need` -- the field shorthand for a list, where the
+          // element type follows `list` directly rather than inside an inner
+          // `like`. Only the `like list / like <t>` spelling was handled, so
+          // this shape left the field UNKNOWN and it emitted as `number`, the
+          // fallback for an unresolved type. The runtime was always right; it
+          // was the emitted TypeScript that lied, which meant no emitted
+          // interface holding a list could be trusted.
+          const elementNode = rest(likeGroup)[0]
+
+          type = {
+            kind: 'array',
+            element:
+              elementNode?.kind === 'group'
+                ? parseType(elementNode)
+                : UNKNOWN,
+          }
         }
 
         // `head <arg>` siblings of the `like` group supply arguments to a parameterized field type. A bare type name

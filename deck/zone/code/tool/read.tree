@@ -49,7 +49,7 @@ load ./base
   find equal
   find not-equal
   find more
-  find text-size
+  find text-units
 
 # One comma segment: a head, its bare words, and an optional `<value>`.
 task mine-part
@@ -78,7 +78,7 @@ task mine-part
           code 0
       save to
         call subtract
-          call text-size
+          call text-units
             read body
           code 1
       save seal
@@ -132,6 +132,11 @@ task mine-part
 
 # One line. The first comma segment is the line itself, and each segment
 # after it hangs under it as a leaf, which is what a comma chain means.
+#
+# A segment that carries only a value and no head word belongs to the head,
+# which is where the compiler's own parser puts it too. That is the
+# `bind database-url, <sealed>` case: the value is written last and belongs
+# to `bind`.
 task mine-line
   take line, like text
   like leaf
@@ -139,42 +144,57 @@ task mine-line
     call split
       read line
       text <,>
-  save main
-    make leaf
-      bind head, text <>
-      bind term
-        make list
-      bind code, text <>
-      bind leaf
-        make list
+  save lead, text <>
+  save seal, text <>
+  save bits
+    make list
+  save kids
+    make list
   save seen, code 0
+
   walk list, read parts
     hook next
       take site, name part
       save one
         call mine-part
           read part
+
       fork test
         hook test
           call equal
             read one/head
             text <>
         hook hold
+          fork test
+            hook test
+              call not-equal
+                read one/code
+                text <>
+            hook hold
+              save seal, read one/code
           turn next
+
       fork test
         hook test
           call is-equal
             read seen
             code 0
         hook hold
-          save main, read one
           save seen, code 1
+          save lead, read one/head
+          save bits, read one/term
+          save seal, read one/code
         hook miss
           call push
-            bind list, read main/leaf
+            bind list, read kids
             bind item, read one
+
   send back
-    read main
+    make leaf
+      bind head, read lead
+      bind term, read bits
+      bind code, read seal
+      bind leaf, read kids
 
 # A whole file: the top-level lines, each carrying its own nesting.
 #

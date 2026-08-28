@@ -1,0 +1,249 @@
+# Writing and reading `zone.code.tree`.
+#
+# The cache mirrors the declaration, so writing it is the declaration's own
+# shape rendered back out. One value per line, nested under the zone that
+# owns it, with the header in plaintext above.
+#
+# WHY NOT ONE BLOB. `zone list` needs no key, because which names are cached
+# and when is readable without unlocking anything. One value refreshes on its
+# own, so rotating a secret rewrites one line. Only what a path resolves to
+# is ever decrypted, so less plaintext exists for less time. And a rotation
+# shows up as one changed line rather than an opaque wall.
+#
+# It leaks nothing new: the names and the shape are already public, because
+# `zone.tree` is committed.
+
+load @term/seed/code/text
+  find text
+  find replace-all
+  find substring
+
+load @term/seed/code/list
+  find list
+  find push
+  find join
+  find size
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/bytes
+  find bytes
+  find from-text
+  find to-hex
+
+load @term/seed/code/cryptography/digest
+  find digest-sha256
+
+load @term/seed/code/tone
+  find tone-encode
+
+load ../base
+  find spot
+  find lock
+  find file
+
+load ../tool/base
+  find join-text
+  find join-line
+  find equal
+  find not-equal
+  find more
+  find text-units
+
+host tab, text <  >
+
+# One zone and everything under it, as lines.
+task show-spot
+  take at, like spot
+  take deep, like number
+  like list
+  save out
+    make list
+  save pad
+    call make-pad
+      read deep
+
+  walk list, read at/lock
+    hook next
+      take site, name one
+      call push
+        bind list, read out
+        bind item
+          call join-text
+            make list
+              read pad
+              text <bind >
+              read one/name
+              text <, \<>
+              read one/code
+              text <\>>
+
+  walk list, read at/zone
+    hook next
+      take site, name kid
+      call push
+        bind list, read out
+        bind item, text <>
+      call push
+        bind list, read out
+        bind item
+          call join-text
+            make list
+              read pad
+              text <zone >
+              read kid/name
+      walk list
+        call show-spot
+          bind at, read kid
+          bind deep
+            call add
+              read deep
+              code 1
+        hook next
+          take site, name line
+          call push
+            bind list, read out
+            bind item, read line
+
+  send back
+    read out
+
+task make-pad
+  take deep, like number
+  like text
+  save out
+    make list
+  save at, code 0
+  walk test
+    hook test
+      call more
+        read deep
+        read at
+    hook hold
+      call push
+        bind list, read out
+        bind item, read tab
+      save at
+        call add
+          read at
+          code 1
+  send back
+    call join-text
+      read out
+
+# A whole cache file.
+task show-file
+  take one, like file
+  like text
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item
+      call join-text
+        make list
+          text <made \<>
+          read one/made
+          text <\>>
+  call push
+    bind list, read out
+    bind item
+      call join-text
+        make list
+          text <good \<>
+          read one/good
+          text <\>>
+  call push
+    bind list, read out
+    bind item
+      call join-text
+        make list
+          text <seal >
+          read one/seal
+  call push
+    bind list, read out
+    bind item
+      call join-text
+        make list
+          text <deck \<>
+          read one/deck
+          text <\>>
+  call push
+    bind list, read out
+    bind item, text <>
+  walk list
+    call show-spot
+      bind at, read one/root
+      bind deep, code 0
+    hook next
+      take site, name line
+      call push
+        bind list, read out
+        bind item, read line
+  call push
+    bind list, read out
+    bind item, text <>
+  send back
+    call join-line
+      read out
+
+# The tone code of the sha256 of the declaration this cache was built from.
+#
+# It answers "was this cache built against the current `zone.tree`", which is
+# checkable with no key at all, so an edit to the declaration invalidates the
+# cache structurally rather than silently serving values for names that moved.
+#
+# Grouped in EIGHTS, which is the house shape for a sha256. `tone-encode`
+# groups in fours, so the dashes are taken back out and put in again.
+task mark-deck
+  note async
+  take body, like text
+  like text
+  save flat
+    call replace-all
+      call tone-encode
+        call to-hex
+          call digest-sha256
+            call from-text
+              read body
+            wait true
+      text <->
+      text <>
+  save out
+    make list
+  save at, code 0
+  save size
+    call text-units
+      read flat
+  walk test
+    hook test
+      call more
+        read size
+        read at
+    hook hold
+      fork test
+        hook test
+          call more
+            read at
+            code 0
+        hook hold
+          call push
+            bind list, read out
+            bind item, text <->
+      call push
+        bind list, read out
+        bind item
+          call substring
+            read flat
+            read at
+            call add
+              read at
+              code 8
+      save at
+        call add
+          read at
+          code 8
+  send back
+    call join-text
+      read out

@@ -51,6 +51,8 @@ form hold
 form need
   link name, like text
   link must, like boolean
+  link from, like text
+  link also, list text
 
 # The machine binding, read from the machine config.
 form bond
@@ -84,6 +86,47 @@ form gate
   link name, like text
   link ask, like text
   link home, like boolean
+
+# One sealed value in a `zone.code.tree`: a declared name bound to the
+# nonce, ciphertext and tag that answer it, tone-packed at 32 symbols.
+form lock
+  link name, like text
+  link code, like text
+  # The path of the zone that BINDS this value, which is what it was sealed
+  # against. Not the path that asked for it: a value declared at the root and
+  # inherited by a zone three levels down is still sealed against the root,
+  # so opening it from anywhere else has to name where it lives.
+  link path, like text
+
+# The header of a `zone.code.tree`, plus the root zone it holds.
+#
+# The four header fields are plaintext on purpose. What is secret is the
+# values, not the fact that a cache exists or when it was made, and being
+# able to read `made`, `good` and `deck` with no key is what makes the file
+# debuggable. None of them identifies a secret.
+form file
+  link made, like text
+  link good, like text
+  link seal, like text
+  link deck, like text
+  link root, like spot
+
+# One zone: a named scope in the declaration, holding what it declares and
+# every zone nested under it.
+#
+# `path` is the address, built by the nesting rather than written, so a zone
+# moved in the file cannot disagree with where it says it is.
+form spot
+  link name, like text
+  link path, like text
+  link base, like text
+  link bind, like text
+  link root, like boolean
+  link need, list need
+  link lock, list lock
+  link cast, list text
+  link load, list text
+  link zone, list spot
 
 # One line of a `.tree` file and everything hanging under it.
 #

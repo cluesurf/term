@@ -1,6 +1,52 @@
 
 # Text (string) operations. Each delegates to the native string method on the value.
 
+# How many CHARACTERS are in the text.
+#
+# CHARACTERS, meaning Unicode scalar values. Not UTF-16 code units and not
+# bytes. Those three agree only on ASCII, and this platform is about the
+# world's writing systems, so they disagree on most of what it holds.
+#
+#   "नमस्ते"     6 characters, 6 UTF-16 units, 18 bytes
+#   "𝄞"          1 character,  2 UTF-16 units,  4 bytes
+#
+# Every backend's obvious spelling gives a different one of those answers:
+# JavaScript's `.length` counts UTF-16 units, Rust's `.len()` counts bytes,
+# Swift's `.count` counts grapheme clusters. Picking whichever was nearest
+# would give a verb that quietly disagrees with itself across platforms, and
+# it would be wrong in the direction that matters here. So each backend spells
+# out the character count rather than reaching for its shortest method.
+#
+# NAMED `char-count`, and the name says which of the three it counts, which
+# is the whole subtlety.
+#
+# `size` was tried first, to match `size` on a list. Top-level task names are
+# package-global, so it collided with the list verb and broke three unrelated
+# test modules with `expected ?18[], found string`. `count` and `length` are
+# both already taken by bytes. So the short names are gone, and that is just
+# as well: `char-count` cannot be mistaken for a byte count the way `size`
+# can.
+bind do-size
+  take value, like text
+  like number
+  case node
+    text <Array.from($value).length>
+  case browser
+    text <Array.from($value).length>
+  case rust
+    text <$value.chars().count()>
+  case swift
+    text <$value.unicodeScalars.count>
+  case kotlin
+    text <$value.codePointCount(0, $value.length)>
+
+task char-count
+  take value, like text
+  like number
+  send back
+    call do-size
+      read value
+
 task char-at
   take value, like text
   take index, like integer

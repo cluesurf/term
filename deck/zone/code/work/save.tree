@@ -1,0 +1,269 @@
+# `zone save` — the declaration, saved to the provider.
+#
+#   zone save                  the whole tree
+#   zone save word.surf        one branch
+#   zone save --commit         actually write
+#
+# The command that means nobody creates a project by hand. It walks the
+# declaration and the provider side by side and reports four differences:
+#
+#   a zone with no project            the project is created
+#   a need or want with no secret     reported, never invented
+#   a secret nothing declares         reported as orphaned, never deleted
+#   a project whose path is gone      reported as stale, never deleted
+#
+# IT CREATES AND IT NEVER DELETES. A created project is reconstructable from
+# the declaration. A deleted secret is not, and a tool that prunes on a
+# misread declaration loses a value nobody had a copy of. Removals are
+# printed for a person.
+#
+# REPORTS BY DEFAULT AND WRITES ONLY ON `--commit`, because local work points
+# at the real provider and forgetting the flag has to be the safe direction.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find push
+  find size
+
+load @term/seed/code/boolean
+  find boolean
+
+load @term/seed/code/maybe
+  find maybe
+  find is-none
+  find unwrap
+
+load ../base
+  find spot
+  find bond
+
+load ../config/find
+  find read-decks
+  find halt-no-deck
+
+load ../config/zone
+  find mine-zone
+
+load ../config/machine
+  find read-bond
+  find berth
+
+load ../save/base
+  find pick
+  find read-code
+
+load ../hold/base
+  find list-hold
+  find make-hold
+  find read-hold
+
+load ../tool/base
+  find join-text
+  find join-line
+  find show-line
+  find halt
+  find equal
+  find not-equal
+  find here
+  find read-file
+  find is-equal
+  find more
+
+# Every zone in the tree, flattened, so the walk is one loop rather than a
+# recursion at every call site.
+task all-spots
+  take at, like spot
+  like list
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item, read at
+  walk list, read at/zone
+    hook next
+      take site, name kid
+      walk list
+        call all-spots
+          read kid
+        hook next
+          take site, name one
+          call push
+            bind list, read out
+            bind item, read one
+  send back
+    read out
+
+# Does the provider already hold a project by this name?
+task has-hold
+  take all, like list
+  take name, like text
+  like boolean
+  save out, false
+  walk list, read all
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read one/name
+            read name
+        hook hold
+          save out, true
+  send back
+    read out
+
+# NOT `keep`: `save/base.tree` already defines one, and Term names are
+# package-global, so the two would collide in the bundle.
+task keep-zone
+  note async
+  take spot, like text
+  take commit, like boolean
+  like number
+
+  save decks
+    call read-decks
+      wait true
+  fork test
+    hook test
+      call is-equal
+        call size
+          read decks
+        code 0
+    hook hold
+      send back
+        call halt-no-deck
+
+  save deck, text <>
+  walk list, read decks
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read deck
+            text <>
+        hook hold
+          save deck, read one
+
+  save root
+    call mine-zone
+      call read-file
+        read deck
+
+  save bond-got
+    call read-bond
+      wait true
+  fork test
+    hook test
+      call is-none
+        read bond-got
+    hook hold
+      send back
+        call halt
+          text <This machine is not bound. Run `zone bind` first.>
+  save bond
+    call unwrap
+      read bond-got
+
+  save kind
+    call pick
+  save code-got
+    call read-code
+      bind kind, read kind
+      bind spot
+        call berth
+          bind bond, read bond
+          bind tier, read bond/base
+      wait true
+  fork test
+    hook test
+      call is-none
+        read code-got
+    hook hold
+      send back
+        call halt
+          text <No bootstrap credential for this machine, so the provider cannot be opened. Run `zone code save`.>
+  save token
+    call unwrap
+      read code-got
+
+  save have
+    call list-hold
+      bind kind, read root/base
+      bind body, read token
+
+  save spots
+    call all-spots
+      read root
+
+  save made, code 0
+  save want, code 0
+
+  walk list, read spots
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call has-hold
+            bind all, read have
+            bind name, read one/path
+        hook hold
+          turn next
+      save want
+        call add
+          read want
+          code 1
+      fork test
+        hook test
+          read commit
+        hook hold
+          call make-hold
+            bind kind, read root/base
+            bind body, read token
+            bind name, read one/path
+          save made
+            call add
+              read made
+              code 1
+          call show-line
+            call join-text
+              make list
+                text <  made    >
+                read one/path
+        hook miss
+          call show-line
+            call join-text
+              make list
+                text <  would make    >
+                read one/path
+
+  fork test
+    hook test
+      call is-equal
+        read want
+        code 0
+    hook hold
+      call show-line
+        text <Every zone already has a project at the provider.>
+
+  fork test
+    hook test
+      read commit
+    hook miss
+      fork test
+        hook test
+          call more
+            read want
+            code 0
+        hook hold
+          call show-line
+            call join-line
+              make list
+                text <>
+                text <report only. Add --commit to write.>
+
+  send back
+    code 0

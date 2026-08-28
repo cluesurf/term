@@ -1,0 +1,140 @@
+# Sealing one value.
+#
+# A sealed value is `nonce || ciphertext || tag`, tone-packed at 32 symbols.
+# Twelve bytes of nonce, sixteen of tag, and the ciphertext between them.
+#
+# NO CRYPTOGRAPHY IS IMPLEMENTED HERE. `@term/seed/code/cryptography/cipher`
+# forwards to the platform's own AES-256-GCM (Web Crypto on node and in a
+# browser, javax.crypto on the JVM, the aes-gcm crate on rust, CryptoKit on
+# swift), and the random bytes come from the platform's own generator. What
+# this file decides is the shape: what goes in the nonce, what goes in the
+# additional data, and how the result is written down.
+#
+# THE ADDITIONAL DATA IS THE PART TO GET RIGHT. Each value is sealed against
+# `<path>/<name>`, so a sealed value carries the address it belongs to. The
+# ciphertext on the `sentry-dsn` line of `base/word.surf/star` cannot be
+# pasted onto the `database-url` line, or onto `sentry-dsn` in another zone,
+# without failing to open. Without it the tool would decrypt either happily
+# into the wrong variable, which is the failure this whole design exists to
+# make impossible.
+#
+# A FRESH NONCE EVERY WRITE. Reusing a nonce under one key is the way to
+# lose AES-GCM outright, so the nonce is twelve fresh bytes each time a value
+# is sealed, and it travels with the value rather than being derived from
+# anything.
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+
+load @term/seed/code/bytes
+  find bytes
+  find from-text
+  find to-text
+  find concat
+  find slice
+  find length
+
+load @term/seed/code/cryptography/random
+  find bytes, name make-random
+
+load @term/seed/code/cryptography/cipher
+  find encrypt
+  find decrypt
+
+load @term/seed/code/tone
+  find tone-pack
+  find tone-unpack
+
+load ../tool/base
+  find join-text
+
+# AES-256-GCM: a 32-byte key, a 12-byte nonce, a 16-byte tag.
+host key-size, code 32
+
+host nonce-size, code 12
+
+# What a value is authenticated against: its address.
+task seal-extra
+  take path, like text
+  take name, like text
+  like bytes
+  send back
+    call from-text
+      call join-text
+        make list
+          read path
+          text </>
+          read name
+
+# A fresh master key. Kept by the operating system's own keystore, never
+# written next to the cache it opens.
+task make-key
+  note async
+  like bytes
+  send back
+    call make-random
+      read key-size
+
+# Seal one value against its address.
+task seal-value
+  note async
+  take key, like bytes
+  take path, like text
+  take name, like text
+  take plain, like text
+  like text
+  save nonce
+    call make-random
+      read nonce-size
+  save body
+    call encrypt
+      read key
+      read nonce
+      call from-text
+        read plain
+      call seal-extra
+        bind path, read path
+        bind name, read name
+      wait true
+  send back
+    call tone-pack
+      call concat
+        read nonce
+        read body
+
+# Open one value. Fails when the key, the nonce, the ciphertext or the
+# address is not the one it was sealed with, which is the whole point.
+task open-value
+  note async
+  take key, like bytes
+  take path, like text
+  take name, like text
+  take code, like text
+  like text
+  save all
+    call tone-unpack
+      read code
+  save nonce
+    call slice
+      read all
+      code 0
+      read nonce-size
+  save body
+    call slice
+      read all
+      read nonce-size
+      call length
+        read all
+  send back
+    call to-text
+      call decrypt
+        read key
+        read nonce
+        read body
+        call seal-extra
+          bind path, read path
+          bind name, read name
+        wait true

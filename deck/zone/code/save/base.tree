@@ -136,12 +136,19 @@ task put
 
 # Take a credential out of the store for the length of one call. The caller
 # is expected to drop it as soon as the provider is open.
+# The credential, AS TEXT. Every backend returns `{ form: "some", value:
+# "<the string>" }`, so what comes back is a maybe holding the credential
+# itself and not a `pass` record. This was annotated `maybe pass` and every
+# caller read `.body` off a string, which is `undefined`. The end to end
+# harness did not catch it because its fake provider ignores the token it is
+# handed, so the only visible symptom would have been a real provider
+# rejecting an empty credential.
 task read-code
   note async
   take kind, like text
   take spot, like seat
   like maybe
-    head pass
+    head text
   fork case, read kind
     case keychain
       send back

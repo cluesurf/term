@@ -23,6 +23,9 @@ import {
 } from '@term/make/code/compile/bind'
 import type { Bind } from '@term/make/code/compile/bind'
 
+const guardStart = (text: string): string =>
+  /^[([`]/.test(text) ? `;${text}` : text
+
 const PRECEDENCE: Record<BinaryOp, number> = {
   '||': 1,
   '&&': 2,
@@ -186,7 +189,19 @@ function tsType(type: Type | undefined): string {
     case 'named': {
       const opaque = tsOpaqueTypes.get(type.name)
 
-      return opaque ?? toPascal(type.name)
+      if (opaque) {
+        return opaque
+      }
+
+      // type arguments when the reference carries them, so `like maybe / head
+      // text` reaches TypeScript as `Maybe<string>` rather than a bare
+      // `Maybe` that says nothing about what it holds.
+      const args =
+        type.args && type.args.length > 0
+          ? `<${type.args.map(a => tsType(a)).join(', ')}>`
+          : ''
+
+      return `${toPascal(type.name)}${args}`
     }
 
     case 'function': {
@@ -500,7 +515,7 @@ function makeEmitter(
     }
 
     const inner = body
-      .map(s => `${pad(depth + 1)}${statement(s, depth + 1)}`)
+      .map(s => `${pad(depth + 1)}${guardStart(statement(s, depth + 1))}`)
       .join('\n')
 
     return `{\n${inner}\n${pad(depth)}}`
@@ -889,6 +904,30 @@ function makeEmitter(
         return 'debugger'
 
       case 'record-type': {
+        // THE FORM'S HEADS BECOME TYPE PARAMETERS.
+        //
+        // `form maybe / head t` declares a parameter, and dropping it emitted
+        //
+        //   export type Maybe =
+        //     | { form: "some"; value: T }
+        //
+        // where `T` is never declared. Nothing caught it, because `term boot`
+        // strips types rather than checking them, so the annotation only had
+        // to parse. The cost was that a head written in the source could
+        // never constrain anything: `like maybe / head text` and a provider
+        // returning the wrong shape looked identical to the compiler.
+        // Each parameter is given `= unknown`. A reference that carries no
+        // arguments is common in emitted code, and a parameter with no
+        // default would make every one of those an error. The default keeps
+        // the bare reference legal while a reference that DOES carry
+        // arguments is checked properly.
+        const generics =
+          node.params && node.params.length > 0
+            ? `<${node.params
+                .map(p => `${toPascal(p)} = unknown`)
+                .join(', ')}>`
+            : ''
+
         // an enum becomes a discriminated union; a struct becomes an interface
         if (node.variants.length > 0) {
           const members = node.variants.map(v => {
@@ -902,7 +941,7 @@ function makeEmitter(
             ].join('; ')} }`
           })
 
-          return `type ${toPascal(node.name)} =\n${members
+          return `type ${toPascal(node.name)}${generics} =\n${members
             .map(m => `${pad(depth + 1)}| ${m}`)
             .join('\n')}`
         }
@@ -914,7 +953,7 @@ function makeEmitter(
           )
           .join('\n')
 
-        return `interface ${toPascal(node.name)} {\n${fields}\n${pad(
+        return `interface ${toPascal(node.name)}${generics} {\n${fields}\n${pad(
           depth,
         )}}`
       }

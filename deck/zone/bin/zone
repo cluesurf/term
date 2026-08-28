@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# The `zone` command.
+#
+# Install by putting this directory's `bin` on your PATH, or by linking it:
+#
+#   ln -s "$PWD/bin/zone" ~/.local/bin/zone
+#
+# It resolves its own location, so a link from anywhere works and the package
+# can move without the link breaking.
+#
+# WHAT IT DOES. The console lives in `code/line/base.tree` and is run through
+# the Term CLI, which compiles it on first use and caches the result. That
+# first run costs a few seconds. Every run after it is the cached bundle, and
+# the warm path inside zone is measured at well under a millisecond.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$(readlink "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" && pwd)"
+ZONE="$(cd "$HERE/.." && pwd)"
+TERM_HOST="$ZONE/../../host/line.js"
+
+if [ ! -f "$TERM_HOST" ]; then
+  echo "zone: cannot find the Term CLI at $TERM_HOST" >&2
+  echo "zone: this script must stay inside the zone package" >&2
+  exit 1
+fi
+
+exec node "$TERM_HOST" boot "$ZONE/code/line/base.tree" -- "$@"
