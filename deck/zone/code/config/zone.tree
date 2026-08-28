@@ -89,6 +89,8 @@ task mine-spot
   save root, false
   save lock
     make list
+  save fact
+    make list
   save need
     make list
   save cast
@@ -183,6 +185,25 @@ task mine-spot
           call push
             bind list, read load
             bind item, read word
+        # `mark <name>, <value>` is CONFIG: a value that is not secret and
+        # belongs in the committed declaration.
+        #
+        # NOT `bind`, which is taken twice over: the cache file uses it for a
+        # sealed value and `base` uses it for the provider settings. The same
+        # parser reads all three files, so a third meaning would be decided by
+        # whichever arm came first, which is how config silently never loaded.
+        case mark
+          call push
+            bind list, read fact
+            bind item
+              make hold
+                bind name
+                  call first-term
+                    read kid
+                bind body
+                  call bind-value
+                    read kid
+                bind note, text <>
         case need
           call push
             bind list, read need
@@ -215,6 +236,7 @@ task mine-spot
       bind bank, read bank
       bind bind, read bind
       bind root, read root
+      bind fact, read fact
       bind need, read need
       bind lock, read lock
       bind cast, read cast
@@ -870,3 +892,109 @@ task is-note
     call equal
       read at/hold
       text <note>
+
+# The chain of paths from the root down to one zone, root first.
+#
+# "one path and what it inherits" is exactly this list: a name declared at
+# `base` is inherited by `base/word.surf/star`, so fetching that zone means
+# fetching every zone above it too, and nothing else.
+#
+# Built from the path text rather than by walking the tree, because a zone
+# path IS its address: `base/word.surf/star` has exactly the ancestors
+# `base` and `base/word.surf`, and no lookup can disagree with that.
+task path-chain
+  take want, like text
+  like list
+  save out
+    make list
+  save at, text <>
+  walk list
+    call split
+      bind value, read want
+      bind on, text </>
+    hook next
+      take site, name part
+      fork test
+        hook test
+          call equal
+            read at
+            text <>
+        hook hold
+          save at, read part
+        hook miss
+          save at
+            call join-text
+              make list
+                read at
+                text </>
+                read part
+      call push
+        bind list, read out
+        bind item, read at
+  send back
+    read out
+
+# Every config value a path resolves, inherited the same way needs are.
+#
+# Config is not secret and lives in the declaration, so this needs no
+# provider, no cache and no key. `term zone load` hands it to the child
+# beside the secrets, because a process needs both and getting one without
+# the other is a boot failure that looks like a missing secret.
+task pull-fact
+  take root, like spot
+  take path, like text
+  like list
+
+  save all
+    make list
+  walk list, read root/fact
+    hook next
+      take site, name one
+      call push
+        bind list, read all
+        bind item, read one
+
+  save trail
+    call path-chain
+      read path
+
+  walk list, read trail
+    hook next
+      take site, name step
+      save got
+        call find-spot
+          bind root, read root
+          bind path, read step
+      fork case, read got
+        case none
+          turn next
+        case some
+          save at
+            call unwrap
+              read got
+          walk list, read at/fact
+            hook next
+              take site, name one
+              # A nearer declaration wins, so the earlier one is dropped
+              # rather than shadowed.
+              save keep
+                make list
+              walk list, read all
+                hook next
+                  take site, name had
+                  fork test
+                    hook test
+                      call not-equal
+                        read had/name
+                        read one/name
+                    hook hold
+                      call push
+                        bind list, read keep
+                        bind item, read had
+              call push
+                bind list, read keep
+                bind item, read one
+              save all, read keep
+
+  send back
+    read all

@@ -50,6 +50,7 @@ load ../config/zone
   find mine-zone
   find mine-file
   find pull-need
+  find pull-fact
   find pull-cast
   find find-spot
   find find-lock
@@ -445,6 +446,46 @@ task load
         call halt
           call join-line
             read lines
+
+  # CONFIG GOES TO THE CHILD TOO.
+  #
+  # A bucket name, a port, a public url. Not secret, so it lives in the
+  # declaration rather than at the provider, and it needs no key to read. A
+  # process needs it exactly as much as it needs the secrets: handing over one
+  # without the other is a boot failure that reads as a missing secret.
+  #
+  # Declared first, so a name that is BOTH config and a secret takes the
+  # secret's value. That should not happen, and if it does the sealed one is
+  # the one to trust.
+  save shown
+    make list
+  walk list
+    call pull-fact
+      bind root, read root
+      bind path, read want
+    hook next
+      take site, name one
+      walk list, read casts
+        hook next
+          take site, name form
+          call push
+            bind list, read shown
+            bind item
+              make hold
+                bind name
+                  call cast-name
+                    bind form, read form
+                    bind from, read one/name
+                bind body, read one/body
+                bind note, text <>
+
+  walk list, read held
+    hook next
+      take site, name one
+      call push
+        bind list, read shown
+        bind item, read one
+  save held, read shown
 
   # The child is told which zone it is running under.
   #

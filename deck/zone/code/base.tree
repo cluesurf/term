@@ -131,6 +131,11 @@ form spot
   link bank, like text
   link bind, like text
   link root, like boolean
+  # Config: names whose values are NOT secret and live in the declaration
+  # itself. A bucket name, a port, a public site url. A process needs them
+  # exactly as much as it needs the secrets, and keeping them in a separate
+  # file is how the two drift.
+  link fact, list hold
   link need, list need
   link lock, list lock
   link cast, list text

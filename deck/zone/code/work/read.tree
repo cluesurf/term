@@ -51,6 +51,7 @@ load ../config/find
   find halt-no-deck
 
 load ../config/zone
+  find path-chain
   find mine-zone
   find find-spot
 
@@ -96,47 +97,6 @@ load ../tool/base
   find then-stamp
 
 # Every zone path in the tree, which is every project to fetch.
-# The chain of paths from the root down to one zone, root first.
-#
-# "one path and what it inherits" is exactly this list: a name declared at
-# `base` is inherited by `base/word.surf/star`, so fetching that zone means
-# fetching every zone above it too, and nothing else.
-#
-# Built from the path text rather than by walking the tree, because a zone
-# path IS its address: `base/word.surf/star` has exactly the ancestors
-# `base` and `base/word.surf`, and no lookup can disagree with that.
-task path-chain
-  take want, like text
-  like list
-  save out
-    make list
-  save at, text <>
-  walk list
-    call split
-      bind value, read want
-      bind on, text </>
-    hook next
-      take site, name part
-      fork test
-        hook test
-          call equal
-            read at
-            text <>
-        hook hold
-          save at, read part
-        hook miss
-          save at
-            call join-text
-              make list
-                read at
-                text </>
-                read part
-      call push
-        bind list, read out
-        bind item, read at
-  send back
-    read out
-
 task all-paths
   take at, like spot
   like list
