@@ -15,7 +15,14 @@ import { mill } from '@term/make/code/compile/mill'
 import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
-import { disambiguateOverloads } from '@term/make/code/check/overload'
+import {
+  disambiguateOverloads,
+  overloadGroups,
+} from '@term/make/code/check/overload'
+import { extendForms } from '@term/make/code/check/extend'
+import { checkTells } from '@term/make/code/check/tell'
+import { buildRoll } from '@term/make/code/compile/roll'
+import type { Roll } from '@term/make/code/compile/roll'
 import { elaborateReport } from '@term/make/code/check/elaborate'
 import { checkHolds } from '@term/make/code/check/holds'
 import { checkTraits } from '@term/make/code/check/traits'
@@ -80,6 +87,8 @@ export type CompileResult =
       // present only in per-module mode (`options.modules`): one emitted ESM module per source file (file -> emit)
       modules?: Map<string, ModuleEmit>
       warnings: Diagnostic[]
+      // present when `options.roll` was set: the roll of this entry's closure (compile/roll.ts)
+      roll?: Roll
     }
   | { ok: false; diagnostics: Diagnostic[] }
 
@@ -134,6 +143,11 @@ export function compile(
     // (Without it, every top-level function of the entry module is a root -- the right default for a library, whose
     // public surface is its API.) Setting this implies tree-shaking. See code/ir/prune.ts.
     entryPoints?: string[]
+    // build the roll of the closure (every deck, exception, task, route and tell) and return it as `roll`
+    roll?: boolean
+    // the deck a source file belongs to (name and root), from its nearest `deck.tree`. Names the `host` of every
+    // raise and roll entry. The CLI supplies it; without it the deck is read off the path
+    deckOf?: (file: string) => { name: string; root: string } | undefined
   },
 ): CompileResult {
   // a look stylesheet (.tree whose top-level statements are all `face` / `tone` / `base`) is not a normal compile
@@ -172,6 +186,7 @@ export function compile(
     (options?.optimize === false ? '|raw' : '') +
     (options?.env ? `|env:${options.env}` : '') +
     (treeShake ? '|shake' : '') +
+    (options?.roll ? '|roll' : '') +
     (options?.entryPoints?.length
       ? `|entry:${[...options.entryPoints].sort().join(',')}`
       : '')
@@ -268,6 +283,8 @@ export function compile(
       options?.env,
       // explicit entry points imply pruning (application dead-code elimination)
       treeShake || (options?.entryPoints?.length ?? 0) > 0,
+      options?.roll,
+      options?.deckOf,
     )
   }
 
@@ -307,7 +324,17 @@ export function compileProgram(
   optimize?: boolean,
   env?: string,
   treeShake?: boolean,
+  wantRoll?: boolean,
+  deckOf?: (file: string) => { name: string; root: string } | undefined,
 ): CompileResult {
+  // form extension: resolve every `form x` that is `like <base>` with children into an ordinary record, and finish
+  // every `halt <form>` raise, before any name is bound. See code/check/extend.ts.
+  const extendDiagnostics = extendForms(program, file, origin, { deckOf })
+
+  if (extendDiagnostics.length) {
+    return { ok: false, diagnostics: extendDiagnostics }
+  }
+
   // arity overloading: rename same-name / different-arity functions (and their calls) to unique `name__<arity>` names,
   // so everything downstream sees one definition per name. See code/check/overload.ts.
   disambiguateOverloads(program)
@@ -324,6 +351,21 @@ export function compileProgram(
   // only on the reachable program. Needs `roots` (the entry's public surface)
   // to know the starting points. See code/ir/prune.ts.
   if (treeShake && roots) {
+    // every member of a typed overload group is a root: calls target the first member until the checker picks one
+    // by argument type, and the pick must still exist then
+    for (const members of overloadGroups.values()) {
+      for (const member of members) {
+        roots.add(member)
+      }
+    }
+
+    // the hive's entry points are called by the generated wake chain, which nothing in the source references
+    for (const name of ['hive-wake', 'hive-tell']) {
+      if (program.some(s => s.form === 'function' && s.name === name)) {
+        roots.add(name)
+      }
+    }
+
     // Zone lowering (further below) rewrites `zone` components into calls to
     // the render runtime (element / text / attribute / dynamic / event /
     // append / show / each / ...). That lowering runs AFTER this prune, so the
@@ -422,6 +464,24 @@ export function compileProgram(
     ...holdWarnings,
   ]
 
+  // the app's `tell` decisions: each must name an exception the program can raise, with props it declares
+  const tellDiagnostics = checkTells(program, file, origin, deckOf)
+
+  if (tellDiagnostics.length) {
+    return { ok: false, diagnostics: tellDiagnostics }
+  }
+
+  // the roll is built from the checked, un-simplified program, so every task is still there to be listed
+  const roll = wantRoll
+    ? buildRoll(program, file, origin, { deckOf })
+    : undefined
+
+  // what wakes the hive: every deck with its exceptions and tells, whether or not a roll was asked for. Cheap, and
+  // only emitted when the program loads the stdlib hive.
+  const wake = program.some(s => s.form === 'function' && s.name === 'hive-wake')
+    ? wakeGroups(buildRoll(program, file, origin, { deckOf }))
+    : undefined
+
   // trait-instance dictionary passing: thread a trait's instance through every trait-bounded generic call so generic
   // trait-method dispatch resolves to concrete code. This is the JavaScript-family lowering (records of functions); the
   // native backends instead keep trait calls in native form and emit traits / protocols / interfaces. So the dictionary
@@ -465,6 +525,7 @@ export function compileProgram(
       typescript: '',
       modules: emitModules(tsProgram, origin, modulesUrl),
       warnings,
+      ...(roll ? { roll } : {}),
     }
   }
 
@@ -479,6 +540,7 @@ export function compileProgram(
       program,
       typescript: emitTypeScript(lowerZones(program)),
       warnings,
+      ...(roll ? { roll } : {}),
     }
   }
 
@@ -502,7 +564,30 @@ export function compileProgram(
   return {
     ok: true,
     program: loweredProgram,
-    typescript: emitTypeScript(loweredTs, { env }),
+    typescript: emitTypeScript(loweredTs, { env, wake }),
     warnings,
+    ...(roll ? { roll } : {}),
   }
+}
+
+// the roll grouped by deck, in the shape `hiveWake` takes: exceptions and tells only, so the wake chain stays small
+function wakeGroups(
+  roll: Roll,
+): { deck: string; entries: Record<string, unknown>[] }[] {
+  const groups = new Map<string, Record<string, unknown>[]>()
+
+  for (const deck of roll.deck) {
+    groups.set(deck.name, [])
+  }
+
+  for (const kind of ['exception', 'tell'] as const) {
+    for (const entry of roll[kind]) {
+      const { host, ...rest } = entry
+      const list = groups.get(host) ?? []
+      list.push({ host, kind: entry.kind, name: entry.name, site: entry.site, base: rest })
+      groups.set(host, list)
+    }
+  }
+
+  return [...groups].map(([deck, entries]) => ({ deck, entries }))
 }

@@ -1,11 +1,20 @@
 
 # macOS Keychain, reached through the `security` tool.
 #
-# The credential is passed to `security` on stdin, never as an argument.
-# `security add-generic-password -w` with no value makes the tool read the
-# secret itself, so it never appears in the process table or in shell
-# history. Reading uses `-w`, which prints only the password, so nothing
-# else has to be parsed off the output.
+# The credential is passed to `security` on stdin, never as an argument, so
+# it never appears in the process table or in shell history.
+#
+# `-w` WITH NO VALUE PROMPTS TWICE, for the password and then to retype it,
+# and refuses if the two do not match. So the value is written to stdin
+# TWICE. Sending it once made `security` print `passwords don't match` on a
+# stream nothing was reading and store an empty string, and every check said
+# the item was there, because an item WAS there. `zone lock show` said a
+# master key was stored, `zone test` passed it, and the fetch then failed at
+# the provider with `Doesn't contain a decryption key`, which points at the
+# credential rather than at the store that lost it.
+#
+# Reading uses `-w`, which prints only the password, so nothing else has to
+# be parsed off the output.
 #
 # Only the node target is bound. A machine running the zone console is a
 # developer machine, and the other targets have their own stores.
@@ -36,7 +45,7 @@ bind do-keychain-save
   take spot, like seat
   take body, like text
   case node
-    text <require("node:child_process").execFileSync("security", ["add-generic-password", "-U", "-s", "zone", "-a", $spot.name, "-w"], { input: $body, stdio: ["pipe", "ignore", "ignore"] })>
+    text <require("node:child_process").execFileSync("security", ["add-generic-password", "-U", "-s", "zone", "-a", $spot.name, "-w"], { input: $body + "\\n" + $body + "\\n", stdio: ["pipe", "ignore", "ignore"] })>
 
 # Read it back. A miss exits non-zero, which becomes `none` rather than a
 # thrown error, because "no credential yet" is an ordinary state.

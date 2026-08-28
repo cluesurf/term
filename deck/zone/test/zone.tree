@@ -72,7 +72,7 @@ task show
       read sample
   save all
     call pull-need
-      bind self, read self
+      bind root, read self
       bind path, read path
   save out
     make list

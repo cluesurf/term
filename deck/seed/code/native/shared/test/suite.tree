@@ -73,11 +73,11 @@ task register
     hook hold
       save full-name
         call concat
-          bind a
+          bind input
             call concat
-              bind a, read group
-              bind b, text < > >
-          bind b, read name
+              bind input, read group
+              bind other, text < > >
+          bind other, read name
 
   save entry
     make test-entry

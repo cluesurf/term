@@ -489,8 +489,14 @@ function parseLikeType(likeGroup: GroupNode): Type {
       effects.push('async')
     }
 
+    // a bare `halt` child marks the callback type as one that may raise (`bust` is the retired spelling)
     if (
-      children.some(c => c.kind === 'group' && headName(c) === 'bust')
+      children.some(
+        c =>
+          c.kind === 'group' &&
+          (headName(c) === 'halt' || headName(c) === 'bust') &&
+          rest(c).length === 0,
+      )
     ) {
       effects.push('throw')
     }
@@ -946,7 +952,10 @@ export function mill(tree: RootNode, file: string): MillResult {
         const params: { name: string; type?: Type }[] = []
 
         for (const child of decl) {
-          if (child.kind !== 'group' || headName(child) !== 'take') {
+          if (
+            child.kind !== 'group' ||
+            (headName(child) !== 'take' && headName(child) !== 'slot')
+          ) {
             continue
           }
 
@@ -1023,6 +1032,7 @@ export function mill(tree: RootNode, file: string): MillResult {
 
         const SIGNATURE = new Set([
           'take',
+          'slot',
           'like',
           'head',
           'mark',
@@ -1032,7 +1042,8 @@ export function mill(tree: RootNode, file: string): MillResult {
 
         const bodyNodes = decl.filter(
           n =>
-            !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')),
+            !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')) ||
+            (isAnnotation(n, 'unsafe') && rest(n as GroupNode).length > 1),
         )
 
         const resultLike = decl.find(
@@ -1207,10 +1218,34 @@ export function mill(tree: RootNode, file: string): MillResult {
     const background = parts.slice(1).some(isWaitFalse)
     // `halt kink` propagates the callee's error rather than being an argument
     const propagate = parts.slice(1).some(isHaltKink)
-    const callArgs = parts
+    const argNodes = parts
       .slice(1)
       .filter(a => !isWaitTrue(a) && !isWaitFalse(a) && !isHaltKink(a))
-      .map(a => toExpression(a, scope))
+
+    // a `bind <name>, <value>` child is a NAMED argument. The label rides on the call for the checker, which puts
+    // the value in the callee's declared position; the mill keeps source order.
+    const isNamed = (a: Node): a is GroupNode =>
+      a.kind === 'group' &&
+      headName(a) === 'bind' &&
+      rest(a)[0]?.kind === 'group'
+
+    const callArgs = argNodes.map(a => {
+      if (isNamed(a)) {
+        const value = rest(a)[1]
+
+        return value && value.kind !== 'root'
+          ? toExpression(value, scope)
+          : { form: 'unit' as const, span: spanOf(a) }
+      }
+
+      return toExpression(a, scope)
+    })
+
+    const names = argNodes.some(isNamed)
+      ? argNodes.map(a =>
+          isNamed(a) ? headName(rest(a)[0] as GroupNode) : undefined,
+        )
+      : undefined
 
     let result: Expression
 
@@ -1253,6 +1288,7 @@ export function mill(tree: RootNode, file: string): MillResult {
         callee,
         args: callArgs,
         span,
+        ...(names ? { names } : {}),
         ...(background ? { background: true } : {}),
         ...(propagate ? { propagate: true } : {}),
       }
@@ -1389,12 +1425,28 @@ export function mill(tree: RootNode, file: string): MillResult {
         }
       })
 
+    // positional values (`make point, code 1, code 2`): anything that is not a `bind`. They fill the form's `slot`
+    // fields in order (extendForms), and a form without slots refuses them.
+    const positional = items
+      .filter(it => !(it.kind === 'group' && headName(it) === 'bind'))
+      .filter(it => it.kind !== 'root')
+      .map(it => itemValue(it, scope))
+
     // function-free when no bound value is a function literal (a closure), so the record is pure data the base bridge
     // can lift into a `RecordNode`. A value that resolves to a function through a variable is caught later, at the
     // form level, by the form's own `functionFree` flag.
-    const functionFree = fields.every(f => f.value.form !== 'closure')
+    const functionFree =
+      fields.every(f => f.value.form !== 'closure') &&
+      positional.every(v => v.form !== 'closure')
 
-    return { form: 'record', name: kind ?? '', fields, span, functionFree }
+    return {
+      form: 'record',
+      name: kind ?? '',
+      fields,
+      span,
+      functionFree,
+      ...(positional.length > 0 ? { positional } : {}),
+    }
   }
 
   // a collection item: either a bare value or a `save item, <value>` wrapper
@@ -1440,7 +1492,9 @@ export function mill(tree: RootNode, file: string): MillResult {
   ): Statement[] {
     const out: Statement[] = []
 
-    for (const node of nodes) {
+    for (let at = 0; at < nodes.length; at++) {
+      const node = nodes[at]!
+
       if (node.kind !== 'group') {
         out.push({
           form: 'expression',
@@ -1452,6 +1506,70 @@ export function mill(tree: RootNode, file: string): MillResult {
 
       const span = spanOf(node)
       const keyword = headName(node)
+
+      // `note unsafe` over statements guards them: the exceptions they raise are caught by the `halt take` that
+      // follows, whose `take <name>` binds the caught value for the handler body. A bare `note unsafe` (no body) is
+      // the older task-level annotation and is left alone.
+      if (keyword === 'note' && isAnnotation(node, 'unsafe')) {
+        const guarded = rest(node).slice(1)
+
+        if (guarded.length > 0) {
+          const next = nodes[at + 1]
+          const isHandler =
+            next?.kind === 'group' &&
+            headName(next) === 'halt' &&
+            rest(next)[0]?.kind === 'group' &&
+            headName(rest(next)[0] as GroupNode) === 'take'
+
+          const guard: Extract<Statement, { form: 'guard' }> = {
+            form: 'guard',
+            body: toStatements(guarded, scope),
+            span,
+          }
+
+          if (isHandler) {
+            const handler = next as GroupNode
+            const parts = rest(handler).slice(1)
+            const takeGroup = parts.find(
+              (n): n is GroupNode =>
+                n.kind === 'group' && headName(n) === 'take',
+            )
+            const nameGroup = takeGroup ? rest(takeGroup)[0] : undefined
+            const caught =
+              nameGroup?.kind === 'group'
+                ? headName(nameGroup) ?? 'exception'
+                : 'exception'
+            const inner = new Set(scope)
+            inner.add(caught)
+
+            guard.catch = {
+              name: caught,
+              body: toStatements(
+                parts.filter(n => n !== takeGroup),
+                inner,
+              ),
+              span: spanOf(handler),
+            }
+
+            at++
+          }
+
+          out.push(guard)
+          continue
+        }
+      }
+
+      if (
+        keyword === 'halt' &&
+        rest(node)[0]?.kind === 'group' &&
+        headName(rest(node)[0] as GroupNode) === 'take'
+      ) {
+        fail(
+          node,
+          'halt take is the handler of a note unsafe body and must follow one',
+        )
+        continue
+      }
 
       switch (keyword) {
         case 'take':
@@ -1962,15 +2080,12 @@ export function mill(tree: RootNode, file: string): MillResult {
           break
         }
 
+        // `bust` is retired: `halt <form>` raises, `halt <text>` fails, bare `halt` breaks
         case 'bust': {
-          const valueNode = rest(node)[0]
-          out.push({
-            form: 'throw',
-            value: valueNode
-              ? toExpression(valueNode, scope)
-              : { form: 'unit', span },
-            span,
-          })
+          fail(
+            node,
+            '`bust` is retired. Write `halt <form>` with `bind` children to raise an exception, `halt <text>` to fail with a message, or `halt` to break out of a loop',
+          )
           break
         }
 
@@ -1993,29 +2108,12 @@ export function mill(tree: RootNode, file: string): MillResult {
               span,
             })
           } else if (sendVariant === 'kink') {
-            // `send kink <kink>`: raise a recoverable error. The error-channel counterpart to `send back` -- it
-            // returns the result's `error` arm wrapping the kink the user constructed. The enclosing task must return
-            // a `result`. See note/library/seed/error-model.md.
-            const value =
-              rest(node)[1] ?? rest(backGroup as GroupNode)[0]
-
-            out.push({
-              form: 'return',
-              value: {
-                form: 'record',
-                name: 'error',
-                fields: [
-                  {
-                    name: 'value',
-                    value: value
-                      ? toExpression(value, scope)
-                      : { form: 'unit', span },
-                  },
-                ],
-                span,
-              },
-              span,
-            })
+            // `send kink` is retired: a raise is `halt <form>`, and passing a callee's exception on is `halt kink`
+            // as a child of the call
+            fail(
+              node,
+              '`send kink` is retired. Raise with `halt <form>`; pass a callee\'s exception on with `halt kink` under the call',
+            )
           } else {
             fail(node, 'send must be followed by back or kink')
           }
@@ -2140,6 +2238,20 @@ export function mill(tree: RootNode, file: string): MillResult {
             out.push({
               form: 'throw',
               value: toExpression(arg, scope),
+              span,
+            })
+          } else if (
+            which !== undefined &&
+            (!HALT_WORDS.has(which) || which === 'kink') &&
+            rest(node).length === 2 &&
+            rest(node)[1]?.kind === 'group' &&
+            isValueExpressionHead(headName(rest(node)[1] as GroupNode))
+          ) {
+            // `halt <form>, read x` (or `halt kink, read x`): re-raise an exception VALUE already in hand. It is
+            // thrown as it is, with nothing filled in, because it was filled when it was first raised.
+            out.push({
+              form: 'throw',
+              value: toExpression(rest(node)[1]!, scope),
               span,
             })
           } else if (
@@ -2434,19 +2546,25 @@ export function mill(tree: RootNode, file: string): MillResult {
     type?: Type
     refine?: 'natural'
     optional?: boolean
+    fallback?: Expression
+    positional?: boolean
   }[] {
     const params: {
       name: string
       type?: Type
       refine?: 'natural'
       optional?: boolean
+      fallback?: Expression
+      positional?: boolean
     }[] = []
 
     for (const statement of body) {
+      // `take <name>` is a parameter callable by position or by name; `slot <name>` is positional only
       if (
         statement.kind === 'group' &&
-        headName(statement) === 'take'
+        (headName(statement) === 'take' || headName(statement) === 'slot')
       ) {
+        const positional = headName(statement) === 'slot'
         const varGroup = rest(statement)[0]
         const paramName =
           varGroup?.kind === 'group' ? headName(varGroup) : undefined
@@ -2564,11 +2682,31 @@ export function mill(tree: RootNode, file: string): MillResult {
         const optional =
           needArg?.kind === 'group' && headName(needArg) === 'false'
 
+        // `fall <value>`: the default an omitted argument gets. Nested the same two ways as `need`.
+        const fallGroup =
+          rest(statement).find(
+            (n): n is GroupNode =>
+              n.kind === 'group' && headName(n) === 'fall',
+          ) ??
+          (likeGroup
+            ? rest(likeGroup).find(
+                (n): n is GroupNode =>
+                  n.kind === 'group' && headName(n) === 'fall',
+              )
+            : undefined)
+        const fallArg = fallGroup ? rest(fallGroup)[0] : undefined
+        const fallback =
+          fallArg && fallArg.kind !== 'root'
+            ? toExpression(fallArg, new Set<string>())
+            : undefined
+
         const param: {
           name: string
           type?: Type
           refine?: 'natural'
           optional?: boolean
+          fallback?: Expression
+          positional?: boolean
         } = { name: paramName }
 
         if (type) {
@@ -2579,8 +2717,16 @@ export function mill(tree: RootNode, file: string): MillResult {
           param.refine = refine
         }
 
-        if (optional) {
+        if (optional || fallback) {
           param.optional = true
+        }
+
+        if (fallback) {
+          param.fallback = fallback
+        }
+
+        if (positional) {
+          param.positional = true
         }
 
         params.push(param)
@@ -2817,6 +2963,7 @@ export function mill(tree: RootNode, file: string): MillResult {
     const SIGNATURE = new Set([
       'head',
       'take',
+      'slot',
       'like',
       'free',
       'mark',
@@ -2824,8 +2971,12 @@ export function mill(tree: RootNode, file: string): MillResult {
       'name',
     ])
 
+    // a `note unsafe` OVER statements is a guarded body (see toStatements), so it stays executable; a bare `note`
+    // line is an annotation and goes
     const executable = body.filter(
-      n => !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')),
+      n =>
+        !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')) ||
+        (isAnnotation(n, 'unsafe') && rest(n as GroupNode).length > 1),
     )
 
     const fn: Statement = {
@@ -3086,7 +3237,9 @@ export function mill(tree: RootNode, file: string): MillResult {
       for (const child of rest(g)) {
         if (
           child.kind === 'group' &&
-          (headName(child) === 'link' || headName(child) === 'free')
+          (headName(child) === 'link' ||
+            headName(child) === 'free' ||
+            headName(child) === 'slot')
         ) {
           const fieldNode = rest(child)[0]
 
@@ -3103,7 +3256,9 @@ export function mill(tree: RootNode, file: string): MillResult {
       for (const child of rest(g)) {
         if (
           child.kind !== 'group' ||
-          (headName(child) !== 'link' && headName(child) !== 'free')
+          (headName(child) !== 'link' &&
+            headName(child) !== 'free' &&
+            headName(child) !== 'slot')
         ) {
           continue
         }
@@ -3256,7 +3411,9 @@ export function mill(tree: RootNode, file: string): MillResult {
         // at the field level. Check both, as the task-parameter parser does.
         const modifiers = [
           ...inner,
-          ...(likeGroup ? rest(likeGroup) : []),
+          ...(likeGroup && likeGroup.kind === 'group'
+            ? rest(likeGroup)
+            : []),
         ].filter((n): n is GroupNode => n.kind === 'group')
         const needGroup = modifiers.find(n => headName(n) === 'need')
         const needArg = needGroup ? rest(needGroup)[0] : undefined
@@ -3264,9 +3421,10 @@ export function mill(tree: RootNode, file: string): MillResult {
           needArg?.kind === 'group' && headName(needArg) === 'false'
         const fallGroup = modifiers.find(n => headName(n) === 'fall')
         const fallArg = fallGroup ? rest(fallGroup)[0] : undefined
-        const fallback = fallArg
-          ? toExpression(fallArg, new Set<string>())
-          : undefined
+        const fallback =
+          fallArg && fallArg.kind !== 'root'
+            ? toExpression(fallArg, new Set<string>())
+            : undefined
 
         if (fieldName) {
           out.push({
@@ -3276,6 +3434,7 @@ export function mill(tree: RootNode, file: string): MillResult {
             identity,
             ...(optional ? { optional } : {}),
             ...(fallback ? { fallback } : {}),
+            ...(headName(child) === 'slot' ? { positional: true } : {}),
           })
         }
       }
@@ -3394,22 +3553,17 @@ export function mill(tree: RootNode, file: string): MillResult {
         )
 
         if (heads.length > 0 || pinNodes.length > 0 || hasLinks) {
-          const baseGroup = rest(child)[0]
-
           // the base type with only its POSITIONAL arguments (named heads are handled here, not by parseLikeType)
           const positionalLike: GroupNode = {
             ...child,
-            nodes: [
-              child.nodes[0]!,
-              ...(baseGroup ? [baseGroup] : []),
-              ...kids.filter(
-                (n): n is GroupNode =>
-                  n.kind === 'group' &&
+            nodes: child.nodes.filter(
+              (n, i) =>
+                i <= 1 ||
+                (n.kind === 'group' &&
                   !isNamedHead(n) &&
                   headName(n) !== 'bind' &&
-                  headName(n) !== 'link',
-              ),
-            ],
+                  headName(n) !== 'link'),
+            ),
           }
 
           extend = {
@@ -4592,6 +4746,57 @@ export function mill(tree: RootNode, file: string): MillResult {
       }
     } else if (keyword === 'note') {
       // top-level documentation: not a statement
+    } else if (keyword === 'tell') {
+      // `tell @deck/form`: the app's decision about an exception. Children: `note <text>`, `hint <text>`, `link
+      // <prop>` (each prop that rides along), `name <public-name>`.
+      const nameGroup = rest(group)[0]
+      const tellName =
+        nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
+
+      if (!tellName) {
+        fail(group, 'tell needs the full name of an exception (@deck/form)')
+      } else {
+        const textOf = (head: string): string | undefined => {
+          const child = rest(group).find(
+            (n): n is GroupNode => n.kind === 'group' && headName(n) === head,
+          )
+          const value = child ? rest(child)[0] : undefined
+
+          if (value?.kind === 'text') {
+            return value.parts
+              .map(part => (part.kind === 'chunk' ? part.text : ''))
+              .join('')
+          }
+
+          return value?.kind === 'group' ? headName(value) : undefined
+        }
+
+        const links = rest(group)
+          .filter(
+            (n): n is GroupNode =>
+              n.kind === 'group' && headName(n) === 'link',
+          )
+          .map(n => {
+            const prop = rest(n)[0]
+
+            return prop?.kind === 'group' ? headName(prop) ?? '' : ''
+          })
+          .filter(n => n.length > 0)
+
+        const note = textOf('note')
+        const hint = textOf('hint')
+        const alias = textOf('name')
+
+        program.push({
+          form: 'tell',
+          name: tellName,
+          ...(note !== undefined ? { note } : {}),
+          ...(hint !== undefined ? { hint } : {}),
+          links,
+          ...(alias !== undefined ? { alias } : {}),
+          span: spanOf(group),
+        })
+      }
     } else {
       program.push(...toStatements([group], new Set<string>()))
     }

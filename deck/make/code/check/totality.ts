@@ -640,6 +640,14 @@ function walkCalls(
         visitExpression(node.cond)
         walkCalls(node.body, visit, variantFields, memberOf)
         break
+      case 'guard':
+        walkCalls(node.body, visit, variantFields, memberOf)
+
+        if (node.catch) {
+          walkCalls(node.catch.body, visit, variantFields, memberOf)
+        }
+
+        break
       case 'for-each':
         visitExpression(node.iterable)
         walkCalls(node.body, visit, variantFields, memberOf)

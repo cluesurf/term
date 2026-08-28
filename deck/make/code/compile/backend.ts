@@ -219,6 +219,14 @@ export function reassigned(
         reassignedExpr(s.cond, into)
         reassigned(s.body, into)
         break
+      case 'guard':
+        reassigned(s.body, into)
+
+        if (s.catch) {
+          reassigned(s.catch.body, into)
+        }
+
+        break
       case 'for-each':
         reassignedExpr(s.iterable, into)
         reassigned(s.body, into)

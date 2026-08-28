@@ -3,7 +3,7 @@
 // signature, never its body. `instantiate` freshens a signature's generic variables (Hindley-Milner let-polymorphism)
 // against a substitution, so a generic function can be called at different types. See note/seed/plan/compilation-performance.md (Tier 2).
 
-import type { Type } from '@term/make/code/compile/node'
+import type { Expression, Type } from '@term/make/code/compile/node'
 import type { Substitution } from '@term/make/code/check/substitution'
 
 export type Signature = {
@@ -17,6 +17,11 @@ export type Signature = {
   result: Type
   // the minimum call arity: trailing optional (`need false`) params may be omitted
   minArgs: number
+  // the parameters' names, defaults and positional-only flags, aligned with `params`, so a call can name its
+  // arguments, omit one that has a `fall`, and be refused a name on a `slot`
+  names: string[]
+  fallbacks: (Expression | undefined)[]
+  positional: boolean[]
 }
 
 export type Instantiated = {
@@ -24,6 +29,9 @@ export type Instantiated = {
   result: Type
   bounds: { variable: Type; mask: string }[]
   minArgs: number
+  names: string[]
+  fallbacks: (Expression | undefined)[]
+  positional: boolean[]
 }
 
 // instantiate a signature, freshening its generics via `sub`. A non-generic signature is returned as-is.
@@ -37,6 +45,9 @@ export function instantiate(
       result: signature.result,
       bounds: [],
       minArgs: signature.minArgs,
+      names: signature.names,
+      fallbacks: signature.fallbacks,
+      positional: signature.positional,
     }
   }
 
@@ -93,5 +104,8 @@ export function instantiate(
     result: subst(signature.result),
     bounds,
     minArgs: signature.minArgs,
+    names: signature.names,
+    fallbacks: signature.fallbacks,
+    positional: signature.positional,
   }
 }

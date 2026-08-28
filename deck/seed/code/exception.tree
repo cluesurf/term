@@ -1,0 +1,194 @@
+# Exceptions. Every exception is a `form` that is `like exception`, or like one of the seventeen below. The compiler
+# recognises an exception by that chain, fills `host`, `form`, `code` and `time` at every `halt <form>`, and puts each
+# one on the roll. See note/term/hive/03-exception.md.
+
+load @term/seed/code/uuid
+  find version4
+
+load @term/seed/code/tone
+  find tone-encode
+
+load @term/seed/code/text
+  find replace-all
+  find substring
+
+load @term/seed/code/list
+  find join
+
+load @term/seed/code/time
+  find now
+
+load @term/seed/code/maybe
+  find maybe
+
+# the shared shape. `p` is the props record each declaring form builds with its `link` lines.
+form exception
+  head p
+  link host, like text
+  link form, like text
+  link note, like text
+  link code, like text
+  link time, like number
+  link link, like p
+  link base, like maybe
+  link site, like maybe
+  link flow, like list
+
+# the occurrence: a uuidv4 shown in the 8x4 tone shape. What a person quotes.
+task exception-code
+  like text
+  save hex
+    call replace-all
+      call version4
+      text <->
+      text <>
+  save flat
+    call replace-all
+      call tone-encode
+        read hex
+      text <->
+      text <>
+  save parts
+    make list
+      call substring
+        read flat
+        code 0
+        code 8
+      call substring
+        read flat
+        code 8
+        code 16
+      call substring
+        read flat
+        code 16
+        code 24
+      call substring
+        read flat
+        code 24
+        code 32
+  send back
+    call join
+      read parts
+      text <->
+
+task exception-time
+  like number
+  send back
+    call now
+
+# The seventeen, named for the failure. The thing it happened to is `thing`.
+
+# fix the input
+
+form defect
+  like exception
+    bind note, <Invalid>
+    link thing, like text
+    link value, like text, need false
+    link expected, like text, need false
+
+form omission
+  like exception
+    bind note, <Missing>
+    link thing, like text
+
+form excess
+  like exception
+    bind note, <Too large>
+    link thing, like text
+    link limit, like number, need false
+    link actual, like number, need false
+
+form shortage
+  like exception
+    bind note, <Too small>
+    link thing, like text
+    link limit, like number, need false
+    link actual, like number, need false
+
+form mismatch
+  like exception
+    bind note, <Mismatch>
+    link thing, like text
+    link expected, like text, need false
+    link actual, like text, need false
+
+form exclusion
+  like exception
+    bind note, <Not accepted>
+    link thing, like text
+    link value, like text, need false
+    link accepted, like list, need false
+
+# pick a different thing
+
+form absence
+  like exception
+    bind note, <Not found>
+    link thing, like text
+
+form conflict
+  like exception
+    bind note, <Conflict>
+    link thing, like text
+    link current, like text, need false
+
+form refusal
+  like exception
+    bind note, <Refused>
+    link thing, like text
+    link reason, like text, need false
+
+# get permission
+
+form anonymity
+  like exception
+    bind note, <Not signed in>
+    link thing, like text, need false
+
+form denial
+  like exception
+    bind note, <Not permitted>
+    link thing, like text, need false
+
+# try again
+
+form overload
+  like exception
+    bind note, <Overloaded>
+    link thing, like text, need false
+    link retry-after, like number, need false
+
+form outage
+  like exception
+    bind note, <Unavailable>
+    link thing, like text
+    link retry-after, like number, need false
+
+form timeout
+  like exception
+    bind note, <Timed out>
+    link thing, like text
+    link waited, like number, need false
+
+form overage
+  like exception
+    bind note, <Over the limit>
+    link thing, like text
+    link limit, like number, need false
+    link retry-after, like number, need false
+
+# do nothing
+
+form failure
+  like exception
+    bind note, <Something went wrong>
+    link thing, like text
+
+# several at once
+
+form bundle
+  like exception
+    bind note, <Several problems>
+    link thing, like text, need false
+    link list, like list

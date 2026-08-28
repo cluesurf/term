@@ -207,7 +207,7 @@ task load
   # FIRST RUN FETCHES, ONCE, AND SAYS SO.
   #
   # Someone who has just cloned the repository has a declaration and no cache.
-  # Refusing here would send them to `term zone seal make` and `term zone read` before
+  # Refusing here would send them to `term zone lock make` and `term zone read` before
   # anything works, and the two commands are exactly what this would have
   # done. So it does them, out loud, and gets on with it.
   #
@@ -309,7 +309,7 @@ task load
     hook hold
       send back
         call halt
-          text <No master key on this machine, so the cache cannot be opened. Run `term zone seal make`.>
+          text <No master key on this machine, so the cache cannot be opened. Run `term zone lock make`.>
   save key
     call unwrap
       read key-got

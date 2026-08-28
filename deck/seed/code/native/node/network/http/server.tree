@@ -26,11 +26,12 @@ task make-server
   free server, like server
 
   make server
-    call http/create-server
-      make http-create-server-options
-        bind max-header-size, read max-header-size
-      read handler
-    read port
+    bind x-server
+      call http/create-server
+        make http-create-server-options
+          bind max-header-size, read max-header-size
+        read handler
+    bind port, read port
 
 task make-server
   take handler, like task, base response-handler
@@ -39,6 +40,7 @@ task make-server
   free server, like server
 
   make server
-    call http/create-server
-      read handler
-    read port
+    bind x-server
+      call http/create-server
+        read handler
+    bind port, read port

@@ -29,6 +29,7 @@ import { callLint } from '@term/call/code/lint'
 import { callHold } from '@term/call/code/hold'
 import { callHunt } from '@term/call/code/hunt'
 import { callLook } from '@term/call/code/look'
+import { callRoll } from '@term/call/code/roll'
 import { logFail, warn } from '@term/make/code/tint'
 
 const COMMANDS = [
@@ -59,6 +60,7 @@ const COMMANDS = [
   'hold',
   'hunt',
   'look',
+  'roll',
   'zone',
   'fill',
 ]
@@ -706,6 +708,35 @@ const cli = yargs(hideBin(process.argv))
         json: argv.json,
         csv: argv.csv,
         kind: argv.kind,
+      })
+    },
+  )
+  .command(
+    'roll [kind]',
+    'The roll of this project: every deck, exception, task, route and tell in the build',
+    yargs =>
+      yargs
+        .positional('kind', {
+          type: 'string',
+          choices: ['deck', 'exception', 'task', 'dock', 'tell'] as const,
+          description: 'One kind of entry, in full (default: every deck with counts)',
+        })
+        .option('json', { type: 'boolean', description: 'Output the roll as JSON' })
+        .option('private', {
+          type: 'boolean',
+          description: 'Only the exceptions no tell covers',
+        })
+        .option('host', {
+          type: 'string',
+          description: 'Only the entries of one deck (@term/site)',
+        }),
+    async argv => {
+      await callRoll({
+        root,
+        kind: argv.kind,
+        json: argv.json,
+        private: argv.private,
+        host: argv.host,
       })
     },
   )

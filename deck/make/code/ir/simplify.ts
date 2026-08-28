@@ -280,6 +280,32 @@ function propagateStatement(
         body: propagateConstants(node.body, env, safe, assigned),
       }
 
+    case 'guard': {
+      const inner = new Map(env)
+
+      if (node.catch) {
+        inner.delete(node.catch.name)
+      }
+
+      return {
+        ...node,
+        body: propagateConstants(node.body, env, safe, assigned),
+        ...(node.catch
+          ? {
+              catch: {
+                ...node.catch,
+                body: propagateConstants(
+                  node.catch.body,
+                  inner,
+                  safe,
+                  assigned,
+                ),
+              },
+            }
+          : {}),
+      }
+    }
+
     case 'for-each': {
       const inner = new Map(env)
       inner.delete(node.item)
@@ -351,6 +377,14 @@ function bindingFacts(body: Statement[]): {
           s.branches.forEach(b => scan(b.body))
 
           if (s.otherwise) {scan(s.otherwise)}
+
+          break
+        case 'guard':
+          scan(s.body)
+
+          if (s.catch) {
+            scan(s.catch.body)
+          }
 
           break
         case 'while':
@@ -463,6 +497,14 @@ function collectReadsInBody(
       case 'while':
         collectReadNames(s.cond, into)
         collectReadsInBody(s.body, into)
+        break
+      case 'guard':
+        collectReadsInBody(s.body, into)
+
+        if (s.catch) {
+          collectReadsInBody(s.catch.body, into)
+        }
+
         break
       case 'for-each':
         collectReadNames(s.iterable, into)
@@ -702,6 +744,14 @@ function substituteStmt(
         ...node,
         cond: substituteExpr(node.cond, subst),
         body: body(node.body),
+      }
+    case 'guard':
+      return {
+        ...node,
+        body: body(node.body),
+        ...(node.catch
+          ? { catch: { ...node.catch, body: body(node.catch.body) } }
+          : {}),
       }
     case 'for-each':
       return {
@@ -1155,6 +1205,14 @@ function simplifyStatement(node: Statement): Statement {
         cond: simplifyExpression(node.cond),
         body: simplifyBody(node.body),
       }
+    case 'guard':
+      return {
+        ...node,
+        body: simplifyBody(node.body),
+        ...(node.catch
+          ? { catch: { ...node.catch, body: simplifyBody(node.catch.body) } }
+          : {}),
+      }
     case 'for-each':
       return {
         ...node,
@@ -1362,6 +1420,14 @@ function rewriteStatement(
         cond: rewriteExpression(node.cond, forwarders),
         body: body(node.body),
       }
+    case 'guard':
+      return {
+        ...node,
+        body: body(node.body),
+        ...(node.catch
+          ? { catch: { ...node.catch, body: body(node.catch.body) } }
+          : {}),
+      }
     case 'for-each':
       return {
         ...node,
@@ -1484,6 +1550,14 @@ function countReferencesStatement(
     case 'while':
       countReferences(node.cond, counts)
       body(node.body)
+      break
+    case 'guard':
+      body(node.body)
+
+      if (node.catch) {
+        body(node.catch.body)
+      }
+
       break
     case 'for-each':
       countReferences(node.iterable, counts)

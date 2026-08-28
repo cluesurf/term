@@ -121,5 +121,4 @@ form maybe
       case some
         send back, read self/value
       case none
-        bust
-          text <unwrap of none>
+        halt <unwrap of none>

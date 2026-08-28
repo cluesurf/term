@@ -10,12 +10,15 @@ Maps to: functions, methods, and closures in Rust / Swift / TypeScript.
 | --- | --- | --- |
 | `task name` | define a function | `task add` |
 | `take p` | declare a parameter | `take left, like number` |
-| `take p` + `base v` | parameter with a default value | `take step, like number` then `base code 1` |
+| `take p, like T, fall v` | parameter with a default value | `take step, like number, fall 1` |
+| `take p, like T, need false` | optional parameter, no default | `take label, like text, need false` |
+| `slot p, like T` | positional-only parameter | `slot left, like number` |
 | `take self` | the receiver of a method | `take self` |
 | `like T` | the return type | `like number` |
 | `send back, v` | return a value | `send back, read total` |
 | `send back` + body | return a value that has children | `send back` then a `call`/`make` block below |
-| `call f, a, b` | invoke a function with positional args | `call add, read x, read y` |
+| `call f` + value children | invoke a function with positional args | `call add` then `read x` and `read y` indented |
+| `call f` + `bind p, v` children | invoke with named args, any order | `call scale` then `bind shift, code 1` |
 | `call x/method, a` | invoke a method on a value | `call list/push, read item` |
 | `head t` | a type parameter (generic) | `head t` |
 | `take f` + `like task` | a function-typed parameter (closure) | see [Closures](#closures-function-typed-parameters) |
@@ -23,7 +26,11 @@ Maps to: functions, methods, and closures in Rust / Swift / TypeScript.
 | `note private` | hide the task from other modules | `note private` |
 
 Notes that catch people out:
-- Call arguments are **positional** `read`/value children. `call add, read a, read b`. The `bind` head is for constructing forms, not for calling tasks.
+- Call arguments are `read`/value children, one per line. A comma chain nests (`call add, read a, read b` gives `add` ONE argument), so put each argument on its own indented line.
+- A `bind <name>, <value>` child names the argument. Named and positional mix: positional fill the next open position, named go where they belong. A name the task does not have, a name given twice, or a name on a `slot` parameter is a build error.
+- A parameter with `fall` fills in when the call leaves it out, in any position. One with `need false` and no `fall` may only be left out at the end.
+- A `slot` parameter is positional only. Use it when the order is the meaning (`pair`, `at`), so nobody reorders the parameters and breaks every caller.
+- Two tasks may share a name when their parameter counts differ, or when their parameter types differ at some position. The call picks the one its arguments fit. When none fits the build says which are defined.
 - A `send back` value that has its own children goes on the next indented line. Never write `send back, make foo` with `bind` children below it.
 - A no-argument task simply omits every `take`.
 

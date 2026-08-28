@@ -109,6 +109,14 @@ function walk(
         collectReads(statement.cond, read)
         walk(statement.body, declared, read)
         break
+      case 'guard':
+        walk(statement.body, declared, read)
+
+        if (statement.catch) {
+          walk(statement.catch.body, declared, read)
+        }
+
+        break
       case 'for-each':
         collectReads(statement.iterable, read)
         walk(statement.body, declared, read)

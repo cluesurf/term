@@ -541,6 +541,14 @@ function collectCallRefs(statements: Statement[]): Set<string> {
           }
 
           break
+        case 'guard':
+          body(statement.body)
+
+          if (statement.catch) {
+            body(statement.catch.body)
+          }
+
+          break
         case 'for-each':
           expr(statement.iterable)
           body(statement.body)

@@ -19,7 +19,7 @@ Maps to: an Express or Fastify router on the server, plus a client router like R
 | `take params, like hash` | The matched path params |
 | `make response` | Build the reply (`status`, `body`) |
 | `zone <name>` | Mount a component (a client page route) |
-| `bust <error>` | Send an error response |
+| `halt <form>` | Answer with an exception (its status comes from which of the seventeen it is) |
 
 ## Request and response
 
@@ -156,7 +156,7 @@ dock /**
 
 ## Errors
 
-Return an error status directly, or `bust` to throw one.
+Return an error status directly, or `halt <form>` to raise one.
 
 ```tree
 dock /users/:id
@@ -170,7 +170,8 @@ dock /users/:id
       hook test
         call is-none, read user
       hook hold
-        bust not-found
+        halt absence
+          bind thing, text <user>
           bind text, text <user not found>
     send back
       make response

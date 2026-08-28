@@ -12,13 +12,17 @@ Maps to: structs, enums, and classes in Rust / Swift / TypeScript.
 | `form name` + `case` variants | a sum type (enum) |
 | `case v` + `link` fields | a variant that carries data |
 | `form x` then `like other` | an alias for an existing type |
+| `form x` then `like other` + children | an extension: `head a, like T` names a type argument, `bind f, v` pins a field, `link p, like T` adds a prop |
+| `slot f, like T` | a positional field, filled by order at a `make` |
+| `link f, like T, fall v` | a field with a default |
+| `link f, like T, need false` | an optional field |
 | `head t` | a type parameter on the form |
 | `head t, need bound` | a type parameter with a trait bound |
 | `take self` | the receiver inside a method |
 | `task ...` inside a form | a method on the form |
 | `note private` under a `link` | a private field |
-| `case n, like error` (top level) | a preset variant with fields pre-filled |
 | `make name` + `bind field, v` | construct a value |
+| `make name` + values | construct a value with `slot` fields, by position |
 | `make none` | construct a no-field variant |
 
 A form name is also a type name. See [types](types.md) for how it is used in annotations.
@@ -178,43 +182,46 @@ form account
     note private
 ```
 
-## The `case <name>, like error` preset
+## Extending a form
 
-A `case` at the top level (not inside a form) with `like error` is a preset variant. It is a named error type with its message, code, and hint pre-filled. Add extra payload fields with `link`.
-
-```tree
-case syntax-error, like error
-  head <Syntax error>
-  code 1
-  hint <Check the punctuation on this line>
-
-  link source, like text
-  link line, like number
-```
-
-Define more the same way:
+`like` with children makes a form that extends another. `head <param>` names a type argument (a `like` inline, or `link` lines for an anonymous record), `bind` pins a field to one value, and `link` adds a prop. Exceptions are the first user, see [errors](errors.md).
 
 ```tree
-case not-found, like error
-  head <Not found>
-  code 404
-  hint <The resource does not exist>
+form foo
+  head a
+  head b
+  link note, like text
+  link left, like a
+  link right, like b
 
-case timeout, like error
-  head <Request timed out>
-  code 408
-  hint <The request took too long>
+form example
+  like foo
+    head a
+      link x, like text
+    head b, like number
+    bind note, <Example foo>
 ```
 
-`head <...>` is the message, `code N` the numeric code, `hint <...>` the fix suggestion. Throw one with `bust`, passing its payload fields with `bind`:
+When the base has one type parameter, `link` lines directly under the `like` fill it. A pinned field is refused at a `make`.
+
+## Positional fields
+
+`slot` declares a field that a `make` fills by position, in declaration order. A form with `link` fields only is constructed by name, and giving it bare values is a build error, so reordering fields can never silently change a construction.
 
 ```tree
-bust syntax-error
-  bind source, read text
-  bind line, read at
+form point
+  slot x, like number
+  slot y, like number
+  link label, like text, fall text <origin>
+
+task origin
+  like point
+  send back
+    make point
+      code 0
+      code 0
 ```
 
-See [errors](errors.md) for throwing and propagating.
 
 ## Construction recap
 

@@ -10,7 +10,7 @@ task completion-suggestion-make
   take kind, like text
   send back
     make completion-suggestion
-      read text
+      bind text, read text
       bind label, read label
       bind kind, read kind
 

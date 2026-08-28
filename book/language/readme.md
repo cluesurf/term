@@ -65,7 +65,10 @@ Every head you will meet, grouped by job. Each has its own page.
 | `dock` | load a native host module | [native](native.md) |
 | `tree` | define a template (macro) | [templates](templates.md) |
 | `fuse` | instantiate a template | [templates](templates.md) |
-| `bust` | throw an error | [errors](errors.md) |
+| `halt <form>` | raise an exception | [errors](errors.md) |
+| `note unsafe` / `halt take` | guard a body and handle what it raises | [errors](errors.md) |
+| `slot` | a positional field or parameter | [structures](structures.md), [functions](functions.md) |
+| `tell` | what the app says about an exception | [errors](errors.md) |
 | `mark` | a modifier (`mark private`) or a rule's universal binder (`mark x, like T`) | [primitives](primitives.md), [math](../math/readme.md) |
 | `note` | an annotation on a task or call (`note async`, `note private`) | [functions](functions.md) |
 | `text` | a string literal | [primitives](primitives.md) |

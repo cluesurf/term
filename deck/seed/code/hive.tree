@@ -1,0 +1,144 @@
+# The hive: the runtime every deck reports to. The roll (what a build knows about every deck) wakes into it at
+# boot, and a deck tells it anything that only exists once the program runs. `hive-roll` reads the roster, `hive-hear`
+# subscribes. One per Term context. The compiler emits `wake-hive`, which calls `hive-wake` once per deck with the
+# deck's static entries, and `boot` calls that first. See note/term/hive/05-hive.md.
+
+load @term/seed/code/list
+  find push
+  find size
+
+# one entry on one kind. `base` holds the entry's own record (an exception's declaration, a tell, a route).
+form hive-entry
+  link host, like text
+  link kind, like text
+  link name, like text
+  link site, like text
+  link base, like unknown
+
+# a deck that has arrived
+form hive-deck
+  link name, like text
+  link wake, like boolean
+
+# a listener on one kind
+form hive-ear
+  link kind, like text
+  link work, like task
+    take entry, like hive-entry
+
+form hive
+  link deck, like list
+  link roll, like list
+  link ear, like list
+
+host hive
+  make hive
+    bind deck, make list
+    bind roll, make list
+    bind ear, make list
+
+# a deck arrives with its static entries. Idempotent on the deck name: a deck that arrives twice is one deck.
+task hive-wake
+  take name, like text
+  take roll, like list
+  walk list
+    read hive/deck
+    hook next
+      take site, name deck
+      fork test
+        hook test
+          call is-equal
+            read deck/name
+            read name
+        hook hold
+          send back
+  call push
+    read hive/deck
+    make hive-deck
+      bind name, read name
+      bind wake, true
+  walk list
+    read roll
+    hook next
+      take site, name entry
+      call hive-tell
+        read entry
+  call hive-tell
+    make hive-entry
+      bind host, read name
+      bind kind, text <deck>
+      bind name, read name
+      bind site, text <>
+      bind base, read name
+
+# a deck reports one entry now. Every ear on its kind, and every ear on `tell`, hears it.
+task hive-tell
+  take entry, like hive-entry
+  call push
+    read hive/roll
+    read entry
+  walk list
+    read hive/ear
+    hook next
+      take site, name ear
+      fork test
+        hook test
+          call or
+            call is-equal
+              read ear/kind
+              read entry/kind
+            call is-equal
+              read ear/kind
+              text <tell>
+        hook hold
+          call ear/work
+            read entry
+
+# read the roster: every entry of one kind, from one deck when `host` is given
+task hive-roll
+  take kind, like text
+  take host, like text, fall text <>
+  like list
+  save out
+    make list
+  walk list
+    read hive/roll
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call and
+            call is-equal
+              read entry/kind
+              read kind
+            call or
+              call is-equal
+                read host
+                text <>
+              call is-equal
+                read entry/host
+                read host
+        hook hold
+          call push
+            read out
+            read entry
+  send back, read out
+
+# subscribe to one kind. `deck` fires when a deck wakes, `exception` when one is raised anywhere, `tell` on every
+# entry of any kind.
+task hive-hear
+  take kind, like text
+  take work, like task
+    take entry, like hive-entry
+  call push
+    read hive/ear
+    make hive-ear
+      bind kind, read kind
+      bind work, read work
+
+# how many decks have woken
+task hive-size
+  like number
+  send back
+    call size
+      read hive/deck

@@ -23,7 +23,7 @@ These verbs are library tasks. The exact names depend on the auth library you im
 
 ## A login handler
 
-Verify the credential, then issue a token. On failure, `bust` an unauthorized error.
+Verify the credential, then issue a token. On failure, raise `anonymity`.
 
 ```tree
 dock /auth/login
@@ -38,7 +38,7 @@ dock /auth/login
       hook test
         call is-none, read user
       hook hold
-        bust unauthorized
+        halt anonymity
           bind text, text <invalid credentials>
     save valid
       call check-password
@@ -48,7 +48,7 @@ dock /auth/login
       hook test
         call not, read valid
       hook hold
-        bust unauthorized
+        halt anonymity
           bind text, text <invalid credentials>
     save token
       call sign-jwt
@@ -79,7 +79,8 @@ dock /auth/register
       hook test
         call is-some, read existing
       hook hold
-        bust conflict
+        halt conflict
+          bind thing, text <user>
           bind text, text <email already registered>
     save hash
       call hash-password
@@ -115,7 +116,7 @@ dock /me
       hook test
         call is-none, read payload
       hook hold
-        bust unauthorized
+        halt anonymity
           bind text, text <not signed in>
     save user
       call find-user-by-id

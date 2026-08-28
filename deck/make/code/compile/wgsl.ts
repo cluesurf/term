@@ -132,6 +132,9 @@ export function emitWgsl(input: Program): string {
           node.body,
           d + 1,
         )}\n${pad(d)}}`
+      case 'guard':
+        // shaders cannot raise, so a guard is its body
+        return `{\n${block(node.body, d + 1)}\n${pad(d)}}`
 
       case 'if': {
         let out = ''
@@ -174,6 +177,7 @@ export function emitWgsl(input: Program): string {
       case 'bind':
       case 'zone':
       case 'dock':
+      case 'tell':
         return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend
       default:
         return exhausted(node)

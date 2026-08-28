@@ -71,7 +71,7 @@ task average
 
 - **Scalar types** (`number`, `text`, `boolean`) and their helpers live directly in `code/`.
 - **Container types** (`list`, `hash`, `set`, `pair`) carry their operations as methods on the form.
-- **Wrapper types** (`maybe`, `result`) model presence and failure. They replace null and exceptions for ordinary control flow. See [errors](../language/errors.md) for `bust` and `halt kink`, which handle the exceptional path.
+- **Wrapper types** (`maybe`, `result`) model presence and failure. They replace null and exceptions for ordinary control flow. See [errors](../language/errors.md) for `halt <form>` and `halt kink`, which handle the exceptional path.
 - **Domain types** (`plain-date`, `duration`, `uuid`, `regex`) each own one well-defined value.
 
 Every method that needs the host (a system clock, the JSON parser, Unicode tables) delegates to a per-platform native file under `code/native/<platform>/`. The public API is the same on every backend. Only the implementation differs.

@@ -36,11 +36,11 @@ task resolve
       save ext, text <.txt>
   send back
     call concat
-      bind a
+      bind input
         call concat
-          bind a, text <.seed/snapshot/>
-          bind b, read name
-      bind b, read ext
+          bind input, text <.seed/snapshot/>
+          bind other, read name
+      bind other, read ext
 
 task serialize
   take value

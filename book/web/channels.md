@@ -60,7 +60,7 @@ dock /ws/private
       hook test
         call is-none, read payload
       hook hold
-        bust unauthorized
+        halt anonymity
           bind text, text <not authorized>
 ```
 

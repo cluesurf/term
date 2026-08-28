@@ -90,12 +90,19 @@ export function effectRows(program: Program): Map<string, Set<string>> {
   return rows
 }
 
-// does the body contain a throw (bust) statement anywhere?
+// does the body contain a throw statement anywhere? A guarded body's throws are caught by its handler, so only
+// the handler's own throws escape a guard that has one.
 function bodyThrows(body: Statement[]): boolean {
   for (const node of body) {
     switch (node.form) {
       case 'throw':
         return true
+      case 'guard':
+        if (node.catch ? bodyThrows(node.catch.body) : bodyThrows(node.body)) {
+          return true
+        }
+
+        break
       case 'while':
       case 'for-each':
         if (bodyThrows(node.body)) {
@@ -217,6 +224,10 @@ function calledNames(
       case 'while':
         expr(node.cond)
         node.body.forEach(stmt)
+        break
+      case 'guard':
+        node.body.forEach(stmt)
+        node.catch?.body.forEach(stmt)
         break
       case 'for-each':
         expr(node.iterable)
@@ -460,4 +471,167 @@ export function checkEffects(
   }
 
   return diagnostics
+}
+
+
+// ---- raise sets ----
+//
+// The exceptions each function can raise: every `halt <form>` in its body outside a guarded body, plus what every
+// callee raises (least fixed point over the call graph), minus what a `note unsafe` / `halt take` catches, plus
+// what the handler itself raises. A thrown text is `failure`. A guard with no handler catches everything. This is
+// the raise set of note/term/hive/04-reach.md, and it is what the roll reports per task and per route.
+//
+// `via` records, for each function and each exception, the callee that first brought it in (undefined for a direct
+// raise), so a reader can walk one call path from an entry point to the raise site.
+export type RaiseSets = {
+  raises: Map<string, Set<string>>
+  via: Map<string, Map<string, string | undefined>>
+}
+
+export function raiseSets(
+  program: Program,
+  // the record-types that are exceptions, by name
+  exceptions: Set<string>,
+): RaiseSets {
+  const functions = new Map<
+    string,
+    Extract<Statement, { form: 'function' }>
+  >()
+
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      functions.set(statement.name, statement)
+    }
+  }
+
+  const names = new Set(functions.keys())
+  const raises = new Map<string, Set<string>>()
+  const via = new Map<string, Map<string, string | undefined>>()
+  const calls = new Map<string, Set<string>>()
+
+  // the exceptions a body raises directly, honoring guards, and the functions it calls outside a guarded body
+  const scan = (
+    body: Statement[],
+    direct: Set<string>,
+    called: Set<string>,
+  ): void => {
+    for (const node of body) {
+      switch (node.form) {
+        case 'throw':
+          if (node.raise) {
+            direct.add(node.raise)
+          } else if (
+            node.value.form === 'record' &&
+            exceptions.has(node.value.name)
+          ) {
+            direct.add(node.value.name)
+          } else if (node.value.form === 'string') {
+            direct.add('failure')
+          } else {
+            // a re-raised value: what it is was decided where it was first raised
+            direct.add('exception')
+          }
+
+          break
+        case 'guard':
+          if (node.catch) {
+            scan(node.catch.body, direct, called)
+          } else {
+            // no handler: the body's raises are caught and dropped, its calls still matter for nothing
+          }
+
+          break
+        case 'while':
+          expressionCalls(node.cond, called)
+          scan(node.body, direct, called)
+          break
+        case 'for-each':
+          expressionCalls(node.iterable, called)
+          scan(node.body, direct, called)
+          break
+        case 'if':
+          for (const branch of node.branches) {
+            expressionCalls(branch.cond, called)
+            scan(branch.body, direct, called)
+          }
+
+          if (node.otherwise) {
+            scan(node.otherwise, direct, called)
+          }
+
+          break
+        case 'match':
+          expressionCalls(node.subject, called)
+
+          for (const branch of node.cases) {
+            scan(branch.body, direct, called)
+          }
+
+          if (node.otherwise) {
+            scan(node.otherwise, direct, called)
+          }
+
+          break
+        case 'let':
+          expressionCalls(node.init, called)
+          break
+        case 'assign':
+          expressionCalls(node.target, called)
+          expressionCalls(node.value, called)
+          break
+        case 'expression':
+          expressionCalls(node.expr, called)
+          break
+        case 'return':
+          if (node.value) {
+            expressionCalls(node.value, called)
+          }
+
+          break
+        case 'hold':
+          expressionCalls(node.expr, called)
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  const expressionCalls = (node: Expression, called: Set<string>): void => {
+    for (const name of calledNames([{ form: 'expression', expr: node, span: node.span }], names)) {
+      called.add(name)
+    }
+  }
+
+  for (const [name, statement] of functions) {
+    const direct = new Set<string>()
+    const called = new Set<string>()
+    scan(statement.body, direct, called)
+    raises.set(name, direct)
+    via.set(name, new Map([...direct].map(d => [d, undefined])))
+    calls.set(name, called)
+  }
+
+  let changed = true
+
+  while (changed) {
+    changed = false
+
+    for (const [name, callees] of calls) {
+      const set = raises.get(name)!
+      const from = via.get(name)!
+
+      for (const callee of callees) {
+        for (const exception of raises.get(callee) ?? []) {
+          if (!set.has(exception)) {
+            set.add(exception)
+            from.set(exception, callee)
+            changed = true
+          }
+        }
+      }
+    }
+  }
+
+  return { raises, via }
 }

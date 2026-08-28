@@ -1,3 +1,4 @@
+import { projectDeckOf } from '@term/call/code/deck-of'
 import path from 'path'
 import net from 'net'
 import { fileURLToPath } from 'url'
@@ -255,7 +256,12 @@ export async function buildClientBundle(opts: {
     const resolve = projectResolver(appDir, 'browser', installRoot)
     const result = compile(
       { file: entry, text: readFileSync(entry, 'utf8') },
-      { resolve, cache: projectCache(projectRoot), env: 'browser' },
+      {
+        resolve,
+        cache: projectCache(projectRoot),
+        env: 'browser',
+        deckOf: projectDeckOf(),
+      },
     )
 
     if (!result.ok) {
@@ -677,7 +683,7 @@ export async function callBoot(input: {
     } | null> => {
       const result = compile(
         { file: entry, text: readFileSync(entry, 'utf8') },
-        { resolve, cache, env },
+        { resolve, cache, env, deckOf: projectDeckOf() },
       )
 
       if (!result.ok) {
@@ -838,6 +844,7 @@ export async function callBoot(input: {
           [
             `import * as app from './app.mjs'`,
             `import { runCommandLine, toCamel } from './dock.mjs'`,
+            `app.wakeHive?.()`,
             `const routes = ${routes}`,
             `const code = await runCommandLine({`,
             `  name: ${JSON.stringify(binName)},`,
@@ -857,6 +864,7 @@ export async function callBoot(input: {
         path.join(out, 'run.mjs'),
         [
           `import * as app from './app.mjs'`,
+          `app.wakeHive?.()`,
           `const boot = app.boot ?? app.start ?? app.main`,
           `if (!boot) { console.error('entry has no boot/start/main task'); process.exit(1) }`,
           `const url = process.env.DATABASE_URL ?? ''`,

@@ -690,6 +690,16 @@ export function emitKotlin(program: Program): string {
           node.body,
           d + 1,
         )}\n${pad(d)}}`
+      case 'guard': {
+        const handler = node.catch
+          ? `catch (${camel(node.catch.name)}: Throwable) {\n${block(
+              node.catch.body,
+              d + 1,
+            )}\n${pad(d)}}`
+          : 'catch (_: Throwable) {}'
+
+        return `try {\n${block(node.body, d + 1)}\n${pad(d)}} ${handler}`
+      }
       case 'for-each':
         return `for (${camel(node.item)} in ${expr(
           node.iterable,
@@ -903,6 +913,7 @@ export function emitKotlin(program: Program): string {
       case 'bind':
       case 'zone':
       case 'dock':
+      case 'tell':
         return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend
       default:
         return exhausted(node)

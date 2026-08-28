@@ -254,6 +254,14 @@ function collectArrayEq(body: Statement[]): {
         case 'hold':
           visitExpr(s.expr)
           break
+        case 'guard':
+          visitStmts(s.body)
+
+          if (s.catch) {
+            visitStmts(s.catch.body)
+          }
+
+          break
         case 'while':
           visitExpr(s.cond)
           visitStmts(s.body)
@@ -1066,6 +1074,18 @@ export function emitSwift(program: Program): string {
           d + 1,
           bind,
         )}\n${pad(d)}}`
+      case 'guard': {
+        // `note unsafe` / `halt take`: a do with its catch. The body's calls are marked `try` by the throws walker.
+        const handler = node.catch
+          ? `catch let ${camel(node.catch.name)} {\n${block(
+              node.catch.body,
+              d + 1,
+              bind,
+            )}\n${pad(d)}}`
+          : 'catch {}'
+
+        return `do {\n${block(node.body, d + 1, bind)}\n${pad(d)}} ${handler}`
+      }
 
       case 'for-each': {
         // a list is a SeedList; iterate its backing `.data` Array
@@ -1291,6 +1311,7 @@ export function emitSwift(program: Program): string {
       case 'bind':
       case 'zone':
       case 'dock':
+      case 'tell':
         return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend
       default:
         return exhausted(node)

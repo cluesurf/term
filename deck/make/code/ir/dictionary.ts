@@ -447,6 +447,14 @@ function walkExpressions(
           expr(node.cond)
           stmts(node.body)
           break
+        case 'guard':
+          stmts(node.body)
+
+          if (node.catch) {
+            stmts(node.catch.body)
+          }
+
+          break
         case 'for-each':
           expr(node.iterable)
           stmts(node.body)

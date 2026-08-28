@@ -903,6 +903,10 @@ export function emitRust(program: Program): string {
           node.body,
           d + 1,
         )}\n${pad(d)}}`
+      case 'guard':
+        // a raise is a panic on this backend today, so a guard catches nothing yet: the body runs as written and the
+        // handler is dropped. The Result lowering of note/term/hive/04-reach.md replaces this.
+        return `{\n${block(node.body, d + 1)}\n${pad(d)}}`
 
       case 'for-each': {
         // a list is an Rc<RefCell<Vec>>; iterate an owned clone of its elements so the loop binds `T`, not `&T`, and
@@ -1324,6 +1328,7 @@ export function emitRust(program: Program): string {
       case 'bind':
       case 'zone':
       case 'dock':
+      case 'tell':
         return ''
       default:
         return exhausted(node)
@@ -1452,6 +1457,14 @@ function mutatedCaptures(body: Statement[]): Set<string> {
           }
 
           break
+        case 'guard':
+          insideClosure(s.body, locals)
+
+          if (s.catch) {
+            insideClosure(s.catch.body, locals)
+          }
+
+          break
         case 'while':
           exprWalk(s.cond, locals, true)
           insideClosure(s.body, locals)
@@ -1562,6 +1575,14 @@ function mutatedCaptures(body: Statement[]): Set<string> {
 
           if (s.otherwise) {
             topWalk(s.otherwise)
+          }
+
+          break
+        case 'guard':
+          topWalk(s.body)
+
+          if (s.catch) {
+            topWalk(s.catch.body)
           }
 
           break
@@ -1800,6 +1821,14 @@ function moveOnLastUse(body: Statement[]): Set<string> {
           }
 
           break
+        case 'guard':
+          walkBody(s.body, true)
+
+          if (s.catch) {
+            walkBody(s.catch.body, true)
+          }
+
+          break
         case 'while':
           walkExpr(s.cond, true)
           walkBody(s.body, true)
@@ -1951,6 +1980,14 @@ function collectArrayBounds(body: Statement[]): {
           break
         case 'hold':
           visitExpr(s.expr)
+          break
+        case 'guard':
+          visitStmts(s.body)
+
+          if (s.catch) {
+            visitStmts(s.catch.body)
+          }
+
           break
         case 'while':
           visitExpr(s.cond)

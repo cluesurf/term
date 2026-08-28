@@ -404,7 +404,7 @@ task pull
     hook hold
       send back
         call halt
-          text <No master key on this machine, so there is nowhere to put what is fetched. Run `term zone seal make`.>
+          text <No master key on this machine, so there is nowhere to put what is fetched. Run `term zone lock make`.>
   save key
     call unwrap
       read key-got

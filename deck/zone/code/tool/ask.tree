@@ -20,11 +20,25 @@ load @term/seed/code/boolean
 
 # Read a value with echo off. The prompt goes to stderr so that piping the
 # command's output somewhere does not swallow it.
+#
+# WHEN STDIN IS NOT A TERMINAL, the value is read from it and no prompt is
+# written. That is the `--password-stdin` shape every other tool has, and it
+# is what a machine provisioned by a script needs: without it the keychain
+# store can only ever be seeded by a person typing, and there is no way to
+# stand up a new machine unattended.
+#
+# It is also the safer half of the two. A value piped in never reaches a
+# terminal at all, so it cannot be shoulder-read or land in a screen
+# recording, and because it arrives on stdin rather than in argv it is not
+# visible to anything that can list processes.
+#
+# Only the FIRST line is taken, and it is trimmed, so a file that ends with a
+# newline works and a trailing blank line is not part of the credential.
 bind hide
   take text, like text
   like text
   case node
-    text <(async () =\> { const rl = require("node:readline"); const i = rl.createInterface({ input: process.stdin, output: process.stderr, terminal: true }); const was = i._writeToOutput; i._writeToOutput = () =\> {}; process.stderr.write($text); const out = await new Promise(r =\> i.question("", r)); i._writeToOutput = was; i.close(); process.stderr.write("\\n"); return out.trim() })()>
+    text <(async () =\> { if (!process.stdin.isTTY) { const fs = require("node:fs"); let raw = ""; try { raw = fs.readFileSync(0, "utf8") } catch (e) { raw = "" } return raw.split("\\n")[0].trim() } const rl = require("node:readline"); const i = rl.createInterface({ input: process.stdin, output: process.stderr, terminal: true }); const was = i._writeToOutput; i._writeToOutput = () =\> {}; process.stderr.write($text); const out = await new Promise(r =\> i.question("", r)); i._writeToOutput = was; i.close(); process.stderr.write("\\n"); return out.trim() })()>
 
 # A yes or no, defaulting to no. Anything but an explicit yes stops the
 # command, because the safe answer should be the one you get by hitting

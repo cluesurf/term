@@ -10,25 +10,64 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
+import { showType } from '@term/make/code/compile/node'
+
+// same-name, same-arity overloads: the first candidate's (mangled) name -> every candidate's name. Filled here,
+// read by the checker, which picks the candidate whose parameter types fit the arguments (check/infer.ts,
+// chooseOverload). A call is mangled to the first candidate so the resolver finds a definition; the checker
+// re-targets it once the argument types are known.
+export const overloadGroups = new Map<string, string[]>()
 
 export function disambiguateOverloads(program: Program): void {
-  // every arity each function name is defined at
-  const arities = new Map<string, Set<number>>()
+  overloadGroups.clear()
+
+  type Definition = Extract<Statement, { form: 'function' }>
+
+  // every definition of each name
+  const definitions = new Map<string, Definition[]>()
 
   for (const s of program) {
     if (s.form === 'function') {
-      const set = arities.get(s.name) ?? new Set<number>()
-      set.add(s.params.length)
-      arities.set(s.name, set)
+      const list = definitions.get(s.name) ?? []
+      list.push(s)
+      definitions.set(s.name, list)
     }
   }
 
-  // a name is overloaded when it is defined at more than one arity
-  const overloaded = new Set<string>()
+  // a parameter's shape for comparing two same-arity definitions. An untyped parameter and `unknown` are the same
+  // wildcard, so a per-environment shim that re-declares a task with a looser or tighter type is an OVERRIDE (the
+  // last one wins, as before), never an overload.
+  const shape = (d: Definition): (string | undefined)[] =>
+    d.params.map(p =>
+      p.type && p.type.kind !== 'unknown' ? showType(p.type) : undefined,
+    )
 
-  for (const [name, set] of arities) {
-    if (set.size > 1) {
+  const differ = (a: Definition, b: Definition): boolean => {
+    const sa = shape(a)
+    const sb = shape(b)
+
+    return sa.some((t, i) => t !== undefined && sb[i] !== undefined && t !== sb[i])
+  }
+
+  // a name is overloaded when it is defined at more than one arity, or more than once at one arity with parameter
+  // types that differ at some position
+  const overloaded = new Set<string>()
+  const typed = new Set<string>()
+
+  for (const [name, list] of definitions) {
+    const arities = new Set(list.map(d => d.params.length))
+
+    if (arities.size > 1) {
       overloaded.add(name)
+    }
+
+    for (const arity of arities) {
+      const same = list.filter(d => d.params.length === arity)
+
+      if (same.some((a, i) => same.slice(i + 1).some(b => differ(a, b)))) {
+        overloaded.add(name)
+        typed.add(`${name}__${arity}`)
+      }
     }
   }
 
@@ -39,11 +78,54 @@ export function disambiguateOverloads(program: Program): void {
   const mangle = (name: string, arity: number): string =>
     overloaded.has(name) ? `${name}__${arity}` : name
 
-  // rename each overloaded definition by its parameter count
+  // rename each overloaded definition by its parameter count, and a same-arity typed overload by its index too
+  const seen = new Map<string, number>()
+  // each definition's final name with its accepted argument range, for the call rewrite below
+  const ranges = new Map<string, { name: string; min: number; max: number; group?: string }[]>()
+
   for (const s of program) {
     if (s.form === 'function' && overloaded.has(s.name)) {
-      s.name = mangle(s.name, s.params.length)
+      const original = s.name
+      const base = mangle(s.name, s.params.length)
+      let group: string | undefined
+
+      if (typed.has(base)) {
+        const index = seen.get(base) ?? 0
+        seen.set(base, index + 1)
+        s.name = `${base}__${index}`
+        group = `${base}__0`
+
+        const list = overloadGroups.get(group) ?? []
+        list.push(s.name)
+        overloadGroups.set(group, list)
+      } else {
+        s.name = base
+      }
+
+      const list = ranges.get(original) ?? []
+      list.push({
+        name: s.name,
+        min: s.params.filter(p => !p.optional).length,
+        max: s.params.length,
+        group,
+      })
+      ranges.set(original, list)
     }
+  }
+
+  // the definition a call with `arity` arguments targets: the one whose accepted range holds it, an exact arity
+  // winning a tie; a typed same-arity group targets its first candidate until the checker re-targets it
+  const target = (name: string, arity: number): string => {
+    const list = ranges.get(name) ?? []
+    const fits = list.filter(r => arity >= r.min && arity <= r.max)
+    const exact = fits.find(r => r.max === arity)
+    const pick = exact ?? fits[0]
+
+    if (!pick) {
+      return mangle(name, arity)
+    }
+
+    return pick.group ?? pick.name
   }
 
   // rewrite every call to an overloaded name to the overload matching its argument count
@@ -54,7 +136,7 @@ export function disambiguateOverloads(program: Program): void {
           node.callee.form === 'variable' &&
           overloaded.has(node.callee.name)
         ) {
-          node.callee.name = mangle(node.callee.name, node.args.length)
+          node.callee.name = target(node.callee.name, node.args.length)
         }
 
         expr(node.callee)
@@ -131,6 +213,10 @@ export function disambiguateOverloads(program: Program): void {
       case 'while':
         expr(node.cond)
         node.body.forEach(stmt)
+        break
+      case 'guard':
+        node.body.forEach(stmt)
+        node.catch?.body.forEach(stmt)
         break
       case 'for-each':
         expr(node.iterable)

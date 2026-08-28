@@ -246,7 +246,7 @@ task post
     hook hold
       send back
         call halt
-          text <No master key on this machine, so the cache cannot be opened. Run `term zone seal make`.>
+          text <No master key on this machine, so the cache cannot be opened. Run `term zone lock make`.>
   save key
     call unwrap
       read key-got

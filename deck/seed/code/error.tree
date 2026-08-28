@@ -1,3 +1,31 @@
+# SHELVED, out of the build. Delete `note draft` to bring it back.
+#
+# Superseded by `code/exception.tree`, which is the current design: every
+# exception is a form that is `like exception` and PINS its `note` to a fixed
+# category, with the part that varies per occurrence in its own field.
+#
+# This module predates that and does not fit it, in two ways that are not
+# one-line fixes:
+#
+#   `form error` is a plain record, and `task throw` raises it. A raised form
+#   has to be `like exception`. Making it one then requires a pinned `note`,
+#   but `task make` takes the message from its caller and writes it to `note`,
+#   and a pinned field cannot be given.
+#
+#   `make error` in `task catch` and `task fail` means the RESULT variant
+#   `error` from `code/base/result`, not `form error` in this file. Names are
+#   package-global, so the two collide. `bind value` belongs to the variant
+#   and does not exist on the form.
+#
+# Nothing imports `@term/seed/code/error`, so shelving it costs nothing today.
+# What it should become is a design decision: either drop it in favour of
+# `exception.tree`, or rebuild it on top of that with the message in its own
+# field and the result variant renamed out of the collision.
+#
+# It compiled until now only because a stale build cache was serving it. The
+# rule that rejects it, `deck/make/code/check/extend.ts`, is new and correct.
+
+note draft
 
 load @term/seed/code/base/result
   find result

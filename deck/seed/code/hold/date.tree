@@ -470,8 +470,7 @@ task calculate-four-year-cycle-table
               bind value, read day
 
         hook miss
-          bust fork3
-
+          halt
       fork test
         hook test
           call is-equal
@@ -495,6 +494,5 @@ task calculate-four-year-cycle-table
           bind value, read month
 
     hook miss
-      bust fork5
-
+      halt
   send back, read four-year-cycle-table

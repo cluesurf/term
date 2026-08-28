@@ -80,6 +80,13 @@ load ../tool/base
   find more
   find is-equal
 
+# The declaration alone: what a command needs when it never opens the
+# provider. `scan` is the whole reason this is separate from `gear`.
+form home
+  link root, like spot
+  # the declaration file itself, because the cache sits beside it
+  link deck, like text
+
 # Everything the three commands need before they can do anything: the
 # declaration, the machine binding and the provider credential.
 form gear
@@ -88,9 +95,9 @@ form gear
   # the declaration file itself, because the cache sits beside it
   link deck, like text
 
-task gear-up
+task home-up
   note async
-  like gear
+  like home
 
   save decks
     call read-decks
@@ -116,10 +123,29 @@ task gear-up
         hook hold
           save deck, read one
 
-  save root
-    call mine-zone
-      call read-file
-        read deck
+  send back
+    make home
+      bind deck, read deck
+      bind root
+        call mine-zone
+          call read-file
+            read deck
+
+# Everything the provider commands need: the declaration, the machine
+# binding and the bootstrap credential.
+#
+# `scan` does NOT come through here. It reads the declaration and the cache,
+# both already on disk, so demanding a credential it never uses would refuse
+# a command that can answer perfectly well without one.
+task gear-up
+  note async
+  like gear
+
+  save it
+    call home-up
+      wait true
+  save root, read it/root
+  save deck, read it/deck
 
   fork test
     hook test
@@ -474,8 +500,10 @@ task scan-all
   note async
   like number
 
+  # `home-up`, not `gear-up`: everything below is read from disk, so a
+  # missing bootstrap credential must not refuse the command.
   save it
-    call gear-up
+    call home-up
       wait true
   save root, read it/root
 

@@ -148,6 +148,19 @@ function stmt(node: Statement, asyncSet: Set<string>): Statement {
         cond: e(node.cond),
         body: node.body.map(s => stmt(s, asyncSet)),
       }
+    case 'guard':
+      return {
+        ...node,
+        body: node.body.map(s => stmt(s, asyncSet)),
+        ...(node.catch
+          ? {
+              catch: {
+                ...node.catch,
+                body: node.catch.body.map(s => stmt(s, asyncSet)),
+              },
+            }
+          : {}),
+      }
     case 'for-each':
       return {
         ...node,
@@ -338,6 +351,10 @@ function walkStmt(
     case 'while':
       visit(node.cond)
       node.body.forEach(s => walkStmt(s, visit))
+      break
+    case 'guard':
+      node.body.forEach(s => walkStmt(s, visit))
+      node.catch?.body.forEach(s => walkStmt(s, visit))
       break
     case 'for-each':
       visit(node.iterable)

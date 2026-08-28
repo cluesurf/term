@@ -1,3 +1,8 @@
+# Shelved 2026-08-28. This module never built: it loads `@term/seed/code/base/result` and `base/kink`, paths that do
+# not exist, so `result` was unresolved and the `note unsafe` body was dropped as an annotation. Now that `note unsafe`
+# is a real guard, the checker reads it and the mismatch shows. The design that replaces it is
+# note/term/hive/03-exception.md (a form that is `like exception`, `halt <form>`, `halt take`).
+note draft
 
 load @term/seed/code/base/result
   find result

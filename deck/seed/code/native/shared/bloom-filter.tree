@@ -73,8 +73,7 @@ form bloom-filter
           call increment
             bind value, read i
       hook miss
-        bust fork9
-    send back, read r
+        halt    send back, read r
   task add
     take self
     take v
@@ -109,8 +108,7 @@ form bloom-filter
           call increment
             bind value, read i
       hook miss
-        bust fork12
-  task test
+        halt  task test
     take self
     take v
     save tmp13
@@ -150,8 +148,7 @@ form bloom-filter
           call increment
             bind value, read i
       hook miss
-        bust fork15
-    send back, read true
+        halt    send back, read true
   task get-size
     take self
     save buckets, read self/buckets
@@ -174,8 +171,7 @@ form bloom-filter
           call increment
             bind value, read i
       hook miss
-        bust fork16
-    send back
+        halt    send back
       call divide
         call multiply
           call subtract

@@ -172,6 +172,31 @@ export function toPascal(name: string): string {
 // per emit so a `like tcp-handle` field emits the declared type rather than a nonexistent class.
 let tsOpaqueTypes = new Map<string, string>()
 
+// the exception forms of the program being emitted (every record-type whose chain includes `exception`), so a
+// `halt <form>` throws an instance of the runtime class and not a bare object. Set by emitTypeScript.
+let tsExceptions = new Set<string>()
+
+// the runtime class an exception is thrown as: a real `Error` (a stack, `instanceof`) carrying every field of the
+// shared `exception` form. `note` is the message, `form` is the name a catch branches on.
+const EXCEPTION_CLASS = 'TermException'
+const EXCEPTION_PRELUDE = `export class ${EXCEPTION_CLASS} extends Error {
+  host!: string
+  form!: string
+  note!: string
+  code!: string
+  time!: number
+  link!: unknown
+  base?: unknown
+  constructor(base: { note: string; form: string }) {
+    super(base.note)
+    Object.assign(this, base)
+    this.name = ${EXCEPTION_CLASS}.name
+    // the hive hears every raise, once wakeHive has hooked it in
+    const hive = (globalThis as { __termRaise?: (e: unknown) => void }).__termRaise
+    if (hive) hive(this)
+  }
+}`
+
 // a checked type to a TypeScript type
 function tsType(type: Type | undefined): string {
   switch (type?.kind) {
@@ -316,6 +341,14 @@ function collectAssigned(
         break
       case 'hold':
         collectAssignedExpr(statement.expr, into)
+        break
+      case 'guard':
+        collectAssigned(statement.body, into)
+
+        if (statement.catch) {
+          collectAssigned(statement.catch.body, into)
+        }
+
         break
       case 'while':
         collectAssignedExpr(statement.cond, into)
@@ -784,7 +817,15 @@ function makeEmitter(
           ? `return ${expression(node.value)}`
           : 'return'
       case 'throw':
-        // a thrown string becomes an Error; any other value is thrown as-is
+        // a raised exception (`halt <form>`) is thrown as the runtime class, a thrown string becomes an Error, and any
+        // other value is thrown as-is
+        if (
+          node.value.form === 'record' &&
+          tsExceptions.has(node.value.name)
+        ) {
+          return `throw new ${EXCEPTION_CLASS}(${expression(node.value)})`
+        }
+
         return node.value.form === 'string'
           ? `throw new Error(${expression(node.value)})`
           : `throw ${expression(node.value)}`
@@ -793,6 +834,15 @@ function makeEmitter(
           node.body,
           depth,
         )}`
+      case 'guard': {
+        // `note unsafe` / `halt take`: a try with its catch. The caught value is bound as written; a guard with no
+        // handler swallows what it catches, which the checker warns about.
+        const handler = node.catch
+          ? ` catch (${toCamel(node.catch.name)}) ${block(node.catch.body, depth)}`
+          : ' catch {}'
+
+        return `try ${block(node.body, depth)}${handler}`
+      }
       case 'for-each':
         return `for (const ${toCamel(node.item)} of ${expression(
           node.iterable,
@@ -1030,6 +1080,7 @@ function makeEmitter(
         // a view component: emit a builder over the render runtime (element / text / dynamic / show / each)
         return emitZone(node)
       case 'dock':
+      case 'tell':
         // routing/CLI (dock) DSL is lowered elsewhere, not here
         return ''
       default:
@@ -1044,7 +1095,16 @@ export function emitTypeScript(
   program: Program,
   // `variants` carries the enum variant names defined across the WHOLE program. In per-module mode a module that builds
   // `make some` may not itself define `maybe`, so without this its variant constructors would lose their `form` tag.
-  options?: { hmr?: boolean; variants?: Set<string>; env?: string },
+  options?: {
+    hmr?: boolean
+    variants?: Set<string>
+    env?: string
+    // exception form names defined across the WHOLE program, for the same per-module reason as `variants`
+    exceptions?: Set<string>
+    // the roll to wake the hive with, one group per deck, when the program loads the stdlib hive. The emitter
+    // appends a `wakeHive()` that calls `hiveWake` per deck and hooks raised exceptions into `hiveTell`
+    wake?: { deck: string; entries: Record<string, unknown>[] }[]
+  },
 ): string {
   // separate-compilation stubs are typing context only: their owning unit emits the real definition, and the
   // per-module import wiring reconnects references. They must never be emitted here.
@@ -1066,11 +1126,16 @@ export function emitTypeScript(
   )
 
   const variants = new Set<string>(options?.variants)
+  tsExceptions = new Set<string>(options?.exceptions)
 
   for (const node of program) {
     if (node.form === 'record-type') {
       for (const v of node.variants) {
         variants.add(v.name)
+      }
+
+      if (node.chain?.includes('exception')) {
+        tsExceptions.add(node.name)
       }
     }
   }
@@ -1170,7 +1235,36 @@ export function emitTypeScript(
     // an ambient host global whose seed name already spells the global emits nothing; drop the blank line
     .filter(line => line.length > 0)
 
-  const body = `${lines.join('\n\n')}\n`
+  // the exception class rides in front of the first module that raises or declares one
+  const prelude =
+    tsExceptions.size > 0 &&
+    program.some(
+      n => n.form === 'record-type' && n.chain?.includes('exception'),
+    )
+      ? [EXCEPTION_PRELUDE]
+      : []
+
+  // the wake chain: one `hiveWake` per deck with its static entries, then the raise hook, when the program has the
+  // stdlib hive and the compile driver handed over the roll. See note/term/hive/05-hive.md.
+  const wake: string[] = []
+
+  if (
+    options?.wake?.length &&
+    program.some(n => n.form === 'function' && n.name === 'hive-wake')
+  ) {
+    const groups = options.wake
+      .map(
+        group =>
+          `  hiveWake(${JSON.stringify(group.deck)}, ${JSON.stringify(group.entries)})`,
+      )
+      .join('\n')
+
+    wake.push(
+      `export function wakeHive(): void {\n${groups}\n  ;(globalThis as { __termRaise?: (e: unknown) => void }).__termRaise = (e) => {\n    const x = e as { host: string; form: string; note: string }\n    hiveTell({ host: x.host, kind: "exception", name: x.form, site: "", base: x })\n  }\n}`,
+    )
+  }
+
+  const body = `${[...prelude, ...lines, ...wake].join('\n\n')}\n`
 
   return imports.length > 0 ? `${imports.join('\n')}\n\n${body}` : body
 }

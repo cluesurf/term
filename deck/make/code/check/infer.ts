@@ -10,6 +10,7 @@ import type {
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { Substitution } from '@term/make/code/check/substitution'
 import { instantiate } from '@term/make/code/check/signature'
+import { overloadGroups } from '@term/make/code/check/overload'
 import type { Signature } from '@term/make/code/check/signature'
 import { makeSeedType } from '@term/make/code/check/type-seed'
 import { zonkGeneric as zonkGenericType } from '@term/make/code/check/zonk'
@@ -304,6 +305,9 @@ export function check(
       result: seedType(statement.result, genericVars),
       // the minimum call arity: trailing `need false` params may be omitted
       minArgs: statement.params.filter(p => !p.optional).length,
+      names: statement.params.map(p => p.name),
+      fallbacks: statement.params.map(p => p.fallback),
+      positional: statement.params.map(p => p.positional === true),
     })
   }
 
@@ -326,6 +330,9 @@ export function check(
       params: statement.params.map(p => seedType(p.type, noGenerics)),
       result: seedType(statement.result, noGenerics),
       minArgs: statement.params.filter(p => !p.optional).length,
+      names: statement.params.map(p => p.name),
+      fallbacks: statement.params.map(() => undefined),
+      positional: statement.params.map(() => false),
     })
   }
 
@@ -695,7 +702,30 @@ export function check(
       }
 
       case 'call': {
-        const args = node.args.map(arg => inferExpression(arg, env))
+        // named arguments and defaults: put each `bind <name>` value in the callee's declared position, refuse a
+        // name on a `slot` parameter or one the callee does not have, and clone in the `fall` of any omitted
+        // parameter, so every backend receives the full argument list. Only for a direct call of a known task.
+        if (
+          node.callee.form === 'variable' &&
+          !env.has(node.callee.name) &&
+          (node.names || functions.has(node.callee.name))
+        ) {
+          arrangeArguments(node)
+        }
+
+        // same-arity overloads: pick the one whose parameter types fit the arguments
+        if (
+          node.callee.form === 'variable' &&
+          !env.has(node.callee.name) &&
+          overloadGroups.has(node.callee.name)
+        ) {
+          chooseOverload(node, env)
+        }
+
+        // an argument already typed by chooseOverload is not inferred twice (that would double its diagnostics)
+        const args = node.args.map(arg =>
+          arg.type ? arg.type : inferExpression(arg, env),
+        )
 
         // receiver dispatch: rewrite a bare method call (`call unwrap-or / <receiver>`) to the mangled method of the
         // receiver's form. The receiver is whichever argument is a form that owns this method (usually `self`, first).
@@ -1011,6 +1041,24 @@ export function check(
 
         break
 
+      case 'guard': {
+        checkBody(node.body, env, result)
+
+        if (node.catch) {
+          // the caught value is the shared exception form when the program has one, else left to inference
+          const inner = new Map(env)
+          inner.set(node.catch.name, {
+            vars: [],
+            type: records.has('exception')
+              ? seedType({ kind: 'named', name: 'exception' }, new Map())
+              : fresh(),
+          })
+          checkBody(node.catch.body, inner, result)
+        }
+
+        break
+      }
+
       case 'for-each': {
         const element = fresh()
         expect(
@@ -1158,6 +1206,265 @@ export function check(
         checkFunction(node)
         break
     }
+  }
+
+  // put a call's arguments in the callee's declared order and fill its defaults. See the `call` case.
+  function arrangeArguments(
+    node: Extract<Expression, { form: 'call' }>,
+  ): void {
+    const callee = (node.callee as { name: string }).name
+    const signature = functions.get(callee)
+
+    // a receiver-dispatched method or an unknown callee: the labels are documentation and the call stays
+    // positional, as it always was
+    if (!signature) {
+      delete node.names
+
+      return
+    }
+
+    const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+    const names = node.names ?? node.args.map(() => undefined)
+    const ordered: (Expression | undefined)[] = signature.params.map(
+      () => undefined,
+    )
+
+    let at = 0
+    let failed = false
+
+    for (let i = 0; i < node.args.length; i++) {
+      const name = names[i]
+      const arg = node.args[i]!
+
+      if (name === undefined) {
+        // a positional argument takes the next unfilled position
+        while (at < ordered.length && ordered[at] !== undefined) {
+          at++
+        }
+
+        if (at >= ordered.length) {
+          diagnostics.push(
+            diagnose('type-mismatch', {
+              file: currentFile,
+              span: arg.span,
+              message: `"${callee}" takes ${ordered.length} argument${
+                ordered.length === 1 ? '' : 's'
+              }, and this is one more`,
+            }),
+          )
+          failed = true
+          break
+        }
+
+        ordered[at++] = arg
+        continue
+      }
+
+      const index = signature.names.indexOf(name)
+
+      if (index < 0) {
+        diagnostics.push(
+          diagnose('type-mismatch', {
+            file: currentFile,
+            span: arg.span,
+            message: `"${callee}" has no parameter "${name}" (it takes ${signature.names.join(', ') || 'nothing'})`,
+          }),
+        )
+        failed = true
+        continue
+      }
+
+      if (signature.positional[index]) {
+        diagnostics.push(
+          diagnose('type-mismatch', {
+            file: currentFile,
+            span: arg.span,
+            message: `"${name}" is a slot of "${callee}" and is given by position, never by name`,
+          }),
+        )
+        failed = true
+        continue
+      }
+
+      if (ordered[index] !== undefined) {
+        diagnostics.push(
+          diagnose('type-mismatch', {
+            file: currentFile,
+            span: arg.span,
+            message: `"${name}" is given twice`,
+          }),
+        )
+        failed = true
+        continue
+      }
+
+      ordered[index] = arg
+    }
+
+    if (failed) {
+      delete node.names
+
+      return
+    }
+
+    // fill omitted parameters from their defaults; an omitted parameter with no default must be trailing and optional
+    let filled = ordered.length
+
+    for (let i = ordered.length - 1; i >= 0; i--) {
+      if (ordered[i] !== undefined) {
+        break
+      }
+
+      filled = i
+    }
+
+    for (let i = 0; i < ordered.length; i++) {
+      if (ordered[i] !== undefined) {
+        continue
+      }
+
+      const fallback = signature.fallbacks[i]
+
+      if (fallback) {
+        ordered[i] = clone(fallback)
+        ordered[i]!.span = node.span
+      } else if (i < filled) {
+        diagnostics.push(
+          diagnose('type-mismatch', {
+            file: currentFile,
+            span: node.span,
+            message: `"${callee}" needs "${signature.names[i]}", which this call leaves out`,
+          }),
+        )
+        // keep the positions aligned for the rest of the check; the diagnostic already stops the build
+        ordered[i] = { form: 'unit', span: node.span }
+      }
+    }
+
+    // trailing optionals with no default stay omitted (the arity range allows it)
+    let end = ordered.length
+
+    while (end > 0 && ordered[end - 1] === undefined) {
+      end--
+    }
+
+    node.args = ordered.slice(0, end).map(a => a!)
+    delete node.names
+  }
+
+  // choose among same-arity overloads by the arguments' types. Each candidate's parameter types are compared
+  // structurally with the arguments' resolved types, a type variable on either side fitting anything; the unique
+  // fit wins, and none or several is a diagnostic. See code/check/overload.ts.
+  function chooseOverload(
+    node: Extract<Expression, { form: 'call' }>,
+    env: Env,
+  ): void {
+    const callee = node.callee as { name: string }
+    const candidates = overloadGroups.get(callee.name) ?? []
+    const argTypes = node.args.map(arg => resolve(inferExpression(arg, env)))
+
+    const fits = (arg: Type, param: Type): boolean => {
+      const a = resolve(arg)
+      const p = resolve(param)
+
+      if (
+        a.kind === 'variable' ||
+        p.kind === 'variable' ||
+        a.kind === 'unknown' ||
+        p.kind === 'unknown'
+      ) {
+        return true
+      }
+
+      if (a.kind !== p.kind) {
+        return false
+      }
+
+      if (a.kind === 'named' && p.kind === 'named') {
+        return a.name === p.name
+      }
+
+      if (a.kind === 'array' && p.kind === 'array') {
+        return fits(a.element, p.element)
+      }
+
+      if (a.kind === 'map' && p.kind === 'map') {
+        return fits(a.key, p.key) && fits(a.value, p.value)
+      }
+
+      return true
+    }
+
+    const fitting = candidates.filter(name => {
+      const signature = functions.get(name)
+
+      if (
+        !signature ||
+        argTypes.length < signature.minArgs ||
+        argTypes.length > signature.params.length
+      ) {
+        return false
+      }
+
+      const instance = instantiate(signature, sub)
+
+      return argTypes.every((t, i) => fits(t, instance.params[i]!))
+    })
+
+    if (fitting.length === 1) {
+      callee.name = fitting[0]!
+
+      return
+    }
+
+    // several fit because an argument is still a type variable: prefer the candidates that fit with no wildcard at
+    // all, and among what is left take the LAST definition, which is the per-environment shim that loads after the
+    // shared signature it refines. That was the rule before overloads existed, so a program that built then still
+    // builds; a genuinely ambiguous call is a lint for later.
+    if (fitting.length > 1) {
+      const exact = fitting.filter(name => {
+        const signature = functions.get(name)!
+        const instance = instantiate(signature, sub)
+
+        return argTypes.every((t, i) => {
+          const a = resolve(t)
+          const p = resolve(instance.params[i]!)
+
+          return (
+            a.kind !== 'variable' &&
+            a.kind !== 'unknown' &&
+            p.kind !== 'variable' &&
+            p.kind !== 'unknown'
+          )
+        })
+      })
+
+      callee.name = (exact.length > 0 ? exact : fitting)[
+        (exact.length > 0 ? exact : fitting).length - 1
+      ]!
+
+      return
+    }
+
+    const shown = candidates
+      .map(name => {
+        const signature = functions.get(name)
+
+        return signature
+          ? `(${signature.params.map(showType).join(', ')})`
+          : name
+      })
+      .join(', ')
+
+    diagnostics.push(
+      diagnose('type-mismatch', {
+        file: currentFile,
+        span: node.span,
+        message: `no overload of "${callee.name.replace(/__\d+__\d+$/, '')}" takes (${argTypes
+          .map(showType)
+          .join(', ')}). It is defined for ${shown}`,
+      }),
+    )
   }
 
   // module-scope bindings (top-level `host`/`save` lets): typed once, then visible in every function body so a method
@@ -1445,6 +1752,14 @@ export function check(
         case 'while':
           visitExpression(statement.cond)
           zonkBody(statement.body, names)
+          break
+        case 'guard':
+          zonkBody(statement.body, names)
+
+          if (statement.catch) {
+            zonkBody(statement.catch.body, names)
+          }
+
           break
         case 'for-each':
           visitExpression(statement.iterable)

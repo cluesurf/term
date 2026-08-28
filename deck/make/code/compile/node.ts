@@ -109,6 +109,9 @@ export type Expression =
       args: Expression[]
       span: Span
       type?: Type
+      // named arguments (`call f / bind a, 200 / bind b, 100`): one entry per arg, the label of a `bind` child or
+      // undefined for a positional one. The checker reorders `args` into the callee's declared order and drops this.
+      names?: (string | undefined)[]
       // `wait false`: a fire-and-forget call. It is made but never awaited, even when the callee is async, and it does
       // not make the caller async. Async resolution skips it; without this flag an async call is awaited by default.
       background?: boolean
@@ -130,6 +133,9 @@ export type Expression =
       fields: { name: string; value: Expression }[]
       span: Span
       type?: Type
+      // positional values (`make point, code 1, code 2`): filled into the form's `slot` fields, in order, by
+      // extendForms. A form with no slots refuses them.
+      positional?: Expression[]
       // true when no bound value is a function literal (a closure), so the constructed record is pure data and
       // serialises to JSON. The base bridge lifts a function-free record into a `RecordNode`. Computed at mill time.
       functionFree?: boolean
@@ -234,6 +240,16 @@ export type Statement =
   | { form: 'exit'; span: Span }
   // a debugger breakpoint (`halt code`)
   | { form: 'debug'; span: Span }
+  // a guarded body (`note unsafe` over statements) with its handler (`halt take` / `take <name>` / body): the
+  // exceptions the body raises are caught and bound to `name` in the handler. Lowers to try / catch. The
+  // handler is optional only while a program is being written; a guard without one re-raises nothing and catches
+  // everything, which the checker warns about.
+  | {
+      form: 'guard'
+      body: Statement[]
+      catch?: { name: string; body: Statement[]; span: Span }
+      span: Span
+    }
   // throw an error value. `halt <form>` with `bind` children raises a declared exception: `value` is the record as
   // written and `raise` names the form, so `extendForms` can check the form is an exception, refuse a pinned field,
   // wrap the props into the `link` record and fill `host` / `form` / `code` / `time`. A bare `halt <text>` (and the
@@ -258,6 +274,10 @@ export type Statement =
         type?: Type
         refine?: 'natural'
         optional?: boolean
+        // `fall <value>`: the value an omitted argument gets, cloned into the call by the checker
+        fallback?: Expression
+        // `slot <name>` instead of `take <name>`: positional only, refused as a named argument
+        positional?: boolean
       }[]
       body: Statement[]
       result?: Type
@@ -292,6 +312,8 @@ export type Statement =
         identity?: boolean
         optional?: boolean
         fallback?: Expression
+        // `slot <name>` instead of `link <name>`: fillable by position at a `make`, in declaration order
+        positional?: boolean
       }[]
       variants: {
         name: string
@@ -398,6 +420,18 @@ export type Statement =
     }
   // a routing / CLI dock, lowered from the `dock` DSL (book/site/routes, navigation; book/line/calls)
   | { form: 'dock'; route: DockRoute; span: Span }
+  // the app's decision about one exception (`tell @deck/form` with `note`, `hint`, `link`, `name`): what a customer
+  // may be told. Absent means private. Checked against the reachable exceptions, carried on the roll, emits nothing.
+  // See note/term/hive/06-tell.md.
+  | {
+      form: 'tell'
+      name: string
+      note?: string
+      hint?: string
+      links: string[]
+      alias?: string
+      span: Span
+    }
 
 // ---- the zone (component / view) AST ----
 // an attribute or event binding on an element: `seed class, read theme` (attribute) or `seed click, call add` (event)

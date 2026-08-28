@@ -132,8 +132,7 @@ task danger
         loan n
         code 0
     hook hold
-      bust
-        text <oops>
+      halt <oops>
     hook miss
       send back, read n
 `)

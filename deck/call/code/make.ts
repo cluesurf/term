@@ -19,6 +19,7 @@ import { compileSeparate } from '@term/make/code/compile/separate'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { projectCache } from '@term/call/code/cache-store'
 import { preprocessTests } from '@term/call/code/test-preprocess'
+import { projectDeckOf } from '@term/call/code/deck-of'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import type { Resolver, Source } from '@term/make/code/compile/load'
@@ -389,6 +390,7 @@ export function compileProject(
 ): { compiled: number; written: number; failed: number; errors: string[] } {
   const files = findTreeFiles(root, [], platform)
   const resolve = projectResolver(root)
+  const deckOf = projectDeckOf()
 
   let compiled = 0
   let written = 0
@@ -405,7 +407,7 @@ export function compileProject(
       ? preprocessTests(source).text
       : source
 
-    const result = compile({ file, text }, { resolve, cache })
+    const result = compile({ file, text }, { resolve, cache, deckOf })
 
     if (!result.ok) {
       failed++
@@ -796,6 +798,37 @@ export async function callMake(input: {
             compiled === 1 ? '' : 's'
           } to host/`,
         )
+
+        // the roll of the project's own entries, beside the output, for tools that are not Term. Every compile
+        // above is cached, so this costs the roll pass and nothing else. See code/compile/roll.ts.
+        try {
+          const { projectRoll } = await import('@term/call/code/roll')
+          const { roll } = projectRoll(input.root)
+          const fs = await import('fs')
+          const rollPath = path.join(input.root, 'host', 'roll.json')
+          const text = JSON.stringify(roll, null, 2) + '\n'
+
+          let existing: string | undefined
+
+          try {
+            existing = fs.readFileSync(rollPath, 'utf8')
+          } catch {
+            existing = undefined
+          }
+
+          if (existing !== text) {
+            fs.mkdirSync(path.dirname(rollPath), { recursive: true })
+            fs.writeFileSync(rollPath, text)
+          }
+
+          console.log(
+            fade(
+              `  roll: ${roll.exception.length} exception(s), ${roll.task.length} task(s), ${roll.dock.length} route(s), ${roll.tell.length} tell(s) in host/roll.json`,
+            ),
+          )
+        } catch (error) {
+          console.log(fade(`  roll not written: ${String(error)}`))
+        }
       }
     }
   } catch (err) {

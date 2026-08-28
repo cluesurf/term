@@ -162,7 +162,7 @@ task kick
   // effect-row inference: throw propagates transitively through the call graph
   const THROW = `task boom
   take n
-  bust n
+  halt <boom>
 
 task relay
   take n
@@ -218,7 +218,7 @@ task quiet
     const src = `task apply-it
   take f
     like task
-      bust
+      halt
       take x, like number
       like number
   take n, like number

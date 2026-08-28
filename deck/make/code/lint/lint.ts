@@ -190,6 +190,14 @@ function eachStatement(
       }
 
       break
+    case 'guard':
+      block(stmt.body)
+
+      if (stmt.catch) {
+        block(stmt.catch.body)
+      }
+
+      break
     case 'for-each':
       eachExpression(stmt.iterable, onExpression)
       block(stmt.body)

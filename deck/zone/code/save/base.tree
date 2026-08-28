@@ -30,9 +30,11 @@ load @term/seed/code/boolean
 
 load @term/seed/code/maybe
   find maybe
+  find unwrap
 
 load ../tool/base
   find show-line
+  find equal
 
 load ./native/keychain
   find keychain-save
@@ -143,7 +145,55 @@ task put
 # harness did not catch it because its fake provider ignores the token it is
 # handed, so the only visible symptom would have been a real provider
 # rejecting an empty credential.
+# An absent credential. A `none` of the same shape the native reads return,
+# so `read-code` can answer with one after deciding a stored value is not a
+# credential at all.
+bind no-code
+  like maybe
+    head text
+  case node
+    text <({ form: "none" })>
+
+# Read a stored credential.
+#
+# AN EMPTY VALUE IS NOT A CREDENTIAL, and is reported as none. A store can
+# hold an item whose value is the empty string, and every caller that only
+# asked whether the item exists then proceeds with nothing in its hand. That
+# is not hypothetical: the keychain write answered one of `security`'s two
+# prompts, stored an empty string, and `zone lock show`, `zone code show`
+# and `zone test` all said a key was stored. The failure surfaced three
+# steps later, at the provider, as a complaint about the credential.
+#
+# One place to check it, so nothing downstream has to remember to.
 task read-code
+  note async
+  take kind, like text
+  take spot, like seat
+  like maybe
+    head text
+  save got
+    call read-code-raw
+      wait true
+      bind kind, read kind
+      bind spot, read spot
+  fork case, read got
+    case none
+      send back
+        call no-code
+    case some
+      fork test
+        hook test
+          call equal
+            call unwrap
+              read got
+            text <>
+        hook hold
+          send back
+            call no-code
+      send back
+        read got
+
+task read-code-raw
   note async
   take kind, like text
   take spot, like seat

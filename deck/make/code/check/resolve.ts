@@ -305,6 +305,27 @@ export function resolve(
         }
 
         break
+      case 'guard':
+        stack.push(new Map())
+
+        for (const statement of node.body) {
+          resolveStatement(statement)
+        }
+
+        stack.pop()
+
+        if (node.catch) {
+          stack.push(new Map())
+          declare(node.catch.name, { kind: 'local' })
+
+          for (const statement of node.catch.body) {
+            resolveStatement(statement)
+          }
+
+          stack.pop()
+        }
+
+        break
       case 'for-each':
         resolveExpression(node.iterable)
         stack.push(new Map())

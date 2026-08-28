@@ -283,6 +283,42 @@ task bind-value
     hook hold
       send back
         read one/code
+  # A BARE WORD after the name, as in `bind mode, note`. The comma chain
+  # flattens to terms, so the line reads as term ["mode", "note"] with no
+  # `<...>` at all: the first term names the setting and the second IS the
+  # value.
+  #
+  # Without this the value reads as empty and the setting silently keeps its
+  # default. `bind mode, note` left the mode unset, so the tree was treated
+  # as `project` mode, the fetch looked for one project per zone path, found
+  # none, and `zone read` reported `Filled` over a cache with nothing in it.
+  save word, text <>
+  save first, true
+  walk list, read one/term
+    hook next
+      take site, name one-term
+      fork test
+        hook test
+          read first
+        hook hold
+          save first, false
+        hook miss
+          fork test
+            hook test
+              call equal
+                read word
+                text <>
+            hook hold
+              save word, read one-term
+  fork test
+    hook test
+      call not-equal
+        read word
+        text <>
+    hook hold
+      send back
+        read word
+
   # otherwise the first leaf, which is where a comma puts what follows: its
   # own `<...>` if it has one, else its bare word
   save out, text <>
@@ -948,7 +984,7 @@ task path-chain
   walk list
     call split
       bind value, read want
-      bind on, text </>
+      bind delimiter, text </>
     hook next
       take site, name part
       fork test

@@ -169,6 +169,14 @@ function walkStatement(
       }
 
       break
+    case 'guard':
+      walkStatements(statement.body, values, types)
+
+      if (statement.catch) {
+        walkStatements(statement.catch.body, values, types)
+      }
+
+      break
     case 'for-each':
       walkExpr(statement.iterable, values, types)
       walkStatements(statement.body, values, types)

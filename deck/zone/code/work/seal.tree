@@ -1,8 +1,8 @@
-# `term zone seal` — the master key that opens the local cache.
+# `term zone lock` — the master key that opens the local cache.
 #
-#   zone seal make     make one, replacing any that is there
-#   zone seal show     say whether this machine has one, never what it is
-#   zone seal toss     remove it
+#   zone lock make     make one, replacing any that is there
+#   zone lock show     say whether this machine has one, never what it is
+#   zone lock toss     remove it
 #
 # SEPARATE FROM `term zone code`, which manages the bootstrap credential that
 # opens the provider. Two secrets, two keystore items, two commands. Losing
@@ -150,7 +150,7 @@ task tell-seal
       call show-line
         call join-text
           make list
-            text <  seal  no. Run `term zone seal make` to make one.>
+            text <  seal  no. Run `term zone lock make` to make one.>
   send back
     code 0
 
@@ -168,6 +168,6 @@ task shed-seal
         read bond
     wait true
   call show-line
-    text <The master key is gone from this machine. The cache it opened is now unreadable, which costs nothing: the values are still at the provider. `term zone seal make` then `term zone read` restores it.>
+    text <The master key is gone from this machine. The cache it opened is now unreadable, which costs nothing: the values are still at the provider. `term zone lock make` then `term zone read` restores it.>
   send back
     code 0

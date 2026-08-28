@@ -40,7 +40,7 @@ A `maybe` is `some` (a value) or `none` (absence). Use it when failure needs no 
 
 | Head | Does |
 | --- | --- |
-| `bust <error>` | throw an error (the exceptional path) |
+| `halt <form>` | raise an exception (the exceptional path) |
 | `halt kink` | as a child of a `call`, propagate a failure upward like Rust's `?` |
 
 ## A validator returns a result
@@ -175,4 +175,4 @@ If either check returns an `error`, `make-account` returns that same error and n
 
 ## When to throw instead
 
-`result` and `maybe` are for expected, recoverable outcomes (bad user input, a missing key). For a genuine bug or an unrecoverable state, `bust` throws an error that unwinds. See [errors](../language/errors.md) for the full story on `bust`, error forms, and `halt kink`.
+`result` and `maybe` are for expected, recoverable outcomes (bad user input, a missing key). For a genuine bug or an unrecoverable state, `halt <form>` raises an exception that unwinds. See [errors](../language/errors.md) for the full story on raising, the seventeen exceptions, and `halt kink`.

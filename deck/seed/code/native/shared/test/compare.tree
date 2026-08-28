@@ -116,8 +116,8 @@ task contains-text
       save slice
         call substring
           bind value, read text
-          bind start, read i
-          bind end
+          bind start-index, read i
+          bind end-index
             call add
               bind a, read i
               bind b, read search-size
