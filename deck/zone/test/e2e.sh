@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end integration test of the whole .env-replacement pipeline,
-# entirely headless. The `env` store (ZONE_STORE=env) holds the
+# entirely headless. The `env` store (ZONE_SAVE=env) holds the
 # bootstrap token in ZONE_CODE, and a FAKE bws (test/fixture/bin/bws)
 # stands in for the real provider. Nothing touches a system keychain,
 # so there are no GUI prompts and no real credentials. All state lives
@@ -27,7 +27,7 @@ trap cleanup EXIT
 export PATH="$FIX/bin:$PATH"
 export SEED_CACHE_HOME="$SBOX/.cache"
 export HOME="$SBOX"
-export ZONE_STORE=env               # headless store: no keychain
+export ZONE_SAVE=env               # headless store: no keychain
 export ZONE_CODE=fake-machine-token # the one bootstrap secret CI injects
 
 PASS=0; FAIL=0

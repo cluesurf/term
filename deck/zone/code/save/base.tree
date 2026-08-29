@@ -60,12 +60,12 @@ load ./native/environment
 
 # Which store this machine can use. Tried in order of preference, so a
 # machine with a real keystore never silently falls back to prompting.
-# A forced store, from the `ZONE_STORE` environment variable, or empty
+# A forced store, from the `ZONE_SAVE` environment variable, or empty
 # when unset. Lets a headless machine pin `env` without probing.
 bind do-store-override
   like text
   case node
-    text <process.env.ZONE_STORE || "">
+    text <process.env.ZONE_SAVE || "">
 
 task store-override
   like text

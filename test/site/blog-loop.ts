@@ -40,7 +40,7 @@ const PORT = 38571
 async function main(): Promise<void> {
   const entry = path.join(
     DECK,
-    'seed/deck/site/test/site/hook/blog.tree',
+    'term/deck/site/test/site/hook/blog.tree',
   )
 
   const result = compile(

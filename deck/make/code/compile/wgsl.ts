@@ -82,6 +82,7 @@ export function emitWgsl(input: Program): string {
       // strings, maps, records, closures, and host awaits are outside the data-parallel GPU fragment (no heap, no
       // dynamic dispatch). They surface as a marked poison value, never silently miscompiled to 0.
       case 'string':
+      case 'template':
       case 'unit':
       case 'null':
       case 'map':
@@ -178,6 +179,7 @@ export function emitWgsl(input: Program): string {
       case 'zone':
       case 'dock':
       case 'tell':
+      case 'roll':
         return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend
       default:
         return exhausted(node)

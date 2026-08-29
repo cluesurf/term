@@ -29,6 +29,7 @@ import {
 } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
+import { raiseSets } from '@term/make/code/check/effects'
 import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
 
@@ -359,6 +360,23 @@ export function emitRust(program: Program): string {
   // true while emitting the body of a function whose return type is a list: a native dock call returned directly (the
   // shim hands back a plain `Vec`) is wrapped in the seed list's Rc<RefCell> handle to match the declared return type
   let fnReturnsArray = false
+  // THE RESULT LOWERING (note/term/hive/11-native-exceptions.md, "Way 2"). A task whose raise set is not empty returns
+  // `Result<T, TermException>`; `halt <form>` is `return Err(..)`; a call to a raising task is `call()?` inside a
+  // raising task or a guarded body, and `.unwrap_or_else(exit 1 with form and note)` elsewhere, so a raise nothing
+  // handles ends the program the way it does on every backend. A guard body is a closure returning
+  // `Result<Option<T>, TermException>`: `Ok(Some(v))` is a `send back` inside it, `Ok(None)` falls through, and
+  // `Err(e)` runs the handler with `e` bound.
+  const raising = new Set<string>()
+  let currentRaising = false
+  let currentResult: Type | undefined
+  let guardDepth = 0
+  // set by an `await` around a raising call, so the `?` lands after `.await` and not before it
+  let awaitedRaise = false
+
+  const raiseSuffix = (): string =>
+    currentRaising || guardDepth > 0
+      ? '?'
+      : '.unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })'
 
   // MOVE ON LAST USE (the Perceus / linearity insight, realized in Rust). The owned-value style clones every variable
   // argument so a later use is never moved away. But a variable read EXACTLY ONCE in the whole function -- and not
@@ -392,6 +410,12 @@ export function emitRust(program: Program): string {
       .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && Boolean(n.chain?.includes('exception')))
       .map(n => n.name),
   )
+
+  for (const [name, raises] of raiseSets(program, exceptionForms).raises) {
+    if (raises.size > 0) {
+      raising.add(name)
+    }
+  }
 
   // a field value that is a variable or a member read is cloned into the struct, the way an argument is, so the
   // binding it came from stays usable (a closure is not Clone and passes as is)
@@ -560,6 +584,15 @@ export function emitRust(program: Program): string {
         return node.value ? 'true' : 'false'
       case 'string':
         return `${JSON.stringify(node.value)}.to_string()`
+      case 'template': {
+        // `format!`: braces in the chunks doubled, one `{}` per expression (Display covers text, numbers, flags)
+        const shape = node.parts
+          .map(part => (typeof part === 'string' ? JSON.stringify(part).slice(1, -1).replace(/[{}]/g, '$&$&') : '{}'))
+          .join('')
+        const args = node.parts.filter((part): part is Expression => typeof part !== 'string').map(expr)
+
+        return `format!(${[JSON.stringify(shape).replace(/\\\\/g, '\\'), ...args].join(', ')})`
+      }
       case 'unit':
         return '()'
       case 'null':
@@ -693,6 +726,13 @@ export function emitRust(program: Program): string {
             : `${callee}(${args})`
         }
 
+        if (node.callee.form === 'variable' && raising.has(node.callee.name)) {
+          const suffix = awaitedRaise ? '' : raiseSuffix()
+          awaitedRaise = false
+
+          return `${expr(node.callee)}(${args})${suffix}`
+        }
+
         return `${expr(node.callee)}(${args})`
       }
 
@@ -758,8 +798,17 @@ export function emitRust(program: Program): string {
         return memberPath(node)
       }
 
-      case 'await':
+      case 'await': {
+        if (node.expr.form === 'call' && node.expr.callee.form === 'variable' && raising.has(node.expr.callee.name)) {
+          awaitedRaise = true
+          const inner = expr(node.expr)
+          awaitedRaise = false
+
+          return `${inner}.await${raiseSuffix()}`
+        }
+
         return `${expr(node.expr)}.await`
+      }
       case 'map':
         return `std::rc::Rc::new(std::cell::RefCell::new(${
           node.entries.length === 0
@@ -1102,34 +1151,62 @@ export function emitRust(program: Program): string {
       }
       case 'expression':
         return `${expr(node.expr)};`
-      case 'return':
-        if (!node.value) {
-          return 'return;'
+      case 'return': {
+        // a list-returning function that returns a native dock call directly wraps the shim's plain `Vec`
+        const value = !node.value
+          ? '()'
+          : fnReturnsArray && isNativeCall(node.value)
+            ? wrapList(expr(node.value))
+            : expr(node.value)
+
+        if (guardDepth > 0) {
+          return `return Ok(Some(${value}));`
         }
 
-        // a list-returning function that returns a native dock call directly wraps the shim's plain `Vec`
-        return fnReturnsArray && isNativeCall(node.value)
-          ? `return ${wrapList(expr(node.value))};`
-          : `return ${expr(node.value)};`
-      case 'throw':
-        // an exception record panics with its form and note (every exception carries `note`); any other value with
-        // its Debug rendering
-        return `panic!("{}", ${
+        if (currentRaising) {
+          return `return Ok(${value});`
+        }
+
+        return node.value ? `return ${value};` : 'return;'
+      }
+      case 'throw': {
+        // a raise is `Err(TermException)`: the record's shared fields, its props as `link`, the record as `base`; a
+        // text raises `failure`; a caught value passes on as it is. Outside any raising task or guard (a raise the
+        // checker did not see reach here) it still ends the program, with the form and note.
+        const carrier =
           node.value.form === 'string'
-            ? expr(node.value)
+            ? `TermException { host: String::new(), form: "failure".to_string(), note: ${expr(node.value)}, code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) }`
             : node.value.form === 'record' && exceptionForms.has(node.value.name)
-              ? `{ let raised = ${expr(node.value)}; format!("{}: {}", ${JSON.stringify(node.value.name)}, raised.note) }`
-              : `format!("{:?}", ${expr(node.value)})`
-        });`
+              ? `{ let raised = ${expr(node.value)}; TermException { host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised) } }`
+              : `(${expr(node.value)}).clone()`
+
+        if (currentRaising || guardDepth > 0) {
+          return `return Err(${carrier});`
+        }
+
+        return `{ let raised = ${carrier}; eprintln!("{}", raised); std::process::exit(1) }`
+      }
       case 'while':
         return `while ${expr(node.cond)} {\n${block(
           node.body,
           d + 1,
         )}\n${pad(d)}}`
-      case 'guard':
-        // a raise is a panic on this backend today, so a guard catches nothing yet: the body runs as written and the
-        // handler is dropped. The Result lowering of note/term/hive/04-reach.md replaces this.
-        return `{\n${block(node.body, d + 1)}\n${pad(d)}}`
+      case 'guard': {
+        // the body runs as a closure returning Result<Option<T>, TermException>, T the enclosing task's result: a
+        // `send back` inside it is Ok(Some(v)) and returns from the task after the match, falling off the end is
+        // Ok(None), a raise (its own, or a callee's through `?`) is Err(e) and runs the handler with e bound
+        const result = currentResult && currentResult.kind !== 'unit' ? rustType(currentResult) : '()'
+        const outerRaising = currentRaising
+        guardDepth++
+        const body = block(node.body, d + 2)
+        guardDepth--
+        const returned = outerRaising ? 'return Ok(value)' : 'return value'
+        const handler = node.catch
+          ? `Err(${vname(node.catch.name)}) => {\n${block(node.catch.body, d + 2)}\n${pad(d + 1)}}`
+          : 'Err(_) => {}'
+
+        return `match (|| -> Result<Option<${result}>, TermException> {\n${body}\n${pad(d + 1)}Ok(None)\n${pad(d)}})() {\n${pad(d + 1)}Ok(Some(value)) => ${returned},\n${pad(d + 1)}Ok(None) => {}\n${pad(d + 1)}${handler}\n${pad(d)}}`
+      }
 
       case 'for-each': {
         // a list is an Rc<RefCell<Vec>>; iterate an owned clone of its elements so the loop binds `T`, not `&T`, and
@@ -1149,6 +1226,27 @@ export function emitRust(program: Program): string {
         // a match whose labels are only true/false is a match over a NATIVE bool (booleans lower to `bool` here, not
         // an ADT), so the arms are the literal patterns `true` / `false`, not enum variants. Rust's bool match with
         // both literal arms is exhaustive; an `otherwise` becomes the wildcard arm.
+        // a fork case over a caught TermException: match on `form`, the record recovered from `base` by its form
+        if (node.exceptionArms) {
+          const carrier = expr(node.subject)
+          const arms = node.cases.map(b => {
+            const arm = node.exceptionArms![b.label]!
+            const bodyText = block(b.body, d + 2)
+            const locals = armLocals([...arm.shared, ...arm.link], b.binds)
+              .filter(({ local }) => new RegExp(`\\b${snake(local)}\\b`).test(bodyText))
+              .map(({ field, local }) =>
+                arm.link.includes(field)
+                  ? `${pad(d + 2)}let ${snake(local)} = ${carrier}.base.downcast_ref::<${pascal(b.label)}>().unwrap().link.${snake(field)}.clone();`
+                  : `${pad(d + 2)}let ${snake(local)} = ${carrier}.${snake(field)}.clone();`,
+              )
+
+            return `${pad(d + 1)}${JSON.stringify(b.label)} => {\n${[...locals, bodyText].join('\n')}\n${pad(d + 1)}}`
+          })
+          arms.push(`${pad(d + 1)}_ => {${node.otherwise ? `\n${block(node.otherwise, d + 2)}\n${pad(d + 1)}` : ''}}`)
+
+          return `match ${carrier}.form.as_str() {\n${arms.join('\n')}\n${pad(d)}}`
+        }
+
         const labels = node.cases.map(branch => branch.label)
         const booleans =
           labels.length > 0 &&
@@ -1431,10 +1529,17 @@ export function emitRust(program: Program): string {
           .map(p => `${vname(p.name)}: ${rustType(p.type)}`)
           .join(', ')
 
-        const ret =
-          node.result && node.result.kind !== 'unit'
-            ? ` -> ${rustType(node.result)}`
+        const plainResult =
+          node.result && node.result.kind !== 'unit' ? rustType(node.result) : ''
+        const ret = raising.has(node.name)
+          ? ` -> Result<${plainResult || '()'}, TermException>`
+          : plainResult
+            ? ` -> ${plainResult}`
             : ''
+        const previousRaising = currentRaising
+        const previousResult = currentResult
+        currentRaising = raising.has(node.name)
+        currentResult = node.result
 
         // names a nested closure ASSIGNS to are boxed in Rc<RefCell> for this whole function body
         const previousCellVars = cellVars
@@ -1468,10 +1573,22 @@ export function emitRust(program: Program): string {
         // a cell-boxed name is read through its handle on every use; it can never be moved at a use site
         cellVars.forEach(name => moveArgs.delete(name))
 
-        const bodyText = [...shadows, block(node.body, d + 1)]
+        // a raising task whose body falls off the end (a unit task) still answers Ok; a task whose last statement is
+        // a guard returned from inside it (the body's or the handler's `send back`), which Rust cannot see through
+        // the match, so the fall-through is marked unreachable
+        const last = node.body[node.body.length - 1]
+        const tail =
+          currentRaising && (!node.result || node.result.kind === 'unit')
+            ? `${pad(d + 1)}Ok(())`
+            : last?.form === 'guard' && node.result && node.result.kind !== 'unit'
+              ? `${pad(d + 1)}unreachable!()`
+              : ''
+        const bodyText = [...shadows, block(node.body, d + 1), tail]
           .filter(Boolean)
           .join('\n')
 
+        currentRaising = previousRaising
+        currentResult = previousResult
         fnReturnsArray = previousReturnsArray
         moveArgs = previousMoveArgs
         cellVars = previousCellVars
@@ -1568,6 +1685,7 @@ export function emitRust(program: Program): string {
       case 'zone':
       case 'dock':
       case 'tell':
+      case 'roll':
         return ''
       default:
         return exhausted(node)
@@ -1624,7 +1742,18 @@ export function emitRust(program: Program): string {
     .map(n => (n.form === 'let' ? moduleLet(n) : stmt(n, 0)))
     .filter(Boolean)
 
-  return [...uses, ...body, ...rustFormWalk(fillSpecs, meltSpecs)].join('\n\n') + '\n'
+  const carrier = body.some(b => b.includes('TermException'))
+    ? [
+        `// the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
+#[derive(Clone)]
+pub struct TermException { pub host: String, pub form: String, pub note: String, pub code: String, pub time: i64, pub link: std::rc::Rc<dyn std::any::Any>, pub base: std::rc::Rc<dyn std::any::Any> }
+impl std::fmt::Display for TermException { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}: {}", self.form, self.note) } }
+impl std::fmt::Debug for TermException { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}: {}", self.form, self.note) } }
+impl std::error::Error for TermException {}`,
+      ]
+    : []
+
+  return [...uses, ...carrier, ...body, ...rustFormWalk(fillSpecs, meltSpecs)].join('\n\n') + '\n'
 }
 
 // MUTATED-CAPTURE analysis: the names a function must box in `Rc<RefCell>` because a nested closure assigns to them.

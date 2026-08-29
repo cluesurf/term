@@ -64,8 +64,8 @@ container, or a server has no desktop keychain but does have an
 environment, populated from whatever secret store the platform provides.
 Set `ZONE_CODE` (or `ZONE_CODE_<TIER>` for a specific tier) to the
 bootstrap token and zone fetches everything else, so the platform holds
-one secret instead of a whole `.env`. Force a store with `ZONE_STORE`
-(`ZONE_STORE=env`) when auto-detection would pick the wrong one.
+one secret instead of a whole `.env`. Force a store with `ZONE_SAVE`
+(`ZONE_SAVE=env`) when auto-detection would pick the wrong one.
 
 ## Configuration
 

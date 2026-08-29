@@ -14,6 +14,7 @@ import { cpus, tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { buildSync } from 'esbuild'
 import { findTreeFiles } from '@term/call/code/make'
+import { stdlibBase } from '@term/make/code/resolve'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
@@ -123,6 +124,14 @@ export function compileProjectParallel(
   )
 
   const bundle = ensureBuildWorkerBundle()
+  // the worker bundle lives under /tmp, from where stdlibBase() cannot walk up to deck/seed: pin the stdlib for it
+  // (worker_threads share process.env)
+  const stdlib = stdlibBase()
+
+  if (stdlib && !process.env.TERM_STDLIB) {
+    process.env.TERM_STDLIB = stdlib
+  }
+
   const workers = Array.from({ length: size }, () => new Worker(bundle))
 
   let compiled = 0

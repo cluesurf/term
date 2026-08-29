@@ -1,6 +1,7 @@
 import type { CollectionKind, Item, RecordNode, Value } from '@term/base/code/base/type'
 import {
   ByteWriter,
+  keySortBytes,
   TAG_DATE,
   TAG_DECIMAL,
   TAG_REF,
@@ -165,14 +166,28 @@ function writeItems(
     // produces two encodings
     encoded.sort((a, b) => compareBytes(a.bytes, b.bytes))
   } else if (order === 'map') {
-    // addressed by key: order by key, falling back to bytes when keys tie
+    // Addressed by key: order by the key's NFC-normalized UTF-8 bytes, falling back to the
+    // item's canonical bytes when two keys tie.
+    //
+    // `keySortBytes`, the SAME comparison a record's map keys use, and not the host
+    // language's string comparison. Two ways that used to differ, both hash-breaking:
+    //
+    //   above the BMP  JavaScript compares UTF-16 code units, so a surrogate pair orders
+    //                  differently than its UTF-8 bytes do. An emoji or a rare CJK key
+    //                  sorted one way here and the other way in a record map.
+    //   normalization  a composed and a decomposed spelling of one key are different JS
+    //                  strings, so they sorted as two keys and encoded to different bytes
+    //                  for the same logical map.
+    //
+    // Either would make an independent implementation, reasonably choosing UTF-8 byte
+    // order, compute a different hash for identical data. See
+    // note/library/base/design/canonical-serialization-rigor.md.
     encoded.sort((a, b) => {
-      const left = a.item.key ?? ''
-      const right = b.item.key ?? ''
-      if (left !== right) {
-        return left < right ? -1 : 1
-      }
-      return compareBytes(a.bytes, b.bytes)
+      const left = keySortBytes(a.item.key ?? '')
+      const right = keySortBytes(b.item.key ?? '')
+      const byKey = compareBytes(left, right)
+
+      return byKey === 0 ? compareBytes(a.bytes, b.bytes) : byKey
     })
   }
   // list and log keep their given order, the merge having already ordered a log

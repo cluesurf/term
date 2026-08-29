@@ -36,12 +36,13 @@ const resolve = projectResolver(SEED, 'node')
 async function main(): Promise<void> {
   const entry = path.join(
     DECK,
-    'seed/deck/site/code/test/site/api.tree',
+    'term/deck/site/code/test/site/api.tree',
   )
 
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
-    { resolve },
+    // shaking off: the test calls the server's handlers itself, and the entry never does
+    { resolve, treeShake: false },
   )
 
   ok(

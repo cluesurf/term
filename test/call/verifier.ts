@@ -92,7 +92,7 @@ function main(): void {
       !!badJson.diagnostics[0]?.span?.start,
   )
 
-  // mind: remember then recall, and write the store under .seed/memory
+  // mind: remember then recall, and write the store under .base/term/memory
   seed(
     ['mind', 'The kernel is the type authority.', '--kind', 'decision'],
     dir,
@@ -111,10 +111,10 @@ function main(): void {
       recallJson.facts[0]?.kind === 'decision',
   )
   expect(
-    'mind: writes the store under .seed/memory',
-    existsSync(join(dir, '.seed', 'memory', 'index.md')) &&
+    'mind: writes the store under .base/term/memory',
+    existsSync(join(dir, '.base/term', 'memory', 'index.md')) &&
       readFileSync(
-        join(dir, '.seed', 'memory', 'index.md'),
+        join(dir, '.base/term', 'memory', 'index.md'),
         'utf8',
       ).includes('Memory'),
   )

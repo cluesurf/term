@@ -99,6 +99,52 @@ async function main(): Promise<void> {
     ok('the raise reaches the handler', mod.lookup('b') === 'Not found')
   }
 
+  // a fork case over the caught value: the form is the discriminant, the arm binds the form's props by name
+  const CASED = `${STDLIB}
+form user-absence
+  like absence
+    bind note, <No such user>
+    link key, like text
+
+task find-user
+  take key, like text
+  like text
+  halt user-absence
+    bind thing, text <user>
+    bind key, read key
+
+task describe
+  take key, like text
+  like text
+  note unsafe
+    send back
+      call find-user
+        read key
+  halt take
+    take problem
+    fork case, read problem
+      case user-absence
+        send back, text <no user {{key}}: {{note}}>
+`
+  const cased = compile({ file: 'c.tree', text: CASED })
+  ok('a fork case over the caught exception compiles', cased.ok, cased.ok ? '' : cased.diagnostics.map(d => d.message).join(' | '))
+
+  if (cased.ok) {
+    const dir = mkdtempSync(join(tmpdir(), 'term-guard-case-'))
+    const file = join(dir, 'c.mjs')
+    writeFileSync(file, transformSync(cased.typescript, { loader: 'ts', format: 'esm' }).code)
+    const mod = await import(pathToFileURL(file).href)
+    ok('the arm binds the form\'s prop and the shared note', mod.describe('zed') === 'no user zed: No such user', String(mod.describe('zed')))
+  }
+
+  const UNCOVERED = CASED.replace('    link key, like text\n', '    link key, like text\n\nform user-denial\n  like absence\n    bind note, <Not yours>\n').replace('  halt user-absence\n    bind thing, text <user>\n    bind key, read key\n', '  fork test\n    hook test\n      call is-equal\n        read key\n        text <x>\n    hook hold\n      halt user-denial\n        bind thing, text <user>\n  halt user-absence\n    bind thing, text <user>\n    bind key, read key\n')
+  const uncovered = compile({ file: 'u.tree', text: UNCOVERED })
+  ok(
+    'a fork case that misses a form the body can raise is refused',
+    !uncovered.ok && uncovered.diagnostics.some(d => d.message.includes('can also raise user-denial')),
+    uncovered.ok ? 'compiled' : uncovered.diagnostics.map(d => d.message).join(' | '),
+  )
+
   const ORPHAN = `${STDLIB}
 task orphan
   halt take

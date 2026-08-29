@@ -72,7 +72,7 @@ zone blog
       text <Add post>
     zone div
       name post-list
-      walk list, call read-signal, read posts
+      walk list, call read-signal(read posts)
         hook next
           take site, name item
           zone div

@@ -107,7 +107,7 @@ ok('a clean data file checks clean', analysis.check().length === 0)
 
 const twice = analyze({ file: 'twice.tree', text: fixture('bad/twice.tree') })
 const findings = twice.lint()
-ok('a broken data file lints under L031', findings.length > 0 && findings.every(f => f.code === 'L031'), JSON.stringify(findings))
+ok('a broken data file lints under L040', findings.length > 0 && findings.every(f => f.code === 'L040'), JSON.stringify(findings))
 ok(
   'the finding carries the grammar rule',
   findings.some(f => f.message.includes('given twice')),

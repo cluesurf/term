@@ -63,7 +63,26 @@ form shape
   case point
 ```
 
-`circle` and `square` carry a number. `point` carries nothing. Construct each with `make`:
+`circle` and `square` carry a number. `point` carries nothing.
+
+A variant that carries one value with no name of its own is written with `like` on the `case` line. That value is the variant's `value` field, so `case full, like text` is `case full` with `link value, like text` beneath it, and an arm over it reads `value` or renames it with a `link`:
+
+```tree
+form box
+  case full, like text
+  case void
+
+task open
+  take b, like box
+  like text
+  fork case, read b
+    case full, link content
+      send back, read content
+    case void
+      send back, text <empty>
+```
+
+Construct each with `make`:
 
 ```tree
 save a

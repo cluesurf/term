@@ -1,0 +1,4 @@
+# Shelved from the build on purpose: every file beside this one is a data file written WRONG, read by
+# test/compile/host.ts and test/compile/host-term.ts, which expect each to be refused with the message on its first
+# line. `term make` skips a directory holding a draft.tree, so these never count as build failures.
+note draft

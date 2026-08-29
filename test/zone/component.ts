@@ -3,6 +3,7 @@
 // signal updates the mounted node). Run: npx tsx test/zone/component.ts
 
 import { compile } from '@term/make/code/compile/compile'
+import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
 import { transform } from 'esbuild'
 import * as fs from 'node:fs'
@@ -113,7 +114,8 @@ async function run(typescript: string): Promise<any> {
 async function main(): Promise<void> {
   const result = compile(
     { file: 'zone.tree', text: SOURCE },
-    { resolve },
+    // shaking off: the test drives the signal through `write-signal`, which the zone itself never calls
+    { resolve, treeShake: false },
   )
   ok(
     'a zone compiles through resolve + infer + emit',
@@ -139,9 +141,12 @@ async function main(): Promise<void> {
     /dynamic\(\(\) =>/.test(result.typescript),
   )
 
-  // run it against the headless (node) dom
+  // run it against the headless (node) dom. The dom module docks `<global:html>`, so the native prelude (the one
+  // `term boot` prepends) goes first, the way test/site/serve.ts does it.
+  const readRuntime = (p: string): string | undefined =>
+    fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
   const js = (
-    await transform(result.typescript, { loader: 'ts', format: 'esm' })
+    await transform(`${nativePrelude(result.program, 'node', readRuntime)}\n${result.typescript}`, { loader: 'ts', format: 'esm' })
   ).code
   const file = path.join(os.tmpdir(), `seed-zone-${process.pid}.mjs`)
   fs.writeFileSync(file, js)
@@ -194,7 +199,8 @@ async function main(): Promise<void> {
   // Stage B: fork -> show, walk -> each
   const control = compile(
     { file: 'control.tree', text: SOURCE_CONTROL },
-    { resolve },
+    // shaking off: the test drives the signal through `write-signal`, which the zone itself never calls
+    { resolve, treeShake: false },
   )
   ok(
     'a control-flow zone compiles',
@@ -205,7 +211,7 @@ async function main(): Promise<void> {
     ok('fork lowers to a show call', /show\(/.test(control.typescript))
     ok('walk lowers to an each call', /each\(/.test(control.typescript))
     try {
-      const M = await run(control.typescript)
+      const M = await run(`${nativePrelude(control.program, 'node', readRuntime)}\n${control.typescript}`)
       const host = M.element('root')
       M.gallery(host, true, ['a', 'b', 'c'])
       const found = texts(host)

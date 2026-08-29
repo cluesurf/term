@@ -64,8 +64,8 @@ KEY="$(cd "$ZONE" && pnpm exec tsx test/make-cache.ts "$PROJ" 2>/dev/null | tail
 
 export HOME="$SBOX"
 export SEED_CACHE_HOME="$SBOX/.cache"
-export ZONE_STORE=env
-export ZONE_CODE_SEAL="$KEY"
+export ZONE_SAVE=env
+export ZONE_LOCK="$KEY"
 
 zone(){ ( cd "$PROJ" && node "$TERM_HOST" boot "$ZONE/code/line/base.tree" -- "$@" 2>&1 | strip ); }
 # Same command with the two streams kept apart, for asserting which one a

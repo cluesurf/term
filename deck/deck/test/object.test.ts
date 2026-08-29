@@ -77,7 +77,9 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await fsp.rm(tmp, { recursive: true, force: true })
+  // retried: under a loaded machine (the gate runs suites side by side) a file the test's own server is still
+  // closing can make the first rmdir ENOTEMPTY
+  await fsp.rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 })
 
 describe('object core', () => {
@@ -181,6 +183,7 @@ describe('object core', () => {
 })
 
 describe('transfer protocol', () => {
+  // sixty seconds: a real registry round trip over a local server, and the gate runs it beside native compiles
   it('delta publish, delta install, branches, and signature enforcement', async () => {
     const pkgDir = path.join(tmp, 'reg-pkg')
     await fsp.mkdir(path.join(pkgDir, 'words'), { recursive: true })
@@ -289,7 +292,7 @@ describe('transfer protocol', () => {
         time: '2026-07-07T00:00:03Z',
       }),
     ).rejects.toThrow()
-  })
+  }, 60_000)
 
   it('delta publish and install over real HTTP', async () => {
     const pkgDir = path.join(tmp, 'http-pkg')

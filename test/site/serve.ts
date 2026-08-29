@@ -34,7 +34,7 @@ const resolve = projectResolver(SEED, 'node')
 const PORT = 38561
 
 async function main(): Promise<void> {
-  const entry = path.join(DECK, 'seed/deck/site/test/site/serve.tree')
+  const entry = path.join(DECK, 'term/deck/site/test/site/serve.tree')
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
     { resolve },

@@ -4,6 +4,7 @@
 // the reply. `emitProgramParallel` orchestrates a whole program: it builds the context once and fans the functions out
 // across the pool (or runs them inline when no pool is given). Node-only. See note/seed/compiler/parallel-worker-pool.md.
 
+import { stdlibBase } from '@term/make/code/resolve'
 import { Worker } from 'node:worker_threads'
 import { cpus, tmpdir } from 'node:os'
 import { rmSync } from 'node:fs'
@@ -93,6 +94,15 @@ export class WorkerPool {
     const bundle = ensureWorkerBundle()
 
     for (let i = 0; i < size; i++) {
+      // the bundle lives under /tmp, from where stdlibBase() cannot walk up to deck/seed: pin the stdlib for it
+      if (!process.env.TERM_STDLIB) {
+        const stdlib = stdlibBase()
+
+        if (stdlib) {
+          process.env.TERM_STDLIB = stdlib
+        }
+      }
+
       const worker = new Worker(bundle)
       const entry: WorkerEntry = { worker, busy: false, revision: -1 }
       worker.on('message', message => this.onMessage(entry, message))

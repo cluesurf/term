@@ -577,6 +577,11 @@ function makeEmitter(
         return node.value ? 'true' : 'false'
       case 'string':
         return JSON.stringify(node.value)
+      case 'template':
+        // a template literal: chunks escaped for backticks and `${`, expressions interpolated
+        return `\`${node.parts
+          .map(part => (typeof part === 'string' ? part.replace(/[\\`]/g, '\\$&').replace(/\$\{/g, '\\${') : `\${${expression(part)}}`))
+          .join('')}\``
       case 'unit':
         return 'undefined'
       case 'null':
@@ -1042,6 +1047,27 @@ function makeEmitter(
 
       case 'match': {
         const raw = expression(node.subject)
+        // a fork case over a caught exception (the checker filled `exceptionArms`): `form` is the discriminant,
+        // the shared fields read off the carrier, the form's props off its `link`
+        if (node.exceptionArms) {
+          const exceptionSubject = /^[A-Za-z_$][\w$]*$/.test(raw) ? raw : `(${raw})`
+          let out = ''
+          node.cases.forEach((branch, i) => {
+            const arm = node.exceptionArms![branch.label]!
+            const bodyText = branch.body.map(s => statement(s, depth + 1)).join('\n')
+            const locals = armLocals([...arm.shared, ...arm.link], branch.binds)
+              .filter(({ local }) => new RegExp(`\\b${toCamel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
+              .map(({ field, local }) => `${pad(depth + 1)}const ${toCamel(local)} = ${exceptionSubject}.${arm.link.includes(field) ? `link.${toMember(field)}` : toMember(field)}`)
+            out += `${i ? ' else ' : ''}if (${exceptionSubject}.form === ${JSON.stringify(branch.label)}) {\n${[...locals, ...branch.body.map(s => `${pad(depth + 1)}${guardStart(statement(s, depth + 1))}`)].join('\n')}\n${pad(depth)}}`
+          })
+
+          if (node.otherwise) {
+            out += ` else ${block(node.otherwise, depth)}`
+          }
+
+          return out
+        }
+
         // `.form` binds tighter than any operator, so a compound
         // subject (`listSize(x) > 0`) must be parenthesized or the
         // member access attaches to its last operand. Simple
@@ -1295,6 +1321,7 @@ function makeEmitter(
         return emitZone(node)
       case 'dock':
       case 'tell':
+      case 'roll':
         // routing/CLI (dock) DSL is lowered elsewhere, not here
         return ''
       default:
@@ -1483,10 +1510,23 @@ export function emitTypeScript(
     options?.wake?.length &&
     program.some(n => n.form === 'function' && n.name === 'hive-wake')
   ) {
+    // an entry with a `ref` is a declared kind's constant: its `base` is the constant's live value, not a copy
+    const entryText = (entry: Record<string, unknown>): string => {
+      const { ref, ...rest } = entry
+
+      if (typeof ref !== 'string') {
+        return JSON.stringify(rest)
+      }
+
+      const { base: _base, ...own } = rest
+
+      return `{ ...${JSON.stringify(own)}, base: ${toCamel(ref)} }`
+    }
+
     const groups = options.wake
       .map(
         group =>
-          `  hiveWake(${JSON.stringify(group.deck)}, ${JSON.stringify(group.entries)})`,
+          `  hiveWake(${JSON.stringify(group.deck)}, [${group.entries.map(entryText).join(', ')}])`,
       )
       .join('\n')
 

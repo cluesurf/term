@@ -1,0 +1,444 @@
+# The funnel. `expose` is the one task every response path calls to turn a raised exception into a response, and
+# no path decides for itself. What a customer is told was decided at build time by the app's `tell` table, which
+# the roll carries into the runtime hive, so this reads the same data the compiler checked. A told exception goes
+# out with its `note` and the props its `tell` named; a private one goes out as which of the seventeen it is and
+# its occurrence code, nothing else. The status is a table of seventeen rows, written once here. See
+# note/term/hive/06-tell.md.
+
+load @term/seed/code/hive
+  find hive-roll
+  find hive-entry
+
+load @term/seed/code/list
+  find push
+
+load @term/seed/code/json
+  find make-object
+  find set-field
+  find from-text
+  find from-number
+  find stringify
+
+load @term/seed/code/text
+  find replace-all
+  find last-index-of
+  find substring
+  find char-count
+
+load @term/seed/code/text/string
+  find concat
+
+load @term/seed/code/exception
+  find exception
+
+load ./http
+  find response
+
+# The seventeen and their statuses. A `bundle` answers with the highest status among its entries, which the caller
+# computes over the entries it holds; here it is 500, the floor of a failure it did not unpack.
+task status-of
+  take case, like text
+  like u16
+  fork test
+    hook test, call is-equal(read case, text <defect>)
+    hook hold
+      send back, code 400
+    hook test, call is-equal(read case, text <omission>)
+    hook hold
+      send back, code 400
+    hook test, call is-equal(read case, text <mismatch>)
+    hook hold
+      send back, code 400
+    hook test, call is-equal(read case, text <anonymity>)
+    hook hold
+      send back, code 401
+    hook test, call is-equal(read case, text <denial>)
+    hook hold
+      send back, code 403
+    hook test, call is-equal(read case, text <absence>)
+    hook hold
+      send back, code 404
+    hook test, call is-equal(read case, text <conflict>)
+    hook hold
+      send back, code 409
+    hook test, call is-equal(read case, text <shortage>)
+    hook hold
+      send back, code 413
+    hook test, call is-equal(read case, text <excess>)
+    hook hold
+      send back, code 413
+    hook test, call is-equal(read case, text <exclusion>)
+    hook hold
+      send back, code 415
+    hook test, call is-equal(read case, text <refusal>)
+    hook hold
+      send back, code 422
+    hook test, call is-equal(read case, text <overage>)
+    hook hold
+      send back, code 429
+    hook test, call is-equal(read case, text <outage>)
+    hook hold
+      send back, code 502
+    hook test, call is-equal(read case, text <overload>)
+    hook hold
+      send back, code 503
+    hook test, call is-equal(read case, text <timeout>)
+    hook hold
+      send back, code 504
+  send back, code 500
+
+# The bare form of a tell's full name (`@probe/tell/upload-excess` is `upload-excess`).
+task bare-of
+  take name, like text
+  like text
+  save at
+    call last-index-of
+      read name
+      text </>
+  send back
+    call substring
+      read name
+      call add
+        read at
+        code 1
+      call char-count
+        read name
+
+# The wire spelling of a name: snake, since it is a JSON value (`upload_excess`).
+task case-of
+  take name, like text
+  like text
+  send back
+    call replace-all
+      read name
+      text <->
+      text <_>
+
+# The page of a case: kebab, since it is a path segment (`/errors/upload-excess`).
+task case-path
+  take case, like text
+  like text
+  send back
+    call concat
+      text </errors/>
+      call replace-all
+        read case
+        text <_>
+        text <->
+
+# The site text keys a locale supplies for a told exception's wording. The wire `note` is the reader's locale when
+# the request carries one; the lookup is the text system's, these are its keys.
+task note-key
+  take host, like text
+  take form, like text
+  like text
+  send back
+    call concat
+      call concat
+        call concat
+          text <exception/>
+          read host
+        call concat
+          text </>
+          read form
+      text </note>
+
+task hint-key
+  take host, like text
+  take form, like text
+  like text
+  send back
+    call concat
+      call concat
+        call concat
+          text <exception/>
+          read host
+        call concat
+          text </>
+          read form
+      text </hint>
+
+# Which of the seventeen an exception is, from its roll entry (`like` on the exception entry). An exception the roll
+# does not know (raised by a deck that never woke) is a failure.
+task like-of
+  take host, like text
+  take form, like text
+  like text
+  walk list
+    call hive-roll
+      text <exception>
+      read host
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal
+            read entry/name
+            read form
+        hook hold
+          send back, read entry/base/like
+  send back, text <failure>
+
+# The app's decision about one exception, or void when it is private.
+task tell-of
+  take host, like text
+  take form, like text
+  like maybe
+  save full
+    call concat
+      call concat
+        read host
+        text </>
+      read form
+  walk list
+    call hive-roll
+      text <tell>
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal
+            read entry/name
+            read full
+        hook hold
+          send back
+            make some
+              bind value, read entry
+  send back
+    make none
+
+# The response for a raised exception. Told: `case` (the exception's name, or its tell's `name`, snake on the wire), `note`, `code`,
+# and the props the tell named. Private: `case` is which of the seventeen it is, plus `code`. `hint` is never on
+# the wire; it is on the case's page.
+task expose
+  take e, like exception
+  like response
+  save like, call like-of(read e/host, read e/form)
+  save told, call tell-of(read e/host, read e/form)
+  save body, call make-object
+  save body, call set-field(read body, text <form>, call from-text(text <exception>))
+  save body, call set-field(read body, text <code>, call from-text(read e/code))
+  fork case, read told
+    case some
+      link entry
+      save case, call case-of(read e/form)
+      fork test
+        hook test, read entry/base/alias
+        hook hold
+          save case, call case-of(read entry/base/alias)
+      save body, call set-field(read body, text <case>, call from-text(read case))
+      save body, call set-field(read body, text <note>, call from-text(read entry/base/note))
+      walk list
+        read entry/base/link
+        hook next
+          take site, name prop
+          save body
+            call set-field
+              read body
+              call case-of
+                read prop
+              read e/link/{prop}
+    case none
+      save body, call set-field(read body, text <case>, call from-text(read like))
+  send back
+    make response
+      bind status, call status-of(read like)
+      bind body, call stringify(read body)
+
+# The routes that can answer with an exception, from the roll's dock entries.
+task routes-of
+  take form, like text
+  like list
+  save out
+    make list
+  walk list
+    call hive-roll
+      text <dock>
+    hook next
+      take site, name entry
+      walk list
+        read entry/base/halt
+        hook next
+          take site, name name
+          fork test
+            hook test
+              call is-equal
+                read name
+                read form
+            hook hold
+              call push
+                read out
+                read entry/name
+  send back, read out
+
+# One row of the errors index: the case, its note and its status, linking to its page.
+task error-row
+  take entry, like hive-entry
+  like text
+  save form, call bare-of(read entry/name)
+  save case, call case-of(read form)
+  fork test
+    hook test, read entry/base/alias
+    hook hold
+      save case, call case-of(read entry/base/alias)
+  save path, call case-path(read case)
+  save note, read entry/base/note
+  send back
+    call concat
+      call concat
+        call concat
+          call concat
+            text <\<li\>\<a href=">
+            read path
+          text <"\>\<code\>>
+        call concat
+          read case
+          text <\</code\>\</a\> >
+      call concat
+        read note
+        text <\</li\>>
+
+# `/errors`: every told exception of the build, one row each. Served as HTML.
+task errors-page
+  like response
+  save rows, text <>
+  walk list
+    call hive-roll
+      text <tell>
+    hook next
+      take site, name entry
+      save rows
+        call concat
+          read rows
+          call error-row
+            read entry
+  send back
+    make response
+      bind status, code 200
+      bind body
+        call concat
+          call concat
+            text <\<!doctype html\>\<html\>\<head\>\<meta charset="utf-8"\>\<title\>Errors\</title\>\</head\>\<body\>\<h1\>Errors\</h1\>\<ul\>>
+            read rows
+          text <\</ul\>\</body\>\</html\>>
+
+# `/errors/{case}`: one told exception. Its note, its hint, its props, which of the seventeen it is, its status,
+# and the routes that can answer with it. An unknown case is itself an absence.
+task error-page
+  take case, like text
+  like response
+  save form, call replace-all(read case, text <->, text <_>)
+  walk list
+    call hive-roll
+      text <tell>
+    hook next
+      take site, name entry
+      save own, call case-of(call bare-of(read entry/name))
+      fork test
+        hook test, read entry/base/alias
+        hook hold
+          save own, call case-of(read entry/base/alias)
+      fork test
+        hook test
+          call is-equal
+            read own
+            read form
+        hook hold
+          send back
+            call render-error
+              read entry
+              read own
+  send back
+    make response
+      bind status, code 404
+      bind body
+        call concat
+          call concat
+            text <\<!doctype html\>\<html\>\<head\>\<meta charset="utf-8"\>\<title\>No such error\</title\>\</head\>\<body\>\<h1\>No such error\</h1\>\<p\>\<code\>>
+            read case
+          text <\</code\> is not an error this build tells.\</p\>\</body\>\</html\>>
+
+task render-error
+  take entry, like hive-entry
+  take case, like text
+  like response
+  save form, call bare-of(read entry/name)
+  save like, call like-of(read entry/host, read form)
+  save status, call status-of(read like)
+  save note, read entry/base/note
+  save hint, text <>
+  fork test
+    hook test, read entry/base/hint
+    hook hold
+      save hint
+        call concat
+          call concat
+            text <\<p\>>
+            read entry/base/hint
+          text <\</p\>>
+  save props, text <>
+  walk list
+    read entry/base/link
+    hook next
+      take site, name prop
+      save props
+        call concat
+          call concat
+            call concat
+              read props
+              text <\<li\>\<code\>>
+            read prop
+          text <\</code\>\</li\>>
+  save routes, text <>
+  walk list
+    call routes-of
+      read form
+    hook next
+      take site, name route
+      save routes
+        call concat
+          call concat
+            call concat
+              read routes
+              text <\<li\>\<code\>>
+            read route
+          text <\</code\>\</li\>>
+  send back
+    make response
+      bind status, code 200
+      bind body
+        call concat
+          call concat
+            call concat
+              call concat
+                call concat
+                  call concat
+                    call concat
+                      call concat
+                        call concat
+                          text <\<!doctype html\>\<html\>\<head\>\<meta charset="utf-8"\>\<title\>>
+                          read case
+                        text <\</title\>\</head\>\<body\>\<h1\>\<code\>>
+                      call concat
+                        read case
+                        text <\</code\>\</h1\>\<p\>>
+                    call concat
+                      read note
+                      text <\</p\>>
+                  call concat
+                    read hint
+                    text <\<p\>A \<code\>>
+                call concat
+                  read like
+                  text <\</code\>, status >
+              call concat
+                call stringify
+                  call from-number
+                    read status
+                text <.\</p\>\<h2\>Props\</h2\>\<ul\>>
+            call concat
+              read props
+              text <\</ul\>\<h2\>Routes\</h2\>\<ul\>>
+          call concat
+            read routes
+            text <\</ul\>\</body\>\</html\>>

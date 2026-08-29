@@ -98,6 +98,10 @@ function makeEmitter() {
         return `RT.index(${expr(e.target)}, ${expr(e.index)})`
       case 'member':
         return `RT.member(${expr(e.target)}, ${JSON.stringify(e.name)})`
+      case 'template':
+        return `\`${e.parts
+          .map(part => (typeof part === 'string' ? part.replace(/[\\`]/g, '\\$&').replace(/\$\{/g, '\\${') : `\${String(${expr(part)})}`))
+          .join('')}\``
       default:
         return exhausted(e)
     }

@@ -73,7 +73,7 @@ const CORE = [
   'color.tree',
   'console.tree',
   'process.tree',
-  'error.tree',
+  'exception.tree',
   'hash.tree',
   'range.tree',
   'time.tree',

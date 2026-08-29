@@ -121,6 +121,44 @@ async function main(): Promise<void> {
     indexed.ok && indexed.typescript.includes('return items[0]'),
   )
 
+  // a `link` past the variant's last field binds nothing, so it is refused rather than silently ignored
+  const strayLink = compile({
+    file: 'l.tree',
+    text: 'form shape\n  case dot\n    link x, like number\n  case line\n    link a, like number\n    link b, like number\n\ntask size\n  take s, like shape\n  like number\n  fork case, read s\n    case dot\n      link px\n      link py\n      send back, read px\n    case line\n      send back, read a\n',
+  })
+  ok(
+    'a link past the last field is refused and names the fields',
+    !strayLink.ok && strayLink.diagnostics.some(d => d.message.includes('"link py" under "case dot" binds nothing') && d.message.includes('(x)')),
+    strayLink.ok ? 'compiled' : strayLink.diagnostics.map(d => d.message).join(' | '),
+  )
+
+  // the same arm with one rename is the ordinary rename form
+  const rename = compile({
+    file: 'r.tree',
+    text: 'form shape\n  case dot\n    link x, like number\n  case line\n    link a, like number\n    link b, like number\n\ntask size\n  take s, like shape\n  like number\n  fork case, read s\n    case dot\n      link px\n      send back, read px\n    case line\n      send back, read a\n',
+  })
+  ok('a rename within the field count is accepted', rename.ok, rename.ok ? '' : rename.diagnostics.map(d => d.message).join(' | '))
+
+  // `case full, like text` is a payload variant: its one value is the `value` field, so an arm reads it as `value` or
+  // renames it with a link
+  const payload = compile({
+    file: 'p.tree',
+    text: 'form box\n  case full, like text\n  case void\n\ntask open\n  take b, like box\n  like text\n  fork case, read b\n    case full, link content\n      send back, read content\n    case void\n      send back, text <empty>\n\ntask run\n  like text\n  send back\n    call open\n      make full\n        bind value, text <filled>\n',
+  })
+  ok(
+    'a payload variant binds its value through a link',
+    payload.ok && payload.typescript.includes('const content = b.value'),
+    payload.ok ? payload.typescript.split('\n').filter(l => /content|value/.test(l)).join(' | ') : payload.diagnostics.map(d => d.message).join(' | '),
+  )
+
+  if (payload.ok) {
+    const dir = mkdtempSync(join(tmpdir(), 'term-enum-'))
+    const file = join(dir, 'module.ts')
+    writeFileSync(file, payload.typescript)
+    const mod = (await import(pathToFileURL(file).href)) as { run: () => string }
+    ok('a payload variant runs', mod.run() === 'filled', String(mod.run()))
+  }
+
   console.log(`\nenum: ${pass} pass, ${fail} fail`)
 }
 

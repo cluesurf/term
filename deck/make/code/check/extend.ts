@@ -587,6 +587,14 @@ export function extendForms(
       case 'await':
         walkExpression(s, node.expr)
         break
+      case 'template':
+        for (const part of node.parts) {
+          if (typeof part !== 'string') {
+            walkExpression(s, part)
+          }
+        }
+
+        break
       case 'array':
         node.items.forEach(i => walkExpression(s, i))
         break

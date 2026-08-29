@@ -241,13 +241,13 @@ function runRust(): void {
     join(out, 'Cargo.toml'),
     '[package]\nname = "host_native"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nserde_json = "1"\nregex = "1"\nbase64 = "0.22"\nhex = "0.4"\nsha2 = "0.10"\nuuid = { version = "1", features = ["v4"] }\nrand = "0.8"\n',
   )
-  const main = `\nfn main() {\n  let inputs: Vec<&str> = vec![${inputs.join(', ')}];\n  for input in inputs { print!("{}\\u{1e}", round_long(input.to_string())); }\n}\n`
+  const main = `\nfn main() {\n  let inputs: Vec<&str> = vec![${inputs.join(', ')}];\n  for input in inputs { print!("{}\\u{1e}", round_long(input.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })); }\n}\n`
   writeFileSync(join(out, 'src/main.rs'), `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}${main}`)
 
   let output: string
 
   try {
-    output = execFileSync('cargo', ['run', '--quiet'], { cwd: out, stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+    output = execFileSync('cargo', ['run', '--quiet'], { cwd: out, stdio: ['ignore', 'pipe', 'pipe'], env: CARGO_ENV }).toString()
   } catch (error) {
     ok('rust: the package builds', false, String((error as { stderr?: Buffer }).stderr ?? error))
 
@@ -264,11 +264,11 @@ function runRust(): void {
   writeFileSync(join(fillOut, 'Cargo.toml'), readFileSync(join(out, 'Cargo.toml'), 'utf8').replace('host_native', 'host_fill'))
   writeFileSync(
     join(fillOut, 'src/main.rs'),
-    `${nativePrelude(fill, 'rust', readRuntime)}\n${emitRust(fill)}\nfn main() { print!("{}\\u{1e}{}\\u{1e}{}", fill_round(${JSON.stringify(FILL_GOOD)}.to_string()), fill_round(${JSON.stringify(FILL_REGION)}.to_string()), fill_burst(${JSON.stringify(FILL_GOOD)}.to_string())); }\n`,
+    `${nativePrelude(fill, 'rust', readRuntime)}\n${emitRust(fill)}\nfn main() { print!("{}\\u{1e}{}\\u{1e}{}", fill_round(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_round(${JSON.stringify(FILL_REGION)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_burst(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })); }\n`,
   )
 
   try {
-    const got = execFileSync('cargo', ['run', '--quiet'], { cwd: fillOut, stdio: ['ignore', 'pipe', 'pipe'] }).toString().split(SEP)
+    const got = execFileSync('cargo', ['run', '--quiet'], { cwd: fillOut, stdio: ['ignore', 'pipe', 'pipe'], env: CARGO_ENV }).toString().split(SEP)
     ok('rust: fill and melt with a form build', true)
     ok('rust: fill into a form melts back to the data', got[0] === FILL_GOOD, got[0] ?? '')
     ok('rust: an optional field present is kept', got[1] === FILL_REGION_BACK, got[1] ?? '')
@@ -289,7 +289,7 @@ function runSwift(): void {
   const file = join(out, 'main.swift')
   writeFileSync(
     file,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\nfor input in [${inputs.join(', ')}] { print(roundLong(input), terminator: "\\u{1e}") }\n`,
+    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\nfor input in [${inputs.join(', ')}] { print(try! roundLong(input), terminator: "\\u{1e}") }\n`,
   )
 
   try {
@@ -308,7 +308,7 @@ function runSwift(): void {
   const fillFile = join(out, 'fill.swift')
   writeFileSync(
     fillFile,
-    `${nativePrelude(fill, 'swift', readRuntime)}\n${emitSwift(fill)}\nprint(fillRound(${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(fillRound(${JSON.stringify(FILL_REGION)}), terminator: "\\u{1e}")\nprint(fillBurst(${JSON.stringify(FILL_GOOD)}), terminator: "")\n`,
+    `${nativePrelude(fill, 'swift', readRuntime)}\n${emitSwift(fill)}\nprint(try! fillRound(${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillRound(${JSON.stringify(FILL_REGION)}), terminator: "\\u{1e}")\nprint(try! fillBurst(${JSON.stringify(FILL_GOOD)}), terminator: "")\n`,
   )
 
   try {
@@ -370,6 +370,10 @@ function runKotlin(): void {
     ok('kotlin: fill and melt with a form build', false, String((error as { stderr?: Buffer }).stderr ?? error))
   }
 }
+
+// the cargo target dir persists across runs, so the package's crates build once on a machine and not once per run
+// (each run writes a fresh package, and a fresh package means a fresh target dir means a full dependency build)
+const CARGO_ENV = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'term-host-native-target') }
 
 const only = process.env.HN_ONLY ?? ''
 

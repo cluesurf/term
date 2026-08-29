@@ -72,6 +72,24 @@ task listen
   call hive-hear
     text <exception>
     read work
+
+form metric
+  link name, like text
+  link unit, like text
+
+roll metric
+  like metric
+
+host request-count
+  make metric
+    bind name, text <requests>
+    bind unit, text <count>
+
+task metrics
+  like list
+  send back
+    call hive-roll
+      text <metric>
 `
 
 async function main(): Promise<void> {
@@ -121,6 +139,11 @@ async function main(): Promise<void> {
 
   ok('an ear hears the raise', heard.some(e => e.name === 'user-absence'))
   ok('the happy path is unheard', heard.length === 1 && mod.findUser('a') === 'alice' && heard.length === 1)
+
+  // a kind the app declares (`roll metric`): its constant is on the roster at boot, by reference, as a typed value
+  const metrics = mod.metrics() as { name: string; kind: string; base: { name: string; unit: string } }[]
+  ok('a declared kind wakes into the hive', metrics.length === 1 && metrics[0]!.kind === 'metric' && metrics[0]!.name === 'request-count', JSON.stringify(metrics))
+  ok('its entry is the constant\'s value, typed', metrics[0]?.base.name === 'requests' && metrics[0]?.base.unit === 'count', JSON.stringify(metrics[0]?.base))
 
   console.log(`\nhive: ${pass} pass, ${fail} fail`)
 

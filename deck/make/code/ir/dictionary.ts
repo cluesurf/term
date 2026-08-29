@@ -389,6 +389,14 @@ function walkExpressions(
       case 'await':
         expr(node.expr)
         break
+      case 'template':
+        for (const part of node.parts) {
+          if (typeof part !== 'string') {
+            expr(part)
+          }
+        }
+
+        break
       case 'array':
         node.items.forEach(expr)
         break

@@ -8,6 +8,7 @@ import {
 } from '@term/make/code/inspect'
 import type { Source } from '@term/make/code/compile/load'
 import { projectResolver } from '@term/call/code/make'
+import { projectDeckOf } from '@term/call/code/deck-of'
 import {
   dataKeys,
   expandData,
@@ -74,6 +75,7 @@ export async function callLook(input: {
   const { symbols, modules, loadDiagnostics } = inspectModule(
     entry,
     resolve,
+    projectDeckOf(),
   )
 
   const filtered = input.kind

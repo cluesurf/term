@@ -1,5 +1,5 @@
 {
-  "name": "@cluesurf/make",
+  "name": "@term/seed",
   "main": "./host",
   "type": "module",
   "version": "0.1.0",

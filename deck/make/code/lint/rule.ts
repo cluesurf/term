@@ -40,6 +40,9 @@ export type LintContext = {
   referenced: Set<string>
   // native-import modules that are loaded more than once in the program (used by no-duplicate-load)
   duplicateLoads: Set<string>
+  // the whole program the node belongs to, for a rule whose answer needs more than the node (the tell advice rules
+  // read every exception form and the raise sets)
+  program: Program
   slice(span: Span): string
   report(
     finding: Omit<Finding, 'rule' | 'code' | 'severity'> & {

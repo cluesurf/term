@@ -24,6 +24,14 @@ function collectReads(expr: Expression, read: Set<string>): void {
     case 'await':
       collectReads(expr.expr, read)
       break
+    case 'template':
+      for (const part of expr.parts) {
+        if (typeof part !== 'string') {
+          collectReads(part, read)
+        }
+      }
+
+      break
     case 'member':
       collectReads(expr.target, read)
       break

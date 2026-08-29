@@ -98,6 +98,9 @@ const HOST_ANNOTATION = new Set([
 // member `key`. The lexer already parses `{key}` into an interpolation part of the name node; `nameText` drops those,
 // so a path is built from the parts here instead of from the flattened string. Returns undefined when the name holds
 // no interpolation, so the caller uses the plain string path.
+// the declaration keywords a `find` may name before the found name: `find form file`
+const FIND_KINDS = new Set(['tree', 'form', 'host', 'task', 'mask', 'bind', 'rule', 'mill', 'mine', 'mint', 'zone', 'role', 'test'])
+
 function dynamicPathExpression(
   node: Node | undefined,
   span: Span,
@@ -659,6 +662,16 @@ function isValueExpressionHead(name: string | undefined): boolean {
   return name !== undefined && VALUE_EXPRESSION_HEADS.has(name)
 }
 
+// unescape a text literal's escape sequences: the delimiters (`\<` `\>` `\{` `\}`, kept in the chunk so the bracket
+// is content, not a delimiter) and the standard characters (`\n` `\r` `\t` `\\`). This lets a native bind expression
+// carry an arrow (`=>` / `->`) or a stray `>` as `\>` without closing the `text <...>` literal, and a plain program
+// build newlines and tabs without a native helper.
+function unescapeText(text: string): string {
+  return text.replace(/\\([<>{}nrt\\])/g, (_, ch: string) =>
+    ch === 'n' ? '\n' : ch === 'r' ? '\r' : ch === 't' ? '\t' : ch,
+  )
+}
+
 // the literal text inside a `<...>` node
 function textOf(node: {
   parts: { kind: string; text?: string }[]
@@ -744,27 +757,51 @@ export function mill(tree: RootNode, file: string): MillResult {
         return { form: 'float', value: node.value, span }
       case 'radix':
         return { form: 'integer', value: node.value, span }
-      case 'text':
+      case 'text': {
+        // a brace in a text literal is a template parameter (`{x}`, filled when a `tree` expands) or the runtime
+        // interpolation the book promises (`{{x}}`). Neither means anything here: a template's text was filled before
+        // the mill ran, so a `{x}` that survived was never in a template, and `{{x}}` is not built. Both used to
+        // compile to an empty string, silently.
+        const braced = node.parts.find((p): p is Extract<typeof p, { kind: 'interpolation' }> => p.kind === 'interpolation')
+
+        // a `{x}` (depth one) is a template parameter, filled when a `tree` expands: one that survived was never in a
+        // template, and used to compile to an empty string, silently
+        if (braced && braced.depth < 2) {
+          const inner = braced.group ? (headName(braced.group) ?? 'x') : 'x'
+
+          fail(
+            node,
+            `"{${inner}}" in a text literal is a template parameter, and this text is not in a template: interpolate at run time with {{${inner}}}, or write \\{${inner}\\} for the literal braces`,
+          )
+        }
+
+        // `{{x}}` (depth two) is runtime interpolation: the text is a template of chunks and expressions
+        if (braced && braced.depth >= 2) {
+          const parts: (string | Expression)[] = []
+
+          for (const part of node.parts) {
+            if (part.kind === 'chunk') {
+              parts.push(unescapeText(part.text))
+            } else if (part.group) {
+              // `{{e/form}}` reads a path; `{{x}}` a name; anything else is the expression the braces hold
+              const head = headName(part.group)
+              parts.push(
+                head && head.includes('/') && rest(part.group).length === 0
+                  ? pathExpression(head, span)
+                  : toExpression(part.group, scope),
+              )
+            }
+          }
+
+          return { form: 'template', parts, span }
+        }
+
         return {
           form: 'string',
-          // unescape the literal's escape sequences: the delimiters (`\<` `\>` `\{` `\}`, kept in the chunk so the
-          // bracket is content, not a delimiter) and the standard characters (`\n` `\r` `\t` `\\`). This lets a
-          // native bind expression carry an arrow (`=>` / `->`) or a stray `>` as `\>` without closing the
-          // `text <...>` literal, and a plain program build newlines and tabs without a native helper.
-          value: node.parts
-            .map(p => (p.kind === 'chunk' ? p.text : ''))
-            .join('')
-            .replace(/\\([<>{}nrt\\])/g, (_, ch: string) =>
-              ch === 'n'
-                ? '\n'
-                : ch === 'r'
-                  ? '\r'
-                  : ch === 't'
-                    ? '\t'
-                    : ch,
-            ),
+          value: unescapeText(node.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join('')),
           span,
         }
+      }
       case 'group':
         return groupExpression(node, scope)
       default:
@@ -3052,12 +3089,47 @@ export function mill(tree: RootNode, file: string): MillResult {
       'name',
     ])
 
+    // `halt <form>` with no children among the signature lines, before the first statement, declares a bound on the
+    // task's raise set (03-exception.md). It is a contract the checker holds the body to, never a raise.
+    const raises: string[] = []
+    const bound = new Set<Node>()
+
+    for (const n of body) {
+      if (n.kind !== 'group') {
+        break
+      }
+
+      const head = headName(n) ?? ''
+
+      if (SIGNATURE.has(head) && !(isAnnotation(n, 'unsafe') && rest(n).length > 1)) {
+        continue
+      }
+
+      const arg = rest(n)[0]
+      const form = arg?.kind === 'group' ? headName(arg) : undefined
+
+      if (
+        head === 'halt' &&
+        form !== undefined &&
+        !HALT_WORDS.has(form) &&
+        rest(n).length === 1 &&
+        rest(arg as GroupNode).length === 0
+      ) {
+        raises.push(form)
+        bound.add(n)
+        continue
+      }
+
+      break
+    }
+
     // a `note unsafe` OVER statements is a guarded body (see toStatements), so it stays executable; a bare `note`
     // line is an annotation and goes
     const executable = body.filter(
       n =>
-        !(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')) ||
-        (isAnnotation(n, 'unsafe') && rest(n as GroupNode).length > 1),
+        !bound.has(n) &&
+        (!(n.kind === 'group' && SIGNATURE.has(headName(n) ?? '')) ||
+          (isAnnotation(n, 'unsafe') && rest(n as GroupNode).length > 1)),
     )
 
     const fn: Statement = {
@@ -3067,6 +3139,10 @@ export function mill(tree: RootNode, file: string): MillResult {
       body: toStatements(executable, scope),
       generics,
       span,
+    }
+
+    if (raises.length > 0) {
+      fn.raises = raises
     }
 
     if (resultType) {
@@ -3579,6 +3655,19 @@ export function mill(tree: RootNode, file: string): MillResult {
       }
 
       const variantFields = linkFields(child)
+
+      // `case full, like text`: a PAYLOAD variant, one unnamed value of that type. It is the variant's `value` field,
+      // the way `case text` / `link value` spells it out, so an arm reads it as `value` or renames it (`link content`).
+      // The `like` used to be read by nothing, so the twenty payload variants in the tree declared a type that
+      // vanished and an arm's `link` over one bound nothing.
+      const payloadLike = rest(child)
+        .slice(1)
+        .find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+
+      if (payloadLike && variantFields.length === 0) {
+        variantFields.push({ name: 'value', type: parseLikeType(payloadLike) })
+      }
+
       const variant: {
         name: string
         fields: { name: string; type: Type }[]
@@ -4812,6 +4901,32 @@ export function mill(tree: RootNode, file: string): MillResult {
             (p): p is GroupNode => p.kind === 'group',
           )
 
+          // `find get as pick` used to bind nothing and fail later, in another file, as an undefined name: the words
+          // after `get` nest under it (`get > as > pick`). The imported name takes no children, and the only thing
+          // that may follow it is `name <alias>`.
+          // `find form file` / `find tree open-head` / `find host fs` name the KIND of the thing found, and the stdlib
+          // writes them that way, so one nested word under a declaration keyword is the found name, not a stray.
+          const imported = parts[0]
+          const nested = imported ? rest(imported).filter((p): p is GroupNode => p.kind === 'group') : []
+          const kinded =
+            imported !== undefined &&
+            FIND_KINDS.has(headName(imported) ?? '') &&
+            nested.length === 1 &&
+            rest(nested[0]!).every(p => p.kind !== 'group')
+          const stray = kinded ? parts.slice(1).filter(p => headName(p) !== 'name') : [...nested, ...parts.slice(1).filter(p => headName(p) !== 'name')]
+
+          if (imported && stray.length > 0) {
+            const words = [headName(imported) ?? '', ...stray.flatMap(function flat(p): string[] {
+              return [headName(p) ?? '', ...rest(p).filter((q): q is GroupNode => q.kind === 'group').flatMap(flat)]
+            })]
+            const alias = words[words.length - 1] ?? 'y'
+
+            fail(
+              child,
+              `"find ${words.join(' ')}" binds nothing: an import alias is written "find ${headName(imported)}, name ${alias}"`,
+            )
+          }
+
           const target = parts[0] ? headName(parts[0]) : undefined
           const nameGroup = parts.find(p => headName(p) === 'name')
           const aliasNode = nameGroup ? rest(nameGroup)[0] : undefined
@@ -4827,6 +4942,21 @@ export function mill(tree: RootNode, file: string): MillResult {
       }
     } else if (keyword === 'note') {
       // top-level documentation: not a statement
+    } else if (keyword === 'roll') {
+      // `roll <name>` / `like <form>`: a kind this deck declares. Every top-level constant of that form is an entry.
+      const nameGroup = rest(group)[0]
+      const kindName = nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
+      const likeGroup = rest(group).find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'like')
+      const likeNode = likeGroup ? rest(likeGroup)[0] : undefined
+      const like = likeNode?.kind === 'group' ? headName(likeNode) : undefined
+
+      if (!kindName) {
+        fail(group, 'roll needs the name of the kind it declares (`roll metric`)')
+      } else if (!like) {
+        fail(group, `roll ${kindName} needs the form of its entries (\`like <form>\`)`)
+      } else {
+        program.push({ form: 'roll', name: kindName, like, span: spanOf(group) })
+      }
     } else if (keyword === 'tell') {
       // `tell @deck/form`: the app's decision about an exception. Children: `note <text>`, `hint <text>`, `link
       // <prop>` (each prop that rides along), `name <public-name>`.

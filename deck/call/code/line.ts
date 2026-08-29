@@ -720,8 +720,7 @@ const cli = yargs(hideBin(process.argv))
       yargs
         .positional('kind', {
           type: 'string',
-          choices: ['deck', 'exception', 'task', 'dock', 'tell'] as const,
-          description: 'One kind of entry, in full (default: every deck with counts)',
+          description: 'One kind of entry, in full: deck, exception, task, dock, tell, kind, or a kind a deck declares with `roll <name>` (default: every deck with counts)',
         })
         .option('json', { type: 'boolean', description: 'Output the roll as JSON' })
         .option('private', {
@@ -731,6 +730,10 @@ const cli = yargs(hideBin(process.argv))
         .option('host', {
           type: 'string',
           description: 'Only the entries of one deck (@term/site)',
+        })
+        .option('path', {
+          type: 'boolean',
+          description: 'Under each exception, one call path from every task that can raise it to the raise site',
         }),
     async argv => {
       await callRoll({
@@ -738,6 +741,7 @@ const cli = yargs(hideBin(process.argv))
         kind: argv.kind,
         json: argv.json,
         private: argv.private,
+        path: argv.path,
         host: argv.host,
       })
     },

@@ -4,7 +4,7 @@
 //   tsx test/make-cache.ts <project-dir>
 //
 // Prints the tone-packed master key on stdout, which the harness puts in
-// ZONE_CODE_SEAL. Nothing else is printed, so the caller can capture it.
+// ZONE_LOCK. Nothing else is printed, so the caller can capture it.
 import './shim'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
@@ -22,8 +22,8 @@ const good = (process.argv[3] as string | undefined) ?? '2099-01-01T00:00:00Z'
 // key on every call would orphan the cache written by the previous call, so a
 // test that rebuilds the cache to change one header would silently be testing
 // a cache nobody can open.
-const key = process.env.ZONE_CODE_SEAL
-  ? toneUnpack(process.env.ZONE_CODE_SEAL)
+const key = process.env.ZONE_LOCK
+  ? toneUnpack(process.env.ZONE_LOCK)
   : await makeKey()
 
 const spot = (path: string, root: any): any => {

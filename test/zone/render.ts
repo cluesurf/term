@@ -3,6 +3,7 @@
 // parse -> mill -> resolve -> infer -> emit (TypeScript) -> esbuild -> execute. Run: npx tsx test/zone/render.ts
 
 import { compile } from '@term/make/code/compile/compile'
+import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
 import { transform } from 'esbuild'
 import * as fs from 'node:fs'
@@ -34,7 +35,7 @@ const resolve = projectResolver(SEED, 'node')
 async function main(): Promise<void> {
   const entry = path.join(
     DECK,
-    'seed/deck/site/code/test/site/ssr-demo.tree',
+    'term/deck/site/code/test/site/ssr-demo.tree',
   )
   // this test calls the dom primitives directly (createElement / createText / ...); compile un-optimized so the
   // specializer does not inline + drop those single-return exports, which only an external caller like this test uses
@@ -53,7 +54,11 @@ async function main(): Promise<void> {
   }
 
   const js = (
-    await transform(result.typescript, { loader: 'ts', format: 'esm' })
+    await transform(
+      // the dom docks `<global:html>`: the native prelude goes first, as `term boot` prepends it
+      `${nativePrelude(result.program, 'node', (p: string) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined))}\n${result.typescript}`,
+      { loader: 'ts', format: 'esm' },
+    )
   ).code
   const file = path.join(os.tmpdir(), `seed-render-${process.pid}.mjs`)
   fs.writeFileSync(file, js)

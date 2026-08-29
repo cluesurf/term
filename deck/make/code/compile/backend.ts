@@ -213,6 +213,14 @@ function reassignedExpr(expr: Expression, into: Set<string>): void {
     case 'await':
       reassignedExpr(expr.expr, into)
       break
+    case 'template':
+      for (const part of expr.parts) {
+        if (typeof part !== 'string') {
+          reassignedExpr(part, into)
+        }
+      }
+
+      break
     case 'conditional':
       expr.branches.forEach(b => {
         reassignedExpr(b.cond, into)

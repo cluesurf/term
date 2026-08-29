@@ -45,6 +45,10 @@ import { hashRecord } from '@term/base/code/canon/hash'
 import type { RefLog, RefLogEntry } from '@term/base/code/reflog/reflog'
 import type { Mark, RecordNode, Value } from '@term/base/code/base/type'
 import type { Change } from '@term/base/code/diff/change'
+import {
+  FORMAT_VERSION,
+  settleFormat,
+} from '@term/base/code/canon/format'
 
 // The repository ties the store, the refs, and commits into a version-control
 // system. The commit is gated by validation and lands via compare-and-swap on the
@@ -256,6 +260,27 @@ export class Repository {
   // commit lands via compare-and-swap, and on contention it three-way merges with
   // the advanced head and retries. Returns conflicts if a concurrent edit collides.
   commit(branch: string, meta: CommitMeta, next: Dataset): CommitResult {
+    // The canonical-form gate, before anything is written. A repository written under a
+    // form this build does not read would get chunks addressed by different rules mixed
+    // into one history, and neither side would report a version problem, because a hash
+    // that disagrees looks exactly like corruption. Claiming on a repository that has no
+    // version records what is already true rather than asserting something new.
+    const format = settleFormat(this.refs)
+
+    if (!format.ok) {
+      return {
+        ok: false,
+        diagnostics: [
+          {
+            severity: 'hold',
+            mark: undefined,
+            field: undefined,
+            message: `repository canonical form ${format.version} is not readable by this build, which writes ${FORMAT_VERSION}`,
+          },
+        ],
+      }
+    }
+
     // access control: if a policy is set, the acting user must hold commit rights
     if (this.opts.policy && meta.user !== undefined) {
       if (!authorizeCommit(this.opts.policy, meta.user, branch)) {
@@ -942,7 +967,18 @@ export class Repository {
     ]).has(commit)
   }
 
-  commitsBetween(from: string, to: string): Array<string> {
+  // `from` undefined means "everything reachable from `to`", which is the fresh-projection
+  // case. Symmetrical with `commitChanges`, which treats an undefined `from` as a diff from
+  // empty. The two are always called as a pair, so they have to agree on what undefined
+  // means or a fresh projection records a different set than it applied.
+  //
+  // Walks ancestors rather than first parents, so a merge's second parent is covered too.
+  // `log` follows first parents only and would silently omit them.
+  commitsBetween(from: string | undefined, to: string): Array<string> {
+    if (from === undefined) {
+      return [...this.ancestors(to)]
+    }
+
     const fromAncestors = this.ancestors(from)
     return [...this.ancestors(to)].filter(c => !fromAncestors.has(c))
   }

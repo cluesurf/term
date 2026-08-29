@@ -454,6 +454,14 @@ function collectReadNames(
     case 'await':
       collectReadNames(node.expr, into)
       break
+    case 'template':
+      for (const part of node.parts) {
+        if (typeof part !== 'string') {
+          collectReadNames(part, into)
+        }
+      }
+
+      break
     case 'conditional':
       node.branches.forEach(b => {
         collectReadNames(b.cond, into)
@@ -683,6 +691,8 @@ function substituteExpr(
       }
     case 'await':
       return { ...node, expr: substituteExpr(node.expr, subst) }
+    case 'template':
+      return { ...node, parts: node.parts.map(part => (typeof part === 'string' ? part : substituteExpr(part, subst))) }
     case 'conditional':
       return {
         ...node,
@@ -1363,6 +1373,8 @@ function rewriteExpression(
       }
     case 'await':
       return { ...node, expr: rewriteExpression(node.expr, forwarders) }
+    case 'template':
+      return { ...node, parts: node.parts.map(part => (typeof part === 'string' ? part : rewriteExpression(part, forwarders))) }
     case 'closure':
       return {
         ...node,
@@ -1500,6 +1512,14 @@ function countReferences(
       break
     case 'await':
       countReferences(node.expr, counts)
+      break
+    case 'template':
+      for (const part of node.parts) {
+        if (typeof part !== 'string') {
+          countReferences(part, counts)
+        }
+      }
+
       break
     case 'closure':
       node.body.forEach(s => countReferencesStatement(s, counts))

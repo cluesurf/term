@@ -9,11 +9,14 @@ import { parse } from '@term/make/code/parser/tree'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
 import { showType } from '@term/make/code/compile/node'
+import { deckFromPath } from '@term/make/code/compile/roll'
 
 export type FormSymbol = {
   kind: 'form'
   name: string
   module: string
+  // the deck the module belongs to (`@term/seed`), from its nearest deck.tree; the roll names hosts the same way
+  deck: string
   fields: { name: string; type: string }[]
   variants: string[]
 }
@@ -21,6 +24,7 @@ export type TaskSymbol = {
   kind: 'task'
   name: string
   module: string
+  deck: string
   params: { name: string; type: string }[]
   result: string
 }
@@ -45,6 +49,8 @@ function moduleLabel(file: string): string {
 export function inspectModule(
   entry: Source,
   resolve: Resolver,
+  // the file's deck, the way the CLI and the roll name it (`projectDeckOf`); without it the path's package segment
+  deckOf?: (file: string) => { name: string; root: string } | undefined,
 ): Inspection {
   const { sources, diagnostics } = collectModules(entry, resolve)
   const symbols: Symbol[] = []
@@ -63,6 +69,7 @@ export function inspectModule(
     }
 
     const module = moduleLabel(source.file)
+    const deck = deckOf?.(source.file)?.name ?? deckFromPath(source.file)
 
     for (const statement of milled.program) {
       if (statement.form === 'record-type') {
@@ -70,6 +77,7 @@ export function inspectModule(
           kind: 'form',
           name: statement.name,
           module,
+          deck,
           fields: statement.fields.map(f => ({
             name: f.name,
             type: showType(f.type),
@@ -81,6 +89,7 @@ export function inspectModule(
           kind: 'task',
           name: statement.name,
           module,
+          deck,
           params: statement.params.map(p => ({
             name: p.name,
             type: p.type ? showType(p.type) : 'unknown',
@@ -125,13 +134,14 @@ export function toJson(symbols: Symbol[]): string {
 
 // a CSV with a quoted signature column (commas inside are safe)
 export function toCsv(symbols: Symbol[]): string {
-  const rows = ['kind,name,module,signature']
+  const rows = ['kind,name,deck,module,signature']
 
   for (const symbol of symbols) {
     rows.push(
       [
         symbol.kind,
         symbol.name,
+        symbol.deck,
         symbol.module,
         JSON.stringify(signature(symbol)),
       ].join(','),
@@ -147,6 +157,7 @@ export function toTable(symbols: Symbol[]): string {
     Math.max(0, ...symbols.map(s => String(s[key] ?? '').length))
 
   const nameWidth = width('name')
+  const deckWidth = width('deck')
   const moduleWidth = width('module')
 
   return symbols
@@ -154,7 +165,7 @@ export function toTable(symbols: Symbol[]): string {
       s =>
         `${s.kind === 'form' ? 'form' : 'task'}  ${s.name.padEnd(
           nameWidth,
-        )}  ${s.module.padEnd(moduleWidth)}  ${signature(s)}`,
+        )}  ${s.deck.padEnd(deckWidth)}  ${s.module.padEnd(moduleWidth)}  ${signature(s)}`,
     )
     .join('\n')
 }

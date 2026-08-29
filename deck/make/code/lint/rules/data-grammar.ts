@@ -1,4 +1,4 @@
-// L031: a data file (the host dialect: `host` / `list` / `mesh` / `tree` / `fuse` and literals) that breaks a rule
+// L040: a data file (the host dialect: `host` / `list` / `mesh` / `tree` / `fuse` and literals) that breaks a rule
 // of its grammar: a key given twice, a value beside children, an anchor declared after data, a fuse of an unknown
 // anchor, a bare word where text belongs. The rules and their messages live in the data reader
 // (code/compile/host.ts, note/term/host/01-grammar.md); this rule reports them as findings so `term lint` and the
@@ -11,7 +11,7 @@ import { expandData, readData } from '@term/make/code/compile/host'
 
 export const dataGrammar: Rule = {
   name: 'data-grammar',
-  code: 'L031',
+  code: 'L040',
   severity: 'error',
   docs: 'a data file that breaks a rule of the data grammar',
   fixable: false,

@@ -1,9 +1,19 @@
+# Which mill reads which file. `deck/deck/code/role.ts` parses this and
+# `deck/call/code/role-of.ts` hands the answer to the compiler, so a file's
+# role overrides what its content says.
+#
+# `take` names a glob, `miss` excludes one, and `@` is the package root. A
+# glob carrying braces escapes them (`\{code,view\}`), because a bare `{x}`
+# is an interpolation to the parser.
+
 load @term/code
   find code
   find book
 
-role book, bind ~/book/**/*.tree, miss ~/book/**/{{view}}/**/*.tree
+role book
+  take @/book/**/*.tree
+    miss @/book/**/\{code,view\}/**/*.tree
 
 role code
-  bind ~/code/**/*.tree
-  bind ~/book/**/{{view}}/**/*.tree
+  take @/code/**/*.tree
+  take @/book/**/\{code,view\}/**/*.tree

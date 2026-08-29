@@ -228,6 +228,14 @@ export function resolve(
       case 'member':
         resolveExpression(node.target)
         break
+      case 'template':
+        for (const part of node.parts) {
+          if (typeof part !== 'string') {
+            resolveExpression(part)
+          }
+        }
+
+        break
       case 'await':
         resolveExpression(node.expr)
         break

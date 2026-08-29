@@ -94,10 +94,10 @@ task have
 #          default rather than being asked for
 #   host   names the seat, which the env store does not use at all
 #
-# So a service needs ZONE_STORE=env and ZONE_CODE and nothing else. That is
+# So a service needs ZONE_SAVE=env and ZONE_CODE and nothing else. That is
 # the whole configuration, and it is one secret.
 #
-# Only ever used when ZONE_STORE is set. A laptop with no binding still gets
+# Only ever used when ZONE_SAVE is set. A laptop with no binding still gets
 # told to run `term zone bind`, because there the file is the right answer
 # and silently inventing one would hide a setup step.
 task make-bond
@@ -142,7 +142,7 @@ task read-bond
         hook test
           call not-equal
             call read-env
-              bind name, text <ZONE_STORE>
+              bind name, text <ZONE_SAVE>
               bind gift, text <>
             text <>
         hook hold

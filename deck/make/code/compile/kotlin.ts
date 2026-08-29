@@ -520,6 +520,11 @@ export function emitKotlin(program: Program): string {
         return node.value ? 'true' : 'false'
       case 'string':
         return JSON.stringify(node.value)
+      case 'template':
+        // `"a${x}b"`: chunks escaped as a Kotlin string with `$` escaped, expressions interpolated
+        return `"${node.parts
+          .map(part => (typeof part === 'string' ? JSON.stringify(part).slice(1, -1).replace(/\$/g, '\\$') : `\${${expr(part)}}`))
+          .join('')}"`
       case 'unit':
         return 'Unit'
       case 'null':
@@ -845,6 +850,13 @@ export function emitKotlin(program: Program): string {
     }
   }
 
+  // the forms that are exceptions: a raise of one carries the record whole
+  const exceptionForms = new Set(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && Boolean(n.chain?.includes('exception')))
+      .map(n => n.name),
+  )
+
   const block = (body: Statement[], d: number): string =>
     body
       .map(s => `${pad(d)}${stmt(s, d)}`)
@@ -886,19 +898,24 @@ export function emitKotlin(program: Program): string {
       case 'return':
         return node.value ? `return ${expr(node.value)}` : 'return'
       case 'throw':
-        return `throw SeedError(${
-          node.value.form === 'string'
-            ? expr(node.value)
-            : `(${expr(node.value)}).toString()`
-        })`
+        // a raise carries the exception record whole in a TermException (the shared fields, the props as `link`, the
+        // record as `base`), so a handler reads `note`, `form`, `code` the way it does on TypeScript. A text raises
+        // `failure`; a value already caught is passed on as it is.
+        return node.value.form === 'string'
+          ? `throw TermException("", "failure", ${expr(node.value)}, "", 0L, null, null)`
+          : node.value.form === 'record' && exceptionForms.has(node.value.name)
+            ? `throw run { val raised = ${expr(node.value)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) }`
+            : `throw termException(${expr(node.value)})`
       case 'while':
         return `while (${expr(node.cond)}) {\n${block(
           node.body,
           d + 1,
         )}\n${pad(d)}}`
       case 'guard': {
+        // the caught value is a TermException: a raise passes through, and a foreign throw (a Kotlin runtime error) is
+        // wrapped as `failure`, so the handler sees one shape on every path
         const handler = node.catch
-          ? `catch (${camel(node.catch.name)}: Throwable) {\n${block(
+          ? `catch (thrown: Throwable) {\n${pad(d + 1)}val ${camel(node.catch.name)} = termException(thrown)\n${block(
               node.catch.body,
               d + 1,
             )}\n${pad(d)}}`
@@ -914,6 +931,29 @@ export function emitKotlin(program: Program): string {
       case 'match': {
         // a match whose labels are only true/false is a match over a NATIVE Boolean (booleans lower to `Boolean`
         // here, not a sealed class), so the arms are the literal conditions `true` / `false`, not `is` patterns.
+        // a fork case over a caught TermException: `when` on `form`, the record recovered from `base` by its form
+        if (node.exceptionArms) {
+          const carrier = expr(node.subject)
+          const arms = node.cases.map(b => {
+            const arm = node.exceptionArms![b.label]!
+            const bodyText = block(b.body, d + 2)
+            const locals = armLocals([...arm.shared, ...arm.link], b.binds)
+              .filter(({ local }) => new RegExp(`\\b${camel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
+              .map(({ field, local }) =>
+                arm.link.includes(field)
+                  ? `${pad(d + 2)}val ${camel(local)} = (${carrier}.base as ${pascal(b.label)}).link.${camel(field)}`
+                  : `${pad(d + 2)}val ${camel(local)} = ${carrier}.${camel(field)}`,
+              )
+
+            return `${pad(d + 1)}${JSON.stringify(b.label)} -> {\n${[...locals, bodyText].join('\n')}\n${pad(d + 1)}}`
+          })
+          // the checker holds the arms to the guarded body's raise set, so a form none matches cannot happen; the
+          // else passes the carrier on, which also tells Kotlin every path answers
+          arms.push(`${pad(d + 1)}else -> {${node.otherwise ? `\n${block(node.otherwise, d + 2)}\n${pad(d + 1)}` : ` throw ${carrier} `}}`)
+
+          return `when (${carrier}.form) {\n${arms.join('\n')}\n${pad(d)}}`
+        }
+
         const labels = node.cases.map(branch => branch.label)
         const booleans =
           labels.length > 0 &&
@@ -1129,6 +1169,7 @@ export function emitKotlin(program: Program): string {
       case 'zone':
       case 'dock':
       case 'tell':
+      case 'roll':
         return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend
       default:
         return exhausted(node)
@@ -1175,9 +1216,18 @@ export function emitKotlin(program: Program): string {
     ...kotlinFormWalk(fillSpecs, meltSpecs),
   ]
 
-  const prelude = body.some(b => b.includes('SeedError('))
-    ? ['class SeedError(message: String) : RuntimeException(message)']
-    : []
+  const prelude = [
+    ...(body.some(b => b.includes('SeedError(')) ? ['class SeedError(message: String) : RuntimeException(message)'] : []),
+    // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md): the shared
+    // fields of every exception, the props as `link`, the raised record as `base`. `termException` is the boundary
+    // that makes a foreign throw a `failure`.
+    ...(body.some(b => b.includes('TermException(') || b.includes('termException('))
+      ? [
+          'class TermException(val host: String, val form: String, val note: String, val code: String, val time: Long, val link: Any?, val base: Any?) : RuntimeException(form + ": " + note)',
+          'fun termException(thrown: Any?): TermException = if (thrown is TermException) thrown else TermException("", "failure", thrown?.toString() ?: "", "", 0L, null, thrown)',
+        ]
+      : []),
+  ]
 
   return [...imports, ...prelude, ...body].join('\n\n') + '\n'
 }

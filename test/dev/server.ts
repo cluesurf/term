@@ -32,6 +32,9 @@ const PORT = 39512
 
 // a tiny 2-module app in a temp dir (the entry loads a helper)
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-dev-'))
+// the app is its own package: a relative `load ./helper` may not escape the nearest `deck.tree`, so the resolver
+// refuses one that reaches into a temp dir from the Term package root
+fs.writeFileSync(path.join(dir, 'deck.tree'), 'deck @probe/dev\n  code <0.0.0>\n')
 fs.writeFileSync(
   path.join(dir, 'helper.tree'),
   `task helper-value\n  like number\n  send back\n    code 42\n`,
@@ -68,7 +71,7 @@ async function readEvent(
 
 async function main(): Promise<void> {
   const server = startDevServer({
-    root: SEED,
+    root: dir,
     entry,
     port: PORT,
     env: 'browser',

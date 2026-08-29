@@ -1,5 +1,5 @@
 {
-  "name": "@cluesurf/deck.tree",
+  "name": "@term/deck",
   "main": "./host",
   "type": "module",
   "version": "0.1.0",

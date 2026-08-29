@@ -1,7 +1,20 @@
-load ../term, find term
 
-load ../bond, find bond
+# Bind: one named value. `bind <name>, <value>` wherever a thing is given by name: the arguments of a `call`, the
+# props of a component, the fields of a `make`, the options of a route.
+#
+# The field is `term` and the value is `bond`, which is what `@term/mill/code/code/bind/mint` builds
+# (`bind term, read term` / `bind bond, read bond`). `look`, `zone` and `dock` spell the same pair
+# `link bond, like seed`, and this is the fourth.
+#
+# `seed` holds a `bind` (a call's arguments) and a `bind` holds a `seed`, so the two modules import each other.
+# That is the stdlib's only import cycle and the compiler takes it.
+
+load ./term
+  find term
+
+load ./seed
+  find seed
 
 form bind
   link term, like term
-  link bond, like bond
+  link bond, like seed

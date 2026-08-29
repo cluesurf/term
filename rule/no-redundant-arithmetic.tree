@@ -1,0 +1,104 @@
+# L003, authored in Term. Arithmetic against a neutral element (`x + 0`, `0 + x`, `x - 0`, `x * 1`, `1 * x`, `x / 1`)
+# has no effect, and the expression is just its other operand. `x * 0` is left alone on purpose: it drops x, whose
+# evaluation may have effects. The same rule in TypeScript (deck/make/code/lint/rules/no-redundant-arithmetic.ts)
+# also offers the fix. This one is the proof that a rule is ordinary Term, loaded from this directory with no edit to
+# the engine: see note/library/term/lint-plugins.md and test/lint/seed-rule.ts.
+
+load @term/seed/code/rule
+  find rule
+
+load @term/seed/code/text/string
+  find concat
+
+# a literal operand equal to n
+task neutral
+  take operand, like dynamic
+  take n, like number
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read operand/form
+        text <integer>
+    hook hold
+      send back
+        call is-equal
+          read operand/value
+          read n
+    hook test
+      call is-equal
+        read operand/form
+        text <float>
+    hook hold
+      send back
+        call is-equal
+          read operand/value
+          read n
+  send back, false
+
+task rule
+  like rule
+  send back
+    make rule
+      bind name, text <no-redundant-arithmetic>
+      bind code, text <L003>
+      bind note, text <arithmetic against a neutral element (+0, -0, *1, /1) has no effect and should be removed>
+      bind spot
+        task spot
+          take node, like dynamic
+          take tell
+            like task
+              take message, like text
+              take span, like dynamic
+          fork test
+            hook test
+              call is-equal
+                read node/form
+                text <binary>
+            hook hold
+              call inspect
+                read node
+                read tell
+
+# the binary node, once it is known to be one
+task inspect
+  take node, like dynamic
+  take tell
+    like task
+      take message, like text
+      take span, like dynamic
+  host op, read node/op
+  save redundant, false
+  fork test
+    hook test
+      call is-equal(read op, text <+>)
+    hook hold
+      save redundant
+        call or
+          call neutral(read node/right, code 0)
+          call neutral(read node/left, code 0)
+    hook test
+      call is-equal(read op, text <->)
+    hook hold
+      save redundant, call neutral(read node/right, code 0)
+    hook test
+      call is-equal(read op, text <*>)
+    hook hold
+      save redundant
+        call or
+          call neutral(read node/right, code 1)
+          call neutral(read node/left, code 1)
+    hook test
+      call is-equal(read op, text </>)
+    hook hold
+      save redundant, call neutral(read node/right, code 1)
+  fork test
+    hook test, read redundant
+    hook hold
+      call tell
+        call concat
+          call concat
+            text <this `>
+            read op
+          text <` has no effect; the result is just the other operand>
+        read node/span

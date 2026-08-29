@@ -6,6 +6,7 @@
 // needed. Generic functions emit `<T>`. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
 import { armLocals } from '@term/make/code/check/arm'
+import { raiseSets } from '@term/make/code/check/effects'
 import type {
   Expression,
   Program,
@@ -773,6 +774,21 @@ export function emitSwift(program: Program): string {
     }
   }
 
+  // the raise sets (note/term/hive/04-reach.md): a function that can raise, through its callees too, is `throws`, a
+  // call to one is `try` where the caller is itself `throws` or the call sits in a guarded body, and `try!` elsewhere
+  // (a raise nothing handles ends the program, as on every backend)
+  const sets = raiseSets(program, exceptionForms)
+
+  for (const [name, raises] of sets.raises) {
+    if (raises.size > 0) {
+      throwingFns.add(name)
+    }
+  }
+
+  let currentThrows = false
+  let guardDepth = 0
+  const tryWord = (): string => (currentThrows || guardDepth > 0 ? 'try' : 'try!')
+
   const subSelf = (
     t: Type | undefined,
     target: string,
@@ -886,6 +902,11 @@ export function emitSwift(program: Program): string {
         return node.value ? 'true' : 'false'
       case 'string':
         return JSON.stringify(node.value)
+      case 'template':
+        // `"a\\(x)b"`: chunks escaped as a Swift string, expressions interpolated
+        return `"${node.parts
+          .map(part => (typeof part === 'string' ? JSON.stringify(part).slice(1, -1) : `\\(${expr(part, bind)})`))
+          .join('')}"`
       case 'unit':
         return '()'
       case 'null':
@@ -894,9 +915,13 @@ export function emitSwift(program: Program): string {
       case 'variable':
       case 'hole':
         return vname(node.name)
-      case 'unary':
-        return `${node.op}${expr(node.operand, bind)}`
-      case 'binary':
+      case 'unary': {
+        // an operator over a throwing call needs the `try` in front of the whole expression, not the call alone
+        const operand = expr(node.operand, bind)
+
+        return operand.includes('try ') ? `(try ${node.op}${operand})` : `${node.op}${operand}`
+      }
+      case 'binary': {
         if (
           node.op === '%' &&
           (node.left.type?.kind === 'float' || node.right.type?.kind === 'float' || node.type?.kind === 'float')
@@ -904,10 +929,13 @@ export function emitSwift(program: Program): string {
           return `(${expr(node.left, bind)}).truncatingRemainder(dividingBy: ${expr(node.right, bind)})`
         }
 
-        return `(${expr(node.left, bind)} ${OP[node.op]} ${expr(
-          node.right,
-          bind,
-        )})`
+        const left = expr(node.left, bind)
+        const right = expr(node.right, bind)
+        // `a == (try f())` is refused by Swift ("operator can throw"): the `try` goes in front of the operator
+        const mark = left.includes('try ') || right.includes('try ') ? 'try ' : ''
+
+        return `(${mark}${left} ${OP[node.op]} ${right})`
+      }
 
       case 'call': {
         // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form, generated
@@ -977,7 +1005,7 @@ export function emitSwift(program: Program): string {
           node.callee.form === 'variable' &&
           throwingFns.has(node.callee.name)
         ) {
-          return `(try! ${expr(node.callee, bind)}(${node.args
+          return `(${tryWord()} ${expr(node.callee, bind)}(${node.args
             .map(a => expr(a, bind))
             .join(', ')}))`
         }
@@ -1297,11 +1325,12 @@ export function emitSwift(program: Program): string {
           ? `return SeedList(${expr(node.value, bind)})`
           : `return ${expr(node.value, bind)}`
       case 'throw':
-        return `throw ${
-          node.value.form === 'string'
-            ? `SeedError(${expr(node.value, bind)})`
-            : expr(node.value, bind)
-        }`
+        // a raise carries the record whole in a TermException; a text raises `failure`; a caught value passes on
+        return node.value.form === 'string'
+          ? `throw TermException(host: "", form: "failure", note: ${expr(node.value, bind)}, code: "", time: 0, link: nil, base: nil)`
+          : node.value.form === 'record' && exceptionForms.has(node.value.name)
+            ? `throw try ({ () throws -> TermException in let raised = ${expr(node.value, bind)}; return TermException(host: raised.host, form: raised.form, note: raised.note, code: raised.code, time: raised.time, link: raised.link, base: raised) })()`
+            : `throw termException(${expr(node.value, bind)})`
       case 'while':
         return `while ${expr(node.cond, bind)} {\n${block(
           node.body,
@@ -1309,16 +1338,20 @@ export function emitSwift(program: Program): string {
           bind,
         )}\n${pad(d)}}`
       case 'guard': {
-        // `note unsafe` / `halt take`: a do with its catch. The body's calls are marked `try` by the throws walker.
+        // `note unsafe` / `halt take`: a do with its catch. Calls in the body are `try`, and the caught value is a
+        // TermException: a raise passes through, a foreign error is wrapped as `failure`
+        guardDepth++
+        const body = block(node.body, d + 1, bind)
+        guardDepth--
         const handler = node.catch
-          ? `catch let ${camel(node.catch.name)} {\n${block(
+          ? `catch {\n${pad(d + 1)}let ${camel(node.catch.name)} = termException(error)\n${block(
               node.catch.body,
               d + 1,
               bind,
             )}\n${pad(d)}}`
           : 'catch {}'
 
-        return `do {\n${block(node.body, d + 1, bind)}\n${pad(d)}} ${handler}`
+        return `do {\n${body}\n${pad(d)}} ${handler}`
       }
 
       case 'for-each': {
@@ -1339,6 +1372,28 @@ export function emitSwift(program: Program): string {
         // a native `switch`: the compiler checks exhaustiveness, so no fallthrough-return is needed. Each variant's
         // fields bind to locals; field access on the subject inside the branch rewrites to those locals.
         const subject = expr(node.subject, bind)
+        // a fork case over a caught TermException: switch on `form`, the record recovered from `base` by its form
+        if (node.exceptionArms) {
+          const arms = node.cases.map(b => {
+            const arm = node.exceptionArms![b.label]!
+            const bodyText = block(b.body, d + 2, bind)
+            const locals = armLocals([...arm.shared, ...arm.link], b.binds)
+              .filter(({ local }) => new RegExp(`\\b${camel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
+              .map(({ field, local }) =>
+                arm.link.includes(field)
+                  ? `${pad(d + 2)}let ${camel(local)} = (${subject}.base as! ${pascal(b.label)}).link.${camel(field)}`
+                  : `${pad(d + 2)}let ${camel(local)} = ${subject}.${camel(field)}`,
+              )
+
+            return `${pad(d + 1)}case ${JSON.stringify(b.label)}:\n${[...locals, bodyText].join('\n')}`
+          })
+          // the checker holds the arms to the guarded body's raise set, so the default cannot be reached; it ends the
+          // program with the form and note, which also tells Swift every path answers
+          arms.push(`${pad(d + 1)}default:${node.otherwise ? `\n${block(node.otherwise, d + 2, bind)}` : `\n${pad(d + 2)}fatalError("\\(${subject}.form): \\(${subject}.note)")`}`)
+
+          return `switch ${subject}.form {\n${arms.join('\n')}\n${pad(d)}}`
+        }
+
         const subjectVar =
           node.subject.form === 'variable'
             ? node.subject.name
@@ -1435,7 +1490,8 @@ export function emitSwift(program: Program): string {
           .join(', ')
 
         const asyncMark = node.async ? ' async' : ''
-        const throwsMark = bodyThrows(node.body) ? ' throws' : ''
+        const throwsMark = throwingFns.has(node.name) || bodyThrows(node.body) ? ' throws' : ''
+        currentThrows = throwsMark !== ''
         // a reassigned parameter is shadowed by a mutable local (Swift parameters are immutable)
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
@@ -1550,6 +1606,7 @@ export function emitSwift(program: Program): string {
       case 'zone':
       case 'dock':
       case 'tell':
+      case 'roll':
         return '' // view / routing DSLs are lowered by the dedicated zone compiler, not this backend
       default:
         return exhausted(node)
@@ -1589,6 +1646,14 @@ export function emitSwift(program: Program): string {
   if (body.some(b => b.includes('SeedError('))) {
     prelude.push(
       'struct SeedError: Error { let message: String; init(_ m: String) { message = m } }',
+    )
+  }
+
+  // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
+  if (body.some(b => b.includes('TermException(') || b.includes('termException('))) {
+    prelude.push(
+      'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any? }',
+      'func termException(_ thrown: Any) -> TermException { if let e = thrown as? TermException { return e }; return TermException(host: "", form: "failure", note: "\\(thrown)", code: "", time: 0, link: nil, base: thrown) }',
     )
   }
 

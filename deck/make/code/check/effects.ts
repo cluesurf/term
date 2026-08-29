@@ -14,6 +14,7 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
+import { EXCEPTION_FORM } from '@term/make/code/check/extend'
 
 // the inferred effect row of each function: the set of effects it may perform. `async` is the marker effect
 // (resolved at an await, so it does not propagate). `throw` propagates transitively through the call graph (a
@@ -137,9 +138,20 @@ function bodyThrows(body: Statement[]): boolean {
 }
 
 // the names of functions (within `known`) called anywhere in the body
+// what a body reaches beyond the functions it names: a call through a MASK method (left unresolved by dispatch
+// because the receiver is generic) counts as a call to every implementation of that method in the program, and a
+// member call on a `dock load` alias is a call into foreign code, which `onNative` reports (04-reach.md, masks and
+// natives)
+type CallReach = {
+  implementations?: Map<string, Set<string>>
+  natives?: Set<string>
+  onNative?: () => void
+}
+
 function calledNames(
   body: Statement[],
   known: Set<string>,
+  reach?: CallReach,
 ): Set<string> {
   const found = new Set<string>()
 
@@ -151,6 +163,16 @@ function calledNames(
           known.has(node.callee.name)
         ) {
           found.add(node.callee.name)
+        } else if (node.callee.form === 'variable' && reach?.implementations?.has(node.callee.name)) {
+          for (const implementation of reach.implementations.get(node.callee.name)!) {
+            found.add(implementation)
+          }
+        } else if (
+          node.callee.form === 'member' &&
+          node.callee.target.form === 'variable' &&
+          reach?.natives?.has(node.callee.target.name)
+        ) {
+          reach.onNative?.()
         }
 
         expr(node.callee)
@@ -165,6 +187,14 @@ function calledNames(
         break
       case 'member':
         expr(node.target)
+        break
+      case 'template':
+        for (const part of node.parts) {
+          if (typeof part !== 'string') {
+            expr(part)
+          }
+        }
+
         break
       case 'await':
         expr(node.expr)
@@ -486,6 +516,8 @@ export function checkEffects(
 export type RaiseSets = {
   raises: Map<string, Set<string>>
   via: Map<string, Map<string, string | undefined>>
+  // the native shims: the functions that call into a `dock load` module, which raise `failure` by construction
+  native: Set<string>
 }
 
 export function raiseSets(
@@ -508,6 +540,33 @@ export function raiseSets(
   const raises = new Map<string, Set<string>>()
   const via = new Map<string, Map<string, string | undefined>>()
   const calls = new Map<string, Set<string>>()
+
+  // a mask method's implementations: every `wear` / `suit` body desugars to a `<target>_<method>` function tagged with
+  // the bare method name, so a call the dispatcher left bare reaches all of them
+  const maskMethods = new Set<string>()
+  const implementations = new Map<string, Set<string>>()
+  // the `dock load` aliases: a member call on one is a call into code the compiler does not see
+  const natives = new Set<string>()
+
+  for (const statement of program) {
+    if (statement.form === 'mask') {
+      statement.methods.forEach(m => maskMethods.add(m))
+    } else if (statement.form === 'native' && statement.kind !== 'type') {
+      natives.add(statement.alias)
+    }
+  }
+
+  for (const statement of functions.values()) {
+    if (statement.method && maskMethods.has(statement.method.name)) {
+      const set = implementations.get(statement.method.name) ?? new Set<string>()
+      set.add(statement.name)
+      implementations.set(statement.method.name, set)
+    }
+  }
+
+  let sawNative = false
+  const reach: CallReach = { implementations, natives, onNative: () => { sawNative = true } }
+  const nativeShims = new Set<string>()
 
   // the exceptions a body raises directly, honoring guards, and the functions it calls outside a guarded body
   const scan = (
@@ -598,7 +657,7 @@ export function raiseSets(
   }
 
   const expressionCalls = (node: Expression, called: Set<string>): void => {
-    for (const name of calledNames([{ form: 'expression', expr: node, span: node.span }], names)) {
+    for (const name of calledNames([{ form: 'expression', expr: node, span: node.span }], names, reach)) {
       called.add(name)
     }
   }
@@ -606,7 +665,25 @@ export function raiseSets(
   for (const [name, statement] of functions) {
     const direct = new Set<string>()
     const called = new Set<string>()
+    sawNative = false
     scan(statement.body, direct, called)
+
+    // a task that calls into a `dock load` module is a native shim: foreign code can fail in ways nobody listed, so
+    // the runtime boundary wraps any foreign throw into `failure`, and the `halt` lines on its signature are the shim
+    // author's contract, added to the set rather than checked against it (03-exception.md, natives)
+    if (sawNative) {
+      nativeShims.add(name)
+
+      if (exceptions.has('failure')) {
+        direct.add('failure')
+      }
+
+      for (const declared of statement.raises ?? []) {
+        if (exceptions.has(declared)) {
+          direct.add(declared)
+        }
+      }
+    }
 
     // `call fill / <data> / like <form>` raises the data package's `data-mismatch` when the value does not fit
     if (calledNames(statement.body, new Set(['fill-form'])).size > 0) {
@@ -639,5 +716,89 @@ export function raiseSets(
     }
   }
 
-  return { raises, via }
+  return { raises, via, native: nativeShims }
+}
+
+// A task that declares `halt <form>` lines on its signature is held to them: every name must be an exception form,
+// and everything the body can raise (inferred, through its callees) must be among them. The declaration is a
+// contract, so a raise added deep in a callee surfaces here, at the signature that promised less. 03-exception.md.
+export function checkRaiseBounds(
+  program: Program,
+  file: string,
+  origin?: WeakMap<Statement, string>,
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = []
+  const exceptions = new Set<string>()
+
+  for (const s of program) {
+    if (s.form === 'record-type' && s.chain?.includes(EXCEPTION_FORM)) {
+      exceptions.add(s.name)
+    }
+  }
+
+  const bounded = program.filter(
+    (s): s is Extract<Statement, { form: 'function' }> => s.form === 'function' && (s.raises?.length ?? 0) > 0,
+  )
+
+  if (bounded.length === 0) {
+    return diagnostics
+  }
+
+  const sets = raiseSets(program, exceptions)
+
+  for (const s of bounded) {
+    const declared = new Set(s.raises)
+    const at = origin?.get(s) ?? file
+
+    // a native shim raises `failure` whether or not it says so: foreign code fails in ways nobody listed
+    if (sets.native.has(s.name)) {
+      declared.add('failure')
+    }
+
+    for (const name of declared) {
+      if (!exceptions.has(name)) {
+        diagnostics.push(
+          diagnose('type-mismatch', {
+            file: at,
+            span: s.span,
+            message: `"${s.name}" declares "halt ${name}" on its signature, but "${name}" is not an exception form`,
+            hint: 'a bound names a form that is like exception, or like one of the stdlib exceptions',
+          }),
+        )
+      }
+    }
+
+    const beyond = [...(sets.raises.get(s.name) ?? [])].filter(e => !declared.has(e)).sort()
+
+    if (beyond.length > 0) {
+      const chains = beyond.map(e => {
+        const chain: string[] = []
+        let cur = s.name
+
+        while (chain.length < 64) {
+          const next = sets.via.get(cur)?.get(e)
+
+          if (next === undefined) {
+            break
+          }
+
+          chain.push(next)
+          cur = next
+        }
+
+        return chain.length ? `${e} (through ${chain.join(' > ')})` : e
+      })
+
+      diagnostics.push(
+        diagnose('type-mismatch', {
+          file: at,
+          span: s.span,
+          message: `"${s.name}" can raise ${chains.join(', ')}, which its signature does not declare`,
+          hint: `add "halt ${beyond[0]}" to the signature, or handle it with note unsafe / halt take`,
+        }),
+      )
+    }
+  }
+
+  return diagnostics
 }

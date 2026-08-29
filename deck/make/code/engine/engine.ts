@@ -95,6 +95,16 @@ async function evaluate(
       return boolean(expr.value)
     case 'string':
       return string(expr.value)
+    case 'template': {
+      // chunks as written, each expression evaluated and shown as text
+      let out = ''
+
+      for (const part of expr.parts) {
+        out += typeof part === 'string' ? part : display(await evaluate(part, scope))
+      }
+
+      return string(out)
+    }
     case 'unit':
       return UNIT
     case 'variable':

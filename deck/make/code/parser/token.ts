@@ -146,8 +146,10 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // a backslash that does not introduce a known escape is a LITERAL backslash, so a Windows path (`text <\Temp>`) or
   // any other stray `\` can be written without doubling it. Without this the chunk matcher stops dead at the `\` and
   // no matcher can consume it, which surfaces as a structure error rather than anything about the backslash.
+  // a run of braces followed by a letter opens an interpolation whole (`{x}` is depth one, `{{x}}` depth two, the
+  // runtime interpolation), so the chunk matcher stops before a brace run that a letter follows
   [TokenKind.Chunk]:
-    /(?:\\[<>{}nrt\\]|\\(?![<>{}nrt\\])|\{+(?![a-zA-Z_])|[^>{\\])+/y,
+    /(?:\\[<>{}nrt\\]|\\(?![<>{}nrt\\])|\{+(?![a-zA-Z_{])|[^>{\\])+/y,
 }
 
 /**
@@ -368,6 +370,31 @@ export function tokenize(source: {
       // the error at the previous token when there is one, otherwise at
       // the current position.
       if (!matched) {
+        // `read items/{0}`: a brace opens an interpolation only before a letter, so a digit inside one is the one
+        // mistake the grammar cannot lex at all. Name the spelling it wanted, and skip the whole `{0}` so the rest of
+        // the line is still read.
+        const bracedIndex = /\{(\d+)\}/y
+        bracedIndex.lastIndex = pos
+        const literalIndex = bracedIndex.exec(lineText)
+
+        if (literalIndex) {
+          found.push(
+            diagnose('syntax-error', {
+              file: source.file,
+              span: {
+                start: { line, column },
+                end: { line, column: column + literalIndex[0].length },
+              },
+              message: `a literal index is a plain segment: write /${literalIndex[1]}, not /{${literalIndex[1]}}`,
+              hint: 'braces evaluate a name, `read x/{key}`; a number is a segment of its own',
+            }),
+          )
+
+          pos += literalIndex[0].length
+          column += literalIndex[0].length
+          continue
+        }
+
         // RECORD IT AND SKIP ONE CHARACTER. Returning here abandons the rest
         // of the file, so a second mistake three lines down is never seen.
         // Advancing by one guarantees progress, which is what the loop needs,

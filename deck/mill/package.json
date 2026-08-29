@@ -1,5 +1,5 @@
 {
-  "name": "@cluesurf/mill",
+  "name": "@term/mill",
   "main": "./host",
   "type": "module",
   "version": "0.1.0",

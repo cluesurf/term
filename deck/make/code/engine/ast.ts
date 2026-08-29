@@ -24,6 +24,8 @@ export type Expression =
   | { form: 'float'; value: number }
   | { form: 'boolean'; value: boolean }
   | { form: 'string'; value: string }
+  // runtime text interpolation: chunks and the expressions between them
+  | { form: 'template'; parts: (string | Expression)[] }
   | { form: 'unit' }
   | { form: 'array'; items: Expression[] }
   | { form: 'map'; entries: { key: string; value: Expression }[] }

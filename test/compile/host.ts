@@ -120,7 +120,8 @@ function main(): void {
   )
 
   // every bad fixture gives its message
-  for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
+  // draft.tree shelves the directory from `term make`; it is the one file there that is not a bad fixture
+  for (const name of readdirSync(join(FIXTURE, 'bad')).filter(n => n !== 'draft.tree').sort()) {
     const text = fixture(join('bad', name))
     const want = text.split('\n')[0]!.replace(/^# /, '')
     const result = readDataText({ file: name, text })

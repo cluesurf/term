@@ -77,6 +77,9 @@ export type Expression =
   | { form: 'float'; value: number; span: Span; type?: Type }
   | { form: 'boolean'; value: boolean; span: Span; type?: Type }
   | { form: 'string'; value: string; span: Span; type?: Type }
+  // runtime text interpolation, `text <a {{x}} b>`: the chunks as written and an expression per `{{...}}`, joined
+  // into a text when the program runs (a template literal, `format!`, `"\\(x)"`, `"$x"`). book/language/templates.md.
+  | { form: 'template'; parts: (string | Expression)[]; span: Span; type?: Type }
   | { form: 'unit'; span: Span; type?: Type }
   // the host null literal (`null`), for the `dynamic` / host boundary: JSON null, a JS `null` passed to an FFI, the
   // value `is-null` tests for. Distinct from `unit` (void / undefined). Typed `dynamic`; emitted as each host's null.
@@ -229,6 +232,10 @@ export type Statement =
       cases: { label: string; body: Statement[]; binds?: string[] }[]
       otherwise?: Statement[]
       span: Span
+      // filled by the checker when the subject is a caught exception and the labels are exception forms: per label,
+      // the shared fields the arm binds off the carrier and the props it binds off the form's `link` record, so every
+      // backend lowers the arm the same way (`form` is the discriminant). note/term/hive/11-native-exceptions.md
+      exceptionArms?: Record<string, { shared: string[]; link: string[] }>
     }
   | {
       form: 'for-each'
@@ -296,6 +303,9 @@ export type Statement =
       // bodies, so a body-only edit in a dependency never re-checks its dependents. See code/compile/stub.ts.
       stub?: boolean
       method?: { form: string; name: string }
+      // `halt <form>` lines with no children on the signature: the exceptions the task declares it can raise. Absent
+      // means inferred. Present means checked: the inferred raise set must be a subset (03-exception.md, bounding).
+      raises?: string[]
       span: Span
     }
   | {
@@ -424,6 +434,9 @@ export type Statement =
     }
   // a routing / CLI dock, lowered from the `dock` DSL (book/site/routes, navigation; book/line/calls)
   | { form: 'dock'; route: DockRoute; span: Span }
+  // a kind a deck declares (`roll metric` / `like metric`): every top-level `host` constant of that form in the build
+  // is an entry on the roll under the kind's name, woken into the hive at boot. See note/term/hive/07-kind.md.
+  | { form: 'roll'; name: string; like: string; span: Span }
   // the app's decision about one exception (`tell @deck/form` with `note`, `hint`, `link`, `name`): what a customer
   // may be told. Absent means private. Checked against the reachable exceptions, carried on the roll, emits nothing.
   // See note/term/hive/06-tell.md.

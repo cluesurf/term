@@ -23,22 +23,22 @@ function ok(cond: boolean, name: string, detail = ''): void {
 }
 
 const MANIFEST = `deck @term/app
-  mark <1.0.0>
+  code <1.0.0>
 
-  link @term/left-pad, mark <^1.1.0>
+  link @term/left-pad, code <^1.1.0>
 `
 
 // left-pad@1.1.0 is pinned; it depends on inner@1.0.0 (transitive)
 const LOCKFILE = `lock <1>
 
 deck @term/left-pad
-  mark <1.1.0>
+  code <1.1.0>
   hash <aaaa>
   site <https://deck.term.surf/@term/left-pad>
-  link @term/inner, mark <1.0.0>
+  link @term/inner, code <1.0.0>
 
 deck @term/inner
-  mark <1.0.0>
+  code <1.0.0>
   hash <bbbb>
   site <https://deck.term.surf/@term/inner>
 `
@@ -130,14 +130,14 @@ async function main(): Promise<void> {
 
   const rewritten = await fsp.readFile(path.join(root, 'deck.tree'), 'utf-8')
   ok(
-    rewritten.includes('link @term/left-pad, mark <^1.3.0>'),
+    rewritten.includes('link @term/left-pad, code <^1.3.0>'),
     'manifest now pins the safe version',
     rewritten,
   )
 
   // after the fix, re-running finds no dependency vulnerability (the lockfile still pins 1.1.0, so we simulate the
   // post-install state by bumping the lock too and re-scanning)
-  const fixedLock = LOCKFILE.replace('mark <1.1.0>', 'mark <1.3.0>')
+  const fixedLock = LOCKFILE.replace('code <1.1.0>', 'code <1.3.0>')
   await fsp.writeFile(path.join(root, 'lock.tree'), fixedLock)
   const after = await runScan({
     root,

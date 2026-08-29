@@ -5,7 +5,7 @@
 
 import { execFileSync, spawnSync, spawn } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { cpus, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
@@ -33,14 +33,38 @@ let pass = 0
 let fail = 0
 let skip = 0
 
-// optional substring filter so a single domain can be re-verified fast: RT_ONLY=process/run npx tsx ...
+// optional filter so a single domain can be re-verified fast: RT_ONLY=process/run npx tsx ... A toolchain word
+// (`rust`, `swift`, `kotlin`) keeps the checks whose name starts with it, and `other` keeps the rest (node, the
+// emitted text checks), so `pnpm term:test` runs the four legs of this suite side by side and the wall clock is one
+// toolchain's share, not the sum.
 const RT_ONLY = process.env.RT_ONLY ?? ''
+const TOOLCHAINS = new Set(['rust', 'swift', 'kotlin'])
+
+function toolchainOf(name: string): string {
+  return (/^([a-z]+)/.exec(name)?.[1] ?? '')
+}
 
 function skip_filtered(name: string): boolean {
-  return RT_ONLY !== '' && !name.includes(RT_ONLY)
+  if (RT_ONLY === '') {
+    return false
+  }
+
+  if (TOOLCHAINS.has(RT_ONLY)) {
+    return toolchainOf(name) !== RT_ONLY
+  }
+
+  if (RT_ONLY === 'other') {
+    return TOOLCHAINS.has(toolchainOf(name))
+  }
+
+  return !name.includes(RT_ONLY)
 }
 
 function ok(name: string, got: unknown, want: unknown): void {
+  if (skip_filtered(name)) {
+    return
+  }
+
   if (got === want) {
     pass++
     console.log(`ok    ${name}  (= ${got})`)
@@ -162,20 +186,247 @@ function runSwift(
 
   const exe = file.replace(/\.swift$/, '')
 
-  try {
-    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (swiftc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('swiftc', ['-o', exe, file])
+
+    if (built.status !== 0) {
+      nativeFailure(name, 'swiftc', built.stderr)
+
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, Number(ran.stdout.trim()), want)
+  })
+}
+
+// NATIVE PROGRAMS BUILD SIDE BY SIDE. rustc and swiftc are one process per program, and this suite has over a
+// hundred of them, so every Rust and Swift site defers a job (compile, run, check) into a queue that `flushNative()`
+// drains with as many processes at once as the machine has cores. The checks print as they finish, in whichever
+// order that is. Kotlin is different (one compile for all, below) and joins the same flush.
+type NativeJob = { name: string; work: () => Promise<void> }
+
+const nativeJobs: NativeJob[] = []
+
+function deferNative(name: string, work: () => Promise<void>): void {
+  nativeJobs.push({ name, work })
+}
+
+// a process, awaited: its output and exit status
+function run(command: string, argv: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise(resolve => {
+    const child = spawn(command, argv)
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', chunk => { stdout += String(chunk) })
+    child.stderr.on('data', chunk => { stderr += String(chunk) })
+    child.on('error', error => resolve({ status: null, stdout, stderr: `${stderr}\n${String(error)}` }))
+    child.on('close', status => resolve({ status, stdout, stderr }))
+  })
+}
+
+function nativeFailure(name: string, tool: string, stderr: string): void {
+  fail++
+  console.log(`FAIL  ${name}  (${tool} error: ${stderr.slice(0, 300)})`)
+}
+
+// CARGO BUILDS ITS BINARIES TOGETHER. The programs with crate dependencies (http, websocket, json, fs, crypto) share one
+// cargo project with one binary each; `cargo run --bin` per program was ten serial builds and links. The flush runs
+// one `cargo build --bins` (cargo parallelises inside it) and then runs each binary from target/debug through the
+// pool. A build that fails falls back to `cargo run --bin` per program, so the failure is attributed.
+type CargoJob = { name: string; proj: string; bin: string; check: (out: string) => void }
+
+const cargoJobs: CargoJob[] = []
+
+async function flushCargo(): Promise<void> {
+  const jobs = cargoJobs.splice(0)
+
+  if (jobs.length === 0) {
+    return
+  }
+
+  const projects = [...new Set(jobs.map(j => j.proj))]
+
+  for (const proj of projects) {
+    const built = await new Promise<{ status: number | null; stderr: string }>(resolve => {
+      const child = spawn('cargo', ['build', '--quiet', '--bins'], { cwd: proj })
+      let stderr = ''
+      child.stderr.on('data', chunk => { stderr += String(chunk) })
+      child.on('error', error => resolve({ status: null, stderr: String(error) }))
+      child.on('close', status => resolve({ status, stderr }))
+    })
+
+    const own = jobs.filter(j => j.proj === proj)
+
+    if (built.status !== 0) {
+      // attribute: one cargo run per program
+      for (const job of own) {
+        try {
+          job.check(execFileSync('cargo', ['run', '--quiet', '--bin', job.bin], { cwd: proj, stdio: ['ignore', 'pipe', 'pipe'] }).toString())
+        } catch (e) {
+          nativeFailure(job.name, 'cargo', String((e as { stderr?: Buffer }).stderr ?? e))
+        }
+      }
+
+      continue
+    }
+
+    for (const job of own) {
+      deferNative(job.name, async () => {
+        const ran = await run(join(proj, 'target', 'debug', job.bin), [])
+
+        if (ran.status !== 0) {
+          nativeFailure(job.name, 'cargo', ran.stderr)
+
+          return
+        }
+
+        job.check(ran.stdout)
+      })
+    }
+  }
+}
+
+async function flushNative(): Promise<void> {
+  await flushCargo()
+  const jobs = nativeJobs.splice(0)
+  const width = Math.max(1, Math.min(8, cpus().length - 1))
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const job = jobs.shift()
+
+      if (!job) {
+        return
+      }
+
+      try {
+        await job.work()
+      } catch (e) {
+        fail++
+        console.log(`FAIL  ${job.name}  (${String(e).slice(0, 300)})`)
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(width, jobs.length) }, worker))
+  flushKotlin()
+}
+
+// KOTLIN IS COMPILED ONCE. kotlinc pays a JVM start per invocation (about four seconds), and this suite has more
+// than fifty Kotlin programs, so compiling each on its own was most of the suite's time. Every Kotlin site defers
+// instead: the file is queued with the check to run on its output, and `flushKotlin()` (before the summary) puts
+// every queued file in its own package, compiles them all in ONE kotlinc call into one jar, and runs each program as
+// `java -cp <jar> p<i>.<File>Kt`. A batch that fails to compile falls back to one compile per file, so the failure
+// is still attributed to the program that caused it (or skipped, for the one site that treats a build failure as a
+// missing toolchain feature).
+type KotlinJob = { name: string; file: string; check: (out: string) => void; onBuildFailure: 'fail' | 'skip' }
+
+const kotlinJobs: KotlinJob[] = []
+
+function deferKotlin(name: string, file: string, check: (out: string) => void, onBuildFailure: 'fail' | 'skip' = 'fail'): void {
+  kotlinJobs.push({ name, file, check, onBuildFailure })
+}
+
+// the class a Kotlin file's top-level functions compile to: `foo.kt` is `FooKt`
+function kotlinFacade(file: string): string {
+  const base = file.slice(file.lastIndexOf('/') + 1).replace(/\.kt$/, '')
+
+  return `${base.charAt(0).toUpperCase()}${base.slice(1)}Kt`
+}
+
+function kotlinFailure(job: KotlinJob, e: unknown): void {
+  const text = String((e as { stderr?: Buffer }).stderr ?? e)
+
+  if (job.onBuildFailure === 'skip') {
+    skipped(job.name, `kotlinc could not build: ${text.slice(0, 120)}`)
 
     return
   }
 
-  ok(name, Number(execFileSync(exe).toString().trim()), want)
+  fail++
+  console.log(`FAIL  ${job.name}  (kotlinc error: ${text.slice(0, 300)})`)
+}
+
+function runKotlinJob(job: KotlinJob, jar: string, at: number): void {
+  try {
+    job.check(execFileSync('java', ['-cp', jar, `p${at}.${kotlinFacade(job.file)}`], { stdio: 'pipe' }).toString())
+  } catch (e) {
+    fail++
+    console.log(`FAIL  ${job.name}  (java error: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 300)})`)
+  }
+}
+
+function flushKotlin(): void {
+  if (kotlinJobs.length === 0) {
+    return
+  }
+
+  const jobs = kotlinJobs.splice(0)
+
+  // one package per program, so fifty `fun main`s and fifty copies of a runtime shim never collide
+  jobs.forEach((job, i) => {
+    writeFileSync(job.file, `package p${i}\n\n${readFileSync(job.file, 'utf8')}`)
+  })
+
+  // compile the batch; a file kotlinc names in an error is taken out and the rest compiled again, at most a few
+  // rounds, so one program that does not build costs one extra compile and not fifty
+  let batch = jobs.map((job, i) => ({ job, at: i }))
+  const dropped: { job: KotlinJob; at: number; error: string }[] = []
+  let jar = ''
+
+  for (let round = 0; round < 4 && batch.length > 0; round++) {
+    jar = join(dir, `kotlin-batch-${round}.jar`)
+
+    try {
+      execFileSync('kotlinc', [...batch.map(b => b.job.file), '-include-runtime', '-d', jar], { stdio: 'pipe' })
+      break
+    } catch (e) {
+      const text = String((e as { stderr?: Buffer }).stderr ?? e)
+      const bad = new Set([...text.matchAll(/^(\S+\.kt):\d+:\d+: error:/gm)].map(m => m[1]!.slice(m[1]!.lastIndexOf('/') + 1)))
+
+      if (bad.size === 0) {
+        // an error kotlinc did not pin to a file: attribute it to each program alone
+        for (const { job, at } of batch) {
+          dropped.push({ job, at, error: text })
+        }
+
+        batch = []
+        break
+      }
+
+      for (const entry of batch) {
+        if (bad.has(entry.job.file.slice(entry.job.file.lastIndexOf('/') + 1))) {
+          dropped.push({ ...entry, error: text })
+        }
+      }
+
+      batch = batch.filter(entry => !bad.has(entry.job.file.slice(entry.job.file.lastIndexOf('/') + 1)))
+      jar = ''
+    }
+  }
+
+  for (const { job, at } of batch) {
+    if (jar) {
+      runKotlinJob(job, jar, at)
+    } else {
+      kotlinFailure(job, new Error('the batch did not build in four rounds'))
+    }
+  }
+
+  // the ones taken out: one compile each, so the failure is theirs and reads as kotlinc wrote it
+  for (const { job, at } of dropped) {
+    const own = join(dir, `kotlin-single-${at}.jar`)
+
+    try {
+      execFileSync('kotlinc', [job.file, '-include-runtime', '-d', own], { stdio: 'pipe' })
+    } catch (e) {
+      kotlinFailure(job, e)
+      continue
+    }
+
+    runKotlinJob(job, own, at)
+  }
 }
 
 function runKotlin(
@@ -197,28 +448,7 @@ function runKotlin(
     ),
   )
 
-  const jar = file.replace(/\.kt$/, '.jar')
-
-  try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (kotlinc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(
-    name,
-    Number(execFileSync('java', ['-jar', jar]).toString().trim()),
-    want,
-  )
+  deferKotlin(name, file, out => ok(name, Number(out.trim()), want))
 }
 
 // compile emitted Rust with rustc and run it, asserting the exit code
@@ -242,22 +472,18 @@ function runRust(
 
   const exe = file.replace(/\.rs$/, '')
 
-  try {
-    execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (rustc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'rustc', built.stderr)
 
-  ok(name, spawnSync(exe).status, want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.status, want)
+  })
 }
 
 // like frontEnd, but runs async resolution (the pass that marks functions/closures async and inserts the default awaits)
@@ -324,22 +550,18 @@ fn main() { std::process::exit((seed_block_on(${callExpr})) as i32); }
 
   const exe = file.replace(/\.rs$/, '')
 
-  try {
-    execFileSync('rustc', ['-A', 'warnings', '--edition', '2021', file, '-o', exe], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (rustc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('rustc', ['-A', 'warnings', '--edition', '2021', file, '-o', exe])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'rustc', built.stderr)
 
-  ok(name, spawnSync(exe).status, want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.status, want)
+  })
 }
 
 // Swift async: a tiny semaphore + Task bridge drives the async entrypoint to completion and prints its result.
@@ -359,20 +581,18 @@ function runSwiftAsync(
 
   const exe = file.replace(/\.swift$/, '')
 
-  try {
-    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (swiftc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('swiftc', ['-o', exe, file])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'swiftc', built.stderr)
 
-  ok(name, Number(execFileSync(exe).toString().trim()), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, Number(ran.stdout.trim()), want)
+  })
 }
 
 // Kotlin async: a hand-rolled `startCoroutine` driver runs the suspend entrypoint with no kotlinx.coroutines dependency
@@ -395,28 +615,7 @@ function runKotlinAsync(
     hoistKotlinImports(`${driver}\n${emitKotlin(program)}`),
   )
 
-  const jar = file.replace(/\.kt$/, '.jar')
-
-  try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (kotlinc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(
-    name,
-    Number(execFileSync('java', ['-jar', jar]).toString().trim()),
-    want,
-  )
+  deferKotlin(name, file, out => ok(name, Number(out.trim()), want))
 }
 
 // Rust file IO end to end: compile the synchronous native/rust/file module (which forwards to the linked `io`
@@ -445,22 +644,18 @@ function runRustIo(name: string, program: Program, want: string): void {
 
   const exe = file.replace(/\.rs$/, '')
 
-  try {
-    execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (rustc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'rustc', built.stderr)
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
 // Swift file IO end to end: prepend the io runtime shim (from base.tree), write + read a temp file through emitted Swift.
@@ -488,20 +683,18 @@ function runSwiftIo(
 
   const exe = file.replace(/\.swift$/, '')
 
-  try {
-    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (swiftc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('swiftc', ['-o', exe, file])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'swiftc', built.stderr)
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
 // Kotlin file IO end to end: prepend the io runtime shim (from base.tree), write + read a temp file through emitted Kotlin.
@@ -532,24 +725,7 @@ function runKotlinIo(
     ),
   )
 
-  const jar = file.replace(/\.kt$/, '.jar')
-
-  try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (kotlinc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
+  deferKotlin(name, file, out => ok(name, out.trim(), want))
 }
 
 // math delegation running for real: prepend the per-target math shim, print a value computed through the public math
@@ -573,22 +749,18 @@ function runRustMath(
 
   const exe = file.replace(/\.rs$/, '')
 
-  try {
-    execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (rustc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'rustc', built.stderr)
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
 function runSwiftMath(
@@ -610,20 +782,18 @@ function runSwiftMath(
 
   const exe = file.replace(/\.swift$/, '')
 
-  try {
-    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (swiftc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('swiftc', ['-o', exe, file])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'swiftc', built.stderr)
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
 function runKotlinMath(
@@ -646,24 +816,7 @@ function runKotlinMath(
     ),
   )
 
-  const jar = file.replace(/\.kt$/, '.jar')
-
-  try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (kotlinc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
+  deferKotlin(name, file, out => ok(name, out.trim(), want))
 }
 
 // crypto wrapping running for real: prepend the platform crypto shim (which calls the platform's built-in crypto
@@ -688,18 +841,18 @@ function runSwiftCrypto(
 
   const exe = file.replace(/\.swift$/, '')
 
-  try {
-    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
-  } catch (e) {
-    return skipped(
-      name,
-      `swiftc could not build (CryptoKit unavailable?): ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 120)}`,
-    )
-  }
+  deferNative(name, async () => {
+    const built = await run('swiftc', ['-o', exe, file])
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+    if (built.status !== 0) {
+      skipped(name, `swiftc could not build (CryptoKit unavailable?): ${built.stderr.slice(0, 120)}`)
+
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
 function runKotlinCrypto(
@@ -722,22 +875,7 @@ function runKotlinCrypto(
     ),
   )
 
-  const jar = file.replace(/\.kt$/, '.jar')
-
-  try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    return skipped(
-      name,
-      `kotlinc could not build: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 120)}`,
-    )
-  }
-
-  ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
+  deferKotlin(name, file, out => ok(name, out.trim(), want), 'skip')
 }
 
 // string ops running for real: prepend the per-target text shim, uppercase a string through the public interface.
@@ -760,22 +898,18 @@ function runRustText(
 
   const exe = file.replace(/\.rs$/, '')
 
-  try {
-    execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (rustc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'rustc', built.stderr)
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
 function runSwiftText(
@@ -799,20 +933,18 @@ function runSwiftText(
 
   const exe = file.replace(/\.swift$/, '')
 
-  try {
-    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (swiftc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('swiftc', ['-o', exe, file])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'swiftc', built.stderr)
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
 function runKotlinText(
@@ -837,24 +969,7 @@ function runKotlinText(
     ),
   )
 
-  const jar = file.replace(/\.kt$/, '.jar')
-
-  try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (kotlinc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
+  deferKotlin(name, file, out => ok(name, out.trim(), want))
 }
 
 // run a program on rust THROUGH CARGO, so the crate-backed shims (crypto via sha2/hmac/md-5, regex via the regex
@@ -920,25 +1035,8 @@ function runRustCargo(
     `${prelude}\n${emitRust(program)}${main}`,
   )
 
-  let out: string
-
-  try {
-    out = execFileSync('cargo', ['run', '--quiet', '--bin', bin], {
-      cwd: proj,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).toString()
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (cargo error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(name, out.trim(), want)
+  // built with every other cargo program in one `cargo build --bins` at the flush, then run from target/debug
+  cargoJobs.push({ name, proj, bin, check: out => ok(name, out.trim(), want) })
 }
 
 // rust console uses println! (std, no crate), so bare rustc suffices; compute() prints, main calls it bare.
@@ -961,22 +1059,18 @@ function runRustConsole(
 
   const exe = file.replace(/\.rs$/, '')
 
-  try {
-    execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (rustc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'rustc', built.stderr)
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
 // console: `compute` returns unit and prints as a side effect, so the runner calls it bare and captures stdout.
@@ -999,20 +1093,18 @@ function runSwiftConsole(
 
   const exe = file.replace(/\.swift$/, '')
 
-  try {
-    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (swiftc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('swiftc', ['-o', exe, file])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'swiftc', built.stderr)
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
 function runKotlinConsole(
@@ -1035,24 +1127,7 @@ function runKotlinConsole(
     ),
   )
 
-  const jar = file.replace(/\.kt$/, '.jar')
-
-  try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (kotlinc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
-
-    return
-  }
-
-  ok(name, execFileSync('java', ['-jar', jar]).toString().trim(), want)
+  deferKotlin(name, file, out => ok(name, out.trim(), want))
 }
 
 // an iterative Fibonacci: mutation + a while loop (the scalar imperative fragment every native backend supports)
@@ -2587,6 +2662,14 @@ task compute
 `
 
 // string concat through the public interface, forwarding to each target's text shim (boolean result -> uniform output)
+// runtime interpolation of a number and a text, beside a literal brace pair (escaped)
+const TEMPLATE_PROG = `task compute
+  like text
+  save n, code 7
+  save w, text <ok>
+  send back, text <n={{n}} w={{w}} \\{literal\\}>
+`
+
 const CONCAT_PROG = `load @cluesurf/seed/code/text/string
   find concat
 
@@ -2762,25 +2845,21 @@ function runRustExpr(
 
   const exe = file.replace(/\.rs$/, '')
 
-  try {
-    execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', exe], {
-      stdio: 'pipe',
-    })
-  } catch (e) {
-    fail++
-    console.log(
-      `FAIL  ${name}  (rustc error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 300)})`,
-    )
+  deferNative(name, async () => {
+    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
 
-    return
-  }
+    if (built.status !== 0) {
+      nativeFailure(name, 'rustc', built.stderr)
 
-  ok(name, execFileSync(exe).toString().trim(), want)
+      return
+    }
+
+    const ran = await run(exe, [])
+    ok(name, ran.stdout.trim(), want)
+  })
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const fib = frontEnd(FIB)
   runRust(
     'rust: iterative fibonacci (mutation + while)',
@@ -3878,6 +3957,23 @@ function main(): void {
     'true',
   )
 
+  // runtime text interpolation on each toolchain: `format!`, `"\\(x)"`, `"$x"`
+  runRustText(
+    'rust + text template: {{n}} and {{w}} interpolate',
+    frontEnd(TEMPLATE_PROG, true, 'rust'),
+    'n=7 w=ok {literal}',
+  )
+  runSwiftText(
+    'swift + text template: {{n}} and {{w}} interpolate',
+    frontEnd(TEMPLATE_PROG, true, 'swift'),
+    'n=7 w=ok {literal}',
+  )
+  runKotlinText(
+    'kotlin + text template: {{n}} and {{w}} interpolate',
+    frontEnd(TEMPLATE_PROG, true, 'kotlin'),
+    'n=7 w=ok {literal}',
+  )
+
   // regex through the public interface, running on each toolchain via the regex shim (the runner auto-prepends it)
   runSwiftText(
     'swift + regex runtime: matches("^[0-9]+$","12345") via NSRegularExpression',
@@ -3931,6 +4027,8 @@ function main(): void {
     skipped('http round-trips', 'could not start the local test server')
   }
 
+  // the queued Kotlin programs that talk to this server run before it goes
+  await flushNative()
   server.kill()
 
   // websocket client to a real echo server. The server (RFC 6455 handshake + single-frame text echo) runs in a SEPARATE
@@ -4019,7 +4117,11 @@ task compute
     skipped('websocket round-trips', 'could not start the local ws server')
   }
 
+  // the queued Kotlin programs that talk to this server run before it goes
+  await flushNative()
   wsServer.kill()
+
+  await flushNative()
 
   console.log(
     `\nroundtrip: ${pass} pass, ${fail} fail, ${skip} skipped  (compiled + ran on the real toolchain)`,

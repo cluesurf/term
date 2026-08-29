@@ -4,6 +4,7 @@
 // survive the swap and the freshly compiled view must be the one mounted. Run: npx tsx test/dev/zone-hmr.ts
 
 import { compile } from '@term/make/code/compile/compile'
+import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
 import { applyHmr } from '@term/make/code/dev/client'
 import type { HmrEnvironment } from '@term/make/code/dev/client'
@@ -133,9 +134,13 @@ async function main(): Promise<void> {
     /makeSignal\("count" in __seed/.test(entryMod.code),
   )
 
+  // the dom module docks `<global:html>`: the native prelude goes in front of whichever module uses a docked global
+  const readRuntime = (p: string): string | undefined =>
+    fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
+
   for (const [file, emit] of v1.modules) {
     const js = (
-      await transform(emit.code, { loader: 'ts', format: 'esm' })
+      await transform(`${nativePrelude(v1.program, 'node', readRuntime, emit.code)}\n${emit.code}`, { loader: 'ts', format: 'esm' })
     ).code
 
     fs.writeFileSync(path.join(dir, safe(file)), js)

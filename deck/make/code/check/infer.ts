@@ -8,6 +8,7 @@ import type {
   Span,
 } from '@term/make/code/parser/diagnostic'
 import { armLocals } from '@term/make/code/check/arm'
+import { raiseSets } from '@term/make/code/check/effects'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { Substitution } from '@term/make/code/check/substitution'
 import { instantiate } from '@term/make/code/check/signature'
@@ -67,6 +68,13 @@ export function check(
 
   // record-type field maps, for member-access typing
   const records = new Map<string, Map<string, Type>>()
+  // exception form -> the name of its props record (undefined when it adds no props)
+  const exceptionProps = new Map<string, string | undefined>()
+  // the fields every exception carries, bound in a `case <form>` arm beside the form's own props
+  const EXCEPTION_SHARED = ['host', 'form', 'note', 'code', 'time']
+  // a caught exception's raise set (the guarded body's), for the exhaustiveness of a `fork case` over it
+  const caughtRaises = new Map<string, Set<string>>()
+  let programRaises: Map<string, Set<string>> | undefined
   // a record-type field's foreign `name <...>` (its exact native name), so the emitter uses it verbatim
   const fieldNick = new Map<string, Map<string, string>>()
   // enum variant sets (for exhaustiveness) and variant -> enum (so `make red` is typed as its enum)
@@ -106,6 +114,11 @@ export function check(
 
       if (nicks.size) {
         fieldNick.set(statement.name, nicks)
+      }
+
+      // an exception form: its props record (`<form>-link`), for a `fork case` over a caught exception
+      if (statement.chain?.includes('exception')) {
+        exceptionProps.set(statement.name, statement.props)
       }
 
       if (statement.variants.length > 0) {
@@ -387,6 +400,16 @@ export function check(
         type = BOOLEAN
         break
       case 'string':
+        type = STRING
+        break
+      case 'template':
+        // every interpolated expression is inferred (a name it reads must exist and be typed); the whole is a text
+        for (const part of node.parts) {
+          if (typeof part !== 'string') {
+            inferExpression(part, env)
+          }
+        }
+
         type = STRING
         break
       case 'unit':
@@ -1107,6 +1130,10 @@ export function check(
               ? seedType({ kind: 'named', name: 'exception' }, new Map())
               : fresh(),
           })
+          // what the guarded body can raise: its own raises and its callees' sets, so a `fork case` over the caught
+          // value is checked for exhaustiveness against exactly that
+          programRaises ??= raiseSets(program, new Set(exceptionProps.keys())).raises
+          caughtRaises.set(node.catch.name, bodyRaises(node.body, programRaises))
           checkBody(node.catch.body, inner, result)
         }
 
@@ -1130,6 +1157,72 @@ export function check(
 
       case 'match': {
         const subjectType = resolve(inferExpression(node.subject, env))
+
+        // a `fork case` over a caught exception: the labels are exception forms, each arm binds the shared fields and
+        // the form's own props, and the arms must cover what the guarded body can raise (or carry an `otherwise`)
+        if (subjectType.kind === 'named' && subjectType.name === 'exception' && node.cases.every(c => exceptionProps.has(c.label))) {
+          node.exceptionArms = {}
+
+          for (const branch of node.cases) {
+            const props = exceptionProps.get(branch.label)
+            const link = props ? [...(records.get(props)?.keys() ?? [])] : []
+            node.exceptionArms[branch.label] = { shared: EXCEPTION_SHARED, link }
+          }
+
+          const caught = node.subject.form === 'variable' ? caughtRaises.get(node.subject.name) : undefined
+
+          if (caught && !node.otherwise) {
+            const covered = new Set(node.cases.map(c => c.label))
+            const missing = [...caught].filter(e => !covered.has(e) && e !== 'exception').sort()
+
+            if (missing.length > 0) {
+              diagnostics.push(
+                diagnose('non-exhaustive', {
+                  file: currentFile,
+                  span: node.span,
+                  message: `the guarded body can also raise ${missing.join(', ')}, which this fork case does not cover`,
+                  hint: 'add a case for each, or an otherwise',
+                }),
+              )
+            }
+          }
+
+          if (caught) {
+            for (const branch of node.cases) {
+              if (!caught.has(branch.label)) {
+                diagnostics.push(
+                  diagnose('unknown-name', {
+                    file: currentFile,
+                    span: node.span,
+                    message: `"${branch.label}" is not something the guarded body can raise`,
+                  }),
+                )
+              }
+            }
+          }
+
+          for (const branch of node.cases) {
+            const inner = new Map(env)
+            const arm = node.exceptionArms[branch.label]!
+            const own = exceptionProps.get(branch.label)
+            const linkFields = own ? records.get(own) : undefined
+            const fields = new Map<string, Type>()
+            arm.shared.forEach(name => fields.set(name, records.get('exception')?.get(name) ?? STRING))
+            arm.link.forEach(name => fields.set(name, linkFields?.get(name) ?? STRING))
+
+            for (const { field, local } of armLocals([...fields.keys()], branch.binds)) {
+              inner.set(local, { vars: [], type: seedType(fields.get(field)!, new Map()) })
+            }
+
+            checkBody(branch.body, inner, result)
+          }
+
+          if (node.otherwise) {
+            checkBody(node.otherwise, env, result)
+          }
+
+          break
+        }
 
         if (
           subjectType.kind === 'named' &&
@@ -1239,7 +1332,25 @@ export function check(
               )
             }
 
-            for (const { field, local } of armLocals([...fields.keys()], branch.binds)) {
+            // a `link` past the variant's last field binds nothing: in rename mode the names pair with the fields in
+            // declaration order, so an extra one is a mistake the arm would otherwise accept silently
+            const fieldNames = [...fields.keys()]
+            const binds = branch.binds ?? []
+            const selecting = binds.length > 0 && binds.every(name => fieldNames.includes(name))
+
+            if (!selecting && binds.length > fieldNames.length) {
+              const extra = binds.slice(fieldNames.length)
+
+              diagnostics.push(
+                diagnose('type-mismatch', {
+                  file: currentFile,
+                  span: node.span,
+                  message: `"link ${extra.join('", "link "')}" under "case ${branch.label}" binds nothing: the variant has ${fieldNames.length} field${fieldNames.length === 1 ? '' : 's'}${fieldNames.length ? ` (${fieldNames.join(', ')})` : ''}, and a link either selects fields by name or renames them in order`,
+                }),
+              )
+            }
+
+            for (const { field, local } of armLocals(fieldNames, branch.binds)) {
               inner.set(local, {
                 vars: [],
                 type: seedType(fields.get(field)!, argMap),
@@ -1908,4 +2019,125 @@ export function check(
       }
     }
   }
+}
+
+// the exceptions a guarded body can raise: its own `halt <form>`s (outside nested guards with handlers) and the raise
+// sets of the tasks it calls, so a `fork case` over the caught value can be held exhaustive
+function bodyRaises(body: Statement[], sets: Map<string, Set<string>>): Set<string> {
+  const out = new Set<string>()
+
+  const expr = (node: Expression): void => {
+    switch (node.form) {
+      case 'call':
+        if (node.callee.form === 'variable') {
+          for (const e of sets.get(node.callee.name) ?? []) {
+            out.add(e)
+          }
+        }
+
+        expr(node.callee)
+        node.args.forEach(expr)
+        break
+      case 'binary':
+        expr(node.left)
+        expr(node.right)
+        break
+      case 'unary':
+        expr(node.operand)
+        break
+      case 'member':
+        expr(node.target)
+        break
+      case 'await':
+        expr(node.expr)
+        break
+      case 'array':
+        node.items.forEach(expr)
+        break
+      case 'record':
+        node.fields.forEach(f => expr(f.value))
+        break
+      case 'template':
+        node.parts.forEach(p => {
+          if (typeof p !== 'string') {
+            expr(p)
+          }
+        })
+        break
+      default:
+        break
+    }
+  }
+
+  const walk = (statements: Statement[]): void => {
+    for (const s of statements) {
+      switch (s.form) {
+        case 'throw':
+          if (s.raise) {
+            out.add(s.raise)
+          } else if (s.value.form === 'string') {
+            out.add('failure')
+          } else {
+            out.add('exception')
+          }
+
+          break
+        case 'let':
+          expr(s.init)
+          break
+        case 'assign':
+          expr(s.value)
+          break
+        case 'expression':
+          expr(s.expr)
+          break
+        case 'return':
+          if (s.value) {
+            expr(s.value)
+          }
+
+          break
+        case 'if':
+          s.branches.forEach(b => {
+            expr(b.cond)
+            walk(b.body)
+          })
+
+          if (s.otherwise) {
+            walk(s.otherwise)
+          }
+
+          break
+        case 'while':
+          expr(s.cond)
+          walk(s.body)
+          break
+        case 'for-each':
+          expr(s.iterable)
+          walk(s.body)
+          break
+        case 'match':
+          expr(s.subject)
+          s.cases.forEach(c => walk(c.body))
+
+          if (s.otherwise) {
+            walk(s.otherwise)
+          }
+
+          break
+        case 'guard':
+          if (s.catch) {
+            walk(s.catch.body)
+          }
+
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  walk(body)
+
+  return out
 }

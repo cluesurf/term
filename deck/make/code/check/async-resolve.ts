@@ -283,6 +283,14 @@ function walkExpr(
     case 'await':
       visit(node.expr)
       break
+    case 'template':
+      for (const part of node.parts) {
+        if (typeof part !== 'string') {
+          visit(part)
+        }
+      }
+
+      break
     case 'binary':
       visit(node.left)
       visit(node.right)

@@ -435,8 +435,8 @@ async function projComplete(
   return r.items.map(i => i.label)
 }
 
-// import-path completion: `load @cluesurf/seed/code/` lists the stdlib modules
-const loadLine = 'load @cluesurf/seed/code/'
+// import-path completion: `load @term/seed/code/` lists the stdlib modules, with no `link/` entry for it
+const loadLine = 'load @term/seed/code/'
 const modules = await projComplete(`${loadLine}\n`, 0, loadLine.length)
 expect(
   'completion: import path lists stdlib modules',
@@ -542,7 +542,7 @@ expect(
   codeActions.some(
     a =>
       a.title.includes('to-upper-case') &&
-      a.title.includes('@cluesurf/seed/code/text'),
+      a.title.includes('@term/seed/code/text'),
   ),
   true,
 )

@@ -5,7 +5,7 @@
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
 import {
-  toMark,
+  toCode,
   compareVersion,
   satisfies,
 } from '@term/scan/code/semver'
@@ -49,9 +49,9 @@ function milled(text: string): CodeFinding[] {
 }
 
 // ---- semver ----
-ok(toMark('1.2.3')?.patch === 3, 'toMark parses a full version')
-ok(toMark('v1.2')?.minor === 2, 'toMark strips v and pads missing patch')
-ok(toMark('nope') === undefined, 'toMark rejects non-versions')
+ok(toCode('1.2.3')?.patch === 3, 'toCode parses a full version')
+ok(toCode('v1.2')?.minor === 2, 'toCode strips v and pads missing patch')
+ok(toCode('nope') === undefined, 'toCode rejects non-versions')
 ok(compareVersion('1.2.0', '1.10.0') < 0, 'compareVersion is numeric not lexical')
 ok(compareVersion('2.0.0', '2.0.0') === 0, 'compareVersion equal')
 ok(satisfies('1.2.3', '>=1.0.0 <2.0.0'), 'satisfies AND range')
@@ -247,12 +247,12 @@ const upgrades = planUpgrades([
   result.findings[0] as Extract<(typeof result.findings)[number], { kind: 'dependency' }>,
 ])
 ok(upgrades.length === 1 && upgrades[0]!.to === '1.3.0', 'planUpgrades collapses to one upgrade per package')
-const manifest = `deck app\n  mark <1.0.0>\n\n  link @term/left-pad, mark <^1.1.0>\n  link @term/other, mark <^2.0.0>\n`
+const manifest = `deck app\n  code <1.0.0>\n\n  link @term/left-pad, code <^1.1.0>\n  link @term/other, code <^2.0.0>\n`
 const patched = applyUpgradesToManifest(manifest, [
   { name: '@term/left-pad', from: '1.1.0', to: '1.3.0', clears: ['GHSA-test'] },
 ])
-ok(patched.includes('link @term/left-pad, mark <^1.3.0>'), 'fixer rewrites the vulnerable dependency line')
-ok(patched.includes('link @term/other, mark <^2.0.0>'), 'fixer leaves other lines untouched')
+ok(patched.includes('link @term/left-pad, code <^1.3.0>'), 'fixer rewrites the vulnerable dependency line')
+ok(patched.includes('link @term/other, code <^2.0.0>'), 'fixer leaves other lines untouched')
 
 console.log(`\nscan/unit: ${pass} pass, ${fail} fail`)
 

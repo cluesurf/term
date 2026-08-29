@@ -49,7 +49,7 @@ type Repo = {
 async function main(): Promise<void> {
   const entry = path.join(
     DECK,
-    'seed/deck/site/test/site/back/post.tree',
+    'term/deck/site/test/site/back/post.tree',
   )
 
   const result = compile(

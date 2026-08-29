@@ -18,7 +18,17 @@ import type { Resolver, Source } from '@term/make/code/compile/load'
 // stdlib is `deck/base` under the seed package root. We walk up from this module's directory looking for it, rather
 // than assuming a fixed depth, so it is found whether this code runs from source (deck/make/code) or from the bundled
 // CLI (host/line.js) -- the two sit at different depths under the package root.
-export function stdlibResolver(): Resolver | undefined {
+// the stdlib package directory (`deck/seed`, next to the compiler), found by walking up from this file. Undefined
+// when the compiler runs somewhere without its stdlib.
+export function stdlibBase(): string | undefined {
+  // a bundle that runs from somewhere else (the build worker under /tmp) cannot walk up to the stdlib from its own
+  // file, so the process that spawned it pins the path here first
+  const pinned = process.env.TERM_STDLIB
+
+  if (pinned && existsSync(join(pinned, 'code'))) {
+    return pinned
+  }
+
   const here = dirname(fileURLToPath(import.meta.url))
 
   let base: string | undefined
@@ -52,13 +62,22 @@ export function stdlibResolver(): Resolver | undefined {
     dir = parent
   }
 
+  return base
+}
+
+// the stdlib's own modules import each other as `@term/seed/...` (the Term rename); older programs still say
+// `@cluesurf/seed/...`. Both spell the same package.
+const STDLIB_PREFIXES = ['@term/seed/', '@cluesurf/seed/']
+const STDLIB_PACKAGES = STDLIB_PREFIXES.map(p => p.slice(0, -1))
+
+export function stdlibResolver(): Resolver | undefined {
+  const base = stdlibBase()
+
   if (!base) {
     return undefined
   }
 
-  // the stdlib's own modules import each other as `@term/seed/...` (the Term rename); older programs still say
-  // `@cluesurf/seed/...`. Both spell the same package.
-  const prefixes = ['@term/seed/', '@cluesurf/seed/']
+  const prefixes = STDLIB_PREFIXES
 
   return (path: string): Source | undefined => {
     const prefix = prefixes.find(p => path.startsWith(p))
@@ -158,7 +177,11 @@ export function moduleCompletions(
   const [, pkg, rest] = match
   const slash = rest!.lastIndexOf('/')
   const subDir = slash >= 0 ? rest!.slice(0, slash) : ''
-  const dir = join(root, 'link', pkg!, subDir)
+  // the stdlib needs no `link/` entry to resolve (stdlibResolver finds it next to the compiler), so it needs none to
+  // complete either: a project that has not linked it still sees its modules
+  const linkedPkg = join(root, 'link', pkg!)
+  const stdlib = STDLIB_PACKAGES.includes(pkg!) && !existsSync(linkedPkg) ? stdlibBase() : undefined
+  const dir = join(stdlib ?? linkedPkg, subDir)
 
   let entries: string[]
 
@@ -281,6 +304,24 @@ export function findModuleExporting(
   root: string,
   name: string,
 ): { importPath: string; kind: ModuleExport['kind'] } | undefined {
+  // the stdlib first: it is the canonical home of a name, and it resolves without a `link/` entry
+  const stdlib = stdlibBase()
+
+  if (stdlib) {
+    const files: { path: string; rel: string }[] = []
+    treeFilesIn(stdlib, stdlib, files)
+
+    for (const file of files) {
+      const def = scanDefs(readFileSync(file.path, 'utf8')).find(d => d.name === name)
+
+      if (def) {
+        const rel = file.rel.replace(/\.tree$/, '').split(sep).join('/')
+
+        return { importPath: `@term/seed/${rel}`, kind: def.kind }
+      }
+    }
+  }
+
   const linkDir = join(root, 'link')
 
   let scopes: string[]

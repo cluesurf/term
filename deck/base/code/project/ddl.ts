@@ -218,8 +218,23 @@ export function createBookkeeping(dialect: Dialect): Array<string> {
   "repository" ${uuid} NOT NULL,
   "commit" ${text} NOT NULL,
   "applied" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- which SHAPE of the projection schema these rows were written through. A mapping is
+  -- derived by introspecting the target, so a migration that adds a column changes it, and
+  -- a projection built through the old one silently never writes the new column. Nullable,
+  -- because a projection that predates versioning has no answer and refusing to read it
+  -- would be worse than not knowing.
+  "mapping_version" ${text},
   PRIMARY KEY ("repository")
 )`,
+    // Added after the table existed, so an older projection gains the column instead of
+    // needing its bookkeeping dropped. Both engines accept IF NOT EXISTS here.
+    `ALTER TABLE ${quote(BOOKKEEPING_TABLE)} ADD COLUMN IF NOT EXISTS "mapping_version" ${text}`,
+    // The quarantine. A commit that can never apply blocks every commit behind it, and a
+    // projector that only remembers that in memory retries it on every restart, so the
+    // alert flaps and nobody learns anything. Persisting the pin makes it a fact about the
+    // projection rather than about the process.
+    `ALTER TABLE ${quote(BOOKKEEPING_TABLE)} ADD COLUMN IF NOT EXISTS "pinned_commit" ${text}`,
+    `ALTER TABLE ${quote(BOOKKEEPING_TABLE)} ADD COLUMN IF NOT EXISTS "pinned_reason" ${text}`,
     `CREATE TABLE IF NOT EXISTS ${quote(`${BOOKKEEPING_TABLE}_log`)} (
   "repository" ${uuid} NOT NULL,
   "commit" ${text} NOT NULL,

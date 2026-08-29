@@ -69,6 +69,20 @@ ok(
 
 // ===== three variables =====
 
+// TWO CHECKS BEHIND A FLAG. The Choi-Lam form and its soundness twin (the same form past the AM-GM bound) each take
+// the engine about three minutes (195s and 164s on 2026-08-29, timed directly), which was more than a third of the
+// whole `pnpm term:test`. They run under `--full` (CAD_FULL=1) until the engine decides them in seconds
+// (type-system-gates-0006). Every other check here, three-variable ones included, is a millisecond.
+const full = process.env.CAD_FULL === '1'
+
+function slow(name: string, check: () => boolean): void {
+  if (full) {
+    ok(name, check())
+  } else {
+    console.log(`skip  ${name}  (minutes; CAD_FULL=1 or --full runs it)`)
+  }
+}
+
 // the simplest: x^2 + y^2 + z^2 >= 0
 ok(
   '3-var: x^2 + y^2 + z^2 >= 0',
@@ -86,15 +100,13 @@ const choiLam: [number[], bigint][] = [
   [[2, 0, 4], 1n],
   [[2, 2, 2], -3n],
 ]
-ok(
-  '3-var CHOI-LAM: x^4 y^2 + y^4 z^2 + z^4 x^2 - 3 x^2 y^2 z^2 >= 0 (not a sum of squares)',
+slow('3-var CHOI-LAM: x^4 y^2 + y^4 z^2 + z^4 x^2 - 3 x^2 y^2 z^2 >= 0 (not a sum of squares)', () =>
   nonNegativeEverywhereNvar(nPoly(choiLam), 3),
 )
 
 // SOUNDNESS near Choi-Lam: raise the subtracted coefficient past the AM-GM bound -- x^4 y^2 + y^4 z^2 + z^4 x^2 -
 // 4 x^2 y^2 z^2 is NEGATIVE at x = y = z = 1 (3 - 4 = -1). It must be rejected.
-ok(
-  '3-var soundness: ...-4 x^2 y^2 z^2 is rejected (below the AM-GM bound)',
+slow('3-var soundness: ...-4 x^2 y^2 z^2 is rejected (below the AM-GM bound)', () =>
   !nonNegativeEverywhereNvar(
     nPoly([[[4, 2, 0], 1n], [[0, 4, 2], 1n], [[2, 0, 4], 1n], [[2, 2, 2], -4n]]),
     3,

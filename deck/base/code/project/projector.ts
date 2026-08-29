@@ -27,6 +27,7 @@ import {
   type LagState,
   type Served,
 } from '@term/base/code/project/lag'
+import { mappingVersion } from '@term/base/code/project/version'
 import {
   planQuery,
   toSelect,
@@ -49,6 +50,34 @@ export type Engine = {
 export type ProjectionState = {
   repository: string
   commit: string | undefined
+}
+
+/**
+ * The outcome of applying a span.
+ *
+ * `lost` means the compare-and-swap in `recordServing` found the watermark already moved,
+ * so another projector advanced first and this whole transaction rolled back. Nothing was
+ * written. A caller re-reads the watermark and tries again, because the span it computed
+ * was against a starting point that no longer holds.
+ */
+export type ApplyResult = {
+  applied: boolean
+  writes: number
+  lost?: boolean
+}
+
+/**
+ * Thrown inside the apply transaction purely to roll it back when the fence is lost.
+ *
+ * Never escapes `apply`, which turns it into `{ lost: true }`. It exists because returning
+ * early from inside `engine.transact` would COMMIT the row writes while the watermark still
+ * named an older commit.
+ */
+class FenceLost extends Error {
+  constructor() {
+    super('the projection watermark moved while this span was being applied')
+    this.name = 'FenceLost'
+  }
 }
 
 /**
@@ -125,7 +154,11 @@ export class Projector {
     commit: string
     changes: Array<Change>
     covers?: Array<string>
-  }): Promise<{ applied: boolean; writes: number }> {
+    // The serving commit the caller read before computing this span. When given, the
+    // watermark write becomes a compare-and-swap against it and the whole transaction
+    // rolls back if another projector advanced first. See `recordServing`.
+    fence?: { at: string | undefined }
+  }): Promise<ApplyResult> {
     if (await this.hasApplied(input.commit)) {
       return { applied: false, writes: 0 }
     }
@@ -140,16 +173,32 @@ export class Projector {
     // it as applied rather than "behind".
     const covers = input.covers ?? [input.commit]
 
-    await this.engine.transact(async tx => {
-      for (const write of writes) {
-        await tx.run(toStatement(write))
+    try {
+      await this.engine.transact(async tx => {
+        for (const write of writes) {
+          await tx.run(toStatement(write))
+        }
+
+        for (const commit of covers) {
+          await this.recordLog(tx, commit)
+        }
+
+        const won = await this.recordServing(tx, input.commit, input.fence)
+
+        if (!won) {
+          // Roll back by throwing. Returning here would COMMIT the row writes and the log
+          // while the watermark still names an older commit, which is the exact split this
+          // fence exists to prevent.
+          throw new FenceLost()
+        }
+      })
+    } catch (error) {
+      if (error instanceof FenceLost) {
+        return { applied: false, writes: 0, lost: true }
       }
 
-      for (const commit of covers) {
-        await this.recordLog(tx, commit)
-      }
-      await this.recordServing(tx, input.commit)
-    })
+      throw error
+    }
 
     return { applied: true, writes: writes.length }
   }
@@ -240,19 +289,136 @@ export class Projector {
     })
   }
 
-  // Record the commit the projection now serves (the target head), one row per
-  // repository. Distinct from the log, which records every applied commit.
-  private async recordServing(tx: Transaction, commit: string): Promise<void> {
+  /**
+   * Record the commit the projection now serves (the target head), one row per
+   * repository. Distinct from the log, which records every applied commit.
+   *
+   * With a `fence`, this is a COMPARE-AND-SWAP against the serving commit the caller read
+   * before it computed the span, and it returns whether it won.
+   *
+   * The fence is what makes more than one projector safe, and commit-hash idempotence does
+   * NOT provide it. Two projectors both reading `serving = A`, one applying the span A to C
+   * and one applying A to B, both find their head absent from the log, so neither
+   * short-circuits. Without the fence both transactions commit, the rows reflect whichever
+   * wrote last, the watermark names whichever wrote last, and those need not be the same
+   * one. A watermark naming a commit that does not describe the rows is silently wrong
+   * forever.
+   *
+   * `IS NOT DISTINCT FROM` rather than `=`, so a fresh projection (`serving` is NULL) is
+   * fenced like every other advance instead of being a hole in it.
+   *
+   * The insert path still runs unconditionally when no row exists. A missing watermark row
+   * under a non-null expectation means someone reset the projection out from under us,
+   * which is a rebuild rather than a race, and the log reconciles it on the next pass.
+   */
+  private async recordServing(
+    tx: Transaction,
+    commit: string,
+    fence?: { at: string | undefined },
+  ): Promise<boolean> {
     const applied = new Date(this.now()).toISOString()
-    await tx.run({
-      sql: `INSERT INTO ${quote(BOOKKEEPING_TABLE)} ("repository", "commit", "applied") VALUES ($1, $2, $3) ON CONFLICT ("repository") DO UPDATE SET "commit" = EXCLUDED."commit", "applied" = EXCLUDED."applied"`,
-      params: [this.repository, commit, applied],
+    // The shape these rows were written through, stamped in the same transaction as the
+    // rows themselves. A projection that cannot say which mapping produced it cannot be
+    // told apart from one built through a mapping that no longer describes the schema.
+    const version = mappingVersion(this.mapping)
+
+    if (!fence) {
+      await tx.run({
+        sql: `INSERT INTO ${quote(BOOKKEEPING_TABLE)} ("repository", "commit", "applied", "mapping_version") VALUES ($1, $2, $3, $4) ON CONFLICT ("repository") DO UPDATE SET "commit" = EXCLUDED."commit", "applied" = EXCLUDED."applied", "mapping_version" = EXCLUDED."mapping_version"`,
+        params: [this.repository, commit, applied, version],
+      })
+
+      return true
+    }
+
+    const rows = await tx.all({
+      sql: `INSERT INTO ${quote(BOOKKEEPING_TABLE)} ("repository", "commit", "applied", "mapping_version") VALUES ($1, $2, $3, $4) ON CONFLICT ("repository") DO UPDATE SET "commit" = EXCLUDED."commit", "applied" = EXCLUDED."applied", "mapping_version" = EXCLUDED."mapping_version" WHERE ${quote(BOOKKEEPING_TABLE)}."commit" IS NOT DISTINCT FROM $5 RETURNING "commit"`,
+      params: [this.repository, commit, applied, version, fence.at ?? null],
     })
+
+    return rows.length > 0
+  }
+
+  /**
+   * The mapping shape this projection's rows were last written through, and this build's.
+   *
+   * A mismatch means the schema moved under the projection: every row written before it is
+   * missing whatever the new mapping adds, and still carries whatever it dropped. The
+   * projection is current with every commit and stale in a way the lag contract cannot see.
+   *
+   * `stored` is undefined on a projection that predates versioning, which is not a mismatch.
+   * It is an unknown, and treating it as a mismatch would trigger a rebuild on every
+   * projection the first time this ships.
+   */
+  async mappingState(): Promise<{
+    stored: string | undefined
+    current: string
+    matches: boolean
+  }> {
+    const rows = await this.engine.transact(tx =>
+      tx.all({
+        sql: `SELECT "mapping_version" FROM ${quote(BOOKKEEPING_TABLE)} WHERE "repository" = $1`,
+        params: [this.repository],
+      }),
+    )
+
+    const raw = rows[0]?.mapping_version
+    const stored = typeof raw === 'string' ? raw : undefined
+    const current = mappingVersion(this.mapping)
+
+    return { stored, current, matches: stored === undefined || stored === current }
   }
 
   private async record(tx: Transaction, commit: string): Promise<void> {
     await this.recordLog(tx, commit)
     await this.recordServing(tx, commit)
+  }
+
+  /**
+   * Quarantine this projection at its current commit, naming the commit that cannot apply.
+   *
+   * Pinning rather than skipping. Skipping a failing commit and continuing would leave the
+   * projection reflecting a state no commit ever described, which is worse than being
+   * behind: being behind is visible and being wrong is not.
+   *
+   * Written outside the apply transaction on purpose. The apply that provoked it has already
+   * rolled back, so there is nothing to keep it company, and a pin that failed to record
+   * because its transaction rolled back would be a quarantine nobody could see.
+   */
+  async pin(input: { commit: string; reason: string }): Promise<void> {
+    await this.engine.transact(async tx => {
+      await tx.run({
+        sql: `UPDATE ${quote(BOOKKEEPING_TABLE)} SET "pinned_commit" = $2, "pinned_reason" = $3 WHERE "repository" = $1`,
+        params: [this.repository, input.commit, input.reason],
+      })
+    })
+  }
+
+  /** Clear a quarantine, once whatever caused it has been dealt with. */
+  async unpin(): Promise<void> {
+    await this.engine.transact(async tx => {
+      await tx.run({
+        sql: `UPDATE ${quote(BOOKKEEPING_TABLE)} SET "pinned_commit" = $2, "pinned_reason" = $3 WHERE "repository" = $1`,
+        params: [this.repository, null, null],
+      })
+    })
+  }
+
+  /** The commit this projection is quarantined on, if any. */
+  async pinned(): Promise<{ commit: string; reason: string } | undefined> {
+    const rows = await this.engine.transact(tx =>
+      tx.all({
+        sql: `SELECT "pinned_commit", "pinned_reason" FROM ${quote(BOOKKEEPING_TABLE)} WHERE "repository" = $1`,
+        params: [this.repository],
+      }),
+    )
+
+    const commit = rows[0]?.pinned_commit
+    const reason = rows[0]?.pinned_reason
+
+    return typeof commit === 'string'
+      ? { commit, reason: typeof reason === 'string' ? reason : 'unknown' }
+      : undefined
   }
 
   /** What the projection knows about its own currency. */

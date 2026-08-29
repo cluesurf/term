@@ -65,7 +65,7 @@ function makeStubElement(tag: string): any {
 async function main(): Promise<void> {
   const entry = path.join(
     DECK,
-    'seed/deck/site/code/test/site/app.tree',
+    'term/deck/site/code/test/site/app.tree',
   )
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
@@ -151,7 +151,7 @@ async function main(): Promise<void> {
   )
 
   // emit the runnable browser artifacts
-  const web = path.join(DECK, 'seed/deck/site/host/web')
+  const web = path.join(DECK, 'term/deck/site/host/web')
   fs.mkdirSync(web, { recursive: true })
   fs.writeFileSync(path.join(web, 'app.js'), code)
   fs.writeFileSync(

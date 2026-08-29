@@ -94,6 +94,26 @@ task hive-tell
           call ear/work
             read entry
 
+# forget every entry of one kind: a registry a process fills again (the test kind, before a second run)
+task hive-clear
+  take kind, like text
+  save kept
+    make list
+  walk list
+    read hive/roll
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal
+            read entry/kind
+            read kind
+        hook miss
+          call push
+            read kept
+            read entry
+  save hive/roll, read kept
+
 # read the roster: every entry of one kind, from one deck when `host` is given
 task hive-roll
   take kind, like text

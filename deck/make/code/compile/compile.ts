@@ -21,6 +21,7 @@ import {
 } from '@term/make/code/check/overload'
 import { extendForms } from '@term/make/code/check/extend'
 import { checkTells } from '@term/make/code/check/tell'
+import { checkRaiseBounds } from '@term/make/code/check/effects'
 import { buildRoll } from '@term/make/code/compile/roll'
 import type { Roll } from '@term/make/code/compile/roll'
 import { elaborateReport } from '@term/make/code/check/elaborate'
@@ -514,6 +515,13 @@ export function compileProgram(
     return { ok: false, diagnostics: tellDiagnostics }
   }
 
+  // a task that bounds its raise set with `halt` lines on its signature is held to them
+  const boundDiagnostics = checkRaiseBounds(program, file, origin)
+
+  if (boundDiagnostics.length) {
+    return { ok: false, diagnostics: boundDiagnostics }
+  }
+
   // the roll is built from the checked, un-simplified program, so every task is still there to be listed
   const roll = wantRoll
     ? buildRoll(program, file, origin, { deckOf })
@@ -623,11 +631,15 @@ function wakeGroups(
     groups.set(deck.name, [])
   }
 
-  for (const kind of ['exception', 'tell'] as const) {
-    for (const entry of roll[kind]) {
+  // the built-in kinds carry their declaration as `base`; a declared kind's entry carries a `ref`, the constant the
+  // emitter binds as the live `base`
+  const kinds = ['exception', 'tell', ...roll.kind.map(k => k.name)]
+
+  for (const kind of kinds) {
+    for (const entry of roll[kind] ?? []) {
       const { host, ...rest } = entry
       const list = groups.get(host) ?? []
-      list.push({ host, kind: entry.kind, name: entry.name, site: entry.site, base: rest })
+      list.push({ host, kind: entry.kind, name: entry.name, site: entry.site, base: rest, ...(entry.ref ? { ref: entry.ref } : {}) })
       groups.set(host, list)
     }
   }

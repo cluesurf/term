@@ -14,7 +14,7 @@ import { projectCache } from '@term/call/code/cache-store'
 import { preprocessTests } from '@term/call/code/test-preprocess'
 import { logFail, logStep, fade } from '@term/make/code/tint'
 
-export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell']
+export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell', 'kind']
 
 // the roll of every entry under `root` that is the project's own (not a linked dependency), merged
 export function projectRoll(root: string): {
@@ -22,7 +22,8 @@ export function projectRoll(root: string): {
   failed: string[]
 } {
   const link = path.join(root, 'link') + path.sep
-  const files = findTreeFiles(root).filter(f => !f.startsWith(link))
+  // the same walk `term make` does for node: other platforms' native trees are not compiled here either
+  const files = findTreeFiles(root, [], 'node').filter(f => !f.startsWith(link))
   const resolve = projectResolver(root)
   const cache = projectCache(root)
   const deckOf = projectDeckOf()
@@ -67,8 +68,8 @@ function relativize(roll: Roll, root: string): Roll {
   const fix = (site: string): string =>
     site.startsWith(root + '/') ? site.slice(root.length + 1) : site
 
-  for (const kind of Object.keys(roll) as (keyof Roll)[]) {
-    for (const entry of roll[kind]) {
+  for (const kind of Object.keys(roll)) {
+    for (const entry of roll[kind] ?? []) {
       entry.site = fix(entry.site)
     }
   }
@@ -82,21 +83,24 @@ export async function callRoll(input: {
   json?: boolean
   private?: boolean
   host?: string
+  path?: boolean
 }): Promise<void> {
-  if (input.kind && !ROLL_KINDS.includes(input.kind)) {
-    logFail(`Unknown kind "${input.kind}". One of: ${ROLL_KINDS.join(', ')}`)
-    process.exit(1)
-  }
-
   if (!input.json) {
     logStep('Rolling...')
   }
 
   const { roll, failed } = projectRoll(input.root)
 
+  // a kind is built in, or declared by a deck of this build (`roll <name>`)
+  if (input.kind && !ROLL_KINDS.includes(input.kind) && !roll.kind.some(k => k.name === input.kind)) {
+    const declared = roll.kind.map(k => k.name)
+    logFail(`Unknown kind "${input.kind}". One of: ${[...ROLL_KINDS, ...declared].join(', ')}`)
+    process.exit(1)
+  }
+
   if (input.host) {
-    for (const kind of Object.keys(roll) as (keyof Roll)[]) {
-      roll[kind] = roll[kind].filter(e => e.host === input.host)
+    for (const kind of Object.keys(roll)) {
+      roll[kind] = (roll[kind] ?? []).filter(e => e.host === input.host)
     }
   }
 
@@ -121,7 +125,7 @@ export async function callRoll(input: {
     process.stdout.write(JSON.stringify(roll, null, 2) + '\n')
   } else {
     console.log('')
-    console.log(showRoll(roll, input.kind))
+    console.log(showRoll(roll, input.kind, { path: input.path }))
     console.log('')
   }
 

@@ -315,7 +315,8 @@ async function main(): Promise<void> {
   // every bad fixture raises data-defect
   const bad = join(FIXTURE, 'bad')
 
-  for (const name of readdirSync(bad).sort()) {
+  // draft.tree shelves the directory from `term make`; it is the one file there that is not a bad fixture
+  for (const name of readdirSync(bad).filter(n => n !== 'draft.tree').sort()) {
     const text = fixture(join('bad', name))
     const want = text.split('\n')[0]!.replace(/^# /, '')
 

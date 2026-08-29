@@ -17,6 +17,8 @@ import type {
   Rule,
 } from '@term/make/code/lint/rule'
 import { kebabNames } from '@term/make/code/lint/rules/kebab-names'
+import { tellMissing, tellOfFailure, tellReveals } from '@term/make/code/lint/rules/tell-advice'
+import { unhandledRaise } from '@term/make/code/lint/rules/unhandled-raise'
 import { noRedundantArithmetic } from '@term/make/code/lint/rules/no-redundant-arithmetic'
 import { preferHostForConstant } from '@term/make/code/lint/rules/prefer-host-for-constant'
 import { noEmptyBlock } from '@term/make/code/lint/rules/no-empty-block'
@@ -86,6 +88,10 @@ export const RULES: Rule[] = [
   noEmptyForkCase,
   noDuplicateMapKey,
   dataGrammar,
+  tellMissing,
+  tellOfFailure,
+  tellReveals,
+  unhandledRaise,
 ]
 
 export type LintConfig = {
@@ -130,6 +136,14 @@ function eachExpression(
       break
     case 'await':
       eachExpression(expr.expr, visit)
+      break
+    case 'template':
+      for (const part of expr.parts) {
+        if (typeof part !== 'string') {
+          eachExpression(part, visit)
+        }
+      }
+
       break
     case 'conditional':
       expr.branches.forEach(b => {
@@ -332,6 +346,7 @@ export function lint(
       reassigned,
       referenced,
       duplicateLoads,
+      program,
       slice,
       report(finding) {
         // honor inline suppression (`# lint off Lxxx` on the line above the node)

@@ -14,6 +14,8 @@ tmp/
 # SwiftPM build output next to the swift runtime shims (index store, object files), at any depth
 .build/
 **/.build/
+.base/
+**/.base/
 
 /link
 !/link/lock.tree

@@ -110,7 +110,7 @@ const PROGRAM = `load @cluesurf/seed/code/file
   find file
 
 task round-trip
-  mark async
+  note async
   take p, like text
   like text
   call write
@@ -123,7 +123,7 @@ task round-trip
       wait true
 
 task exists
-  mark async
+  note async
   take p, like text
   like boolean
   send back
@@ -142,7 +142,7 @@ task get-now
     call now
 
 task sleep-then-now
-  mark async
+  note async
   take ms, like number
   like number
   call sleep
@@ -518,7 +518,7 @@ load @cluesurf/seed/code/bytes
   find to-hex
 
 task sha
-  mark async
+  note async
   take m, like text
   like text
   send back
@@ -529,7 +529,7 @@ task sha
         wait true
 
 task md
-  mark async
+  note async
   take m, like text
   like text
   send back
@@ -541,7 +541,7 @@ task md
 
 # the parameterized verb: digest with the algorithm selected at the call site
 task sha-via-verb
-  mark async
+  note async
   take m, like text
   like text
   send back
@@ -579,7 +579,7 @@ load @cluesurf/seed/code/bytes
   find to-hex
 
 task mac
-  mark async
+  note async
   take k, like text
   take d, like text
   like text
@@ -1086,7 +1086,7 @@ load @cluesurf/seed/code/bytes
   find length
 
 task round-trip-file
-  mark async
+  note async
   take path, like text
   take input, like text
   like text
@@ -1102,7 +1102,7 @@ task round-trip-file
         wait true
 
 task byte-size-on-disk
-  mark async
+  note async
   take path, like text
   take input, like text
   like number
@@ -1131,7 +1131,7 @@ load @cluesurf/seed/code/bytes
   find to-hex
 
 task seal
-  mark async
+  note async
   take key, like text
   take nonce, like text
   take plain, like text
@@ -1145,10 +1145,12 @@ task seal
           read nonce
         call from-text
           read plain
+        call from-hex
+          text <>
         wait true
 
 task open
-  mark async
+  note async
   take key, like text
   take nonce, like text
   take cipher, like text
@@ -1162,6 +1164,8 @@ task open
           read nonce
         call from-hex
           read cipher
+        call from-hex
+          text <>
         wait true
 `
 
@@ -1176,7 +1180,7 @@ load @cluesurf/seed/code/bytes
   find from-text
 
 task round-trip
-  mark async
+  note async
   take message, like text
   like boolean
   save pair
@@ -1197,7 +1201,7 @@ task round-trip
       wait true
 
 task tampered
-  mark async
+  note async
   take message, like text
   take other, like text
   like boolean
@@ -1302,7 +1306,7 @@ load @cluesurf/seed/code/bytes
   find to-hex
 
 task agree
-  mark async
+  note async
   like boolean
   save a
     call make-key-pair
@@ -1335,7 +1339,7 @@ const DNS = `load @cluesurf/seed/code/network/dns
   find resolve-one
 
 task one
-  mark async
+  note async
   take host, like text
   like text
   send back
@@ -1344,7 +1348,7 @@ task one
       wait true
 
 task all
-  mark async
+  note async
   take host, like text
   like list
     like text
@@ -1359,7 +1363,7 @@ const HTTP = `load @cluesurf/seed/code/network/http
   find get
 
 task fetch-body
-  mark async
+  note async
   take url, like text
   like text
   save response
@@ -1370,7 +1374,7 @@ task fetch-body
     read response/body
 
 task fetch-status
-  mark async
+  note async
   take url, like text
   like number
   save response

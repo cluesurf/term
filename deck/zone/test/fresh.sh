@@ -51,14 +51,14 @@ EOF
 export PATH="$ZONE/test/fixture/bin-read:$PATH"
 export HOME="$SBOX"
 export SEED_CACHE_HOME="$SBOX/.cache"
-export ZONE_STORE=env
+export ZONE_SAVE=env
 export ZONE_CODE=fake-machine-token
 export ZONE_FAKE_LOG="$WORK/calls.log"
 : > "$ZONE_FAKE_LOG"
 
 # A master key for the cache, in the headless store.
 (cd "$ZONE" && pnpm exec tsx test/make-key.ts "$WORK/key" >/dev/null 2>&1)
-export ZONE_CODE_SEAL="$(cat "$WORK/key")"
+export ZONE_LOCK="$(cat "$WORK/key")"
 
 zone(){ ( cd "$PROJ" && node "$TERM_HOST" boot "$ZONE/code/line/base.tree" -- "$@" 2>&1 | strip ); }
 calls(){ wc -l < "$ZONE_FAKE_LOG" | tr -d ' '; }

@@ -46,6 +46,10 @@ export type Roll = {
   task: RollEntry[]
   dock: RollEntry[]
   tell: RollEntry[]
+  // a kind a deck declares with `roll <name>` (07-kind.md): one entry per declaration, and the kind's own entries
+  // (every top-level constant of its form) under the kind's name beside the built-in ones
+  kind: RollEntry[]
+  [declared: string]: RollEntry[]
 }
 
 // the deck a source file belongs to: its name (`@term/seed`) and its root directory, from the nearest `deck.tree`
@@ -130,6 +134,37 @@ export function buildRoll(
     task: [],
     dock: [],
     tell: [],
+    kind: [],
+  }
+
+  // the kinds this build declares, and every top-level constant whose value is a record of a kind's form: an entry
+  // on that kind, carried into the hive at boot by reference to the constant (the value is live, not a copy)
+  const kinds = new Map<string, string>()
+
+  for (const s of program) {
+    if (s.form === 'roll') {
+      kinds.set(s.name, s.like)
+      roll.kind.push({ host: hostOf(s), kind: 'kind', name: s.name, site: siteOf(s), like: s.like })
+      roll[s.name] ??= []
+    }
+  }
+
+  if (kinds.size > 0) {
+    const kindOfForm = new Map([...kinds].map(([kind, form]) => [form, kind]))
+
+    for (const s of program) {
+      if (s.form !== 'let' || s.mutable) {
+        continue
+      }
+
+      const formName =
+        s.init.form === 'record' ? s.init.name : s.type?.kind === 'named' ? s.type.name : undefined
+      const kind = formName ? kindOfForm.get(formName) : undefined
+
+      if (kind) {
+        roll[kind]!.push({ host: hostOf(s), kind, name: s.name, site: siteOf(s), like: formName, ref: s.name })
+      }
+    }
   }
 
   // decks: one entry per host seen, with how many files it contributed
@@ -189,6 +224,26 @@ export function buildRoll(
   const raisesOf = (name: string): string[] =>
     [...(sets.raises.get(name) ?? [])].sort()
 
+  // one call path from a task to the site that raises an exception it can raise: the callees `via` recorded, in order,
+  // ending at the direct raiser. Empty when the task raises it itself. `term roll exception --path` prints these.
+  const pathOf = (name: string, exception: string): string[] => {
+    const chain: string[] = []
+    let at = name
+
+    while (chain.length < 64) {
+      const next = sets.via.get(at)?.get(exception)
+
+      if (next === undefined) {
+        break
+      }
+
+      chain.push(next)
+      at = next
+    }
+
+    return chain
+  }
+
   for (const s of program) {
     if (s.form !== 'function' || s.stub || s.private) {
       continue
@@ -207,6 +262,9 @@ export function buildRoll(
       })),
       like: s.result ? showType(s.result) : 'unknown',
       halt: raisesOf(s.name),
+      ...(raisesOf(s.name).length
+        ? { path: Object.fromEntries(raisesOf(s.name).map(e => [e, pathOf(s.name, e)])) }
+        : {}),
       ...(s.async ? { async: true } : {}),
     })
   }
@@ -295,12 +353,15 @@ export function mergeRolls(rolls: Roll[]): Roll {
     task: [],
     dock: [],
     tell: [],
+    kind: [],
   }
   const seen = new Set<string>()
 
   for (const roll of rolls) {
-    for (const kind of Object.keys(out) as (keyof Roll)[]) {
-      for (const entry of roll[kind]) {
+    for (const kind of Object.keys(roll)) {
+      out[kind] ??= []
+
+      for (const entry of roll[kind] ?? []) {
         const key = `${entry.host} ${entry.kind} ${entry.name}`
 
         if (seen.has(key)) {
@@ -308,13 +369,13 @@ export function mergeRolls(rolls: Roll[]): Roll {
         }
 
         seen.add(key)
-        out[kind].push(entry)
+        out[kind]!.push(entry)
       }
     }
   }
 
-  for (const kind of Object.keys(out) as (keyof Roll)[]) {
-    out[kind].sort(
+  for (const kind of Object.keys(out)) {
+    out[kind]?.sort(
       (a, b) =>
         a.host.localeCompare(b.host) || a.name.localeCompare(b.name),
     )
@@ -324,8 +385,15 @@ export function mergeRolls(rolls: Roll[]): Roll {
 }
 
 // the roll as a tree, the way `term roll` prints it
-export function showRoll(roll: Roll, kind?: string): string {
+export function showRoll(
+  roll: Roll,
+  kind?: string,
+  // `path`: under each exception, one call path per task that can raise it (`term roll exception --path`), and
+  // under each task the path to each exception it raises
+  options?: { path?: boolean },
+): string {
   const lines: string[] = []
+  const withPath = options?.path === true
 
   if (!kind) {
     lines.push('roll')
@@ -366,6 +434,17 @@ export function showRoll(roll: Roll, kind?: string): string {
         continue
       }
 
+      // a task's paths print only when asked, as `path <exception>, <task> > <callee> > <raiser>`
+      if (key === 'path') {
+        if (withPath && typeof value === 'object' && value !== null) {
+          for (const [exception, chain] of Object.entries(value as Record<string, string[]>)) {
+            lines.push(`  path ${exception}, ${[entry.name, ...chain].join(' > ')}`)
+          }
+        }
+
+        continue
+      }
+
       if (Array.isArray(value)) {
         for (const item of value) {
           if (typeof item === 'object' && item !== null) {
@@ -389,6 +468,18 @@ export function showRoll(roll: Roll, kind?: string): string {
         lines.push(`  ${key} <${value}>`)
       } else {
         lines.push(`  ${key} ${String(value)}`)
+      }
+    }
+
+    // where an exception can come out: every task whose raise set holds it, with its call path to the raise site
+    if (withPath && kind === 'exception') {
+      for (const task of roll.task) {
+        const paths = task.path as Record<string, string[]> | undefined
+        const chain = paths?.[entry.name]
+
+        if (chain !== undefined) {
+          lines.push(`  path ${task.host}/${String(task.name)}${chain.length ? ` > ${chain.join(' > ')}` : ''}`)
+        }
       }
     }
 

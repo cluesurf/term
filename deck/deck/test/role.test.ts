@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { parseRoleFile, matchRole } from '../code/role'
 
 describe('parseRoleFile', () => {
@@ -169,5 +171,29 @@ role code
     expect(
       matchRole({ filePath: '/app/code/normal.tree', config }),
     ).toBe('code')
+  })
+
+  // The package's OWN role.tree, read from disk. It answered null for every
+  // file until 2026-08-29, because it was written with `bind` and `~/` while
+  // this reader takes `take` and `@/`. Two spellings of one grammar, and the
+  // disagreement was silent. This asserts the file the reader actually reads.
+  it('the @term/term role file resolves real paths', () => {
+    const root = join(__dirname, '..', '..', '..')
+    const config = parseRoleFile({
+      text: readFileSync(join(root, 'base', 'role.tree'), 'utf8'),
+      root,
+    })
+
+    expect(config.rules.map(rule => rule.name)).toEqual(['book', 'code'])
+    expect(config.rules.every(rule => rule.take.length > 0)).toBe(true)
+
+    const roleOf = (path: string) =>
+      matchRole({ filePath: join(root, path), config })
+
+    expect(roleOf('book/cli/base.tree')).toBe('book')
+    expect(roleOf('book/cli/code/example.tree')).toBe('code')
+    expect(roleOf('book/web/view/example.tree')).toBe('code')
+    expect(roleOf('code/a/b.tree')).toBe('code')
+    expect(roleOf('deck/make/code/x.tree')).toBe(null)
   })
 })

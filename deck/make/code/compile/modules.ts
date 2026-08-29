@@ -94,6 +94,14 @@ function walkExpr(
     case 'await':
       walkExpr(expr.expr, values, types)
       break
+    case 'template':
+      for (const part of expr.parts) {
+        if (typeof part !== 'string') {
+          walkExpr(part, values, types)
+        }
+      }
+
+      break
     case 'closure':
       expr.params.forEach(p => walkType(p.type, types))
       walkType(expr.result, types)

@@ -100,7 +100,7 @@ task mint
           make list
             text <This machine uses the env store, which zone cannot write to.>
             text <>
-            text <Set ZONE_CODE_SEAL yourself, to a tone-packed 32-byte key, from whatever>
+            text <Set ZONE_LOCK yourself, to a tone-packed 32-byte key, from whatever>
             text <secret store the platform gives you. Nothing was made or stored here.>
       send back
         code 1
@@ -182,7 +182,7 @@ task shed-seal
 # FOR A PLATFORM THAT KEEPS ITS OWN SECRETS. A container has no keychain, so
 # it uses the env store, and the env store is one zone cannot write to: the
 # platform owns those values. That leaves a person told to set
-# `ZONE_CODE_SEAL` to "a tone-packed 32-byte key" with no way to produce one,
+# `ZONE_LOCK` to "a tone-packed 32-byte key" with no way to produce one,
 # which is a setup step with no command behind it.
 #
 # THIS IS THE ONE PLACE ZONE PRINTS A SECRET, and it is deliberate. The key

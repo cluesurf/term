@@ -156,9 +156,9 @@ task danger
     sw,
   )
   ok(
-    'swift: throw with the SeedError prelude',
-    sw.includes('throw SeedError("oops")') &&
-      sw.includes('struct SeedError'),
+    'swift: a text raises failure through the TermException carrier',
+    sw.includes('throw TermException(host: "", form: "failure", note: "oops"') &&
+      sw.includes('struct TermException: Error'),
     sw,
   )
 
@@ -178,9 +178,9 @@ task danger
     ko,
   )
   ok(
-    'kotlin: throw with the SeedError prelude',
-    ko.includes('throw SeedError("oops")') &&
-      ko.includes('class SeedError'),
+    'kotlin: a text raises failure through the TermException carrier',
+    ko.includes('throw TermException("", "failure", "oops"') &&
+      ko.includes('class TermException('),
     ko,
   )
 
