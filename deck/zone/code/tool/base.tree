@@ -359,6 +359,24 @@ bind note-field
   case node
     text <(function () { var want = String($name).toLowerCase(); var lines = String($note || "").split(/\\r?\\n/); for (var i = 0; i \< lines.length; i++) { var at = lines[i].indexOf(":"); if (at \<= 0) { continue } var key = lines[i].slice(0, at).trim().toLowerCase(); if (key !== want) { continue } var body = lines[i].slice(at + 1).trim(); if ((body.startsWith("\\"") && body.endsWith("\\"")) || (body.startsWith("'") && body.endsWith("'"))) { body = body.slice(1, -1) } return body } return "" })()>
 
+# Whether a note's field NAMES a value, where the field may list several.
+#
+# ONE VALUE CAN BELONG TO SEVERAL ZONES. A secret shared between the checkout
+# and a repository inside it is one secret, and storing it twice is the drift
+# this whole system exists to end. So the note carries a list:
+#
+#   zone: cluesurf, mesh
+#
+# and both declarations find it. A field with one value still matches, so a
+# note written before this reads the same way.
+bind note-lists
+  take note, like text
+  take name, like text
+  take want, like text
+  like boolean
+  case node
+    text <(function () { var key = String($name).toLowerCase(); var lines = String($note || "").split(/\\r?\\n/); for (var i = 0; i \< lines.length; i++) { var at = lines[i].indexOf(":"); if (at \<= 0) { continue } if (lines[i].slice(0, at).trim().toLowerCase() !== key) { continue } var body = lines[i].slice(at + 1).trim(); if ((body.startsWith("\"") && body.endsWith("\"")) || (body.startsWith("'") && body.endsWith("'"))) { body = body.slice(1, -1) } var parts = body.split(","); for (var j = 0; j \< parts.length; j++) { if (parts[j].trim() === String($want)) { return true } } return false } return false })()>
+
 # A note with one field set, the rest kept.
 #
 # Rewrites `name:` if it is there and appends it if it is not, so a note a

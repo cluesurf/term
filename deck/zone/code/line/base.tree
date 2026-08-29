@@ -148,10 +148,10 @@ hook code
 
 # Run a command with a zone's values in its environment
 hook load
-  # which zone path, for instance `word.surf/moon`. Default is the root.
+  # which zone path, for instance `word.surf/moon`. Default is the declaration's own root, which is named by its `self` line.
   take spot
     like text
-    bind <base>
+    bind <>
   # the command to run
   take main
     like text
@@ -173,7 +173,7 @@ hook list
   # binds. `term zone list word.surf/star` silently arrived with nothing.
   take spot
     like text
-    bind <base>
+    bind <>
   # also print the extra spellings each value is published under
   take alias
     like boolean
@@ -185,7 +185,7 @@ hook save
   # which zone path, for instance `word.surf`. Default is the whole tree.
   take spot
     like text
-    bind <base>
+    bind <>
   # one name to write, read from a hidden prompt. Without it this walks the
   # whole declaration and creates a project per zone instead.
   take name
@@ -202,7 +202,7 @@ hook read
   # which zone path, for instance `word.surf/star`. Default is the root.
   take spot
     like text
-    bind <base>
+    bind <>
   # fetch even when the cache is still inside its window
   take fresh
     like boolean
@@ -222,7 +222,7 @@ hook move
   # which zone path, for instance `word.surf/star`
   take spot
     like text
-    bind <base>
+    bind <>
   # what to fill. For wrangler, the Worker name
   take place
     like text
@@ -285,7 +285,7 @@ hook test
   # which zone path, for instance `word.surf/star`. Default is the root.
   take spot
     like text
-    bind <base>
+    bind <>
   task probe
 
 # Unbind this machine and remove every stored code

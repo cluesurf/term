@@ -423,6 +423,51 @@ task join-path
         text </>
         read name
 
+# What a declaration calls its own root.
+#
+# THE REPOSITORY'S NAME IS THE PREFIX. `mesh/zone.tree` says `self mesh`, so
+# every path in it reads `mesh`, `mesh/moon`, `mesh/star`. A declaration in
+# `home/` says `self home` and gets `home/...`.
+#
+# That name is not decoration: it is what a stored secret carries in its
+# note, and it is how two declarations covering the same tree agree about
+# what a zone is CALLED. Get it wrong and the values sit at the provider
+# while every required name reads as missing.
+#
+# `self true` is the older spelling and still means the default, so a
+# declaration that has not been given a name keeps working.
+task self-name
+  take roots, like list
+  like text
+  save out, read root-name
+  walk list, read roots
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call equal
+            read one/head
+            text <self>
+        hook hold
+          save word
+            call first-term
+              read one
+          fork test
+            hook test
+              call not-equal
+                read word
+                text <>
+            hook hold
+              fork test
+                hook test
+                  call not-equal
+                    read word
+                    text <true>
+                hook hold
+                  save out, read word
+  send back
+    read out
+
 # A whole file: the root zone, holding every zone below it.
 task mine-zone
   take body, like text
@@ -430,17 +475,31 @@ task mine-zone
   save roots
     call mine-tree
       read body
+  save name
+    call self-name
+      read roots
+  # THE NAME GOES IN `term`, WHERE `mine-spot` LOOKS FOR IT. Putting it in
+  # `head` leaves the root spot nameless, and then a path that spells the
+  # root out, `mesh/moon`, matches nothing: the segment `mesh` is compared
+  # against an empty name and never skipped.
+  #
+  # `up` is empty rather than the name, because a spot's path is its parent's
+  # path joined to its own name. Passing the name as both makes `mesh/mesh`.
+  save word
+    make list
+  call push
+    bind list, read word
+    bind item, read name
   save one
     make leaf
-      bind head, read root-name
-      bind term
-        make list
+      bind head, read name
+      bind term, read word
       bind code, text <>
       bind leaf, read roots
   send back
     call mine-spot
       bind one, read one
-      bind up, read root-name
+      bind up, text <>
       bind code, false
 
 # Resolve a path against the tree.
@@ -475,7 +534,7 @@ task find-spot
         hook test
           call equal
             read part
-            read root-name
+            read root/name
         hook hold
           turn next
 
@@ -674,7 +733,7 @@ task pull-need
         hook test
           call equal
             read part
-            read root-name
+            read root/name
         hook hold
           turn next
       save got
@@ -784,11 +843,25 @@ task mine-file
               read one
         case deck
           save deck, read one/code
+  # THE CACHE CARRIES ITS OWN ROOT NAME, on a `self` line the writer puts
+  # there, read here the same way a declaration's is.
+  #
+  # It has to. Every value is sealed against its own address, `<zone
+  # path>/<name>`, so a cache written under `mesh/moon` and read back under
+  # `base/mesh/moon` produces an address that does not match and a value that
+  # will not open. That is the seal doing its job, on a file nobody moved.
+  save name
+    call self-name
+      read roots
+  save word
+    make list
+  call push
+    bind list, read word
+    bind item, read name
   save one
     make leaf
-      bind head, read root-name
-      bind term
-        make list
+      bind head, read name
+      bind term, read word
       bind code, text <>
       bind leaf, read roots
   send back
@@ -800,7 +873,7 @@ task mine-file
       bind root
         call mine-spot
           bind one, read one
-          bind up, read root-name
+          bind up, text <>
           bind code, true
 
 # The sealed value a path holds for a name, if any.
@@ -853,7 +926,7 @@ task find-lock
         hook test
           call equal
             read part
-            read root-name
+            read root/name
         hook hold
           turn next
       save down
@@ -922,7 +995,7 @@ task pull-cast
         hook test
           call equal
             read part
-            read root-name
+            read root/name
         hook hold
           turn next
       save down

@@ -138,6 +138,17 @@ task show-file
   like text
   save out
     make list
+  # WHAT THIS CACHE CALLS ITS ROOT, so reading it back builds the same
+  # addresses the values were sealed against. Without it a cache written
+  # under `mesh/moon` reads back as `base/mesh/moon` and every value fails
+  # to open, which is the seal working correctly on a file nobody moved.
+  call push
+    bind list, read out
+    bind item
+      call join-text
+        make list
+          text <self >
+          read one/root/name
   call push
     bind list, read out
     bind item

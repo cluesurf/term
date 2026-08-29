@@ -97,14 +97,9 @@ task list
         read at
 
   save want, read spot
-  fork test
-    hook test
-      call equal
-        read want
-        text <>
-    hook hold
-      save want, text <base>
-
+  # An empty path means the declaration own root, whatever it is named. Its
+  # `self` line says: `self mesh` makes it `mesh`. Filling in `base` here
+  # named a zone that no longer exists once a declaration names itself.
   save got
     call find-spot
       bind root, read root

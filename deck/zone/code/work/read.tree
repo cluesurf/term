@@ -153,11 +153,10 @@ task holds-for
               take site, name got
               fork test
                 hook test
-                  call equal
-                    call note-field
-                      bind note, read got/note
-                      bind name, text <zone>
-                    read path
+                  call note-lists
+                    bind note, read got/note
+                    bind name, text <zone>
+                    bind want, read path
                 hook hold
                   call push
                     bind list, read out
