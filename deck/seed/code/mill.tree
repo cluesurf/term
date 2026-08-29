@@ -1,0 +1,126 @@
+# The mill's own grammar as forms: what `deck/mill/code/mill/mint.tree` builds when it reads a `mine` / `mint` /
+# `mill` file. A `mine` is a reading rule (a tree shape and the sites it captures into), a `mint` a writing rule (a
+# form and how each captured site fills it), a `mill` a dialect (its mine and its mint). See `deck/mill/readme.md`.
+
+load ./text
+  find text
+
+# a reading rule: `mine <name>` with its children
+form mill-mine
+  link name, like text
+  link child
+    like list
+      like mill-mine-child
+
+# what a mine may hold
+form mill-mine-child
+  case term
+    link term, like mill-mine-term
+  case list
+    link list, like mill-mine-list
+  case maybe
+    link maybe, like mill-mine-maybe
+  case case
+    link case, like mill-mine-case
+  case any
+    link any, like mill-mine-any
+  case text
+    link text, like text
+  case code
+    link code, like text
+  case path
+    link path, like text
+  case form
+    link form, like mill-mine-form
+
+# `mine term, term <word>`: one word of the tree, with what may follow it
+form mill-mine-term
+  link term, like text
+  link child
+    like list
+      like mill-mine-child
+
+# `mine list`: zero or more of its children
+form mill-mine-list
+  link child
+    like list
+      like mill-mine-child
+
+# `mine maybe`: its children or nothing
+form mill-mine-maybe
+  link child
+    like list
+      like mill-mine-child
+
+# `mine case`: one alternative
+form mill-mine-case
+  link child
+    like list
+      like mill-mine-child
+
+# `mine any`: whichever of its children reads
+form mill-mine-any
+  link child
+    like list
+      like mill-mine-child
+
+# `mine form, like <mine>`: another mine, by name, read here
+form mill-mine-form
+  link like, like text
+  link name, like text
+
+# a writing rule: `mint <name>, like <form>` with its cases and hooks
+form mill-mint
+  link name, like text
+  link like, like text
+  link child
+    like list
+      like mill-mint-child
+
+form mill-mint-child
+  case case
+    link case, like mill-mint-case
+  case hook
+    link hook, like mill-mint-hook
+
+# `case <site>, mint <name>`: what a captured site fills, through which mint
+form mill-mint-case
+  link name, like text
+  link mint, like text
+  link child
+    like list
+      like mill-mint-child
+
+# `hook make`: how the form is built from the sites
+form mill-mint-hook
+  link name, like text
+  link child
+    like list
+      like mill-mint-hook-child
+
+form mill-mint-hook-child
+  case make
+    link make, like mill-mint-make
+  case bind
+    link bind, like mill-mint-bind
+
+form mill-mint-make
+  link name, like text
+  link bind
+    like list
+      like mill-mint-bind
+
+form mill-mint-bind
+  link name, like text
+  link value, like text
+
+# a dialect: `mill <name>` binding its mine and its mint
+form mill-mill
+  link name, like text
+  link bind
+    like list
+      like mill-mill-bind
+
+form mill-mill-bind
+  link name, like text
+  link path, like text

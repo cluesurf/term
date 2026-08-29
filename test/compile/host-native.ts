@@ -323,28 +323,6 @@ function runSwift(): void {
   }
 }
 
-// org.json is not in the JDK: the shim's parser. A cached jar runs the program; without one the build is checked
-// and the run is skipped
-function jsonJar(): string | undefined {
-  const cached = join(tmpdir(), 'term-json-20240303.jar')
-
-  if (existsSync(cached)) {
-    return cached
-  }
-
-  try {
-    execFileSync(
-      'curl',
-      ['-sL', '--max-time', '30', '-o', cached, 'https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar'],
-      { stdio: 'ignore' },
-    )
-
-    return existsSync(cached) ? cached : undefined
-  } catch {
-    return undefined
-  }
-}
-
 function runKotlin(): void {
   if (!have('kotlinc') || !have('java')) {
     return skipped('kotlin: the package builds and round-trips', 'kotlinc/java not installed')
@@ -360,12 +338,8 @@ function runKotlin(): void {
       `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main() { for (input in listOf(${inputs.join(', ')})) { print(roundLong(input) + "\\u001e") } }\n`,
     ),
   )
-  const jar = jsonJar()
-
   try {
-    execFileSync('kotlinc', [file, ...(jar ? ['-cp', jar] : []), '-include-runtime', '-d', join(out, 'main.jar')], {
-      stdio: 'pipe',
-    })
+    execFileSync('kotlinc', [file, '-include-runtime', '-d', join(out, 'main.jar')], { stdio: 'pipe' })
   } catch (error) {
     ok('kotlin: the package builds', false, String((error as { stderr?: Buffer }).stderr ?? error))
 
@@ -373,12 +347,7 @@ function runKotlin(): void {
   }
 
   ok('kotlin: the package builds', true)
-
-  if (!jar) {
-    return skipped('kotlin: round-trips', 'org.json is not available to run the shim')
-  }
-
-  compare('kotlin', execFileSync('java', ['-cp', `${join(out, 'main.jar')}:${jar}`, 'MainKt']).toString())
+  compare('kotlin', execFileSync('java', ['-jar', join(out, 'main.jar')]).toString())
 
   // fill and melt with a form
   const fill = frontEnd('kotlin', FILL_ENTRY, ['fill-round', 'fill-burst'])
@@ -391,8 +360,8 @@ function runKotlin(): void {
   )
 
   try {
-    execFileSync('kotlinc', [fillFile, '-cp', jar, '-include-runtime', '-d', join(out, 'fill.jar')], { stdio: 'pipe' })
-    const got = execFileSync('java', ['-cp', `${join(out, 'fill.jar')}:${jar}`, 'FillKt']).toString().split(SEP)
+    execFileSync('kotlinc', [fillFile, '-include-runtime', '-d', join(out, 'fill.jar')], { stdio: 'pipe' })
+    const got = execFileSync('java', ['-jar', join(out, 'fill.jar')]).toString().split(SEP)
     ok('kotlin: fill and melt with a form build', true)
     ok('kotlin: fill into a form melts back to the data', got[0] === FILL_GOOD, got[0] ?? '')
     ok('kotlin: an optional field present is kept', got[1] === FILL_REGION_BACK, got[1] ?? '')

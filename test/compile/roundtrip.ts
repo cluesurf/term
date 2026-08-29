@@ -886,9 +886,6 @@ unicode-segmentation = "1"
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 
-[[bin]]
-name = "run"
-path = "src/main.rs"
 `
 
 function runRustCargo(
@@ -901,24 +898,32 @@ function runRustCargo(
 
   if (!have('cargo')) {return skipped(name, 'cargo not installed')}
 
+  // one cargo project for every program, so the crates build once and are shared, and ONE BINARY PER PROGRAM
+  // (`src/bin/<name>.rs`, `cargo run --bin <name>`): a shared `src/main.rs` rewritten within the same second as the
+  // previous build ran was skipped by cargo's mtime check, and the previous program's binary ran in its place
   const proj = join(tmpdir(), 'seed-rust-runtime')
-  mkdirSync(join(proj, 'src'), { recursive: true })
+  mkdirSync(join(proj, 'src', 'bin'), { recursive: true })
   writeFileSync(join(proj, 'Cargo.toml'), RUST_CARGO_TOML)
+  // cargo wants a library or a main; an empty library keeps the package valid with only `src/bin/` programs. A
+  // `src/main.rs` left by an older harness would be a stale program cargo tries to build, so it is emptied too
+  writeFileSync(join(proj, 'src', 'lib.rs'), '')
+  writeFileSync(join(proj, 'src', 'main.rs'), 'fn main() {}\n')
 
   const prelude = nativePrelude(program, 'rust', readRuntime)
   const main = isAsync
     ? `\n#[tokio::main]\nasync fn main() { print!("{}", compute().await); }\n`
     : `\nfn main() { print!("{}", compute()); }\n`
+  const bin = `p_${name.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`.slice(0, 80)
 
   writeFileSync(
-    join(proj, 'src', 'main.rs'),
+    join(proj, 'src', 'bin', `${bin}.rs`),
     `${prelude}\n${emitRust(program)}${main}`,
   )
 
   let out: string
 
   try {
-    out = execFileSync('cargo', ['run', '--quiet'], {
+    out = execFileSync('cargo', ['run', '--quiet', '--bin', bin], {
       cwd: proj,
       stdio: ['ignore', 'pipe', 'pipe'],
     }).toString()
@@ -3635,8 +3640,8 @@ function main(): void {
   // container started from an empty list leaves `t` unbound, so a strict backend cannot unify its `maybe<t>` return
   // with the concrete element type. The same affects queue / stack. Tracked for the monomorphization pass. deque runs
   // on node today (test/tree/deque.tree).
-  // json to "runs" via the host JSON: rust serde_json (cargo), swift JSONSerialization. kotlin needs org.json on the
-  // classpath (not in the JDK), so it is compile-checked, not run here.
+  // json to "runs" via the host JSON: rust serde_json (cargo), swift JSONSerialization, kotlin its own reader in the
+  // shim (the JDK has none, and nothing is on the classpath).
   runRustCargo(
     'rust + cargo: json parse + index + as-number via serde_json',
     frontEnd(JSON_RT_PROG, true, 'rust'),
@@ -3646,6 +3651,11 @@ function main(): void {
   runSwiftText(
     'swift + json: parse + index + as-number via JSONSerialization',
     frontEnd(JSON_RT_PROG, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + json: parse + index + as-number via the shim reader',
+    frontEnd(JSON_RT_PROG, true, 'kotlin'),
     'true',
   )
   // typed encode: build the value field-by-field, stringify, re-parse, read it back (no derive macros)
@@ -3658,6 +3668,11 @@ function main(): void {
   runSwiftText(
     'swift + json: encode a typed value + round-trip via JSONSerialization',
     frontEnd(JSON_ENCODE_RT, true, 'swift'),
+    'true',
+  )
+  runKotlinText(
+    'kotlin + json: encode a typed value + round-trip via the shim writer',
+    frontEnd(JSON_ENCODE_RT, true, 'kotlin'),
     'true',
   )
 

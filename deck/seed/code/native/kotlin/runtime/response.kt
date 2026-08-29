@@ -6,6 +6,9 @@ object response {
     fun bytes(raw: Map<String, Any?>): ByteArray =
         (raw["body"] as? String ?: "").toByteArray()
 
-    fun json(raw: Map<String, Any?>): org.json.JSONObject =
-        org.json.JSONObject(raw["body"] as? String ?: "{}")
+    // the body as the dynamic JSON value, through the stdlib's own reader (runtime/json.kt)
+    fun json(raw: Map<String, Any?>): Any {
+        val body = raw["body"] as? String ?: "{}"
+        return json.parse(body)
+    }
 }
