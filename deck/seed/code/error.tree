@@ -13,9 +13,15 @@
 #   and a pinned field cannot be given.
 #
 #   `make error` in `task catch` and `task fail` means the RESULT variant
-#   `error` from `code/base/result`, not `form error` in this file. Names are
+#   `error` from `code/result`, not `form error` in this file. Names are
 #   package-global, so the two collide. `bind value` belongs to the variant
 #   and does not exist on the form.
+#
+# `catch` WAS THE ONLY THING HERE WORTH KEEPING, and it has been moved to
+# `code/result.tree`, where there is one `error` and it is the right one.
+# Nothing else is lost by shelving this: `make` and `throw` are superseded by
+# `code/exception.tree`, and `wrap` and `fail` are `make okay` and
+# `make error` written out.
 #
 # Nothing imports `@term/seed/code/error`, so shelving it costs nothing today.
 # What it should become is a design decision: either drop it in favour of
