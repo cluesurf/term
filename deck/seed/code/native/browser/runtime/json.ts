@@ -35,4 +35,19 @@ const json = {
   fromNumber: (value: number): any => value,
   fromBoolean: (value: boolean): any => value,
   makeNull: (): any => null,
+  // the shape questions a reader of foreign JSON asks: what is this value, and what does it hold
+  isArray: (value: any): boolean => Array.isArray(value),
+  isObject: (value: any): boolean =>
+    value !== null && typeof value === 'object' && !Array.isArray(value),
+  isText: (value: any): boolean => typeof value === 'string',
+  isBoolean: (value: any): boolean => typeof value === 'boolean',
+  arraySize: (value: any): number => (Array.isArray(value) ? value.length : 0),
+  arrayItem: (value: any, index: number): any =>
+    Array.isArray(value) && index >= 0 && index < value.length
+      ? value[index]
+      : null,
+  objectKeys: (value: any): string[] =>
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? Object.keys(value)
+      : [],
 }

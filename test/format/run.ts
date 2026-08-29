@@ -79,10 +79,11 @@ function main(): void {
     once.includes('take n, like number'),
     once,
   )
-  // a call with arguments stacks its arguments (would flatten ambiguously if inlined)
+  // a call with arguments inlines them when they fit: a comma returns to the head, so `call add, loan n, code 1`
+  // is add(loan n, code 1) and re-parses to the same structure
   ok(
-    'nested call arguments are stacked',
-    /call add\n\s+loan n\n\s+code 1/.test(once),
+    'call arguments inline when they fit',
+    once.includes('call add, loan n, code 1'),
     once,
   )
 

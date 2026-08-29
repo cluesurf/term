@@ -41,6 +41,8 @@ export type TextNode = {
   kind: 'text'
   parts: (ChunkNode | InterpolationNode)[]
   parent?: GroupNode
+  // CST trivia: comments written above a line that opens with this text
+  comments?: Comment[]
 }
 export type InterpolationNode = {
   kind: 'interpolation'
@@ -57,18 +59,24 @@ export type ChunkNode = {
 export type IntegerNode = {
   kind: 'integer'
   value: number
+  // CST trivia: comments written above a line that opens with this literal (a data file's run of scalars)
+  comments?: Comment[]
   token: Token
   parent?: GroupNode
 }
 export type DecimalNode = {
   kind: 'decimal'
   value: number
+  // CST trivia: comments written above a line that opens with this literal (a data file's run of scalars)
+  comments?: Comment[]
   token: Token
   parent?: GroupNode
 }
 export type RadixNode = {
   kind: 'radix'
   value: number
+  // CST trivia: comments written above a line that opens with this literal (a data file's run of scalars)
+  comments?: Comment[]
   radix: number
   token: Token
   parent?: GroupNode
@@ -203,6 +211,12 @@ function buildTree(
 
         if (here.kind === 'group') {
           const text: TextNode = { kind: 'text', parts: [] }
+
+          if (pendingComments.length > 0) {
+            text.comments = pendingComments
+            pendingComments = []
+          }
+
           here.nodes.push(text)
           setParent(text, here)
           top().line.push(text)
@@ -284,6 +298,11 @@ function buildTree(
             token: event.token,
           }
 
+          if (pendingComments.length > 0) {
+            node.comments = pendingComments
+            pendingComments = []
+          }
+
           here.nodes.push(node)
           setParent(node, here)
         } else if (here.kind === 'root') {
@@ -311,6 +330,11 @@ function buildTree(
             token: event.token,
           }
 
+          if (pendingComments.length > 0) {
+            node.comments = pendingComments
+            pendingComments = []
+          }
+
           here.nodes.push(node)
           setParent(node, here)
         } else {
@@ -329,6 +353,11 @@ function buildTree(
             value: event.value,
             radix: event.radix,
             token: event.token,
+          }
+
+          if (pendingComments.length > 0) {
+            node.comments = pendingComments
+            pendingComments = []
           }
 
           here.nodes.push(node)

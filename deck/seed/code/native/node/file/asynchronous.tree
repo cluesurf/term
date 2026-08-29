@@ -11,7 +11,7 @@ task read
   take path, like text
   take format, like text, fall text <text>
 
-  fork test, call is-equal, read format, text <bytes>
+  fork test, call is-equal(read format, text <bytes>)
     hook hold
       save result
         call fs-promise/read-file
@@ -106,7 +106,7 @@ task test
     read path
     halt kink
 
-  fork test, call shape/is-null, read kind
+  fork test, call shape/is-null(read kind)
     hook hold
       send back, true
 
@@ -116,17 +116,17 @@ task test
       read path
       halt kink
 
-  fork test, call is-equal, read kind, text <file>
+  fork test, call is-equal(read kind, text <file>)
     hook hold
       send back
         call stats/is-file
 
-  fork test, call is-equal, read kind, text <directory>
+  fork test, call is-equal(read kind, text <directory>)
     hook hold
       send back
         call stats/is-directory
 
-  fork test, call is-equal, read kind, text <link>
+  fork test, call is-equal(read kind, text <link>)
     hook hold
       send back
         call stats/is-symbolic-link

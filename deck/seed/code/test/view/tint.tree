@@ -91,12 +91,12 @@ zone test-rise
     fuse gray
   fork roll
     hook test
-      call call/time/is-less, 50
+      call call/time/is-less(50)
       hook hold
         zone text, read call/time
           fuse green-bold
     hook test
-      call call/time/is-less, 200
+      call call/time/is-less(200)
       hook hold
         zone text, read call/time
           fuse yellow-bold

@@ -1,5 +1,6 @@
 import type {
   Expression,
+  Type,
   Statement,
 } from '@term/make/code/compile/node'
 
@@ -92,6 +93,67 @@ export function collectionCall(
   return undefined
 }
 
+// the host string methods the stdlib's `text.tree` delegates to (`call value/char-at` is JavaScript's `charAt`), so
+// a native backend renders each in its own string API instead of emitting a method the platform does not have.
+// The semantics are JavaScript's: an index past the end reads as empty, `indexOf` gives -1, `split` on an empty
+// delimiter gives the characters, `replace` touches the first match and `replaceAll` every one.
+const STRING_METHODS = new Set([
+  'charAt',
+  'at',
+  'charCodeAt',
+  'indexOf',
+  'lastIndexOf',
+  'split',
+  'substring',
+  'slice',
+  'toLowerCase',
+  'toUpperCase',
+  'startsWith',
+  'endsWith',
+  'trim',
+  'trimStart',
+  'trimEnd',
+  'padStart',
+  'padEnd',
+  'replace',
+  'replaceAll',
+  'includes',
+  'repeat',
+  'concat',
+])
+
+export type StringOp = { target: Expression; op: string }
+
+// the member name as the host spells it: the stdlib writes `call value/char-at`, the JavaScript method is `charAt`
+function hostMethod(name: string): string {
+  return name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
+}
+
+// a native string METHOD CALL (`value.charAt(i)`) on a text receiver
+// is the value a text? The primitive, or the stdlib's `text` form named as such
+function isText(type: { kind: string; name?: string } | undefined): boolean {
+  return type?.kind === 'string' || (type?.kind === 'named' && type.name === 'text')
+}
+
+export function stringCall(callee: Expression): StringOp | undefined {
+  if (callee.form !== 'member' || !isText(callee.target.type)) {
+    return undefined
+  }
+
+  const op = hostMethod(callee.name)
+
+  return STRING_METHODS.has(op) ? { target: callee.target, op } : undefined
+}
+
+// a native string PROPERTY READ (`value.length`) on a text receiver
+export function stringRead(node: Expression): StringOp | undefined {
+  if (node.form !== 'member' || !isText(node.target.type) || node.name !== 'length') {
+    return undefined
+  }
+
+  return { target: node.target, op: 'length' }
+}
+
 // a native collection PROPERTY READ (`map.size`, `array.length`) on a map/array receiver
 export function collectionRead(
   node: Expression,
@@ -176,13 +238,22 @@ export function reassigned(
       case 'let':
         reassignedExpr(s.init, into)
         break
-      case 'assign':
-        if (s.target.form === 'variable') {
-          into.add(s.target.name)
+      case 'assign': {
+        // `save x, v` reassigns x; `save x/field, v` mutates x in place, which a by-value parameter needs a mutable
+        // shadow for just the same
+        let target: Expression = s.target
+
+        while (target.form === 'member') {
+          target = target.target
+        }
+
+        if (target.form === 'variable') {
+          into.add(target.name)
         }
 
         reassignedExpr(s.value, into)
         break
+      }
       case 'expression':
         reassignedExpr(s.expr, into)
         break
@@ -261,4 +332,115 @@ export function unsupported(
   comment: string,
 ): string {
   return `${comment} SEED-UNSUPPORTED on ${target}: "${form}" is outside this target's fragment`
+}
+
+// ---- filling a form from data ----
+
+// the shape a `call fill / <data> / like <form>` walks: one entry per field with its kind. A kind is `text`,
+// `number`, `decimal`, `flag`, `data` (a field of the package's own `data` form, passed through), `list` (with its
+// item), `form` (with its own spec, recursively) or `any` (a type with no data spelling, which a typed backend
+// refuses at compile time). A form that reaches itself is cut at the second visit and read as `any`. The TypeScript
+// emitter walks the spec at run time; the native emitters generate a function per form from it.
+export type FormKind =
+  | { kind: 'text' | 'number' | 'decimal' | 'flag' | 'data' | 'any' }
+  | { kind: 'list'; item: FormKind }
+  | { kind: 'form'; spec: FormSpec }
+
+export type FormSpec = { form: string; fields: { name: string; optional: boolean; kind: FormKind }[] }
+
+export type RecordFields = Map<string, { name: string; type: Type; optional?: boolean }[]>
+
+export function formSpec(type: Type, records: RecordFields, seen: Set<string> = new Set()): FormSpec {
+  const name = type.kind === 'named' ? type.name : ''
+  const fields = records.get(name) ?? []
+  const inner = new Set(seen).add(name)
+
+  return {
+    form: name,
+    fields: fields.map(f => ({ name: f.name, optional: Boolean(f.optional), kind: formKind(f.type, records, inner) })),
+  }
+}
+
+export function formKind(type: Type | undefined, records: RecordFields, seen: Set<string>): FormKind {
+  switch (type?.kind) {
+    case 'string':
+      return { kind: 'text' }
+    case 'boolean':
+      return { kind: 'flag' }
+    case 'number':
+      return { kind: 'number' }
+    case 'float':
+      return { kind: 'decimal' }
+    case 'array':
+      return { kind: 'list', item: formKind(type.element, records, seen) }
+    case 'named': {
+      if (type.name === 'text') {
+        return { kind: 'text' }
+      }
+
+      if (type.name === 'boolean') {
+        return { kind: 'flag' }
+      }
+
+      if (/^(number|integer|natural|size|count|index|u?int(8|16|32|64)?)$/.test(type.name)) {
+        return { kind: 'number' }
+      }
+
+      if (/^(decimal|float(32|64)?|double|real)$/.test(type.name)) {
+        return { kind: 'decimal' }
+      }
+
+      if (type.name === 'data') {
+        return { kind: 'data' }
+      }
+
+      if (type.name === 'list') {
+        return { kind: 'list', item: formKind(type.args?.[0], records, seen) }
+      }
+
+      if (records.has(type.name) && !seen.has(type.name)) {
+        return { kind: 'form', spec: formSpec(type, records, seen) }
+      }
+
+      return { kind: 'any' }
+    }
+    default:
+      return { kind: 'any' }
+  }
+}
+
+// every form a spec reaches, the outer one first, each once
+export function specForms(spec: FormSpec, into: Map<string, FormSpec> = new Map()): Map<string, FormSpec> {
+  if (into.has(spec.form)) {
+    return into
+  }
+
+  into.set(spec.form, spec)
+
+  const walk = (kind: FormKind): void => {
+    if (kind.kind === 'form') {
+      specForms(kind.spec, into)
+    } else if (kind.kind === 'list') {
+      walk(kind.item)
+    }
+  }
+
+  spec.fields.forEach(f => walk(f.kind))
+
+  return into
+}
+
+// a field whose type has no data spelling cannot be filled on a typed backend: the build says which
+export function refuseAny(spec: FormSpec, backend: string): void {
+  const walk = (kind: FormKind, at: string): void => {
+    if (kind.kind === 'any') {
+      throw new Error(`"fill" with a form: ${at} has a type with no data form, so it cannot be filled on ${backend}`)
+    } else if (kind.kind === 'list') {
+      walk(kind.item, `an item of ${at}`)
+    } else if (kind.kind === 'form') {
+      kind.spec.fields.forEach(f => walk(f.kind, `field "${f.name}" of "${kind.spec.form}"`))
+    }
+  }
+
+  spec.fields.forEach(f => walk(f.kind, `field "${f.name}" of "${spec.form}"`))
 }

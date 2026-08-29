@@ -55,6 +55,7 @@ load ../work/save
 
 load ../work/seal
   find mint
+  find mint-seal
   find tell-seal
   find shed-seal
 
@@ -257,6 +258,10 @@ hook lock
   # Make a key, replacing any that is already there
   hook make
     task mint
+
+  # Print a fresh key for a platform's own secret store, storing nothing
+  hook mint
+    task mint-seal
 
   # Say whether this machine has one, never what it is
   hook show

@@ -208,7 +208,7 @@ task make-bloom-filter
   save bloom/buckets, make list
   walk test
     hook test
-      save i, call increment, read i
+      save i, call increment(read i)
       call is-below
         read i
         read n

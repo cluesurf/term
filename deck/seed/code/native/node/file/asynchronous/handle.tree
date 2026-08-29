@@ -92,14 +92,14 @@ task seek
   take offset, like size
   take frame, like text, fall text <start>
 
-  fork test, call is-equal, read frame, text <start>
+  fork test, call is-equal(read frame, text <start>)
     hook hold
       call file/dock/seek
         wait true
         read offset
         halt kink
 
-  fork test, call is-equal, read frame, text <relative>
+  fork test, call is-equal(read frame, text <relative>)
     hook hold
       save current
         call file/dock/stat
@@ -112,7 +112,7 @@ task seek
           bind b, read offset
         halt kink
 
-  fork test, call is-equal, read frame, text <end>
+  fork test, call is-equal(read frame, text <end>)
     hook hold
       save stats
         call file/dock/stat

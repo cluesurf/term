@@ -37,6 +37,10 @@ load ../config/machine
 load ../save/base
   find pick
 
+load ../seal/base
+  find make-key
+  find tone-pack
+
 load ../seal/keep
   find seal-seat
   find make-seal
@@ -56,6 +60,7 @@ task seal-bond
   like bond
   save got
     call read-bond
+      bind hold, text <>
       wait true
   fork test
     hook test
@@ -169,5 +174,33 @@ task shed-seal
     wait true
   call show-line
     text <The master key is gone from this machine. The cache it opened is now unreadable, which costs nothing: the values are still at the provider. `term zone lock make` then `term zone read` restores it.>
+  send back
+    code 0
+
+# `term zone lock mint` — print a fresh key, storing nothing.
+#
+# FOR A PLATFORM THAT KEEPS ITS OWN SECRETS. A container has no keychain, so
+# it uses the env store, and the env store is one zone cannot write to: the
+# platform owns those values. That leaves a person told to set
+# `ZONE_CODE_SEAL` to "a tone-packed 32-byte key" with no way to produce one,
+# which is a setup step with no command behind it.
+#
+# THIS IS THE ONE PLACE ZONE PRINTS A SECRET, and it is deliberate. The key
+# has to travel from here into DigitalOcean's or GitHub's secret store, and
+# it exists nowhere else until it does: nothing is stored, so a key that is
+# not copied is simply gone. Every other command refuses to print a value
+# because the value already lives somewhere safe.
+#
+# Print it into the platform's secret field and nowhere else. It will be in
+# this terminal's scrollback until that is cleared.
+task mint-seal
+  note async
+  like number
+  save key
+    call make-key
+      wait true
+  call show-line
+    call tone-pack
+      read key
   send back
     code 0

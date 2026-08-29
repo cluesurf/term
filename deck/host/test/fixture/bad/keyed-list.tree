@@ -1,0 +1,4 @@
+# "inner" is a keyed list inside the list "outer". A nested list has no key
+list outer
+  list inner
+    1, 2

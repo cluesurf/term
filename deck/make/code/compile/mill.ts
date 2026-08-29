@@ -592,6 +592,17 @@ function parseLikeType(likeGroup: GroupNode): Type {
 // no definition to bind to and are never imported, so the resolver has to know them by name.
 export const UNARY_BUILTIN = new Set(['increment', 'decrement'])
 
+// A head that takes ONE value (`save x, V`, `host x, V`, `send back, V`, `bind f, V`) refuses anything after it.
+// A comma returns to the head of the line, so `save x, call f, read y` is `save(x, call(f), read(y))`: `read y` is
+// not an argument of `f`, and dropping it silently is how a value goes missing. The message says what to write.
+function extraValueMessage(head: string, value: Node | undefined, extra: Node): string {
+  const shown = (n: Node): string =>
+    n.kind === 'group' ? (headName(n) ?? '?') : n.kind === 'text' ? '<...>' : n.kind
+  const valueText = value ? shown(value) : '?'
+
+  return `\`${head}\` takes one value, and \`${shown(extra)}\` follows \`${valueText}\`. A comma returns to \`${head}\`, so it is not an argument of \`${valueText}\`. Write \`${valueText}(...)\` with the arguments inside the parentheses, or put them on their own indented lines`
+}
+
 // the `halt` arguments that are control flow rather than an exception to raise. An exception form may not take one
 // of these names.
 export const HALT_WORDS = new Set(['fork', 'flow', 'code', 'kink', 'take'])
@@ -1218,9 +1229,25 @@ export function mill(tree: RootNode, file: string): MillResult {
     const background = parts.slice(1).some(isWaitFalse)
     // `halt kink` propagates the callee's error rather than being an argument
     const propagate = parts.slice(1).some(isHaltKink)
-    const argNodes = parts
-      .slice(1)
-      .filter(a => !isWaitTrue(a) && !isWaitFalse(a) && !isHaltKink(a))
+    // `call f(a, b)` puts the arguments INSIDE the callee's group (a parenthesis, or a space, is the head's own
+    // children: `f(a, b)` is `f a, b`), and `call f` / `a` / `b` on their own lines puts them beside it. Both are
+    // the arguments, the inner ones first.
+    const innerArgs =
+      target?.kind === 'group' ? target.nodes.slice(1) : []
+
+    // `call fill / <data> / like <form>` fills a form from data with the compiler walking the form's fields, and
+    // `call melt / <value> / like <form>` is the reverse. The `like` child names the form and is not an argument.
+    const isLike = (a: Node): a is GroupNode =>
+      a.kind === 'group' && headName(a) === 'like'
+    const formLike =
+      calleeName === 'fill' || calleeName === 'melt'
+        ? parts.slice(1).find(isLike)
+        : undefined
+    const into = formLike ? parseLikeType(formLike) : undefined
+
+    const argNodes = [...innerArgs, ...parts.slice(1)].filter(
+      a => !isWaitTrue(a) && !isWaitFalse(a) && !isHaltKink(a) && a !== formLike,
+    )
 
     // a `bind <name>, <value>` child is a NAMED argument. The label rides on the call for the checker, which puts
     // the value in the callee's declared position; the mill keeps source order.
@@ -1283,15 +1310,23 @@ export function mill(tree: RootNode, file: string): MillResult {
         ? pathExpression(calleeName, span)
         : { form: 'variable', name: calleeName ?? '', span }
 
-      result = {
-        form: 'call',
-        callee,
-        args: callArgs,
-        span,
-        ...(names ? { names } : {}),
-        ...(background ? { background: true } : {}),
-        ...(propagate ? { propagate: true } : {}),
-      }
+      result = into
+        ? {
+            form: 'call',
+            callee: { form: 'variable', name: `${calleeName}-form`, span },
+            args: callArgs,
+            into,
+            span,
+          }
+        : {
+            form: 'call',
+            callee,
+            args: callArgs,
+            span,
+            ...(names ? { names } : {}),
+            ...(background ? { background: true } : {}),
+            ...(propagate ? { propagate: true } : {}),
+          }
     }
 
     return awaited ? { form: 'await', expr: result, span } : result
@@ -1365,7 +1400,11 @@ export function mill(tree: RootNode, file: string): MillResult {
       kindNode?.kind === 'group' ? headName(kindNode) : undefined
 
     const span = spanOf(group)
-    const items = parts.slice(1)
+    // `make point(code 1, code 2)` / `make some(bind value, code 0)`: the children of the form's own group, then any
+    // siblings written on their own lines, the same rule as a call's arguments
+    const inner =
+      kindNode?.kind === 'group' ? kindNode.nodes.slice(1) : []
+    const items = [...inner, ...parts.slice(1)]
 
     if (kind === 'list') {
       return {
@@ -1416,6 +1455,11 @@ export function mill(tree: RootNode, file: string): MillResult {
           fieldNode?.kind === 'group' ? headName(fieldNode) : ''
 
         const valueNode = inner[1]
+        const extraBind = inner[2]
+
+        if (extraBind && extraBind.kind !== 'root') {
+          fail(it, extraValueMessage('bind', valueNode, extraBind))
+        }
 
         return {
           name: fieldName ?? '',
@@ -1603,6 +1647,22 @@ export function mill(tree: RootNode, file: string): MillResult {
                   HOST_ANNOTATION.has(headName(a) ?? '')
                 ),
             )
+
+          const extraSave = valueNode
+            ? args
+                .slice(args.indexOf(valueNode) + 1)
+                .find(
+                  a =>
+                    !(
+                      a.kind === 'group' &&
+                      HOST_ANNOTATION.has(headName(a) ?? '')
+                    ),
+                )
+            : undefined
+
+          if (extraSave && extraSave.kind !== 'root') {
+            fail(node, extraValueMessage('save', valueNode, extraSave))
+          }
 
           const value: Expression = valueNode
             ? toExpression(valueNode, scope)
@@ -2101,6 +2161,11 @@ export function mill(tree: RootNode, file: string): MillResult {
           if (sendVariant === 'back') {
             const value =
               rest(node)[1] ?? rest(backGroup as GroupNode)[0]
+            const extraSend = rest(node)[2]
+
+            if (extraSend && extraSend.kind !== 'root') {
+              fail(node, extraValueMessage('send back', value, extraSend))
+            }
 
             out.push({
               form: 'return',
@@ -2145,6 +2210,22 @@ export function mill(tree: RootNode, file: string): MillResult {
                   HOST_ANNOTATION.has(headName(a) ?? '')
                 ),
             )
+
+          const extraHost = valueNode
+            ? hostArgs
+                .slice(hostArgs.indexOf(valueNode) + 1)
+                .find(
+                  a =>
+                    !(
+                      a.kind === 'group' &&
+                      HOST_ANNOTATION.has(headName(a) ?? '')
+                    ),
+                )
+            : undefined
+
+          if (extraHost && extraHost.kind !== 'root') {
+            fail(node, extraValueMessage('host', valueNode, extraHost))
+          }
 
           const value: Expression = valueNode
             ? toExpression(valueNode, scope)

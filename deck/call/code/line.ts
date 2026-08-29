@@ -30,6 +30,7 @@ import { callHold } from '@term/call/code/hold'
 import { callHunt } from '@term/call/code/hunt'
 import { callLook } from '@term/call/code/look'
 import { callRoll } from '@term/call/code/roll'
+import { callMold } from '@term/call/code/mold'
 import { logFail, warn } from '@term/make/code/tint'
 
 const COMMANDS = [
@@ -61,6 +62,7 @@ const COMMANDS = [
   'hunt',
   'look',
   'roll',
+  'mold',
   'zone',
   'fill',
 ]
@@ -737,6 +739,36 @@ const cli = yargs(hideBin(process.argv))
         json: argv.json,
         private: argv.private,
         host: argv.host,
+      })
+    },
+  )
+  .command(
+    'mold [file]',
+    'Shape Term data: a data file (long or compact) or JSON, printed as long form, compact (--pack) or JSON (--json)',
+    yargs =>
+      yargs
+        .positional('file', {
+          type: 'string',
+          description: 'A data .tree file, a .line stream, or a .json file (stdin when absent)',
+        })
+        .option('pack', { type: 'boolean', description: 'Compact form, one entry per line' })
+        .option('json', { type: 'boolean', description: 'JSON, keys in snake case' })
+        .option('keep', { type: 'boolean', description: 'With --json: leave keys as written' })
+        .option('tree', { type: 'boolean', description: 'The input is JSON' })
+        .option('trees', { type: 'boolean', description: 'Keep tree anchors instead of expanding them' })
+        .option('lines', { type: 'boolean', description: 'The input is a compact stream: one form per line, anchors re-declarable' })
+        .option('check', { type: 'boolean', description: 'Only report problems, exit 1 on any' }),
+    async argv => {
+      await callMold({
+        root,
+        file: argv.file,
+        pack: argv.pack,
+        json: argv.json,
+        keep: argv.keep,
+        tree: argv.tree,
+        trees: argv.trees,
+        lines: argv.lines,
+        check: argv.check,
       })
     },
   )

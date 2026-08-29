@@ -13,30 +13,30 @@ load @term/bind/code/node/process
 task get
   take kind, like text
   fork roll
-    hook test, call is-equal, read kind, text <home>
+    hook test, call is-equal(read kind, text <home>)
       send back
         call homedir
-    hook test, call is-equal, read kind, text <temporary>
+    hook test, call is-equal(read kind, text <temporary>)
       send back
         call tmpdir
-    hook test, call is-equal, read kind, text <data>
+    hook test, call is-equal(read kind, text <data>)
       save system
         call platform
       fork roll
-        hook test, call is-equal, read system, text <darwin>
+        hook test, call is-equal(read system, text <darwin>)
           save home
             call homedir
           send back
             call concat
               read home
               text </Library/Application Support>
-        hook test, call is-equal, read system, text <win32>
+        hook test, call is-equal(read system, text <win32>)
           send back
             read process/env/APPDATA
         hook else
           save xdg
             read process/env/XDG_DATA_HOME
-          fork test, call is-unequal, read xdg, make void
+          fork test, call is-unequal(read xdg, make void)
             hook hold
               send back, read xdg
             hook miss
@@ -46,24 +46,24 @@ task get
                 call concat
                   read home
                   text </.local/share>
-    hook test, call is-equal, read kind, text <configuration>
+    hook test, call is-equal(read kind, text <configuration>)
       save system
         call platform
       fork roll
-        hook test, call is-equal, read system, text <darwin>
+        hook test, call is-equal(read system, text <darwin>)
           save home
             call homedir
           send back
             call concat
               read home
               text </Library/Preferences>
-        hook test, call is-equal, read system, text <win32>
+        hook test, call is-equal(read system, text <win32>)
           send back
             read process/env/APPDATA
         hook else
           save xdg
             read process/env/XDG_CONFIG_HOME
-          fork test, call is-unequal, read xdg, make void
+          fork test, call is-unequal(read xdg, make void)
             hook hold
               send back, read xdg
             hook miss
@@ -73,18 +73,18 @@ task get
                 call concat
                   read home
                   text </.config>
-    hook test, call is-equal, read kind, text <cache>
+    hook test, call is-equal(read kind, text <cache>)
       save system
         call platform
       fork roll
-        hook test, call is-equal, read system, text <darwin>
+        hook test, call is-equal(read system, text <darwin>)
           save home
             call homedir
           send back
             call concat
               read home
               text </Library/Caches>
-        hook test, call is-equal, read system, text <win32>
+        hook test, call is-equal(read system, text <win32>)
           save local
             read process/env/LOCALAPPDATA
           send back
@@ -94,7 +94,7 @@ task get
         hook else
           save xdg
             read process/env/XDG_CACHE_HOME
-          fork test, call is-unequal, read xdg, make void
+          fork test, call is-unequal(read xdg, make void)
             hook hold
               send back, read xdg
             hook miss

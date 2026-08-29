@@ -1,0 +1,17 @@
+tree service-config
+  host env, <prod>
+  host retries, 3
+  host version, 6.8
+
+host vars
+  host prod-service
+    host config
+      fuse service-config
+  host dev-service
+    host config
+      fuse service-config
+      host version, 7.23
+  host regr-service
+    host config
+      fuse service-config
+      host version, 5.1

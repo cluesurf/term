@@ -1,0 +1,3 @@
+# "x" is given twice
+host x, 1
+host x, 2

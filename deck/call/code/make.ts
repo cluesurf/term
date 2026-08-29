@@ -20,6 +20,7 @@ import { CompileCache } from '@term/make/code/compile/cache'
 import { projectCache } from '@term/call/code/cache-store'
 import { preprocessTests } from '@term/call/code/test-preprocess'
 import { projectDeckOf } from '@term/call/code/deck-of'
+import { projectRoleOf } from '@term/call/code/role-of'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import type { Resolver, Source } from '@term/make/code/compile/load'
@@ -391,6 +392,7 @@ export function compileProject(
   const files = findTreeFiles(root, [], platform)
   const resolve = projectResolver(root)
   const deckOf = projectDeckOf()
+  const roleOf = projectRoleOf(root)
 
   let compiled = 0
   let written = 0
@@ -407,7 +409,7 @@ export function compileProject(
       ? preprocessTests(source).text
       : source
 
-    const result = compile({ file, text }, { resolve, cache, deckOf })
+    const result = compile({ file, text }, { resolve, cache, deckOf, roleOf })
 
     if (!result.ok) {
       failed++

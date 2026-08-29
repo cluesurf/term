@@ -1,0 +1,2 @@
+t(service-config,h(env,<prod>),h(retries,3),h(version,6.8))
+h(vars,h(prod-service,h(config,f(service-config))),h(dev-service,h(config,f(service-config),h(version,7.23))),h(regr-service,h(config,f(service-config),h(version,5.1))))

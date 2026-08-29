@@ -1,0 +1,102 @@
+# Term data. The value every reader produces and every writer takes, the two exceptions the package raises, and the
+# public surface. The forms are named `data`, not `host`, because `form host` already exists in the stdlib and names
+# are package-global. See note/term/host/04-model-and-json.md and 06-package-and-cli.md.
+
+load @term/seed/code/exception
+  find exception
+  find defect
+  find mismatch
+
+load ./read
+  find read
+  find read-raw
+
+load ./write
+  find write
+  find pack
+
+load ./json
+  find to-json
+  find from-json
+
+load ./fuse
+  find expand
+
+load ./fill
+  find fill
+  find melt
+
+load ./path
+  find get-at
+  find to-hash
+
+load ./stream
+  find stream-reader
+  find make-reader
+  find feed
+  find read-lines
+  find stream-writer
+  find make-writer
+  find emit
+  find write-lines
+
+# a value. `hash` keeps its entries in order. `fuse` is an unexpanded splice, present only in what `read-raw` gives.
+form data
+  case hash
+    link list
+      like list
+        like data-entry
+  case array
+    link list
+      like list
+        like data
+  case text
+    link value, like text
+  case number
+    link value, like number
+  case decimal
+    link value, like decimal
+  case flag
+    link value, like boolean
+  case blank
+  case graft
+    link name, like text
+
+# one entry of a hash
+form data-entry
+  link name, like text
+  link base, like data
+
+# an anchor: entries (`hold <hash>`) to fuse into a map, or items (`hold <list>`) to fuse into a list
+form data-tree
+  link name, like text
+  link hold, like text
+  link entries
+    like list
+      like data-entry
+  link items
+    like list
+      like data
+
+# a file as read with its anchors kept
+form data-file
+  link root, like data
+  link trees
+    like list
+      like data-tree
+
+# text that is not data. `rule` names the rule of the grammar, `line` where.
+form data-defect
+  like defect
+    bind note, <Not data>
+    bind thing, <data>
+    link rule, like text
+    link line, like number
+
+# a value that does not fit the shape it was filled into. `path` is where in the value (`a/b/1`), `reason` why.
+form data-mismatch
+  like mismatch
+    bind note, <Data does not fit the shape>
+    bind thing, <data>
+    link path, like text
+    link reason, like text

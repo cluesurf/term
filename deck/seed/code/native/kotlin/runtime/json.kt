@@ -21,4 +21,12 @@ object json {
     fun fromNumber(value: Double): Any = value
     fun fromBoolean(value: Boolean): Any = value
     fun makeNull(): Any = JSONObject.NULL
+    // the shape questions: what a parsed value is, so a reader can walk it without guessing
+    fun isArray(value: Any): Boolean = value is JSONArray
+    fun isObject(value: Any): Boolean = value is JSONObject
+    fun isText(value: Any): Boolean = value is String
+    fun isBoolean(value: Any): Boolean = value is Boolean
+    fun arraySize(value: Any): Long = ((value as? JSONArray)?.length() ?: 0).toLong()
+    fun arrayItem(value: Any, index: Long): Any = getItem(value, index.toInt())
+    fun objectKeys(value: Any): MutableList<String> = (value as? JSONObject)?.keys()?.asSequence()?.toMutableList() ?: mutableListOf()
 }

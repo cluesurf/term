@@ -19,7 +19,7 @@ task stop
   take child, like child
   take form, like text, fall text <gentle>
 
-  fork test, call is-equal, read form, text <force>
+  fork test, call is-equal(read form, text <force>)
     hook hold
       call kill
         call child/dock/process-identifier
@@ -56,7 +56,7 @@ task read
   like text
 
   save pipe
-    fork test, call is-equal, read kind, text <stderr>
+    fork test, call is-equal(read kind, text <stderr>)
       hook hold
         send back
           call child/dock/standard-error
@@ -67,7 +67,7 @@ task read
   save data
     call pipe/file-handle-for-reading/read-data-to-end-of-file
 
-  fork test, call is-equal, read format, text <text>
+  fork test, call is-equal(read format, text <text>)
     hook hold
       send back
         call foundation/string
@@ -84,7 +84,7 @@ task stream
   like list
 
   save pipe
-    fork test, call is-equal, read kind, text <stderr>
+    fork test, call is-equal(read kind, text <stderr>)
       hook hold
         send back
           call child/dock/standard-error

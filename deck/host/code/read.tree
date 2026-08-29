@@ -1,0 +1,928 @@
+# Nodes to data: the rules of note/term/host/01-grammar.md, each a `data-defect` naming the rule. `read` gives the
+# expanded value; `read-raw` keeps the anchors (`tree`) and the splices (`fuse`) for a writer that preserves them.
+
+load @term/seed/code/boolean
+  find not
+
+load @term/seed/code/list
+  find push
+  find size
+  find get
+
+load @term/seed/code/text/string
+  find concat
+
+load ./node
+  find node
+  find quote
+  find integer-text
+
+load ./scan
+  find scan
+
+load ./base
+  find data
+  find data-entry
+  find data-tree
+  find data-file
+  find data-defect
+
+load ./fuse
+  find expand
+
+load ./write
+  find is-key
+
+# text to expanded data
+task read
+  take input, like text
+  like data
+  send back
+    call expand
+      call read-raw
+        read input
+
+# text to data with the anchors kept
+task read-raw
+  take input, like text
+  like data-file
+  save roots
+    call scan
+      read input
+  save trees
+    make list
+  save entries
+    make list
+  save items
+    make list
+  save seen-data, false
+  walk list
+    read roots
+    hook next
+      take site, name root
+      save kind
+        call head-kind
+          read root
+      fork test
+        hook test
+          call is-equal(read kind, text <tree>)
+        hook hold
+          fork test
+            hook test
+              read seen-data
+            hook hold
+              halt data-defect
+                bind rule
+                  call concat
+                    call quote(call key-of(read root))
+                    text < is declared after data. Anchors come first>
+                bind line, code 0
+          save anchor
+            call read-tree
+              read root
+          walk list
+            read trees
+            hook next
+              take site, name known
+              fork test
+                hook test
+                  call is-equal(read known/name, read anchor/name)
+                hook hold
+                  halt data-defect
+                    bind rule
+                      call concat
+                        call quote(read anchor/name)
+                        text < is declared twice>
+                    bind line, code 0
+          call push
+            read trees
+            read anchor
+          turn next
+      save seen-data, true
+      fork test
+        hook test
+          call is-equal(read kind, text <mesh>)
+        hook hold
+          call push
+            read items
+            call read-mesh
+              read root
+          turn next
+      fork test
+        hook test
+          call is-equal(read kind, text <fuse>)
+        hook hold
+          call push
+            read entries
+            make data-entry
+              bind name, text <>
+              bind base
+                make graft
+                  bind name
+                    call key-of
+                      read root
+          turn next
+      fork test
+        hook test
+          call is-equal(read kind, text <>)
+        hook hold
+          halt data-defect
+            bind rule
+              call concat
+                call quote(call head-of(read root))
+                text < is not data. A data file has host, list, mesh, tree and fuse, and nothing else>
+            bind line, code 0
+      call push
+        read entries
+        call read-entry
+          read root
+          read kind
+  fork test
+    hook test
+      call and
+        call is-above(call size(read entries), code 0)
+        call is-above(call size(read items), code 0)
+    hook hold
+      halt data-defect
+        bind rule, text <a file is a map of "host" entries or a list of "mesh" items, never both>
+        bind line, code 0
+  save root
+    make hash
+      bind list, read entries
+  fork test
+    hook test
+      call is-above(call size(read items), code 0)
+    hook hold
+      save root
+        make array
+          bind list, read items
+  call check-keys
+    read root
+  send back
+    make data-file
+      bind root, read root
+      bind trees, read trees
+
+# the data head a group's head word means, or empty text
+task head-kind
+  note private
+  take root, like node
+  like text
+  save head
+    call head-of
+      read root
+  fork test
+    hook test
+      call or
+        call is-equal(read head, text <host>)
+        call is-equal(read head, text <h>)
+    hook hold
+      send back, text <host>
+  fork test
+    hook test
+      call or
+        call is-equal(read head, text <list>)
+        call is-equal(read head, text <l>)
+    hook hold
+      send back, text <list>
+  fork test
+    hook test
+      call or
+        call is-equal(read head, text <mesh>)
+        call is-equal(read head, text <m>)
+    hook hold
+      send back, text <mesh>
+  fork test
+    hook test
+      call or
+        call is-equal(read head, text <tree>)
+        call is-equal(read head, text <t>)
+    hook hold
+      send back, text <tree>
+  fork test
+    hook test
+      call or
+        call is-equal(read head, text <fuse>)
+        call is-equal(read head, text <f>)
+    hook hold
+      send back, text <fuse>
+  send back, text <>
+
+task head-of
+  note private
+  take root, like node
+  like text
+  fork case, read root
+    case group
+      link head
+      send back, read head
+    case word
+      link word
+      send back, read word
+    case text
+      send back, text <>
+    case number
+      send back, text <>
+    case decimal
+      send back, text <>
+
+# the key of `host <key>`: the first child, a bare word or a text
+task key-of
+  note private
+  take root, like node
+  like text
+  fork case, read root
+    case group
+      link kids
+      fork test
+        hook test
+          call is-equal(call size(read kids), code 0)
+        hook hold
+          send back, text <>
+      save first
+        call get(read kids, code 0)
+      fork case, read first
+        case word
+          link word
+          send back, read word
+        case text
+          link value
+          send back, read value
+        case group
+          link head
+          link kids
+          fork test
+            hook test
+              call is-equal(call size(read kids), code 0)
+            hook hold
+              send back, read head
+          send back, text <>
+        case number
+          send back, text <>
+        case decimal
+          send back, text <>
+    case word
+      send back, text <>
+    case text
+      send back, text <>
+    case number
+      send back, text <>
+    case decimal
+      send back, text <>
+
+# the children after the key
+task rest-of
+  note private
+  take root, like node
+  like list
+    like node
+  save out
+    make list
+  fork case, read root
+    case group
+      link kids
+      save index, code 1
+      walk test
+        hook test
+          call is-below(read index, call size(read kids))
+        hook hold
+          call push
+            read out
+            call get(read kids, read index)
+          save index
+            call add(read index, code 1)
+    case word
+      send back, read out
+    case text
+      send back, read out
+    case number
+      send back, read out
+    case decimal
+      send back, read out
+  send back, read out
+
+# a bare `true` / `false` / `void`, or a literal
+task is-scalar
+  note private
+  take one, like node
+  like boolean
+  fork case, read one
+    case word
+      link word
+      send back
+        call or
+          call is-equal(read word, text <true>)
+          call or
+            call is-equal(read word, text <false>)
+            call is-equal(read word, text <void>)
+    case group
+      link head
+      link kids
+      send back
+        call and
+          call is-equal(call size(read kids), code 0)
+          call or
+            call is-equal(read head, text <true>)
+            call or
+              call is-equal(read head, text <false>)
+              call is-equal(read head, text <void>)
+    case text
+      send back, true
+    case number
+      send back, true
+    case decimal
+      send back, true
+
+task read-scalar
+  note private
+  take one, like node
+  like data
+  fork case, read one
+    case text
+      link value
+      send back
+        make text
+          bind value, read value
+    case number
+      link value
+      send back
+        make number
+          bind value, read value
+    case decimal
+      link value
+      send back
+        make decimal
+          bind value, read value
+    case word
+      link word
+      send back
+        call read-word
+          read word
+    case group
+      link head
+      send back
+        call read-word
+          read head
+
+task read-word
+  note private
+  take word, like text
+  like data
+  fork test
+    hook test
+      call is-equal(read word, text <true>)
+    hook hold
+      send back
+        make flag
+          bind value, true
+  fork test
+    hook test
+      call is-equal(read word, text <false>)
+    hook hold
+      send back
+        make flag
+          bind value, false
+  send back
+    make blank
+
+# `host <key>, <scalar>` / `host <key>` + entries / `list <key>` + items
+task read-entry
+  note private
+  take root, like node
+  take kind, like text
+  like data-entry
+  save name
+    call key-of
+      read root
+  fork test
+    hook test
+      call is-equal(read name, text <>)
+    hook hold
+      fork test
+        hook test
+          call is-equal(read kind, text <list>)
+        hook hold
+          halt data-defect
+            bind rule, text <a "list" at this level needs a key. A nested list without one sits inside a list>
+            bind line, code 0
+      halt data-defect
+        bind rule, text <"host" needs a key>
+        bind line, code 0
+  fork test
+    hook test
+      call and
+        call key-is-word(read root)
+        call not(call is-key(read name))
+    hook hold
+      halt data-defect
+        bind rule
+          call concat
+            call quote(read name)
+            text < is not a key. A key is a name: letters, digits and dashes, starting with a letter>
+        bind line, code 0
+  save rest
+    call rest-of
+      read root
+  fork test
+    hook test
+      call is-equal(read kind, text <list>)
+    hook hold
+      send back
+        make data-entry
+          bind name, read name
+          bind base
+            make array
+              bind list
+                call read-items
+                  read rest
+                  read name
+  save scalars, code 0
+  save blocks
+    make list
+  walk list
+    read rest
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-scalar
+            read one
+        hook hold
+          save scalars
+            call add(read scalars, code 1)
+        hook miss
+          call push
+            read blocks
+            read one
+  fork test
+    hook test
+      call and
+        call is-above(read scalars, code 0)
+        call is-above(call size(read blocks), code 0)
+    hook hold
+      halt data-defect
+        bind rule
+          call concat
+            call quote(read name)
+            text < has a value and children. A scalar entry has one, a map entry has the other>
+        bind line, code 0
+  fork test
+    hook test
+      call is-above(read scalars, code 1)
+    hook hold
+      halt data-defect
+        bind rule
+          call concat
+            call quote(read name)
+            call concat
+              text < has >
+              call concat
+                call integer-text(read scalars)
+                call concat
+                  text < values. A list is written >
+                  call quote(call concat(text <list >, read name))
+        bind line, code 0
+  fork test
+    hook test
+      call is-equal(read scalars, code 1)
+    hook hold
+      send back
+        make data-entry
+          bind name, read name
+          bind base
+            call read-scalar
+              call get(read rest, code 0)
+  send back
+    make data-entry
+      bind name, read name
+      bind base
+        make hash
+          bind list
+            call read-entries
+              read blocks
+              read name
+
+# the entries of a map block
+task read-entries
+  note private
+  take blocks
+    like list
+      like node
+  take owner, like text
+  like list
+    like data-entry
+  save out
+    make list
+  walk list
+    read blocks
+    hook next
+      take site, name one
+      save kind
+        call head-kind
+          read one
+      fork test
+        hook test
+          call or
+            call is-equal(read kind, text <host>)
+            call is-equal(read kind, text <list>)
+        hook hold
+          call push
+            read out
+            call read-entry
+              read one
+              read kind
+          turn next
+      fork test
+        hook test
+          call is-equal(read kind, text <fuse>)
+        hook hold
+          call push
+            read out
+            make data-entry
+              bind name, text <>
+              bind base
+                make graft
+                  bind name
+                    call key-of
+                      read one
+          turn next
+      fork test
+        hook test
+          call is-equal(read kind, text <mesh>)
+        hook hold
+          halt data-defect
+            bind rule
+              call concat
+                text <"mesh" is a list item and >
+                call concat
+                  call quote(read owner)
+                  text < is a map. Give it a key with "host">
+            bind line, code 0
+      fork test
+        hook test
+          call is-equal(read kind, text <tree>)
+        hook hold
+          halt data-defect
+            bind rule
+              call concat
+                call quote(call key-of(read one))
+                call concat
+                  text < is declared inside >
+                  call concat
+                    call quote(read owner)
+                    text <. Anchors come first, at the top>
+            bind line, code 0
+      halt data-defect
+        bind rule
+          call not-value-rule(read one)
+        bind line, code 0
+  send back, read out
+
+# the items of a list: scalars, mesh maps, nested lists, fuses
+task read-items
+  note private
+  take rest
+    like list
+      like node
+  take owner, like text
+  like list
+    like data
+  save out
+    make list
+  walk list
+    read rest
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-scalar
+            read one
+        hook hold
+          call push
+            read out
+            call read-scalar
+              read one
+          turn next
+      save kind
+        call head-kind
+          read one
+      fork test
+        hook test
+          call is-equal(read kind, text <mesh>)
+        hook hold
+          call push
+            read out
+            call read-mesh
+              read one
+          turn next
+      fork test
+        hook test
+          call is-equal(read kind, text <list>)
+        hook hold
+          fork test
+            hook test
+              call and
+                call key-is-word(read one)
+                call not(call is-scalar-word(call key-of(read one)))
+            hook hold
+              halt data-defect
+                bind rule
+                  call concat
+                    call quote(call key-of(read one))
+                    call concat
+                      text < is a keyed list inside the list >
+                      call concat
+                        call quote(read owner)
+                        text <. A nested list has no key>
+                bind line, code 0
+          call push
+            read out
+            make array
+              bind list
+                call read-items
+                  call kids-of
+                    read one
+                  read owner
+          turn next
+      fork test
+        hook test
+          call is-equal(read kind, text <fuse>)
+        hook hold
+          call push
+            read out
+            make graft
+              bind name
+                call key-of
+                  read one
+          turn next
+      fork test
+        hook test
+          call is-equal(read kind, text <host>)
+        hook hold
+          halt data-defect
+            bind rule
+              call concat
+                call quote(read owner)
+                text < is a list, so its items are scalars, "mesh" maps or "list" lists, never "host" entries>
+            bind line, code 0
+      halt data-defect
+        bind rule
+          call not-value-rule(read one)
+        bind line, code 0
+  send back, read out
+
+task kids-of
+  note private
+  take root, like node
+  like list
+    like node
+  fork case, read root
+    case group
+      link kids
+      send back, read kids
+    case word
+      send back
+        make list
+    case text
+      send back
+        make list
+    case number
+      send back
+        make list
+    case decimal
+      send back
+        make list
+
+task read-mesh
+  note private
+  take root, like node
+  like data
+  send back
+    make hash
+      bind list
+        call read-entries
+          call kids-of
+            read root
+          text <mesh>
+
+task read-tree
+  note private
+  take root, like node
+  like data-tree
+  save name
+    call key-of
+      read root
+  fork test
+    hook test
+      call is-equal(read name, text <>)
+    hook hold
+      halt data-defect
+        bind rule, text <"tree" needs a name>
+        bind line, code 0
+  save rest
+    call rest-of
+      read root
+  fork test
+    hook test
+      call is-equal(call size(read rest), code 0)
+    hook hold
+      send back
+        make data-tree
+          bind name, read name
+          bind hold, text <hash>
+          bind entries
+            make list
+          bind items
+            make list
+  save first
+    call get(read rest, code 0)
+  save kind
+    call head-kind
+      read first
+  fork test
+    hook test
+      call or
+        call is-equal(read kind, text <host>)
+        call or
+          call is-equal(read kind, text <list>)
+          call is-equal(read kind, text <fuse>)
+    hook hold
+      send back
+        make data-tree
+          bind name, read name
+          bind hold, text <hash>
+          bind entries
+            call read-entries
+              read rest
+              read name
+          bind items
+            make list
+  send back
+    make data-tree
+      bind name, read name
+      bind hold, text <list>
+      bind entries
+        make list
+      bind items
+        call read-items
+          read rest
+          read name
+
+# a key given twice in one map, with no fuse between, is an error
+task check-keys
+  note private
+  take value, like data
+  fork case, read value
+    case hash
+      link list
+      save seen
+        make list
+      walk list
+        read list
+        hook next
+          take site, name entry
+          fork case, read entry/base
+            case graft
+              save seen
+                make list
+              turn next
+            case hash
+              call check-keys
+                read entry/base
+            case array
+              call check-keys
+                read entry/base
+            case text
+              call size(read seen)
+            case number
+              call size(read seen)
+            case decimal
+              call size(read seen)
+            case flag
+              call size(read seen)
+            case blank
+              call size(read seen)
+          walk list
+            read seen
+            hook next
+              take site, name name
+              fork test
+                hook test
+                  call is-equal(read name, read entry/name)
+                hook hold
+                  halt data-defect
+                    bind rule
+                      call concat
+                        call quote(read entry/name)
+                        text < is given twice>
+                    bind line, code 0
+          call push
+            read seen
+            read entry/name
+    case array
+      link list
+      walk list
+        read list
+        hook next
+          take site, name item
+          call check-keys
+            read item
+    case text
+      send back
+    case number
+      send back
+    case decimal
+      send back
+    case flag
+      send back
+    case blank
+      send back
+    case graft
+      send back
+
+# a bare word where a value belongs is text without its brackets; a head with children is code, not data
+task not-value-rule
+  note private
+  take one, like node
+  like text
+  fork case, read one
+    case group
+      link head
+      link kids
+      fork test
+        hook test
+          call is-equal(call size(read kids), code 0)
+        hook hold
+          send back
+            call concat
+              call quote(read head)
+              call concat
+                text < is not a value. Text is written \<>
+                call concat(read head, text <\>>)
+      send back
+        call concat
+          call quote(read head)
+          text < is not data. A data file has host, list, mesh, tree and fuse, and nothing else>
+    case word
+      link word
+      send back
+        call concat
+          call quote(read word)
+          call concat
+            text < is not a value. Text is written \<>
+            call concat(read word, text <\>>)
+    case text
+      send back, text <a text is a value>
+    case number
+      send back, text <a number is a value>
+    case decimal
+      send back, text <a decimal is a value>
+
+# is the key of `host <key>` / `list <key>` written as a bare word (not as `<text>`)?
+task key-is-word
+  note private
+  take root, like node
+  like boolean
+  fork case, read root
+    case group
+      link kids
+      fork test
+        hook test
+          call is-equal(call size(read kids), code 0)
+        hook hold
+          send back, false
+      save first
+        call get(read kids, code 0)
+      fork case, read first
+        case word
+          send back, true
+        case group
+          link head
+          link kids
+          send back
+            call is-equal(call size(read kids), code 0)
+        case text
+          send back, false
+        case number
+          send back, false
+        case decimal
+          send back, false
+    case word
+      send back, false
+    case text
+      send back, false
+    case number
+      send back, false
+    case decimal
+      send back, false
+
+task is-scalar-word
+  note private
+  take word, like text
+  like boolean
+  send back
+    call or
+      call is-equal(read word, text <true>)
+      call or
+        call is-equal(read word, text <false>)
+        call is-equal(read word, text <void>)

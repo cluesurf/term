@@ -607,6 +607,12 @@ export function raiseSets(
     const direct = new Set<string>()
     const called = new Set<string>()
     scan(statement.body, direct, called)
+
+    // `call fill / <data> / like <form>` raises the data package's `data-mismatch` when the value does not fit
+    if (calledNames(statement.body, new Set(['fill-form'])).size > 0) {
+      direct.add('data-mismatch')
+    }
+
     raises.set(name, direct)
     via.set(name, new Map([...direct].map(d => [d, undefined])))
     calls.set(name, called)

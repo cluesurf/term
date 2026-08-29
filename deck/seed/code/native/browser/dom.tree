@@ -5,7 +5,8 @@ task query
 
   fork test
     hook test
-      call is-some, read root
+      call is-some
+        read root
     hook hold
       send back
         call root/query-selector
@@ -21,7 +22,8 @@ task query-all
 
   fork test
     hook test
-      call is-some, read root
+      call is-some
+        read root
     hook hold
       save nodes
         call root/query-selector-all

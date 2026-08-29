@@ -1,0 +1,88 @@
+# Build the `data` forms of @term/host from a mined host file. One mint per mine; `hook make` constructs the value.
+
+load @term/host/code/base
+  find data
+  find data-entry
+
+mint host
+  case tree, mint host-tree
+    site tree
+  case entry, mint host-entry
+    site entry
+  case mesh, mint host-mesh
+    site mesh
+
+mint host-entry, like data-entry
+  case host, mint host-host
+    site host
+  case list, mint host-list
+    site list
+  case fuse, mint host-fuse
+    site fuse
+
+mint host-host, like data-entry
+  case name
+    site name
+  case value, mint host-scalar
+    site value
+  case entry, mint host-entry
+    site entry
+  hook make
+    make data-entry
+      bind name, read name
+      bind base
+        make hash
+          bind list, read entry
+
+mint host-list, like data-entry
+  case name
+    site name
+  case item, mint host-item
+    site item
+  hook make
+    make data-entry
+      bind name, read name
+      bind base
+        make list
+          bind list, read item
+
+mint host-mesh, like data
+  case entry, mint host-entry
+    site entry
+  hook make
+    make hash
+      bind list, read entry
+
+mint host-item, like data
+  case scalar, mint host-scalar
+    site scalar
+  case mesh, mint host-mesh
+    site mesh
+  case list, mint host-list
+    site list
+  case fuse, mint host-fuse
+    site fuse
+
+mint host-tree
+  case name
+    site name
+  case entry, mint host-entry
+    site entry
+  case item, mint host-item
+    site item
+
+mint host-fuse
+  case name
+    site name
+
+mint host-scalar, like data
+  case text
+    site text
+  case number
+    site number
+  case true
+    site true
+  case false
+    site false
+  case void
+    site void

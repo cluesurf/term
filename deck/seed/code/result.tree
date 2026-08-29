@@ -123,28 +123,3 @@ form result
         send back
           call call
             read self/value
-
-# Run something that can raise, and get a result instead of an exception.
-#
-# The boundary between the two ways of failing. A task that raises is turned
-# into one that returns, so a caller that would rather branch than catch can.
-#
-# MOVED HERE FROM `code/error.tree`, where it could not work. That module
-# defines its own `form error`, and names are package-global, so `make error`
-# there meant the form rather than this result's `error` case, and the two
-# have different fields. In this file there is only one `error` and it is the
-# right one.
-task catch
-  take work, like task
-  like result
-  note unsafe
-    save value
-      call work
-    send back
-      make okay
-        bind value, read value
-  halt take
-    take gone
-    send back
-      make error
-        bind value, read gone

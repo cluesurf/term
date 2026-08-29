@@ -42,7 +42,11 @@ export async function callForm(input: {
 
     if (errors.length > 0) {
       broken++
-      logFail(`${relative} could not be parsed`)
+      logFail(
+        analysis.kind === 'data'
+          ? `${relative} is data that could not be read`
+          : `${relative} could not be parsed`,
+      )
 
       for (const error of errors) {
         console.error(render(error, text.split('\n')))

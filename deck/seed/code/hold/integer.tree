@@ -353,7 +353,7 @@ task make-reversal-table
             read r
             read s
           code 255
-      save i, call add, read i
+      save i, call add(read i)
   send back, read table
 
 save binary-trailing-zero-magic-number, code 0x077cb531
@@ -543,11 +543,11 @@ task make-leading-zero-table
                 read index
                 code 2
               code 0
-          save count, call decrement, read count
+          save count, call decrement(read count)
       call table/set
         read i
         read count
-      save i, call increment, read i
+      save i, call increment(read i)
   send back, read table
 
 task make-de-bruijn-trailing-zero-table
@@ -557,7 +557,7 @@ task make-de-bruijn-trailing-zero-table
     call power
       code 2
       read exponent
-  save table, make array, read n
+  save table, make array(read n)
   save i, code 0
   walk test
     hook test
@@ -574,7 +574,7 @@ task make-de-bruijn-trailing-zero-table
             read n
             read exponent
         read i
-      save i, call increment, read i
+      save i, call increment(read i)
 
   send back, read table
 
@@ -601,7 +601,7 @@ task make-binary-count-one-table
                 read i
                 code 2
               code 0
-      save i, call increment, read i
+      save i, call increment(read i)
   send back, read table
 
 task count-one-bits-32
@@ -832,7 +832,7 @@ task walk-bits
       call step
         read v
         read i
-      save i, call add, read i
+      save i, call add(read i)
 
 task is-bit-set
   take mark

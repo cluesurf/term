@@ -1,0 +1,130 @@
+# The package against its own fixtures, in Term. The compiler's reader is the oracle (test/compile/host-term.ts
+# compares the two byte for byte); these run on every backend the package builds for. Run: term test, from deck/host.
+
+load ../code/base
+  find read
+  find write
+  find pack
+  find to-json
+  find from-json
+  find fill
+  find get-at
+  find read-lines
+  find write-lines
+
+load ../code/read
+  find read-raw
+
+test <the compact form reads and writes as the long form>
+  want hold
+    call is-equal
+      call write(call read(text <h(x,h(y,123),l(a,5,6),l(m,m(h(name,\<foo\>))))>))
+      text <host x\n  host y, 123\n  list a\n    5, 6\n  list m\n    mesh\n      host name, \<foo\>\n>
+
+test <the long form packs to one line>
+  want hold
+    call is-equal
+      call pack(call read(text <host x\n  host y, 123\n  list a\n    5, 6\n>))
+      text <h(x,h(y,123),l(a,5,6))\n>
+
+test <a kebab key is snake in JSON>
+  want hold
+    call is-equal
+      call to-json(call read(text <host retry-after, 3\n>))
+      text <{"retry_after":3}>
+
+test <JSON reads back to the long form>
+  want hold
+    call is-equal
+      call write(call from-json(text <{"retry_after":3,"names":["a","b"]}>))
+      text <host retry-after, 3\nlist names\n  \<a\>, \<b\>\n>
+
+test <the six literals round trip>
+  want hold
+    call is-equal
+      call write(call read(text <host a, -3.5\nhost b, true\nhost c, void\nhost d, \<a \\\<b\\\> \{c\}\>\nhost e, 0x1f\nhost f, 2.0\n>))
+      text <host a, -3.5\nhost b, true\nhost c, void\nhost d, \<a \\\<b\\\> \\\{c\\\}\>\nhost e, 31\nhost f, 2.0\n>
+
+test <an anchor expands and a later key wins>
+  want hold
+    call is-equal
+      call write(call read(text <tree base\n  host env, \<prod\>\n  host retries, 3\n\nhost one\n  fuse base\nhost two\n  fuse base\n  host env, \<dev\>\n>))
+      text <host one\n  host env, \<prod\>\n  host retries, 3\nhost two\n  host env, \<dev\>\n  host retries, 3\n>
+
+test <anchors are kept when asked>
+  save file
+    call read-raw(text <tree base\n  host env, \<prod\>\n\nhost one\n  fuse base\n>)
+  want hold
+    call is-equal
+      call pack(read file/root, read file/trees)
+      text <t(base,h(env,\<prod\>))\nh(one,f(base))\n>
+
+# a found value as text, `none` when there is none, so a test can compare
+task found-text
+  take found, like maybe
+  like text
+  fork case, read found
+    case none
+      send back, text <none>
+    case some
+      link value
+      send back
+        call write(read value)
+
+load @term/seed/code/maybe
+  find maybe
+
+test <get-at follows a path>
+  want hold
+    call is-equal
+      call found-text(call get-at(call read(text <host x\n  list member\n    mesh\n      host name, \<foo\>\n    mesh\n      host name, \<bar\>\n>), text <x/member/1/name>))
+      text <\<bar\>\n>
+
+test <get-at gives none for a missing key>
+  want hold
+    call is-equal
+      call found-text(call get-at(call read(text <host x, 1\n>), text <y>))
+      text <none>
+
+test <fill takes a value that fits>
+  save filled
+    call fill(call read(text <host a, 1\nhost b, \<x\>\n>), call read(text <host a, \<number\>\nhost b, \<text\>\nhost c, \<text?\>\n>))
+  want hold
+    call is-equal(call write(call melt(read filled)), text <host a, 1\nhost b, \<x\>\n>)
+
+load ../code/base
+  find melt
+
+test <fill refuses a value that does not fit, naming the path>
+  save refused, text <>
+  note unsafe
+    call fill(call read(text <host a\n  list b\n    1, \<x\>\n>), call read(text <host a\n  list b\n    \<number\>\n>))
+  halt take
+    take problem
+    save refused, read problem/link/path
+  want hold
+    call is-equal(read refused, text <a/b/1>)
+
+test <text that is not data is a defect naming the rule>
+  save rule, text <>
+  note unsafe
+    call read(text <host x, 1, 2\n>)
+  halt take
+    take problem
+    save rule, read problem/link/rule
+  want hold
+    call is-equal(read rule, text <"x" has 2 values. A list is written "list x">)
+
+test <a stream reads line by line, a later anchor replacing the earlier>
+  want hold
+    call is-equal
+      call write(call read-lines(text <t(a,h(x,1))\nh(p,f(a))\n\n# later\nt(a,h(x,2))\nh(q,f(a))\n>))
+      text <host p\n  host x, 1\nhost q\n  host x, 2\n>
+
+test <a stream writer declares an anchor before the line that fuses it>
+  save file
+    call read-raw(text <tree base\n  host env, \<prod\>\n\ntree unused\n  host a, 1\n\nhost one\n  fuse base\n>)
+  want hold
+    call is-equal
+      call write-lines(read file/root, read file/trees)
+      text <t(base,h(env,\<prod\>))\nh(one,f(base))\n>

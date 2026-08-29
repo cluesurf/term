@@ -22,4 +22,14 @@ mod json {
     pub fn from_number(value: f64) -> Value { serde_json::json!(value) }
     pub fn from_boolean(value: bool) -> Value { Value::Bool(value) }
     pub fn make_null() -> Value { Value::Null }
+    // the shape questions: what a parsed value is, so a reader can walk it without guessing
+    pub fn is_array(value: Value) -> bool { value.is_array() }
+    pub fn is_object(value: Value) -> bool { value.is_object() }
+    pub fn is_text(value: Value) -> bool { value.is_string() }
+    pub fn is_boolean(value: Value) -> bool { value.is_boolean() }
+    pub fn array_size(value: Value) -> i64 { value.as_array().map(|items| items.len() as i64).unwrap_or(0) }
+    pub fn array_item(value: Value, index: i64) -> Value { get_item(value, index) }
+    pub fn object_keys(value: Value) -> Vec<String> {
+        value.as_object().map(|map| map.keys().cloned().collect()).unwrap_or_default()
+    }
 }

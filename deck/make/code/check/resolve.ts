@@ -25,6 +25,10 @@ export type Scope = Map<string, Binding>
 // the JS intrinsics the generated bindings (bind.tree's native.tree) use to express operators, control flow, and
 // dynamic member access. They are not user definitions; the backend lowers them to real operations. Always in scope.
 const INTRINSICS = [
+  // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: lowered by the emitter from the
+  // form's fields (see code/compile/node.ts, `into` on a call)
+  'fill-form',
+  'melt-form',
   'native-test',
   'native-test-else',
   'debug',

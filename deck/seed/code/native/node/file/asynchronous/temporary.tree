@@ -18,7 +18,7 @@ task make
       call os/tmpdir
       read prefix
 
-  fork test, call is-equal, read kind, text <directory>
+  fork test, call is-equal(read kind, text <directory>)
     hook hold
       send back
         call fs-promise/mkdtemp

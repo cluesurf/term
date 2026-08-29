@@ -130,7 +130,7 @@ task make-utf-8-from-utf-16
                 call increment
                   read size
                   code 3
-  save head-text, make array, read size
+  save head-text, make array(read size)
   save i, code 0
   walk test
     hook test
@@ -179,7 +179,7 @@ task make-utf-8-from-utf-16
                         read l
                         code 0x2400
                   save tmp, read j
-                  save j, call increment, read j
+                  save j, call increment(read j)
                   save head-text/{tmp}
                     call bitwise-or
                       code 0xF0
@@ -187,7 +187,7 @@ task make-utf-8-from-utf-16
                         read cp
                         code 0x12
                   save tmp, read j
-                  save j, call increment, read j
+                  save j, call increment(read j)
                   save head-text/{tmp}
                     call bitwise-or
                       code 0x80
@@ -197,7 +197,7 @@ task make-utf-8-from-utf-16
                           code 0x0C
                         code 0x3F
                   save tmp, read j
-                  save j, call increment, read j
+                  save j, call increment(read j)
                   save head-text/{tmp}
                     call bitwise-or
                       code 0x80
@@ -207,7 +207,7 @@ task make-utf-8-from-utf-16
                           code 0x06
                         code 0x3F
                   save tmp, read j
-                  save j, call increment, read j
+                  save j, call increment(read j)
                   save head-text/{tmp}
                     call bitwise-or
                       code 0x80
@@ -216,23 +216,23 @@ task make-utf-8-from-utf-16
                         code 0x3F
                 hook miss
                   save tmp, read j
-                  save j, call increment, read j
+                  save j, call increment(read j)
                   save head-text/{tmp}, code 0xEF
                   save tmp, read j
-                  save j, call increment, read j
+                  save j, call increment(read j)
                   save head-text/{tmp}, code 0xBF
                   save tmp, read j
-                  save j, call increment, read j
+                  save j, call increment(read j)
                   save head-text/{tmp}, code 0xBD
             hook miss
               save tmp, read j
-              save j, call increment, read j
+              save j, call increment(read j)
               save head-text/{tmp}, code 0xEF
               save tmp, read j
-              save j, call increment, read j
+              save j, call increment(read j)
               save head-text/{tmp}, code 0xBF
               save tmp, read j
-              save j, call increment, read j
+              save j, call increment(read j)
               save head-text/{tmp}, code 0xBD
         hook miss
           fork test
@@ -242,7 +242,7 @@ task make-utf-8-from-utf-16
                 code 0x80
             hook hold
               save tmp, read j
-              save j, call increment, read j
+              save j, call increment(read j)
               save head-text/{tmp}, read h
           fork test
             hook test
@@ -251,7 +251,7 @@ task make-utf-8-from-utf-16
                 code 0x800
             hook hold
               save tmp, read j
-              save j, call increment, read j
+              save j, call increment(read j)
               save head-text/{tmp}
                 call bitwise-or
                   code 0xC0
@@ -259,7 +259,7 @@ task make-utf-8-from-utf-16
                     read h
                     code 6
               save tmp, read j
-              save j, call increment, read j
+              save j, call increment(read j)
               save head-text/{tmp}
                 call bitwise-or
                   code 0x80
@@ -277,7 +277,7 @@ task make-utf-8-from-utf-16
                 code 0x10000
             hook hold
               save tmp, read j
-              save j, call increment, read j
+              save j, call increment(read j)
               save head-text/{tmp}
                 call bitwise-or
                   code 0xE0
@@ -285,7 +285,7 @@ task make-utf-8-from-utf-16
                     read h
                     code 0xC
               save tmp, read j
-              save j, call increment, read j
+              save j, call increment(read j)
               save head-text/{tmp}
                 call bitwise-or
                   code 0x80
@@ -295,7 +295,7 @@ task make-utf-8-from-utf-16
                       code 0x6
                     code 0x3F
               save tmp, read j
-              save j, call increment, read j
+              save j, call increment(read j)
               save head-text/{tmp}
                 call bitwise-or
                   code 0x80
@@ -358,7 +358,7 @@ task make-utf-16-from-utf-8
         read text/length
     hook step
       save point, code 0
-      fork case, call decode-byte, read text/{i}
+      fork case, call decode-byte(read text/{i})
         fork case
         case 0, bust case
         case 1
@@ -383,7 +383,7 @@ task make-utf-16-from-utf-8
                         code 0xc0
                       code 0x80
             hook step
-              save i, call increment, read i
+              save i, call increment(read i)
           save state, read point
           roll decode-byte-walk
         roll decode-byte-walk
@@ -409,7 +409,7 @@ task make-utf-16-from-utf-8
                 read point
                 code 0x3ff
       save point, code 0
-      save i, call increment, read i
+      save i, call increment(read i)
 
   send back, read head-text
 

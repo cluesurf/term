@@ -7,6 +7,13 @@ enum json {
         return value
     }
     static func stringify(_ value: Any) -> String {
+        // a bare number spells the way JSON does everywhere else: the shortest digits that read back to the same
+        // value (`6.8`, not the seventeen digits JSONSerialization writes), a whole one without a point
+        if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() {
+            let double = number.doubleValue
+            if double == double.rounded(), abs(double) < 1e15 { return String(Int(double)) }
+            return String(double)
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]) else { return "" }
         return String(data: data, encoding: .utf8) ?? ""
     }
@@ -35,4 +42,15 @@ enum json {
     static func fromNumber(_ value: Double) -> Any { return value }
     static func fromBoolean(_ value: Bool) -> Any { return value }
     static func makeNull() -> Any { return NSNull() }
+    // the shape questions: what a parsed value is, so a reader can walk it without guessing
+    static func isArray(_ value: Any) -> Bool { return value is [Any] }
+    static func isObject(_ value: Any) -> Bool { return value is [String: Any] }
+    static func isText(_ value: Any) -> Bool { return value is String }
+    static func isBoolean(_ value: Any) -> Bool {
+        guard let number = value as? NSNumber else { return false }
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
+    }
+    static func arraySize(_ value: Any) -> Int { return (value as? [Any])?.count ?? 0 }
+    static func arrayItem(_ value: Any, _ index: Int) -> Any { return getItem(value, index) }
+    static func objectKeys(_ value: Any) -> [String] { return (value as? [String: Any]).map { Array($0.keys) } ?? [] }
 }

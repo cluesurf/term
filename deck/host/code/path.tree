@@ -1,0 +1,169 @@
+# Reaching into a value: `get-at` follows a path like `<vars/dev-service/config/version>` (a list index is a
+# number segment), `to-hash` gives a map's entries as a stdlib hash keyed by name.
+
+load @term/seed/code/list
+  find size
+  find get
+
+load @term/seed/code/text
+  find split
+  find char-code-at
+
+load @term/seed/code/maybe
+  find maybe
+
+load @term/seed/code/hash
+  find hash
+  find set
+
+load ./base
+  find data
+  find data-entry
+
+task get-at
+  take value, like data
+  take path, like text
+  like maybe
+  save here, read value
+  walk list
+    call split(read path, text </>)
+    hook next
+      take site, name part
+      save next
+        call step(read here, read part)
+      fork case, read next
+        case none
+          send back
+            make none
+        case some
+          link found
+          save here, read found
+  send back
+    make some
+      bind value, read here
+
+# one segment: a key of a map, or an index of a list
+task step
+  note private
+  take here, like data
+  take part, like text
+  like maybe
+  fork case, read here
+    case hash
+      link list
+      walk list
+        read list
+        hook next
+          take site, name entry
+          fork test
+            hook test
+              call is-equal(read entry/name, read part)
+            hook hold
+              send back
+                make some
+                  bind value, read entry/base
+      send back
+        make none
+    case array
+      link list
+      save index
+        call parse-index(read part)
+      fork case, read index
+        case none
+          send back
+            make none
+        case some
+          link at
+          fork test
+            hook test
+              call is-below(read at, call size(read list))
+            hook hold
+              send back
+                make some
+                  bind value, call get(read list, read at)
+          send back
+            make none
+    case text
+      send back
+        make none
+    case number
+      send back
+        make none
+    case decimal
+      send back
+        make none
+    case flag
+      send back
+        make none
+    case blank
+      send back
+        make none
+    case graft
+      send back
+        make none
+
+# digits only, or none
+task parse-index
+  note private
+  take part, like text
+  like maybe
+  fork test
+    hook test
+      call is-equal(read part/length, code 0)
+    hook hold
+      send back
+        make none
+  save out, code 0
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, read part/length)
+    hook hold
+      save code
+        call char-code-at(read part, read index)
+      fork test
+        hook test
+          call or
+            call is-below(read code, code 48)
+            call is-above(read code, code 57)
+        hook hold
+          send back
+            make none
+      save out
+        call add(call multiply(read out, code 10), call subtract(read code, code 48))
+      save index
+        call add(read index, code 1)
+  send back
+    make some
+      bind value, read out
+
+task to-hash
+  take value, like data
+  like hash
+    like text
+    like data
+  save out
+    make find
+  fork case, read value
+    case hash
+      link list
+      walk list
+        read list
+        hook next
+          take site, name entry
+          call set(read out, read entry/name, read entry/base)
+    case array
+      send back, read out
+    case text
+      send back, read out
+    case number
+      send back, read out
+    case decimal
+      send back, read out
+    case flag
+      send back, read out
+    case blank
+      send back, read out
+    case graft
+      send back, read out
+  send back, read out

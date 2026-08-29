@@ -1,0 +1,336 @@
+# Streams: one compact form per line. A reader keeps the anchor table and expands each line as it arrives, so
+# memory is one line plus the anchors however long the stream runs. A writer emits a `t(` line the first time a
+# value fuses an anchor, and the compact line for the value. Text channels carry lines, so a reader over a channel
+# hands every received line to `feed`. See note/term/host/07-streaming.md.
+
+load @term/seed/code/boolean
+  find not
+
+load @term/seed/code/list
+  find push
+  find size
+  find get
+  find set
+  find contains
+
+load @term/seed/code/text
+  find trim
+  find starts-with
+  find split
+
+load @term/seed/code/text/string
+  find concat
+
+load @term/seed/code/maybe
+  find maybe
+
+load ./base
+  find data
+  find data-entry
+  find data-tree
+  find data-file
+  find data-defect
+
+load ./read
+  find read-raw
+
+load ./fuse
+  find expand-with
+
+load ./write
+  find pack
+
+# the state of a reader: the anchors declared so far, what the stream is (`<hash>` of `h(` entries or `<list>` of
+# `m(` items, `<>` until the first data line), and how many data lines it has taken
+form stream-reader
+  link trees
+    like list
+      like data-tree
+  link hold, like text
+  link count, like number
+
+task make-reader
+  like stream-reader
+  send back
+    make stream-reader
+      bind trees, make list
+      bind hold, text <>
+      bind count, code 0
+
+# one line in, the data it carries out: `none` for a blank line, a comment, or a `t(` line, which only changes the
+# table. A `t(` with a name already declared replaces it from this line on
+task feed
+  take reader, like stream-reader
+  take line, like text
+  like maybe
+  save clean
+    call trim(read line)
+  fork test
+    hook test
+      call or
+        call is-equal(read clean/length, code 0)
+        call starts-with(read clean, text <#>)
+    hook hold
+      send back
+        make none
+  save file
+    call read-raw(read clean)
+  walk list
+    read file/trees
+    hook next
+      take site, name anchor
+      call put-tree(read reader/trees, read anchor)
+  save kind
+    call kind-of(read file/root)
+  fork test
+    hook test
+      call is-equal(read kind, text <>)
+    hook hold
+      send back
+        make none
+  fork test
+    hook test
+      call is-equal(read reader/hold, text <>)
+    hook hold
+      save reader/hold, read kind
+  fork test
+    hook test
+      call not(call is-equal(read reader/hold, read kind))
+    hook hold
+      halt data-defect
+        bind rule, text <a stream is a map of h( entries or a list of m( items, never both>
+        bind line, call add(read reader/count, code 1)
+  save reader/count
+    call add(read reader/count, code 1)
+  send back
+    make some
+      bind value
+        call expand-with(read file/root, read reader/trees)
+
+# what a line's value is: `<hash>` for entries, `<list>` for items, `<>` for a line that carried no data
+task kind-of
+  note private
+  take value, like data
+  like text
+  fork case, read value
+    case hash
+      link list
+      fork test
+        hook test
+          call is-equal(call size(read list), code 0)
+        hook hold
+          send back, text <>
+      send back, text <hash>
+    case array
+      send back, text <list>
+    case text
+      send back, text <scalar>
+    case number
+      send back, text <scalar>
+    case decimal
+      send back, text <scalar>
+    case flag
+      send back, text <scalar>
+    case blank
+      send back, text <scalar>
+    case graft
+      send back, text <scalar>
+
+# an anchor into the table, replacing one of the same name
+task put-tree
+  note private
+  take trees
+    like list
+      like data-tree
+  take anchor, like data-tree
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, call size(read trees))
+    hook hold
+      save present
+        call get(read trees, read index)
+      fork test
+        hook test
+          call is-equal(read present/name, read anchor/name)
+        hook hold
+          call set(read trees, read index, read anchor)
+          send back
+      save index
+        call add(read index, code 1)
+  call push(read trees, read anchor)
+
+# a whole stream held as text: every line through one reader, the entries or items gathered into one value
+task read-lines
+  take input, like text
+  like data
+  save reader
+    call make-reader
+  save entries
+    make list
+  save items
+    make list
+  walk list
+    call split(read input, text <\n>)
+    hook next
+      take site, name line
+      save found
+        call feed(read reader, read line)
+      fork case, read found
+        case none
+          turn next
+        case some
+          link value
+          fork case, read value
+            case hash
+              link list
+              walk list
+                read list
+                hook next
+                  take site, name entry
+                  call push(read entries, read entry)
+            case array
+              link list
+              walk list
+                read list
+                hook next
+                  take site, name item
+                  call push(read items, read item)
+            case text
+              turn next
+            case number
+              turn next
+            case decimal
+              turn next
+            case flag
+              turn next
+            case blank
+              turn next
+            case graft
+              turn next
+  fork test
+    hook test
+      call is-equal(read reader/hold, text <list>)
+    hook hold
+      send back
+        make array
+          bind list, read items
+  send back
+    make hash
+      bind list, read entries
+
+# the state of a writer: the names of the anchors it has emitted
+form stream-writer
+  link sent
+    like list
+      like text
+
+task make-writer
+  like stream-writer
+  send back
+    make stream-writer
+      bind sent, make list
+
+# a value as the lines a stream carries: a `t(` line for every anchor the value fuses that this writer has not
+# emitted yet (declared before the value, deepest first), then the value's own compact line, one per entry or item
+task emit
+  take writer, like stream-writer
+  take value, like data
+  take trees
+    like list
+      like data-tree
+    fall make list
+  like text
+  save needed
+    make list
+  call collect-trees(read value, read trees, read writer/sent, read needed)
+  save head
+    text <>
+  fork test
+    hook test
+      call is-above(call size(read needed), code 0)
+    hook hold
+      save head
+        call pack
+          make hash
+            bind list, make list
+          read needed
+  send back
+    call concat(read head, call pack(read value))
+
+# every anchor a value fuses, not yet sent, with the anchors those fuse before them
+task collect-trees
+  note private
+  take value, like data
+  take trees
+    like list
+      like data-tree
+  take sent
+    like list
+      like text
+  take needed
+    like list
+      like data-tree
+  fork case, read value
+    case graft
+      link name
+      fork test
+        hook test
+          call contains(read sent, read name)
+        hook hold
+          send back
+      call push(read sent, read name)
+      walk list
+        read trees
+        hook next
+          take site, name anchor
+          fork test
+            hook test
+              call is-equal(read anchor/name, read name)
+            hook hold
+              walk list
+                read anchor/entries
+                hook next
+                  take site, name entry
+                  call collect-trees(read entry/base, read trees, read sent, read needed)
+              walk list
+                read anchor/items
+                hook next
+                  take site, name item
+                  call collect-trees(read item, read trees, read sent, read needed)
+              call push(read needed, read anchor)
+    case hash
+      link list
+      walk list
+        read list
+        hook next
+          take site, name entry
+          call collect-trees(read entry/base, read trees, read sent, read needed)
+    case array
+      link list
+      walk list
+        read list
+        hook next
+          take site, name item
+          call collect-trees(read item, read trees, read sent, read needed)
+    case text
+      send back
+    case number
+      send back
+    case decimal
+      send back
+    case flag
+      send back
+    case blank
+      send back
+
+# a whole value as a stream held as text, through one writer
+task write-lines
+  take value, like data
+  take trees
+    like list
+      like data-tree
+    fall make list
+  like text
+  send back
+    call emit(call make-writer, read value, read trees)

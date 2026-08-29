@@ -44,7 +44,7 @@ say "bind"
 # `.zone.tree` path, whose fixture declares `sort development`. The default
 # is now `moon`, which is what the zone.tree world calls the same thing.
 out=$(zone bind --mind lance --host e2ebox --team cluesurf --sort development); echo "$out"
-[ -f "$SBOX/.config/zone/zone.tree" ] && ok "config written" || no "config missing"
+[ -f "$SBOX/.base/@term/zone/zone.tree" ] && ok "config written" || no "config missing"
 
 say "show (env store, code present via ZONE_CODE)"
 out=$(zone show); echo "$out"

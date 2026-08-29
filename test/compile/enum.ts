@@ -111,6 +111,16 @@ async function main(): Promise<void> {
     if (d) {console.log(`      (${d.message})`)}
   }
 
+  // a literal index is a plain path segment, spelled with brackets on the way out
+  const indexed = compile({
+    file: 'i.tree',
+    text: 'task first\n  take items, like list\n    like number\n  like number\n  send back, read items/0\n',
+  })
+  ok(
+    'a literal index reads with brackets',
+    indexed.ok && indexed.typescript.includes('return items[0]'),
+  )
+
   console.log(`\nenum: ${pass} pass, ${fail} fail`)
 }
 

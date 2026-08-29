@@ -1,0 +1,94 @@
+# The host dialect: Term data. Five heads and six literals, no code. The compact heads (`h`, `l`, `m`, `t`, `f`)
+# are the same grammar with a shorter spelling. See note/term/host/05-parser-and-mill.md.
+
+mine host
+  mine list
+    mine any
+      mine form, like host-tree
+        site tree
+      mine form, like host-entry
+        site entry
+      mine form, like host-mesh
+        site mesh
+
+mine host-entry
+  mine any
+    mine form, like host-host
+      site host
+    mine form, like host-list
+      site list
+    mine form, like host-fuse
+      site fuse
+
+# `host <key>` with one scalar is a scalar entry; with `host` / `list` / `fuse` children it is a map; with neither
+# it is an empty map
+mine host-host
+  mine term, term host
+    mine term
+      site name
+    mine maybe
+      mine form, like host-scalar
+        site value
+    mine list
+      mine form, like host-entry
+        site entry
+
+# `list <key>` is an entry whose value is a list; `list` without a key is a nested list item
+mine host-list
+  mine term, term list
+    mine maybe
+      mine term
+        site name
+    mine list
+      mine form, like host-item
+        site item
+
+# `mesh` is one map inside a list, with no key of its own
+mine host-mesh
+  mine term, term mesh
+    mine list
+      mine form, like host-entry
+        site entry
+
+mine host-item
+  mine any
+    mine form, like host-scalar
+      site scalar
+    mine form, like host-mesh
+      site mesh
+    mine form, like host-list
+      site list
+    mine form, like host-fuse
+      site fuse
+
+# `tree <name>` is an anchor: entries to fuse into a map, or items to fuse into a list
+mine host-tree
+  mine term, term tree
+    mine term
+      site name
+    mine list
+      mine any
+        mine form, like host-entry
+          site entry
+        mine form, like host-item
+          site item
+
+# `fuse <name>` splices the anchor's content here
+mine host-fuse
+  mine term, term fuse
+    mine term
+      site name
+
+# the six literals
+mine host-scalar
+  mine any
+    mine text
+      site text
+    mine code
+      site number
+    mine term, term true
+      site true
+    mine term, term false
+      site false
+    mine term, term void
+      site void

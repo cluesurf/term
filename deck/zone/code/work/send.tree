@@ -218,6 +218,7 @@ task post
 
   save bond-got
     call read-bond
+      bind hold, text <>
       wait true
   fork test
     hook test

@@ -61,6 +61,7 @@ task toss
 
   save bond
     call read-bond
+      bind hold, text <>
   fork test
     hook test
       call is-none

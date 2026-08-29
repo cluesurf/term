@@ -25,7 +25,7 @@ task fnv-hash-32-1a
         read i
         read n
     hook hold
-      save c, call v/get, read i
+      save c, call v/get(read i)
       save d
         call bitwise-and
           read c
@@ -49,8 +49,10 @@ task fnv-hash-32-1a
             call bitwise-and
               read c
               code 0xff
-      save i, call increment, read i
-  send back, call fnv-hash-32-mixer, read a
+      save i, call increment(read i)
+  send back
+    call fnv-hash-32-mixer
+      read a
 
 task fnv-hash-32-mixer
   take a

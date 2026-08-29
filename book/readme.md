@@ -23,6 +23,7 @@ The core of the language. If you want to know how to write *anything*, it is her
 - [loops](language/loops.md) -- `walk`: lists, ranges, while
 - [collections](language/collections.md) -- lists, maps, sets and their operations
 - [errors](language/errors.md) -- `halt <form>`, `halt kink`, `note unsafe`: raising, passing on, catching
+- [data](language/data.md) -- `host`, `list`, `mesh`, `tree`, `fuse`: the data format, long and compact
 - [traits](language/traits.md) -- `mask`: shared behavior across types
 - [templates](language/templates.md) -- `tree` / `fuse`: compile-time code generation
 - [modules](language/modules.md) -- `load` / `find`: imports, packages, visibility

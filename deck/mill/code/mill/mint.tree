@@ -35,6 +35,8 @@ mint mill-mine-child
     site any
   case text
     site text
+  case code
+    site code
   case path
     site path
   case form, mint mill-mine-form

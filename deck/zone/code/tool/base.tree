@@ -130,6 +130,18 @@ bind have-env
   case node
     text <process.env[$name] !== undefined>
 
+# One environment variable, or a fallback when it is unset or empty.
+#
+# `have-env` answers whether a name is set; this answers with the value, so a
+# caller that wants a setting rather than a presence does not have to reach
+# for `process.env` itself.
+bind read-env
+  take name, like text
+  take gift, like text
+  like text
+  case node
+    text <(function () { var v = process.env[$name]; return (v === undefined || v === "") ? $gift : v })()>
+
 # The moment, as an ISO timestamp. A cache header carries `made` and `good`
 # in this form, which sorts and compares as plain text, so freshness needs no
 # date arithmetic and no timezone.

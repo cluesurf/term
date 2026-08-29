@@ -87,6 +87,7 @@ task split
   take value, like text
   take delimiter, like text
   like list
+    like text
   send back
     call value/split
       read delimiter

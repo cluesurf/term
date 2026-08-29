@@ -1,0 +1,3 @@
+# "x" has a value and children. A scalar entry has one, a map entry has the other
+host x, 1
+  host y, 2

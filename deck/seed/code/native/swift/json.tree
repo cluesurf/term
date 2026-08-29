@@ -118,3 +118,55 @@ task do-make-null
   like dynamic
   send back
     call json/make-null
+
+task do-is-array
+  take value, like dynamic
+  like boolean
+  send back
+    call json/is-array
+      read value
+
+task do-is-object
+  take value, like dynamic
+  like boolean
+  send back
+    call json/is-object
+      read value
+
+task do-is-text
+  take value, like dynamic
+  like boolean
+  send back
+    call json/is-text
+      read value
+
+task do-is-boolean
+  take value, like dynamic
+  like boolean
+  send back
+    call json/is-boolean
+      read value
+
+task do-array-size
+  take value, like dynamic
+  like number
+  send back
+    call json/array-size
+      read value
+
+task do-array-item
+  take value, like dynamic
+  take index, like number
+  like dynamic
+  send back
+    call json/array-item
+      read value
+      read index
+
+task do-object-keys
+  take value, like dynamic
+  like list
+    like text
+  send back
+    call json/object-keys
+      read value

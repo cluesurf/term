@@ -17,7 +17,7 @@ Maps to: functions, methods, and closures in Rust / Swift / TypeScript.
 | `like T` | the return type | `like number` |
 | `send back, v` | return a value | `send back, read total` |
 | `send back` + body | return a value that has children | `send back` then a `call`/`make` block below |
-| `call f` + value children | invoke a function with positional args | `call add` then `read x` and `read y` indented |
+| `call f, a, b` / `call f(a, b)` | invoke a function with positional args | `call add, read x, read y` |
 | `call f` + `bind p, v` children | invoke with named args, any order | `call scale` then `bind shift, code 1` |
 | `call x/method, a` | invoke a method on a value | `call list/push, read item` |
 | `head t` | a type parameter (generic) | `head t` |
@@ -26,7 +26,7 @@ Maps to: functions, methods, and closures in Rust / Swift / TypeScript.
 | `note private` | hide the task from other modules | `note private` |
 
 Notes that catch people out:
-- Call arguments are `read`/value children, one per line. A comma chain nests (`call add, read a, read b` gives `add` ONE argument), so put each argument on its own indented line.
+- Call arguments are `read`/value children: one per indented line, comma separated on one line (`call add, read a, read b`), or inside parentheses after the callee (`call add(read a, read b)`). A comma returns to the head of the line, so all three are the same two-argument call.
 - A `bind <name>, <value>` child names the argument. Named and positional mix: positional fill the next open position, named go where they belong. A name the task does not have, a name given twice, or a name on a `slot` parameter is a build error.
 - A parameter with `fall` fills in when the call leaves it out, in any position. One with `need false` and no `fall` may only be left out at the end.
 - A `slot` parameter is positional only. Use it when the order is the meaning (`pair`, `at`), so nobody reorders the parameters and breaks every caller.

@@ -51,6 +51,7 @@ task vet
 
   save bond
     call read-bond
+      bind hold, text <>
   call mark-test
     bind name, text <binding>
     bind good

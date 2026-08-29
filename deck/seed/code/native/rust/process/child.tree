@@ -23,7 +23,7 @@ task stop
   take child, like child
   take form, like text, fall text <gentle>
 
-  fork test, call is-equal, read form, text <force>
+  fork test, call is-equal(read form, text <force>)
     hook hold
       call child/dock/kill
         halt kink
@@ -62,7 +62,7 @@ task read
 
   save buf, make string
 
-  fork test, call is-equal, read kind, text <stderr>
+  fork test, call is-equal(read kind, text <stderr>)
     hook hold
       save stream
         call child/dock/stderr/as-mut
@@ -86,7 +86,7 @@ task stream
   like list
 
   save source
-    fork test, call is-equal, read kind, text <stderr>
+    fork test, call is-equal(read kind, text <stderr>)
       hook hold
         save s
           call child/dock/stderr/take

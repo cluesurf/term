@@ -1,0 +1,404 @@
+# Anchors: expand every `fuse` in a data file against its `tree`s. Later keys win, a cycle is refused, and a tree of
+# entries cannot be fused into a list or the other way round. See note/term/host/03-anchors.md.
+
+load @term/seed/code/list
+  find push
+  find size
+  find get
+  find set
+
+load @term/seed/code/text/string
+  find concat
+
+load ./node
+  find quote
+
+load @term/seed/code/list
+  find join
+
+load ./base
+  find data
+  find data-entry
+  find data-tree
+  find data-file
+  find data-defect
+
+task expand
+  take file, like data-file
+  like data
+  save expanding
+    make list
+  send back
+    call expand-value
+      read file/root
+      read file/trees
+      read expanding
+
+# a value expanded against an anchor table kept elsewhere (a stream reader's), the anchors as `data-tree` values
+task expand-with
+  take value, like data
+  take trees
+    like list
+      like data-tree
+  like data
+  save expanding
+    make list
+  send back
+    call expand-value
+      read value
+      read trees
+      read expanding
+
+task find-tree
+  note private
+  take trees
+    like list
+      like data-tree
+  take name, like text
+  like maybe
+  walk list
+    read trees
+    hook next
+      take site, name anchor
+      fork test
+        hook test
+          call is-equal(read anchor/name, read name)
+        hook hold
+          send back
+            make some
+              bind value, read anchor
+  send back
+    make none
+
+task expand-value
+  note private
+  take value, like data
+  take trees
+    like list
+      like data-tree
+  take expanding
+    like list
+      like text
+  like data
+  fork case, read value
+    case hash
+      link list
+      send back
+        make hash
+          bind list
+            call expand-entries
+              read list
+              read trees
+              read expanding
+    case array
+      link list
+      send back
+        make array
+          bind list
+            call expand-items
+              read list
+              read trees
+              read expanding
+    case graft
+      link name
+      halt data-defect
+        bind rule
+          call concat
+            call quote(read name)
+            text < is fused where a value belongs>
+        bind line, code 0
+    case text
+      link content
+      send back, read value
+    case number
+      link content
+      send back, read value
+    case decimal
+      link content
+      send back, read value
+    case flag
+      link content
+      send back, read value
+    case blank
+      send back, read value
+
+# later wins: an entry with a key already present replaces it in place
+task replace
+  note private
+  take out
+    like list
+      like data-entry
+  take entry, like data-entry
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, call size(read out))
+    hook hold
+      save present
+        call get(read out, read index)
+      fork test
+        hook test
+          call is-equal(read present/name, read entry/name)
+        hook hold
+          call set(read out, read index, read entry)
+          send back
+      save index
+        call add(read index, code 1)
+  call push
+    read out
+    read entry
+
+task guard-cycle
+  note private
+  take expanding
+    like list
+      like text
+  take name, like text
+  walk list
+    read expanding
+    hook next
+      take site, name open
+      fork test
+        hook test
+          call is-equal(read open, read name)
+        hook hold
+          save chain
+            call copy(read expanding)
+          call push(read chain, read name)
+          halt data-defect
+            bind rule
+              call concat
+                call quote(read name)
+                call concat
+                  text < fuses itself through >
+                  call join(read chain, text <, >)
+            bind line, code 0
+
+task expand-entries
+  note private
+  take list
+    like list
+      like data-entry
+  take trees
+    like list
+      like data-tree
+  take expanding
+    like list
+      like text
+  like list
+    like data-entry
+  save out
+    make list
+  walk list
+    read list
+    hook next
+      take site, name entry
+      fork case, read entry/base
+        case graft
+          link name
+          save found
+            call find-tree
+              read trees
+              read name
+          fork case, read found
+            case none
+              halt data-defect
+                bind rule
+                  call concat
+                    call quote(read name)
+                    text < is fused but no tree declares it>
+                bind line, code 0
+            case some
+              link value
+              fork test
+                hook test
+                  call is-equal(read value/hold, text <list>)
+                hook hold
+                  halt data-defect
+                    bind rule
+                      call concat
+                        call quote(read name)
+                        text < holds list items and is fused into a map>
+                    bind line, code 0
+              call guard-cycle
+                read expanding
+                read name
+              call push
+                read expanding
+                read name
+              save fused
+                call expand-entries
+                  read value/entries
+                  read trees
+                  read expanding
+              call pop-last
+                read expanding
+              walk list
+                read fused
+                hook next
+                  take site, name one
+                  call replace
+                    read out
+                    read one
+        case hash
+          call replace
+            read out
+            make data-entry
+              bind name, read entry/name
+              bind base
+                call expand-value
+                  read entry/base
+                  read trees
+                  read expanding
+        case array
+          call replace
+            read out
+            make data-entry
+              bind name, read entry/name
+              bind base
+                call expand-value
+                  read entry/base
+                  read trees
+                  read expanding
+        case text
+          call replace
+            read out
+            read entry
+        case number
+          call replace
+            read out
+            read entry
+        case decimal
+          call replace
+            read out
+            read entry
+        case flag
+          call replace
+            read out
+            read entry
+        case blank
+          call replace
+            read out
+            read entry
+  send back, read out
+
+task expand-items
+  note private
+  take list
+    like list
+      like data
+  take trees
+    like list
+      like data-tree
+  take expanding
+    like list
+      like text
+  like list
+    like data
+  save out
+    make list
+  walk list
+    read list
+    hook next
+      take site, name item
+      fork case, read item
+        case graft
+          link name
+          save found
+            call find-tree
+              read trees
+              read name
+          fork case, read found
+            case none
+              halt data-defect
+                bind rule
+                  call concat
+                    call quote(read name)
+                    text < is fused but no tree declares it>
+                bind line, code 0
+            case some
+              link value
+              fork test
+                hook test
+                  call is-equal(read value/hold, text <hash>)
+                hook hold
+                  halt data-defect
+                    bind rule
+                      call concat
+                        call quote(read name)
+                        text < holds map entries and is fused into a list>
+                    bind line, code 0
+              call guard-cycle
+                read expanding
+                read name
+              call push
+                read expanding
+                read name
+              save fused
+                call expand-items
+                  read value/items
+                  read trees
+                  read expanding
+              call pop-last
+                read expanding
+              walk list
+                read fused
+                hook next
+                  take site, name one
+                  call push
+                    read out
+                    read one
+        case hash
+          call push
+            read out
+            call expand-value
+              read item
+              read trees
+              read expanding
+        case array
+          call push
+            read out
+            call expand-value
+              read item
+              read trees
+              read expanding
+        case text
+          call push
+            read out
+            read item
+        case number
+          call push
+            read out
+            read item
+        case decimal
+          call push
+            read out
+            read item
+        case flag
+          call push
+            read out
+            read item
+        case blank
+          call push
+            read out
+            read item
+  send back, read out
+
+task pop-last
+  note private
+  take list
+    like list
+      like text
+  fork test
+    hook test
+      call is-above(call size(read list), code 0)
+    hook hold
+      call pop
+        read list
+
+load @term/seed/code/list
+  find pop
+  find copy
+
+load @term/seed/code/maybe
+  find maybe

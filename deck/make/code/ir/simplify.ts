@@ -322,7 +322,7 @@ function propagateStatement(
         ...node,
         subject: sub(node.subject),
         cases: node.cases.map(c => ({
-          label: c.label,
+          ...c,
           body: propagateConstants(c.body, env, safe, assigned),
         })),
         otherwise: node.otherwise
@@ -576,7 +576,7 @@ function dropDeadBindings(
         {out.push({
           ...s,
           cases: s.cases.map(c => ({
-            label: c.label,
+            ...c,
             body: prune(c.body),
           })),
           otherwise: s.otherwise ? prune(s.otherwise) : undefined,
@@ -773,7 +773,7 @@ function substituteStmt(
         ...node,
         subject: substituteExpr(node.subject, subst),
         cases: node.cases.map(c => ({
-          label: c.label,
+          ...c,
           body: body(c.body),
         })),
         otherwise: node.otherwise ? body(node.otherwise) : undefined,
@@ -1172,7 +1172,7 @@ function simplifyStatementSplice(node: Statement): Statement[] {
       ...node,
       subject,
       cases: node.cases.map(c => ({
-        label: c.label,
+        ...c,
         body: simplifyBody(c.body),
       })),
       otherwise: node.otherwise
@@ -1448,7 +1448,7 @@ function rewriteStatement(
         ...node,
         subject: rewriteExpression(node.subject, forwarders),
         cases: node.cases.map(c => ({
-          label: c.label,
+          ...c,
           body: body(c.body),
         })),
         otherwise: node.otherwise ? body(node.otherwise) : undefined,

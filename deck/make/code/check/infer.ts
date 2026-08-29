@@ -7,6 +7,7 @@ import type {
   Diagnostic,
   Span,
 } from '@term/make/code/parser/diagnostic'
+import { armLocals } from '@term/make/code/check/arm'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { Substitution } from '@term/make/code/check/substitution'
 import { instantiate } from '@term/make/code/check/signature'
@@ -563,7 +564,14 @@ export function check(
           }
         }
 
-        type = { kind: 'named', name: enumName, args }
+        // `make hash` / `make list` build the native map / array, so they are typed as one, the same as a `like hash`
+        // / `like list` annotation seeds to (a `make hash` beside a `read flags` typed map must unify)
+        type =
+          enumName === 'hash'
+            ? { kind: 'map', key: fresh(), value: fresh() }
+            : enumName === 'list'
+              ? { kind: 'array', element: fresh() }
+              : { kind: 'named', name: enumName, args }
         break
       }
 
@@ -702,6 +710,46 @@ export function check(
       }
 
       case 'call': {
+        // `call fill / <data> / like <form>` is the form; `call melt / <value> / like <form>` is data. The value
+        // is inferred for its own sake (a `data` in, a value of the form in), the result comes from the `like`.
+        if (
+          node.into &&
+          node.callee.form === 'variable' &&
+          (node.callee.name === 'fill-form' || node.callee.name === 'melt-form')
+        ) {
+          const into = seedType(node.into, new Map())
+
+          if (node.args.length !== 1) {
+            diagnostics.push(
+              diagnose('type-mismatch', {
+                file: currentFile,
+                span: node.span,
+                message: `"${node.callee.name === 'fill-form' ? 'fill' : 'melt'}" with a form takes one value`,
+              }),
+            )
+          }
+
+          if (into.kind !== 'named' || !records.has(into.name)) {
+            diagnostics.push(
+              diagnose('type-mismatch', {
+                file: currentFile,
+                span: node.span,
+                message: `"${node.callee.name === 'fill-form' ? 'fill' : 'melt'}" needs a form with fields after "like"`,
+              }),
+            )
+          }
+
+          const dataType = seedType({ kind: 'named', name: 'data' }, new Map())
+
+          for (const arg of node.args) {
+            const argType = inferExpression(arg, env)
+            expect(argType, node.callee.name === 'fill-form' ? dataType : into, arg.span, 'argument')
+          }
+
+          type = node.callee.name === 'fill-form' ? into : dataType
+          break
+        }
+
         // named arguments and defaults: put each `bind <name>` value in the callee's declared position, refuse a
         // name on a `slot` parameter or one the callee does not have, and clone in the `fall` of any omitted
         // parameter, so every backend receives the full argument list. Only for a direct call of a known task.
@@ -742,7 +790,9 @@ export function check(
 
           let mangled: string | undefined
 
-          for (const arg of args) {
+          // the receiver is the FIRST argument (a method takes `self` first): a map or a form in a later position is
+          // an ordinary argument, so `call get / url / header` with a map header stays the global `get`
+          for (const arg of args.slice(0, 1)) {
             const receiver = resolve(arg)
             // a named form dispatches to its own methods; an array receiver dispatches to `list`'s methods and a map
             // receiver to `hash`'s (those forms are the native array / map), so `call map / <array>` or `call get /
@@ -1012,6 +1062,10 @@ export function check(
             node.span,
             'return value',
           )
+        } else if (resolve(result).kind === 'variable') {
+          // a bare `send back` in a task that declares no result: the result is unit (a typed backend needs to
+          // know). A declared result is left to the declaration.
+          expect(UNIT, result, node.span, 'return value')
         }
 
         break
@@ -1166,7 +1220,34 @@ export function check(
             narrowing.set(subjectVar, branch.label)
           }
 
-          checkBody(branch.body, env, result)
+          // the arm's fields are locals of its body (`case group` / `link kids` binds `kids`, a leading `link <name>`
+          // renaming in order), typed as the variant declares them with the subject's type arguments substituted, so
+          // a bare `read kids` is a typed receiver and a method call on it dispatches to its form
+          const fields = variantFields.get(branch.label)
+          const inner = new Map(env)
+
+          if (fields) {
+            const params =
+              formGenerics.get(variantEnum.get(branch.label) ?? '') ?? []
+            const argMap = new Map<string, Type>()
+
+            if (subjectType.kind === 'named' && subjectType.args) {
+              params.forEach(
+                (p, i) =>
+                  subjectType.args![i] &&
+                  argMap.set(p, subjectType.args![i]),
+              )
+            }
+
+            for (const { field, local } of armLocals([...fields.keys()], branch.binds)) {
+              inner.set(local, {
+                vars: [],
+                type: seedType(fields.get(field)!, argMap),
+              })
+            }
+          }
+
+          checkBody(branch.body, inner, result)
 
           if (subjectVar) {
             if (previous === undefined) {
@@ -1236,7 +1317,8 @@ export function check(
       const name = names[i]
       const arg = node.args[i]!
 
-      if (name === undefined) {
+      // a positional argument (`undefined` from the mill, `null` after a trip through the JSON compile cache)
+      if (name === undefined || name === null) {
         // a positional argument takes the next unfilled position
         while (at < ordered.length && ordered[at] !== undefined) {
           at++
@@ -1341,7 +1423,25 @@ export function check(
       }
     }
 
-    // trailing optionals with no default stay omitted (the arity range allows it)
+    // a trailing optional collection or text left out is its empty value (a map, a list, or text nothing reads
+    // through), typed as the parameter, so every backend passes an argument the callee can use; a trailing optional
+    // of any other type stays omitted (the arity range allows it, and the host's absent value is what it gets)
+    for (let i = 0; i < ordered.length; i++) {
+      if (ordered[i] !== undefined) {
+        continue
+      }
+
+      const param = resolve(signature.params[i] ?? UNKNOWN)
+
+      if (param.kind === 'map') {
+        ordered[i] = { form: 'map', entries: [], span: node.span, type: param }
+      } else if (param.kind === 'array') {
+        ordered[i] = { form: 'array', items: [], span: node.span, type: param }
+      } else if (param.kind === 'string') {
+        ordered[i] = { form: 'string', value: '', span: node.span, type: param }
+      }
+    }
+
     let end = ordered.length
 
     while (end > 0 && ordered[end - 1] === undefined) {
@@ -1638,6 +1738,24 @@ export function check(
     // zones are type-checked whole-program (not part of the per-definition incremental path yet)
     else if (statement.form === 'zone' && only === undefined) {
       checkZone(statement)
+    }
+  }
+
+  // a task that declares no result and whose body never fixed one (no valued `send back`, and no caller or callee
+  // pinned it) is unit, so a typed backend does not read its result as a free type parameter. After every body,
+  // so a forward reference to a task checked later still gets that task's real result.
+  if (only === undefined) {
+    for (const statement of program) {
+      if (statement.form !== 'function' || statement.result || statement.stub) {
+        continue
+      }
+
+      const signature = functions.get(statement.name)
+
+      if (signature && resolve(signature.result).kind === 'variable') {
+        currentFile = fileOrigin?.get(statement) ?? file
+        expect(UNIT, signature.result, statement.span, 'result')
+      }
     }
   }
 

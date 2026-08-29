@@ -1,5 +1,5 @@
 
-# The machine binding, at `~/.config/zone/zone.tree`.
+# The machine binding, at `~/.base/@term/zone/zone.tree`.
 #
 # This file says who this machine is, which provider it talks to, which
 # store holds the bootstrap credential, and what each sort maps to. It holds
@@ -52,14 +52,23 @@ load @term/seed/code/file
 load ../tool/base
   find join-text
   find equal
+  find not-equal
   find mine-bond
+  find read-env
 
 # Where the binding lives. One fixed place, so a machine has one answer
 # about what it is bound to.
+# ALL CONFIG LIVES IN A `.base` FOLDER, NAMESPACED BY PACKAGE. The binding
+# is `@term/zone`'s, so it sits at `~/.base/@term/zone/zone.tree`, the same
+# shape as the cache beside a declaration at `.base/@cluesurf/zone/`.
+#
+# Not `~/.config/zone/`, which is where it used to be: that spelling puts one
+# package's file in a directory every other tool also claims, and says
+# nothing about which package owns it.
 bind spot-bond
   like text
   case node
-    text <require("node:path").join(require("node:os").homedir(), ".config", "zone", "zone.tree")>
+    text <require("node:path").join(require("node:os").homedir(), ".base", "@term", "zone", "zone.tree")>
 
 # Whether this machine is bound at all.
 task have
@@ -68,10 +77,57 @@ task have
     call test
       call spot-bond
 
+# A binding for a machine that has no file to keep one in.
+#
+# A CONTAINER IS NOT A LAPTOP. `zone bind` writes a file under the home
+# directory, which is the right answer for a person's machine and the wrong
+# one for a service that is rebuilt from an image on every deploy: the file
+# is either baked into the image or written by a startup script, and both are
+# a second place for the truth to live.
+#
+# Everything the binding actually decides is already known here:
+#
+#   hold   which provider, from the declaration's `base` line
+#   save   the store, and it is `env`, because that is what was forced
+#   base   which sort, from ZONE_SORT, and it only chooses between
+#          ZONE_CODE_<SORT> and the plain ZONE_CODE, which is why it has a
+#          default rather than being asked for
+#   host   names the seat, which the env store does not use at all
+#
+# So a service needs ZONE_STORE=env and ZONE_CODE and nothing else. That is
+# the whole configuration, and it is one secret.
+#
+# Only ever used when ZONE_STORE is set. A laptop with no binding still gets
+# told to run `term zone bind`, because there the file is the right answer
+# and silently inventing one would hide a setup step.
+task make-bond
+  take hold, like text
+  like bond
+  send back
+    make bond
+      bind mind, text <service>
+      bind host
+        call read-env
+          bind name, text <HOSTNAME>
+          bind gift, text <container>
+      bind base
+        call read-env
+          bind name, text <ZONE_SORT>
+          bind gift, text <star>
+      bind hold, read hold
+      bind save, text <env>
+      bind name, text <>
+      bind seat
+        make list
+
 # Read the binding. A machine that is not bound is an ordinary state, not an
 # error, because `term zone show` has to be able to say so.
 task read-bond
   note async
+  # The provider the declaration names, used only when a binding has to be
+  # derived. Required rather than optional: an omitted optional parameter
+  # unsettles inference across the package, which is zone-0069.
+  take hold, like text
   like maybe
     head bond
   save at
@@ -80,6 +136,21 @@ task read-bond
     call test
       read at
     case false
+      # No file. If a store was forced, this is a service rather than an
+      # unconfigured laptop, so the binding is derived instead of demanded.
+      fork test
+        hook test
+          call not-equal
+            call read-env
+              bind name, text <ZONE_STORE>
+              bind gift, text <>
+            text <>
+        hook hold
+          send back
+            make some
+              bind value
+                call make-bond
+                  read hold
       send back
         make none
   save text

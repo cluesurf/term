@@ -47,6 +47,7 @@ import { noNegatedEquality } from '@term/make/code/lint/rules/no-negated-equalit
 import { preferIsEmpty } from '@term/make/code/lint/rules/prefer-is-empty'
 import { noEmptyForkCase } from '@term/make/code/lint/rules/no-empty-fork-case'
 import { noDuplicateMapKey } from '@term/make/code/lint/rules/no-duplicate-map-key'
+import { dataGrammar } from '@term/make/code/lint/rules/data-grammar'
 
 // the line-length limit enforced by the formatter and the max-line-length lint rule (L019)
 const MAX_LINE_LENGTH = 84
@@ -84,6 +85,7 @@ export const RULES: Rule[] = [
   preferIsEmpty,
   noEmptyForkCase,
   noDuplicateMapKey,
+  dataGrammar,
 ]
 
 export type LintConfig = {

@@ -22,10 +22,15 @@ import {
   ARRAY_OP_BOUND,
   collectionCall,
   collectionRead,
+  stringCall,
+  stringRead,
   exhausted,
   reassigned,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
+import { armLocals } from '@term/make/code/check/arm'
+import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
+import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
 
 // `self` is fine in Rust as a name only in methods; as a free identifier rename it. Names snake_case.
 function vname(name: string): string {
@@ -81,8 +86,16 @@ function rustType(type: Type | undefined): string {
         return opaque
       }
 
-      return type.args && type.args.length > 0
-        ? `${pascal(type.name)}<${type.args.map(rustType).join(', ')}>`
+      if (type.args && type.args.length > 0) {
+        return `${pascal(type.name)}<${type.args.map(rustType).join(', ')}>`
+      }
+
+      // a generic form named without its arguments (`like maybe`): each parameter is the unknown, i64, the same
+      // default a free inference variable gets
+      const arity = rustGenericArity.get(type.name) ?? 0
+
+      return arity > 0
+        ? `${pascal(type.name)}<${Array.from({ length: arity }, () => 'i64').join(', ')}>`
         : pascal(type.name)
     }
 
@@ -157,8 +170,16 @@ const OP: Record<string, string> = {
   '%': '%',
 }
 
+// how many type parameters each generic form declares, for a reference that names the form without them
+let rustGenericArity = new Map<string, number>()
+
 export function emitRust(program: Program): string {
   const pad = (d: number) => '    '.repeat(d)
+  rustGenericArity = new Map(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type')
+      .map(n => [n.name, n.params?.length ?? 0]),
+  )
   // opaque handle types declared by `dock type` shims: seed name -> concrete rust type
   rustOpaqueTypes = new Map(
     program
@@ -170,6 +191,9 @@ export function emitRust(program: Program): string {
   )
 
   const variantOwner = new Map<string, string>()
+  // every enum that declares a variant label (`text` is on both `token` and `data`), so a construction or a match
+  // can be steered by the checked type
+  const variantOwners = new Map<string, Set<string>>()
   // a variant's field names, for binding them in a `match` arm (`Maybe::Some { value } => ...`) so the branch body can
   // read them; a `subject/field` read inside the branch then resolves to that bound local.
   const variantFields = new Map<string, string[]>()
@@ -184,6 +208,7 @@ export function emitRust(program: Program): string {
 
     for (const v of node.variants) {
       variantOwner.set(v.name, node.name)
+      variantOwners.set(v.name, (variantOwners.get(v.name) ?? new Set()).add(node.name))
       variantFields.set(
         v.name,
         v.fields.map(f => f.name),
@@ -350,6 +375,100 @@ export function emitRust(program: Program): string {
   // the collections already use, applied to a scalar/struct local. Recomputed per function body.
   let cellVars = new Set<string>()
 
+  // the forms a `fill` / `melt` with a form walks, gathered while the bodies are emitted; their walkers ride at the
+  // end of the module
+  const fillSpecs = new Map<string, FormSpec>()
+  const meltSpecs = new Map<string, FormSpec>()
+
+  // every struct form's declared fields, for a construction that leaves some out; and the exception forms, whose
+  // raise panics with the note
+  const recordFields = new Map<string, { name: string; type: Type }[]>(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && n.variants.length === 0)
+      .map(n => [n.name, n.fields]),
+  )
+  const exceptionForms = new Set(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && Boolean(n.chain?.includes('exception')))
+      .map(n => n.name),
+  )
+
+  // a field value that is a variable or a member read is cloned into the struct, the way an argument is, so the
+  // binding it came from stays usable (a closure is not Clone and passes as is)
+  const owned = (value: Expression): string =>
+    (value.form === 'variable' || value.form === 'member') &&
+    value.type &&
+    value.type.kind !== 'function' &&
+    !(value.form === 'variable' && cellVars.has(value.name))
+      ? `${expr(value)}.clone()`
+      : expr(value)
+
+  // an empty list or map binding spells its checked type, so rust does not have to infer it from later use
+  const emptyAnn = (init: Expression): string => {
+    const empty =
+      (init.form === 'array' && init.items.length === 0) ||
+      (init.form === 'map' && init.entries.length === 0) ||
+      (init.form === 'record' && (init.name === 'list' || init.name === 'hash') && init.fields.length === 0)
+    const known = init.type && init.type.kind !== 'variable' && init.type.kind !== 'unknown'
+
+    return empty && known ? `: ${rustType(init.type)}` : ''
+  }
+
+  // the empty value of a type: what a left-out field or argument holds
+  const emptyOf = (type: Type | undefined): string => {
+    switch (type?.kind) {
+      case 'string':
+        return 'String::new()'
+      case 'boolean':
+        return 'false'
+      case 'float':
+        return '0.0'
+      case 'bytes':
+        return 'Vec::new()'
+      case 'array':
+        return 'std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))'
+      case 'map':
+        return 'std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))'
+      case 'named':
+        if (type.name === 'text') {
+          return 'String::new()'
+        }
+
+        if (type.name === 'boolean') {
+          return 'false'
+        }
+
+        if (type.name === 'maybe') {
+          return 'Maybe::None'
+        }
+
+        if (type.name === 'list') {
+          return 'std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))'
+        }
+
+        if (type.name === 'hash') {
+          return 'std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))'
+        }
+
+        return '0'
+      default:
+        return '0'
+    }
+  }
+
+  // module-level bindings (`host hex-alpha, text <...>` at the top of a module): rust has no top-level `let`, so
+  // each becomes a `thread_local!` static and every read clones the value out. A function parameter or local of
+  // the same name shadows it, tracked in `localNames` while a function body is emitted.
+  const moduleConsts = new Set<string>(
+    program.filter((n): n is Extract<Statement, { form: 'let' }> => n.form === 'let').map(n => n.name),
+  )
+  const localNames = new Set<string>()
+  const moduleConstName = (name: string): string => `MODULE_${snake(name).toUpperCase()}`
+  const moduleLet = (node: Extract<Statement, { form: 'let' }>): string =>
+    `thread_local! { static ${moduleConstName(node.name)}: ${rustType(
+      node.init.type ?? node.type,
+    )} = ${expr(node.init)}; }`
+
   const isNativeCall = (node: Expression): boolean => {
     if (node.form !== 'call' || node.callee.form !== 'member') {
       return false
@@ -448,6 +567,11 @@ export function emitRust(program: Program): string {
         return 'serde_json::Value::Null'
       case 'variable':
       case 'hole':
+        // a module-level constant lives in a thread_local (rust has no top-level `let`): a read clones it out
+        if (moduleConsts.has(node.name) && !localNames.has(node.name)) {
+          return `${moduleConstName(node.name)}.with(|v| v.clone())`
+        }
+
         // a mutated capture lives in an Rc<RefCell> handle: a read borrows and clones the value out
         return cellVars.has(node.name)
           ? `${vname(node.name)}.borrow().clone()`
@@ -469,6 +593,23 @@ export function emitRust(program: Program): string {
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
 
       case 'call': {
+        // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form, generated
+        // from the form's fields at the end of the module (see formWalk below)
+        if (
+          node.callee.form === 'variable' &&
+          (node.callee.name === 'fill-form' || node.callee.name === 'melt-form') &&
+          node.into
+        ) {
+          const spec = formSpec(node.into, recordFields)
+          refuseAny(spec, 'Rust')
+          const into = node.callee.name === 'fill-form' ? fillSpecs : meltSpecs
+          specForms(spec, into)
+
+          return node.callee.name === 'fill-form'
+            ? `__fill_${snake(spec.form)}(${expr(node.args[0]!)}, String::new())`
+            : `__melt_${snake(spec.form)}(${expr(node.args[0]!)})`
+        }
+
         // a declarative native binding renders its `case rust` template, with `$param` placeholders filled by the
         // emitted (un-cloned) arguments: the template author writes the exact native call shape
         if (
@@ -488,6 +629,13 @@ export function emitRust(program: Program): string {
 
         if (operation) {
           return collectionExpr(operation, node.args)
+        }
+
+        // a host string method (what `text.tree` delegates to) lowers to rust's str API
+        const text = stringCall(node.callee)
+
+        if (text) {
+          return stringExpr(text.op, expr(text.target), node.args.map(a => expr(a)))
         }
 
         // Rust moves a value passed by value, so a local (or a field read out of a struct) used as an argument would
@@ -554,11 +702,16 @@ export function emitRust(program: Program): string {
           .join(', ')}]))`
 
       case 'record': {
-        const owner = variantOwner.get(node.name)
+        // a label several enums share (`text` on both `token` and `data`) is owned by the enum the checker gave the
+        // construction; a label of one enum by that enum
+        const owner =
+          node.type?.kind === 'named' && variantOwners.get(node.name)?.has(node.type.name)
+            ? node.type.name
+            : variantOwner.get(node.name)
 
         if (owner) {
           const fields = node.fields.map(
-            f => `${snake(f.name)}: ${expr(f.value)}`,
+            f => `${snake(f.name)}: ${owned(f.value)}`,
           )
 
           return fields.length > 0
@@ -568,9 +721,17 @@ export function emitRust(program: Program): string {
             : `${pascal(owner)}::${pascal(node.name)}`
         }
 
-        return `${pascal(node.name)} { ${node.fields
-          .map(f => `${snake(f.name)}: ${expr(f.value)}`)
-          .join(', ')} }`
+        // a field the construction leaves out (`need false`, or one the runtime fills on another backend) takes its
+        // type's empty value, so the struct is whole
+        const given = new Set(node.fields.map(f => f.name))
+        const missing = (recordFields.get(node.name) ?? [])
+          .filter(f => !given.has(f.name))
+          .map(f => `${snake(f.name)}: ${emptyOf(f.type)}`)
+
+        return `${pascal(node.name)} { ${[
+          ...node.fields.map(f => `${snake(f.name)}: ${owned(f.value)}`),
+          ...missing,
+        ].join(', ')} }`
       }
 
       case 'member': {
@@ -586,6 +747,12 @@ export function emitRust(program: Program): string {
         if (read) {
           // both a map and an array read their length through the Rc<RefCell> handle
           return `(${expr(read.target)}.borrow().len() as i64)`
+        }
+
+        const textLength = stringRead(node)
+
+        if (textLength) {
+          return `(${expr(textLength.target)}.chars().count() as i64)`
         }
 
         return memberPath(node)
@@ -829,6 +996,58 @@ export function emitRust(program: Program): string {
     return expr(node)
   }
 
+  // JavaScript's string methods over rust's String (see backend.ts, STRING_METHODS). Positions count chars; a read
+  // past the end is empty (charAt) or 0 (charCodeAt), never a panic. Each borrows the receiver, so a local read here
+  // is not moved away.
+  const stringExpr = (op: string, t: string, a: string[]): string => {
+    switch (op) {
+      case 'charAt':
+      case 'at':
+        return `{ let h: &str = &${t}; let i = ${a[0]}; if i < 0 { String::new() } else { h.chars().nth(i as usize).map(|c| c.to_string()).unwrap_or_default() } }`
+      case 'charCodeAt':
+        return `{ let h: &str = &${t}; let i = ${a[0]}; if i < 0 { 0 } else { h.encode_utf16().nth(i as usize).map(|c| c as i64).unwrap_or(0) } }`
+      case 'indexOf':
+        return `{ let h: &str = &${t}; let n: String = ${a[0]}; let from = (${a[1] ?? '0'}).max(0) as usize; let start = h.char_indices().nth(from).map(|(b, _)| b).unwrap_or(h.len()); match h[start..].find(n.as_str()) { Some(b) => h[..start + b].chars().count() as i64, None => -1 } }`
+      case 'lastIndexOf':
+        return `{ let h: &str = &${t}; let n: String = ${a[0]}; match h.rfind(n.as_str()) { Some(b) => h[..b].chars().count() as i64, None => -1 } }`
+      case 'split':
+        return `std::rc::Rc::new(std::cell::RefCell::new({ let h: &str = &${t}; let d: String = ${a[0]}; if d.is_empty() { h.chars().map(|c| c.to_string()).collect::<Vec<String>>() } else { h.split(d.as_str()).map(|s| s.to_string()).collect::<Vec<String>>() } }))`
+      case 'substring':
+      case 'slice':
+        return `{ let h: &str = &${t}; let n = h.chars().count() as i64; let x = (${a[0]}).max(0).min(n); let y = (${a[1] ?? 'n'}).max(0).min(n); let (x, y) = if x <= y { (x, y) } else { (y, x) }; h.chars().skip(x as usize).take((y - x) as usize).collect::<String>() }`
+      case 'toLowerCase':
+        return `${t}.to_lowercase()`
+      case 'toUpperCase':
+        return `${t}.to_uppercase()`
+      case 'startsWith':
+        return `{ let n: String = ${a[0]}; ${t}.starts_with(n.as_str()) }`
+      case 'endsWith':
+        return `{ let n: String = ${a[0]}; ${t}.ends_with(n.as_str()) }`
+      case 'trim':
+        return `${t}.trim().to_string()`
+      case 'trimStart':
+        return `${t}.trim_start().to_string()`
+      case 'trimEnd':
+        return `${t}.trim_end().to_string()`
+      case 'padStart':
+        return `{ let mut o: String = ${t}; let f: String = ${a[1]}; while (o.chars().count() as i64) < (${a[0]}) && !f.is_empty() { o = format!("{}{}", f, o); } o }`
+      case 'padEnd':
+        return `{ let mut o: String = ${t}; let f: String = ${a[1]}; while (o.chars().count() as i64) < (${a[0]}) && !f.is_empty() { o = format!("{}{}", o, f); } o }`
+      case 'replace':
+        return `{ let a: String = ${a[0]}; let b: String = ${a[1]}; ${t}.replacen(a.as_str(), b.as_str(), 1) }`
+      case 'replaceAll':
+        return `{ let a: String = ${a[0]}; let b: String = ${a[1]}; ${t}.replace(a.as_str(), b.as_str()) }`
+      case 'includes':
+        return `{ let n: String = ${a[0]}; ${t}.contains(n.as_str()) }`
+      case 'concat':
+        return `format!("{}{}", ${t}, ${a[0]})`
+      case 'repeat':
+        return `${t}.repeat((${a[0]}).max(0) as usize)`
+      default:
+        return ''
+    }
+  }
+
   const block = (body: Statement[], d: number): string =>
     body
       .map(s => `${pad(d)}${stmt(s, d)}`)
@@ -861,7 +1080,7 @@ export function emitRust(program: Program): string {
               })}`
             : ''
 
-        return `let mut ${vname(node.name)}${ann} = ${expr(node.init)};`
+        return `let mut ${vname(node.name)}${ann || emptyAnn(node.init)} = ${owned(node.init)};`
       }
       case 'assign': {
         // an assignment to a mutated capture writes through the cell: `*x.borrow_mut() = v`, and a field of a
@@ -878,7 +1097,7 @@ export function emitRust(program: Program): string {
         }
 
         return node.op === '='
-          ? `${expr(node.target)} = ${expr(node.value)};`
+          ? `${expr(node.target)} = ${owned(node.value)};`
           : `${expr(node.target)} ${node.op} ${expr(node.value)};`
       }
       case 'expression':
@@ -893,10 +1112,14 @@ export function emitRust(program: Program): string {
           ? `return ${wrapList(expr(node.value))};`
           : `return ${expr(node.value)};`
       case 'throw':
+        // an exception record panics with its form and note (every exception carries `note`); any other value with
+        // its Debug rendering
         return `panic!("{}", ${
           node.value.form === 'string'
             ? expr(node.value)
-            : `format!("{:?}", ${expr(node.value)})`
+            : node.value.form === 'record' && exceptionForms.has(node.value.name)
+              ? `{ let raised = ${expr(node.value)}; format!("{}: {}", ${JSON.stringify(node.value.name)}, raised.note) }`
+              : `format!("{:?}", ${expr(node.value)})`
         });`
       case 'while':
         return `while ${expr(node.cond)} {\n${block(
@@ -967,13 +1190,24 @@ export function emitRust(program: Program): string {
             : undefined
 
         const arms = node.cases.map(b => {
-          const owner = variantOwner.get(b.label) ?? ''
+          const subjectType = node.subject.type
+          const owner =
+            subjectType?.kind === 'named' && variantOwners.get(b.label)?.has(subjectType.name)
+              ? subjectType.name
+              : (variantOwner.get(b.label) ?? '')
           const fields = variantFields.get(b.label) ?? []
           // bind the variant's fields so the branch body can read them; narrow the subject for this arm so a
           // `subject/field` read resolves to the bound local (restored after the arm so sibling arms are unaffected)
+          // the arm's `link` lines select or rename the fields (see check/arm.ts); a field left out is `..`
+          const locals = armLocals(fields, b.binds)
           const pattern =
             fields.length > 0
-              ? ` { ${fields.map(snake).join(', ')} }`
+              ? ` { ${[
+                  ...locals.map(({ field, local }) =>
+                    field === local ? snake(field) : `${snake(field)}: ${snake(local)}`,
+                  ),
+                  ...(locals.length < fields.length ? ['..'] : []),
+                ].join(', ')} }`
               : ''
 
           const previous = subjectVar
@@ -1037,6 +1271,11 @@ export function emitRust(program: Program): string {
         return '// breakpoint'
 
       case 'function': {
+        // the names this function binds itself (parameters and locals) shadow a module-level constant of the same name
+        localNames.clear()
+        node.params.forEach(p => localNames.add(p.name))
+        letNames(node.body, localNames)
+
         // a generic parameter appears in a signature two ways: as a declared name (`head t` that survived as a named
         // type) or as a free inference variable. Collect both. Each free variable gets a fresh letter, mapped by id so
         // `rustType` prints the letter not `i64`. Every generic carries `Clone` (the owned-value style clones freely,
@@ -1382,10 +1621,10 @@ export function emitRust(program: Program): string {
 
   const body = program
     .filter(n => n.form !== 'native')
-    .map(n => stmt(n, 0))
+    .map(n => (n.form === 'let' ? moduleLet(n) : stmt(n, 0)))
     .filter(Boolean)
 
-  return [...uses, ...body].join('\n\n') + '\n'
+  return [...uses, ...body, ...rustFormWalk(fillSpecs, meltSpecs)].join('\n\n') + '\n'
 }
 
 // MUTATED-CAPTURE analysis: the names a function must box in `Rc<RefCell>` because a nested closure assigns to them.
@@ -1606,6 +1845,52 @@ function mutatedCaptures(body: Statement[]): Set<string> {
 }
 
 // every variable name READ or written anywhere in a body (used to decide which Rc<RefCell> handles a closure captures)
+// every name a body binds with `let`, at any depth (loop variables and match arms bind through their own forms
+// and read through the same emitter paths, so a module constant of those names is shadowed the same way)
+function letNames(body: Statement[], into: Set<string>): void {
+  for (const s of body) {
+    switch (s.form) {
+      case 'let':
+        into.add(s.name)
+        break
+      case 'if':
+        s.branches.forEach(b => letNames(b.body, into))
+
+        if (s.otherwise) {
+          letNames(s.otherwise, into)
+        }
+
+        break
+      case 'while':
+      case 'for-each':
+        if (s.form === 'for-each') {
+          into.add(s.item)
+        }
+
+        letNames(s.body, into)
+        break
+      case 'match':
+        s.cases.forEach(c => letNames(c.body, into))
+
+        if (s.otherwise) {
+          letNames(s.otherwise, into)
+        }
+
+        break
+      case 'guard':
+        letNames(s.body, into)
+
+        if (s.catch) {
+          letNames(s.catch.body, into)
+        }
+
+        break
+      default:
+        break
+    }
+  }
+}
+
 function usedNames(body: Statement[], into: Set<string>): void {
   const exprNames = (e: Expression): void => {
     switch (e.form) {
@@ -2027,3 +2312,139 @@ function collectArrayBounds(body: Statement[]): {
 
   return { eqIds, displayIds, eqNames, displayNames, mutated }
 }
+
+// ---- filling a form from data on rust ----
+
+// the walkers a module's `fill` / `melt` with a form need: shared helpers over the package's `Data` enum, then a
+// function per form. A value that does not fit panics the way a raise does on this backend, with the path and the
+// reason of the `data-mismatch` the package raises elsewhere.
+function rustFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec>): string[] {
+  if (fills.size === 0 && melts.size === 0) {
+    return []
+  }
+
+  const out: string[] = [RUST_FORM_HELPERS]
+
+  // an item of a list, or a field's value, read as its kind. `d` is a Data, `p` its path
+  const fillOf = (kind: FormKind, value: string, path: string, optional: boolean): string => {
+    switch (kind.kind) {
+      case 'text':
+        return `__term_text(${value}, ${path}, ${optional})`
+      case 'number':
+        return `__term_number(${value}, ${path}, ${optional})`
+      case 'decimal':
+        return `__term_decimal(${value}, ${path}, ${optional})`
+      case 'flag':
+        return `__term_flag(${value}, ${path}, ${optional})`
+      case 'data':
+        return `__term_data(${value}, ${path}, ${optional})`
+      case 'list':
+        return `__term_list(${value}, ${path}, ${optional}, &|d: Data, p: String| ${fillOf(kind.item, 'Some(d)', 'p', false)})`
+      case 'form':
+        return `__fill_${snake(kind.spec.form)}(__term_data(${value}, ${path}.clone(), ${optional}), ${path})`
+      default:
+        return '0'
+    }
+  }
+
+  for (const spec of fills.values()) {
+    const known = spec.fields.map(f => JSON.stringify(f.name)).join(', ')
+    const fields = spec.fields
+      .map(f => `${snake(f.name)}: ${fillOf(f.kind, `find(${JSON.stringify(f.name)})`, `__term_path(&path, ${JSON.stringify(f.name)})`, f.optional)}`)
+      .join(', ')
+
+    out.push(
+      `fn __fill_${snake(spec.form)}(value: Data, path: String) -> ${pascal(spec.form)} {\n` +
+        `    let entries = __term_entries(value, path.clone());\n` +
+        `    let known: &[&str] = &[${known}];\n` +
+        `    for e in entries.borrow().iter() { if !known.contains(&e.name.as_str()) { __term_mismatch(__term_path(&path, &e.name), "is not in the form".to_string()); } }\n` +
+        `    let find = |name: &str| -> Option<Data> { entries.borrow().iter().find(|e| e.name == name).map(|e| e.base.clone()) };\n` +
+        `    ${pascal(spec.form)} { ${fields} }\n}`,
+    )
+  }
+
+  // a field's value, spelled as data. `v` is the value
+  const meltOf = (kind: FormKind, value: string): string => {
+    switch (kind.kind) {
+      case 'text':
+        return `Data::Text { value: ${value} }`
+      case 'number':
+        return `Data::Number { value: ${value} }`
+      case 'decimal':
+        return `Data::Decimal { value: ${value} }`
+      case 'flag':
+        return `Data::Flag { value: ${value} }`
+      case 'data':
+        return value
+      case 'list':
+        return `Data::Array { list: std::rc::Rc::new(std::cell::RefCell::new((${value}).borrow().iter().map(|x| ${meltOf(kind.item, 'x.clone()')}).collect::<Vec<Data>>())) }`
+      case 'form':
+        return `__melt_${snake(kind.spec.form)}(${value})`
+      default:
+        return 'Data::Blank'
+    }
+  }
+
+  // an optional field left empty is left out
+  const emptyTest = (kind: FormKind, value: string): string | undefined => {
+    switch (kind.kind) {
+      case 'text':
+        return `(${value}).is_empty()`
+      case 'list':
+        return `(${value}).borrow().is_empty()`
+      case 'data':
+        return `matches!(${value}, Data::Blank)`
+      default:
+        return undefined
+    }
+  }
+
+  for (const spec of melts.values()) {
+    const lines = spec.fields.map(f => {
+      const value = `value.${snake(f.name)}.clone()`
+      const entry = `list.push(DataEntry { name: ${JSON.stringify(f.name)}.to_string(), base: ${meltOf(f.kind, value)} });`
+      const empty = f.optional ? emptyTest(f.kind, value) : undefined
+
+      return empty ? `    if !${empty} { ${entry} }` : `    ${entry}`
+    })
+
+    out.push(
+      `fn __melt_${snake(spec.form)}(value: ${pascal(spec.form)}) -> Data {\n    let mut list: Vec<DataEntry> = Vec::new();\n${lines.join('\n')}\n    Data::Hash { list: std::rc::Rc::new(std::cell::RefCell::new(list)) }\n}`,
+    )
+  }
+
+  return out
+}
+
+const RUST_FORM_HELPERS = `fn __term_mismatch(path: String, reason: String) -> ! {
+    panic!("{}: {}", "data-mismatch", format!("Data does not fit the shape: {} {}", if path.is_empty() { ".".to_string() } else { path }, reason))
+}
+fn __term_path(path: &str, key: &str) -> String { if path.is_empty() { key.to_string() } else { format!("{}/{}", path, key) } }
+fn __term_kind(value: &Data) -> &'static str {
+    match value { Data::Hash { .. } => "a map", Data::Array { .. } => "a list", Data::Blank => "void", Data::Text { .. } => "text", Data::Number { .. } => "number", Data::Decimal { .. } => "decimal", Data::Flag { .. } => "flag", Data::Graft { .. } => "a fuse" }
+}
+fn __term_entries(value: Data, path: String) -> std::rc::Rc<std::cell::RefCell<Vec<DataEntry>>> {
+    match value { Data::Hash { list } => list, other => __term_mismatch(path, format!("is {} where a map belongs", __term_kind(&other))) }
+}
+fn __term_text(value: Option<Data>, path: String, optional: bool) -> String {
+    match value { Some(Data::Text { value }) => value, None | Some(Data::Blank) => if optional { String::new() } else { __term_mismatch(path, "is missing".to_string()) }, Some(other) => __term_mismatch(path, format!("is {} where text belongs", __term_kind(&other))) }
+}
+fn __term_number(value: Option<Data>, path: String, optional: bool) -> i64 {
+    match value { Some(Data::Number { value }) => value, None | Some(Data::Blank) => if optional { 0 } else { __term_mismatch(path, "is missing".to_string()) }, Some(other) => __term_mismatch(path, format!("is {} where number belongs", __term_kind(&other))) }
+}
+fn __term_decimal(value: Option<Data>, path: String, optional: bool) -> f64 {
+    match value { Some(Data::Decimal { value }) => value, Some(Data::Number { value }) => value as f64, None | Some(Data::Blank) => if optional { 0.0 } else { __term_mismatch(path, "is missing".to_string()) }, Some(other) => __term_mismatch(path, format!("is {} where decimal belongs", __term_kind(&other))) }
+}
+fn __term_flag(value: Option<Data>, path: String, optional: bool) -> bool {
+    match value { Some(Data::Flag { value }) => value, None | Some(Data::Blank) => if optional { false } else { __term_mismatch(path, "is missing".to_string()) }, Some(other) => __term_mismatch(path, format!("is {} where flag belongs", __term_kind(&other))) }
+}
+fn __term_data(value: Option<Data>, path: String, optional: bool) -> Data {
+    match value { Some(d) => d, None => if optional { Data::Blank } else { __term_mismatch(path, "is missing".to_string()) } }
+}
+fn __term_list<T>(value: Option<Data>, path: String, optional: bool, item: &dyn Fn(Data, String) -> T) -> std::rc::Rc<std::cell::RefCell<Vec<T>>> {
+    match value {
+        Some(Data::Array { list }) => std::rc::Rc::new(std::cell::RefCell::new(list.borrow().iter().enumerate().map(|(i, d)| item(d.clone(), __term_path(&path, &i.to_string()))).collect())),
+        None | Some(Data::Blank) => if optional { std::rc::Rc::new(std::cell::RefCell::new(Vec::new())) } else { __term_mismatch(path, "is missing".to_string()) },
+        Some(other) => __term_mismatch(path, format!("is {} where a list belongs", __term_kind(&other))),
+    }
+}`

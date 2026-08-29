@@ -34,6 +34,12 @@ import { simplify } from '@term/make/code/ir/simplify'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerZones } from '@term/make/code/compile/zone-lower'
 import { compileLookCss } from '@term/make/code/compile/look-css'
+import {
+  expandData,
+  isDataFile,
+  readDataText,
+  toJsonValue,
+} from '@term/make/code/compile/host'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
@@ -148,6 +154,9 @@ export function compile(
     // the deck a source file belongs to (name and root), from its nearest `deck.tree`. Names the `host` of every
     // raise and roll entry. The CLI supplies it; without it the deck is read off the path
     deckOf?: (file: string) => { name: string; root: string } | undefined
+    // the role a project's `role.tree` gives a file (`host` for data, `code` for a program), overriding the content
+    // rule below. Undefined or null means no role names the file, so its content decides. See deck/deck/code/role.ts
+    roleOf?: (file: string) => string | null | undefined
   },
 ): CompileResult {
   // a look stylesheet (.tree whose top-level statements are all `face` / `tone` / `base`) is not a normal compile
@@ -160,6 +169,15 @@ export function compile(
       css: compileLookCss(source),
       warnings: [],
     }
+  }
+
+  // a data file (the host dialect: `host` / `list` / `mesh` / `tree` / `fuse` and literals, no code) is not a program
+  // either: it compiles to a module whose default export is the value as a JSON literal, keys in snake case,
+  // anchors expanded. See code/compile/host.ts and note/term/host/.
+  const role = options?.roleOf?.(source.file)
+
+  if (role === 'host' || (!role && isDataFile(source))) {
+    return compileData(source)
   }
 
   // collect the entry plus every module it loads (so the stdlib supplies the form definitions), dependencies
@@ -230,7 +248,7 @@ export function compile(
       // mill cache: reuse a module's parse + expand + mill when its text (and the template set) is unchanged
       const milled = cache
         ? cache.milledUnit(
-            `${unit.file} ${templateKey}`,
+            `${unit.file}\u0000${templateKey}`,
             unit.text,
             () => millUnit(unit, templates),
           )
@@ -293,6 +311,31 @@ export function compile(
   return cache && !options?.modules
     ? cache.output(graphKey, build)
     : build()
+}
+
+// a data file to a TypeScript module: `export default <json>`. The value is also exported as `data`, so a Term
+// program that loads the module through the per-module path has a name to find.
+function compileData(source: { file: string; text: string }): CompileResult {
+  const read = readDataText(source)
+
+  if (!read.ok) {
+    return { ok: false, diagnostics: read.diagnostics }
+  }
+
+  const expanded = expandData(read.data, source.file)
+
+  if (!expanded.ok) {
+    return { ok: false, diagnostics: expanded.diagnostics }
+  }
+
+  const json = JSON.stringify(toJsonValue(expanded.data), null, 2)
+
+  return {
+    ok: true,
+    program: [],
+    typescript: `// Term data, from ${source.file.split('/').pop() ?? source.file}. Keys are snake case, anchors are expanded.\nconst data = ${json} as const\n\nexport default data\n`,
+    warnings: [],
+  }
 }
 
 // parse, expand templates, and mill one module into a program (or the diagnostics that stopped it)

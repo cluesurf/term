@@ -8,6 +8,14 @@ import {
 } from '@term/make/code/inspect'
 import type { Source } from '@term/make/code/compile/load'
 import { projectResolver } from '@term/call/code/make'
+import {
+  dataKeys,
+  expandData,
+  isDataFile,
+  readDataText,
+  toJsonValue,
+} from '@term/make/code/compile/host'
+import { renderDiagnostic } from '@term/call/code/report'
 import { logFail, logStep, fade } from '@term/make/code/tint'
 
 // `seed look <module>` -- inspect what a module exposes (forms + tasks with signatures), following its load/bear
@@ -52,6 +60,13 @@ export async function callLook(input: {
     }
   }
 
+  // a data file has no forms or tasks: list its keys instead, a path per row
+  if (isDataFile(entry)) {
+    lookData(entry, input)
+
+    return
+  }
+
   if (!input.json && !input.csv) {
     logStep(`Inspecting ${input.target}...`)
   }
@@ -86,4 +101,53 @@ export async function callLook(input: {
       ),
     )
   }
+}
+
+// `term look` on a data file: every key as a path, its kind, and its value (or how much a map or a list holds).
+// `--json` prints the value itself, keys in snake case, the way `term make` would export it.
+function lookData(
+  entry: Source,
+  input: { target?: string; json?: boolean; csv?: boolean },
+): void {
+  const read = readDataText(entry)
+  const expanded = read.ok ? expandData(read.data, entry.file) : read
+
+  if (!expanded.ok) {
+    for (const diagnostic of expanded.diagnostics) {
+      console.error(renderDiagnostic(diagnostic, entry.text))
+    }
+
+    process.exit(1)
+  }
+
+  const keys = dataKeys(expanded.data)
+
+  if (input.json) {
+    process.stdout.write(JSON.stringify(toJsonValue(expanded.data), null, 2) + '\n')
+
+    return
+  }
+
+  if (input.csv) {
+    const cell = (text: string): string => (/[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text)
+    process.stdout.write(
+      ['path,kind,value', ...keys.map(k => [k.path, k.kind, k.value].map(cell).join(','))].join('\n') + '\n',
+    )
+
+    return
+  }
+
+  logStep(`Inspecting ${input.target}...`)
+  console.log('')
+
+  const pathWidth = Math.max(4, ...keys.map(k => k.path.length))
+  const kindWidth = Math.max(4, ...keys.map(k => k.kind.length))
+  console.log(`  ${'path'.padEnd(pathWidth)}  ${'kind'.padEnd(kindWidth)}  value`)
+
+  for (const key of keys) {
+    console.log(`  ${key.path.padEnd(pathWidth)}  ${key.kind.padEnd(kindWidth)}  ${key.value}`)
+  }
+
+  console.log('')
+  console.log(fade(`  ${keys.length} key${keys.length === 1 ? '' : 's'}`))
 }

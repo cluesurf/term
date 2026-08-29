@@ -115,6 +115,10 @@ export type Expression =
       // `wait false`: a fire-and-forget call. It is made but never awaited, even when the callee is async, and it does
       // not make the caller async. Async resolution skips it; without this flag an async call is awaited by default.
       background?: boolean
+      // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: the form a data value fills, or
+      // a form value melts back to data. The mill renames the callee to the intrinsic `fill-form` / `melt-form` and
+      // puts the form here; the checker types the result from it and the emitter walks the form's fields.
+      into?: Type
       // `halt kink`: propagate the callee's error to the caller rather than handling it here (Rust `?`). On the
       // exception-based backends (TypeScript, Kotlin, Swift) this is the default behaviour and needs no emit; on Rust
       // it must emit the `?` operator. Emitters that ignore it are correct only for the former.

@@ -23,7 +23,8 @@ task connect
       save on-error
         task handle-error
           take error
-          call fail, read error
+          call fail
+            read error
       save raw/onopen, read on-open
       save raw/onerror, read on-error
     wait true

@@ -1,0 +1,3 @@
+# "config" is fused but no tree declares it
+host a
+  fuse config

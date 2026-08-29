@@ -374,6 +374,7 @@ task pull
 
   save bond-got
     call read-bond
+      bind hold, read root/base
       wait true
   fork test
     hook test

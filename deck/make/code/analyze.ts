@@ -14,9 +14,18 @@ import { lint, applyFixes } from '@term/make/code/lint/lint'
 import type { LintConfig } from '@term/make/code/lint/lint'
 import type { Finding } from '@term/make/code/lint/rule'
 import type { Program } from '@term/make/code/compile/node'
+import {
+  expandData,
+  formatData,
+  isDataTree,
+  readData,
+} from '@term/make/code/compile/host'
+import { lintData } from '@term/make/code/lint/rules/data-grammar'
 
 export type Analysis = {
   tree: RootNode
+  // what the file is: a program, or a data file (the host dialect), which has no program
+  kind: 'code' | 'data'
   program: Program | null
   diagnostics: Diagnostic[]
   // render the canonical formatting (from the tree, so it works even with type errors)
@@ -78,6 +87,13 @@ export function analyze(source: {
   text: string
 }): Analysis {
   const { tree, diagnostics } = parseTolerant(source)
+
+  // a data file (the host dialect, see code/compile/host.ts) has no program: it is read by the data reader, its
+  // canonical layout is the data writer's, and its lint findings are the grammar's rules
+  if (diagnostics.length === 0 && isDataTree(tree)) {
+    return analyzeData(source, tree)
+  }
+
   const built = mill(expandTemplates(tree), source.file)
   const program = built.ok ? built.program : null
   const all = [...diagnostics, ...(built.ok ? [] : built.diagnostics)]
@@ -85,6 +101,7 @@ export function analyze(source: {
 
   return {
     tree,
+    kind: 'code',
     program,
     diagnostics: all,
     format: () => (diagnostics.length ? source.text : formatTree(tree)),
@@ -122,5 +139,32 @@ export function analyze(source: {
 
       return result.ok ? result.warnings : result.diagnostics
     },
+  }
+}
+
+function analyzeData(
+  source: { file: string; text: string },
+  tree: RootNode,
+): Analysis {
+  const read = readData(tree, source.file)
+  const expanded = read.ok ? expandData(read.data, source.file) : undefined
+  const diagnostics = read.ok
+    ? expanded && !expanded.ok
+      ? expanded.diagnostics
+      : []
+    : read.diagnostics
+  const findings = () => lintData(tree, source.file)
+
+  return {
+    tree,
+    kind: 'data',
+    program: null,
+    diagnostics,
+    // a file the reader refuses is left as written: a layout pass must never rewrite what it cannot read
+    format: () =>
+      diagnostics.length ? source.text : formatData(tree, source.file),
+    lint: findings,
+    fix: () => (diagnostics.length ? source.text : formatData(tree, source.file)),
+    check: () => diagnostics,
   }
 }

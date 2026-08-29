@@ -65,7 +65,8 @@ form hash-table
       hook step
         fork test
           hook test
-            call not, read self/list/{i}
+            call not
+              read self/list/{i}
           hook hold, back seed
         fork test
           hook test
@@ -85,7 +86,8 @@ form hash-table
       hook step
         fork test
           hook test
-            call not, read self/list/{i}
+            call not
+              read self/list/{i}
           hook hold, back seed
         fork test
           hook test
@@ -122,6 +124,6 @@ tree increment-step
 
 tree initialize-loop
   hook bind
-    save base, call hash, read key
+    save base, call hash(read key)
     save i, read base
     save step, code 1

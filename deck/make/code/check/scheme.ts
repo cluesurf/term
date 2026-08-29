@@ -114,11 +114,14 @@ export function isValueExpression(node: Expression): boolean {
     case 'unit':
     case 'array':
     case 'map':
-    case 'record':
     case 'variable':
     case 'closure':
     case 'hole':
       return true
+    // `make hash` / `make list` build a mutable native map / array whose key and element types are fixed by later
+    // use, so the binding stays monomorphic (the value restriction); any other construction is a value
+    case 'record':
+      return node.name !== 'hash' && node.name !== 'list'
     default:
       return false
   }

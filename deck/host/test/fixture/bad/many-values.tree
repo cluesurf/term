@@ -1,0 +1,2 @@
+# "x" has 3 values. A list is written "list x"
+host x, 1, 2, 3

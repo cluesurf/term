@@ -1,0 +1,3 @@
+# "call" is not data. A data file has host, list, mesh, tree and fuse, and nothing else
+host x
+  call add, 1, 2

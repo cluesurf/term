@@ -39,4 +39,5 @@ task connect
           read n
         halt kink
 
-  call drop, read stdin
+  call drop
+    read stdin

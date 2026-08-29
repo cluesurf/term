@@ -20,9 +20,9 @@ mint make-ansi-text-from-zone
   save text-fill
     call tint-hash/read
       read zone/text-fill
-  fork test, call shape/is-present, read text-fill
+  fork test, call shape/is-present(read text-fill)
     mint form, form text-fill
-  fork test, call shape/is-present, read zone/text-bold
+  fork test, call shape/is-present(read zone/text-bold)
     mint form, form set-bold-mode
   mint text, read zone/text
   mint form, form reset-all-modes

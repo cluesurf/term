@@ -47,7 +47,7 @@ task read
   take kind, like text, fall text <stdout>
   take format, like text, fall text <text>
 
-  fork test, call is-equal, read kind, text <stderr>
+  fork test, call is-equal(read kind, text <stderr>)
     hook hold
       send back
         call child/read-error

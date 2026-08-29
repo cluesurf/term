@@ -1,0 +1,8 @@
+
+deck @term/host
+  head <Term data: the host dialect, a tree-syntax data format with a long and a compact form>
+  code <0.0.0>
+  lock mit
+  bear ./code
+  test ./test
+  link @term/seed, code <0.0.x>

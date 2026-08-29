@@ -31,6 +31,8 @@ mine mill-mine-child
       site any
     mine form, like mill-mine-text
       site text
+    mine form, like mill-mine-code
+      site code
     mine form, like mill-mine-path
       site path
     mine form, like mill-mine-form
@@ -71,6 +73,11 @@ mine mill-mine-any
 
 mine mill-mine-text
   mine term, term text
+    site name
+
+# `mine code` captures a number literal (an integer, a decimal, or a radix form like `0x1f`) into the site
+mine mill-mine-code
+  mine term, term code
     site name
 
 mine mill-mine-path

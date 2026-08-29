@@ -63,6 +63,7 @@ task bank
 
   save bond
     call read-bond
+      bind hold, text <>
   save bond-in
     call unwrap
       read bond
@@ -134,6 +135,7 @@ task tell
 
   save bond
     call read-bond
+      bind hold, text <>
   fork test
     hook test
       call is-none
@@ -181,6 +183,7 @@ task poll
   like list
   save bond
     call read-bond
+      bind hold, text <>
   save bond-in
     call unwrap
       read bond
@@ -204,6 +207,7 @@ task shed
 
   save bond
     call read-bond
+      bind hold, text <>
   save bond-in
     call unwrap
       read bond

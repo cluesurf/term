@@ -1,0 +1,2 @@
+# "Foo" is not a key. A key is a name: letters, digits and dashes, starting with a letter
+host Foo, 1

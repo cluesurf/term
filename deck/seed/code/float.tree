@@ -109,3 +109,33 @@ task arc-tangent-of
     call do-arc-tangent-of
       read y
       read x
+
+# an integer as a decimal, exact for every value a number holds
+bind to-decimal
+  take value, like number
+  like decimal
+  case node
+    text <$value>
+  case browser
+    text <$value>
+  case rust
+    text <($value as f64)>
+  case swift
+    text <Double($value)>
+  case kotlin
+    text <($value).toDouble()>
+
+# a decimal as an integer, the fraction dropped (toward zero)
+bind to-number
+  take value, like decimal
+  like number
+  case node
+    text <Math.trunc($value)>
+  case browser
+    text <Math.trunc($value)>
+  case rust
+    text <($value as i64)>
+  case swift
+    text <Int($value)>
+  case kotlin
+    text <($value).toLong()>

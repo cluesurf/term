@@ -59,4 +59,4 @@ tree checked-add
     task work
       take a, like size-{{size}}
       take b, like size-{{size}}
-      call a/checked-add, read b
+      call a/checked-add(read b)

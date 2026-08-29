@@ -14,13 +14,17 @@ task create-table
   save i, code 0
   walk test
     hook test
-      call i/is-below, code 64
+      call i/is-below
+        code 64
     hook step
       save t/{i}
-        call absolute, call sine, call i/add, code 1
+        call absolute
+          call sine
+            call i/add
+              code 1
           link multiply, code 4294967296
           link unite-bitwise, code 0
-      save i, call increment, read i
+      save i, call increment(read i)
   send back, read t
 
 task doreset
@@ -38,51 +42,54 @@ task process
   save i, code 0
   walk test
     hook test
-      call i/is-below, code 16
+      call i/is-below
+        code 16
     hook step
-      save offset-i, call offset/add, read i
+      save offset-i, call offset/add(read i)
       save m-offset-i, m/{offset-i}
       save m/{offset-i}
-        call m-offset-i/shift-left, code 8
-          link unite-bitwise, call m-offset-i/unsigned-shift-right, code 24
+        call m-offset-i/shift-left
+          code 8
+          link unite-bitwise, call m-offset-i/unsigned-shift-right(code 24)
           link intersect-bitwise, code 16711935
           link unite-bitwise
-            call m-offset-i/shift-left, code 24
-              link unite-bitwise, call m-offset-i/unsigned-shift-right, code 8
+            call m-offset-i/shift-left
+              code 24
+              link unite-bitwise, call m-offset-i/unsigned-shift-right(code 8)
               link intersect-bitwise, code 4278255360
-      save i, call increment, read i
+      save i, call increment(read i)
   save h, self/hash/words
-  save tmp2, call offset/add, code 0
+  save tmp2, call offset/add(code 0)
   save m-offset-0, m/{tmp2}
-  save tmp3, call offset/add, code 1
+  save tmp3, call offset/add(code 1)
   save m-offset-1, m/{tmp3}
-  save tmp4, call offset/add, code 2
+  save tmp4, call offset/add(code 2)
   save m-offset-2, m/{tmp4}
-  save tmp5, call offset/add, code 3
+  save tmp5, call offset/add(code 3)
   save m-offset-3, m/{tmp5}
-  save tmp6, call offset/add, code 4
+  save tmp6, call offset/add(code 4)
   save m-offset-4, m/{tmp6}
-  save tmp7, call offset/add, code 5
+  save tmp7, call offset/add(code 5)
   save m-offset-5, m/{tmp7}
-  save tmp8, call offset/add, code 6
+  save tmp8, call offset/add(code 6)
   save m-offset-6, m/{tmp8}
-  save tmp9, call offset/add, code 7
+  save tmp9, call offset/add(code 7)
   save m-offset-7, m/{tmp9}
-  save tmp10, call offset/add, code 8
+  save tmp10, call offset/add(code 8)
   save m-offset-8, m/{tmp10}
-  save tmp11, call offset/add, code 9
+  save tmp11, call offset/add(code 9)
   save m-offset-9, m/{tmp11}
-  save tmp12, call offset/add, code 10
+  save tmp12, call offset/add(code 10)
   save m-offset-10, m/{tmp12}
-  save tmp13, call offset/add, code 11
+  save tmp13, call offset/add(code 11)
   save m-offset-11, m/{tmp13}
-  save tmp14, call offset/add, code 12
+  save tmp14, call offset/add(code 12)
   save m-offset-12, m/{tmp14}
-  save tmp15, call offset/add, code 13
+  save tmp15, call offset/add(code 13)
   save m-offset-13, m/{tmp15}
-  save tmp16, call offset/add, code 14
+  save tmp16, call offset/add(code 14)
   save m-offset-14, m/{tmp16}
-  save tmp17, call offset/add, code 15
+  save tmp17, call offset/add(code 15)
   save m-offset-15, m/{tmp17}
   save a, h/0
   save b, h/1
@@ -665,24 +672,28 @@ task process
       code 21
       read t/63
   save h/0
-    call h/0/add, read a
+    call h/0/add
+      read a
       link unite-bitwise, code 0
   save h/1
-    call h/1/add, read b
+    call h/1/add
+      read b
       link unite-bitwise, code 0
   save h/2
-    call h/2/add, read c
+    call h/2/add
+      read c
       link unite-bitwise, code 0
   save h/3
-    call h/3/add, read d
+    call h/3/add
+      read d
       link unite-bitwise, code 0
 
 task finalize
   save data, self/data
   save data-words, data/words
-  save n-bits-total, call self/ndatabytes/multiply, code 8
-  save n-bits-left, call data/sig-bytes/multiply, code 8
-  save tmp18, call n-bits-left/unsigned-shift-right, code 5
+  save n-bits-total, call self/ndatabytes/multiply(code 8)
+  save n-bits-left, call data/sig-bytes/multiply(code 8)
+  save tmp18, call n-bits-left/unsigned-shift-right(code 5)
   save data-words/{tmp18}
     call bitwise-or
       read data-words/{tmp18}
@@ -693,34 +704,41 @@ task finalize
           call remainder
             read n-bits-left
             code 32
-  save n-bits-total-h, call round-down, call n-bits-total/divide, code 4294967296
+  save n-bits-total-h, call round-down(call n-bits-total/divide(code 4294967296))
   save n-bits-total-l, read n-bits-total
   call data-words/set
-    call n-bits-left/add, code 64
+    call n-bits-left/add
+      code 64
       link unsigned-shift-right, code 9
       link shift-left, code 4
       link add, code 15
-    call n-bits-total-h/shift-left, code 8
-      link unite-bitwise, call n-bits-total-h/unsigned-shift-right, code 24
+    call n-bits-total-h/shift-left
+      code 8
+      link unite-bitwise, call n-bits-total-h/unsigned-shift-right(code 24)
       link intersect-bitwise, code 16711935
       link unite-bitwise
-        call n-bits-total-h/shift-left, code 24
-          link unite-bitwise, call n-bits-total-h/unsigned-shift-right, code 8
+        call n-bits-total-h/shift-left
+          code 24
+          link unite-bitwise, call n-bits-total-h/unsigned-shift-right(code 8)
           link intersect-bitwise, code 4278255360
   call data-words/set
-    call n-bits-left/add, code 64
+    call n-bits-left/add
+      code 64
       link unsigned-shift-right, code 9
       link shift-left, code 4
       link add, code 14
-    call n-bits-total-l/shift-left, code 8
-      link unite-bitwise, call n-bits-total-l/unsigned-shift-right, code 24
+    call n-bits-total-l/shift-left
+      code 8
+      link unite-bitwise, call n-bits-total-l/unsigned-shift-right(code 24)
       link intersect-bitwise, code 16711935
       link unite-bitwise
-        call n-bits-total-l/shift-left, code 24
-          link unite-bitwise, call n-bits-total-l/unsigned-shift-right, code 8
+        call n-bits-total-l/shift-left
+          code 24
+          link unite-bitwise, call n-bits-total-l/unsigned-shift-right(code 8)
           link intersect-bitwise, code 4278255360
   save data/sig-bytes
-    call data-words/length/add, code 1
+    call data-words/length/add
+      code 1
       link multiply, code 4
   call self/process
   save hash, self/hash
@@ -728,18 +746,21 @@ task finalize
   save i, code 0
   walk test
     hook test
-      call i/is-below, code 4
+      call i/is-below
+        code 4
     hook step
       save h-i, h/{i}
       save h/{i}
-        call h-i/shift-left, code 8
-          link unite-bitwise, call h-i/unsigned-shift-right, code 24
+        call h-i/shift-left
+          code 8
+          link unite-bitwise, call h-i/unsigned-shift-right(code 24)
           link intersect-bitwise, code 16711935
           link unite-bitwise
-            call h-i/shift-left, code 24
-              link unite-bitwise, call h-i/unsigned-shift-right, code 8
+            call h-i/shift-left
+              code 24
+              link unite-bitwise, call h-i/unsigned-shift-right(code 8)
               link intersect-bitwise, code 4278255360
-      save i, call increment, read i
+      save i, call increment(read i)
   send back, read hash
 
 task ff
@@ -752,14 +773,17 @@ task ff
   take t
   save n
     call a/add
-      call b/intersect-bitwise, read c
+      call b/intersect-bitwise
+        read c
         link unite-bitwise
-          call bitflip, read b
+          call bitflip
+            read b
             link intersect-bitwise, read d
       link add, read x
       link add, read t
   send back
-    call n/shift-left, read s
+    call n/shift-left
+      read s
       link unite-bitwise
         call n/unsigned-shift-right
           call subtract
@@ -777,12 +801,14 @@ task gg
   take t
   save n
     call a/add
-      call b/intersect-bitwise, read d
-        link unite-bitwise, call c/intersect-bitwise, call bitflip, read d
+      call b/intersect-bitwise
+        read d
+        link unite-bitwise, call c/intersect-bitwise(call bitflip(read d))
       link add, read x
       link add, read t
   send back
-    call n/shift-left, read s
+    call n/shift-left
+      read s
       link unite-bitwise
         call n/unsigned-shift-right
           call subtract
@@ -800,12 +826,14 @@ task hh
   take t
   save n
     call a/add
-      call b/oppose-bitwise, read c
+      call b/oppose-bitwise
+        read c
         link oppose-bitwise, read d
       link add, read x
       link add, read t
   send back
-    call n/shift-left, read s
+    call n/shift-left
+      read s
       link unite-bitwise
         call n/unsigned-shift-right
           call subtract
@@ -822,11 +850,16 @@ task ii
   take s
   take t
   save n
-    call a/add, call c/oppose-bitwise, call b/unite-bitwise, call bitflip, read d
+    call a/add
+      call c/oppose-bitwise
+        call b/unite-bitwise
+          call bitflip
+            read d
       link add, read x
       link add, read t
   send back
-    call n/shift-left, read s
+    call n/shift-left
+      read s
       link unite-bitwise
         call n/unsigned-shift-right
           call subtract

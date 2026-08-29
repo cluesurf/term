@@ -17,6 +17,13 @@ load @term/seed/code/native/json
   find do-from-number
   find do-from-boolean
   find do-make-null
+  find do-is-array
+  find do-is-object
+  find do-is-text
+  find do-is-boolean
+  find do-array-size
+  find do-array-item
+  find do-object-keys
 
 task parse
   take text, like text
@@ -165,3 +172,58 @@ task make-null
   like dynamic
   send back
     call do-make-null
+
+# The shape questions: what a parsed value is, and what an array or an object holds. A reader of foreign JSON walks
+# a value with these; the accessors above assume the shape is already known.
+
+task is-array
+  take value, like dynamic
+  like boolean
+  send back
+    call do-is-array
+      read value
+
+task is-object
+  take value, like dynamic
+  like boolean
+  send back
+    call do-is-object
+      read value
+
+task is-text
+  take value, like dynamic
+  like boolean
+  send back
+    call do-is-text
+      read value
+
+task is-boolean
+  take value, like dynamic
+  like boolean
+  send back
+    call do-is-boolean
+      read value
+
+task array-size
+  take value, like dynamic
+  like number
+  send back
+    call do-array-size
+      read value
+
+task array-item
+  take value, like dynamic
+  take index, like number
+  like dynamic
+  send back
+    call do-array-item
+      read value
+      read index
+
+task object-keys
+  take value, like dynamic
+  like list
+    like text
+  send back
+    call do-object-keys
+      read value

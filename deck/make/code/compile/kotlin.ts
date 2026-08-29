@@ -5,6 +5,7 @@
 // carries only the generics its own fields use, filling the rest with `Nothing` (valid under `out` variance), so
 // construction infers cleanly. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
+import { armLocals } from '@term/make/code/check/arm'
 import type {
   Expression,
   Program,
@@ -16,8 +17,11 @@ import {
   collectionRead,
   exhausted,
   reassigned,
+  stringCall,
+  stringRead,
 } from '@term/make/code/compile/backend'
-import type { CollectionOp } from '@term/make/code/compile/backend'
+import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
+import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -105,6 +109,15 @@ export function hoistKotlinImports(source: string): string {
     : source
 }
 
+// the seed primitive forms by name, for a `named` reference the checker did not seed
+const KOTLIN_PRIMITIVES: Record<string, string> = {
+  text: 'String',
+  boolean: 'Boolean',
+  number: 'Long',
+  integer: 'Long',
+  decimal: 'Double',
+}
+
 export function emitKotlin(program: Program): string {
   const pad = (d: number) => '    '.repeat(d)
   // opaque per-backend handle types (`dock type / load <java.lang.Process>, name child-handle`): seed name -> concrete
@@ -118,11 +131,85 @@ export function emitKotlin(program: Program): string {
       .map(n => [n.alias, n.module]),
   )
 
+  // how many type parameters each generic form declares, for a reference that names the form without them
+  const genericArity = new Map<string, number>(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type')
+      .map(n => [n.name, n.params?.length ?? 0]),
+  )
+
   // declarative native bindings render their `case kotlin` template at call sites
   const binds = collectBinds(program)
   // the Kotlin subclass for a variant label, and each variant's field names (for construction / smart-cast access)
   const variantClass = new Map<string, string>()
   const variantFieldNames = new Map<string, string[]>()
+  // a counter for the locals a `when` binds its subject to
+  let matchCount = 0
+  // the forms a `fill` / `melt` with a form walks, gathered while the bodies are emitted
+  const fillSpecs = new Map<string, FormSpec>()
+  const meltSpecs = new Map<string, FormSpec>()
+  // every struct form's declared fields, for a construction that leaves some out
+  const recordFields = new Map<string, { name: string; type: Type }[]>(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && n.variants.length === 0)
+      .map(n => [n.name, n.fields]),
+  )
+
+  // the empty value of a type: what a left-out field holds
+  const emptyOf = (type: Type | undefined): string => {
+    switch (type?.kind) {
+      case 'string':
+        return '""'
+      case 'boolean':
+        return 'false'
+      case 'number':
+        return '0L'
+      case 'float':
+        return '0.0'
+      case 'bytes':
+        return 'ByteArray(0)'
+      case 'array':
+        return 'mutableListOf()'
+      case 'map':
+        return 'mutableMapOf()'
+      case 'named':
+        if (type.name === 'text') {
+          return '""'
+        }
+
+        if (type.name === 'boolean') {
+          return 'false'
+        }
+
+        if (type.name === 'number' || type.name === 'integer') {
+          return '0L'
+        }
+
+        if (type.name === 'decimal') {
+          return '0.0'
+        }
+
+        if (type.name === 'maybe') {
+          return 'MaybeNone'
+        }
+
+        if (type.name === 'list') {
+          return 'mutableListOf()'
+        }
+
+        if (type.name === 'hash') {
+          return 'mutableMapOf()'
+        }
+
+        return '0L'
+      default:
+        return '0L'
+    }
+  }
+  // a label several enums share (`text` on both `token` and `data`): the class by owner, steered by the checked type
+  const variantClassOf = new Map<string, Map<string, string>>()
+  const classFor = (label: string, type: Type | undefined): string | undefined =>
+    (type?.kind === 'named' ? variantClassOf.get(label)?.get(type.name) : undefined) ?? variantClass.get(label)
 
   for (const node of program) {
     if (node.form !== 'record-type') {
@@ -131,6 +218,10 @@ export function emitKotlin(program: Program): string {
 
     for (const v of node.variants) {
       variantClass.set(v.name, `${pascal(node.name)}${pascal(v.name)}`)
+      variantClassOf.set(
+        v.name,
+        (variantClassOf.get(v.name) ?? new Map<string, string>()).set(node.name, `${pascal(node.name)}${pascal(v.name)}`),
+      )
       variantFieldNames.set(
         v.name,
         v.fields.map(f => f.name),
@@ -204,10 +295,22 @@ export function emitKotlin(program: Program): string {
           return opaque
         }
 
-        return type.args && type.args.length > 0
-          ? `${pascal(type.name)}<${type.args
-              .map(kotlinType)
-              .join(', ')}>`
+        // the seed primitives written by name (`like text` on a module-level binding reaches here unseeded)
+        const primitive = KOTLIN_PRIMITIVES[type.name]
+
+        if (primitive) {
+          return primitive
+        }
+
+        if (type.args && type.args.length > 0) {
+          return `${pascal(type.name)}<${type.args.map(kotlinType).join(', ')}>`
+        }
+
+        // a generic form named without its arguments (`like maybe`): kotlin needs every parameter, so each is Any
+        const arity = genericArity.get(type.name) ?? 0
+
+        return arity > 0
+          ? `${pascal(type.name)}<${Array.from({ length: arity }, () => 'Any').join(', ')}>`
           : pascal(type.name)
       }
 
@@ -430,6 +533,23 @@ export function emitKotlin(program: Program): string {
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
 
       case 'call': {
+        // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form, generated
+        // from the form's fields at the end of the module (see kotlinFormWalk below)
+        if (
+          node.callee.form === 'variable' &&
+          (node.callee.name === 'fill-form' || node.callee.name === 'melt-form') &&
+          node.into
+        ) {
+          const spec = formSpec(node.into, recordFields)
+          refuseAny(spec, 'Kotlin')
+          const into = node.callee.name === 'fill-form' ? fillSpecs : meltSpecs
+          specForms(spec, into)
+
+          return node.callee.name === 'fill-form'
+            ? `__fill${pascal(spec.form)}(${expr(node.args[0]!)}, "")`
+            : `__melt${pascal(spec.form)}(${expr(node.args[0]!)})`
+        }
+
         // a declarative native binding renders its `case kotlin` template
         if (
           node.callee.form === 'variable' &&
@@ -448,6 +568,13 @@ export function emitKotlin(program: Program): string {
 
         if (operation) {
           return collectionExpr(operation, node.args)
+        }
+
+        // a host string method (what `text.tree` delegates to) lowers to kotlin's String API
+        const text = stringCall(node.callee)
+
+        if (text) {
+          return stringExpr(text.op, expr(text.target), node.args.map(a => expr(a)))
         }
 
         // a generic trait-method call lowers to an interface method call on the receiver: `x.measure(..)`. The receiver
@@ -491,7 +618,7 @@ export function emitKotlin(program: Program): string {
       }
 
       case 'record': {
-        const cls = variantClass.get(node.name)
+        const cls = classFor(node.name, node.type)
 
         if (cls) {
           return node.fields.length > 0
@@ -499,6 +626,19 @@ export function emitKotlin(program: Program): string {
                 .map(f => `${camel(f.name)} = ${expr(f.value)}`)
                 .join(', ')})`
             : cls
+        }
+
+        // a struct: a field the construction leaves out takes its type's empty value, so the data class is whole
+        const declared = recordFields.get(node.name)
+
+        if (declared) {
+          const given = new Set(node.fields.map(f => f.name))
+          const missing = declared.filter(f => !given.has(f.name)).map(f => `${camel(f.name)} = ${emptyOf(f.type)}`)
+          const all = [...node.fields.map(f => `${camel(f.name)} = ${expr(f.value)}`), ...missing]
+
+          if (missing.length > 0) {
+            return `${pascal(node.name)}(${all.join(', ')})`
+          }
         }
 
         // a generic struct built from empty collections cannot infer its parameters; pin them from the checked type
@@ -518,6 +658,12 @@ export function emitKotlin(program: Program): string {
 
         if (read) {
           return `${expr(read.target)}.size.toLong()`
+        }
+
+        const textLength = stringRead(node)
+
+        if (textLength) {
+          return `${expr(textLength.target)}.length.toLong()`
         }
 
         if (node.index) {
@@ -644,6 +790,61 @@ export function emitKotlin(program: Program): string {
     }
   }
 
+  // JavaScript's string methods over kotlin's String (see backend.ts, STRING_METHODS). Indexes are Long in seed
+  // and Int in kotlin; a read past the end is empty (charAt) or 0 (charCodeAt), never an exception.
+  const stringExpr = (op: string, t: string, a: string[]): string => {
+    switch (op) {
+      case 'charAt':
+      case 'at':
+        return `(${t}.getOrNull((${a[0]}).toInt())?.toString() ?: "")`
+      case 'charCodeAt':
+        return `(${t}.getOrNull((${a[0]}).toInt())?.code ?: 0).toLong()`
+      case 'indexOf':
+        return a[1] !== undefined
+          ? `${t}.indexOf(${a[0]}, (${a[1]}).toInt()).toLong()`
+          : `${t}.indexOf(${a[0]}).toLong()`
+      case 'lastIndexOf':
+        return `${t}.lastIndexOf(${a[0]}).toLong()`
+      case 'split':
+        return `(${a[0]}).let { d -> if (d.isEmpty()) ${t}.map { it.toString() }.toMutableList() else ${t}.split(d).toMutableList() }`
+      case 'substring':
+      case 'slice':
+        return a[1] !== undefined
+          ? `${t}.let { s -> s.substring((${a[0]}).toInt().coerceIn(0, s.length), (${a[1]}).toInt().coerceIn(0, s.length)) }`
+          : `${t}.let { s -> s.substring((${a[0]}).toInt().coerceIn(0, s.length)) }`
+      case 'toLowerCase':
+        return `${t}.lowercase()`
+      case 'toUpperCase':
+        return `${t}.uppercase()`
+      case 'startsWith':
+        return `${t}.startsWith(${a[0]})`
+      case 'endsWith':
+        return `${t}.endsWith(${a[0]})`
+      case 'trim':
+        return `${t}.trim()`
+      case 'trimStart':
+        return `${t}.trimStart()`
+      case 'trimEnd':
+        return `${t}.trimEnd()`
+      case 'padStart':
+        return `${t}.let { s -> var o = s; val f = ${a[1]}; while (o.length < (${a[0]}).toInt() && f.isNotEmpty()) { o = f + o }; o }`
+      case 'padEnd':
+        return `${t}.let { s -> var o = s; val f = ${a[1]}; while (o.length < (${a[0]}).toInt() && f.isNotEmpty()) { o = o + f }; o }`
+      case 'replace':
+        return `${t}.replaceFirst(${a[0]}, ${a[1]})`
+      case 'replaceAll':
+        return `${t}.replace(${a[0]}, ${a[1]})`
+      case 'includes':
+        return `${t}.contains(${a[0]})`
+      case 'concat':
+        return `(${t} + ${a[0]})`
+      case 'repeat':
+        return `${t}.repeat((${a[0]}).toInt())`
+      default:
+        return ''
+    }
+  }
+
   const block = (body: Statement[], d: number): string =>
     body
       .map(s => `${pad(d)}${stmt(s, d)}`)
@@ -665,7 +866,12 @@ export function emitKotlin(program: Program): string {
                 result: node.init.result ?? { kind: 'unknown' },
                 ...(node.init.async ? { effects: ['async'] } : {}),
               })}`
-            : ''
+            : node.init.form === 'record' &&
+                node.init.type?.kind === 'named' &&
+                variantClassOf.has(node.init.name)
+              ? // a variant construction is bound as its sealed type, so the binding can later hold another variant
+                `: ${kotlinType(node.init.type)}`
+              : ''
 
         return `${node.mutable ? 'var' : 'val'} ${camel(
           node.name,
@@ -715,7 +921,11 @@ export function emitKotlin(program: Program): string {
 
         // an exhaustive `when` on the sealed type: each `is` arm smart-casts the subject, so its fields are directly
         // accessible in the body with no rewrite. A return-position match becomes `return when (...)`.
-        const subject = expr(node.subject)
+        // the subject is bound to a local first: a smart cast needs a stable value, and a `var` property (a field
+        // read like `entry.base`) is not one
+        const subjectExpr = expr(node.subject)
+        const stable = node.subject.form === 'variable'
+        const subject = stable ? subjectExpr : `subject${++matchCount}`
         const arms = node.cases.map(b => {
           if (booleans) {
             return `${pad(d + 1)}${b.label} -> {\n${block(
@@ -724,12 +934,15 @@ export function emitKotlin(program: Program): string {
             )}\n${pad(d + 1)}}`
           }
 
-          const cls = variantClass.get(b.label) ?? pascal(b.label)
+          const cls = classFor(b.label, node.subject.type) ?? pascal(b.label)
+          // the arm's fields (renamed or not, see check/arm.ts) become locals read off the smart-cast subject, the
+          // ones the body reads
+          const bodyText = block(b.body, d + 2)
+          const locals = armLocals(variantFieldNames.get(b.label) ?? [], b.binds)
+            .filter(({ local }) => new RegExp(`\\b${camel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
+            .map(({ field, local }) => `${pad(d + 2)}val ${camel(local)} = ${subject}.${camel(field)}`)
 
-          return `${pad(d + 1)}is ${cls} -> {\n${block(
-            b.body,
-            d + 2,
-          )}\n${pad(d + 1)}}`
+          return `${pad(d + 1)}is ${cls} -> {\n${[...locals, bodyText].join('\n')}\n${pad(d + 1)}}`
         })
 
         if (node.otherwise) {
@@ -741,7 +954,9 @@ export function emitKotlin(program: Program): string {
           )
         }
 
-        return `when (${subject}) {\n${arms.join('\n')}\n${pad(d)}}`
+        const when = `when (${subject}) {\n${arms.join('\n')}\n${pad(d)}}`
+
+        return stable ? when : `val ${subject} = ${subjectExpr}\n${pad(d)}${when}`
       }
 
       case 'if': {
@@ -850,7 +1065,7 @@ export function emitKotlin(program: Program): string {
         }
 
         const fields = node.fields
-          .map(f => `val ${camel(f.name)}: ${kotlinType(f.type)}`)
+          .map(f => `var ${camel(f.name)}: ${kotlinType(f.type)}`)
           .join(', ')
 
         const generics = node.params.length
@@ -952,10 +1167,13 @@ export function emitKotlin(program: Program): string {
     }
   }
 
-  const body = program
-    .filter(n => n.form !== 'native')
-    .map(n => stmt(n, 0))
-    .filter(Boolean)
+  const body = [
+    ...program
+      .filter(n => n.form !== 'native')
+      .map(n => stmt(n, 0))
+      .filter(Boolean),
+    ...kotlinFormWalk(fillSpecs, meltSpecs),
+  ]
 
   const prelude = body.some(b => b.includes('SeedError('))
     ? ['class SeedError(message: String) : RuntimeException(message)']
@@ -985,3 +1203,141 @@ function mentions(type: Type | undefined, name: string): boolean {
       return false
   }
 }
+
+// ---- filling a form from data on kotlin ----
+
+// the walkers a module's `fill` / `melt` with a form need: helpers over the package's `Data` sealed class, then a
+// function per form. A value that does not fit throws, the way a raise does on this backend, with the path and
+// reason of the package's `data-mismatch`.
+function kotlinFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec>): string[] {
+  if (fills.size === 0 && melts.size === 0) {
+    return []
+  }
+
+  const out: string[] = [KOTLIN_FORM_HELPERS]
+
+  const fillOf = (kind: FormKind, value: string, path: string, optional: boolean): string => {
+    switch (kind.kind) {
+      case 'text':
+        return `__termText(${value}, ${path}, ${optional})`
+      case 'number':
+        return `__termNumber(${value}, ${path}, ${optional})`
+      case 'decimal':
+        return `__termDecimal(${value}, ${path}, ${optional})`
+      case 'flag':
+        return `__termFlag(${value}, ${path}, ${optional})`
+      case 'data':
+        return `__termData(${value}, ${path}, ${optional})`
+      case 'list':
+        return `__termList(${value}, ${path}, ${optional}) { d, p -> ${fillOf(kind.item, 'd', 'p', false)} }`
+      case 'form':
+        return `__fill${pascal(kind.spec.form)}(__termData(${value}, ${path}, ${optional}), ${path})`
+      default:
+        return '0L'
+    }
+  }
+
+  for (const spec of fills.values()) {
+    const known = spec.fields.map(f => JSON.stringify(f.name)).join(', ')
+    const fields = spec.fields
+      .map(f => `${camel(f.name)} = ${fillOf(f.kind, `find(${JSON.stringify(f.name)})`, `__termPath(path, ${JSON.stringify(f.name)})`, f.optional)}`)
+      .join(', ')
+
+    out.push(
+      `fun __fill${pascal(spec.form)}(value: Data, path: String): ${pascal(spec.form)} {\n` +
+        `    val entries = __termEntries(value, path)\n` +
+        `    val known = setOf(${known})\n` +
+        `    for (e in entries) { if (!known.contains(e.name)) __termMismatch(__termPath(path, e.name), "is not in the form") }\n` +
+        `    fun find(name: String): Data? = entries.firstOrNull { it.name == name }?.base\n` +
+        `    return ${pascal(spec.form)}(${fields})\n}`,
+    )
+  }
+
+  const meltOf = (kind: FormKind, value: string): string => {
+    switch (kind.kind) {
+      case 'text':
+        return `DataText(value = ${value})`
+      case 'number':
+        return `DataNumber(value = ${value})`
+      case 'decimal':
+        return `DataDecimal(value = ${value})`
+      case 'flag':
+        return `DataFlag(value = ${value})`
+      case 'data':
+        return value
+      case 'list':
+        return `DataArray(list = (${value}).map { x -> ${meltOf(kind.item, 'x')} }.toMutableList())`
+      case 'form':
+        return `__melt${pascal(kind.spec.form)}(${value})`
+      default:
+        return 'DataBlank'
+    }
+  }
+
+  const emptyTest = (kind: FormKind, value: string): string | undefined => {
+    switch (kind.kind) {
+      case 'text':
+        return `(${value}).isEmpty()`
+      case 'list':
+        return `(${value}).isEmpty()`
+      case 'data':
+        return `(${value} is DataBlank)`
+      default:
+        return undefined
+    }
+  }
+
+  for (const spec of melts.values()) {
+    const lines = spec.fields.map(f => {
+      const value = `value.${camel(f.name)}`
+      const entry = `list.add(DataEntry(name = ${JSON.stringify(f.name)}, base = ${meltOf(f.kind, value)}))`
+      const empty = f.optional ? emptyTest(f.kind, value) : undefined
+
+      return empty ? `    if (!${empty}) { ${entry} }` : `    ${entry}`
+    })
+
+    out.push(
+      `fun __melt${pascal(spec.form)}(value: ${pascal(spec.form)}): Data {\n    val list = mutableListOf<DataEntry>()\n${lines.join('\n')}\n    return DataHash(list = list)\n}`,
+    )
+  }
+
+  return out
+}
+
+const KOTLIN_FORM_HELPERS = `fun __termMismatch(path: String, reason: String): Nothing =
+    throw SeedError("data-mismatch: Data does not fit the shape: " + (if (path.isEmpty()) "." else path) + " " + reason)
+fun __termPath(path: String, key: String): String = if (path.isEmpty()) key else path + "/" + key
+fun __termKind(value: Data): String = when (value) {
+    is DataHash -> "a map"; is DataArray -> "a list"; is DataBlank -> "void"; is DataText -> "text"; is DataNumber -> "number"; is DataDecimal -> "decimal"; is DataFlag -> "flag"; is DataGraft -> "a fuse"
+}
+fun __termEntries(value: Data, path: String): MutableList<DataEntry> = when (value) {
+    is DataHash -> value.list
+    else -> __termMismatch(path, "is " + __termKind(value) + " where a map belongs")
+}
+fun __termText(value: Data?, path: String, optional: Boolean): String = when (value) {
+    is DataText -> value.value
+    null, is DataBlank -> if (optional) "" else __termMismatch(path, "is missing")
+    else -> __termMismatch(path, "is " + __termKind(value) + " where text belongs")
+}
+fun __termNumber(value: Data?, path: String, optional: Boolean): Long = when (value) {
+    is DataNumber -> value.value
+    null, is DataBlank -> if (optional) 0L else __termMismatch(path, "is missing")
+    else -> __termMismatch(path, "is " + __termKind(value) + " where number belongs")
+}
+fun __termDecimal(value: Data?, path: String, optional: Boolean): Double = when (value) {
+    is DataDecimal -> value.value
+    is DataNumber -> value.value.toDouble()
+    null, is DataBlank -> if (optional) 0.0 else __termMismatch(path, "is missing")
+    else -> __termMismatch(path, "is " + __termKind(value) + " where decimal belongs")
+}
+fun __termFlag(value: Data?, path: String, optional: Boolean): Boolean = when (value) {
+    is DataFlag -> value.value
+    null, is DataBlank -> if (optional) false else __termMismatch(path, "is missing")
+    else -> __termMismatch(path, "is " + __termKind(value) + " where flag belongs")
+}
+fun __termData(value: Data?, path: String, optional: Boolean): Data = value ?: (if (optional) DataBlank else __termMismatch(path, "is missing"))
+fun <T> __termList(value: Data?, path: String, optional: Boolean, item: (Data, String) -> T): MutableList<T> = when (value) {
+    is DataArray -> value.list.mapIndexed { i, d -> item(d, __termPath(path, i.toString())) }.toMutableList()
+    null, is DataBlank -> if (optional) mutableListOf() else __termMismatch(path, "is missing")
+    else -> __termMismatch(path, "is " + __termKind(value) + " where a list belongs")
+}`

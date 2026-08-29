@@ -5,6 +5,7 @@
 // infers the type parameter from context (return type, annotated binding, argument position) — no monomorphization
 // needed. Generic functions emit `<T>`. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
+import { armLocals } from '@term/make/code/check/arm'
 import type {
   Expression,
   Program,
@@ -17,8 +18,11 @@ import {
   collectionRead,
   exhausted,
   reassigned,
+  stringCall,
+  stringRead,
 } from '@term/make/code/compile/backend'
-import type { CollectionOp } from '@term/make/code/compile/backend'
+import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
+import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -109,10 +113,45 @@ function camel(name: string): string {
 }
 
 // type / variant names are capitalized, so they can never collide with a (lowercase) keyword
+// Foundation and standard-library type names a seed form must not shadow: `form data` would hide `Foundation.Data`
+// from every shim that uses it, so such a form is spelled with a `Form` suffix throughout the emit
+const SWIFT_TAKEN = new Set([
+  'Data',
+  'Date',
+  'URL',
+  'Error',
+  'Result',
+  'Optional',
+  'Character',
+  'Set',
+  'Array',
+  'Dictionary',
+  'String',
+  'Int',
+  'Double',
+  'Bool',
+  'Task',
+  'Thread',
+  'Process',
+  'Bundle',
+  'Timer',
+  'Locale',
+  'Decimal',
+  'Stream',
+  'Host',
+  'Pipe',
+  'Scanner',
+  'Operation',
+  'Notification',
+  'Range',
+  'Unit',
+])
+
 function pascal(name: string): string {
   const c = camelize(name)
+  const spelled = c.charAt(0).toUpperCase() + c.slice(1)
 
-  return c.charAt(0).toUpperCase() + c.slice(1)
+  return SWIFT_TAKEN.has(spelled) ? `${spelled}Form` : spelled
 }
 
 const OP: Record<string, string> = {
@@ -301,6 +340,16 @@ function collectArrayEq(body: Statement[]): {
   return { ids, names }
 }
 
+// the seed primitive forms by name, for a `named` reference the checker did not seed (a module-level binding's
+// annotation)
+const SWIFT_PRIMITIVES: Record<string, string> = {
+  text: 'String',
+  boolean: 'Bool',
+  number: 'Int',
+  integer: 'Int',
+  decimal: 'Double',
+}
+
 export function emitSwift(program: Program): string {
   const pad = (d: number) => '  '.repeat(d)
   // declarative native bindings render their `case swift` template at call sites
@@ -319,6 +368,13 @@ export function emitSwift(program: Program): string {
           n.form === 'native' && n.kind === 'type',
       )
       .map(n => [n.alias, n.module]),
+  )
+
+  // how many type parameters each generic form declares, for a reference that names the form without them
+  const genericArity = new Map<string, number>(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type')
+      .map(n => [n.name, n.params?.length ?? 0]),
   )
 
   const swiftType = (type: Type | undefined): string => {
@@ -348,10 +404,22 @@ export function emitSwift(program: Program): string {
           return opaque
         }
 
-        return type.args && type.args.length > 0
-          ? `${pascal(type.name)}<${type.args
-              .map(swiftType)
-              .join(', ')}>`
+        // the seed primitives written by name (`like text` on a module-level binding reaches here unseeded)
+        const primitive = SWIFT_PRIMITIVES[type.name]
+
+        if (primitive) {
+          return primitive
+        }
+
+        if (type.args && type.args.length > 0) {
+          return `${pascal(type.name)}<${type.args.map(swiftType).join(', ')}>`
+        }
+
+        // a generic form named without its arguments (`like maybe`): swift needs every parameter, so each is Any
+        const arity = genericArity.get(type.name) ?? 0
+
+        return arity > 0
+          ? `${pascal(type.name)}<${Array.from({ length: arity }, () => 'Any').join(', ')}>`
           : pascal(type.name)
       }
 
@@ -504,6 +572,73 @@ export function emitSwift(program: Program): string {
   // variant label -> the owning enum, and each variant's field names (for construction and match binding)
   const variantFields = new Map<string, string[]>()
   const variantSet = new Set<string>()
+  // the forms a `fill` / `melt` with a form walks, gathered while the bodies are emitted
+  const fillSpecs = new Map<string, FormSpec>()
+  const meltSpecs = new Map<string, FormSpec>()
+  // every struct form's declared fields (in order: swift's memberwise init takes them so), and the exception forms,
+  // whose structs conform to Error so a raise can `throw` them
+  const recordFields = new Map<string, { name: string; type: Type }[]>(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && n.variants.length === 0)
+      .map(n => [n.name, n.fields]),
+  )
+  const exceptionForms = new Set(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && Boolean(n.chain?.includes('exception')))
+      .map(n => n.name),
+  )
+
+  // the empty value of a type: what a left-out field holds
+  const emptyOf = (type: Type | undefined): string => {
+    switch (type?.kind) {
+      case 'string':
+        return '""'
+      case 'boolean':
+        return 'false'
+      case 'number':
+        return '0'
+      case 'float':
+        return '0.0'
+      case 'bytes':
+        return 'Data()'
+      case 'array':
+        return 'SeedList()'
+      case 'map':
+        return 'SeedMap()'
+      case 'named':
+        if (type.name === 'text') {
+          return '""'
+        }
+
+        if (type.name === 'boolean') {
+          return 'false'
+        }
+
+        if (type.name === 'number' || type.name === 'integer') {
+          return '0'
+        }
+
+        if (type.name === 'decimal') {
+          return '0.0'
+        }
+
+        if (type.name === 'maybe') {
+          return '.none'
+        }
+
+        if (type.name === 'list') {
+          return 'SeedList()'
+        }
+
+        if (type.name === 'hash') {
+          return 'SeedMap()'
+        }
+
+        return '0'
+      default:
+        return '0'
+    }
+  }
   // for each form, which generic parameters (by index) flow into a map KEY position inside its fields. A `set<t>` stores
   // `items: hash<t, bool>`, so index 0 is a key; a method generic filling that slot must be `Hashable` (a Dictionary key).
   const formKeyIndices = new Map<string, Set<number>>()
@@ -762,12 +897,36 @@ export function emitSwift(program: Program): string {
       case 'unary':
         return `${node.op}${expr(node.operand, bind)}`
       case 'binary':
+        if (
+          node.op === '%' &&
+          (node.left.type?.kind === 'float' || node.right.type?.kind === 'float' || node.type?.kind === 'float')
+        ) {
+          return `(${expr(node.left, bind)}).truncatingRemainder(dividingBy: ${expr(node.right, bind)})`
+        }
+
         return `(${expr(node.left, bind)} ${OP[node.op]} ${expr(
           node.right,
           bind,
         )})`
 
       case 'call': {
+        // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form, generated
+        // from the form's fields at the end of the module (see swiftFormWalk below)
+        if (
+          node.callee.form === 'variable' &&
+          (node.callee.name === 'fill-form' || node.callee.name === 'melt-form') &&
+          node.into
+        ) {
+          const spec = formSpec(node.into, recordFields)
+          refuseAny(spec, 'Swift')
+          const into = node.callee.name === 'fill-form' ? fillSpecs : meltSpecs
+          specForms(spec, into)
+
+          return node.callee.name === 'fill-form'
+            ? `__fill${pascal(spec.form)}(${expr(node.args[0]!, bind)}, "")`
+            : `__melt${pascal(spec.form)}(${expr(node.args[0]!, bind)})`
+        }
+
         // a declarative native binding renders its `case swift` template
         if (
           node.callee.form === 'variable' &&
@@ -789,6 +948,13 @@ export function emitSwift(program: Program): string {
 
         if (operation) {
           return collectionExpr(operation, node.args, bind)
+        }
+
+        // a host string method (what `text.tree` delegates to) lowers to swift's String API
+        const text = stringCall(node.callee)
+
+        if (text) {
+          return stringExpr(text.op, expr(text.target, bind), node.args.map(a => expr(a, bind)))
         }
 
         // a generic trait-method call lowers to a protocol method call on the receiver: `x.measure(..)`. The receiver
@@ -860,7 +1026,18 @@ export function emitSwift(program: Program): string {
             : `.${camel(node.name)}`
         }
 
-        // a struct: name the type and pass the fields
+        // a struct: name the type and pass the fields, in declared order (the memberwise init), a field the
+        // construction leaves out taking its type's empty value
+        const declared = recordFields.get(node.name)
+
+        if (declared) {
+          const given = new Map(node.fields.map(f => [f.name, f.value]))
+
+          return `${pascal(node.name)}(${declared
+            .map(f => `${camel(f.name)}: ${given.has(f.name) ? expr(given.get(f.name)!, bind) : emptyOf(f.type)}`)
+            .join(', ')})`
+        }
+
         return `${pascal(node.name)}(${node.fields
           .map(f => `${camel(f.name)}: ${expr(f.value, bind)}`)
           .join(', ')})`
@@ -878,6 +1055,12 @@ export function emitSwift(program: Program): string {
         if (read) {
           // both a map and an array (SeedMap / SeedList) read their length through the wrapper's `.data`
           return `${expr(read.target, bind)}.data.count`
+        }
+
+        const textLength = stringRead(node)
+
+        if (textLength) {
+          return `${expr(textLength.target, bind)}.count`
         }
 
         // a matched variant's field reads the bound local; otherwise a normal field access
@@ -1022,6 +1205,57 @@ export function emitSwift(program: Program): string {
     }
   }
 
+  // JavaScript's string methods over swift's String (see backend.ts, STRING_METHODS). Positions count Characters;
+  // a read past the end is empty (charAt) or 0 (charCodeAt), never a trap. Foundation is imported by the prelude.
+  const stringExpr = (op: string, t: string, a: string[]): string => {
+    switch (op) {
+      case 'charAt':
+      case 'at':
+        return `({ () -> String in let c = Array(${t}); let i = Int(${a[0]}); return i >= 0 && i < c.count ? String(c[i]) : "" })()`
+      case 'charCodeAt':
+        return `({ () -> Int in let c = Array(${t}.utf16); let i = Int(${a[0]}); return i >= 0 && i < c.count ? Int(c[i]) : 0 })()`
+      case 'indexOf':
+        return `({ () -> Int in let h = ${t}; let n = ${a[0]}; let f = min(max(Int(${a[1] ?? '0'}), 0), h.count); if n.isEmpty { return f }; let s = h.index(h.startIndex, offsetBy: f); if let r = h.range(of: n, range: s..<h.endIndex) { return h.distance(from: h.startIndex, to: r.lowerBound) }; return -1 })()`
+      case 'lastIndexOf':
+        return `({ () -> Int in let h = ${t}; if let r = h.range(of: ${a[0]}, options: .backwards) { return h.distance(from: h.startIndex, to: r.lowerBound) }; return -1 })()`
+      case 'split':
+        return `({ () -> SeedList<String> in let d = ${a[0]}; return SeedList(d.isEmpty ? ${t}.map { String($0) } : ${t}.components(separatedBy: d)) })()`
+      case 'substring':
+      case 'slice':
+        return `({ () -> String in let s = ${t}; let n = s.count; var x = min(max(Int(${a[0]}), 0), n); var y = min(max(Int(${a[1] ?? 'n'}), 0), n); if x > y { swap(&x, &y) }; return String(s[s.index(s.startIndex, offsetBy: x)..<s.index(s.startIndex, offsetBy: y)]) })()`
+      case 'toLowerCase':
+        return `${t}.lowercased()`
+      case 'toUpperCase':
+        return `${t}.uppercased()`
+      case 'startsWith':
+        return `${t}.hasPrefix(${a[0]})`
+      case 'endsWith':
+        return `${t}.hasSuffix(${a[0]})`
+      case 'trim':
+        return `${t}.trimmingCharacters(in: .whitespacesAndNewlines)`
+      case 'trimStart':
+        return `String(${t}.drop(while: { $0.isWhitespace }))`
+      case 'trimEnd':
+        return `String(String(${t}.reversed()).drop(while: { $0.isWhitespace }).reversed())`
+      case 'padStart':
+        return `({ () -> String in var o = ${t}; let f = ${a[1]}; while o.count < Int(${a[0]}) && !f.isEmpty { o = f + o }; return o })()`
+      case 'padEnd':
+        return `({ () -> String in var o = ${t}; let f = ${a[1]}; while o.count < Int(${a[0]}) && !f.isEmpty { o = o + f }; return o })()`
+      case 'replace':
+        return `({ () -> String in var s = ${t}; if let r = s.range(of: ${a[0]}) { s.replaceSubrange(r, with: ${a[1]}) }; return s })()`
+      case 'replaceAll':
+        return `${t}.replacingOccurrences(of: ${a[0]}, with: ${a[1]})`
+      case 'includes':
+        return `${t}.contains(${a[0]})`
+      case 'concat':
+        return `(${t} + ${a[0]})`
+      case 'repeat':
+        return `String(repeating: ${t}, count: max(Int(${a[0]}), 0))`
+      default:
+        return ''
+    }
+  }
+
   const block = (
     body: Statement[],
     d: number,
@@ -1133,10 +1367,14 @@ export function emitSwift(program: Program): string {
             branchBind.set(subjectVar, new Set(fields))
           }
 
+          // every field binds, positionally, under the local name the arm's `link` lines give it (see check/arm.ts)
+          const locals = new Map(
+            armLocals(fields, b.binds).map(({ field, local }) => [field, local]),
+          )
           const pattern =
             fields.length > 0
               ? `case let .${camel(b.label)}(${fields
-                  .map(camel)
+                  .map(field => camel(locals.get(field) ?? field))
                   .join(', ')}):`
               : `case .${camel(b.label)}:`
 
@@ -1262,7 +1500,7 @@ export function emitSwift(program: Program): string {
             `${pad(d + 1)}var ${camel(f.name)}: ${swiftType(f.type)}`,
         )
 
-        return `struct ${pascal(node.name)}${generics} {\n${fields.join(
+        return `struct ${pascal(node.name)}${generics}${exceptionForms.has(node.name) ? ': Error' : ''} {\n${fields.join(
           '\n',
         )}\n${pad(d)}}`
       }
@@ -1385,7 +1623,7 @@ export function emitSwift(program: Program): string {
     )
   }
 
-  return [...imports, ...prelude, ...body].join('\n\n') + '\n'
+  return [...imports, ...prelude, ...body, ...swiftFormWalk(fillSpecs, meltSpecs)].join('\n\n') + '\n'
 }
 
 // does a function body contain a throw? (then its Swift signature needs `throws`)
@@ -1412,3 +1650,141 @@ function bodyThrows(body: Statement[]): boolean {
     }
   })
 }
+
+// ---- filling a form from data on swift ----
+
+// the walkers a module's `fill` / `melt` with a form need: helpers over the package's data enum (spelled
+// `DataForm` here, since `Data` is Foundation's), then a function per form. A value that does not fit is fatal,
+// which is what a thrown SeedError is on this backend too, with the path and reason of the package's
+// `data-mismatch`.
+function swiftFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec>): string[] {
+  if (fills.size === 0 && melts.size === 0) {
+    return []
+  }
+
+  const out: string[] = [SWIFT_FORM_HELPERS]
+
+  const fillOf = (kind: FormKind, value: string, path: string, optional: boolean): string => {
+    switch (kind.kind) {
+      case 'text':
+        return `__termText(${value}, ${path}, ${optional})`
+      case 'number':
+        return `__termNumber(${value}, ${path}, ${optional})`
+      case 'decimal':
+        return `__termDecimal(${value}, ${path}, ${optional})`
+      case 'flag':
+        return `__termFlag(${value}, ${path}, ${optional})`
+      case 'data':
+        return `__termData(${value}, ${path}, ${optional})`
+      case 'list':
+        return `__termList(${value}, ${path}, ${optional}) { d, p in ${fillOf(kind.item, 'd', 'p', false)} }`
+      case 'form':
+        return `__fill${pascal(kind.spec.form)}(__termData(${value}, ${path}, ${optional}), ${path})`
+      default:
+        return '0'
+    }
+  }
+
+  for (const spec of fills.values()) {
+    const known = spec.fields.map(f => JSON.stringify(f.name)).join(', ')
+    const fields = spec.fields
+      .map(f => `${camel(f.name)}: ${fillOf(f.kind, `find(${JSON.stringify(f.name)})`, `__termPath(path, ${JSON.stringify(f.name)})`, f.optional)}`)
+      .join(', ')
+
+    out.push(
+      `func __fill${pascal(spec.form)}(_ value: DataForm, _ path: String) -> ${pascal(spec.form)} {\n` +
+        `  let entries = __termEntries(value, path)\n` +
+        `  let known: Set<String> = [${known}]\n` +
+        `  for e in entries.data { if !known.contains(e.name) { __termMismatch(__termPath(path, e.name), "is not in the form") } }\n` +
+        `  func find(_ name: String) -> DataForm? { return entries.data.first { $0.name == name }?.base }\n` +
+        `  return ${pascal(spec.form)}(${fields})\n}`,
+    )
+  }
+
+  const meltOf = (kind: FormKind, value: string): string => {
+    switch (kind.kind) {
+      case 'text':
+        return `.text(value: ${value})`
+      case 'number':
+        return `.number(value: ${value})`
+      case 'decimal':
+        return `.decimal(value: ${value})`
+      case 'flag':
+        return `.flag(value: ${value})`
+      case 'data':
+        return value
+      case 'list':
+        return `.array(list: SeedList((${value}).data.map { x in ${meltOf(kind.item, 'x')} }))`
+      case 'form':
+        return `__melt${pascal(kind.spec.form)}(${value})`
+      default:
+        return '.blank'
+    }
+  }
+
+  const emptyTest = (kind: FormKind, value: string): string | undefined => {
+    switch (kind.kind) {
+      case 'text':
+        return `(${value}).isEmpty`
+      case 'list':
+        return `(${value}).data.isEmpty`
+      case 'data':
+        return `__termIsBlank(${value})`
+      default:
+        return undefined
+    }
+  }
+
+  for (const spec of melts.values()) {
+    const lines = spec.fields.map(f => {
+      const value = `value.${camel(f.name)}`
+      const entry = `list.append(DataEntry(name: ${JSON.stringify(f.name)}, base: ${meltOf(f.kind, value)}))`
+      const empty = f.optional ? emptyTest(f.kind, value) : undefined
+
+      return empty ? `  if !${empty} { ${entry} }` : `  ${entry}`
+    })
+
+    out.push(
+      `func __melt${pascal(spec.form)}(_ value: ${pascal(spec.form)}) -> DataForm {\n  var list: [DataEntry] = []\n${lines.join('\n')}\n  return .hash(list: SeedList(list))\n}`,
+    )
+  }
+
+  return out
+}
+
+const SWIFT_FORM_HELPERS = `func __termMismatch(_ path: String, _ reason: String) -> Never {
+  fatalError("data-mismatch: Data does not fit the shape: \\(path.isEmpty ? "." : path) \\(reason)")
+}
+func __termPath(_ path: String, _ key: String) -> String { return path.isEmpty ? key : path + "/" + key }
+func __termKind(_ value: DataForm) -> String {
+  switch value { case .hash: return "a map"; case .array: return "a list"; case .blank: return "void"; case .text: return "text"; case .number: return "number"; case .decimal: return "decimal"; case .flag: return "flag"; case .graft: return "a fuse" }
+}
+func __termIsBlank(_ value: DataForm) -> Bool { if case .blank = value { return true }; return false }
+func __termEntries(_ value: DataForm, _ path: String) -> SeedList<DataEntry> {
+  if case .hash(let list) = value { return list }
+  __termMismatch(path, "is \\(__termKind(value)) where a map belongs")
+}
+func __termText(_ value: DataForm?, _ path: String, _ optional: Bool) -> String {
+  switch value { case .some(.text(let value)): return value; case .none, .some(.blank): if optional { return "" }; __termMismatch(path, "is missing"); case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where text belongs") }
+}
+func __termNumber(_ value: DataForm?, _ path: String, _ optional: Bool) -> Int {
+  switch value { case .some(.number(let value)): return value; case .none, .some(.blank): if optional { return 0 }; __termMismatch(path, "is missing"); case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where number belongs") }
+}
+func __termDecimal(_ value: DataForm?, _ path: String, _ optional: Bool) -> Double {
+  switch value { case .some(.decimal(let value)): return value; case .some(.number(let value)): return Double(value); case .none, .some(.blank): if optional { return 0.0 }; __termMismatch(path, "is missing"); case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where decimal belongs") }
+}
+func __termFlag(_ value: DataForm?, _ path: String, _ optional: Bool) -> Bool {
+  switch value { case .some(.flag(let value)): return value; case .none, .some(.blank): if optional { return false }; __termMismatch(path, "is missing"); case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where flag belongs") }
+}
+func __termData(_ value: DataForm?, _ path: String, _ optional: Bool) -> DataForm {
+  if let value = value { return value }
+  if optional { return .blank }
+  __termMismatch(path, "is missing")
+}
+func __termList<T>(_ value: DataForm?, _ path: String, _ optional: Bool, _ item: (DataForm, String) -> T) -> SeedList<T> {
+  switch value {
+  case .some(.array(let list)): return SeedList(list.data.enumerated().map { (i, d) in item(d, __termPath(path, String(i))) })
+  case .none, .some(.blank): if optional { return SeedList() }; __termMismatch(path, "is missing")
+  case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where a list belongs")
+  }
+}`

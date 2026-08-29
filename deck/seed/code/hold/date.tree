@@ -354,8 +354,8 @@ task convert-from-julian-day-to-gregorian-day
         read m
         code 2
     hook hold
-      save y, call decrement, read y
-      save m, call decrement, read m
+      save y, call decrement(read y)
+      save m, call decrement(read m)
   save d
     call subtract
       call subtract

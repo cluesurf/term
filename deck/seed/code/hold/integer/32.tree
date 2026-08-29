@@ -53,7 +53,7 @@ task get-next-power-of-two
         code 0
     hook hold
       send back, read 1
-  save n, call decrement, read n
+  save n, call decrement(read n)
   save n
     call bitwise-or
       read n

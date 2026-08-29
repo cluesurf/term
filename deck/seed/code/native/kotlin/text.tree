@@ -9,7 +9,8 @@ task slice
 
   fork test
     hook test
-      call is-some, read end
+      call is-some
+        read end
     hook hold
       send back
         call kotlin-substring

@@ -21,7 +21,10 @@ task request
   take method, like text
   take url, like text
   take body, like text
-  take header, like hash
+  take header
+    like hash
+      like text
+      like text
     need false
   like http-response
   send back
@@ -35,7 +38,10 @@ task request
 task get
   note async
   take url, like text
-  take header, like hash
+  take header
+    like hash
+      like text
+      like text
     need false
   like http-response
   send back
@@ -50,7 +56,10 @@ task post
   note async
   take url, like text
   take body, like text
-  take header, like hash
+  take header
+    like hash
+      like text
+      like text
     need false
   like http-response
   send back

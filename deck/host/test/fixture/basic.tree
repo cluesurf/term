@@ -1,0 +1,11 @@
+host x
+  host y
+    host z, 123
+  host w, <foo>
+  list a
+    5, 6, 7
+  list member
+    mesh
+      host name, <foo>
+    mesh
+      host name, <bar>

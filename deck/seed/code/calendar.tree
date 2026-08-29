@@ -26,47 +26,65 @@ form date-parts
 task format
   take millis, like number
   like text
-  send back, call do-format, read millis
+  send back
+    call do-format
+      read millis
 
 task parse
   take text, like text
   like number
-  send back, call do-parse, read text
+  send back
+    call do-parse
+      read text
 
 task year
   take millis, like number
   like integer
-  send back, call do-year, read millis
+  send back
+    call do-year
+      read millis
 
 task month
   take millis, like number
   like integer
-  send back, call do-month, read millis
+  send back
+    call do-month
+      read millis
 
 task day
   take millis, like number
   like integer
-  send back, call do-day, read millis
+  send back
+    call do-day
+      read millis
 
 task hour
   take millis, like number
   like integer
-  send back, call do-hour, read millis
+  send back
+    call do-hour
+      read millis
 
 task minute
   take millis, like number
   like integer
-  send back, call do-minute, read millis
+  send back
+    call do-minute
+      read millis
 
 task second
   take millis, like number
   like integer
-  send back, call do-second, read millis
+  send back
+    call do-second
+      read millis
 
 task weekday
   take millis, like number
   like integer
-  send back, call do-weekday, read millis
+  send back
+    call do-weekday
+      read millis
 
 task make-utc
   take year, like integer
@@ -90,13 +108,13 @@ task to-parts
   like date-parts
   send back
     make date-parts
-      bind year, call year, read millis
-      bind month, call month, read millis
-      bind day, call day, read millis
-      bind hour, call hour, read millis
-      bind minute, call minute, read millis
-      bind second, call second, read millis
-      bind weekday, call weekday, read millis
+      bind year, call year(read millis)
+      bind month, call month(read millis)
+      bind day, call day(read millis)
+      bind hour, call hour(read millis)
+      bind minute, call minute(read millis)
+      bind second, call second(read millis)
+      bind weekday, call weekday(read millis)
 
 task add-seconds
   take millis, like number

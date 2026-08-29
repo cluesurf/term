@@ -1,0 +1,279 @@
+# `fill`: data into a host value, checked against a shape, so a program reads a config through the json module's
+# field accessors knowing every key it expects is there and of the kind it expects. `melt`: a host value back to
+# data. The shape is itself data: a map of the keys expected, each naming a kind as text (`<text>`, `<number>`,
+# `<decimal>`, `<flag>`, `<blank>`, `<any>`, `<map>`, `<list>`), a `?` after it for a key that may be absent, a
+# nested map for a nested map, a list holding one item shape for a list. Keys stay as written. See
+# note/term/host/04-model-and-json.md.
+
+load @term/seed/code/boolean
+  find not
+
+load @term/seed/code/list
+  find push
+  find size
+  find get
+  find contains
+
+load @term/seed/code/text
+  find ends-with
+  find substring
+
+load @term/seed/code/text/string
+  find concat
+
+load ./base
+  find data
+  find data-entry
+  find data-mismatch
+
+load ./json
+  find to-dynamic
+  find from-dynamic
+
+task fill
+  take value, like data
+  take shape, like data
+  like dynamic
+  call check-shape(read value, read shape, text <>)
+  send back
+    call to-dynamic(read value, true)
+
+task melt
+  take value, like dynamic
+  like data
+  send back
+    call from-dynamic(read value)
+
+# a value against a shape, the path of the value for the message
+task check-shape
+  note private
+  take value, like data
+  take shape, like data
+  take path, like text
+  fork case, read shape
+    case text
+      link kind
+      call check-kind(read value, read kind, read path)
+    case hash
+      link expected
+      fork case, read value
+        case hash
+          link present
+          walk list
+            read expected
+            hook next
+              take site, name want
+              save found, false
+              walk list
+                read present
+                hook next
+                  take site, name entry
+                  fork test
+                    hook test
+                      call is-equal(read entry/name, read want/name)
+                    hook hold
+                      save found, true
+                      call check-shape(read entry/base, read want/base, call join-path(read path, read want/name))
+              fork test
+                hook test
+                  call and(call not(read found), call not(call is-optional(read want/base)))
+                hook hold
+                  call refuse(call join-path(read path, read want/name), text <is missing>)
+          walk list
+            read present
+            hook next
+              take site, name entry
+              save known, false
+              walk list
+                read expected
+                hook next
+                  take site, name want
+                  fork test
+                    hook test
+                      call is-equal(read entry/name, read want/name)
+                    hook hold
+                      save known, true
+              fork test
+                hook test
+                  call not(read known)
+                hook hold
+                  call refuse(call join-path(read path, read entry/name), text <is not in the shape>)
+        case array
+          call refuse(read path, text <is a list where a map belongs>)
+        case text
+          call refuse(read path, text <is a scalar where a map belongs>)
+        case number
+          call refuse(read path, text <is a scalar where a map belongs>)
+        case decimal
+          call refuse(read path, text <is a scalar where a map belongs>)
+        case flag
+          call refuse(read path, text <is a scalar where a map belongs>)
+        case blank
+          call refuse(read path, text <is void where a map belongs>)
+        case graft
+          call refuse(read path, text <is an unexpanded fuse>)
+    case array
+      link items
+      fork case, read value
+        case array
+          link present
+          fork test
+            hook test
+              call is-above(call size(read items), code 0)
+            hook hold
+              save index, code 0
+              walk list
+                read present
+                hook next
+                  take site, name item
+                  call check-shape(read item, call get(read items, code 0), call join-path(read path, call index-text(read index)))
+                  save index
+                    call add(read index, code 1)
+        case hash
+          call refuse(read path, text <is a map where a list belongs>)
+        case text
+          call refuse(read path, text <is a scalar where a list belongs>)
+        case number
+          call refuse(read path, text <is a scalar where a list belongs>)
+        case decimal
+          call refuse(read path, text <is a scalar where a list belongs>)
+        case flag
+          call refuse(read path, text <is a scalar where a list belongs>)
+        case blank
+          call refuse(read path, text <is void where a list belongs>)
+        case graft
+          call refuse(read path, text <is an unexpanded fuse>)
+    case number
+      call refuse(read path, text <has a shape that is not a shape>)
+    case decimal
+      call refuse(read path, text <has a shape that is not a shape>)
+    case flag
+      call refuse(read path, text <has a shape that is not a shape>)
+    case blank
+      call refuse(read path, text <has a shape that is not a shape>)
+    case graft
+      call refuse(read path, text <has a shape that is not a shape>)
+
+# a scalar kind named by the shape: `<text>`, `<number>`, `<decimal>`, `<flag>`, `<blank>`, `<map>`, `<list>`,
+# `<any>`, with a `?` for one that may also be void. A number fits a decimal
+task check-kind
+  note private
+  take value, like data
+  take kind, like text
+  take path, like text
+  save want
+    call plain-kind(read kind)
+  save have
+    call kind-name(read value)
+  fork test
+    hook test
+      call or
+        call is-equal(read want, text <any>)
+        call is-equal(read want, read have)
+    hook hold
+      send back
+  fork test
+    hook test
+      call and
+        call is-equal(read have, text <blank>)
+        call ends-with(read kind, text <?>)
+    hook hold
+      send back
+  fork test
+    hook test
+      call and
+        call is-equal(read want, text <decimal>)
+        call is-equal(read have, text <number>)
+    hook hold
+      send back
+  call refuse(read path, call concat(text <is >, call concat(read have, call concat(text < where >, call concat(read want, text < belongs>)))))
+
+task kind-name
+  note private
+  take value, like data
+  like text
+  fork case, read value
+    case hash
+      send back, text <map>
+    case array
+      send back, text <list>
+    case text
+      send back, text <text>
+    case number
+      send back, text <number>
+    case decimal
+      send back, text <decimal>
+    case flag
+      send back, text <flag>
+    case blank
+      send back, text <blank>
+    case graft
+      send back, text <fuse>
+
+# `<number?>` is a number that may be absent or void
+task is-optional
+  note private
+  take shape, like data
+  like boolean
+  fork case, read shape
+    case text
+      link value
+      send back
+        call ends-with(read value, text <?>)
+    case hash
+      send back, false
+    case array
+      send back, false
+    case number
+      send back, false
+    case decimal
+      send back, false
+    case flag
+      send back, false
+    case blank
+      send back, false
+    case graft
+      send back, false
+
+task plain-kind
+  note private
+  take kind, like text
+  like text
+  fork test
+    hook test
+      call ends-with(read kind, text <?>)
+    hook hold
+      send back
+        call substring(read kind, code 0, call subtract(read kind/length, code 1))
+  send back, read kind
+
+task join-path
+  note private
+  take path, like text
+  take key, like text
+  like text
+  fork test
+    hook test
+      call is-equal(read path/length, code 0)
+    hook hold
+      send back, read key
+  send back
+    call concat(read path, call concat(text </>, read key))
+
+task index-text
+  note private
+  take index, like number
+  like text
+  send back
+    call integer-text(read index)
+
+load ./node
+  find integer-text
+
+task refuse
+  note private
+  take path, like text
+  take reason, like text
+  halt data-mismatch
+    bind path, read path
+    bind reason, read reason

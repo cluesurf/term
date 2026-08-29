@@ -189,7 +189,13 @@ export function nativePrelude(
     return ''
   }
 
-  return `;\n${parts.join('\n;\n')}`
+  // the empty statement is JavaScript's: Rust and Swift refuse a bare `;` at the top of a file, and their shims are
+  // items, never expression statements, so a newline is the whole separator there
+  const glue = env === 'node' || env === 'browser' ? ';\n' : '\n'
+
+  return env === 'node' || env === 'browser'
+    ? `${glue}${parts.join(`\n${glue}`)}`
+    : parts.join(`\n${glue}`)
 }
 
 // rewrite an abstract native import to the env-specific one, or return undefined if it is not an abstract native path

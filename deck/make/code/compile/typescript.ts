@@ -22,6 +22,7 @@ import {
   referencedBinds,
 } from '@term/make/code/compile/bind'
 import type { Bind } from '@term/make/code/compile/bind'
+import { armLocals } from '@term/make/code/check/arm'
 
 const guardStart = (text: string): string =>
   /^[([`]/.test(text) ? `;${text}` : text
@@ -176,8 +177,85 @@ let tsOpaqueTypes = new Map<string, string>()
 // `halt <form>` throws an instance of the runtime class and not a bare object. Set by emitTypeScript.
 let tsExceptions = new Set<string>()
 
-// the runtime class an exception is thrown as: a real `Error` (a stack, `instanceof`) carrying every field of the
-// shared `exception` form. `note` is the message, `form` is the name a catch branches on.
+// each variant's declared field names, in order, so a match arm can bind them as locals: `case circle` puts
+// `radius` in scope (the resolver already declares it), and `link r` renames the first field to `r`. Without this
+// the arm read a bare identifier nothing had declared and the program died at run time. Set by emitTypeScript.
+let tsVariantFields = new Map<string, string[]>()
+
+// the fields of every struct form in the program, for the `fill` / `melt` spec: name, type, `need false`
+let tsRecordFields = new Map<string, { name: string; type: Type; optional?: boolean }[]>()
+// did this module lower a `fill` or `melt` with a form? Then the walk rides in its prelude
+let tsFormWalkUsed = false
+
+// the shape `__termFill` walks: one entry per field with its member name and kind. A kind is `text`, `number`,
+// `decimal`, `flag`, `list` (with its item), `form` (with its own spec, recursively) or `any`. A form that reaches
+// itself (a tree) is cut at the second visit and read as `any`.
+type FormSpec = { form: string; fields: { name: string; member: string; optional: boolean; kind: FormKind }[] }
+type FormKind =
+  | { kind: 'text' | 'number' | 'decimal' | 'flag' | 'any' }
+  | { kind: 'list'; item: FormKind }
+  | { kind: 'form'; spec: FormSpec }
+
+function formSpec(type: Type, seen: Set<string>): FormSpec {
+  const name = type.kind === 'named' ? type.name : ''
+  const fields = tsRecordFields.get(name) ?? []
+  const inner = new Set(seen).add(name)
+
+  return {
+    form: name,
+    fields: fields.map(f => ({
+      name: f.name,
+      member: toMember(f.name),
+      optional: Boolean(f.optional),
+      kind: formKind(f.type, inner),
+    })),
+  }
+}
+
+function formKind(type: Type | undefined, seen: Set<string>): FormKind {
+  switch (type?.kind) {
+    case 'string':
+      return { kind: 'text' }
+    case 'boolean':
+      return { kind: 'flag' }
+    case 'number':
+      return { kind: 'number' }
+    case 'float':
+      return { kind: 'decimal' }
+    case 'array':
+      return { kind: 'list', item: formKind(type.element, seen) }
+    case 'named': {
+      if (type.name === 'text') {
+        return { kind: 'text' }
+      }
+
+      if (type.name === 'boolean') {
+        return { kind: 'flag' }
+      }
+
+      if (/^(number|integer|natural|size|count|index|u?int(8|16|32|64)?)$/.test(type.name)) {
+        return { kind: 'number' }
+      }
+
+      if (/^(decimal|float(32|64)?|double|real)$/.test(type.name)) {
+        return { kind: 'decimal' }
+      }
+
+      if (type.name === 'list') {
+        return { kind: 'list', item: formKind(type.args?.[0], seen) }
+      }
+
+      if (tsRecordFields.has(type.name) && !seen.has(type.name)) {
+        return { kind: 'form', spec: formSpec(type, seen) }
+      }
+
+      return { kind: 'any' }
+    }
+    default:
+      return { kind: 'any' }
+  }
+}
+
 const EXCEPTION_CLASS = 'TermException'
 const EXCEPTION_PRELUDE = `export class ${EXCEPTION_CLASS} extends Error {
   host!: string
@@ -197,6 +275,92 @@ const EXCEPTION_PRELUDE = `export class ${EXCEPTION_CLASS} extends Error {
   }
 }`
 
+// the walk, in the prelude of a module that lowers a `fill` or `melt` with a form. `data` is the value the
+// package's reader gives (`{ form: "hash", list: [{ name, base }] }`, `{ form: "array", list }`, a scalar with
+// `value`, `{ form: "blank" }`). A value that does not fit raises `data-mismatch`, the package's own exception,
+// `path` naming where and `reason` why.
+const FORM_WALK_PRELUDE = `function __termMismatch(path: string, reason: string): never {
+  throw new ${EXCEPTION_CLASS}({ host: "@term/host", form: "data-mismatch", code: exceptionCode(), time: date.now(), note: "Data does not fit the shape", link: { thing: "data", path: path || ".", reason } } as never)
+}
+
+function __termFill(value: any, spec: any, path = ""): any {
+  const at = (key: string) => (path ? path + "/" + key : key)
+  if (value.form !== "hash") __termMismatch(path, "is " + (value.form === "array" ? "a list" : value.form === "blank" ? "void" : "a scalar") + " where a map belongs")
+  const out: Record<string, unknown> = {}
+  const present = new Map<string, any>(value.list.map((e: any) => [e.name, e.base]))
+  for (const field of spec.fields) {
+    const found = present.get(field.name)
+    if (found === undefined || found.form === "blank") {
+      if (!field.optional) __termMismatch(at(field.name), "is missing")
+      continue
+    }
+    out[field.member] = __termFillKind(found, field.kind, at(field.name))
+  }
+  for (const entry of value.list) {
+    if (!spec.fields.some((f: any) => f.name === entry.name)) __termMismatch(at(entry.name), "is not in the form")
+  }
+  return out
+}
+
+function __termFillKind(value: any, kind: any, path: string): any {
+  const have = value.form === "hash" ? "map" : value.form === "array" ? "list" : value.form === "blank" ? "void" : value.form
+  switch (kind.kind) {
+    case "any":
+      return __termMeltless(value)
+    case "form":
+      return __termFill(value, kind.spec, path)
+    case "list":
+      if (value.form !== "array") __termMismatch(path, "is " + (have === "map" ? "a map" : have === "void" ? "void" : "a scalar") + " where a list belongs")
+      return value.list.map((item: any, index: number) => __termFillKind(item, kind.item, path + "/" + index))
+    case "decimal":
+      if (value.form === "decimal" || value.form === "number") return value.value
+      __termMismatch(path, "is " + have + " where decimal belongs")
+    default:
+      if (value.form === kind.kind) return value.value
+      __termMismatch(path, "is " + have + " where " + kind.kind + " belongs")
+  }
+}
+
+function __termMeltless(value: any): any {
+  switch (value.form) {
+    case "hash": return Object.fromEntries(value.list.map((e: any) => [e.name, __termMeltless(e.base)]))
+    case "array": return value.list.map(__termMeltless)
+    case "blank": return null
+    default: return value.value
+  }
+}
+
+function __termMelt(value: any, spec: any): any {
+  return { form: "hash", list: spec.fields.flatMap((field: any) => {
+    const held = value == null ? undefined : value[field.member]
+    if (held === undefined || held === null) return field.optional ? [] : [{ name: field.name, base: { form: "blank" } }]
+    return [{ name: field.name, base: __termMeltKind(held, field.kind) }]
+  }) }
+}
+
+function __termMeltKind(value: any, kind: any): any {
+  switch (kind.kind) {
+    case "form": return __termMelt(value, kind.spec)
+    case "list": return { form: "array", list: (value as unknown[]).map(item => __termMeltKind(item, kind.item)) }
+    case "text": return { form: "text", value: String(value) }
+    case "number": return { form: "number", value: Number(value) }
+    case "decimal": return { form: "decimal", value: Number(value) }
+    case "flag": return { form: "flag", value: Boolean(value) }
+    default: return __termMeltAny(value)
+  }
+}
+
+function __termMeltAny(value: any): any {
+  if (value === null || value === undefined) return { form: "blank" }
+  if (Array.isArray(value)) return { form: "array", list: value.map(__termMeltAny) }
+  if (typeof value === "string") return { form: "text", value }
+  if (typeof value === "boolean") return { form: "flag", value }
+  if (typeof value === "number") return { form: Number.isInteger(value) ? "number" : "decimal", value }
+  return { form: "hash", list: Object.entries(value as object).map(([name, base]) => ({ name, base: __termMeltAny(base) })) }
+}`
+
+// the runtime class an exception is thrown as: a real `Error` (a stack, `instanceof`) carrying every field of the
+// shared `exception` form. `note` is the message, `form` is the name a catch branches on.
 // a checked type to a TypeScript type
 function tsType(type: Type | undefined): string {
   switch (type?.kind) {
@@ -423,6 +587,20 @@ function makeEmitter(
         return toCamel(node.name)
 
       case 'call': {
+        // `call fill / <data> / like <form>`: walk the data against the form's fields (a spec built here from the
+        // record type) into a value of the form; `melt` is the reverse. The walk is the `__termFill` / `__termMelt`
+        // prelude below, raised once per emitted module.
+        if (
+          node.callee.form === 'variable' &&
+          (node.callee.name === 'fill-form' || node.callee.name === 'melt-form') &&
+          node.into
+        ) {
+          tsFormWalkUsed = true
+          const helper = node.callee.name === 'fill-form' ? '__termFill' : '__termMelt'
+
+          return `${helper}(${expression(node.args[0]!)}, ${JSON.stringify(formSpec(node.into, new Set()))})`
+        }
+
         // a declarative native binding renders its environment's template in place of a real call. The `javascript`
         // target covers both node and browser when no env-specific target is given.
         if (
@@ -465,6 +643,15 @@ function makeEmitter(
           f => `${toMember(f.name)}: ${expression(f.value)}`,
         )
 
+        // `make hash` / `make list` build the native map / array (what a `like hash` / `like list` is)
+        if (node.name === 'hash' && fields.length === 0) {
+          return 'new Map()'
+        }
+
+        if (node.name === 'list' && fields.length === 0) {
+          return '[]'
+        }
+
         // an enum variant carries a discriminant tag; a struct is a plain object
         if (variants.has(node.name)) {
           return `{ ${[
@@ -484,6 +671,11 @@ function makeEmitter(
 
         // a binding field with a foreign `name <...>` (e.g. COLOR_BUFFER_BIT) emits that native name verbatim; other
         // members camelCase the seed name
+        // a literal index is a plain segment (`read items/0`), and JavaScript spells that with brackets
+        if (/^\d+$/.test(node.name)) {
+          return `${expression(node.target)}[${node.name}]`
+        }
+
         return `${expression(node.target)}.${node.nick ?? toMember(node.name)}`
       case 'await':
         return `await ${expression(node.expr)}`
@@ -930,11 +1122,33 @@ function makeEmitter(
 
         let out = ''
         node.cases.forEach((branch, i) => {
+          // the variant's fields, as locals: `link` renames them in order, otherwise they keep their names. Only the
+          // ones the body reads, so an unused field costs nothing and cannot shadow an outer name by accident.
+          const fields = tsVariantFields.get(branch.label) ?? []
+          const bodyText = branch.body
+            .map(s => statement(s, depth + 1))
+            .join('\n')
+          const locals = armLocals(fields, branch.binds)
+            .filter(({ local }) =>
+              new RegExp(`\\b${toCamel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText),
+            )
+            .map(
+              ({ field, local }) =>
+                `${pad(depth + 1)}const ${toCamel(local)} = ${subject}.${toMember(field)}`,
+            )
+
+          const body =
+            locals.length === 0
+              ? block(branch.body, depth)
+              : `{\n${locals.join('\n')}\n${branch.body
+                  .map(s => `${pad(depth + 1)}${guardStart(statement(s, depth + 1))}`)
+                  .join('\n')}\n${pad(depth)}}`
+
           out += `${
             i ? ' else ' : ''
           }if (${subject}.form === ${JSON.stringify(
             branch.label,
-          )}) ${block(branch.body, depth)}`
+          )}) ${body}`
         })
 
         if (node.otherwise) {
@@ -1128,10 +1342,22 @@ export function emitTypeScript(
   const variants = new Set<string>(options?.variants)
   tsExceptions = new Set<string>(options?.exceptions)
 
+  tsVariantFields = new Map<string, string[]>()
+  tsRecordFields = new Map()
+  tsFormWalkUsed = false
+
   for (const node of program) {
     if (node.form === 'record-type') {
+      if (node.variants.length === 0) {
+        tsRecordFields.set(node.name, node.fields)
+      }
+
       for (const v of node.variants) {
         variants.add(v.name)
+        tsVariantFields.set(
+          v.name,
+          v.fields.map(f => f.name),
+        )
       }
 
       if (node.chain?.includes('exception')) {
@@ -1243,6 +1469,11 @@ export function emitTypeScript(
     )
       ? [EXCEPTION_PRELUDE]
       : []
+
+  // the form walk rides behind the exception class in a module that lowered a `fill` or `melt` with a form
+  if (tsFormWalkUsed) {
+    prelude.push(FORM_WALK_PRELUDE)
+  }
 
   // the wake chain: one `hiveWake` per deck with its static entries, then the raise hook, when the program has the
   // stdlib hive and the compile driver handed over the roll. See note/term/hive/05-hive.md.

@@ -11,5 +11,5 @@ task connect
   take to, like child
 
   save pipe, make foundation/pipe
-  call from/dock/set-standard-output, read pipe
-  call to/dock/set-standard-input, read pipe
+  call from/dock/set-standard-output(read pipe)
+  call to/dock/set-standard-input(read pipe)

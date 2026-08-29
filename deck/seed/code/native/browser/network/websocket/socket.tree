@@ -19,9 +19,11 @@ task send
       save on-error
         task handle-error
           take error
-          call fail, read error
+          call fail
+            read error
       save raw/onerror, read on-error
-      call raw/send, read data
+      call raw/send
+        read data
       call ok
     wait true
     halt kink
@@ -33,7 +35,9 @@ task close
   take reason, like text, need false
 
   save raw, read socket/dock
-  call raw/close, read code, read reason
+  call raw/close
+    read code
+    read reason
 
   call make-promise
     task resolve
@@ -59,7 +63,8 @@ task stream
         make message
           bind kind, text <text>
           bind data, read event/data
-      call queue/push, read msg
+      call queue/push
+        read msg
 
   save on-error
     task handle-error

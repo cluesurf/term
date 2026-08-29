@@ -1692,6 +1692,8 @@ task compute
         text <000102030405060708090a0b>
       call from-text
         text <attack at dawn>
+      call from-text
+        text <>
       wait true
   save opened
     call decrypt
@@ -1700,6 +1702,8 @@ task compute
       call from-hex
         text <000102030405060708090a0b>
       read sealed
+      call from-text
+        text <>
       wait true
   send back
     call is-equal

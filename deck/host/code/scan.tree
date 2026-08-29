@@ -1,0 +1,1057 @@
+# Text to nodes: one group per top-level line, indented lines as children, `(` ... `)` as children, a comma
+# returning to the line's head. The tokens are a word, a `<text>` with the tree escapes, a number, `(`, `)` and `,`.
+# A `#` starts a comment to the end of the line. See note/term/host/01-grammar.md and 02-compact.md.
+
+load @term/seed/code/boolean
+  find not
+
+load @term/seed/code/text
+  find char-at
+  find char-code-at
+  find substring
+  find split
+  find trim
+  find trim-end
+  find starts-with
+
+load @term/seed/code/text/string
+  find concat
+
+load @term/seed/code/list
+  find push
+  find size
+  find get
+  find pop
+
+load @term/seed/code/json
+  find parse
+  find as-number
+
+load ./node
+  find node
+  find parse-integer
+
+load ./base
+  find data-defect
+
+# one token of a line
+form token
+  case word
+    link word, like text
+  case text
+    link value, like text
+  case number
+    link value, like number
+  case decimal
+    link value, like decimal
+  case open
+  case close
+  case comma
+
+# a line with its depth, kept while the lines are being nested
+form scanned-line
+  link depth, like number
+  link line, like number
+  link nodes
+    like list
+      like node
+
+# the whole text as top-level groups
+task scan
+  take input, like text
+  like list
+    like node
+  save lines
+    call split
+      read input
+      text <\n>
+  save stack
+    make list
+  save roots
+    make list
+  save index, code 0
+  walk test
+    hook test
+      call is-below
+        read index
+        call size
+          read lines
+    hook hold
+      save raw
+        call get
+          read lines
+          read index
+      save number
+        call add
+          read index
+          code 1
+      save index, read number
+      save line
+        call trim-end
+          read raw
+      fork test
+        hook test
+          call or
+            call is-equal
+              read line
+              text <>
+            call starts-with
+              call trim
+                read line
+              text <#>
+        hook hold
+          turn next
+      save depth
+        call depth-of
+          read line
+      save nodes
+        call scan-line
+          call trim
+            read line
+          read number
+      # attach the line's groups under the nearest shallower line
+      walk test
+        hook test
+          call is-above(call size(read stack), code 0)
+        hook hold
+          save top
+            call get(read stack, call subtract(call size(read stack), code 1))
+          fork test
+            hook test
+              call is-minimum(read top/depth, read depth)
+            hook hold
+              call pop(read stack)
+            hook miss
+              halt
+      fork test
+        hook test
+          call is-equal
+            call size
+              read stack
+            code 0
+        hook hold
+          walk list
+            read nodes
+            hook next
+              take site, name one
+              call push
+                read roots
+                read one
+        hook miss
+          save parent
+            call get(read stack, call subtract(call size(read stack), code 1))
+          walk list
+            read nodes
+            hook next
+              take site, name one
+              call attach
+                read parent/nodes
+                read one
+      # the line's first group is what the next deeper line nests under
+      fork test
+        hook test
+          call is-above
+            call size
+              read nodes
+            code 0
+        hook hold
+          save owner
+            make list
+          call push
+            read owner
+            call get
+              read nodes
+              code 0
+          call push
+            read stack
+            make scanned-line
+              bind depth, read depth
+              bind line, read number
+              bind nodes, read owner
+  send back, read roots
+
+# a deeper line's group becomes a child of the shallower line's first group
+task attach
+  note private
+  take parents
+    like list
+      like node
+  take child, like node
+  save head
+    call get
+      read parents
+      code 0
+  fork case, read head
+    case group
+      link kids
+      call push
+        read kids
+        read child
+    case word
+      halt data-defect
+        bind rule, text <a value has no children>
+        bind line, code 0
+    case text
+      halt data-defect
+        bind rule, text <a value has no children>
+        bind line, code 0
+    case number
+      halt data-defect
+        bind rule, text <a value has no children>
+        bind line, code 0
+    case decimal
+      halt data-defect
+        bind rule, text <a value has no children>
+        bind line, code 0
+
+# leading spaces, two per level
+task depth-of
+  note private
+  take line, like text
+  like number
+  save count, code 0
+  walk test
+    hook test
+      call and
+        call is-below
+          read count
+          read line/length
+        call is-equal
+          call char-at
+            read line
+            read count
+          text < >
+    hook hold
+      save count
+        call add
+          read count
+          code 1
+  fork test
+    hook test
+      call is-equal
+        call modulo
+          read count
+          code 2
+        code 1
+    hook hold
+      halt data-defect
+        bind rule, text <indentation is two spaces per level>
+        bind line, code 0
+  send back
+    call divide
+      read count
+      code 2
+
+# the tokens of one line
+task tokenize
+  note private
+  take line, like text
+  take number, like number
+  like list
+    like token
+  save out
+    make list
+  save index, code 0
+  walk test
+    hook test
+      call is-below
+        read index
+        read line/length
+    hook hold
+      save glyph
+        call char-at
+          read line
+          read index
+      fork test
+        hook test
+          call is-equal
+            read glyph
+            text < >
+        hook hold
+          save index
+            call add
+              read index
+              code 1
+          turn next
+      fork test
+        hook test
+          call is-equal
+            read glyph
+            text <#>
+        hook hold
+          halt
+      fork test
+        hook test
+          call is-equal
+            read glyph
+            text <,>
+        hook hold
+          call push
+            read out
+            make comma
+          save index
+            call add
+              read index
+              code 1
+          turn next
+      fork test
+        hook test
+          call is-equal
+            read glyph
+            text <(>
+        hook hold
+          call push
+            read out
+            make open
+          save index
+            call add
+              read index
+              code 1
+          turn next
+      fork test
+        hook test
+          call is-equal
+            read glyph
+            text <)>
+        hook hold
+          call push
+            read out
+            make close
+          save index
+            call add
+              read index
+              code 1
+          turn next
+      fork test
+        hook test
+          call is-equal
+            read glyph
+            text <\<>
+        hook hold
+          # a text: to the closing angle, honouring the escapes
+          save value, text <>
+          save index
+            call add
+              read index
+              code 1
+          save closed, false
+          walk test
+            hook test
+              call and
+                call not
+                  read closed
+                call is-below
+                  read index
+                  read line/length
+            hook hold
+              save inner
+                call char-at
+                  read line
+                  read index
+              fork test
+                hook test
+                  call is-equal
+                    read inner
+                    text <\\>
+                hook hold
+                  save next
+                    call char-at
+                      read line
+                      call add
+                        read index
+                        code 1
+                  save value
+                    call concat
+                      read value
+                      call unescape
+                        read next
+                  save index
+                    call add
+                      read index
+                      code 2
+                  turn next
+              fork test
+                hook test
+                  call is-equal
+                    read inner
+                    text <\>>
+                hook hold
+                  save closed, true
+                  save index
+                    call add
+                      read index
+                      code 1
+                  turn next
+              save value
+                call concat
+                  read value
+                  read inner
+              save index
+                call add
+                  read index
+                  code 1
+          fork test
+            hook test
+              call not
+                read closed
+            hook hold
+              halt data-defect
+                bind rule, text <a text is closed on its line>
+                bind line, read number
+          call push
+            read out
+            make text
+              bind value, read value
+          turn next
+      # a word or a number: to the next space, comma, or paren
+      save start, read index
+      walk test
+        hook test
+          call and
+            call is-below
+              read index
+              read line/length
+            call not
+              call is-break
+                call char-at
+                  read line
+                  read index
+        hook hold
+          save index
+            call add
+              read index
+              code 1
+      save word
+        call substring
+          read line
+          read start
+          read index
+      call push
+        read out
+        call classify
+          read word
+  send back, read out
+
+task is-break
+  note private
+  take glyph, like text
+  like boolean
+  send back
+    call or
+      call is-equal
+        read glyph
+        text < >
+      call or
+        call is-equal
+          read glyph
+          text <,>
+        call or
+          call is-equal
+            read glyph
+            text <(>
+          call is-equal
+            read glyph
+            text <)>
+
+# the character an escape stands for
+task unescape
+  note private
+  take glyph, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read glyph
+        text <n>
+    hook hold
+      send back, text <\n>
+  fork test
+    hook test
+      call is-equal
+        read glyph
+        text <r>
+    hook hold
+      send back, text <\r>
+  fork test
+    hook test
+      call is-equal
+        read glyph
+        text <t>
+    hook hold
+      send back, text <\t>
+  send back, read glyph
+
+# a word is a number when it starts with a digit, or a minus and a digit
+task classify
+  note private
+  take word, like text
+  like token
+  save first
+    call char-code-at
+      read word
+      code 0
+  save digit
+    call is-digit
+      read first
+  fork test
+    hook test
+      call and
+        call is-equal
+          call char-at
+            read word
+            code 0
+          text <->
+        call is-above
+          read word/length
+          code 1
+    hook hold
+      save digit
+        call is-digit
+          call char-code-at
+            read word
+            code 1
+  fork test
+    hook test
+      call not
+        read digit
+    hook hold
+      send back
+        make word
+          bind word, read word
+  # a radix literal: 0x / 0b / 0o
+  fork test
+    hook test
+      call and
+        call is-above
+          read word/length
+          code 2
+        call and
+          call is-equal
+            call char-at
+              read word
+              code 0
+            text <0>
+          call is-radix-mark
+            call char-at
+              read word
+              code 1
+    hook hold
+      send back
+        make number
+          bind value
+            call parse-radix
+              read word
+  fork test
+    hook test
+      call contains-dot
+        read word
+    hook hold
+      send back
+        make decimal
+          bind value
+            call as-number
+              call parse
+                read word
+  send back
+    make number
+      bind value
+        call parse-integer
+          read word
+
+task is-digit
+  note private
+  take code, like number
+  like boolean
+  send back
+    call and
+      call is-minimum
+        read code
+        code 48
+      call is-maximum
+        read code
+        code 57
+
+task is-radix-mark
+  note private
+  take glyph, like text
+  like boolean
+  send back
+    call or
+      call is-equal
+        read glyph
+        text <x>
+      call or
+        call is-equal
+          read glyph
+          text <b>
+        call is-equal
+          read glyph
+          text <o>
+
+task contains-dot
+  note private
+  take word, like text
+  like boolean
+  save index, code 0
+  walk test
+    hook test
+      call is-below
+        read index
+        read word/length
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            call char-at
+              read word
+              read index
+            text <.>
+        hook hold
+          send back, true
+      save index
+        call add
+          read index
+          code 1
+  send back, false
+
+# `0x1f`, `0b1010`, `0o17` to a number
+task parse-radix
+  note private
+  take word, like text
+  like number
+  save mark
+    call char-at
+      read word
+      code 1
+  save radix, code 16
+  fork test
+    hook test
+      call is-equal
+        read mark
+        text <b>
+    hook hold
+      save radix, code 2
+  fork test
+    hook test
+      call is-equal
+        read mark
+        text <o>
+    hook hold
+      save radix, code 8
+  save value, code 0
+  save index, code 2
+  walk test
+    hook test
+      call is-below
+        read index
+        read word/length
+    hook hold
+      save code
+        call char-code-at
+          read word
+          read index
+      save digit, code 0
+      fork test
+        hook test
+          call is-digit
+            read code
+        hook hold
+          save digit
+            call subtract
+              read code
+              code 48
+        hook miss
+          # a to f, either case: `A` is 65 and `a` is 97, and both are 10 after the same subtraction modulo 32
+          save digit
+            call modulo
+              call subtract
+                read code
+                code 55
+              code 32
+      save value
+        call add
+          call multiply
+            read value
+            read radix
+          read digit
+      save index
+        call add
+          read index
+          code 1
+  send back, read value
+
+# the groups of one line: a head word with its children, comma-separated siblings returning to the line's head
+task scan-line
+  note private
+  take line, like text
+  take number, like number
+  like list
+    like node
+  save tokens
+    call tokenize
+      read line
+      read number
+  save position, code 0
+  save out
+    make list
+  # the first group is the line's head; every comma-separated part after it is a child of that head. A line that
+  # starts with a literal (`5, 6, 7` under a list) has no head: every part is an item at this level.
+  save head
+    call scan-item
+      read tokens
+      read position
+      read number
+  save position, read head/next
+  call push
+    read out
+    read head/node
+  save headed
+    call is-group(read head/node)
+  walk test
+    hook test
+      call is-below
+        read position
+        call size
+          read tokens
+    hook hold
+      save token
+        call get
+          read tokens
+          read position
+      fork case, read token
+        case comma
+          save position
+            call add
+              read position
+              code 1
+        case close
+          halt data-defect
+            bind rule, text <a closing parenthesis has no opening one>
+            bind line, read number
+        case open
+          halt data-defect
+            bind rule, text <a parenthesis follows a word>
+            bind line, read number
+        case word
+          save item
+            call scan-item
+              read tokens
+              read position
+              read number
+          save position, read item/next
+          fork test
+            hook test
+              read headed
+            hook hold
+              call attach-item
+                read head/node
+                read item/node
+            hook miss
+              call push
+                read out
+                read item/node
+        case text
+          save item
+            call scan-item
+              read tokens
+              read position
+              read number
+          save position, read item/next
+          fork test
+            hook test
+              read headed
+            hook hold
+              call attach-item
+                read head/node
+                read item/node
+            hook miss
+              call push
+                read out
+                read item/node
+        case number
+          save item
+            call scan-item
+              read tokens
+              read position
+              read number
+          save position, read item/next
+          fork test
+            hook test
+              read headed
+            hook hold
+              call attach-item
+                read head/node
+                read item/node
+            hook miss
+              call push
+                read out
+                read item/node
+        case decimal
+          save item
+            call scan-item
+              read tokens
+              read position
+              read number
+          save position, read item/next
+          fork test
+            hook test
+              read headed
+            hook hold
+              call attach-item
+                read head/node
+                read item/node
+            hook miss
+              call push
+                read out
+                read item/node
+  send back, read out
+
+task is-group
+  note private
+  take one, like node
+  like boolean
+  fork case, read one
+    case group
+      send back, true
+    case word
+      send back, false
+    case text
+      send back, false
+    case number
+      send back, false
+    case decimal
+      send back, false
+
+task attach-item
+  note private
+  take owner, like node
+  take item, like node
+  fork case, read owner
+    case group
+      link kids
+      call push
+        read kids
+        read item
+    case word
+      halt data-defect
+        bind rule, text <a value has no children>
+        bind line, code 0
+    case text
+      halt data-defect
+        bind rule, text <a value has no children>
+        bind line, code 0
+    case number
+      halt data-defect
+        bind rule, text <a value has no children>
+        bind line, code 0
+    case decimal
+      halt data-defect
+        bind rule, text <a value has no children>
+        bind line, code 0
+
+# one item and where the next begins
+form scanned-item
+  link node, like node
+  link next, like number
+
+# an item: a literal, a bare word, a word followed by a word (the key nests), or a word with a parenthesis
+task scan-item
+  note private
+  take tokens
+    like list
+      like token
+  take position, like number
+  take number, like number
+  like scanned-item
+  save token
+    call get
+      read tokens
+      read position
+  fork case, read token
+    case text
+      link value
+      send back
+        make scanned-item
+          bind node
+            make text
+              bind value, read value
+          bind next
+            call add
+              read position
+              code 1
+    case number
+      link value
+      send back
+        make scanned-item
+          bind node
+            make number
+              bind value, read value
+          bind next
+            call add
+              read position
+              code 1
+    case decimal
+      link value
+      send back
+        make scanned-item
+          bind node
+            make decimal
+              bind value, read value
+          bind next
+            call add
+              read position
+              code 1
+    case comma
+      halt data-defect
+        bind rule, text <a comma needs a value before it>
+        bind line, read number
+    case open
+      halt data-defect
+        bind rule, text <a parenthesis follows a word>
+        bind line, read number
+    case close
+      halt data-defect
+        bind rule, text <a closing parenthesis has no opening one>
+        bind line, read number
+    case word
+      link word
+      save kids
+        make list
+      save next
+        call add
+          read position
+          code 1
+      fork test
+        hook test
+          call is-below
+            read next
+            call size
+              read tokens
+        hook hold
+          save after
+            call get
+              read tokens
+              read next
+          fork case, read after
+            case open
+              # `word(a, b, c)`: the children to the closing parenthesis
+              save next
+                call add
+                  read next
+                  code 1
+              save closed, false
+              walk test
+                hook test
+                  call and
+                    call not
+                      read closed
+                    call is-below
+                      read next
+                      call size
+                        read tokens
+                hook hold
+                  save inner
+                    call get
+                      read tokens
+                      read next
+                  fork case, read inner
+                    case close
+                      save closed, true
+                      save next
+                        call add
+                          read next
+                          code 1
+                    case comma
+                      save next
+                        call add
+                          read next
+                          code 1
+                    case open
+                      halt data-defect
+                        bind rule, text <a parenthesis follows a word>
+                        bind line, read number
+                    case word
+                      save item
+                        call scan-item
+                          read tokens
+                          read next
+                          read number
+                      call push
+                        read kids
+                        read item/node
+                      save next, read item/next
+                    case text
+                      save item
+                        call scan-item
+                          read tokens
+                          read next
+                          read number
+                      call push
+                        read kids
+                        read item/node
+                      save next, read item/next
+                    case number
+                      save item
+                        call scan-item
+                          read tokens
+                          read next
+                          read number
+                      call push
+                        read kids
+                        read item/node
+                      save next, read item/next
+                    case decimal
+                      save item
+                        call scan-item
+                          read tokens
+                          read next
+                          read number
+                      call push
+                        read kids
+                        read item/node
+                      save next, read item/next
+              fork test
+                hook test
+                  call not
+                    read closed
+                hook hold
+                  halt data-defect
+                    bind rule, text <a parenthesis must be closed on the line it opens>
+                    bind line, read number
+            case word
+              # `head key`: the next word nests as the key, and a `key(...)` parenthesis is its own children
+              save item
+                call scan-item
+                  read tokens
+                  read next
+                  read number
+              call push
+                read kids
+                read item/node
+              save next, read item/next
+            case text
+              # `head <key>`: a text key
+              save item
+                call scan-item
+                  read tokens
+                  read next
+                  read number
+              call push
+                read kids
+                read item/node
+              save next, read item/next
+            case comma
+              save skip, read next
+            case close
+              save skip, read next
+            case number
+              save skip, read next
+            case decimal
+              save skip, read next
+      send back
+        make scanned-item
+          bind node
+            make group
+              bind head, read word
+              bind kids, read kids
+          bind next, read next

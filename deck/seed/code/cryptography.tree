@@ -1,7 +1,13 @@
 
 # https://github.com/briansmith/ring
 
-form hash
+# A streaming hasher: feed it bytes, ask for the digest.
+#
+# NOT `code/hash.tree`, which is the hash MAP. Names are package-global, so
+# two forms called `hash` unify and corrupt each other's types, and the
+# error surfaces somewhere else entirely: this collision showed up as
+# `command.tree` returning a map where a hash was expected.
+form crypto-hash
   task copy
   task update
   task digest

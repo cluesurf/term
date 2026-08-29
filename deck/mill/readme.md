@@ -25,7 +25,7 @@ Each directory under `code/` defines a DSL vocabulary (role).
 | `view` | UI component definitions                                                                            |
 | `tune` | Audio processing definitions                                                                        |
 | `flow` | Animation and transition definitions                                                                |
-| `host` | Server route definitions (extends code with route hooks and port bindings)                          |
+| `host` | Term data: `host`, `list`, `mesh`, `tree`, `fuse` and six literals, no code (see `note/term/host/`) |
 | `line` | CLI command definitions (extends code with argument handling)                                       |
 | `base` | Database definitions (migrations with move next/back, queries with find)                            |
 | `book` | Text content markup that generates to HTML, Markdown, or LaTeX                                      |

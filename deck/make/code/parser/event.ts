@@ -61,6 +61,10 @@ enum Context {
   Interpolation = 'interpolation',
   Group = 'group',
   Indent = 'indent',
+  // inside `(` ... `)`: the children of the group whose head the paren follows. A name inside opens a child group,
+  // a comma closes the current child, and `)` closes back through the frame and then the owning group. Lives on
+  // one line. This is what lets `h(x,h(y,1),h(w,2))` be one tree, the compact spelling of Term data.
+  Paren = 'paren',
 }
 
 type ContextFrame = { kind: Context; token?: Token }
@@ -126,6 +130,7 @@ export function buildEvents(tokens: TokenList): EventResult {
             events.push({ kind: EventKind.CloseName })
           }
 
+          push({ kind: Context.Paren, token })
           break
         case TokenKind.CloseParen:
           closeParen()
@@ -338,10 +343,29 @@ export function buildEvents(tokens: TokenList): EventResult {
     })
   }
 
+  // A comma returns to the head of the line, or to the enclosing parenthesis: every comma-separated part is a
+  // sibling child of that head, and only a space nests. So `foo x, bar` with `foo y bar` beneath is
+  // `foo(x, bar, foo(y(bar)))`, `call add, read a, read b` is `call(add, read(a), read(b))`, and inside parens
+  // `add(read x, 2)` is `add(read(x), 2)`. The head's own group stays open to receive what follows.
   function comma() {
     if (top()?.kind === Context.Name) {
       pop()
       events.push({ kind: EventKind.CloseName })
+    }
+
+    // close nested groups until the group directly above an indent or the root, which is the line's head. Inside
+    // a parenthesis the owner sits BELOW the paren frame, so every group above it is a child and closes.
+    while (top()?.kind === Context.Group) {
+      const below = contexts[contexts.length - 2]
+
+      if (
+        !below ||
+        below.kind === Context.Indent ||
+        below.kind === Context.Root
+      ) {
+        break
+      }
+
       pop()
       events.push({ kind: EventKind.CloseGroup })
     }
@@ -390,6 +414,7 @@ export function buildEvents(tokens: TokenList): EventResult {
       previousKind === TokenKind.Newline ||
       previousKind === TokenKind.Comma ||
       previousKind === TokenKind.OpenBrace ||
+      previousKind === TokenKind.OpenParen ||
       previousKind === TokenKind.Space
     ) {
       events.push({ kind: EventKind.OpenGroup })
@@ -423,8 +448,11 @@ export function buildEvents(tokens: TokenList): EventResult {
     pushIndent(1)
   }
 
-  // Close a parenthesis. Parentheses live on one line.
+  // Close a parenthesis: everything opened inside it, the paren frame, then the group that owns it. A `)` with no
+  // open paren on the line closes what it can, as before, so a stray one degrades rather than crashes.
   function closeParen() {
+    const owned = contexts.some(frame => frame.kind === Context.Paren)
+
     walk: while (true) {
       switch (top()?.kind) {
         case Context.Indent:
@@ -439,9 +467,18 @@ export function buildEvents(tokens: TokenList): EventResult {
           events.push({ kind: EventKind.CloseName })
           pop()
           break
+        case Context.Paren:
+          pop()
+          break walk
         default:
           break walk
       }
+    }
+
+    // the group whose head the paren followed
+    if (owned && top()?.kind === Context.Group) {
+      events.push({ kind: EventKind.CloseGroup })
+      pop()
     }
   }
 
@@ -493,6 +530,21 @@ export function buildEvents(tokens: TokenList): EventResult {
           events.push({ kind: EventKind.CloseName })
           pop()
           break
+        case Context.Paren: {
+          // a parenthesis lives on one line: one left open is a syntax error at the line's end
+          const frame = top()!
+          pop()
+
+          if (frame.token) {
+            fail(
+              'syntax-error',
+              frame.token,
+              'a parenthesis must be closed on the line it opens',
+            )
+          }
+
+          break
+        }
         case Context.Root:
           break walk
         default:

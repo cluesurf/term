@@ -225,6 +225,7 @@ task load
         call seal-seat
           call unwrap
             call read-bond
+              bind hold, text <>
               wait true
       save has-key
         call read-seal
@@ -281,6 +282,7 @@ task load
 
   save bond
     call read-bond
+      bind hold, read root/base
       wait true
   fork test
     hook test
