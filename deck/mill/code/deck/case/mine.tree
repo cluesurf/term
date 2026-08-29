@@ -1,8 +1,8 @@
 
-load @term/mill/code/deck/deck/link/mine
+load @term/mill/code/deck/link/mine
   find deck-link
 
-load @term/mill/code/deck/deck/host/mine
+load @term/mill/code/deck/host/mine
   find deck-host
 
 mine deck-case

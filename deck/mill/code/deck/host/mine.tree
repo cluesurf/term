@@ -1,5 +1,5 @@
 
-load @term/mill/code/deck/deck/link/mine
+load @term/mill/code/deck/link/mine
   find deck-link
 
 mine deck-host

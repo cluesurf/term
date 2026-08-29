@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/film
+load @term/seed/code/book
   find book-film
   find book-film-bind
 

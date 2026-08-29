@@ -236,6 +236,88 @@ export function check(
 
   const seedType = makeSeedType(sub, records, formGenerics, opaqueTypes)
 
+  // every `like <name>` on a signature or a field names something: a form, an enum, a primitive, a generic of its
+  // own declaration, a mask, a transparent alias or an opaque native type. One that names nothing used to compile
+  // clean and emit a type the target has never heard of (compiler-hygiene-0010). It runs before the signatures are
+  // built, while every `like <name>` is still the name as written (inference replaces an unknown one with a variable)
+  const PRIMITIVE_TYPE_NAMES = new Set([
+    'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'integer', 'number', 'decimal', 'float', 'f32', 'f64',
+    'dynamic', 'json', 'bytes', 'buffer', 'text', 'boolean', 'void', 'unknown', 'any', 'unit', 'list', 'hash', 'task',
+    'string', 'natural', 'self', 'type', 'size',
+  ])
+  const maskNames = new Set(program.filter(s => s.form === 'mask').map(s => s.name))
+
+  const namedIn = (type: Type | undefined, into: Set<string>): void => {
+    if (!type) {
+      return
+    }
+
+    switch (type.kind) {
+      case 'named':
+        into.add(type.name)
+        type.args?.forEach(a => namedIn(a, into))
+        break
+      case 'array':
+        namedIn(type.element, into)
+        break
+      case 'map':
+        namedIn(type.key, into)
+        namedIn(type.value, into)
+        break
+      case 'function':
+        type.params.forEach(p => namedIn(p, into))
+        namedIn(type.result, into)
+        break
+      default:
+        break
+    }
+  }
+
+  const knownType = (name: string, own: Set<string>): boolean =>
+    records.has(name) ||
+    enums.has(name) ||
+    PRIMITIVE_TYPE_NAMES.has(name) ||
+    own.has(name) ||
+    maskNames.has(name) ||
+    opaqueTypes.has(name) ||
+    transparentAlias.has(name)
+
+  for (const statement of program) {
+    // each module reports its own: an app compiling the stdlib in is not told about the stdlib's, the stdlib's own
+    // build is
+    if (fileOrigin && fileOrigin.get(statement) !== file) {
+      continue
+    }
+
+    const names = new Set<string>()
+    const own = new Set<string>()
+
+    if (statement.form === 'function') {
+      statement.generics.forEach(g => own.add(g.name))
+      statement.params.forEach(p => namedIn(p.type, names))
+      namedIn(statement.result, names)
+    } else if (statement.form === 'record-type') {
+      statement.params.forEach(p => own.add(p))
+      statement.fields.forEach(f => namedIn(f.type, names))
+      statement.variants.forEach(v => v.fields.forEach(f => namedIn(f.type, names)))
+    } else {
+      continue
+    }
+
+    for (const name of names) {
+      if (!knownType(name, own)) {
+        diagnostics.push(
+          diagnose('unknown-type', {
+            file: fileOrigin?.get(statement) ?? currentFile,
+            span: statement.span,
+            message: `"${name}" is not a type this build knows: no form, enum, primitive, generic, mask or alias declares it`,
+          }),
+        )
+      }
+    }
+  }
+
+
   // trait instances available: `${mask}:${type}` (for call-site instance resolution)
   const instances = new Set<string>()
 

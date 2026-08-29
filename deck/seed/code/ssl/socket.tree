@@ -9,7 +9,7 @@ form socket
     take cb-servername-match
       like task
         take text
-        like bool
+        like boolean
     take cert, like certificate
     take key, like key
     like void
@@ -53,7 +53,7 @@ form socket
     like address
 
   task set-fast-send
-    take b, like bool
+    take b, like boolean
     like void
 
   task set-timeout
@@ -61,8 +61,8 @@ form socket
     like void
 
   task shutdown
-    take read, like bool
-    take write, like bool
+    take read, like boolean
+    take write, like boolean
     like void
 
   task wait-for-read

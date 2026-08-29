@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/host
+load @term/seed/code/book
   find book-host
   find book-host-bind
 

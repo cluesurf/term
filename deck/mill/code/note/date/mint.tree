@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/date
+load @term/seed/code/book
   find book-date
 
 mint date, like book-date

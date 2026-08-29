@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/list
+load @term/seed/code/book
   find book-list
   find book-list-mesh
   find book-list-mesh-line

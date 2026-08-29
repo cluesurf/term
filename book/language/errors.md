@@ -139,6 +139,25 @@ task lookup
 
 A guarded body's raises leave the task's raise set. Whatever the handler raises comes back in. A guard with no handler catches everything and says nothing, which a lint will flag.
 
+A handler can branch on which exception it caught with `fork case`. Each `case` names a form the body can raise, and inside the arm that form's props are locals by their own names, beside the shared `note`, `form`, `code`, `host` and `time`. The arms must cover everything the body can raise (or carry an `otherwise`), and a form the body cannot raise is refused.
+
+```tree
+task describe
+  take key, like text
+  like text
+  note unsafe
+    send back
+      call find-user
+        read key
+  halt take
+    take problem
+    fork case, read problem
+      case user-absence
+        send back, text <no user {{key}}: {{note}}>
+```
+
+This is the same on every backend. TypeScript throws and catches a class, Rust returns `Result<T, TermException>` from a task that can raise and lowers the guard to a match, Swift marks such a task `throws` and catches into a struct, Kotlin throws and catches one. A raise nothing handles ends the program with the form and the note on every one of them. A program never says which backend it is on.
+
 ## Bounding the set
 
 A task may declare what it raises with bare `halt` lines in its signature. The compiler already infers the set, so the declaration is a contract: the inferred set must fit inside it, or the build fails where the change was made rather than in every caller.

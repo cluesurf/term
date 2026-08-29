@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/load
+load @term/seed/code/book
   find book-load
   find book-load-find
 

@@ -1,14 +1,14 @@
 
 load @term/seed/code/deck
-  find deck-deck-case
+  find deck-case
 
-load @term/mill/code/deck/deck/link/mint
+load @term/mill/code/deck/link/mint
   find deck-link
 
-load @term/mill/code/deck/deck/host/mint
+load @term/mill/code/deck/host/mint
   find deck-host
 
-mint deck-case, like deck-deck-case
+mint deck-case, like deck-case
   case name
     site name
   case link, mint deck-link
@@ -16,7 +16,7 @@ mint deck-case, like deck-deck-case
   case host, mint deck-host
     site host
   hook make
-    make deck-deck-case
+    make deck-case
       bind name, read name
       bind link, read link
       bind host, read host

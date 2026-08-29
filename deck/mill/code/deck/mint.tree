@@ -1,19 +1,19 @@
 
 load @term/seed/code/deck
-  find deck-deck
+  find deck
 
-load @term/mill/code/deck/deck/link/mint
+load @term/mill/code/deck/link/mint
   find deck-link
   find deck-term
   find deck-deck
 
-load @term/mill/code/deck/deck/mind/mint
+load @term/mill/code/deck/mind/mint
   find deck-mind
 
-load @term/mill/code/deck/deck/host/mint
+load @term/mill/code/deck/host/mint
   find deck-host
 
-load @term/mill/code/deck/deck/case/mint
+load @term/mill/code/deck/case/mint
   find deck-case
 
 load @term/mill/code/deck/role/mint
@@ -30,7 +30,7 @@ mint deck
   case load, mint load
     site load
 
-mint deck-def, like deck-deck
+mint deck-def, like deck
   case name
     site name
   case mark
@@ -68,7 +68,7 @@ mint deck-def, like deck-deck
   case case, mint deck-case
     site case
   hook make
-    make deck-deck
+    make deck
       bind name, read name
       bind mark, read mark
       bind head, read head

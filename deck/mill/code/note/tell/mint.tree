@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/tell
+load @term/seed/code/book
   find book-tell
 
 mint tell, like book-tell

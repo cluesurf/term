@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/cast
+load @term/seed/code/book
   find book-cast
 
 mint cast, like book-cast

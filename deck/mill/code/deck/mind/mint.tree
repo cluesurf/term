@@ -1,8 +1,8 @@
 
 load @term/seed/code/deck
-  find deck-deck-mind
+  find deck-mind
 
-mint deck-mind, like deck-deck-mind
+mint deck-mind, like deck-mind
   case name
     site name
   case base
@@ -10,7 +10,7 @@ mint deck-mind, like deck-deck-mind
   case site
     site site
   hook make
-    make deck-deck-mind
+    make deck-mind
       bind name, read name
       bind base, read base
       bind site, read site

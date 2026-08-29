@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/walk
+load @term/seed/code/book
   find book-walk
 
 mint walk, like book-walk

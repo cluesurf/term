@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/flow
+load @term/seed/code/book
   find book-flow
 
 mint flow, like book-flow

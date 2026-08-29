@@ -42,6 +42,9 @@ import {
 
 // like-type names to surface types
 const TYPE_NAME: Record<string, Type> = {
+  // `size`: a count or a length, the number every backend already has (94 stdlib signatures said `like size` and
+  // no form declared it, so each backend was handed a `Size` it never defined)
+  size: NUMBER,
   u8: NUMBER,
   u16: NUMBER,
   u32: NUMBER,

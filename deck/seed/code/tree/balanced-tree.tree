@@ -13,7 +13,7 @@ form balanced-tree
 
   task exists
     take key, like k
-    like bool
+    like boolean
 
   task get
     take key, like k
@@ -32,7 +32,7 @@ form balanced-tree
 
   task remove
     take key, like k
-    like bool
+    like boolean
 
   task set
     take key, like k

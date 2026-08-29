@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/fuse
+load @term/seed/code/book
   find book-fuse
 
 mint fuse, like book-fuse

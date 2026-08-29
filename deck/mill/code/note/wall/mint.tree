@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/wall
+load @term/seed/code/book
   find book-wall
 
 mint wall, like book-wall

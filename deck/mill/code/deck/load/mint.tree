@@ -3,6 +3,10 @@ load @term/seed/code/import
   find import
   find import-reference
 
+load @term/seed/code/deck
+  find deck-load
+  find deck-find
+
 mint load, like deck-load
   case path
     site path
@@ -22,12 +26,12 @@ mint load, like deck-load
       bind find, read find
       bind load, read load
 
-mint find, like deck-load-find
+mint find, like deck-find
   case name
     site name
   case alias
     site alias
   hook make
-    make deck-load-find
+    make deck-find
       bind name, read name
       bind alias, read alias

@@ -6,22 +6,86 @@ load ./term
   find term
 
 form deck
-  # Package manifest
+  # Package manifest: every head the manifest grammar reads (deck/mill/code/deck)
   link name, like text
   link mark, like text
   link head, like text
-  link mind, like text
   link lock, like text
   link sort, like text
-  link term, list term
-  link link, list deck-link
+  link site, like text
+  link view, like text
+  link hide, like text
   link task, like text
   link read, like text
+  link book, like text
+  link role, like text
+  link call, like text
+  link term, list deck-term
+  link mind, list deck-mind
+  link link, list deck-link
+  link host, list deck-host
+  link deck, list deck-part
+  link case, list deck-case
+  link load, list deck-load
 
 form deck-link
-  # Package dependency
+  # Package dependency: `link @scope/name, mark <range>`, with where it comes from and what it is based on
   link name, like text
   link mark, like deck-mark
+  link site, like text
+  link base, like text
+
+form deck-term
+  # A topic word the package is listed under: `term tree-code`
+  link name, like text
+
+form deck-part
+  # A sub-package path a manifest points into: `deck ./tool`
+  link path, like text
+
+form deck-mind
+  # A fact for whoever boots the package: `mind <name>` with `base` and `site`
+  link name, like text
+  link base, like text
+  link site, like text
+
+form deck-host
+  # A host the package is served from, with the links that reach it
+  link site, like text
+  link link, list deck-link
+
+form deck-case
+  # A named case of the manifest (a variant of links and hosts)
+  link name, like text
+  link link, list deck-link
+  link host, list deck-host
+
+form deck-load
+  # A load line of a manifest: the path, its name, its host, the finds under it, and nested loads
+  link path, like text
+  link name, like text
+  link host, like text
+  link find, list deck-find
+  link load, list deck-load
+
+form deck-find
+  # One `find <name>, name <alias>` under a load
+  link name, like text
+  link alias, like text
+
+form deck-role
+  # `role <name>` with its `take` globs: which files a role reads
+  link name, like text
+  link take, list deck-take
+
+form deck-take
+  # `take <glob>` under a role, with the globs it leaves out
+  link glob, like text
+  link miss, list deck-miss
+
+form deck-miss
+  # `miss <glob>` under a take
+  link glob, like text
 
 form deck-mark
   # Version constraint

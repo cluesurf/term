@@ -12,18 +12,18 @@ form command-flag
   link short, like text
   link kind, like text
   link description, like text
-  link required, like bool
+  link required, like boolean
   link fallback
   link choices, like list
 
 form command-argument
   link name, like text
   link description, like text
-  link required, like bool
+  link required, like boolean
   link fallback
 
 form result
-  link ok, like bool
+  link ok, like boolean
   link command, like text
   link flags, like hash
   link arguments, like list
@@ -56,7 +56,7 @@ task flag
   take short, like text, need false
   take kind, like text, fall text <text>
   take description, like text, need false
-  take required, like bool, fall false
+  take required, like boolean, fall false
   take fallback, need false
   take choices, like list, need false
   like command-flag
@@ -73,7 +73,7 @@ task flag
 task argument
   take name, like text
   take description, like text, need false
-  take required, like bool, fall true
+  take required, like boolean, fall true
   take fallback, need false
   like command-argument
   send back

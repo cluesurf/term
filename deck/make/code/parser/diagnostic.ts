@@ -89,6 +89,14 @@ export const CATALOG = {
     severity: 'error',
     fix: 'implement every method the trait declares',
   },
+  // a `like <name>` naming no form, enum, primitive, generic, mask, alias or opaque native type: it used to compile
+  // clean and emit a type the target language has never heard of
+  'unknown-type': {
+    code: 0x14,
+    message: 'this type name is not defined',
+    severity: 'warning',
+    fix: 'declare the form, import it, or check the spelling',
+  },
   'unused-binding': {
     code: 0xa,
     message: 'this binding is never used',

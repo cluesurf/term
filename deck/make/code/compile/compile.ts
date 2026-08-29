@@ -432,9 +432,12 @@ export function compileProgram(
 
   // formal type checking: the surface pass (gradual bidirectional inference) annotates the AST with types
   const checkDiagnostics = check(program, file, origin)
+  // the checker's warnings (an unknown type name) ride with the build's other warnings; only its errors stop it
+  const checkErrors = checkDiagnostics.filter(d => d.severity !== 'warning')
+  const checkWarnings = checkDiagnostics.filter(d => d.severity === 'warning')
 
-  if (checkDiagnostics.length) {
-    return { ok: false, diagnostics: checkDiagnostics }
+  if (checkErrors.length) {
+    return { ok: false, diagnostics: checkErrors }
   }
 
   // async resolution: infer which functions are async from the call graph and await async calls by default, so callers
@@ -503,6 +506,7 @@ export function compileProgram(
 
   // warnings do not fail the build (unused bindings, termination, unchecked holds, etc.)
   const warnings = [
+    ...checkWarnings,
     ...findUnused(program, file),
     ...totality.warnings,
     ...holdWarnings,

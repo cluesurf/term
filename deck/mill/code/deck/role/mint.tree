@@ -1,8 +1,8 @@
 
-load @term/mill/code/deck/role
+load @term/seed/code/deck
   find deck-role
-  find deck-role-take
-  find deck-role-miss
+  find deck-take
+  find deck-miss
 
 mint role, like deck-role
   case name
@@ -14,19 +14,19 @@ mint role, like deck-role
       bind name, read name
       bind take, read take
 
-mint role-take, like deck-role-take
+mint role-take, like deck-take
   case glob
     site glob
   case miss, mint role-miss
     site miss
   hook make
-    make deck-role-take
+    make deck-take
       bind glob, read glob
       bind miss, read miss
 
-mint role-miss, like deck-role-miss
+mint role-miss, like deck-miss
   case glob
     site glob
   hook make
-    make deck-role-miss
+    make deck-miss
       bind glob, read glob

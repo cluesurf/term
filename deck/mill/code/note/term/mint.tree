@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/term
+load @term/seed/code/book
   find book-term
 
 mint term, like book-term

@@ -1,10 +1,10 @@
 
 load @term/seed/code/deck
-  find deck-deck-link
-  find deck-deck-term
-  find deck-deck-deck
+  find deck-link
+  find deck-term
+  find deck-part
 
-mint deck-link, like deck-deck-link
+mint deck-link, like deck-link
   case name
     site name
   case mark
@@ -14,22 +14,22 @@ mint deck-link, like deck-deck-link
   case base
     site base
   hook make
-    make deck-deck-link
+    make deck-link
       bind name, read name
       bind mark, read mark
       bind site, read site
       bind base, read base
 
-mint deck-term, like deck-deck-term
+mint deck-term, like deck-term
   case name
     site name
   hook make
-    make deck-deck-term
+    make deck-term
       bind name, read name
 
-mint deck-deck, like deck-deck-deck
+mint deck-deck, like deck-part
   case path
     site path
   hook make
-    make deck-deck-deck
+    make deck-part
       bind path, read path

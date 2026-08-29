@@ -4,7 +4,7 @@
 // `mint <x>, like <form>` must name a form a loaded stdlib module declares. The `host` and `mill` roles are the ones
 // this gate holds to zero; the others are reported, and their count is the measure of the self-hosting mill's
 // distance (see note/term/stdlib-gaps.md). The `host` grammar is also held to the data reader: the same five heads
-// and the same six literals. Run: npx tsx test/compile/mill-grammar.ts
+// and the same six literals. The `deck` role (the manifest) and the `note` role (documents, its forms generated into seed/code/book.tree by `pnpm term:mill-forms`) were made correct and held on 2026-08-29. Run: npx tsx test/compile/mill-grammar.ts
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -30,7 +30,7 @@ const MILL = join(TERM, 'deck/mill/code')
 const SEED = join(TERM, 'deck/seed/code')
 
 // the roles held to zero problems
-const HELD = new Set(['host', 'mill'])
+const HELD = new Set(['host', 'mill', 'deck', 'note'])
 
 function walk(dir: string, into: string[] = []): string[] {
   for (const name of readdirSync(dir).sort()) {

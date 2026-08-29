@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/surf
+load @term/seed/code/book
   find book-surf
   find book-bold
   find book-tilt

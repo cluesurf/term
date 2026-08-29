@@ -1,16 +1,16 @@
 
-load @term/mill/code/deck/deck/link/mine
+load @term/mill/code/deck/link/mine
   find deck-link
   find deck-term
   find deck-deck
 
-load @term/mill/code/deck/deck/mind/mine
+load @term/mill/code/deck/mind/mine
   find deck-mind
 
-load @term/mill/code/deck/deck/host/mine
+load @term/mill/code/deck/host/mine
   find deck-host
 
-load @term/mill/code/deck/deck/case/mine
+load @term/mill/code/deck/case/mine
   find deck-case
 
 load @term/mill/code/deck/role/mine

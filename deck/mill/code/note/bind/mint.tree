@@ -1,5 +1,5 @@
 
-load @term/mill/code/book/bind
+load @term/seed/code/book
   find book-bind
   find book-bind-mind
   find book-bind-cite
