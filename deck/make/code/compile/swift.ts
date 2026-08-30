@@ -351,8 +351,22 @@ const SWIFT_PRIMITIVES: Record<string, string> = {
   decimal: 'Double',
 }
 
-export function emitSwift(program: Program): string {
+// the roll grouped by deck, for the generated wake chain (the same shape emitTypeScript takes)
+export type WakeGroup = {
+  deck: string
+  entries: Record<string, unknown>[]
+}
+
+export function emitSwift(
+  program: Program,
+  options?: { wake?: WakeGroup[] },
+): string {
   const pad = (d: number) => '  '.repeat(d)
+  // when the stdlib hive is in the program, every new raise tells it (the throw lowering), and the compiler can
+  // emit the wake chain (`wakeHive`) from the roll the driver hands over
+  const hasHiveTell = program.some(
+    n => n.form === 'function' && n.name === 'hive-tell',
+  )
   // declarative native bindings render their `case swift` template at call sites
   const binds = collectBinds(program)
 
@@ -1337,13 +1351,19 @@ export function emitSwift(program: Program): string {
         return fnReturnsArray && isNativeCall(node.value)
           ? `return SeedList(${expr(node.value, bind)})`
           : `return ${expr(node.value, bind)}`
-      case 'throw':
-        // a raise carries the record whole in a TermException; a text raises `failure`; a caught value passes on
+      case 'throw': {
+        // a raise carries the record whole in a TermException; a text raises `failure`; a caught value passes on.
+        // When the program has the stdlib hive, a NEW carrier tells it before unwinding (a pass-on does not re-tell).
+        const tellPart = hasHiveTell
+          ? '; hiveTell(HiveEntry(host: told.host, kind: "exception", name: told.form, site: "", base: told))'
+          : ''
+
         return node.value.form === 'string'
-          ? `throw TermException(host: "", form: "failure", note: ${expr(node.value, bind)}, code: "", time: 0, link: nil, base: nil)`
+          ? `throw ({ () -> TermException in let told = TermException(host: "", form: "failure", note: ${expr(node.value, bind)}, code: "", time: 0, link: nil, base: nil)${tellPart}; return told })()`
           : node.value.form === 'record' && exceptionForms.has(node.value.name)
-            ? `throw try ({ () throws -> TermException in let raised = ${expr(node.value, bind)}; return TermException(host: raised.host, form: raised.form, note: raised.note, code: raised.code, time: raised.time, link: raised.link, base: raised) })()`
+            ? `throw try ({ () throws -> TermException in let raised = ${expr(node.value, bind)}; let told = TermException(host: raised.host, form: raised.form, note: raised.note, code: raised.code, time: raised.time, link: raised.link, base: raised)${tellPart}; return told })()`
             : `throw termException(${expr(node.value, bind)})`
+      }
       case 'while':
         return `while ${expr(node.cond, bind)} {\n${block(
           node.body,
@@ -1706,7 +1726,36 @@ export function emitSwift(program: Program): string {
     )
   }
 
-  return [...imports, ...prelude, ...body, ...swiftFormWalk(fillSpecs, meltSpecs)].join('\n\n') + '\n'
+  // the wake chain: one `hiveWake` per deck with its static entries, when the program has the stdlib hive and
+  // the compile driver handed over the roll. A static entry's `base` is the declaration as JSON text; an entry
+  // with a `ref` (a declared kind's constant) binds the live module constant. See note/term/hive/05-hive.md.
+  const wake: string[] = []
+
+  if (
+    options?.wake?.length &&
+    program.some(n => n.form === 'function' && n.name === 'hive-wake')
+  ) {
+    const entryText = (entry: Record<string, unknown>): string => {
+      const { ref, base, ...own } = entry
+      const boxed =
+        typeof ref === 'string'
+          ? camel(ref)
+          : JSON.stringify(JSON.stringify(base ?? {}))
+
+      return `HiveEntry(host: ${JSON.stringify(String(own.host ?? ''))}, kind: ${JSON.stringify(String(own.kind ?? ''))}, name: ${JSON.stringify(String(own.name ?? ''))}, site: ${JSON.stringify(String(own.site ?? ''))}, base: ${boxed})`
+    }
+
+    const calls = options.wake
+      .map(
+        group =>
+          `  hiveWake(${JSON.stringify(group.deck)}, SeedList<HiveEntry>([${group.entries.map(entryText).join(', ')}]))`,
+      )
+      .join('\n')
+
+    wake.push(`func wakeHive() -> Void {\n${calls}\n}`)
+  }
+
+  return [...imports, ...prelude, ...body, ...swiftFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
 }
 
 // does a function body contain a throw? (then its Swift signature needs `throws`)

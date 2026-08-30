@@ -177,8 +177,22 @@ const OP: Record<string, string> = {
 // how many type parameters each generic form declares, for a reference that names the form without them
 let rustGenericArity = new Map<string, number>()
 
-export function emitRust(program: Program): string {
+// the roll grouped by deck, for the generated wake chain (the same shape emitTypeScript takes)
+export type WakeGroup = {
+  deck: string
+  entries: Record<string, unknown>[]
+}
+
+export function emitRust(
+  program: Program,
+  options?: { wake?: WakeGroup[] },
+): string {
   const pad = (d: number) => '    '.repeat(d)
+  // when the stdlib hive is in the program, every new raise tells it (the throw lowering), and the compiler can
+  // emit the wake chain (`wake_hive`) from the roll the driver hands over
+  const hasHiveTell = program.some(
+    n => n.form === 'function' && n.name === 'hive-tell',
+  )
   rustGenericArity = new Map(
     program
       .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type')
@@ -1235,12 +1249,22 @@ export function emitRust(program: Program): string {
       case 'throw': {
         // a raise is `Err(TermException)`: the record's shared fields, its props as `link`, the record as `base`; a
         // text raises `failure`; a caught value passes on as it is. Outside any raising task or guard (a raise the
-        // checker did not see reach here) it still ends the program, with the form and note.
+        // checker did not see reach here) it still ends the program, with the form and note. When the program has
+        // the stdlib hive, a NEW carrier tells it before unwinding (a pass-on re-raise does not re-tell), the same
+        // hook the TypeScript constructor carries.
+        const tell = (built: string): string =>
+          hasHiveTell
+            ? `{ let told = ${built}; hive_tell(HiveEntry { host: told.host.clone(), kind: "exception".to_string(), name: told.form.clone(), site: String::new(), base: std::rc::Rc::new(told.clone()) }); told }`
+            : built
         const carrier =
           node.value.form === 'string'
-            ? `TermException { host: String::new(), form: "failure".to_string(), note: ${expr(node.value)}, code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) }`
+            ? tell(
+                `TermException { host: String::new(), form: "failure".to_string(), note: ${expr(node.value)}, code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) }`,
+              )
             : node.value.form === 'record' && exceptionForms.has(node.value.name)
-              ? `{ let raised = ${expr(node.value)}; TermException { host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised) } }`
+              ? tell(
+                  `{ let raised = ${expr(node.value)}; TermException { host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised) } }`,
+                )
               : `(${expr(node.value)}).clone()`
 
         if (currentRaising || guardDepth > 0) {
@@ -1808,7 +1832,36 @@ impl std::error::Error for TermException {}`,
       ]
     : []
 
-  return [...uses, ...carrier, ...body, ...rustFormWalk(fillSpecs, meltSpecs)].join('\n\n') + '\n'
+  // the wake chain: one `hive_wake` per deck with its static entries, when the program has the stdlib hive and the
+  // compile driver handed over the roll. A static entry's `base` is the declaration as JSON text, boxed; an entry
+  // with a `ref` (a declared kind's constant) binds the live module constant instead. See note/term/hive/05-hive.md.
+  const wake: string[] = []
+
+  if (
+    options?.wake?.length &&
+    program.some(n => n.form === 'function' && n.name === 'hive-wake')
+  ) {
+    const entryText = (entry: Record<string, unknown>): string => {
+      const { ref, base, ...own } = entry
+      const boxed =
+        typeof ref === 'string'
+          ? `std::rc::Rc::new(${moduleConstName(ref)}.with(|v| v.clone()))`
+          : `std::rc::Rc::new(${JSON.stringify(JSON.stringify(base ?? {}))}.to_string())`
+
+      return `HiveEntry { host: ${JSON.stringify(String(own.host ?? ''))}.to_string(), kind: ${JSON.stringify(String(own.kind ?? ''))}.to_string(), name: ${JSON.stringify(String(own.name ?? ''))}.to_string(), site: ${JSON.stringify(String(own.site ?? ''))}.to_string(), base: ${boxed} }`
+    }
+
+    const calls = options.wake
+      .map(
+        group =>
+          `    hive_wake(${JSON.stringify(group.deck)}.to_string(), std::rc::Rc::new(std::cell::RefCell::new(vec![${group.entries.map(entryText).join(', ')}])));`,
+      )
+      .join('\n')
+
+    wake.push(`pub fn wake_hive() {\n${calls}\n}`)
+  }
+
+  return [...uses, ...carrier, ...body, ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
 }
 
 // MUTATED-CAPTURE analysis: the names a function must box in `Rc<RefCell>` because a nested closure assigns to them.

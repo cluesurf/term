@@ -7,7 +7,7 @@ mod runtime {
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
-    type Handler = Box<dyn Fn(Request) -> Response>;
+    type Handler = std::rc::Rc<dyn Fn(Request) -> Response>;
 
     pub fn serve(port: i64, host: String, handler: Handler) {
         let listener =

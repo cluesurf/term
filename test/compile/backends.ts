@@ -157,7 +157,7 @@ task danger
   )
   ok(
     'swift: a text raises failure through the TermException carrier',
-    sw.includes('throw TermException(host: "", form: "failure", note: "oops"') &&
+    sw.includes('TermException(host: "", form: "failure", note: "oops"') &&
       sw.includes('struct TermException: Error'),
     sw,
   )

@@ -118,7 +118,22 @@ const KOTLIN_PRIMITIVES: Record<string, string> = {
   decimal: 'Double',
 }
 
-export function emitKotlin(program: Program): string {
+// the roll grouped by deck, for the generated wake chain (the same shape emitTypeScript takes)
+export type WakeGroup = {
+  deck: string
+  entries: Record<string, unknown>[]
+}
+
+export function emitKotlin(
+  program: Program,
+  options?: { wake?: WakeGroup[] },
+): string {
+  // when the stdlib hive is in the program, every new raise tells it (the throw lowering), and the compiler can
+  // emit the wake chain (`wakeHive`) from the roll the driver hands over
+  const hasHiveTell = program.some(
+    n => n.form === 'function' && n.name === 'hive-tell',
+  )
+
   const pad = (d: number) => '    '.repeat(d)
   // opaque per-backend handle types (`dock type / load <java.lang.Process>, name child-handle`): seed name -> concrete
   // kotlin type, so a `like child-handle` field emits the real handle type rather than a nonexistent class.
@@ -900,15 +915,22 @@ export function emitKotlin(program: Program): string {
         return expr(node.expr)
       case 'return':
         return node.value ? `return ${expr(node.value)}` : 'return'
-      case 'throw':
+      case 'throw': {
         // a raise carries the exception record whole in a TermException (the shared fields, the props as `link`, the
         // record as `base`), so a handler reads `note`, `form`, `code` the way it does on TypeScript. A text raises
-        // `failure`; a value already caught is passed on as it is.
+        // `failure`; a value already caught is passed on as it is. When the program has the stdlib hive, a NEW
+        // carrier tells it before unwinding (a pass-on re-raise does not re-tell).
+        const tell = (built: string): string =>
+          hasHiveTell
+            ? `throw run { val told = ${built}; hiveTell(HiveEntry(host = told.host, kind = "exception", name = told.form, site = "", base = told)); told }`
+            : `throw ${built}`
+
         return node.value.form === 'string'
-          ? `throw TermException("", "failure", ${expr(node.value)}, "", 0L, null, null)`
+          ? tell(`TermException("", "failure", ${expr(node.value)}, "", 0L, null, null)`)
           : node.value.form === 'record' && exceptionForms.has(node.value.name)
-            ? `throw run { val raised = ${expr(node.value)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) }`
+            ? tell(`run { val raised = ${expr(node.value)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) }`)
             : `throw termException(${expr(node.value)})`
+      }
       case 'while':
         return `while (${expr(node.cond)}) {\n${block(
           node.body,
@@ -1232,7 +1254,36 @@ export function emitKotlin(program: Program): string {
       : []),
   ]
 
-  return [...imports, ...prelude, ...body].join('\n\n') + '\n'
+  // the wake chain: one `hiveWake` per deck with its static entries, when the program has the stdlib hive and
+  // the compile driver handed over the roll. A static entry's `base` is the declaration as JSON text; an entry
+  // with a `ref` (a declared kind's constant) binds the live module constant. See note/term/hive/05-hive.md.
+  const wake: string[] = []
+
+  if (
+    options?.wake?.length &&
+    program.some(n => n.form === 'function' && n.name === 'hive-wake')
+  ) {
+    const entryText = (entry: Record<string, unknown>): string => {
+      const { ref, base, ...own } = entry
+      const boxed =
+        typeof ref === 'string'
+          ? camel(ref)
+          : JSON.stringify(JSON.stringify(base ?? {}))
+
+      return `HiveEntry(host = ${JSON.stringify(String(own.host ?? ''))}, kind = ${JSON.stringify(String(own.kind ?? ''))}, name = ${JSON.stringify(String(own.name ?? ''))}, site = ${JSON.stringify(String(own.site ?? ''))}, base = ${boxed})`
+    }
+
+    const calls = options.wake
+      .map(
+        group =>
+          `    hiveWake(${JSON.stringify(group.deck)}, mutableListOf(${group.entries.map(entryText).join(', ')}))`,
+      )
+      .join('\n')
+
+    wake.push(`fun wakeHive(): Unit {\n${calls}\n}`)
+  }
+
+  return [...imports, ...prelude, ...body, ...wake].join('\n\n') + '\n'
 }
 
 // does a type mention a given generic parameter name?
