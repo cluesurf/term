@@ -1,7 +1,7 @@
 
 # Time: the current epoch time. Implementation selected at build time, hidden behind this API.
 
-load @term/seed/code/native/time
+load @term/seed/code/native/{platform}/time
   find epoch-millis
 
 task now

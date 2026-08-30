@@ -47,7 +47,7 @@ enum runtime {
         url: target,
         path: path,
         query: query,
-        headers: SeedMap<Int, Int>([:]),
+        headers: SeedMap<String, String>([:]),
         body: body,
         dock: 0
       )

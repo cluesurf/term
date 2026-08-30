@@ -1,6 +1,6 @@
 # JSON. parse / stringify and navigation over the host JSON library, hidden per-env. The parsed value is the opaque dynamic value (a JS any, a rust serde_json::Value, a swift / kotlin Any); the accessors read it natively. No hand-rolled parser or value representation.
 
-load @term/seed/code/native/json
+load @term/seed/code/native/{platform}/json
   find do-parse
   find do-stringify
   find do-get-field

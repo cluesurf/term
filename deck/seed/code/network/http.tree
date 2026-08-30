@@ -1,6 +1,6 @@
 # HTTP client. The clean uniform interface; the per-env native implementation wraps the platform's HTTP library (fetch on node/browser, reqwest/URLSession/ktor elsewhere) and is selected at build time, hidden behind the API. Async on every target (network is async everywhere).
 
-load @term/seed/code/native/network/http
+load @term/seed/code/native/{platform}/network/http
   find do-request
 
 load @term/seed/code/network/response
@@ -69,3 +69,9 @@ task post
       read body
       read header
       wait true
+
+# a streaming HTTP response: the status plus the raw platform response in the opaque `dock` handle. `read` in
+# `http/response` drains the body once, as text, bytes or json.
+form response
+  link status, like number
+  link dock, mark private

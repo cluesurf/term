@@ -124,7 +124,9 @@ function rustType(type: Type | undefined): string {
       // a free inference variable: its function's generic letter, or i64 when it is not in a generic position
       return rustVarNames.get(type.id) ?? 'i64'
     case 'unknown':
-      return 'i64'
+      // the declared dynamic (`like unknown` / `like any`): a boxed value of any 'static type, so a hive entry's
+      // `base` can carry a record. Construction sites box with `Rc::new` (the unsized coercion fills in `dyn Any`).
+      return 'std::rc::Rc<dyn std::any::Any>'
     default:
       return 'i64'
   }
@@ -427,6 +429,42 @@ export function emitRust(program: Program): string {
       ? `${expr(value)}.clone()`
       : expr(value)
 
+  // a value flowing into an `unknown` slot boxes (`std::rc::Rc::new`; the unsized coercion supplies `dyn Any` from
+  // the slot's declared type). Only a read or a call whose own type is unknown is already the boxed dynamic; a
+  // literal the checker typed unknown by expectation (a `code 0` bound into an unknown field) still needs the box,
+  // and a bare integer pins to i64 so a later downcast sees the seed number type
+  const boxUnknown = (
+    into: Type | undefined,
+    value: Expression,
+    rendered: string,
+  ): string => {
+    if (into?.kind !== 'unknown') {
+      return rendered
+    }
+
+    const alreadyBoxed =
+      (value.form === 'variable' ||
+        value.form === 'member' ||
+        value.form === 'call' ||
+        value.form === 'await') &&
+      value.type?.kind === 'unknown'
+
+    if (alreadyBoxed) {
+      return rendered
+    }
+
+    return value.form === 'integer'
+      ? `std::rc::Rc::new((${rendered}) as i64)`
+      : `std::rc::Rc::new(${rendered})`
+  }
+
+  // every task's declared parameter types, for boxing an argument into an `unknown` parameter
+  const functionParams = new Map<string, (Type | undefined)[]>(
+    program
+      .filter((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function')
+      .map(n => [n.name, n.params.map(p => p.type)]),
+  )
+
   // an empty list or map binding spells its checked type, so rust does not have to infer it from later use
   const emptyAnn = (init: Expression): string => {
     const empty =
@@ -475,6 +513,9 @@ export function emitRust(program: Program): string {
         }
 
         return '0'
+      case 'unknown':
+        // an unknown field left out of a construction: a boxed unit (the slot carries anything)
+        return 'std::rc::Rc::new(())'
       default:
         return '0'
     }
@@ -678,26 +719,34 @@ export function emitRust(program: Program): string {
         // MOVE ON LAST USE: a bare variable read exactly once in the function (and not in a loop or closure) is moved at
         // this use instead of cloned -- there is no later use to invalidate, so the borrow checker accepts it, and the
         // clone (a deep `String` copy or an `Rc` refcount bump) is saved.
-        const argList = node.args.map(a => {
-          if (
-            a.form === 'variable' &&
-            a.type &&
-            a.type.kind !== 'function' &&
-            moveArgs.has(a.name)
-          ) {
-            return expr(a)
-          }
+        const params =
+          node.callee.form === 'variable'
+            ? functionParams.get(node.callee.name)
+            : undefined
+        const argList = node.args.map((a, i) => {
+          const rendered = (() => {
+            if (
+              a.form === 'variable' &&
+              a.type &&
+              a.type.kind !== 'function' &&
+              moveArgs.has(a.name)
+            ) {
+              return expr(a)
+            }
 
-          // a mutated capture's read already clones the value out of its cell; no second clone
-          if (a.form === 'variable' && cellVars.has(a.name)) {
-            return expr(a)
-          }
+            // a mutated capture's read already clones the value out of its cell; no second clone
+            if (a.form === 'variable' && cellVars.has(a.name)) {
+              return expr(a)
+            }
 
-          return (a.form === 'variable' || a.form === 'member') &&
-            a.type &&
-            a.type.kind !== 'function'
-            ? `${expr(a)}.clone()`
-            : expr(a)
+            return (a.form === 'variable' || a.form === 'member') &&
+              a.type &&
+              a.type.kind !== 'function'
+              ? `${expr(a)}.clone()`
+              : expr(a)
+          })()
+
+          return boxUnknown(params?.[i], a, rendered)
         })
 
         const args = argList.join(', ')
@@ -764,12 +813,18 @@ export function emitRust(program: Program): string {
         // a field the construction leaves out (`need false`, or one the runtime fills on another backend) takes its
         // type's empty value, so the struct is whole
         const given = new Set(node.fields.map(f => f.name))
+        const declared = new Map(
+          (recordFields.get(node.name) ?? []).map(f => [f.name, f.type]),
+        )
         const missing = (recordFields.get(node.name) ?? [])
           .filter(f => !given.has(f.name))
           .map(f => `${snake(f.name)}: ${emptyOf(f.type)}`)
 
         return `${pascal(node.name)} { ${[
-          ...node.fields.map(f => `${snake(f.name)}: ${owned(f.value)}`),
+          ...node.fields.map(
+            f =>
+              `${snake(f.name)}: ${boxUnknown(declared.get(f.name), f.value, owned(f.value))}`,
+          ),
           ...missing,
         ].join(', ')} }`
       }
@@ -1129,6 +1184,11 @@ export function emitRust(program: Program): string {
               })}`
             : ''
 
+        // a local declared `like unknown` boxes its concrete init, so every later read is already the boxed dynamic
+        if (node.type?.kind === 'unknown' && node.init.type?.kind !== 'unknown') {
+          return `let mut ${vname(node.name)}: std::rc::Rc<dyn std::any::Any> = std::rc::Rc::new(${owned(node.init)});`
+        }
+
         return `let mut ${vname(node.name)}${ann || emptyAnn(node.init)} = ${owned(node.init)};`
       }
       case 'assign': {
@@ -1157,7 +1217,7 @@ export function emitRust(program: Program): string {
           ? '()'
           : fnReturnsArray && isNativeCall(node.value)
             ? wrapList(expr(node.value))
-            : expr(node.value)
+            : boxUnknown(currentResult, node.value, expr(node.value))
 
         if (guardDepth > 0) {
           return `return Ok(Some(${value}));`

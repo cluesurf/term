@@ -4,4 +4,4 @@
 # in-memory server tree) through the native-env mechanism. Frontend code is thus platform-agnostic.
 
 bear @term/site/code/dom/view
-bear @term/site/code/dom/native/dom
+bear @term/site/code/dom/native/{platform}/dom

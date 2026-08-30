@@ -241,7 +241,7 @@ export function check(
   // clean and emit a type the target has never heard of (compiler-hygiene-0010). It runs before the signatures are
   // built, while every `like <name>` is still the name as written (inference replaces an unknown one with a variable)
   const PRIMITIVE_TYPE_NAMES = new Set([
-    'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'integer', 'number', 'decimal', 'float', 'f32', 'f64',
+    'u8', 'u16', 'u32', 'u64', 'u128', 'i8', 'i16', 'i32', 'i64', 'i128', 'integer', 'number', 'decimal', 'float', 'f32', 'f64',
     'dynamic', 'json', 'bytes', 'buffer', 'text', 'boolean', 'void', 'unknown', 'any', 'unit', 'list', 'hash', 'task',
     'string', 'natural', 'self', 'type', 'size',
   ])

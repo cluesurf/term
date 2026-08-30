@@ -1,3 +1,9 @@
+dock type
+  load <AnyView>, name native-view
+
+load @term/seed/code/color/rgb
+  find rgb-color
+
 
 form decimal
   dock cg-float
@@ -198,7 +204,7 @@ form dock
 
   task set-border
     take self
-    take color, like color-rgb
+    take color, like rgb-color
     take width, like decimal
     call self/dock/border
       make native-color

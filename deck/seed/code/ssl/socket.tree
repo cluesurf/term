@@ -1,3 +1,6 @@
+# SHELVED 2026-08-29, out of the build. An interface sketch nothing loads: `certificate`, `key`, `input` and
+# `output` were never declared (the unknown-type warning counts them). Delete `note draft` to bring it back.
+note draft
 
 # where a socket is bound or connected: the shape both `host` and `peer` return
 form address

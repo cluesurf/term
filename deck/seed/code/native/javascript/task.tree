@@ -1,3 +1,6 @@
+# SHELVED 2026-08-29, out of the build. A sketch in pre-current syntax (`find form`, `wear`) that nothing
+# loads and the mill refuses. Delete `note draft` to bring it back.
+note draft
 
 load @term/base
   find form task

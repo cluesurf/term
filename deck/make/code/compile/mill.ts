@@ -49,10 +49,12 @@ const TYPE_NAME: Record<string, Type> = {
   u16: NUMBER,
   u32: NUMBER,
   u64: NUMBER,
+  u128: NUMBER,
   i8: NUMBER,
   i16: NUMBER,
   i32: NUMBER,
   i64: NUMBER,
+  i128: NUMBER,
   'natural-number': NUMBER,
   integer: NUMBER,
   number: NUMBER,
@@ -81,8 +83,11 @@ const TYPE_NAME: Record<string, Type> = {
   'native-void': UNIT,
   'native-null': UNIT,
   'native-undefined': UNIT,
-  // `any` is the gradual type: consistent with everything (an opaque bind type, a callback union, etc.)
+  // `any` is the gradual type: consistent with everything (an opaque bind type, a callback union, etc.), and
+  // `unknown` is the same value spelled from the holder's side: a slot that carries anything (a hive entry's record).
+  // Both lower to the boxed dynamic on the native backends (Rc<dyn Any> / Any), never to a number.
   any: UNKNOWN,
+  unknown: UNKNOWN,
 }
 
 // signature annotation keywords that decorate a `host`/`save` declaration rather than supplying its value:

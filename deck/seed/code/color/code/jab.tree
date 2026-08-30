@@ -1,3 +1,5 @@
+load @term/seed/code/color/rgb
+  find rgb-color
 
 load @term/seed/code/mixin/access
   find access

@@ -12,12 +12,12 @@ form command-flag
   link short, like text
   link kind, like text
   link note, like text
-  link required, like bool
+  link required, like boolean
 
 form command-argument
   link name, like text
   link note, like text
-  link required, like bool
+  link required, like boolean
   link fallback
 
 form command-result
@@ -49,7 +49,7 @@ task command-flag-make
   take short, like text
   take kind, like text
   take note, like text
-  take required, like bool
+  take required, like boolean
   take fallback
   send back
     make command-flag
@@ -63,7 +63,7 @@ task command-flag-make
 task command-argument-make
   take name, like text
   take note, like text
-  take required, like bool
+  take required, like boolean
   take fallback
   send back
     make command-argument

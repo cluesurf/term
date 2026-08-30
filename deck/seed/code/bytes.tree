@@ -1,6 +1,6 @@
 # Raw byte buffers: the `bytes` currency type, backed by the platform's native octet buffer (a JS Uint8Array, a rust byte vector, a swift Data, a kotlin ByteArray). This is the zero-copy currency for cryptography, encoding, file IO, and the network. Text (utf8), hex, and base64 are explicit codecs at the edges, not a tax paid on every call. The per-env native implementation is selected at build time and hidden.
 
-load @term/seed/code/native/bytes
+load @term/seed/code/native/{platform}/bytes
   find do-from-text
   find do-to-text
   find do-to-hex

@@ -1,6 +1,6 @@
 # Bitwise operations on integers. The generic interface: each public verb delegates to the native implementation for the build target, which lives in its own per-backend file (`native/<env>/bit`). Note: on node these operate on 32-bit integers (the JavaScript bitwise rule); the compiled backends use full 64-bit integers. `shift-right` is arithmetic (sign-preserving on the compiled backends).
 
-load @term/seed/code/native/bit
+load @term/seed/code/native/{platform}/bit
   find do-bitwise-and
   find do-bitwise-or
   find do-bitwise-exclusive-or

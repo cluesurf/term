@@ -36,25 +36,25 @@ load ../tool/base
   find show-line
   find equal
 
-load ./native/keychain
+load ./native/{platform}/keychain
   find keychain-save
   find keychain-read
   find keychain-toss
   find keychain-open
 
-load ./native/secret
+load ./native/{platform}/secret
   find secret-save
   find secret-read
   find secret-toss
   find secret-open
 
-load ./native/manager
+load ./native/{platform}/manager
   find manager-save
   find manager-read
   find manager-toss
   find manager-open
 
-load ./native/environment
+load ./native/{platform}/environment
   find environment-read
   find environment-have
 

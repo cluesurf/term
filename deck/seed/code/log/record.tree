@@ -9,5 +9,5 @@ form record
 task format
   take record, like record
   take style, like text, fall text <text>
-  take color, like bool, fall false
+  take color, like boolean, fall false
   like text

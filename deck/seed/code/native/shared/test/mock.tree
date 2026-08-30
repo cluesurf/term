@@ -13,6 +13,10 @@ form mock-data
   link handler, need false
   link calls, like list
 
+# the mock a caller holds: its data rides in the opaque `dock` handle
+form mock
+  link dock, mark private
+
 task make
   take returns, need false
   take handler, like task, need false

@@ -35,7 +35,7 @@ task list
 
 task check
   take name, like text
-  like bool
+  like boolean
 
   send back
     call variable/check

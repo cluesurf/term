@@ -1,6 +1,6 @@
 
 form text-utf-32
   link list
-    like list-type
-      like mark-32
+    like list
+      like u32
     note private

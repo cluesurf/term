@@ -42,7 +42,7 @@ load ./font-ready
   find subscribe-font
   find subscribe-font-deadline
   find font-watch
-load ./native/text-format
+load ./native/{platform}/text-format
   find opacity-text
   find duration-text
   find now-ms

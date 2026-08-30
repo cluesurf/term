@@ -7,7 +7,7 @@
 load @term/seed/code/list
   find list
 
-load ../dom/native/dom
+load ../dom/native/{platform}/dom
   find view
   find create-element
   find create-text

@@ -1,6 +1,11 @@
+dock load
+  load <node:readline>, name readline
+
+dock type
+  load <import("node:readline").Interface>, name readline-interface
 
 form tool
-  link dock, like readline/interface
+  link dock, like readline-interface
 
   hook make
     take i

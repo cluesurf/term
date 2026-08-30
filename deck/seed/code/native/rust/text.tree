@@ -1,3 +1,6 @@
+# SHELVED 2026-08-29, out of the build. A suit for `text-utf-8`, a form that lives in the shelved `hold/` tree
+# (stdlib-parity-0005); nothing loads this module. Delete `note draft` to bring it back with `hold/`.
+note draft
 
 suit text-utf-8
   wear text-transformation

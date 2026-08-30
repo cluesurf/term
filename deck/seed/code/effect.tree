@@ -1,3 +1,6 @@
+# SHELVED 2026-08-29, out of the build. A design sketch in pre-current syntax that nothing loads; the types it
+# names were never declared (the unknown-type warning counts them). Delete `note draft` to bring it back.
+note draft
 
 # IO effect ADT for the HVM backend. Maps to IO_Done, IO_Call, IO_bind protocol.
 

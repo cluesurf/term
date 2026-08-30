@@ -23,7 +23,7 @@ load @term/site/code/dom/dom
   find watch-deadline
   find add-class
   find remove-class
-load ./native/text-format
+load ./native/{platform}/text-format
   find now-ms
 load @term/seed/code/list
   find list

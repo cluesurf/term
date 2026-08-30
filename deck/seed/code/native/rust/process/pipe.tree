@@ -17,8 +17,9 @@ task connect
   save stdin
     call to/dock/stdin/take
 
-  save buf, make list
-    code 8192
+  save buf
+    make list
+      code 8192
 
   walk test, true
     hook step

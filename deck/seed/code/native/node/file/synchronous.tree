@@ -12,69 +12,69 @@ form file
 
 task open
   fuse open-head, text <Synchronous open read only>
-  take can-read, like true
+  take can-read, like boolean
   fuse open-body, text <r>
 
 task open
   fuse open-head, text <Synchronous open read and write>
-  take can-read, like true
-  take can-write, like true
+  take can-read, like boolean
+  take can-write, like boolean
   fuse open-body, text <r+>
 
 task open
   fuse open-head, text <Synchronous open create, clear, write>
-  take can-create, like true
-  take can-clear, like true
-  take can-write, like true
+  take can-create, like boolean
+  take can-clear, like boolean
+  take can-write, like boolean
   fuse open-body, text <w>
 
 task open
   fuse open-head, text <Synchronous open create, write>
-  take can-create, like true
-  take can-write, like true
+  take can-create, like boolean
+  take can-write, like boolean
   fuse open-body, text <wx>
 
 task open
   fuse open-head, text <Synchronous open create, clear, read, write>
-  take can-create, like true
-  take can-clear, like true
-  take can-read, like true
-  take can-write, like true
+  take can-create, like boolean
+  take can-clear, like boolean
+  take can-read, like boolean
+  take can-write, like boolean
   fuse open-body, text <w+>
 
 task open
   fuse open-head, text <Synchronous open create, read, write>
-  take can-create, like true
-  take can-read, like true
-  take can-write, like true
+  take can-create, like boolean
+  take can-read, like boolean
+  take can-write, like boolean
   fuse open-body, text <wx+>
 
 task open
   fuse open-head, text <Synchronous open create, clear, append>
-  take can-create, like true
-  take can-clear, like true
-  take can-append, like true
+  take can-create, like boolean
+  take can-clear, like boolean
+  take can-append, like boolean
   fuse open-body, text <a>
 
 task open
   fuse open-head, text <Synchronous open create, append>
-  take can-create, like true
-  take can-append, like true
+  take can-create, like boolean
+  take can-append, like boolean
   fuse open-body, text <ax>
 
 task open
   fuse open-head, text <Synchronous open create, clear, read, append>
-  take can-create, like true
-  take can-clear, like true
-  take can-read, like true
-  take can-append, like true
+  take can-create, like boolean
+  take can-clear, like boolean
+  take can-read, like boolean
+  take can-append, like boolean
   fuse open-body, text <a+>
 
 task open
   fuse open-head, text <Synchronous open create, clear, read, append>
-  take can-create, like true
-  take can-read, like true
-  take can-append, like true
+  take can-create, like boolean
+  take can-read, like boolean
+  take can-append, like boolean
   fuse open-body, text <ax+>
 
 task read
@@ -96,7 +96,7 @@ task save-file
   take buffer-start-position
   take byte-count
   take file-start-position
-  free number-of-bytes-written, like unsigned-integer
+  free number-of-bytes-written, like size
   fuse try, read save-file-call
 
 task read-file
@@ -105,7 +105,7 @@ task read-file
   take buffer-start-position
   take byte-count
   take file-start-position
-  free number-of-bytes-read, like unsigned-integer
+  free number-of-bytes-read, like size
   fuse try, read read-file-call
 
 task clear-file
@@ -114,7 +114,7 @@ task clear-file
 
 task clear-file
   take file, like file
-  take leave-bytes, like unsigned-integer
+  take leave-bytes, like size
   fuse try, read clear-file-call-2
 
 tree open-body

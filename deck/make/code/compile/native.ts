@@ -198,26 +198,6 @@ export function nativePrelude(
     : parts.join(`\n${glue}`)
 }
 
-// rewrite an abstract native import to the env-specific one, or return undefined if it is not an abstract native path
-export function nativeImportFor(
-  importPath: string,
-  env: NativeEnv,
-): string | undefined {
-  const match = /^(.*\/native)\/([^/]+)(\/.*)?$/.exec(importPath)
-
-  if (!match) {
-    return undefined
-  }
-
-  const segment = match[2]!
-
-  if ((NATIVE_ENVS as readonly string[]).includes(segment)) {
-    return undefined
-  } // already concrete (e.g. native/node/...)
-
-  return `${match[1]}/${env}/${segment}${match[3] ?? ''}`
-}
-
 // a target that shares another env's native impls where it has none of its own. The Cloudflare Workers runtime is V8
 // with Web APIs (String / Array / fetch / crypto), so it reuses the `browser` native stdlib wholesale; only the few
 // SSR seams that genuinely differ (the in-memory DOM, the fetch-handler transport + host) ship a `native/cloudflare`
@@ -235,31 +215,33 @@ export function withNativeEnv(
   base: Resolver,
 ): Resolver {
   return (importPath: string, fromFile: string): Source | undefined => {
-    const rewritten = nativeImportFor(importPath, env)
-
-    if (rewritten) {
-      const resolved = base(rewritten, fromFile)
-
-      if (resolved) {
-        return resolved
-      }
-
-      // this env has no impl for the module: try a sibling env that it borrows its native stdlib from
+    // the explicit spelling: `load .../native/{platform}/<name>` says on its face that the path is chosen by the
+    // target. The env fills the slot; an env with no impl of its own borrows its sibling's (cloudflare -> browser)
+    if (importPath.includes('{platform}')) {
       const fallbackEnv = NATIVE_ENV_FALLBACK[env]
 
-      if (fallbackEnv) {
-        const viaFallback = nativeImportFor(importPath, fallbackEnv)
+      for (const candidate of fallbackEnv ? [env, fallbackEnv] : [env]) {
+        const resolved = base(
+          importPath.replaceAll('{platform}', candidate),
+          fromFile,
+        )
 
-        if (viaFallback) {
-          const resolvedFallback = base(viaFallback, fromFile)
-
-          if (resolvedFallback) {
-            return resolvedFallback
-          }
+        if (resolved) {
+          return resolved
         }
       }
+
+      // no impl for this env: the abstract module itself, when one exists (`native/serve.tree` beside the env
+      // dirs holds the shared fallback), the way the retired implicit rewrite fell back to the original path
+      return base(
+        importPath.replaceAll('/{platform}', ''),
+        fromFile,
+      )
     }
 
+    // the implicit rewrite (`.../native/<name>` -> `.../native/<env>/<name>`) is RETIRED (stdlib-parity-0002):
+    // every public stdlib module now spells `native/{platform}/<name>` explicitly, so an abstract path resolves
+    // as written or not at all
     return base(importPath, fromFile)
   }
 }

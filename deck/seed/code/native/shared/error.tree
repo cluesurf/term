@@ -4,10 +4,10 @@
 # note/term/hive/03-exception.md (a form that is `like exception`, `halt <form>`, `halt take`).
 note draft
 
-load @term/seed/code/base/result
+load @term/seed/code/result
   find result
 
-load @term/seed/code/base/kink
+load @term/seed/code/kink
   find kink
 
 task make
@@ -15,7 +15,7 @@ task make
   take message, like text
   take fields, like hash, need false
   take cause, like kink, need false
-  take trace, like bool, fall false
+  take trace, like boolean, fall false
   send back
     make kink
       bind code, read code

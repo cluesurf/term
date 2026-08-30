@@ -25,7 +25,7 @@ task handle
 
 task make-server
   take handler, like task, base handle
-  take port, like unsigned-integer-16
+  take port, like u16
 
   free server, like server
 

@@ -3,7 +3,7 @@ load @term/seed/code/bit
   find unsigned-shift-right
 
 task hash-djb2-xor
-  like mark-32
+  like u32
   take text
   save size, read text/get-size
   save hash, code 5381

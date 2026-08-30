@@ -1,4 +1,4 @@
 
 task get
-  take precise, like bool, fall false
+  take precise, like boolean, fall false
   like size

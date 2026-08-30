@@ -1,0 +1,120 @@
+
+# View file: the AST of a `view`-role document, the sandboxed dialect a page or a guide is written in.
+#
+# Five statement heads and not one of them declares anything the author wrote: `load` reaches the approved
+# catalogs, `host` names a constant or a parameter the route fills, `find` names a query the host resolves before
+# rendering, `tree` names a macro, and `view` defines the document. Spec: note/term/view/.
+#
+# The BODY half is not here. A `view` definition IS a `zone-def` and its nodes are `zone-node`, so the dialect
+# reuses the component AST rather than restating it, and everything downstream of `compile/zone-lower.ts` works
+# unchanged. The view mill simply never produces the `save` case, never produces a `zone-seed` (an attribute or an
+# event), and never produces a `walk` whose mode is `test`. What an author cannot write is what the mill will not
+# build, and note/term/view/05-sandbox.md holds a document per bound.
+#
+# Named `view-file` rather than `view` for the reason `zone-file` is not `zone`: Term form names are
+# package-global, and `view` is the name the component AST takes when `zone` is renamed.
+
+load ./term
+  find term
+
+load ./text
+  find text
+
+load ./road
+  find road
+
+load ./like
+  find like
+
+load ./take
+  find take
+
+load ./seed
+  find seed
+
+load ./bind
+  find bind
+
+load ./zone
+  find zone-def
+  find zone-node
+
+# One document. Order is free in the file and names are file-scoped across all the lists together, so a `read` has
+# one answer.
+#
+# There is no `tree` field, and that is not an oversight. A macro never reaches this form: `compile/template.ts`
+# expands `tree` and `fuse` on the parse tree before any mill runs, so a `view-file` only ever holds the expanded
+# result. A field named `tree` would also be deleted by that same expander, which drops every node whose head is
+# `tree` at any depth. That is a live compiler defect (`book-code`'s `link tree, like text` emits `like: any`
+# today) and it is filed against compiler-hygiene. The field can be added when the defect is fixed and a reason
+# to hold macros in the AST appears.
+form view-file
+  link load, list view-load
+  link host, list view-host
+  link find, list view-find
+  link view, list zone-def
+
+# `load @view/text` with a `find` per name taken. The path is text because it names a package in the approved
+# catalog, never a file: there is no relative form and no absolute form, so the reachable set of a document is
+# exactly its manifest.
+form view-load
+  link path, like text
+  link find, list view-load-find
+
+form view-load-find
+  link name, like term
+  link alias, like term
+
+# `host title, text <How Quenya sounds>` is a constant and carries a `bond`.
+# `host slug, like text` is a parameter the route fills and carries a `like`.
+#
+# Parameters live at file scope rather than as a `take` on a view, because a `find` resolves before any component
+# is built, so a value scoped to a component does not exist yet when a filter needs to read it.
+form view-host
+  link name, like term
+  link bond, like seed
+  link like, like like
+
+# One query. `task` is the catalog id as text, because `select:language` is not a Term name.
+#
+# The document never runs this. The host reads it off the manifest, fills the holes from the `host` values,
+# resolves it with the READER's permissions rather than the author's, and passes the result in as a parameter.
+form view-find
+  link name, like term
+  link task, like text
+  link meet, like view-meet
+  link sort, list view-sort
+  link size, like integer
+  link slot, like integer
+
+# A group of predicates. `mode` is `and`, `or` or `not`, and `not` takes exactly one child. Bare `hold` lines with
+# no `meet` around them are an implicit `and`.
+form view-meet
+  link mode, like term
+  link hold, list view-hold
+  link meet, list view-meet
+
+# One predicate. `name` is a registered comparison (`is-equal`, `is-above`, ...) and the binds are its arguments,
+# positional or named with the predicate's own parameter names.
+#
+# `self` inside an argument is the record under test, which is the language's own meaning of `self`. Every other
+# read reaches a `host`. A predicate the resolver cannot push down to an index is refused, because a filter
+# evaluated in memory is a full table read wearing the costume of a filter.
+form view-hold
+  link name, like term
+  link bind, list bind
+
+# One ordering, most significant first. `way` is `rise` or `fall`.
+form view-sort
+  link way, like term
+  link road, like road
+
+# A macro: a named body with typed parameters, instantiated by `fuse`.
+#
+# Present for the formatter and the editor, which read the file before expansion. The COMPILE path never sees one:
+# `compile/template.ts` expands `tree` and `fuse` on the parse tree before any mill runs, so by the time a
+# `view-file` exists the macros are gone and their bodies stand where each `fuse` was.
+form view-tree
+  link name, like term
+  link take, list take
+  link node, list zone-node

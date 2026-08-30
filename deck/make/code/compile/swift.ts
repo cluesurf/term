@@ -443,7 +443,8 @@ export function emitSwift(program: Program): string {
       case 'variable':
         return varNames.get(type.id) ?? 'Int' // a free variable not in this function's scope: default to Int
       case 'unknown':
-        return 'Int'
+        // the declared dynamic (`like unknown` / `like any`): any value, so a hive entry's `base` can carry a record
+        return 'Any'
       default:
         return 'Int'
     }

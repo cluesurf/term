@@ -2,10 +2,13 @@
 dock load
   load <node:http>, name http
 
+dock type
+  load <import("node:http").Server>, name nodejs-http-server
+
 form server
   link x-server, like nodejs-http-server
     note private
-  link port, like unsigned-integer-16
+  link port, like u16
     note private
 
   task listen
@@ -20,8 +23,8 @@ form server
 
 task make-server
   take handler, like task, base response-handler
-  take port, like unsigned-integer-16
-  take max-header-size, like unsigned-integer-32
+  take port, like u16
+  take max-header-size, like u32
 
   free server, like server
 
@@ -35,7 +38,7 @@ task make-server
 
 task make-server
   take handler, like task, base response-handler
-  take port, like unsigned-integer-16
+  take port, like u16
 
   free server, like server
 

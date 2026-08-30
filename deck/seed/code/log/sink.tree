@@ -4,13 +4,13 @@ form sink
 
 task console
   take format, like text, fall text <text>
-  take color, like bool, fall true
+  take color, like boolean, fall true
   like sink
 
 task file
   take path, like text
   take format, like text, fall text <json>
-  take rotate, like bool, fall false
+  take rotate, like boolean, fall false
   take max-size, like size, fall 10485760
   like sink
 

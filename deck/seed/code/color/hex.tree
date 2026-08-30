@@ -3,7 +3,7 @@
 load @term/seed/code/color/rgb
   find rgb-color
 
-load @term/seed/code/native/color/hex
+load @term/seed/code/native/{platform}/color/hex
   find rgb-to-hex
 
 task from-rgb

@@ -1,7 +1,4 @@
 
-load @term/seed/code/list
-  find deep
-
 dock load
   load <node:fs/promises>, name fs-promise
   load <node:path>, name path
@@ -9,12 +6,12 @@ dock load
 task list
   note async
   take path, like text
-  take deep, like bool, fall false
+  take deep, like boolean, fall false
 
   fork test, name deep
     hook hold
       send back
-        call deep
+        call list-deep
           read path
           text <>
     hook miss

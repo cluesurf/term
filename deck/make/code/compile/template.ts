@@ -182,7 +182,10 @@ function interpolationName(
   return node.group ? headName(node.group) : undefined
 }
 
-// substitute params inside a name's `{param}` interpolations, returning a flat name
+// substitute params inside a name's `{param}` interpolations, returning a flat name. A name that IS a bound
+// parameter, whole (`like self-type` under `take self-type, like like`), substitutes too: a template's type
+// parameters are in scope across its body, and without this the placeholder rode into the checker as a type
+// name no build knows (found by the unknown-type warning: 276 `self-type` sites, every one a template body)
 function substituteName(
   name: NameNode,
   subs: Map<string, string>,
@@ -203,6 +206,10 @@ function substituteName(
         )}`
       }
     }
+  }
+
+  if (subs.has(text)) {
+    text = subs.get(text)!
   }
 
   return {

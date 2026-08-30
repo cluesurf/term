@@ -20,5 +20,5 @@ task run
   note async
   take filter, like text, need false
   take timeout, like size, fall 5000
-  take parallel, like bool, fall false
+  take parallel, like boolean, fall false
   like report

@@ -6,7 +6,10 @@ form request
   link url, like text
   link path, like text
   link query, like text
-  link headers, like hash
+  link headers
+    like hash
+      like text
+      like text
   link body, like text
   link dock, mark private
 

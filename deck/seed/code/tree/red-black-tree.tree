@@ -1,3 +1,5 @@
+load @term/seed/code/maybe
+  find maybe
 
 form red-black-tree
   head k

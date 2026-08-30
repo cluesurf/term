@@ -1,3 +1,5 @@
+load @term/seed/code/maybe
+  find maybe
 
 tree integer
   take self-type, like like

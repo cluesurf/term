@@ -2,6 +2,10 @@
 dock load
   load <global:shape>, name shape
 
+load @term/seed/code/test/suite
+  find report
+  find failure
+
 load @term/seed/code/clock
   find now
 

@@ -1,4 +1,7 @@
 
+load @term/seed/code/test/suite
+  find failure
+
 load @term/seed/code/list
   find push
   find size

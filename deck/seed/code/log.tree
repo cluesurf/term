@@ -1,6 +1,6 @@
 # Leveled logger. The clean uniform public API forwards to the per-env native implementation, hidden from the user. The build target selects the platform.
 
-load @term/seed/code/native/log
+load @term/seed/code/native/{platform}/log
   find write-info
   find write-warn
   find write-error

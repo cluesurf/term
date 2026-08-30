@@ -410,8 +410,10 @@ function tsType(type: Type | undefined): string {
       return 'any'
     case 'bytes':
       return 'Uint8Array'
-    case 'variable':
     case 'unknown':
+      // the declared dynamic (`like unknown` / `like any`): any value, so a hive entry's `base` can carry a record
+      return 'any'
+    case 'variable':
     case undefined:
     default:
       // an unconstrained binding in a numeric program: default to number

@@ -17,7 +17,7 @@
 #   width == 0       -> SSR / first paint: everything visibility:hidden (no committed shape until measured)
 #   else (mobile)    -> flex grid, middle centered (max 804, width) flex, sides hidden
 
-load ./native/text-format
+load ./native/{platform}/text-format
   find width-style
 
 # the inline-style strings for the four shell parts, one per CSS object in the React layout

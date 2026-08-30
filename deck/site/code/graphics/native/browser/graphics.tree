@@ -9,7 +9,7 @@
 # chain (buffer-data lives on the WebGL2 overloads interface) and a typed array for the vertex data. See
 # note/seed/plan/graphics-layer.md.
 
-load ../../../dom/native/global
+load ../../../dom/native/{platform}/global
   find page
 
 load @term/bind/code/browser/dom/web-gl-rendering-context-base

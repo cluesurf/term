@@ -1,9 +1,9 @@
 # UDP sockets. The clean uniform interface; each backend wraps its platform datagram networking (node dgram, rust tokio, swift POSIX, kotlin java.net) behind this API, selected at build time. `socket` is a bound UDP endpoint with send / receive / close methods; `datagram` is one received message plus its sender. The platform socket lives in the opaque `dock` handle, typed per backend. Every operation is async.
 
-load @term/seed/code/native/network/udp
+load @term/seed/code/native/{platform}/network/udp
   find do-open
 
-load @term/seed/code/native/network/udp/socket
+load @term/seed/code/native/{platform}/network/udp/socket
   find do-send
   find do-receive
   find do-close

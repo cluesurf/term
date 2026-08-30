@@ -3,7 +3,7 @@
 # backend wraps its platform runtime (node promise, rust tokio task, swift Task, kotlin coroutine) behind this one
 # interface, selected at build time. The platform job lives in the opaque `dock` handle, typed per backend.
 
-load @term/seed/code/native/job
+load @term/seed/code/native/{platform}/job
   find do-spawn
   find do-wait
   find do-cancel

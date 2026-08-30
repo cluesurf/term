@@ -311,32 +311,32 @@ tree integer
       task is-equal
         take a, like i{{size}}
         take b, like i{{size}}
-        like bool
+        like boolean
 
       task is-unequal
         take a, like i{{size}}
         take b, like i{{size}}
-        like bool
+        like boolean
 
       task is-above
         take a, like i{{size}}
         take b, like i{{size}}
-        like bool
+        like boolean
 
       task is-below
         take a, like i{{size}}
         take b, like i{{size}}
-        like bool
+        like boolean
 
       task is-minimum
         take a, like i{{size}}
         take b, like i{{size}}
-        like bool
+        like boolean
 
       task is-maximum
         take a, like i{{size}}
         take b, like i{{size}}
-        like bool
+        like boolean
 
     wear replication
       task clone

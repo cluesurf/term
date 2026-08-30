@@ -6,11 +6,11 @@ form file
 task open
   note async
   take path, like text
-  take read, like bool, fall true
-  take write, like bool, fall false
-  take create, like bool, fall false
-  take append, like bool, fall false
-  take clear, like bool, fall false
+  take read, like boolean, fall true
+  take write, like boolean, fall false
+  take create, like boolean, fall false
+  take append, like boolean, fall false
+  take clear, like boolean, fall false
   like file
 
 task close

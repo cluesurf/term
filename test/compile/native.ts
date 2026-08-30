@@ -1,12 +1,11 @@
-// Per-env native resolution test: a public module forwards to an abstract `native/<name>` import, and the build picks
-// the concrete platform impl (node / browser / ...). The user never names a platform; the target the build chooses
-// selects the implementation. Run: npx tsx test/compile/native.ts
+// Per-env native resolution test: a public module spells `native/{platform}/<name>` and the build fills the slot
+// with the target it is compiling for (node / browser / ...). The user never names a concrete platform; the env
+// substitutes, a borrowed sibling env fills a gap (cloudflare -> browser), and the abstract module beside the env
+// dirs is the last fallback. The implicit `native/<name>` rewrite is retired (stdlib-parity-0002).
+// Run: npx tsx test/compile/native.ts
 
 import { compile } from '@term/make/code/compile/compile'
-import {
-  withNativeEnv,
-  nativeImportFor,
-} from '@term/make/code/compile/native'
+import { withNativeEnv } from '@term/make/code/compile/native'
 import type { Source } from '@term/make/code/compile/load'
 
 let pass = 0
@@ -26,34 +25,8 @@ function expect(name: string, got: unknown, want: unknown): void {
   }
 }
 
-// the abstract import rewrites to the env-specific one, and leaves an already-concrete import alone
-expect(
-  'abstract native path -> node',
-  nativeImportFor('@app/code/native/file', 'node'),
-  '@app/code/native/node/file',
-)
-expect(
-  'abstract native path -> browser',
-  nativeImportFor('@app/code/native/file', 'browser'),
-  '@app/code/native/browser/file',
-)
-expect(
-  'nested abstract native path rewrites the env segment',
-  nativeImportFor('@app/code/native/file/read', 'rust'),
-  '@app/code/native/rust/file/read',
-)
-expect(
-  'already-concrete native path is left alone',
-  nativeImportFor('@app/code/native/node/file', 'browser'),
-  undefined,
-)
-expect(
-  'non-native path is not rewritten',
-  nativeImportFor('@app/code/list', 'node'),
-  undefined,
-)
-
-// an in-memory project: one abstract native module with two platform implementations
+// an in-memory project: one platform-slotted native module with two platform implementations, plus an
+// abstract module that only exists beside the env dirs (the shared fallback)
 const modules = new Map<string, string>([
   [
     '@app/code/native/node/platform',
@@ -63,6 +36,10 @@ const modules = new Map<string, string>([
     '@app/code/native/browser/platform',
     'task platform-name\n  like text\n  send back, text <browser>\n',
   ],
+  [
+    '@app/code/native/shared-only',
+    'task shared-name\n  like text\n  send back, text <shared>\n',
+  ],
 ])
 
 const base = (path: string): Source | undefined =>
@@ -70,8 +47,8 @@ const base = (path: string): Source | undefined =>
     ? { file: path, text: modules.get(path)! }
     : undefined
 
-// the public module imports the ABSTRACT native path; it never names a platform
-const PUBLIC = `load @app/code/native/platform\n  find platform-name\n\ntask describe\n  like text\n  send back\n    call platform-name\n`
+// the public module spells the platform slot; the build fills it
+const PUBLIC = `load @app/code/native/{platform}/platform\n  find platform-name\n\ntask describe\n  like text\n  send back\n    call platform-name\n`
 
 const node = compile(
   { file: 'public.tree', text: PUBLIC },
@@ -102,6 +79,48 @@ expect(
   true,
 )
 
+// cloudflare has no impl of its own here: it borrows the browser's (NATIVE_ENV_FALLBACK)
+const cloudflare = compile(
+  { file: 'public.tree', text: PUBLIC },
+  { resolve: withNativeEnv('cloudflare', base) },
+)
+
+expect('compiles for the cloudflare target', cloudflare.ok, true)
+expect(
+  'cloudflare borrows the browser impl',
+  cloudflare.ok && cloudflare.typescript.includes('"browser"'),
+  true,
+)
+
+// an env with no impl at all falls back to the abstract module beside the env dirs
+const SHARED = `load @app/code/native/{platform}/shared-only\n  find shared-name\n\ntask describe\n  like text\n  send back\n    call shared-name\n`
+const sharedFallback = compile(
+  { file: 'public.tree', text: SHARED },
+  { resolve: withNativeEnv('node', base) },
+)
+
+expect('the abstract module is the last fallback', sharedFallback.ok, true)
+expect(
+  'the fallback resolves the shared source',
+  sharedFallback.ok && sharedFallback.typescript.includes('"shared"'),
+  true,
+)
+
+// the retired implicit rewrite: an abstract `native/<name>` import no longer resolves an env impl
+const ABSTRACT = `load @app/code/native/platform\n  find platform-name\n\ntask describe\n  like text\n  send back\n    call platform-name\n`
+const abstract = compile(
+  { file: 'public.tree', text: ABSTRACT },
+  { resolve: withNativeEnv('node', base) },
+)
+
+expect(
+  'the implicit abstract rewrite is retired (the import resolves nothing)',
+  abstract.ok,
+  false,
+)
+
 console.log(`\nnative: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

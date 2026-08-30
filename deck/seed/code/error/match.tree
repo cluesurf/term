@@ -1,11 +1,11 @@
 
-load @term/seed/code/base/kink
+load @term/seed/code/kink
   find kink
 
 task test
   take error, like kink
   take code, like text
-  like bool
+  like boolean
 
 task get
   take error, like kink

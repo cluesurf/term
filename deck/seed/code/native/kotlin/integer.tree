@@ -71,7 +71,7 @@ tree integer
       take self
       take a, like self-type
       take b, like self-type
-      like bool
+      like boolean
 
     task bitwise-and
       take self

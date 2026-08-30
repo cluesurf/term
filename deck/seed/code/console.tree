@@ -1,7 +1,7 @@
 
 # Console output. Platform implementation is selected at build time and hidden behind this API.
 
-load @term/seed/code/native/console
+load @term/seed/code/native/{platform}/console
   find write-line
   find write-error
 

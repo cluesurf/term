@@ -160,17 +160,17 @@ tree float
     task is-finite
       take self
       take v, like self-type
-      like bool
+      like boolean
 
     task is-nan
       take self
       take v, like self-type
-      like bool
+      like boolean
 
     task is-integer
       take self
       take v, like self-type
-      like bool
+      like boolean
 
     task to-fixed
       take self

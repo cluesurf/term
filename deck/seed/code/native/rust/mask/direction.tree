@@ -1,3 +1,7 @@
+# SHELVED 2026-08-29, out of the build. A transcription sketch of the Rust API that nothing loads; its
+# `head`-declared type variables never reach the checker (the unknown-type warning counts them). Delete
+# `note draft` to bring it back.
+note draft
 
 # impl<T: PartialOrd> PartialOrd for Reverse<T>
 

@@ -1,6 +1,6 @@
 # Hexadecimal text encoding. The clean uniform interface; the per-env native implementation is selected at build time and hidden behind the API.
 
-load @term/seed/code/native/text/hex
+load @term/seed/code/native/{platform}/text/hex
   find to-hex
   find from-hex
 

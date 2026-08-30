@@ -7,7 +7,7 @@
 # 0 / false and registers no listeners, then the client takes over. `use-viewport-layout` derives the responsive
 # 3-section style table from this signal (the width === 0 branch is the SSR hidden first-paint shape).
 
-load ./native/viewport
+load ./native/{platform}/viewport
   find current-width
   find current-height
   find listen-resize

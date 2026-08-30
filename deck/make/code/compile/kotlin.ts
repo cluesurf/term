@@ -333,7 +333,8 @@ export function emitKotlin(program: Program): string {
       case 'variable':
         return varNames.get(type.id) ?? 'Long'
       case 'unknown':
-        return 'Long'
+        // the declared dynamic (`like unknown` / `like any`): any value, so a hive entry's `base` can carry a record
+        return 'Any'
       default:
         return 'Long'
     }

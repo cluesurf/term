@@ -45,7 +45,7 @@ mod runtime {
                 query,
                 headers: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
                 body,
-                dock: 0,
+                dock: std::rc::Rc::new(0i64),
             };
 
             let response = handler(request);

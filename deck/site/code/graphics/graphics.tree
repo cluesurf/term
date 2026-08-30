@@ -4,4 +4,4 @@
 # the server stub) through the native-env mechanism. Render code is thus platform-agnostic. Mirrors ../dom/dom.
 
 bear @term/site/code/graphics/surface
-bear @term/site/code/graphics/native/graphics
+bear @term/site/code/graphics/native/{platform}/graphics

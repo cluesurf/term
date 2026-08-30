@@ -54,7 +54,7 @@ task copy
   note async
   take from, like text
   take to, like text
-  take deep, like bool, fall false
+  take deep, like boolean, fall false
 
   fork test, name deep
     hook hold
@@ -86,7 +86,7 @@ task move
 task remove
   note async
   take path, like text
-  take deep, like bool, fall false
+  take deep, like boolean, fall false
 
   call fs-promise/rm
     wait true
@@ -136,7 +136,7 @@ task test
 task watch
   note async
   take path, like text
-  take deep, like bool, fall false
+  take deep, like boolean, fall false
 
   call fs/watch
     read path

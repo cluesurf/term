@@ -13,7 +13,7 @@ form line
 
   task get
     take self
-    take position, like mark-32
+    take position, like u32
     like item-type
 
     send back
@@ -23,7 +23,7 @@ form line
 
   task set
     take self
-    take position, like mark-32
+    take position, like u32
     take item, like item-type
 
     call line/set
@@ -33,7 +33,7 @@ form line
 
   task size
     take self
-    like mark-32
+    like u32
 
     send back
       call line/size

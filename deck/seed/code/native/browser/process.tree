@@ -6,8 +6,10 @@ dock load
   load <global:process>, name process
 
 load @term/seed/code/process
-  find result
   find child
+
+load @term/seed/code/process/run
+  find run-result
 
 task run
   note async
@@ -15,10 +17,10 @@ task run
   take arguments, like list, need false
   take directory, like text, need false
   take environment, like hash, need false
-  take shell, like bool, fall false
+  take shell, like boolean, fall false
   take timeout, like size, need false
   take input, like text, need false
-  like result
+  like run-result
 
   save worker
     call process/make-worker
@@ -39,7 +41,7 @@ task spawn
   take arguments, like list, need false
   take directory, like text, need false
   take environment, like hash, need false
-  take shell, like bool, fall false
+  take shell, like boolean, fall false
   like child
 
   save id

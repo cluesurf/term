@@ -1,3 +1,5 @@
+load @term/seed/code/kink
+  find kink
 
 form frame
   link name, like text

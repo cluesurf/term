@@ -5,7 +5,7 @@ dock load
   load <global:clock>, name clock
 
 task get
-  take precise, like bool, fall false
+  take precise, like boolean, fall false
 
   fork test, read precise
     hook hold

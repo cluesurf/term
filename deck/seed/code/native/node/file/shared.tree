@@ -15,5 +15,5 @@ tree open-result
   hook bind
     free seed
       like result
-        like unsigned-integer-32
+        like u32
         like error

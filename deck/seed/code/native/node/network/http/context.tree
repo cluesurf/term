@@ -1,4 +1,10 @@
 
+load @term/seed/code/network/server/request
+  find request
+
+load @term/seed/code/network/server/response
+  find response
+
 form context
   task get-request
     like request

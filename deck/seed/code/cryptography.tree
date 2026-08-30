@@ -1,6 +1,12 @@
 
 # https://github.com/briansmith/ring
 
+load @term/seed/code/result
+  find result
+
+load @term/seed/code/kink
+  find kink
+
 # A streaming hasher: feed it bytes, ask for the digest.
 #
 # NOT `code/hash.tree`, which is the hash MAP. Names are package-global, so
@@ -22,6 +28,10 @@ form key-pair
 
 form ecdh
   task get-curve-name
+
+form diffie-hellman
+  task get-generator
+  task get-prime
 
 task make-hmac
   take algorithm
@@ -469,7 +479,7 @@ tree define-hkdf-key
     task make-{{name}}-key
       free result
         like list
-          like unsigned-integer-8
+          like u8
 
 tree define-hmac
   take name
@@ -483,4 +493,4 @@ tree check-prime-result
     free result
       like result
         like boolean
-        like error
+        like kink

@@ -33,7 +33,7 @@
 
 note draft
 
-load @term/seed/code/base/result
+load @term/seed/code/result
   find result
 
 form error

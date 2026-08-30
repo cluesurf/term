@@ -166,11 +166,40 @@ const vault = (() => {
       Array<{ name: string; body: string; note: string; bind: string }>
     > => {
       // NO SDK: fall back to `bws`, which is what reading used before.
-      // The container has the SDK and no `bws`; a checkout may have the
-      // reverse. Neither should have to install the other.
+      // A checkout has `bws` and often not the SDK. An alpine image has
+      // NEITHER available to it: `@bitwarden/sdk-napi` publishes no
+      // linux-x64-musl binary, so the require can never succeed there and
+      // `bws` is installed into the image instead. Neither environment
+      // should have to carry the other's client.
       if (!maybe()) {
         const cp = need('node:child_process')
         const out: Array<{ name: string; body: string; note: string; bind: string }> = []
+
+        // NO CLIENT AT ALL is a different thing from a project that came
+        // back empty, and it has to say so. Swallowed alongside the empty
+        // ones it reads as "these secrets are not at the provider", which
+        // sent a container start chasing a credential that was fine.
+        try {
+          cp.execFileSync('bws', ['--version'], {
+            stdio: 'ignore',
+            timeout: 10000,
+          })
+        } catch (e: any) {
+          if (e?.code === 'ENOENT') {
+            process.stderr.write(
+              'No Bitwarden client is installed, so no value can be read.\n\n' +
+                'This process found neither one:\n\n' +
+                '  @bitwarden/sdk-napi   the native module, preferred\n' +
+                '  bws                   the command line tool\n\n' +
+                'On alpine (musl) the SDK is not an option: it publishes\n' +
+                'binaries for linux-x64-GNU, darwin and win32 only. Install\n' +
+                '`bws`, which does ship a musl build.\n\n' +
+                'THE CREDENTIAL IS NOT THE PROBLEM HERE. Nothing has been\n' +
+                'asked of the provider yet.\n',
+            )
+            process.exit(1)
+          }
+        }
 
         for (const bind of binds.length ? binds : ['']) {
           try {

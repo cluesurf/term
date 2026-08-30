@@ -1,3 +1,6 @@
+# SHELVED 2026-08-29, out of the build. Pasted JavaScript, not Term; one of the pasted-code files
+# stdlib-parity-0004 translates. Delete `note draft` to bring it back once translated.
+note draft
 
 navigator.permissions.query({ name: 'accessibility-events' })
 navigator.permissions.query({ name: 'ambient-light-sensor' })

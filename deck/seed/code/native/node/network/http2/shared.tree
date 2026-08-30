@@ -11,7 +11,7 @@ tree server
     form server
       link x-server, read server-form
         note private
-      link port, like unsigned-integer-16
+      link port, like u16
         note private
 
       task listen
@@ -32,7 +32,7 @@ tree make-server
   hook bind
     task make-server
       take handle, like task, base handle
-      take port, like unsigned-integer-16
+      take port, like u16
       fuse extra-properties
 
       free server, like server

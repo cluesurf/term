@@ -1,4 +1,7 @@
 
+dock type
+  load <import("node:crypto").ECDH>, name nodejs-ecdh
+
 load @term/seed/code/void
   find void
 

@@ -16,7 +16,7 @@ form text-utf-16
   link list, list mark-16
     note private
 
-  task get-size, like mark
+  task get-size, like size
 
   task transform-to-upper-case
   task transform-to-lower-case
