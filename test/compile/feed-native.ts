@@ -695,7 +695,7 @@ const PDF_OBJECT: Suite = {
   label: 'pdf object',
   root: 'round-pdf-value',
   entry: `load @term/feed/code/pdf/1.7/object/code
-  find make-pdf-cursor
+  find make-text-cursor
   find parse-pdf-value
   find write-pdf-value
 
@@ -704,7 +704,7 @@ task round-pdf-value
   like text
   send back
     call write-pdf-value
-      call parse-pdf-value(call make-pdf-cursor(read input))
+      call parse-pdf-value(call make-text-cursor(read input))
 `,
   cases: [
     ['a dictionary round trips compact', '<< /Type /Catalog /Count 3 >>', '<</Type /Catalog /Count 3>>'],

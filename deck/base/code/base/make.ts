@@ -102,3 +102,78 @@ export function record(input: {
   }
   return node
 }
+
+/**
+ * A plain JavaScript value as a base `Value`, or nothing when it carries nothing.
+ *
+ * The seam every importer needs: data arrives as JSON, as a database row, or as a parsed
+ * file, and all of it is ordinary JS. Written once here rather than in each importer,
+ * because two converters disagree about `null` or about a big integer eventually, and the
+ * disagreement shows up as a field that is present in one path and absent in the other.
+ *
+ * `undefined` means the value carries nothing and the FIELD SHOULD BE OMITTED. A record
+ * with no `gloss` and a record with an empty `gloss` are different facts, and collapsing
+ * them would make a missing column indistinguishable from a blank one after a round trip.
+ * `null` is therefore absence, not a stored null: an explicit null is `nul()`.
+ *
+ * An integer that does not fit a double becomes `decimal` rather than losing precision
+ * silently. That case only arises from a source that already lost it, so the value is
+ * preserved as text and the caller can see what it was.
+ */
+export function valueOf(input: unknown): Value | undefined {
+  if (input === null || input === undefined) {
+    return undefined
+  }
+
+  if (typeof input === 'string') {
+    return text(input)
+  }
+
+  if (typeof input === 'bigint') {
+    return integer(input)
+  }
+
+  if (typeof input === 'number') {
+    if (!Number.isFinite(input)) {
+      // NaN and the infinities have no canonical form and no column type. Refusing here
+      // keeps them out of the store rather than out of a later, more confusing error.
+      return undefined
+    }
+
+    return Number.isInteger(input) && Number.isSafeInteger(input)
+      ? integer(input)
+      : decimal(String(input))
+  }
+
+  if (typeof input === 'boolean') {
+    return boolean(input)
+  }
+
+  if (input instanceof Date) {
+    return date(input.toISOString())
+  }
+
+  if (Array.isArray(input)) {
+    // A list, recursing, so an array of scalars round trips as one. An element that
+    // carries nothing becomes an explicit null rather than shortening the list, because
+    // position is part of what a list means.
+    return list(input.map(one => ({ value: valueOf(one) ?? nul() })))
+  }
+
+  if (typeof input === 'object') {
+    const fields: Record<string, Value> = {}
+
+    for (const [name, inner] of Object.entries(input as Record<string, unknown>)) {
+      const value = valueOf(inner)
+
+      if (value !== undefined) {
+        fields[name] = value
+      }
+    }
+
+    return { kind: 'record', record: record({ type: 'object', fields }) }
+  }
+
+  // a function or a symbol, which is not data
+  return undefined
+}

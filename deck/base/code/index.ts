@@ -281,6 +281,23 @@ export { blame, recordHistory, bisect, buildMarkIndex, markHistory } from '@term
 export type { FieldBlame, HistoryEntry } from '@term/base/code/history/history'
 export { MarkIndex, marksTouched } from '@term/base/code/lookup/mark-index'
 
+// Lifting ordinary data into records: the on-ramp
+export {
+  BadRow,
+  parseDelimited,
+  parseJsonRows,
+  recordsFrom,
+} from '@term/base/code/bridge/from-data'
+export type { Lifted, MarkSource, Row } from '@term/base/code/bridge/from-data'
+
+// Working out a projection's schema from the records themselves
+export {
+  DEFAULT_MARK_COLUMN,
+  MixedField,
+  inferProjection,
+} from '@term/base/code/project/infer'
+export type { Inferred } from '@term/base/code/project/infer'
+
 // Transparency checkpoints over the log
 export {
   checkpointOf,

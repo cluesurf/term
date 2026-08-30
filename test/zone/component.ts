@@ -157,7 +157,7 @@ async function main(): Promise<void> {
       makeSignal: (value: string) => any
       writeSignal: (self: unknown, value: string) => unknown
     }
-    // render-runtime calls are positional, matching code/zone/render.tree + reactive.tree task signatures
+    // render-runtime calls are positional, matching code/view/render.tree + reactive.tree task signatures
     const host = M.element('root')
     const signal = M.makeSignal('hello')
     M.label(host, signal)

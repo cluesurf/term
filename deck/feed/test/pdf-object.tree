@@ -18,7 +18,7 @@ load ../code/pdf/1.7/object/form
   find pdf-trailer
 
 load ../code/pdf/1.7/object/code
-  find make-pdf-cursor
+  find make-text-cursor
   find parse-pdf-value
   find write-pdf-value
   find parse-pdf-indirect-object
@@ -31,7 +31,7 @@ task round-pdf-value
   like text
   send back
     call write-pdf-value
-      call parse-pdf-value(call make-pdf-cursor(read input))
+      call parse-pdf-value(call make-text-cursor(read input))
 
 test <null reads and writes back>
   want hold
@@ -110,7 +110,7 @@ task pdf-number-value
 test <a literal string with an escaped paren round trips its content>
   save reread
     call pdf-string-value
-      call parse-pdf-value(call make-pdf-cursor(text <(a \\(nested\\) string)>))
+      call parse-pdf-value(call make-text-cursor(text <(a \\(nested\\) string)>))
   want hold
     call is-equal
       read reread
@@ -122,7 +122,7 @@ test <a literal string with an escaped paren round trips its content>
 test <a literal string with a newline escape decodes to one character, not two>
   save reread
     call pdf-string-value
-      call parse-pdf-value(call make-pdf-cursor(text <(line one\\nline two)>))
+      call parse-pdf-value(call make-text-cursor(text <(line one\\nline two)>))
   want hold
     call is-equal
       call char-count(read reread)
@@ -131,7 +131,7 @@ test <a literal string with a newline escape decodes to one character, not two>
 test <a hex string decodes to its represented text>
   save reread
     call pdf-string-value
-      call parse-pdf-value(call make-pdf-cursor(text <\<48656C6C6F\>>))
+      call parse-pdf-value(call make-text-cursor(text <\<48656C6C6F\>>))
   want hold
     call is-equal
       read reread
@@ -152,7 +152,7 @@ test <a dictionary round trips compact>
 test <a plain integer next to a name is not mistaken for a reference>
   save reread
     call pdf-number-value
-      call parse-pdf-value(call make-pdf-cursor(text <7>))
+      call parse-pdf-value(call make-text-cursor(text <7>))
   want hold
     call is-equal
       read reread
@@ -200,7 +200,7 @@ test <write-pdf-indirect-object then read-pdf-indirect-object round trips the ob
   save written
     call write-pdf-indirect-object(call page-tree-object)
   save reread
-    call parse-pdf-indirect-object(call make-pdf-cursor(read written))
+    call parse-pdf-indirect-object(call make-text-cursor(read written))
   want hold
     call is-equal
       read reread/object-number

@@ -8,7 +8,7 @@
 // A bound with no test is a claim, not a guarantee. This is the file that turns the claims into guarantees.
 
 import { parse } from '@term/make/code/parser/tree'
-import { readView, viewCycles, checkView } from '@term/make/code/compile/view'
+import { readView, checkView } from '@term/make/code/compile/view'
 import { readCatalog } from '@term/make/code/compile/view-catalog'
 import { compile } from '@term/make/code/compile/compile'
 import { VIEW_CAPS } from '@term/make/code/compile/view-cap'
@@ -45,19 +45,9 @@ const catalog = loaded.catalog
 // Every attack goes through the WHOLE path a save would: parse, cycle check, expand, read with the catalog and
 // the caps. Testing a stage in isolation would prove less than a document actually being refused.
 function attack(text: string): string {
-  const parsed = parse({ file: 'page.tree', text })
-
-  if (!parsed.ok) {
-    return parsed.diagnostics.map(d => d.message).join(' | ')
-  }
-
-  const rings = viewCycles(parsed.tree, 'page.tree')
-
-  if (rings.length > 0) {
-    return rings.map(d => d.message).join(' | ')
-  }
-
-  const result = readView(parsed.tree, 'page.tree', catalog, VIEW_CAPS)
+  // `checkView` and nothing else. Restating its stages here would be a second copy of the gate, and the suite's
+  // whole claim is that a save and this agree, which a copy cannot establish.
+  const result = checkView({ file: 'page.tree', text }, { catalog, caps: VIEW_CAPS })
 
   return result.ok ? '' : result.diagnostics.map(d => d.message).join(' | ')
 }
@@ -166,6 +156,13 @@ bound('two macros that fuse each other',
   'tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse a\nview page\n  fuse a\n', 'fuses')
 bound('a view that places itself', 'view page\n  view page\n    bind a, text <x>\n', 'page places page')
 
+// a fuse of a macro nothing declares. It expanded to NOTHING and compiled: the document said "put a row here"
+// and rendered an empty page, with no diagnostic. Found by testing the cross-module macro path.
+bound('a fuse of a macro nothing declares',
+  'view page\n  fuse nowhere\n    bind a, <x>\n', 'is not a macro this document can reach')
+bound('a fuse misspelling a macro that exists',
+  'tree sound-row\n  hook fuse\n    text <x>\nview page\n  fuse sound-rw\n', 'Did you mean "sound-row"?')
+
 // ---- the fifth bound: validation is a gate ----
 
 bound('a read of a name nothing declares',
@@ -251,6 +248,70 @@ ok(
   !several.ok && several.diagnostics.length >= 3,
   several.ok ? 'NOT REFUSED' : `${several.diagnostics.length} diagnostics`,
 )
+
+// ---- what no catalog may widen ----
+// Determinism and purity are properties of the RENDERING MODEL, not a project's taste, so these are refused
+// whether a catalog registers them or not. A project may narrow what it registers and may not widen past this.
+
+const permissive = {
+  ...catalog,
+  call: new Set([...catalog.call, 'random', 'uuid', 'now', 'resolve', 'walk', 'branch', 'range']),
+}
+
+function withCatalog(text: string, use = permissive): string {
+  const parsed = parse({ file: 'page.tree', text })
+
+  if (!parsed.ok) {
+    return parsed.diagnostics.map(d => d.message).join(' | ')
+  }
+
+  const result = readView(parsed.tree, 'page.tree', use, VIEW_CAPS)
+
+  return result.ok ? '' : result.diagnostics.map(d => d.message).join(' | ')
+}
+
+for (const [word, why] of [
+  ['random', 'not deterministic'],
+  ['uuid', 'not deterministic'],
+  ['now', 'not deterministic'],
+  ['resolve', 'performs input and output'],
+] as [string, string][]) {
+  const said = withCatalog(`view page\n  view text/item\n    bind a\n      call ${word}\n        text <x>\n`)
+
+  ok(`a catalog cannot widen to "${word}"`, said.includes(why), said || 'NOT REFUSED')
+}
+
+// and they are refused with NO catalog at all, because the rule is the language's
+const bare = (() => {
+  const parsed = parse({ file: 'page.tree', text: 'view page\n  view any/thing\n    bind a\n      call random\n        text <x>\n' })
+
+  if (!parsed.ok) {
+    return ''
+  }
+
+  const result = readView(parsed.tree, 'page.tree')
+
+  return result.ok ? '' : result.diagnostics.map(d => d.message).join(' | ')
+})()
+
+ok('and refused with no catalog at all', bare.includes('not deterministic'), bare || 'NOT REFUSED')
+
+// `range` is synthesized for a counted walk. An author writing it by hand does NOT get the synthesized one's pass,
+// which a name-matched exemption would have handed them.
+const written = withCatalog('view page\n  view text/item\n    bind a\n      call range\n        0\n        9\n', catalog)
+
+ok(
+  'an author writing `call range` does not skip the catalog',
+  written.includes('not a registered operator'),
+  written || 'NOT REFUSED',
+)
+
+const counted = withCatalog(
+  'view page\n  walk size\n    bind base, 0\n    bind head, 9\n    hook next\n      take site, name i\n      view text/item\n        bind a, read i\n',
+  catalog,
+)
+
+ok('while the synthesized one passes', counted === '', counted)
 
 console.log(`\nview-hostile: ${pass} pass, ${fail} fail`)
 

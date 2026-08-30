@@ -1,9 +1,11 @@
-// Proof for the feed mill compiler (deck/make/code/compile/feed-mill.ts): reads deck/feed/code/hex/mine.tree,
-// generates .tree source implementing read-hex from the grammar alone, compiles it through the ordinary
-// parse/mill/check pipeline, and checks its output against the hand-written read-hex on the same fixed strings
-// deck/feed/test/hex.tree already proves. Run: npx tsx test/compile/feed-mill-run.ts
+// Proof for the feed mill compiler (deck/make/code/compile/feed-mill.ts): reads a real, shipped mine.tree
+// grammar, generates .tree source implementing its reader from the grammar ALONE, compiles it through the
+// ordinary parse/mill/check pipeline, and checks its output against the same fixed fixtures the hand-written
+// reader already passes in deck/feed/test/*.tree. Run: npx tsx test/compile/feed-mill-run.ts
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
@@ -20,6 +22,7 @@ import { disambiguateOverloads } from '@term/make/code/check/overload'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import type { Program } from '@term/make/code/compile/node'
 import { readFeedMineGrammar, compileFeedMine } from '@term/make/code/compile/feed-mill'
+import type { Substrate } from '@term/make/code/compile/feed-mill'
 
 let pass = 0
 let fail = 0
@@ -66,31 +69,6 @@ const resolver = (path: string, from: string): Source | undefined => {
   return undefined
 }
 
-// 1. read hex/mine.tree's own grammar (the same file the package ships, `note draft` and all — the draft
-// marker is a build-walk convention this harness does not go through, so it parses fine)
-const mineFile = join(TERM, 'deck/feed/code/hex/mine.tree')
-const mineText = readFileSync(mineFile, 'utf8')
-const mineParsed = parse({ file: mineFile, text: mineText })
-
-if (!mineParsed.ok) {
-  console.log('FAIL  parsing hex/mine.tree', mineParsed.diagnostics.map(d => d.message).join(', '))
-  process.exit(1)
-}
-
-const grammar = readFeedMineGrammar(mineParsed.tree)
-
-ok('grammar reads all three named rules', grammar.size === 3, `got ${[...grammar.keys()].join(', ')}`)
-
-// 2. generate .tree source from the grammar alone
-const generated = compileFeedMine(grammar, '@term/feed/code/base', ['load @term/feed/code/hex/code', '  find hex-digit-value', ''])
-const entry = `${generated}\ntask round-generated-hex\n  take input, like text\n  like text\n  save cursor\n    call make-text-cursor(read input)\n  save bytes\n    call read-hex(read cursor)\n  send back\n    call write-hex(read bytes)\n`
-
-console.log('--- generated .tree source ---')
-console.log(generated)
-console.log('--- end ---')
-
-// 3. compile the generated source (plus the hand-written write-hex/make-text-cursor it borrows) through the
-// ordinary pipeline, exactly the way feed-native.ts proves a hand-written entry point
 function frontEnd(text: string, roots: string[]): Program {
   const sources = collectModules({ file: 'main.tree', text }, withNativeEnv('node', resolver)).sources
   const program: Program = []
@@ -126,38 +104,138 @@ function frontEnd(text: string, roots: string[]): Program {
   return simplify(program, new Set(roots))
 }
 
-const CASES: [string, string, string][] = [
-  ['lowercase round trips', '00ff7a', '00ff7a'],
-  ['uppercase input still lower-cases', '00FF7A', '00ff7a'],
-  ['the empty string round trips to itself', '', ''],
-  ['a longer real-looking value', 'deadbeefcafef00d', 'deadbeefcafef00d'],
-]
+const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
 
-try {
-  const program = frontEnd(entry, ['round-generated-hex'])
-  const ts = emitTypeScript(program)
-  ok('generated hex reader compiles through the ordinary pipeline', true)
-
-  // 4. run it through tsx (the generated file is real TypeScript, with type annotations Node can't execute
-  // directly) against the same fixtures deck/feed/test/hex.tree proves, one process printing one line per case
-  const { writeFileSync, mkdtempSync } = await import('node:fs')
-  const { tmpdir } = await import('node:os')
-  const { execFileSync } = await import('node:child_process')
-  const dir = mkdtempSync(join(tmpdir(), 'feed-mill-run-'))
-  const file = join(dir, 'generated.ts')
-  const inputs = CASES.map(([, input]) => JSON.stringify(input))
-  const main = `\nfor (const input of [${inputs.join(', ')}]) { console.log(roundGeneratedHex(input)) }\n`
-  writeFileSync(file, `${ts}${main}`)
-
-  const output = execFileSync('npx', ['tsx', file], { encoding: 'utf8' }).trim().split('\n')
-
-  CASES.forEach(([name, , want], i) => {
-    const got = output[i]
-    ok(`generated hex: ${name}`, got === want, `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`)
-  })
-} catch (error) {
-  ok('generated hex reader compiles through the ordinary pipeline', false, String((error as Error).stack ?? error))
+interface Suite {
+  label: string
+  mineFile: string
+  substrate: Substrate
+  cursorImportPath: string
+  extraImports: string[]
+  entryTaskName: string
+  entryTaskBody: string
+  cases: [string, string, string][]
+  expectRules: number
 }
+
+function runSuite(suite: Suite): void {
+  const mineText = readFileSync(suite.mineFile, 'utf8')
+  const mineParsed = parse({ file: suite.mineFile, text: mineText })
+
+  if (!mineParsed.ok) {
+    ok(`${suite.label}: parses`, false, mineParsed.diagnostics.map(d => d.message).join(', '))
+
+    return
+  }
+
+  const grammar = readFeedMineGrammar(mineParsed.tree)
+
+  ok(`${suite.label}: grammar reads ${suite.expectRules} named rules`, grammar.size === suite.expectRules, `got ${[...grammar.keys()].join(', ')}`)
+
+  const generated = compileFeedMine(grammar, suite.substrate, suite.cursorImportPath, suite.extraImports)
+  const entry = `${generated}\n${suite.entryTaskBody}\n`
+
+  console.log(`--- ${suite.label} generated .tree source ---`)
+  console.log(generated)
+  console.log('--- end ---')
+
+  try {
+    const program = frontEnd(entry, [suite.entryTaskName])
+    const ts = `${nativePrelude(program, 'node', readRuntime)}\n${emitTypeScript(program)}`
+
+    ok(`${suite.label}: compiles through the ordinary pipeline`, true)
+
+    const dir = mkdtempSync(join(tmpdir(), 'feed-mill-run-'))
+    const file = join(dir, 'generated.ts')
+    const jsName = suite.entryTaskName.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
+    const inputs = suite.cases.map(([, input]) => JSON.stringify(input))
+    const main = `\nfor (const input of [${inputs.join(', ')}]) { console.log(${jsName}(input)) }\n`
+
+    writeFileSync(file, `${ts}${main}`)
+
+    const output = execFileSync('npx', ['tsx', file], { encoding: 'utf8' }).trim().split('\n')
+
+    suite.cases.forEach(([name, , want], i) => {
+      const got = output[i]
+
+      ok(`${suite.label}: ${name}`, got === want, `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`)
+    })
+  } catch (error) {
+    ok(`${suite.label}: compiles through the ordinary pipeline`, false, String((error as Error).stack ?? error))
+  }
+}
+
+// hex: text substrate, list/form/any/range/value/send.
+runSuite({
+  label: 'hex',
+  mineFile: join(TERM, 'deck/feed/code/hex/mine.tree'),
+  substrate: 'text',
+  cursorImportPath: '@term/feed/code/base',
+  extraImports: ['load @term/feed/code/hex/code', '  find hex-digit-value', ''],
+  entryTaskName: 'round-generated-hex',
+  entryTaskBody: [
+    'task round-generated-hex',
+    '  take input, like text',
+    '  like text',
+    '  save cursor',
+    '    call make-text-cursor(read input)',
+    '  save bytes',
+    '    call read-hex(read cursor)',
+    '  send back',
+    '    call write-hex(read bytes)',
+  ].join('\n'),
+  cases: [
+    ['lowercase round trips', '00ff7a', '00ff7a'],
+    ['uppercase input still lower-cases', '00FF7A', '00ff7a'],
+    ['the empty string round trips to itself', '', ''],
+    ['a longer real-looking value', 'deadbeefcafef00d', 'deadbeefcafef00d'],
+  ],
+  expectRules: 3,
+})
+
+// gzip: byte substrate, byte/int/bytes/maybe/until/let, plus a nested rule (extra-field) and a real bug this
+// grammar's own missing `mine value` construction found (see gzip/mine.tree's header comment). `read-gzip` is
+// the GENERATED reader here (the whole point), so gzip/code.tree's own `read-gzip` is deliberately not
+// imported — only `write-gzip`, a different name, to round-trip and compare against the same hex-bridged
+// fixture `deck/feed/test/gzip.tree` and `test/compile/feed-native.ts`'s own GZIP suite already prove.
+runSuite({
+  label: 'gzip',
+  mineFile: join(TERM, 'deck/feed/code/gzip/mine.tree'),
+  substrate: 'byte',
+  cursorImportPath: '@term/feed/code/base',
+  extraImports: [
+    'load @term/feed/code/gzip/form',
+    '  find gzip-file',
+    '',
+    'load @term/feed/code/gzip/code',
+    '  find write-gzip',
+    '',
+    'load @term/feed/code/hex/code',
+    '  find read-hex',
+    '  find write-hex',
+    '',
+  ],
+  entryTaskName: 'round-generated-gzip',
+  entryTaskBody: [
+    'task round-generated-gzip',
+    '  take input, like text',
+    '  like text',
+    '  save cursor',
+    '    call make-cursor(call read-hex(read input))',
+    '  save file',
+    '    call read-gzip(read cursor)',
+    '  send back',
+    '    call write-hex(call write-gzip(read file))',
+  ].join('\n'),
+  cases: [
+    [
+      'a minimal header+trailer round trips byte for byte',
+      '1f8b08000000000000ffaabb7856341202000000',
+      '1f8b08000000000000ffaabb7856341202000000',
+    ],
+  ],
+  expectRules: 3,
+})
 
 console.log(`\nfeed-mill-run: ${pass} pass, ${fail} fail`)
 

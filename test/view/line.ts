@@ -70,9 +70,15 @@ function run(args: string[]): { out: string; code: number } {
 const plain = run(['view', 'page/quenya.tree'])
 
 ok('the verb exists and a document reads', plain.code === 0, plain.out)
-ok('it prints every component placed', plain.out.includes('sound/chart') && plain.out.includes('text/heading'))
-ok('it prints the query', plain.out.includes('filter:phoneme'))
-ok('it prints the operator', plain.out.includes('titlecase'))
+// The EXACT line, not a substring. `includes` passed happily against `sound/chart>, <text/heading>, <text/item`
+// when the CLI was regexing the serialized manifest and getting the delimiters back with the names.
+ok(
+  'it prints every component placed, and only the names',
+  /^ {2}view {4}sound\/chart {2}text\/heading$/m.test(plain.out),
+  plain.out,
+)
+ok('it prints the query', /^ {2}find {4}filter:phoneme$/m.test(plain.out), plain.out)
+ok('it prints the operator', /^ {2}call {4}titlecase$/m.test(plain.out), plain.out)
 ok('it prints the node count and depth', /node\s+\d/.test(plain.out) && /deep\s+\d/.test(plain.out))
 
 const manifest = run(['view', 'page/quenya.tree', '--find'])

@@ -362,9 +362,10 @@ function millUnit(
   // the mill, resolver, and type checker. A document gets this too, which is where its macros go.
   // the `view` role: the sandboxed document dialect. Four statement heads, none of which declares anything the
   // author wrote. `checkView` is the ONE gate the compiler, `term view` and a save path all call, so the three
-  // cannot answer differently about what a document may say. It does its own parse, cycle check and expansion.
+  // cannot answer differently about what a document may say. It is handed the tree already parsed and the whole
+  // graph's templates, so a document is parsed once and a macro imported from another module expands.
   if (role === 'view') {
-    const read = checkView(unit)
+    const read = checkView(unit, { tree: parsed.tree, templates })
 
     if (!read.ok) {
       return { ok: false, diagnostics: read.diagnostics }

@@ -28,6 +28,7 @@ import {
   expandTemplates,
   collectTemplates,
 } from '@term/make/code/compile/template'
+import type { Template } from '@term/make/code/compile/template'
 import type {
   Expression,
   Program,
@@ -35,6 +36,8 @@ import type {
   ViewNode as CompilerZoneNode,
 } from '@term/make/code/compile/node'
 import type { ViewCatalog } from '@term/make/code/compile/view-catalog'
+import { writeLong } from '@term/make/code/compile/host'
+import type { Data, DataEntry } from '@term/make/code/compile/host'
 import type { ViewCaps } from '@term/make/code/compile/view-cap'
 import { VIEW_CAPS, capMessage } from '@term/make/code/compile/view-cap'
 
@@ -58,7 +61,15 @@ export type Seed =
   | { form: 'read'; value: Road; span: Span }
   | { form: 'call'; value: SeedCall; span: Span }
 
-export type SeedCall = { name: string; bind: Bind[]; slot: Seed[] }
+export type SeedCall = {
+  name: string
+  bind: Bind[]
+  slot: Seed[]
+  // synthesized by the reader, never written by an author. `walk size` normalises into a walk over `range(...)`,
+  // and that call must skip the operator catalog while an author's `call range` must not. Matching the NAME would
+  // let anyone opt out of the catalog by picking it.
+  made?: true
+}
 
 export type ViewNode =
   | { form: 'view'; value: ViewUse; span: Span }
@@ -718,7 +729,7 @@ export function readView(
         value: {
           road: {
             form: 'call',
-            value: { name: 'range', bind: [], slot: [base, head] },
+            value: { name: 'range', bind: [], slot: [base, head], made: true },
             span,
           },
           next: readWalkNext(group),
@@ -1080,7 +1091,7 @@ export function readView(
         case 'walk': {
           seedDepth(node.value.road, 1)
 
-          const bound = countedBound(node.value.road)
+          const bound = countedBound(node.value.road, caps)
           const inner = [...walks, bound]
 
           if (inner.length > caps.walkDeep) {
@@ -1222,14 +1233,12 @@ export function readView(
     const seenCalls = (seed: Seed): void => {
       if (seed.form === 'call') {
         // `range` is the render runtime's, synthesized for a counted walk, never written by an author
-        if (seed.value.name !== 'range' && !catalog.call.has(seed.value.name)) {
-          const why = REFUSED_CALL.get(seed.value.name)
+        // the always-refused set is handled above, catalog or not. Here is only "is it registered".
+        if (!seed.value.made && !REFUSED_CALL.has(seed.value.name) && !catalog.call.has(seed.value.name)) {
 
           error(
             seed.span,
-            why
-              ? `"${seed.value.name}" is not an operator a document may apply: ${why}`
-              : `"${seed.value.name}" is not a registered operator. ${near(seed.value.name, catalog.call)}`,
+            `"${seed.value.name}" is not a registered operator. ${near(seed.value.name, catalog.call)}`,
           )
         }
 
@@ -1296,6 +1305,101 @@ export function readView(
           seenCalls(one)
         }
       }
+    }
+  }
+
+  // ---- the operators no catalog may register ----
+  // Run whether or not a catalog is given, because determinism and purity are properties of the RENDERING MODEL
+  // and not of a project's taste. A document that renders differently on the server and in the browser breaks
+  // server rendering; one that renders differently on two reads breaks the content-addressed cache; one that
+  // performs input or output cannot run in both places at all.
+
+  const alwaysRefused = (seed: Seed): void => {
+    if (seed.form !== 'call') {
+      return
+    }
+
+    const why = seed.value.made ? undefined : REFUSED_CALL.get(seed.value.name)
+
+    if (why) {
+      error(
+        seed.span,
+        `"${seed.value.name}" is not an operator a document may apply: ${why}`,
+      )
+    }
+
+    for (const one of [...seed.value.slot, ...seed.value.bind.map(b => b.bond)]) {
+      alwaysRefused(one)
+    }
+  }
+
+  const everySeed = (nodes: ViewNode[], take: (seed: Seed) => void): void => {
+    for (const node of nodes) {
+      switch (node.form) {
+        case 'view':
+          for (const bind of node.value.bind) {
+            take(bind.bond)
+          }
+
+          everySeed(node.value.node, take)
+          break
+        case 'walk':
+          take(node.value.road)
+
+          for (const next of node.value.next) {
+            everySeed(next.node, take)
+          }
+
+          break
+        case 'fork':
+          for (const hook of node.value.hook) {
+            if (hook.form === 'test') {
+              take(hook.seed)
+            } else {
+              everySeed(hook.node, take)
+            }
+          }
+
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  for (const def of out.view) {
+    everySeed(def.node, alwaysRefused)
+  }
+
+  for (const host of out.host) {
+    if (host.bond) {
+      alwaysRefused(host.bond)
+    }
+  }
+
+  for (const find of out.find) {
+    const holdSeeds = (hold: ViewHold): void => {
+      for (const one of [...hold.slot, ...hold.bind.map(b => b.bond)]) {
+        alwaysRefused(one)
+      }
+    }
+
+    for (const hold of find.hold) {
+      holdSeeds(hold)
+    }
+
+    const meetSeeds = (meet: ViewMeet): void => {
+      for (const hold of meet.hold) {
+        holdSeeds(hold)
+      }
+
+      for (const inner of meet.meet) {
+        meetSeeds(inner)
+      }
+    }
+
+    if (find.meet) {
+      meetSeeds(find.meet)
     }
   }
 
@@ -1552,7 +1656,7 @@ function ringFrom(start: string, graph: Map<string, Set<string>>): string | unde
 
 // The bound of a counted walk when it is a literal range, so nested walks can be multiplied out. A list walk, or
 // a range whose bounds are read at run time, counts as the iteration cap instead.
-function countedBound(road: Seed): number {
+function countedBound(road: Seed, caps: ViewCaps): number {
   if (road.form === 'call' && road.value.name === 'range') {
     const [base, head] = road.value.slot
 
@@ -1561,7 +1665,9 @@ function countedBound(road: Seed): number {
     }
   }
 
-  return 1000
+  // a list walk, or a range read at run time: its length is not known until the query resolves, so it counts as
+  // the assumed width. The number lives in the cap module with every other bound.
+  return caps.walkWide
 }
 
 // The nearest registered name, so a typo says what was probably meant instead of only what was wrong. Plain edit
@@ -1619,26 +1725,52 @@ function distance(a: string, b: string): number {
 export type ViewCheck = {
   catalog?: ViewCatalog
   caps?: ViewCaps
+  // the already-parsed tree, when the caller has one. The build has: `millUnit` parses every module before it
+  // knows the role, and parsing again here doubled the cost of every document.
+  tree?: RootNode
+  // every template in the module graph, not only this file's own. A macro published by a repository or a package
+  // is imported with `load`, so a document that fuses one gets it from here. Without it the `fuse` expands to
+  // nothing and the document silently renders less than it says. See note/term/view/02-macro.md.
+  templates?: Map<string, Template>
 }
 
 export function checkView(
   source: { file: string; text: string },
   options: ViewCheck = {},
 ): ViewResult {
-  const parsed = parse(source)
+  let tree = options.tree
 
-  if (!parsed.ok) {
-    return { ok: false, diagnostics: parsed.diagnostics }
+  if (!tree) {
+    const parsed = parse(source)
+
+    if (!parsed.ok) {
+      return { ok: false, diagnostics: parsed.diagnostics }
+    }
+
+    tree = parsed.tree
   }
 
-  const rings = viewCycles(parsed.tree, source.file)
+  const rings = viewCycles(tree, source.file)
 
   if (rings.length > 0) {
     return { ok: false, diagnostics: rings }
   }
 
+  // this file's macros, plus every one the module graph brought in
+  const templates = new Map(options.templates ?? [])
+
+  for (const [name, template] of collectTemplates(tree)) {
+    templates.set(name, template)
+  }
+
+  const missing = viewFused(tree, source.file, templates.keys())
+
+  if (missing.length > 0) {
+    return { ok: false, diagnostics: missing }
+  }
+
   return readView(
-    expandTemplates(parsed.tree, collectTemplates(parsed.tree)),
+    expandTemplates(tree, templates),
     source.file,
     options.catalog,
     options.caps,
@@ -1651,6 +1783,64 @@ export function checkView(
 // crash the compiler by writing two lines is a bound that does not hold.
 //
 // Walks the parse tree rather than the read forms, because by the time a `view-file` exists the macros are gone.
+
+// Every `fuse` names a macro something declares. A fuse of a name nothing declares expands to NOTHING and the
+// document compiles: it says "put a row here" and renders an empty page, with no diagnostic anywhere. That is
+// the worst shape a defect can take in a document format, so it is a refusal.
+//
+// Checked before expansion, against this file's macros plus every one the module graph brought in, because a
+// repository publishes macros and a document fuses them across a `load`.
+export function viewFused(
+  tree: RootNode,
+  file: string,
+  known: Iterable<string>,
+): Diagnostic[] {
+  const have = new Set(known)
+
+  for (const node of tree.nodes) {
+    if (node.kind === 'group' && headOf(node) === 'tree') {
+      const name = keyOf(node)
+
+      if (name) {
+        have.add(name)
+      }
+    }
+  }
+
+  const diagnostics: Diagnostic[] = []
+
+  const walk = (group: GroupNode): void => {
+    for (const node of group.nodes) {
+      if (node.kind !== 'group') {
+        continue
+      }
+
+      if (headOf(node) === 'fuse') {
+        const name = keyOf(node)
+
+        if (name && !have.has(name)) {
+          diagnostics.push(
+            diagnose('syntax-error', {
+              file,
+              span: spanOf(node),
+              message: `"${name}" is not a macro this document can reach. ${near(name, have)}`,
+            }),
+          )
+        }
+      }
+
+      walk(node)
+    }
+  }
+
+  for (const node of tree.nodes) {
+    if (node.kind === 'group') {
+      walk(node)
+    }
+  }
+
+  return diagnostics
+}
 
 export function viewCycles(tree: RootNode, file: string): Diagnostic[] {
   const body = new Map<string, GroupNode>()
@@ -2002,68 +2192,116 @@ function lowerSeed(seed: Seed, fold: Map<string, Seed>): Expression {
 //   - `mark`, every record it names, which is what delete protection and cache invalidation walk
 
 export function viewManifest(file: ViewFile, module: string): string {
-  const out: string[] = []
-  const text = (value: string): string =>
-    `<${value.replace(/([<>\\])/g, '\\$1')}>`
+  const text = (value: string): Data => ({ kind: 'text', value })
+  const list = (items: Data[]): Data => ({ kind: 'list', list: items })
+  const hash = (entries: [string, Data][]): Data => ({
+    kind: 'hash',
+    list: entries.map(([name, base]) => ({ name, base })),
+  })
 
-  out.push(`host module, ${text(module)}`)
+  const entries: DataEntry[] = [{ name: 'module', base: text(module) }]
+
+  const put = (name: string, base: Data | undefined): void => {
+    if (base) {
+      entries.push({ name, base })
+    }
+  }
+
+  const some = (items: Data[]): Data | undefined =>
+    items.length > 0 ? list(items) : undefined
 
   // the names the host must supply: a `host` with a type and no value
-  const holes = file.host.filter(host => !host.bond)
+  put(
+    'hole',
+    some(
+      file.host
+        .filter(host => !host.bond)
+        .map(host =>
+          hash([
+            ['name', text(host.name)],
+            ...(host.like ? ([['like', text(host.like.name)]] as [string, Data][]) : []),
+          ]),
+        ),
+    ),
+  )
 
-  if (holes.length > 0) {
-    out.push('list hole')
+  const seedData = (seed: Seed): Data =>
+    seed.form === 'read'
+      ? hash([
+          ['form', text('read')],
+          ['road', text(seed.value.step.join('/'))],
+        ])
+      : seed.form === 'text' || seed.form === 'code'
+        ? hash([
+            ['form', text(seed.form)],
+            ['text', text(seed.value)],
+          ])
+        : seed.form === 'mark'
+          ? hash([
+              ['form', text('mark')],
+              ['code', { kind: 'number', value: seed.value }],
+            ])
+          : seed.form === 'wave'
+            ? hash([
+                ['form', text('wave')],
+                ['code', { kind: 'flag', value: seed.value }],
+              ])
+            : hash([
+                ['form', text('call')],
+                ['call', text(seed.value.name)],
+              ])
 
-    for (const hole of holes) {
-      out.push(`  mesh`)
-      out.push(`    host name, ${text(hole.name)}`)
+  const holdData = (hold: ViewHold): Data =>
+    hash([
+      ['name', text(hold.name)],
+      ...(([
+        [
+          'side',
+          some([...hold.slot, ...hold.bind.map(one => one.bond)].map(seedData)),
+        ],
+      ] as [string, Data | undefined][])
+        .filter((pair): pair is [string, Data] => pair[1] !== undefined)),
+    ])
 
-      if (hole.like) {
-        out.push(`    host like, ${text(hole.like.name)}`)
-      }
-    }
-  }
+  const meetData = (meet: ViewMeet): Data =>
+    hash([
+      ['mode', text(meet.mode)],
+      ...(([
+        ['hold', some(meet.hold.map(holdData))],
+        ['meet', some(meet.meet.map(meetData))],
+      ] as [string, Data | undefined][])
+        .filter((pair): pair is [string, Data] => pair[1] !== undefined)),
+    ])
 
-  if (file.find.length > 0) {
-    out.push('list find')
-
-    for (const find of file.find) {
-      out.push('  mesh')
-      out.push(`    host name, ${text(find.name)}`)
-      out.push(`    host task, ${text(find.task)}`)
-
-      if (find.size !== undefined) {
-        out.push(`    host size, ${find.size}`)
-      }
-
-      if (find.slot !== undefined) {
-        out.push(`    host slot, ${find.slot}`)
-      }
-
-      if (find.meet) {
-        out.push('    host meet')
-        writeMeet(find.meet, out, 6, text)
-      }
-
-      if (find.hold.length > 0) {
-        out.push('    list hold')
-
-        for (const hold of find.hold) {
-          writeHold(hold, out, 6, text)
-        }
-      }
-
-      if (find.sort.length > 0) {
-        out.push('    list sort')
-
-        for (const sort of find.sort) {
-          out.push('      mesh')
-          out.push(`        host way, ${text(sort.way)}`)
-          out.push(`        host road, ${text(sort.road.step.join('/'))}`)
-        }
-      }
-    }
-  }
+  put(
+    'find',
+    some(
+      file.find.map(find =>
+        hash([
+          ['name', text(find.name)],
+          ['task', text(find.task)],
+          ...(([
+            ['size', find.size === undefined ? undefined : { kind: 'number', value: find.size }],
+            ['slot', find.slot === undefined ? undefined : { kind: 'number', value: find.slot }],
+            ['meet', find.meet ? meetData(find.meet) : undefined],
+            ['hold', some(find.hold.map(holdData))],
+            [
+              'sort',
+              some(
+                find.sort.map(sort =>
+                  hash([
+                    ['way', text(sort.way)],
+                    ['road', text(sort.road.step.join('/'))],
+                  ]),
+                ),
+              ),
+            ],
+          ] as [string, Data | undefined][])
+            .filter((pair): pair is [string, Data] => pair[1] !== undefined)),
+        ]),
+      ),
+    ),
+  )
 
   const uses = new Set<string>()
   const calls = new Set<string>()
@@ -2083,91 +2321,15 @@ export function viewManifest(file: ViewFile, module: string): string {
     }
   }
 
-  writeList('view', [...uses].sort(), out, text)
-  writeList('call', [...calls].sort(), out, text)
-  writeList('mark', [...marks].sort(), out, text)
-  writeList(
-    'load',
-    file.load.map(load => load.path).sort(),
-    out,
-    text,
-  )
+  put('view', some([...uses].sort().map(text)))
+  put('call', some([...calls].sort().map(text)))
+  put('mark', some([...marks].sort().map(text)))
+  put('load', some(file.load.map(load => load.path).sort().map(text)))
 
-  return out.join('\n') + '\n'
-}
-
-function writeList(
-  name: string,
-  values: string[],
-  out: string[],
-  text: (value: string) => string,
-): void {
-  if (values.length === 0) {
-    return
-  }
-
-  out.push(`list ${name}`)
-
-  for (const value of values) {
-    out.push(`  ${text(value)}`)
-  }
-}
-
-function writeMeet(
-  meet: ViewMeet,
-  out: string[],
-  depth: number,
-  text: (value: string) => string,
-): void {
-  const pad = ' '.repeat(depth)
-
-  out.push(`${pad}host mode, ${text(meet.mode)}`)
-
-  if (meet.hold.length > 0) {
-    out.push(`${pad}list hold`)
-
-    for (const hold of meet.hold) {
-      writeHold(hold, out, depth + 2, text)
-    }
-  }
-
-  for (const inner of meet.meet) {
-    out.push(`${pad}host meet`)
-    writeMeet(inner, out, depth + 2, text)
-  }
-}
-
-function writeHold(
-  hold: ViewHold,
-  out: string[],
-  depth: number,
-  text: (value: string) => string,
-): void {
-  const pad = ' '.repeat(depth)
-
-  out.push(`${pad}mesh`)
-  out.push(`${pad}  host name, ${text(hold.name)}`)
-
-  const args = [...hold.slot, ...hold.bind.map(one => one.bond)]
-
-  if (args.length > 0) {
-    out.push(`${pad}  list side`)
-
-    for (const arg of args) {
-      out.push(`${pad}    mesh`)
-      out.push(`${pad}      host form, ${text(arg.form)}`)
-
-      if (arg.form === 'read') {
-        out.push(`${pad}      host road, ${text(arg.value.step.join('/'))}`)
-      } else if (arg.form === 'text' || arg.form === 'code') {
-        out.push(`${pad}      host text, ${text(arg.value)}`)
-      } else if (arg.form === 'mark' || arg.form === 'wave') {
-        out.push(`${pad}      host code, ${String(arg.value)}`)
-      } else {
-        out.push(`${pad}      host call, ${text(arg.value.name)}`)
-      }
-    }
-  }
+  // Written by the host dialect's OWN writer, so the escaping is its escaping. Building the text by hand meant a
+  // second spelling of one grammar, and mine escaped three characters where the real one escapes eight: a
+  // component name or a value holding a brace, a newline or a tab produced a manifest that did not read back.
+  return writeLong({ kind: 'hash', list: entries })
 }
 
 function gather(
@@ -2225,8 +2387,8 @@ function gatherSeeds(seeds: Seed[], calls: Set<string>, marks: Set<string>): voi
     }
 
     if (seed.form === 'call') {
-      // `range` is the render runtime's, synthesized by the reader for a counted walk, never written by an author
-      if (seed.value.name !== 'range') {
+      // a synthesized call is the render runtime's, not something the document asked for
+      if (!seed.value.made) {
         calls.add(seed.value.name)
       }
 

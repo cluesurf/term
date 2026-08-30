@@ -9,7 +9,13 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { checkView, viewManifest, type ViewFile } from '@term/make/code/compile/view'
+import {
+  checkView,
+  viewManifest,
+  type Seed,
+  type ViewFile,
+  type ViewNode,
+} from '@term/make/code/compile/view'
 
 export type ViewCall = {
   root: string
@@ -91,37 +97,65 @@ export async function callView(input: ViewCall): Promise<void> {
 }
 
 function look(file: string, read: ViewFile): Look {
-  const manifest = viewManifest(read, file.replace(/\.tree$/, ''))
-  const listOf = (name: string): string[] =>
-    [
-      ...manifest.matchAll(new RegExp(`(?<=list ${name}\\n)((?:  <[^\\n]*>\\n)+)`, 'g')),
-    ]
-      .flatMap(match => match[1]!.trim().split('\n'))
-      .map(line => line.trim().replace(/^<|>$/g, ''))
+  // Built from the FORMS, never by regexing the manifest. Reading a serialized shape back with a pattern is a
+  // second reader of one grammar, and it broke the moment the manifest moved to the host dialect's own writer,
+  // which lays a short list out inline rather than one item per line.
+  const view = new Set<string>()
+  const call = new Set<string>()
 
   let node = 0
   let deep = 0
 
-  const count = (nodes: readonly { form: string }[], depth: number): void => {
+  const seed = (one: Seed): void => {
+    if (one.form !== 'call') {
+      return
+    }
+
+    if (!one.value.made) {
+      call.add(one.value.name)
+    }
+
+    for (const arg of [...one.value.slot, ...one.value.bind.map(b => b.bond)]) {
+      seed(arg)
+    }
+  }
+
+  const count = (nodes: ViewNode[], depth: number): void => {
     deep = Math.max(deep, depth)
 
-    for (const one of nodes as ReadonlyArray<Record<string, unknown>>) {
+    for (const one of nodes) {
       node++
 
-      const value = one.value as Record<string, unknown> | undefined
+      switch (one.form) {
+        case 'view':
+          view.add(one.value.name)
 
-      if (one.form === 'view' && value) {
-        count((value.node ?? []) as { form: string }[], depth + 1)
-      } else if (one.form === 'walk' && value) {
-        for (const next of (value.next ?? []) as { node: { form: string }[] }[]) {
-          count(next.node, depth + 1)
-        }
-      } else if (one.form === 'fork' && value) {
-        for (const hook of (value.hook ?? []) as Record<string, unknown>[]) {
-          if (hook.form !== 'test') {
-            count((hook.node ?? []) as { form: string }[], depth + 1)
+          for (const bind of one.value.bind) {
+            seed(bind.bond)
           }
-        }
+
+          count(one.value.node, depth + 1)
+          break
+        case 'walk':
+          seed(one.value.road)
+
+          for (const next of one.value.next) {
+            count(next.node, depth + 1)
+          }
+
+          break
+        case 'fork':
+          for (const hook of one.value.hook) {
+            if (hook.form === 'test') {
+              seed(hook.seed)
+            } else {
+              count(hook.node, depth + 1)
+            }
+          }
+
+          break
+        default:
+          break
       }
     }
   }
@@ -132,14 +166,14 @@ function look(file: string, read: ViewFile): Look {
 
   return {
     file,
-    view: listOf('view'),
-    call: listOf('call'),
+    view: [...view].sort(),
+    call: [...call].sort(),
     find: read.find.map(one => one.task),
     tree: read.view.length,
     load: read.load.map(one => one.path),
     node,
     deep,
-    manifest,
+    manifest: viewManifest(read, file.replace(/\.tree$/, '')),
   }
 }
 

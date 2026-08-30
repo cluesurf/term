@@ -15,6 +15,8 @@ load @term/seed/code/list
   find size
   find concat
   find drop-first
+  find slice
+  find reverse
 
 load @term/seed/code/bit
   find bitwise-and
@@ -29,6 +31,9 @@ load @term/seed/code/text
   find char-at
   find char-code-at
   find substring
+
+load @term/seed/code/text/string
+  find concat, name text-concat
 
 # a byte order for a multi-byte integer field
 form byte-order
@@ -179,12 +184,18 @@ task feed-cursor-compact
         call drop-first(call cursor-bytes(read cursor), read pos)
       call set-cursor-position(read cursor, code 0)
 
-# pulls and appends chunks from the cursor's source until the current position has at least one more byte
-# available, or the source is exhausted. A no-op for a materialized cursor (`pull` is `none`) or a streaming one
-# whose source already signaled end of input — the common case once a parse is under way, so this is one `fork
-# case` and one comparison per call, not per byte.
-task feed-cursor-ensure-available
+# pulls and appends chunks from the cursor's source until at least `width` more bytes are buffered ahead of the
+# current position, or the source is exhausted. A no-op for a materialized cursor (`pull` is `none`) or a
+# streaming one whose source already signaled end of input — the common case once a parse is under way, so this
+# is one `fork case` and one comparison per call, not per byte.
+#
+# `width` falls to 1, which is what every single-byte read (`peek-byte`, and so `read-byte` and `read-int`)
+# wants; `read-bytes` passes its own full width so it can then take the whole block in ONE slice instead of
+# refilling per byte. One task rather than a `width-1` fast path plus a bulk copy of it: the fall makes the
+# single-byte call site emit exactly the comparison it did before.
+task feed-cursor-ensure-width
   take cursor, like feed-cursor
+  take width, like number, fall 1
   fork case, read cursor/pull
     case none
       send back
@@ -193,9 +204,11 @@ task feed-cursor-ensure-available
       walk test
         hook test
           call and
-            call is-minimum
-              call cursor-position(read cursor)
-              call size(call cursor-bytes(read cursor))
+            call is-below
+              call subtract
+                call size(call cursor-bytes(read cursor))
+                call cursor-position(read cursor)
+              read width
             call not, call get(read cursor/exhausted, code 0)
         hook hold
           save chunk
@@ -210,27 +223,40 @@ task feed-cursor-ensure-available
                 call concat(call cursor-bytes(read cursor), read value)
               call feed-cursor-compact(read cursor)
 
+# how many bytes are left in the WHOLE input. Refuses a streaming cursor for the same reason `seek` does, and it
+# is the same class of mistake: a streaming source does not know its own total length, so the honest answer here
+# would be "however much happens to be buffered right now", which is not what any caller means. gzip's own
+# grammar asks for this (its payload runs to eight bytes before the end, a width it can only get by subtracting
+# from the total), which is precisely why gzip as a whole cannot stream — the halt says so at the one call that
+# depends on it, instead of returning a short read that would corrupt the payload silently.
 task remaining
   take cursor, like feed-cursor
   like number
-  call feed-cursor-ensure-available(read cursor)
+  fork case, read cursor/pull
+    case some
+      halt <cannot measure what remains in a streaming cursor: this format needs the input's total length, which a stream does not know>
+    case none
   send back
     call subtract
       call size(call cursor-bytes(read cursor))
       call cursor-position(read cursor)
 
+# `is-minimum` (position >= size), not `is-equal(remaining, 0)`: it works on a streaming cursor, where `remaining`
+# now refuses to answer, and it is also true when position has run PAST the end. The old equality read false in
+# that case, so a loop like `walk test / not at-end` never terminated once anything overran, instead of stopping.
 task at-end
   take cursor, like feed-cursor
   like boolean
+  call feed-cursor-ensure-width(read cursor)
   send back
-    call is-equal
-      call remaining(read cursor)
-      code 0
+    call is-minimum
+      call cursor-position(read cursor)
+      call size(call cursor-bytes(read cursor))
 
 task peek-byte
   take cursor, like feed-cursor
   like u8
-  call feed-cursor-ensure-available(read cursor)
+  call feed-cursor-ensure-width(read cursor)
   send back
     call get(call cursor-bytes(read cursor), call cursor-position(read cursor))
 
@@ -272,22 +298,25 @@ task seek
   call set-cursor-position(read cursor, call add(read base, read offset))
   send back, read prior
 
+# a block of `width` bytes, taken in ONE native slice rather than pushed one at a time. The loop this replaced
+# cost about six operations per byte (a bounds refill, two `get`s to reach the buffer and the byte, a `get`/`add`/
+# `set` to advance the position, and a `push`), all of it to rebuild a contiguous run the source list already
+# held contiguously. That is the difference between a per-byte interpreter loop and a memcpy on every backend,
+# and it is the whole cost of reading a large file's payload: gzip hands its entire compressed body to this task
+# in a single call, so on a 76 MB member the old path ran roughly 460 million operations where this runs one.
 task read-bytes
   take cursor, like feed-cursor
   take width, like number
   like list
     like u8
-  save result
-    make list
-  save index, code 0
-  walk test
-    hook test
-      call is-below(read index, read width)
-    hook hold
-      call push(read result, call read-byte(read cursor))
-      save index
-        call add(read index, code 1)
-  send back, read result
+  call feed-cursor-ensure-width(read cursor, read width)
+  save start
+    call cursor-position(read cursor)
+  save end
+    call add(read start, read width)
+  call set-cursor-position(read cursor, read end)
+  send back
+    call slice(call cursor-bytes(read cursor), read start, read end)
 
 # 256^index, built by repeated multiply rather than a bit shift: `bit.tree` documents shift-left/shift-right as
 # 32-bit operations on the TypeScript backend, which would silently truncate any field wider than 4 bytes (OTF's
@@ -547,7 +576,7 @@ task text-cursor-ensure-available
               link value
               call set-cursor-text
                 read cursor
-                call concat(call cursor-text(read cursor), read value)
+                call text-concat(call cursor-text(read cursor), read value)
               call set
                 read cursor/length
                 code 0
@@ -612,18 +641,24 @@ task write-bytes
       take site, name value
       call write-byte(read writer, read value)
 
-# the byte at `index` places from the low end of `value`: floor(value / 256^index) mod 256. `round-down` (floor)
-# on a negative `value` is arithmetic-shift-equivalent, so a negative signed value's bytes come out correct without
-# a separate two's-complement step. See read-int/byte-place for why this is multiply/divide, not a bit shift.
+# the byte of `value` at a given place value (1, 256, 65536, ...): floor(value / place) mod 256. `round-down`
+# (floor) on a negative `value` is arithmetic-shift-equivalent, so a negative signed value's bytes come out
+# correct without a separate two's-complement step. See read-int/byte-place for why this is multiply/divide, not
+# a bit shift.
+#
+# It takes the PLACE rather than the index on purpose. `int-byte-at(value, index)` had to call `byte-place`,
+# itself an index-long loop, so encoding a width-N field cost N(N-1)/2 multiplies just to rebuild place values
+# each step already knew — quadratic in the field width, for a quantity that only ever moves by one factor of
+# 256 between neighbours. `int-bytes` below carries the place forward instead, so the whole encode is linear.
 #
 # `to-decimal` around the division, `to-number` around the floor: `round-down` is `like decimal` in and out
 # (`@term/seed/code/float.tree`), and Rust does not implicitly convert an `i64` division result into the `f64`
 # it expects, the same class of gap `feedback_term_decimal_vs_number_no_implicit_conversion` (memory) documents
 # for JSON's number parser. `to-number` truncates toward zero rather than flooring, but `round-down`'s own output
 # is already integer-valued by the time it gets there, so the distinction never matters at this call site.
-task int-byte-at
+task int-byte-at-place
   take value, like number
-  take index, like number
+  take place, like number
   like u8
   send back
     call bitwise-and
@@ -631,38 +666,46 @@ task int-byte-at
         call round-down
           call divide
             call to-decimal(read value)
-            call to-decimal(call byte-place(read index))
+            call to-decimal(read place)
       code 0xff
 
+# a fixed-width integer's bytes, LOW byte first, place value carried forward one multiply at a time.
+task int-bytes
+  take value, like number
+  take width, like number
+  like list
+    like u8
+  save result
+    make list
+  save place, code 1
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, read width)
+    hook hold
+      call push(read result, call int-byte-at-place(read value, read place))
+      save place
+        call multiply(read place, code 256)
+      save index
+        call add(read index, code 1)
+  send back, read result
+
+# both orders write the same bytes, so both share one encode and differ only in the direction they emit it. This
+# replaced two near-identical loops that each recomputed a place value from scratch per byte; big-endian reverses
+# the low-first block rather than dividing back down through the places, which for a width-8 field would leave
+# exactness behind (256^7 is 2^56, past what a float divide represents exactly).
 task write-int
   take writer, like feed-writer
   take value, like number
   take width, like number
   take order, like byte-order
+  save bytes
+    call int-bytes(read value, read width)
   fork case, read order
     case big
-      save index
-        call subtract(read width, code 1)
-      walk test
-        hook test
-          call is-minimum(read index, code 0)
-        hook hold
-          call write-byte
-            read writer
-            call int-byte-at(read value, read index)
-          save index
-            call subtract(read index, code 1)
+      call write-bytes(read writer, call reverse(read bytes))
     case little
-      save index, code 0
-      walk test
-        hook test
-          call is-below(read index, read width)
-        hook hold
-          call write-byte
-            read writer
-            call int-byte-at(read value, read index)
-          save index
-            call add(read index, code 1)
+      call write-bytes(read writer, read bytes)
 
 task to-bytes
   take writer, like feed-writer

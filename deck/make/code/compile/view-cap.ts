@@ -20,6 +20,9 @@ export type ViewCaps = {
   callDeep: number
   // `call` expressions in the whole document
   callSum: number
+  // what one `walk list` counts as when its length is not known until the query resolves. A counted walk over a
+  // literal range contributes its real bound instead.
+  walkWide: number
   // `walk` inside `walk` inside `walk`
   walkDeep: number
   // the product of the bounds of nested counted walks, which is what a browser actually builds
@@ -37,6 +40,7 @@ export const VIEW_CAPS: ViewCaps = {
   deep: 32,
   callDeep: 4,
   callSum: 500,
+  walkWide: 1000,
   walkDeep: 3,
   walkSum: 100000,
   find: 64,
@@ -60,6 +64,8 @@ export function capMessage(
       return `this value nests ${said} calls and the cap is ${limit}. A document formats a value, it does not compute one`
     case 'callSum':
       return `this document applies ${said} operators and the cap is ${limit}`
+    case 'walkWide':
+      return `a list walk is assumed to draw ${limit} items when its length is only known once the query resolves`
     case 'walkDeep':
       return `this document nests ${said} walks and the cap is ${limit}`
     case 'walkSum':

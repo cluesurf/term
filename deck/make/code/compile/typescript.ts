@@ -885,7 +885,7 @@ function makeEmitter(
     const next = (): string => `view${counter++}`
 
     // build a node into `out`, returning its variable name. Render-runtime calls are positional, in the param order of
-    // each task in code/zone/render.tree: element(tag), text(value), dynamic(source), attribute(node, name, value),
+    // each task in code/view/render.tree: element(tag), text(value), dynamic(source), attribute(node, name, value),
     // event(node, name, handler).
     const build = (zone: ViewNode, out: string[]): string => {
       // a named element (`name x`) is emitted under that name, so handlers elsewhere in the zone can read it

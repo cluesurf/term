@@ -2,7 +2,8 @@
 // message that names it. See note/term/view/ and deck/mill/code/view/.
 
 import { parse } from '@term/make/code/parser/tree'
-import { readView, lowerView, viewManifest } from '@term/make/code/compile/view'
+import { readView, lowerView, viewManifest, checkView } from '@term/make/code/compile/view'
+import { readDataText } from '@term/make/code/compile/host'
 
 let pass = 0
 let fail = 0
@@ -270,10 +271,33 @@ if (result.ok) {
   ok('it lists every package loaded', holds('list load') && holds('<@view/sound>'))
   ok('it does not list the synthesized range', !/list call[\s\S]*<range>/.test(manifest))
 
-  // the manifest is the host dialect, so the host reader takes it back
-  const back = parse({ file: 'find.tree', text: manifest })
+  // The manifest IS the host dialect, so the host's own READER takes it back, not merely the tree parser. That
+  // is the assertion that matters: it is written by `writeLong`, so a value holding a brace, a newline or a tab
+  // escapes the way the reader expects. Building the text by hand escaped three characters of the eight and this
+  // came back broken.
+  const back = readDataText({ file: 'find.tree', text: manifest })
 
-  ok('the manifest parses as a tree', back.ok, back.ok ? '' : back.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'the manifest reads back through the host reader',
+    back.ok,
+    back.ok ? '' : back.diagnostics.map(d => d.message).join(' | '),
+  )
+
+  const awkward = read(
+    'host title, text <a \\{brace\\} a \\n newline and a \\t tab>\nview page\n  view text/item\n    bind t, read title\n',
+  )
+
+  ok('a document with an awkward value reads', awkward.ok)
+
+  if (awkward.ok) {
+    const rough = viewManifest(awkward.file, 'page/awkward')
+
+    ok(
+      'and its manifest still reads back',
+      readDataText({ file: 'm.tree', text: rough }).ok,
+      rough,
+    )
+  }
 }
 
 // a record reference is collected apart from a plain text, because a reference is what delete protection walks
@@ -442,6 +466,40 @@ if (countedRead.ok) {
 }
 
 refuses('a counted walk with no bound', 'view page\n  walk size\n    hook next\n      text <x>\n', 'names how far it counts')
+
+// ---- a macro from another module ----
+// A repository publishes macros and a document fuses them. `checkView` merges the module graph's templates with
+// the file's own, so a `fuse` of an imported macro expands. Without that the fuse expanded to NOTHING and the
+// document silently rendered less than it said, which is the worst shape a bug can take here.
+
+{
+  const { collectTemplates } = await import('@term/make/code/compile/template')
+  const elsewhere = parse({
+    file: 'view/row.tree',
+    text: 'tree shared-row\n  take n, like text\n  hook fuse\n    view text/item\n      bind t, text <{n}>\n',
+  })
+
+  const here = 'view page\n  fuse shared-row\n    bind n, <a>\n'
+
+  if (elsewhere.ok) {
+    const graph = collectTemplates(elsewhere.tree)
+
+    const without = checkView({ file: '/app/page/p.tree', text: here })
+    const with_ = checkView({ file: '/app/page/p.tree', text: here }, { templates: graph })
+
+    ok(
+      'without the graph the imported macro is REFUSED, not silently dropped',
+      !without.ok &&
+        without.diagnostics.some(d => /is not a macro this document can reach/.test(d.message)),
+      without.ok ? 'compiled with an empty body' : without.diagnostics.map(d => d.message).join(' | '),
+    )
+    ok(
+      'with it the macro body stands where the fuse was',
+      with_.ok && with_.file.view[0]?.node.length === 1,
+      with_.ok ? String(with_.file.view[0]?.node.length) : 'refused',
+    )
+  }
+}
 
 // ---- macros expand before the reader ever sees them ----
 // `tree` and `fuse` are surface syntax. `compile/template.ts` expands them on the parse tree, so by the time the

@@ -48,6 +48,7 @@ import {
   callBaseStatus,
   callBaseTag,
 } from '@term/call/code/base'
+import { callBaseImport } from '@term/call/code/base-import'
 
 const COMMANDS = [
   'base',
@@ -292,17 +293,83 @@ const cli = yargs(hideBin(process.argv))
         },
       )
       .command(
+        'import <source>',
+        'Bring a csv, tsv, json or jsonl file, or a directory of them, in as records',
+        y =>
+          y
+            .positional('source', { type: 'string', demandOption: true })
+            .option('form', {
+              type: 'string',
+              demandOption: true,
+              describe: 'the record form these rows are instances of',
+            })
+            .option('key', {
+              type: 'string',
+              describe:
+                'a column that identifies a row in the source. The mark is found or created against it, so a re-import updates rather than duplicates',
+            })
+            .option('mark', {
+              type: 'string',
+              describe: 'a column that already holds a uuid version 4, used as the mark',
+            })
+            .option('branch', { type: 'string', default: 'main' })
+            .option('author', { type: 'string', default: 'import' })
+            .option('message', { type: 'string' }),
+        argv => {
+          callBaseImport({
+            root,
+            source: String(argv.source),
+            form: String(argv.form),
+            ...(argv.key === undefined ? {} : { key: String(argv.key) }),
+            ...(argv.mark === undefined ? {} : { mark: String(argv.mark) }),
+            branch: String(argv.branch),
+            author: String(argv.author),
+            ...(argv.message === undefined
+              ? {}
+              : { message: String(argv.message) }),
+          })
+        },
+      )
+      .command(
         'project <commit>',
-        'What a projection would write. Reports only',
+        'What a projection would write, and with --into --commit, write it',
         y =>
           y
             .positional('commit', { type: 'string', demandOption: true })
-            .option('mapping', { type: 'string', demandOption: true }),
-        argv => {
-          callBaseProject({
+            .option('mapping', {
+              type: 'string',
+              describe:
+                'a mapping file, for an existing schema. Left out, the schema is worked out from the records and the tables are created',
+            })
+            .option('into', {
+              type: 'string',
+              describe: 'a Postgres connection url to write the projection into',
+            })
+            // `--write`, not `--commit`, only because `commit` is already this verb's
+            // POSITIONAL. The rule it follows is the house one either way: reports by
+            // default, writes only when asked, so forgetting the flag is the safe direction.
+            .option('write', {
+              type: 'boolean',
+              default: false,
+              describe: 'actually write. Without it nothing is touched',
+            })
+            .option('repository', {
+              type: 'string',
+              describe:
+                'the name this projection is bookkept under. Defaults to the directory name',
+            }),
+        async argv => {
+          await callBaseProject({
             root,
             commit: String(argv.commit),
-            mapping: String(argv.mapping),
+            ...(argv.mapping === undefined
+              ? {}
+              : { mapping: String(argv.mapping) }),
+            ...(argv.into === undefined ? {} : { into: String(argv.into) }),
+            commitWrite: Boolean(argv.write),
+            ...(argv.repository === undefined
+              ? {}
+              : { repository: String(argv.repository) }),
           })
         },
       )

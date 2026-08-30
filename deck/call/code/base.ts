@@ -31,6 +31,10 @@ import { FORMAT_REF } from '@term/base/code/canon/format'
 import { exportTree } from '@term/base/code/api/export'
 import { rowsFor } from '@term/base/code/project/projector'
 import type { Mapping } from '@term/base/code/project/mapping'
+import type { TableForm } from '@term/base/code/project/table'
+import { MixedField, inferProjection } from '@term/base/code/project/infer'
+import { Projector } from '@term/base/code/project/projector'
+import { openPostgres, postgresEngine } from './base-engine'
 import { parseTree } from '@term/base/code/tree/parse'
 import { formatTree } from '@term/base/code/tree/format'
 import { datasetOf, type Dataset } from '@term/base/code/diff/change'
@@ -160,7 +164,7 @@ function resolve(repo: Repository, given: string): string {
   process.exit(1)
 }
 
-function need(root: string): {
+export function need(root: string): {
   repo: Repository
   refs: MemoryRefStore
   save: () => void
@@ -638,31 +642,73 @@ export function callBaseExport(input: {
  * The mapping comes from a file because the CLI has no schema to introspect. In mesh it is
  * DERIVED from the live target instead, which is the right source there and unavailable here.
  */
-export function callBaseProject(input: {
+/**
+ * What a projection would write, and optionally write it.
+ *
+ * TWO MODES, and the difference is where the schema comes from.
+ *
+ * With no `--mapping`, the schema is INFERRED FROM THE RECORDS: a form becomes a table, a
+ * field a column, a value's kind a column type. That is the case a fresh database is, and
+ * it is what makes this an on-ramp rather than a thing you can only use if you already had
+ * the tables. Writing in this mode CREATES them.
+ *
+ * With `--mapping`, an existing schema is being adopted, so the tables are assumed to be
+ * there and nothing is created. A mapping file says how records land in tables somebody
+ * else already designed.
+ *
+ * REPORTS BY DEFAULT AND WRITES ONLY ON `--commit`, because `--into` points at a real
+ * database and the safe direction has to be the one you get by forgetting a flag. Without
+ * it, the rows and the schema are printed and nothing is touched.
+ *
+ * One row is printed IN FULL rather than only a count, because a count cannot show that a
+ * column is missing, which is the thing a mapping gets wrong.
+ */
+export async function callBaseProject(input: {
   root: string
   commit: string
-  mapping: string
-}): void {
+  mapping?: string
+  into?: string
+  commitWrite: boolean
+  repository?: string
+}): Promise<void> {
   const { repo } = need(input.root)
   const at = resolve(repo, input.commit)
-
-  if (!fs.existsSync(input.mapping)) {
-    console.error(`no mapping file at ${input.mapping}`)
-    process.exit(1)
-  }
+  const dataset = repo.checkout(at)
 
   let mapping: Mapping
+  let forms: Array<TableForm> | undefined
 
-  try {
-    mapping = JSON.parse(fs.readFileSync(input.mapping, 'utf8')) as Mapping
-  } catch (error) {
-    console.error(
-      `${input.mapping} is not readable json: ${error instanceof Error ? error.message : String(error)}`,
-    )
-    process.exit(1)
+  if (input.mapping === undefined) {
+    try {
+      const inferred = inferProjection({ dataset })
+
+      mapping = inferred.mapping
+      forms = inferred.forms
+    } catch (error) {
+      console.error(
+        error instanceof MixedField
+          ? error.message
+          : `could not work out a schema: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      process.exit(1)
+    }
+  } else {
+    if (!fs.existsSync(input.mapping)) {
+      console.error(`no mapping file at ${input.mapping}`)
+      process.exit(1)
+    }
+
+    try {
+      mapping = JSON.parse(fs.readFileSync(input.mapping, 'utf8')) as Mapping
+    } catch (error) {
+      console.error(
+        `${input.mapping} is not readable json: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      process.exit(1)
+    }
   }
 
-  const rows = rowsFor({ mapping, dataset: repo.checkout(at) })
+  const rows = rowsFor({ mapping, dataset })
 
   if (!rows.size) {
     console.log('this mapping produces no rows for that commit')
@@ -678,8 +724,6 @@ export function callBaseProject(input: {
     console.log(`${table}  ${held.length} row(s)`)
     total += held.length
 
-    // one row in full, so a person can see the SHAPE rather than only a count. A count
-    // alone cannot show that a column is missing, which is the thing a mapping gets wrong.
     const first = held[0]
 
     if (first) {
@@ -689,9 +733,42 @@ export function callBaseProject(input: {
     }
   }
 
-  console.log(`\n${total} row(s) across ${rows.size} table(s). Nothing was written.`)
-  console.log(
-    'Writing a projection into a database lives in mesh, where the driver is: see\n' +
-      'pnpm check:rebuild and the projection runner.',
-  )
+  if (input.into === undefined) {
+    console.log(`\n${total} row(s) across ${rows.size} table(s). Nothing was written.`)
+    console.log('Pass --into <url> to write it into a Postgres database.')
+
+    return
+  }
+
+  if (!input.commitWrite) {
+    console.log(
+      `\n${total} row(s) across ${rows.size} table(s). NOTHING WAS WRITTEN.\n` +
+        `Pass --write to write them into the database at --into` +
+        (forms ? ', creating the tables.' : '. The tables must already exist, because --mapping says the schema is somebody else\'s.'),
+    )
+
+    return
+  }
+
+  const repository = input.repository ?? path.basename(path.resolve(input.root))
+  const pool = await openPostgres(input.into)
+
+  try {
+    const projector = new Projector(postgresEngine(pool), repository, mapping)
+
+    // With an inferred schema the tables are ours to make. With a mapping file they are
+    // somebody else's, so only the projector's own bookkeeping is installed.
+    await projector.install(forms ?? [])
+
+    const changes = commitChanges(repo, undefined, at)
+    const done = await projector.apply({ commit: at, changes })
+
+    console.log(
+      `\nwrote ${done.writes} statement(s) into \`${repository}\`` +
+        (forms ? `, creating ${forms.length} table(s)` : ''),
+    )
+    console.log(`serving ${at}`)
+  } finally {
+    await pool.end()
+  }
 }
