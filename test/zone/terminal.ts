@@ -1,14 +1,14 @@
 // String/ANSI render target tests: the reactive graph drives a terminal view, updating minimally on change.
 // Run: npx tsx test/zone/terminal.ts
 
-import { signal } from '@term/make/code/zone/reactive'
+import { signal } from '@term/make/code/view/reactive'
 import {
   ansi,
   group,
   render,
   still,
   text,
-} from '@term/make/code/zone/terminal'
+} from '@term/make/code/view/terminal'
 
 let pass = 0
 let fail = 0

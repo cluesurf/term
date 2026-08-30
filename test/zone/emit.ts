@@ -6,7 +6,7 @@ import { mill } from '@term/make/code/compile/mill'
 import {
   emitZoneTree,
   emitDockTree,
-} from '@term/make/code/zone/tree'
+} from '@term/make/code/view/tree'
 import type { Statement } from '@term/make/code/compile/node'
 
 let pass = 0

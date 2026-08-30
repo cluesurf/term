@@ -78,7 +78,7 @@ load @term/mill/code/code/tune/mine
   find tune
 
 load @term/mill/code/code/view/mine
-  find view
+  find view-def
 
 load @term/mill/code/code/bind/mine
   find bind-def
@@ -150,5 +150,5 @@ mine code
         site cast
       mine form, like tune
         site tune
-      mine form, like view
+      mine form, like view-def
         site view

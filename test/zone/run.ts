@@ -7,7 +7,7 @@ import {
   createRoot,
   effect,
   signal,
-} from '@term/make/code/zone/reactive'
+} from '@term/make/code/view/reactive'
 
 let pass = 0
 let fail = 0

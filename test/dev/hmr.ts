@@ -21,11 +21,11 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-// a node, loaded, optionally a self-accepting zone
+// a node, loaded, optionally self-accepting
 function node(
   graph: ModuleGraph,
   name: string,
-  view = false,
+  selfAccepting = false,
 ): ModuleNode {
   const n = graph.ensure(
     `/${name}.tree`,
@@ -34,7 +34,7 @@ function node(
   )
 
   n.loaded = true
-  n.isSelfAccepting = zone
+  n.isSelfAccepting = selfAccepting
 
   return n
 }

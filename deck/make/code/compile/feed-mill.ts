@@ -1,16 +1,22 @@
-// The feed mill compiler: reads a @term/feed dialect's mine.tree/mint.tree grammar and GENERATES real Term
-// (.tree) source text implementing the read/write logic — compiled ahead of time through the ordinary
-// parse/mill/check/emit pipeline onto every backend, not interpreted at parse time. Modeled on mill-run.ts's own
-// shape (grammar file -> rule objects -> a pass over them), reusing its generic ".tree CST -> word/phrase/text"
-// readers, but for a DIFFERENT problem: mill-run.ts matches an already-parsed .tree CST (Term's own syntax) onto
-// a typed shape; this reads raw BYTES/CHARACTERS of an arbitrary format (JSON text, a gzip binary blob, hex
-// digits) against `@term/feed/code/base.tree`'s `feed-cursor`/`text-cursor` primitives. See
-// note/term/project/feed-compiler.md.
+// The feed mill compiler: reads a @term/feed dialect's mine.tree grammar and GENERATES real Term (.tree) source
+// text implementing the reader — compiled ahead of time through the ordinary parse/mill/check/emit pipeline onto
+// every backend, not interpreted at parse time. Modeled on mill-run.ts's own shape (grammar file -> rule objects
+// -> a pass over them), reusing its generic ".tree CST -> word/phrase/text" readers, but for a DIFFERENT
+// problem: mill-run.ts matches an already-parsed .tree CST (Term's own syntax) onto a typed shape; this reads
+// raw CHARACTERS of an arbitrary text format (hex digits, JSON, ...) against `@term/feed/code/base.tree`'s
+// `text-cursor` primitives. See note/term/project/feed-compiler.md.
 //
 // Scope, honestly: only the rule kinds `hex`'s grammar actually uses are implemented (list, form, any, range,
 // send, value) — proven end to end against `read-hex`/`hex-digit-value`, not assumed. Extending to gzip/json/OTF
 // needs more kinds (int, bytes, at, case, maybe, count-directed list) the same way mill-self-hosting grew its
 // own rule vocabulary role by role, each one checked before the next.
+//
+// Every `mine any` compiles to its OWN helper task returning the matched raw text via `send back` inside each
+// `hook hold` branch — never a `save` read again after the fork closes. `save` inside a `fork test`/`fork case`
+// branch is scoped to that branch, not the enclosing task (feedback_term_fork_case_param_shadow's sibling
+// finding, hit and fixed by hand several times this session); `send back` has no such problem, since it exits
+// the whole task immediately regardless of which branch it's in. Generating code that would need to read a
+// `save` from inside a fork after the fork closes is exactly the bug this avoids by construction.
 
 import type { GroupNode, Node, RootNode } from '@term/make/code/parser/tree'
 import { headWord, textOf, wordOf } from './mill-run'
@@ -30,13 +36,16 @@ export type FeedMineGrammar = Map<string, FeedMineRule[]>
 function bindTextOf(group: GroupNode, name: string): string | undefined {
   for (const child of group.nodes) {
     if (child.kind === 'group' && headWord(child) === 'bind') {
-      const key = wordOf(child.nodes[1])
+      const keyNode = child.nodes[1]
+      const key = keyNode?.kind === 'group' ? wordOf(keyNode.nodes[0]) : wordOf(keyNode)
 
-      if (key === name) {
-        const valueNode = child.nodes[1]?.kind === 'group' ? child.nodes[1].nodes[1] : child.nodes[2]
-
-        return valueNode ? textOf(valueNode) : undefined
+      if (key !== name) {
+        continue
       }
+
+      const valueNode = keyNode?.kind === 'group' ? keyNode.nodes[1] : child.nodes[2]
+
+      return valueNode ? textOf(valueNode) : undefined
     }
   }
 
@@ -97,8 +106,8 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
       return name ? { kind: 'form', name, send } : undefined
     }
     case 'value': {
-      // the value is an arbitrary Term expression: the first (and only meaningful) child group, re-emitted
-      // verbatim by the printer in feed-mill-emit.ts, not interpreted here
+      // the value is an arbitrary Term expression: the first child group, re-emitted verbatim by `printNode`,
+      // never interpreted here
       const exprGroup = group.nodes.find((n, i): n is GroupNode => i >= 2 && n.kind === 'group')
 
       return exprGroup ? { kind: 'value', expr: exprGroup } : undefined
@@ -142,11 +151,11 @@ export function readFeedMineGrammar(tree: RootNode): FeedMineGrammar {
 
 // ---- printing an embedded Term expression node back to .tree source text ----
 //
-// mine value / mint's own inline `call` embeddings are already valid Term syntax fragments; this reconstructs
-// them as text rather than parsing them semantically, since the ordinary compiler pipeline (parse -> mill ->
-// check) does that job once the generated file goes through it. Every group prints in the PAREN form
-// (`head(a, b, c)`), which CLAUDE.md's own comma-chain rule confirms is always equivalent to the stacked/comma
-// forms, so this doesn't need to replicate whichever the source originally used.
+// `mine value`'s content is already a valid Term syntax fragment; this reconstructs it as text rather than
+// parsing it semantically, since the ordinary compiler pipeline (parse -> mill -> check) does that job once the
+// generated file goes through it. Every group prints in the PAREN form (`head(a, b, c)`), which CLAUDE.md's own
+// comma-chain rule confirms is always equivalent to the stacked/comma forms, so this doesn't need to replicate
+// whichever the source originally used.
 export function printNode(node: Node): string {
   switch (node.kind) {
     case 'name':
@@ -154,9 +163,7 @@ export function printNode(node: Node): string {
     case 'text':
       return `text <${textOf(node)}>`
     case 'integer':
-      return `code ${node.value}`
     case 'decimal':
-      return `code ${node.value}`
     case 'radix':
       return `code ${node.value}`
     case 'group': {
@@ -181,21 +188,24 @@ export function printNode(node: Node): string {
 }
 
 // ---- compiling a mine grammar to .tree source text ----
-//
-// every named rule becomes `task read-<name>(cursor) -> like number / like text / ...`, reading a `text-cursor`
-// (feed's dialects that use this compiler so far are all text-substrate; a byte-cursor target is the same shape
-// against `feed-cursor` once a binary dialect needs it, not built until one does). `list`/`any`/`range`/`form`
-// generate ordinary `walk test`/`fork test`/`call` Term against `../base.tree`'s cursor primitives; `value`
-// re-emits its expression verbatim, with `send`-named captures available as locals of the same name.
-export function compileFeedMine(grammar: FeedMineGrammar, cursorImportPath: string): string {
+
+const CURSOR_IMPORTS = [
+  'find text-cursor',
+  'find text-cursor-at-end',
+  'find text-cursor-peek',
+  'find text-cursor-peek-code',
+  'find text-cursor-read',
+]
+
+export function compileFeedMine(grammar: FeedMineGrammar, cursorImportPath: string, extraImports: string[] = []): string {
   const lines: string[] = []
 
   lines.push(`load ${cursorImportPath}`)
-  lines.push('  find text-cursor')
-  lines.push('  find text-cursor-at-end')
-  lines.push('  find text-cursor-peek')
-  lines.push('  find text-cursor-peek-code')
-  lines.push('  find text-cursor-read')
+
+  for (const line of CURSOR_IMPORTS) {
+    lines.push(`  ${line}`)
+  }
+
   lines.push('')
   lines.push('load @term/seed/code/list')
   lines.push('  find push')
@@ -205,53 +215,66 @@ export function compileFeedMine(grammar: FeedMineGrammar, cursorImportPath: stri
   lines.push('  find not')
   lines.push('')
 
+  for (const line of extraImports) {
+    lines.push(line)
+  }
+
+  let helperCounter = 0
+  const helpers: string[] = []
+
   for (const [name, rules] of grammar) {
-    lines.push(...compileRule(name, rules))
+    helpers.length = 0
+    helperCounter = 0
+    const rule = compileNamedRule(name, rules, () => `${name}-any-${helperCounter++}`, helpers)
+
+    lines.push(...helpers)
+    lines.push(...rule)
     lines.push('')
   }
 
   return lines.join('\n')
 }
 
-function compileRule(name: string, rules: FeedMineRule[]): string[] {
+// a rule whose ENTIRE body is one `mine list` returns the list of its own repeated match directly (`hex`'s own
+// shape: a list of hex-byte, nothing else). Every other rule runs its children as an ordinary sequence,
+// collecting `send`-named captures as locals, then returns the `mine value` expression (or, with no explicit
+// value, the last capture — a rule that only ever captures one thing needs no combination step).
+function compileNamedRule(
+  name: string,
+  rules: FeedMineRule[],
+  nextHelperName: () => string,
+  helpers: string[],
+): string[] {
   const taskName = `read-${name}`
-  const lines: string[] = [`task ${taskName}`, '  take cursor, like text-cursor']
-  const body: string[] = []
-  const sends: string[] = []
 
-  // a rule with exactly one top-level `mine list` and nothing else returns that list directly; every other
-  // shape runs its children in sequence, collecting `send`-named captures as locals, then returns either the
-  // last capture (one send, no `value`), the explicit `mine value` expression, or nothing
   if (rules.length === 1 && rules[0]!.kind === 'list') {
-    lines.push('  like list', '    like number')
-    body.push(...compileExpr(rules[0]!, 2))
-    lines.push('  send back')
-    lines.push('    call read-list-0(read cursor)')
+    const inner = rules[0] as { kind: 'list'; children: FeedMineRule[] }
+    const lines: string[] = [
+      `task ${taskName}`,
+      '  take cursor, like text-cursor',
+      '  like list',
+      '    like number',
+      '  save result',
+      '    make list',
+      '  walk test',
+      '    hook test',
+      '      call not, call text-cursor-at-end(read cursor)',
+      '    hook hold',
+    ]
+    const sends: string[] = []
 
-    // inline the list logic directly rather than a helper indirection: emit it as the body
-    lines.length = 2
-    lines.push('  like list')
-    lines.push('    like number')
-    lines.push('  save result')
-    lines.push('    make list')
-    const inner = rules[0]! as { kind: 'list'; children: FeedMineRule[] }
-    lines.push('  walk test')
-    lines.push('    hook test')
-    lines.push('      call not, call text-cursor-at-end(read cursor)')
-    lines.push('    hook hold')
+    lines.push(...compileSequence(inner.children, 3, sends, nextHelperName, helpers))
 
-    for (const line of compileSequence(inner.children, 3, sends)) {
-      lines.push(line)
-    }
+    const captured = sends[sends.length - 1] ?? 'item'
 
-    const last = sends[sends.length - 1]
-
-    lines.push(`      call push(read result, read ${last})`)
+    lines.push(`      call push(read result, read ${captured})`)
     lines.push('  send back, read result')
 
     return lines
   }
 
+  const sends: string[] = []
+  const body: string[] = []
   let valueExpr: GroupNode | undefined
 
   for (const rule of rules) {
@@ -260,11 +283,10 @@ function compileRule(name: string, rules: FeedMineRule[]): string[] {
       continue
     }
 
-    body.push(...compileExpr(rule, 1, sends))
+    body.push(...compileExpr(rule, 1, sends, nextHelperName, helpers))
   }
 
-  lines.push('  like number')
-  lines.push(...body)
+  const lines: string[] = [`task ${taskName}`, '  take cursor, like text-cursor', '  like number', ...body]
 
   if (valueExpr) {
     lines.push('  send back')
@@ -276,11 +298,17 @@ function compileRule(name: string, rules: FeedMineRule[]): string[] {
   return lines
 }
 
-function compileSequence(rules: FeedMineRule[], indent: number, sends: string[]): string[] {
+function compileSequence(
+  rules: FeedMineRule[],
+  indent: number,
+  sends: string[],
+  nextHelperName: () => string,
+  helpers: string[],
+): string[] {
   const lines: string[] = []
 
   for (const rule of rules) {
-    lines.push(...compileExpr(rule, indent, sends))
+    lines.push(...compileExpr(rule, indent, sends, nextHelperName, helpers))
   }
 
   return lines
@@ -290,51 +318,41 @@ function pad(indent: number): string {
   return '  '.repeat(indent)
 }
 
-let anyCounter = 0
-
-function compileExpr(rule: FeedMineRule, indent: number, sends: string[] = []): string[] {
+function compileExpr(
+  rule: FeedMineRule,
+  indent: number,
+  sends: string[],
+  nextHelperName: () => string,
+  helpers: string[],
+): string[] {
   const p = pad(indent)
 
   switch (rule.kind) {
     case 'form': {
       const localName = rule.send ?? `match-${sends.length}`
 
-      if (rule.send) {
-        sends.push(rule.send)
-      }
+      sends.push(localName)
 
       return [`${p}save ${localName}`, `${p}  call read-${rule.name}(read cursor)`]
     }
+
     case 'any': {
-      const id = anyCounter++
-      const localName = `any-${id}`
-      const out: string[] = [`${p}save ${localName}`]
-      const branches = rule.children
+      const helperName = nextHelperName()
 
-      for (let i = 0; i < branches.length; i++) {
-        const branch = branches[i]!
+      helpers.push(...compileAnyHelper(helperName, rule.children))
 
-        if (branch.kind !== 'range') {
-          continue
-        }
-
-        const test = i === 0 ? 'fork test' : undefined
-
-        out.push(`${p}  ${test ?? ''}`.trimEnd())
-        out.push(`${p}    hook test`)
-        out.push(...rangeTest(branch, indent + 3))
-        out.push(`${p}    hook hold`)
-        out.push(`${p}      save ${localName}, call text-cursor-read(read cursor)`)
-      }
+      const localName = `char-${sends.length}`
 
       sends.push(localName)
 
-      return out
+      return [`${p}save ${localName}`, `${p}  call ${helperName}(read cursor)`]
     }
+
     case 'send':
       sends.push(rule.name)
 
       return []
+
     case 'range':
     case 'list':
     case 'value':
@@ -342,14 +360,35 @@ function compileExpr(rule: FeedMineRule, indent: number, sends: string[] = []): 
   }
 }
 
-function rangeTest(rule: { base: string; head: string }, indent: number): string[] {
-  const p = pad(indent)
-  const baseCode = rule.base.codePointAt(0) ?? 0
-  const headCode = rule.head.codePointAt(0) ?? 0
+// `mine any` over a run of `mine range` alternatives becomes its own helper task: one `fork test` with one
+// `hook test`/`hook hold` pair per range, each `hook hold` returning the matched character directly via `send
+// back` (never a `save` a caller would need to read after the fork closes — see this file's own header).
+function compileAnyHelper(name: string, branches: FeedMineRule[]): string[] {
+  const lines: string[] = [`task ${name}`, '  take cursor, like text-cursor', '  like text']
 
-  return [
-    `${p}call and`,
-    `${p}  call is-minimum(call text-cursor-peek-code(read cursor), code ${baseCode})`,
-    `${p}  call is-maximum(call text-cursor-peek-code(read cursor), code ${headCode})`,
-  ]
+  branches.forEach((branch, i) => {
+    if (branch.kind !== 'range') {
+      return
+    }
+
+    const baseCode = branch.base.codePointAt(0) ?? 0
+    const headCode = branch.head.codePointAt(0) ?? 0
+    const keyword = i === 0 ? 'fork test' : undefined
+
+    if (keyword) {
+      lines.push(`  ${keyword}`)
+    }
+
+    lines.push('    hook test')
+    lines.push('      call and')
+    lines.push(`        call is-minimum(call text-cursor-peek-code(read cursor), code ${baseCode})`)
+    lines.push(`        call is-maximum(call text-cursor-peek-code(read cursor), code ${headCode})`)
+    lines.push('    hook hold')
+    lines.push('      send back')
+    lines.push('        call text-cursor-read(read cursor)')
+  })
+
+  lines.push(`  halt <expected a match for ${name}>`)
+
+  return lines
 }

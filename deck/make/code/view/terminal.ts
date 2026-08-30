@@ -2,7 +2,7 @@
 // it: a reactive cell re-renders only when its signals change. This shows zone is renderer-agnostic (the DOM is
 // one target, the terminal is another). See note/research/vibe/computation/plans/15-components.md. Browser-safe.
 
-import { effect } from '@term/make/code/zone/reactive'
+import { effect } from '@term/make/code/view/reactive'
 
 export type Style = (text: string) => string
 

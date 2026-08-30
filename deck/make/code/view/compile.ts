@@ -210,7 +210,7 @@ function emit(
   handlers: { event: string; body: string[] }[],
 ): string {
   const lines: string[] = [
-    `import { signal } from '@term/make/code/zone/reactive'`,
+    `import { signal } from '@term/make/code/view/reactive'`,
     '',
   ]
 
