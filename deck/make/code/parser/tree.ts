@@ -116,7 +116,12 @@ function buildTree(
   const root: RootNode = { kind: 'root', nodes: [] }
   const stack: Frame[] = [{ line: [root], levels: [root], level: 0 }]
 
-  const top = () => stack[stack.length - 1]!
+  // a sentinel frame for the same reason VOID_NODE exists below: malformed input can close more frames than it
+  // opened, and `top()` returning undefined turned that into a TypeError instead of a diagnostic. Every read
+  // through the sentinel yields VOID_NODE, which matches no real node kind, so the event lands in
+  // `unexpected(event)`.
+  const VOID_FRAME: Frame = { line: [], levels: [], level: 0 }
+  const top = () => stack[stack.length - 1] ?? VOID_FRAME
   // a sentinel returned when the current line has underflowed (e.g. a
   // statement indented with no parent, or more closes than opens). Its
   // `kind` matches none of the real node kinds, so every `here.kind`
@@ -187,9 +192,20 @@ function buildTree(
 
       case EventKind.CloseGroup:
       case EventKind.CloseName:
-      case EventKind.CloseText:
-        top().line.pop()
+      case EventKind.CloseText: {
+        // more closes than opens: the event stream underflowed on malformed input. Report it rather than
+        // dereferencing an empty stack — a parser must produce a diagnostic, never throw. `base()` already has
+        // the same guard through VOID_NODE; this path did not, and crashed with a TypeError instead.
+        const frame = stack[stack.length - 1]
+
+        if (!frame) {
+          unexpected(event)
+          break
+        }
+
+        frame.line.pop()
         break
+      }
 
       case EventKind.OpenName: {
         const here = base()

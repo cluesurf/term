@@ -29,7 +29,7 @@ const CLOSED = `bind good
   take s, like number
   like boolean
   case node
-    text <(function () { return s \\< 60 })()>
+    text <(function () \\{ return s \\< 60 \\})()>
 
 task after-it
   like text
