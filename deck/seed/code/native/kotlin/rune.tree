@@ -10,7 +10,7 @@ bind do-is-number
   take code, like number
   like boolean
   case kotlin
-    text <Character.getType($code.toInt()).let { it == Character.DECIMAL_DIGIT_NUMBER.toInt() || it == Character.LETTER_NUMBER.toInt() || it == Character.OTHER_NUMBER.toInt() }>
+    text <Character.getType($code.toInt()).let \{ it == Character.DECIMAL_DIGIT_NUMBER.toInt() || it == Character.LETTER_NUMBER.toInt() || it == Character.OTHER_NUMBER.toInt() \}>
 
 bind do-is-whitespace
   take code, like number

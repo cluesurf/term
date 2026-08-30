@@ -20,13 +20,7 @@ const FIND = process.env.FIND
 // this list should be a decision, not a surprise. Term narrowed `{...}` to substituting a single NAME (so a
 // comma inside one is refused) and `{{...}}` to runtime interpolation, where the original parsed both as
 // arbitrary nested trees.
-const DIVERGENT = new Map<string, string>([
-  ['index.tree', '`{another(a/b/c, 1, ...)}` — a comma inside `{...}`, which Term restricts to a single name'],
-  ['values.tree', '`b{x y 123, 123}/c` — same: a comma inside `{...}`'],
-  ['nesting-ugly.tree', '`{{...}}` holding a nested tree; Term reads `{{...}}` as runtime interpolation'],
-  ['sink.tree', '`{{...}}` holding a nested tree, and a text literal spanning lines around it'],
-  ['text-multiline.tree', '`{{ ... }}` rendered as a nested tree rather than interpolated text'],
-])
+const DIVERGENT = new Map<string, string>([])
 
 let pass = 0
 let fail = 0

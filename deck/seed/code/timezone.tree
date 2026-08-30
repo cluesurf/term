@@ -14,9 +14,9 @@ bind offset-minutes
   take zone, like text
   like number
   case node
-    text <(new Date(new Date($millis).toLocaleString("en-US", { timeZone: $zone })).getTime() - new Date(new Date($millis).toLocaleString("en-US", { timeZone: "UTC" })).getTime()) / 60000>
+    text <(new Date(new Date($millis).toLocaleString("en-US", \{ timeZone: $zone \})).getTime() - new Date(new Date($millis).toLocaleString("en-US", \{ timeZone: "UTC" \})).getTime()) / 60000>
   case browser
-    text <(new Date(new Date($millis).toLocaleString("en-US", { timeZone: $zone })).getTime() - new Date(new Date($millis).toLocaleString("en-US", { timeZone: "UTC" })).getTime()) / 60000>
+    text <(new Date(new Date($millis).toLocaleString("en-US", \{ timeZone: $zone \})).getTime() - new Date(new Date($millis).toLocaleString("en-US", \{ timeZone: "UTC" \})).getTime()) / 60000>
   case swift
     load <Foundation>
     text <((TimeZone(identifier: $zone)?.secondsFromGMT(for: Date(timeIntervalSince1970: Double($millis) / 1000.0)) ?? 0) / 60)>

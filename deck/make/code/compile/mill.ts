@@ -1554,7 +1554,12 @@ export function mill(tree: RootNode, file: string): MillResult {
   }
 
   // collect hook bodies (hook test, hook hold, hook miss, hook step)
-  function hooks(group: GroupNode): Map<string, Node[]> {
+  // Every `hook <name>` under a construct, by name. `allowed` names the hooks the construct understands: a hook
+  // outside that set is REFUSED rather than ignored. Silently dropping one is how
+  // `deck/seed/code/native/node/file/asynchronous/directory.tree` shipped two `hook tick` loops whose entire
+  // bodies vanished, so `list` with `deep` returned an empty list and `walk` returned nothing, for as long as
+  // that file has existed. The body compiled to `for (const item of entries) {}` and nothing said a word.
+  function hooks(group: GroupNode, allowed?: readonly string[]): Map<string, Node[]> {
     const map = new Map<string, Node[]>()
 
     for (const child of rest(group)) {
@@ -1568,6 +1573,15 @@ export function mill(tree: RootNode, file: string): MillResult {
         variant?.kind === 'group' ? headName(variant) : undefined
 
       if (hookName) {
+        if (allowed && !allowed.includes(hookName)) {
+          fail(
+            child,
+            `\`${headName(group) ?? '?'}\` has no \`hook ${hookName}\`. It takes ${allowed
+              .map(h => `\`hook ${h}\``)
+              .join(' / ')}, and an unknown one would drop its body silently.`,
+          )
+        }
+
         map.set(hookName, inner.slice(1))
       }
     }
@@ -2436,7 +2450,7 @@ export function mill(tree: RootNode, file: string): MillResult {
               ? toExpression(parts[1], scope)
               : { form: 'unit', span }
 
-            const nextBody = hooks(node).get('next') ?? []
+            const nextBody = hooks(node, ['next']).get('next') ?? []
 
             let item = 'item'
             let bodyNodes = nextBody
@@ -2523,7 +2537,7 @@ export function mill(tree: RootNode, file: string): MillResult {
               break
             }
 
-            const nextBody = hooks(node).get('next') ?? []
+            const nextBody = hooks(node, ['next']).get('next') ?? []
 
             let item = 'item'
             let bodyNodes = nextBody
@@ -4564,7 +4578,7 @@ export function mill(tree: RootNode, file: string): MillResult {
             ? toExpression(parts[1], scope)
             : { form: 'unit', span }
 
-          const nextBody = hooks(node).get('next') ?? []
+          const nextBody = hooks(node, ['next']).get('next') ?? []
 
           let item = 'item'
           let bodyNodes = nextBody

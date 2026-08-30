@@ -120,7 +120,13 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // a `{` opens an interpolation ONLY when an identifier follows (`{name}`); otherwise it is a literal brace. This lets
   // a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3}>`) without escaping, while `{name}`
   // template / string interpolation still works.
-  [TokenKind.OpenBrace]: /\{+(?=[a-zA-Z_])/y,
+  // A DOUBLE brace may be followed by whitespace, including a newline, before its content: `{{ foo }}` and a
+  // `{{` that opens at the end of a line are interpolations holding a tree, which is what
+  // test/parser/file/text-multiline.tree and sink.tree are written in. A SINGLE `{` still has to be followed
+  // immediately by a letter, because that is what keeps an embedded JS or Rust block literal — `text <... { if
+  // (sc === 0) ... }>` in decimal.tree would otherwise open an interpolation. Only the braces are captured, so
+  // the interpolation's depth is still the length of the match.
+  [TokenKind.OpenBrace]: /\{+(?=\s*(?:[a-zA-Z_]|$))/y,
   [TokenKind.OpenParen]: /\(/y,
   [TokenKind.OpenAngle]: /</y,
   [TokenKind.Space]: / +/y,
@@ -149,7 +155,7 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // a run of braces followed by a letter opens an interpolation whole (`{x}` is depth one, `{{x}}` depth two, the
   // runtime interpolation), so the chunk matcher stops before a brace run that a letter follows
   [TokenKind.Chunk]:
-    /(?:\\[<>{}nrt\\]|\\(?![<>{}nrt\\])|\{+(?![a-zA-Z_{])|[^>{\\])+/y,
+    /(?:\\[<>{}nrt\\]|\\(?![<>{}nrt\\])|\{+(?!\s*(?:[a-zA-Z_{]|$))|[^>{\\])+/y,
 }
 
 /**
@@ -326,27 +332,17 @@ export function tokenize(source: {
             textDepthStack.pop()
             textOpenStack.pop()
             break
-          // A COMMA CANNOT APPEAR IN AN INTERPOLATION. `{name}` substitutes ONE name, so
-          // `{code,view}` is not a template: it is data whose braces were not escaped,
-          // and it used to lex as an interpolation and silently drop its closing brace.
-          // Escape them (`\{code,view\}`) to mean the literal characters.
-          case TokenKind.Comma:
-            if (mode === LexMode.Interpolation) {
-              found.push(
-                  diagnose('syntax-error', {
-                    file: source.file,
-                    span: {
-                      start: { line, column },
-                      end: { line, column: column + 1 },
-                    },
-                    message:
-                      'a comma cannot appear inside `{...}`, which substitutes a single name',
-                    hint: 'to mean literal braces, escape them: `\\{a,b\\}`',
-                }),
-              )
-            }
-
-            break
+          // A comma is ORDINARY inside an interpolation. `{...}` and `{{...}}` hold a whole tree, not one name:
+          // `{foo bar, baz}` and `{foo(bar,baz(bing boom))}` are both trees, read by the same rules as anywhere
+          // else (a space nests, a comma pops one level). Space nesting already worked; the comma was refused,
+          // which is what made `values.tree`'s `b{x y 123, 123}/c` and `index.tree`'s
+          // `{another(a/b/c, 1, foo bar baz)}` unparseable even though both are fixtures of the grammar.
+          //
+          // The case that refusal was protecting against is a glob whose braces were never escaped
+          // (`@/book/**/{code,view}/**`). That is still handled, one level up: an interpolation only OPENS on a
+          // `{` followed by a name, so `{"a":1}` and `{ ... }` stay literal text, and a real `{code,view}` in a
+          // path is written `\{code,view\}` as it always was. Checked across the tree: the only unescaped
+          // `{name,` left is inside a `#` comment.
           case TokenKind.Chunk:
             // a chunk in a text literal may carry unescaped `<` (a generic / less-than); each deepens the bracket
             // balance so its matching `>` is treated as content rather than the literal's terminator.

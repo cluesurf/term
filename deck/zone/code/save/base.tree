@@ -152,7 +152,7 @@ bind no-code
   like maybe
     head text
   case node
-    text <({ form: "none" })>
+    text <(\{ form: "none" \})>
 
 # Read a stored credential.
 #

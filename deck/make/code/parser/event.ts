@@ -319,9 +319,17 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   function chunk(token: Token) {
     const frame = indent()
+    // Only a chunk that STARTS its line carries the literal's own indentation. A chunk that follows an
+    // interpolation on the same line (`x {{foo}} y`) begins mid-line, and slicing `depth * 2` characters off it
+    // ate the text outright — ` y` is two characters, so the `y` vanished with no error. It is trimmed instead,
+    // which is what puts `}}or{{` next to each other in text-multiline.tree's expected output.
+    const startsLine =
+      !token.previous || token.previous.span.end.line < token.span.start.line
 
     if (frame.ownLine) {
-      token.text = token.text.slice(frame.depth * 2).trimEnd()
+      token.text = startsLine
+        ? token.text.slice(frame.depth * 2).trimEnd()
+        : token.text.trim()
     }
 
     const last = events[events.length - 1]

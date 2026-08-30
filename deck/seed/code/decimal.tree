@@ -51,9 +51,9 @@ bind do-format
   take scale, like number
   like text
   case node
-    text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s).padStart(sc + 1, "0"); var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
+    text <(function (s, sc) \{ if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s).padStart(sc + 1, "0"); var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out \})($digits, $scale)>
   case browser
-    text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s).padStart(sc + 1, "0"); var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
+    text <(function (s, sc) \{ if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s).padStart(sc + 1, "0"); var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out \})($digits, $scale)>
   case rust
     text <\{ let s: String = $digits; let sc = $scale as usize; if sc == 0 \{ s \} else \{ let neg = s.starts_with('-'); let d = if neg \{ &s[1..] \} else \{ &s[..] \}; let mut d = d.to_string(); while d.len() \< sc + 1 \{ d.insert(0, '0'); \} let split = d.len() - sc; let out = format!("\{\}.\{\}", &d[..split], &d[split..]); if neg \{ format!("-\{\}", out) \} else \{ out \} \} \}>
   case kotlin

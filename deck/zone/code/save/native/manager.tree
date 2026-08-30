@@ -23,25 +23,25 @@ load @term/seed/code/maybe
 bind do-manager-open
   like boolean
   case node
-    text <(() =\> { try { require("node:child_process").execFileSync("powershell", ["-NoProfile", "-Command", "Get-Command New-StoredCredential -ErrorAction Stop"], { stdio: "ignore" }); return process.platform === "win32" } catch { return false } })()>
+    text <(() =\> \{ try \{ require("node:child_process").execFileSync("powershell", ["-NoProfile", "-Command", "Get-Command New-StoredCredential -ErrorAction Stop"], \{ stdio: "ignore" \}); return process.platform === "win32" \} catch \{ return false \} \})()>
 
 bind do-manager-save
   take spot, like seat
   take body, like text
   case node
-    text <require("node:child_process").execFileSync("powershell", ["-NoProfile", "-Command", "$b = [Console]::In.ReadToEnd().Trim(); New-StoredCredential -Target ('zone:' + $env:ZONE_SEAT) -UserName 'zone' -Password $b -Persist LocalMachine | Out-Null"], { input: $body, env: { ...process.env, ZONE_SEAT: $spot.name }, stdio: ["pipe", "ignore", "ignore"] })>
+    text <require("node:child_process").execFileSync("powershell", ["-NoProfile", "-Command", "$b = [Console]::In.ReadToEnd().Trim(); New-StoredCredential -Target ('zone:' + $env:ZONE_SEAT) -UserName 'zone' -Password $b -Persist LocalMachine | Out-Null"], \{ input: $body, env: \{ ...process.env, ZONE_SEAT: $spot.name \}, stdio: ["pipe", "ignore", "ignore"] \})>
 
 bind do-manager-read
   take spot, like seat
   like maybe
     head text
   case node
-    text <(() =\> { try { const out = require("node:child_process").execFileSync("powershell", ["-NoProfile", "-Command", "(Get-StoredCredential -Target ('zone:' + $env:ZONE_SEAT)).GetNetworkCredential().Password"], { encoding: "utf8", env: { ...process.env, ZONE_SEAT: $spot.name } }); const b = out.trimEnd(); return b ? { form: "some", value: b } : { form: "none" } } catch { return { form: "none" } } })()>
+    text <(() =\> \{ try \{ const out = require("node:child_process").execFileSync("powershell", ["-NoProfile", "-Command", "(Get-StoredCredential -Target ('zone:' + $env:ZONE_SEAT)).GetNetworkCredential().Password"], \{ encoding: "utf8", env: \{ ...process.env, ZONE_SEAT: $spot.name \} \}); const b = out.trimEnd(); return b ? \{ form: "some", value: b \} : \{ form: "none" \} \} catch \{ return \{ form: "none" \} \} \})()>
 
 bind do-manager-toss
   take spot, like seat
   case node
-    text <(() =\> { try { require("node:child_process").execFileSync("powershell", ["-NoProfile", "-Command", "Remove-StoredCredential -Target ('zone:' + $env:ZONE_SEAT)"], { env: { ...process.env, ZONE_SEAT: $spot.name }, stdio: "ignore" }) } catch {} })()>
+    text <(() =\> \{ try \{ require("node:child_process").execFileSync("powershell", ["-NoProfile", "-Command", "Remove-StoredCredential -Target ('zone:' + $env:ZONE_SEAT)"], \{ env: \{ ...process.env, ZONE_SEAT: $spot.name \}, stdio: "ignore" \}) \} catch \{\} \})()>
 
 # Exportable wrapper: a native `bind` is file-local.
 task manager-open

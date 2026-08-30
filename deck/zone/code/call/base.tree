@@ -103,4 +103,4 @@ bind spawn
   take hold, like list
   like number
   case node
-    text <(function () { var extra = {}; for (var i = 0; i \< $hold.length; i++) { extra[$hold[i].name] = $hold[i].body } var r = require("node:child_process").spawnSync($name, $list, { stdio: "inherit", env: Object.assign({}, process.env, extra) }); return r.status === null ? 1 : r.status })()>
+    text <(function () \{ var extra = \{\}; for (var i = 0; i \< $hold.length; i++) \{ extra[$hold[i].name] = $hold[i].body \} var r = require("node:child_process").spawnSync($name, $list, \{ stdio: "inherit", env: Object.assign(\{\}, process.env, extra) \}); return r.status === null ? 1 : r.status \})()>

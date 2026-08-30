@@ -193,7 +193,11 @@ async function main(): Promise<void> {
   const prelude = nativePrelude(result.program, 'node', p =>
     existsSync(p) ? readFileSync(p, 'utf8') : undefined,
   )
-  writeFileSync('/private/tmp/claude-501/-Users-lancepollard-base-crew-cluesurf/2f433557-455a-4061-b369-c0a2d2bac75e/scratchpad/host-term-emit.ts', result.typescript)
+  // the emitted TypeScript, kept beside the scratch project this suite already builds in, for reading when a
+  // case fails. It used to be written to an absolute path in one machine's temp directory, which made the whole
+  // suite throw anywhere that directory did not exist; nothing here may reach outside the repo or its own
+  // temporary root.
+  writeFileSync(join(root, 'host-term-emit.ts'), result.typescript)
   const out = join(root, 'data.mjs')
   writeFileSync(
     out,

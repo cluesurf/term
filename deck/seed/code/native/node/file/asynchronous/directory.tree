@@ -3,6 +3,15 @@ dock load
   load <node:fs/promises>, name fs-promise
   load <node:path>, name path
 
+# One entry from `walk`: the path, what it is, and how deep below the walk root it sits. Declared here because
+# this module is the only thing that constructs it. Nothing imports this module yet — the live node
+# implementation is ../directory.tree, which delegates to `io/dir-walk` — which is why its two loops sat with
+# `hook tick` (not a hook `walk` knows) and compiled to empty bodies for as long as the file has existed.
+form walk-entry
+  link path, like text
+  link kind, like text
+  link depth, like size
+
 task list
   note async
   take path, like text
@@ -42,8 +51,8 @@ task list-deep
 
   walk list
     read entries
-    hook tick
-      take entry
+    hook next
+      take site, name entry
       save full-path
         call path/join
           read base
@@ -60,11 +69,17 @@ task list-deep
           call result/push
             read relative
           save sub
-            call deep
+            call list-deep
               read full-path
               read relative
-          call result/concat
+          # each entry pushed in, not `result/concat`: concat returns a NEW list and discards it, so every nested
+          # directory's entries were computed and thrown away.
+          walk list
             read sub
+            hook next
+              take site, name item
+              call result/push
+                read item
         hook miss
           call result/push
             read relative
@@ -120,8 +135,8 @@ task walk-step
 
   walk list
     read entries
-    hook tick
-      take entry
+    hook next
+      take site, name entry
       save full-path
         call path/join
           read current

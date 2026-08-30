@@ -49,14 +49,14 @@ bind do-environment-read
   like maybe
     head text
   case node
-    text <(function () { var sort = String($spot.name).split(":").pop(); if (sort === "seal") { var k = process.env.ZONE_LOCK; return (k && k.length \> 0) ? { form: "some", value: k } : { form: "none" } } var tier = sort.toUpperCase().replace(/[^A-Z0-9]+/g, "_"); var v = process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE; return (v && v.length \> 0) ? { form: "some", value: v } : { form: "none" } })()>
+    text <(function () \{ var sort = String($spot.name).split(":").pop(); if (sort === "seal") \{ var k = process.env.ZONE_LOCK; return (k && k.length \> 0) ? \{ form: "some", value: k \} : \{ form: "none" \} \} var tier = sort.toUpperCase().replace(/[^A-Z0-9]+/g, "_"); var v = process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE; return (v && v.length \> 0) ? \{ form: "some", value: v \} : \{ form: "none" \} \})()>
 
 # Whether the environment carries a token for this seat.
 bind do-environment-have
   take spot, like seat
   like boolean
   case node
-    text <(function () { var sort = String($spot.name).split(":").pop(); if (sort === "seal") { return Boolean((process.env.ZONE_LOCK || "").length) } var tier = sort.toUpperCase().replace(/[^A-Z0-9]+/g, "_"); return Boolean((process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE || "").length) })()>
+    text <(function () \{ var sort = String($spot.name).split(":").pop(); if (sort === "seal") \{ return Boolean((process.env.ZONE_LOCK || "").length) \} var tier = sort.toUpperCase().replace(/[^A-Z0-9]+/g, "_"); return Boolean((process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE || "").length) \})()>
 
 # Exportable wrapper: a native `bind` is file-local.
 task environment-read

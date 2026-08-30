@@ -177,7 +177,7 @@ bind do-rune-to-text
   case rust
     text <char::from_u32($code as u32).map(|c| c.to_string()).unwrap_or_default()>
   case swift
-    text <(Unicode.Scalar(UInt32($code)).map { String($0) } ?? "")>
+    text <(Unicode.Scalar(UInt32($code)).map \{ String($0) \} ?? "")>
   case kotlin
     text <String(Character.toChars($code.toInt()))>
 

@@ -62,7 +62,7 @@ bind do-port
   case rust
     text <$handle.downcast_ref::<url::Url>().unwrap().port().map(|p| p.to_string()).unwrap_or_default()>
   case swift
-    text <($handle as! URLComponents).port.map { String($0) } ?? "">
+    text <($handle as! URLComponents).port.map \{ String($0) \} ?? "">
   case kotlin
     text <if (($handle as java.net.URI).port == -1) "" else ($handle as java.net.URI).port.toString()>
 

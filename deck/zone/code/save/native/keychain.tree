@@ -37,7 +37,7 @@ load @term/seed/code/maybe
 bind do-keychain-open
   like boolean
   case node
-    text <(function () { try { require("node:child_process").execFileSync("security", ["help"], { stdio: "ignore" }); return process.platform === "darwin" } catch (e) { return false } })()>
+    text <(function () \{ try \{ require("node:child_process").execFileSync("security", ["help"], \{ stdio: "ignore" \}); return process.platform === "darwin" \} catch (e) \{ return false \} \})()>
 
 # File a credential under service `zone` and account `<host>:<sort>`.
 # `-U` updates in place when one is already there.
@@ -45,7 +45,7 @@ bind do-keychain-save
   take spot, like seat
   take body, like text
   case node
-    text <require("node:child_process").execFileSync("security", ["add-generic-password", "-U", "-s", "zone", "-a", $spot.name, "-w"], { input: $body + "\\n" + $body + "\\n", stdio: ["pipe", "ignore", "ignore"] })>
+    text <require("node:child_process").execFileSync("security", ["add-generic-password", "-U", "-s", "zone", "-a", $spot.name, "-w"], \{ input: $body + "\\n" + $body + "\\n", stdio: ["pipe", "ignore", "ignore"] \})>
 
 # Read it back. A miss exits non-zero, which becomes `none` rather than a
 # thrown error, because "no credential yet" is an ordinary state.
@@ -54,14 +54,14 @@ bind do-keychain-read
   like maybe
     head text
   case node
-    text <(function () { try { return { form: "some", value: require("node:child_process").execFileSync("security", ["find-generic-password", "-s", "zone", "-a", $spot.name, "-w"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trimEnd() } } catch (e) { return { form: "none" } } })()>
+    text <(function () \{ try \{ return \{ form: "some", value: require("node:child_process").execFileSync("security", ["find-generic-password", "-s", "zone", "-a", $spot.name, "-w"], \{ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] \}).trimEnd() \} \} catch (e) \{ return \{ form: "none" \} \} \})()>
 
 # Drop the local copy. A miss is not an error: tossing something already
 # gone is the state the caller wanted.
 bind do-keychain-toss
   take spot, like seat
   case node
-    text <(function () { try { require("node:child_process").execFileSync("security", ["delete-generic-password", "-s", "zone", "-a", $spot.name], { stdio: "ignore" }) } catch (e) {} })()>
+    text <(function () \{ try \{ require("node:child_process").execFileSync("security", ["delete-generic-password", "-s", "zone", "-a", $spot.name], \{ stdio: "ignore" \}) \} catch (e) \{\} \})()>
 
 # Exportable wrapper: a native `bind` is file-local.
 task keychain-open

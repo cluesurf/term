@@ -48,7 +48,7 @@ bind grapheme-count
   case swift
     text <$value.count>
   case kotlin
-    text <java.text.BreakIterator.getCharacterInstance().let { val bi = it; bi.setText($value); var n = 0L; while (bi.next() != java.text.BreakIterator.DONE) n++; n }>
+    text <java.text.BreakIterator.getCharacterInstance().let \{ val bi = it; bi.setText($value); var n = 0L; while (bi.next() != java.text.BreakIterator.DONE) n++; n \}>
 
 # Unicode normalization. The four forms each map to the platform's normalizer: canonical (NFC) / canonical-decomposed
 # (NFD) / compatibility (NFKC) / compatibility-decomposed (NFKD). rust uses the unicode-normalization crate, the rest
@@ -161,15 +161,15 @@ bind to-runes
   like list
     like number
   case node
-    text <Array.from($value, function (rune) { return rune.codePointAt(0) ?? 0 })>
+    text <Array.from($value, function (rune) \{ return rune.codePointAt(0) ?? 0 \})>
   case browser
-    text <Array.from($value, function (rune) { return rune.codePointAt(0) ?? 0 })>
+    text <Array.from($value, function (rune) \{ return rune.codePointAt(0) ?? 0 \})>
   case rust
     text <std::rc::Rc::new(std::cell::RefCell::new($value.chars().map(|rune| rune as i64).collect::<Vec<i64>>()))>
   case swift
-    text <SeedList<Int>($value.unicodeScalars.map { Int($0.value) })>
+    text <SeedList<Int>($value.unicodeScalars.map \{ Int($0.value) \})>
   case kotlin
-    text <$value.codePoints().toArray().map { it.toLong() }.toMutableList()>
+    text <$value.codePoints().toArray().map \{ it.toLong() \}.toMutableList()>
 
 # the one-character text for a single Unicode code point (an invalid code point yields the empty text). The inverse
 # building block of to-runes, used by from-runes.
