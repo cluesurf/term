@@ -3,40 +3,40 @@
 # slider-track, slider-range (the filled portion), slider-thumb (role=slider, focusable). Theme positions the range +
 # thumb from the value in CSS.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone slider
+view slider
   take host, like view
   take class
-  zone span
+  view span
     bind data-slot, text <slider>
     bind class, read class
     slot
 
-zone slider-track
+view slider-track
   take host, like view
   take class
-  zone span
+  view span
     bind data-slot, text <slider-track>
     bind class, read class
     slot
 
-zone slider-range
+view slider-range
   take host, like view
   take class
-  zone span
+  view span
     bind data-slot, text <slider-range>
     bind class, read class
 
-zone slider-thumb
+view slider-thumb
   take host, like view
   take class
   take value
-  zone span
+  view span
     bind data-slot, text <slider-thumb>
     bind role, text <slider>
     bind tabindex, text <0>

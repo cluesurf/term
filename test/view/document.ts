@@ -1,7 +1,7 @@
 // A document renders. Compile a `view`-role document through the full pipeline and run it, confirming it builds
 // real DOM through the existing render runtime with its queries passed in as parameters.
 //
-// This is the one test that closes the whole chain: `.tree` document -> reader -> zone -> zone-lower -> emitted
+// This is the one test that closes the whole chain: `.tree` document -> reader -> zone -> view-lower -> emitted
 // component -> mounted nodes. Everything else in test/view asserts a stage. See note/term/view/07-lowering.md.
 //
 //   npx tsx test/view/document.ts

@@ -4,7 +4,7 @@
 # registry holds them all; the palette enumerates them, shortcuts resolve through them, undo records them. Pure logic
 # (a signal over a list of actions), the Zag-model behavior core. See note/seed/face-interaction-system.md.
 
-load @term/site/code/zone/reactive
+load @term/site/code/view/reactive
   find signal
   find make-signal
   find read-signal

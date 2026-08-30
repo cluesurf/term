@@ -49,7 +49,7 @@ function milledOf(src: string) {
 
 async function main(): Promise<void> {
   // 1) extraction: literal class tokens off the milled zone elements
-  const prog = milledOf(`zone demo
+  const prog = milledOf(`view demo
   take host, like view
   zone div
     bind class, text <flex gap-2 p-4 md:flex>
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   ok('no false dynamic flag on literal classes', used.dynamic === false)
 
   // 2) dynamic class is flagged (so the build can fall back to the full catalog)
-  const dyn = milledOf(`zone demo
+  const dyn = milledOf(`view demo
   take host, like view
   zone div
     bind class, read theme
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
 
   qc.setSource(
     'demo.tree',
-    `zone demo
+    `view demo
   take host, like view
   zone div
     bind class, text <flex gap-2>
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
   const u1 = (await runUsed()).join(' ')
   qc.setSource(
     'demo.tree',
-    `zone demo
+    `view demo
   take host, like view
   zone div
     bind class, text <flex gap-2>
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
   const u2 = (await runUsed()).join(' ')
   qc.setSource(
     'demo.tree',
-    `zone demo
+    `view demo
   take host, like view
   zone div
     bind class, text <flex gap-2 bg-zinc-900>
@@ -138,7 +138,7 @@ async function main(): Promise<void> {
   )
   qc2.setSource(
     'demo.tree',
-    `zone demo
+    `view demo
   take host, like view
   zone div
     bind class, text <flex gap-2>
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
   const afterInitial = fires
   qc2.setSource(
     'demo.tree',
-    `zone demo
+    `view demo
   take host, like view
   zone div
     bind class, text <flex gap-2>
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
   const afterNonClass = fires
   qc2.setSource(
     'demo.tree',
-    `zone demo
+    `view demo
   take host, like view
   zone div
     bind class, text <flex gap-2 p-4>

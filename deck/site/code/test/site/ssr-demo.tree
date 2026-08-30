@@ -2,10 +2,10 @@
 # End-to-end demo: build a reactive text node from a signal and mount it under a host. Compiled to JS and run, the
 # mounted node's text tracks the signal: write the signal and the DOM node updates. Used by the headless run test.
 
-load ../../zone/render
+load ../../view/render
   find dynamic
   find mount
-load ../../zone/reactive
+load ../../view/reactive
   find make-signal
   find read-signal
   find write-signal

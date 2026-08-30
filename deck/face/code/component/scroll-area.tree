@@ -1,39 +1,39 @@
 
 # Scroll area — headless. A scrollable viewport (theme the custom scrollbar in CSS). Parts: scroll-area, scroll-area-
 # viewport, scroll-area-scrollbar, scroll-area-thumb.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone scroll-area
+view scroll-area
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <scroll-area>
     bind class, read class
     slot
 
-zone scroll-area-viewport
+view scroll-area-viewport
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <scroll-area-viewport>
     bind class, read class
     slot
 
-zone scroll-area-scrollbar
+view scroll-area-scrollbar
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <scroll-area-scrollbar>
     bind class, read class
     slot
 
-zone scroll-area-thumb
+view scroll-area-thumb
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <scroll-area-thumb>
     bind class, read class

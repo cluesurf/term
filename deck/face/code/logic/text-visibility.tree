@@ -26,7 +26,7 @@
 # The transitionend walker advances real-fade-in / fallback-fade-in / crossfade-out / crossfade-in as each opacity
 # transition completes, guarded on propertyName === 'opacity' so a color transition never advances the machine.
 
-load @term/site/code/zone/reactive
+load @term/site/code/view/reactive
   find signal
   find make-signal
   find read-signal

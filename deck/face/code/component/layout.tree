@@ -9,7 +9,7 @@
 # the effect to width / print), runs get-layout-3-section, and returns that region's string. On resize / print the
 # signal writes, the effects re-run, and the three divs restyle -- the faithful runtime of the React hook + Layout.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -60,17 +60,17 @@ task middle-style
   send back, read now/middle
 
 # the three-section shell. The page mounts into the middle column via `slot`.
-zone layout
+view layout
   take host, like view
   save vp
     call make-viewport
-  zone div
+  view div
     bind data-slot, text <layout-container>
     bind style, call container-style, read vp
-    zone div
+    view div
       bind data-slot, text <layout-grid>
       bind style, call grid-style, read vp
-      zone div
+      view div
         bind data-slot, text <layout-middle>
         bind style, call middle-style, read vp
         slot

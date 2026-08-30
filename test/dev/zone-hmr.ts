@@ -32,23 +32,23 @@ const resolve = projectResolver(process.cwd(), 'node')
 // a zone reading a signal, with a static label so v1 and v2 are visibly different
 const app = (
   label: string,
-): string => `load @cluesurf/site/code/zone/render
+): string => `load @cluesurf/site/code/view/render
   find element
   find text
   find dynamic
 load @cluesurf/site/code/dom/dom
   find view
   find append
-load @cluesurf/site/code/zone/reactive
+load @cluesurf/site/code/view/reactive
   find make-signal
   find read-signal
 
-zone counter
+view counter
   take host, like view
   save count
     call make-signal
       code 0
-  zone div
+  view div
     text <${label}>
     read
       call read-signal

@@ -18,71 +18,71 @@ load ./road
 load ./seed
   find seed
 
-form zone-def
+form view-def
   link name, like term
   link take, list take
-  link node, list zone-node
+  link node, list view-node
 
-form zone-node
-  case zone, like zone-element
-  case text, like zone-text
+form view-node
+  case zone, like view-element
+  case text, like view-text
   case read, like seed
-  case slot, like zone-slot
-  case fork, like zone-fork
-  case walk, like zone-walk
-  case save, like zone-save
+  case slot, like view-slot
+  case fork, like view-fork
+  case walk, like view-walk
+  case save, like view-save
 
 # a `zone <name>` node: either an html element (`zone div`) or a nested component (`zone user-card`). Attributes
 # and events attach with `seed` (seed class, seed click); component props attach with `bind`; children nest below.
-form zone-element
+form view-element
   link name, like term
-  link seed, list zone-seed
+  link seed, list view-seed
   link bind, list bind
-  link node, list zone-node
+  link node, list view-node
 
 # an attribute or event binding: `seed click, call toggle` / `seed class, read theme`
-form zone-seed
+form view-seed
   link name, like term
   link bond, like seed
 
-form zone-text
+form view-text
   link text, like text
 
 # the outlet for child content / the active child route
-form zone-slot
+form view-slot
   link name, like term
 
 # a conditional: a flat list of hooks (`hook test` / `hook hold` / `hook miss`), paired during lowering
-form zone-fork
-  link hook, list zone-fork-hook
+form view-fork
+  link hook, list view-fork-hook
 
-form zone-fork-hook
-  case test, like zone-fork-test
-  case hold, like zone-fork-hold
-  case miss, like zone-fork-miss
+form view-fork-hook
+  case test, like view-fork-test
+  case hold, like view-fork-hold
+  case miss, like view-fork-miss
 
-form zone-fork-test
+form view-fork-test
   link seed, like seed
 
-form zone-fork-hold
-  link node, list zone-node
+form view-fork-hold
+  link node, list view-node
 
-form zone-fork-miss
-  link node, list zone-node
+form view-fork-miss
+  link node, list view-node
 
 # iterate a list: `walk list, read items / hook next / take site, name item / <body>`
-form zone-walk
+form view-walk
   link road, like seed
-  link next, list zone-walk-next
+  link next, list view-walk-next
 
-form zone-walk-next
-  link site, like zone-walk-site
-  link node, list zone-node
+form view-walk-next
+  link site, like view-walk-site
+  link node, list view-node
 
-form zone-walk-site
+form view-walk-site
   link name, like term
 
 # a computed local: `save total / call count, ...`
-form zone-save
+form view-save
   link name, like term
   link seed, like seed

@@ -7,7 +7,7 @@ import type {
   Expression,
   Program,
   Statement,
-  ZoneNode,
+  ViewNode,
 } from '@term/make/code/compile/node'
 import { egraphArith } from '@term/make/code/ir/egraph-arith'
 import { expressionsEqual } from '@term/make/code/compile/expr-equal'
@@ -16,7 +16,7 @@ import { expressionsEqual } from '@term/make/code/compile/expr-equal'
 // output. They never appear as call nodes in the AST, so reference-counting cannot see them. When a program contains
 // any zone, treat this fixed ABI as referenced so neither forwarder-inlining nor specialization drops a single-return
 // member of it (`element` / `text` / `make-signal`).
-const ZONE_RUNTIME = [
+const VIEW_RUNTIME = [
   'element',
   'text',
   'dynamic',
@@ -1645,9 +1645,9 @@ function countReferencesStatement(
     case 'function':
       body(node.body)
       break
-    case 'zone':
+    case 'view':
       // the render-runtime ABI emitZone will synthesize, plus the user expressions inside the view tree
-      for (const name of ZONE_RUNTIME) {
+      for (const name of VIEW_RUNTIME) {
         counts.set(name, (counts.get(name) ?? 0) + 1)
       }
 
@@ -1661,7 +1661,7 @@ function countReferencesStatement(
 // count name references inside a zone's view tree (attribute / event / read / save / fork / walk expressions) so a
 // user helper used only from a zone is not mistaken for dead code
 function countReferencesZone(
-  nodes: ZoneNode[],
+  nodes: ViewNode[],
   counts: Map<string, number>,
 ): void {
   for (const node of nodes) {

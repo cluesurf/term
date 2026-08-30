@@ -235,13 +235,26 @@ for (const head of ['task', 'hold', 'meet', 'sort', 'walk', 'fork', 'text', 'cal
 
 // the bounds, as absences the grammar can be read for. A document that cannot SAY a thing is a stronger claim
 // than a reader that refuses it, and these are the three the shared component AST would otherwise allow.
+// The component AST carries a computed local and an attribute-or-event node, and the view role's mint must never
+// BUILD one. Asserted against what the mint targets, not against the word: the value grammar's own rules are
+// named `view-seed` after the stdlib's `seed`, so a bare substring would match the dialect's own spelling.
+const viewMintText = [
+  'mint', 'load/mint', 'host/mint', 'find/mint', 'hold/mint', 'meet/mint',
+  'sort/mint', 'seed/mint', 'def/mint', 'node/mint',
+]
+  .map(part => readFileSync(join(MILL, `view/${part}.tree`), 'utf8'))
+  .join('\n')
+  .split('\n')
+  .filter(line => !/^\s*#/.test(line))
+  .join('\n')
+
 ok(
-  'the view grammar cannot reach a computed local (zone-save)',
-  !/zone-save/.test(viewRules),
+  'the view mint never builds a computed local',
+  !/(like|make) view-save\b/.test(viewMintText),
 )
 ok(
-  'the view grammar cannot reach an attribute or event handler (zone-seed)',
-  !/zone-seed/.test(viewRules),
+  'the view mint never builds an attribute or event handler',
+  !/(like|make) view-seed\b/.test(viewMintText),
 )
 ok(
   'the view grammar matches only "walk list", never "walk test"',

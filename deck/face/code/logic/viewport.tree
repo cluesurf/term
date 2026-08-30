@@ -12,7 +12,7 @@ load ./native/{platform}/viewport
   find current-height
   find listen-resize
   find listen-print
-load @term/site/code/zone/reactive
+load @term/site/code/view/reactive
   find signal
   find make-signal
   find read-signal

@@ -11,7 +11,7 @@
 # `data-state` (open/closed) so a theme animates it in CSS. No baked styling; positioning is added via logic/position
 # (floating-ui). Parts: popover, popover-trigger, popover-content.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -21,19 +21,19 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone popover
+view popover
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <popover>
     bind class, read class
     slot
 
-zone popover-trigger
+view popover-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <popover-trigger>
     bind aria-expanded
@@ -45,7 +45,7 @@ zone popover-trigger
         bind self, read control
     slot
 
-zone popover-content
+view popover-content
   take host, like view
   take class
   take control
@@ -54,7 +54,7 @@ zone popover-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <popover-content>
         bind role, text <dialog>
         bind data-state

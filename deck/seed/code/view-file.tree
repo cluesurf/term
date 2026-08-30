@@ -5,9 +5,9 @@
 # catalogs, `host` names a constant or a parameter the route fills, `find` names a query the host resolves before
 # rendering, `tree` names a macro, and `view` defines the document. Spec: note/term/view/.
 #
-# The BODY half is not here. A `view` definition IS a `zone-def` and its nodes are `zone-node`, so the dialect
-# reuses the component AST rather than restating it, and everything downstream of `compile/zone-lower.ts` works
-# unchanged. The view mill simply never produces the `save` case, never produces a `zone-seed` (an attribute or an
+# The BODY half is not here. A `view` definition IS a `view-def` and its nodes are `view-node`, so the dialect
+# reuses the component AST rather than restating it, and everything downstream of `compile/view-lower.ts` works
+# unchanged. The view mill simply never produces the `save` case, never produces a `view-seed` (an attribute or an
 # event), and never produces a `walk` whose mode is `test`. What an author cannot write is what the mill will not
 # build, and note/term/view/05-sandbox.md holds a document per bound.
 #
@@ -36,8 +36,8 @@ load ./bind
   find bind
 
 load ./zone
-  find zone-def
-  find zone-node
+  find view-def
+  find view-node
 
 # One document. Order is free in the file and names are file-scoped across all the lists together, so a `read` has
 # one answer.
@@ -50,7 +50,7 @@ form view-file
   link load, list view-load
   link host, list view-host
   link find, list view-find
-  link view, list zone-def
+  link view, list view-def
 
 # `load @view/text` with a `find` per name taken. The path is text because it names a package in the approved
 # catalog, never a file: there is no relative form and no absolute form, so the reachable set of a document is
@@ -120,4 +120,4 @@ form view-sort
 form view-tree
   link name, like term
   link take, list take
-  link node, list zone-node
+  link node, list view-node

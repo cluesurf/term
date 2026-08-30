@@ -5,13 +5,13 @@
 # fully themeable custom listbox. Headless: data-slot + class + the change handler; the consumer fills `option`s.
 # Parts: native-select, native-option, native-optgroup.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone native-select
+view native-select
   take host, like view
   take class
   take change
@@ -21,7 +21,7 @@ zone native-select
     bind class, read class
     slot
 
-zone native-option
+view native-option
   take host, like view
   take class
   take value
@@ -31,7 +31,7 @@ zone native-option
     bind class, read class
     slot
 
-zone native-optgroup
+view native-optgroup
   take host, like view
   take class
   take label

@@ -1,8 +1,8 @@
-// Zone lowering: rewrite every `zone` (view component) Statement into a plain
+// View lowering: rewrite every `zone` (view component) Statement into a plain
 // `function` Statement whose body builds the DOM through ordinary calls to the
 // reactive-render runtime (`element` / `text` / `dynamic` / `attribute` /
 // `event` / `append` / `show` / `each`) plus component calls. After this pass
-// the program contains NO `form: 'zone'` statements, so every backend emits
+// the program contains NO `form: 'view'` statements, so every backend emits
 // components for free as ordinary functions — the composition logic lives here,
 // once, instead of being reimplemented in each code generator.
 //
@@ -11,7 +11,7 @@
 // statements and `call` / `closure` expressions AROUND those existing nodes.
 //
 // Components compose two ways, both handled here:
-//   - a `zone <name>` whose name is another component  -> a call to that
+//   - a `view <name>` whose name is another component  -> a call to that
 //     component's function, passing props by name and the children as a
 //     `() => view` thunk.
 //   - a `slot` inside a component -> the outlet that builds the caller's
@@ -21,7 +21,7 @@ import type {
   Program,
   Statement,
   Expression,
-  ZoneNode,
+  ViewNode,
   Type,
 } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
@@ -37,7 +37,7 @@ type Component = { params: string[]; slotted: boolean }
 // component calls even if a same-named zone exists. Kebab zone names have no
 // case to distinguish a component from a tag (unlike React's <Button> vs
 // <button>), and the component registry is program-wide, so without this a
-// module defining `zone span` would hijack every `zone span` everywhere. This
+// module defining `view span` would hijack every `view span` everywhere. This
 // is the curated set of structural / text / form primitives rendered raw inside
 // components. It deliberately EXCLUDES tags that make good component names and
 // are rarely written raw (dialog, select, progress, menu, meter, output,
@@ -167,9 +167,9 @@ function collectComponents(program: Program): Map<string, Component> {
 
   for (const node of program) {
     // a zone named after an HTML tag is not a component (it would be
-    // unreachable as one anyway, since `zone <tag>` renders the element); skip
+    // unreachable as one anyway, since `view <tag>` renders the element); skip
     // it so `components.has(name)` cleanly means "this is a component call".
-    if (node.form === 'zone' && !HTML_TAGS.has(node.name)) {
+    if (node.form === 'view' && !HTML_TAGS.has(node.name)) {
       components.set(node.name, {
         params: node.params.slice(1).map(p => p.name),
         slotted: hasSlot(node.body),
@@ -180,7 +180,7 @@ function collectComponents(program: Program): Map<string, Component> {
   return components
 }
 
-function hasSlot(nodes: ZoneNode[]): boolean {
+function hasSlot(nodes: ViewNode[]): boolean {
   for (const node of nodes) {
     if (node.form === 'slot') {
       return true
@@ -210,7 +210,7 @@ function hasSlot(nodes: ZoneNode[]): boolean {
 
 // lower one zone Statement into a function Statement.
 function lowerZone(
-  zone: Extract<Statement, { form: 'zone' }>,
+  zone: Extract<Statement, { form: 'view' }>,
   components: Map<string, Component>,
 ): Statement {
   const span = zone.span
@@ -280,7 +280,7 @@ function lowerZone(
   // Used for slots, component children, and fork / walk branch bodies.
   const fragmentThunk = (
     params: { name: string; type?: Type }[],
-    body: ZoneNode[],
+    body: ViewNode[],
   ): Expression => {
     const inner: Statement[] = []
     const only = body[0]
@@ -316,12 +316,12 @@ function lowerZone(
     return { form: 'closure', params, body: inner, span }
   }
 
-  const thunk = (body: ZoneNode[]): Expression =>
+  const thunk = (body: ViewNode[]): Expression =>
     fragmentThunk([], body)
 
   // a component instance call: name(parent, ...propsByParamOrder, childrenThunk?)
   const componentCall = (
-    node: Extract<ZoneNode, { form: 'element' }>,
+    node: Extract<ViewNode, { form: 'element' }>,
     parent: string,
   ): Expression => {
     const comp = components.get(node.name)!
@@ -345,7 +345,7 @@ function lowerZone(
 
   // build a node, appending its statements to `out`, returning the variable
   // name of the built node (for nodes that produce a single element/text).
-  const build = (node: ZoneNode, out: Statement[]): string => {
+  const build = (node: ViewNode, out: Statement[]): string => {
     const ref = node.form === 'element' && node.ref ? node.ref : fresh()
 
     if (node.form === 'text') {
@@ -441,7 +441,7 @@ function lowerZone(
   // attach a node under `parent`: build + append, or lower control flow / slots
   // / component calls (which mount themselves).
   const attach = (
-    node: ZoneNode,
+    node: ViewNode,
     parent: string,
     out: Statement[],
   ): void => {
@@ -608,6 +608,6 @@ export function lowerZones(program: Program): Program {
   }
 
   return program.map(node =>
-    node.form === 'zone' ? lowerZone(node, components) : node,
+    node.form === 'view' ? lowerZone(node, components) : node,
   )
 }

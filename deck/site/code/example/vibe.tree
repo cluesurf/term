@@ -62,11 +62,11 @@ task render
     make lines
     read grid/count
 
-zone lattice-view
+view lattice-view
   take host, like view
 
-  zone div
-    zone canvas
+  view div
+    view canvas
       name screen
 
     hook mount-start

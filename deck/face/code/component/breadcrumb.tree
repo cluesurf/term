@@ -3,61 +3,61 @@
 # breadcrumb-list (ol), breadcrumb-item (li), breadcrumb-link (a), breadcrumb-page (current, span), breadcrumb-separator
 # (li). aria wires it up; theme via data-slot.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone breadcrumb
+view breadcrumb
   take host, like view
   take class
-  zone nav
+  view nav
     bind data-slot, text <breadcrumb>
     bind aria-label, text <breadcrumb>
     bind class, read class
     slot
 
-zone breadcrumb-list
+view breadcrumb-list
   take host, like view
   take class
-  zone ol
+  view ol
     bind data-slot, text <breadcrumb-list>
     bind class, read class
     slot
 
-zone breadcrumb-item
+view breadcrumb-item
   take host, like view
   take class
-  zone li
+  view li
     bind data-slot, text <breadcrumb-item>
     bind class, read class
     slot
 
-zone breadcrumb-link
+view breadcrumb-link
   take host, like view
   take class
   take href
-  zone a
+  view a
     bind data-slot, text <breadcrumb-link>
     bind href, read href
     bind class, read class
     slot
 
-zone breadcrumb-page
+view breadcrumb-page
   take host, like view
   take class
-  zone span
+  view span
     bind data-slot, text <breadcrumb-page>
     bind role, text <link>
     bind aria-current, text <page>
     bind class, read class
     slot
 
-zone breadcrumb-separator
+view breadcrumb-separator
   take host, like view
   take class
-  zone li
+  view li
     bind data-slot, text <breadcrumb-separator>
     bind role, text <presentation>
     bind aria-hidden, text <true>

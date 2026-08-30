@@ -3,7 +3,7 @@
 # content is a card composed from its parts. Proves composition (component calls + slots), the behavior core (the
 # controller), and reactive state all work together. This is how an app consumes face.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
@@ -21,21 +21,21 @@ load ../component/card
   find card-title
   find card-content
 
-zone demo
+view demo
   take host, like view
   save panel
     call make-disclosure
       bind start, false
-  zone popover
-    zone popover-trigger
+  view popover
+    view popover-trigger
       bind control, read panel
       text <Open>
-    zone popover-content
+    view popover-content
       bind control, read panel
-      zone card
+      view card
         bind class, text <w-80>
-        zone card-header
-          zone card-title
+        view card-header
+          view card-title
             text <Hello>
-        zone card-content
+        view card-content
           text <Popover body>

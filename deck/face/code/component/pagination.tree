@@ -1,43 +1,43 @@
 
 # Pagination — headless. Page navigation. Parts: pagination (nav), pagination-content (ul), pagination-item (li),
 # pagination-link (a). Theme via data-slot.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone pagination
+view pagination
   take host, like view
   take class
-  zone nav
+  view nav
     bind data-slot, text <pagination>
     bind role, text <navigation>
     bind aria-label, text <pagination>
     bind class, read class
     slot
 
-zone pagination-content
+view pagination-content
   take host, like view
   take class
-  zone ul
+  view ul
     bind data-slot, text <pagination-content>
     bind class, read class
     slot
 
-zone pagination-item
+view pagination-item
   take host, like view
   take class
-  zone li
+  view li
     bind data-slot, text <pagination-item>
     bind class, read class
     slot
 
-zone pagination-link
+view pagination-link
   take host, like view
   take class
   take href
-  zone a
+  view a
     bind data-slot, text <pagination-link>
     bind href, read href
     bind class, read class

@@ -2,64 +2,64 @@
 # Table — headless. The root is the native <table> (use `zone table` directly with a class); these are the part
 # components (distinct names so they don't self-collide). Parts: table-header (thead), table-body (tbody), table-footer
 # (tfoot), table-row (tr), table-head (th), table-cell (td), table-caption (caption).
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone table-header
+view table-header
   take host, like view
   take class
-  zone thead
+  view thead
     bind data-slot, text <table-header>
     bind class, read class
     slot
 
-zone table-body
+view table-body
   take host, like view
   take class
-  zone tbody
+  view tbody
     bind data-slot, text <table-body>
     bind class, read class
     slot
 
-zone table-footer
+view table-footer
   take host, like view
   take class
-  zone tfoot
+  view tfoot
     bind data-slot, text <table-footer>
     bind class, read class
     slot
 
-zone table-row
+view table-row
   take host, like view
   take class
-  zone tr
+  view tr
     bind data-slot, text <table-row>
     bind class, read class
     slot
 
-zone table-head
+view table-head
   take host, like view
   take class
-  zone th
+  view th
     bind data-slot, text <table-head>
     bind class, read class
     slot
 
-zone table-cell
+view table-cell
   take host, like view
   take class
-  zone td
+  view td
     bind data-slot, text <table-cell>
     bind class, read class
     slot
 
-zone table-caption
+view table-caption
   take host, like view
   take class
-  zone caption
+  view caption
     bind data-slot, text <table-caption>
     bind class, read class
     slot

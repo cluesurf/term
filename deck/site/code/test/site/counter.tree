@@ -3,20 +3,20 @@
 # This is the public surface a developer writes; the zone mill lowers it to the zone AST, which the framework
 # renders per environment.
 
-zone counter
+view counter
   take label, like text
 
-  zone div
+  view div
     seed class, text <counter>
 
-    zone span
+    view span
       read label
 
-    zone span
+    view span
       seed class, text <count>
       read app/count
 
-    zone button
+    view button
       seed click, call app/add
       text <increment>
 
@@ -26,8 +26,8 @@ zone counter
           read app/count
           code 10
       hook hold
-        zone span
+        view span
           text <high>
       hook miss
-        zone span
+        view span
           text <low>

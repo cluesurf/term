@@ -3,33 +3,33 @@
 # (open / closed) for fade theming. Parts: tooltip (root), tooltip-trigger, tooltip-content. role=tooltip for a11y.
 # Positioning + open-delay are behavioral add-ons; the parts are the themeable structure.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone tooltip
+view tooltip
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <tooltip>
     bind class, read class
     slot
 
-zone tooltip-trigger
+view tooltip-trigger
   take host, like view
   take class
-  zone span
+  view span
     bind data-slot, text <tooltip-trigger>
     bind class, read class
     slot
 
-zone tooltip-content
+view tooltip-content
   take host, like view
   take class
   take state
-  zone div
+  view div
     bind data-slot, text <tooltip-content>
     bind data-state, read state
     bind role, text <tooltip>

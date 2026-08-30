@@ -5,26 +5,26 @@
 #   name   -> the glyph's name / transliteration
 #   class  -> extra classes (e.g. the script's font family)
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone glyph
+view glyph
   take host, like view
   take class
   take symbol
   take name
-  zone div
+  view div
     bind data-slot, text <glyph>
     bind class, read class
-    zone div
+    view div
       bind data-slot, text <glyph-symbol>
       read
         read symbol
-    zone div
+    view div
       bind data-slot, text <glyph-name>
       read
         read name

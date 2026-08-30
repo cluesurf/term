@@ -1,6 +1,9 @@
-# A real, compiling recursive-descent JSON reader and writer (RFC 8259). Text substrate throughout — no byte
-# cursor, per note/term/feed/02-cursor.md's revised split. `text-cursor` here is JSON's own local position tracker;
-# worth hoisting to ../base.tree once a second text dialect needs the same shape, not before.
+# A real, compiling recursive-descent JSON reader and writer (RFC 8259). Text substrate throughout, against the
+# shared, streaming-capable `text-cursor` in `../base.tree` (once JSON's own local copy, hoisted the day a
+# second text dialect — PDF's object model — needed the identical shape). `read-json` stays the convenience
+# entry point over a plain string; `read-json-stream` takes an already-built cursor directly, so a caller with a
+# real streaming source (`make-streaming-text-cursor`) can parse a JSON document far larger than memory a chunk
+# at a time. See note/term/feed/08-streaming.md.
 
 load @term/seed/code/boolean
   find and
@@ -31,75 +34,18 @@ load @term/seed/code/float
   find to-decimal
   find to-number
 
+load ../base
+  find text-cursor
+  find make-text-cursor
+  find make-streaming-text-cursor
+  find text-cursor-at-end
+  find text-cursor-peek
+  find text-cursor-peek-code
+  find text-cursor-read
+
 load ./form
   find json-value
   find json-entry
-
-# `length` is cached at construction, not recomputed per call. `char-count` is Unicode-correct via `Array.from`
-# (note/term/host's own `char-count`, see text.tree), which is an O(n) allocation, not an O(1) property read like
-# JS's own `.length`. `text-cursor-at-end` is checked on every character of every parse, so recomputing it there
-# made the whole parser O(n²) — a real measured regression, not theoretical: deck/feed/test/bench.tree showed JSON
-# running roughly 50x slower per byte than hex on inputs only ~9x longer, the signature of a quadratic term
-# starting to dominate. Fixed here; see bench.tree's comment for the before/after numbers.
-#
-# `position` is a one-element list, not a plain `like number` field — the same workaround `../base.tree`'s
-# `feed-cursor` uses and explains in full: a `form` field mutated by one task and read by another, across separate
-# calls, silently loses the mutation on the Rust and Swift backends (confirmed by probe, not guessed — see
-# `feedback_term_rust_swift_struct_field_mutation_bug` in memory). `length` stays a plain field: it's set once at
-# construction and only ever read afterward, never mutated, so it never hits the bug.
-form text-cursor
-  link text, like text
-  link position
-    like list
-      like number
-  link length, like number
-
-task make-text-cursor
-  take value, like text
-  like text-cursor
-  save position
-    make list
-  call push(read position, code 0)
-  send back
-    make text-cursor
-      bind text, read value
-      bind position, read position
-      bind length
-        call char-count(read value)
-
-task text-cursor-position
-  take cursor, like text-cursor
-  like number
-  send back
-    call get(read cursor/position, code 0)
-
-task text-cursor-at-end
-  take cursor, like text-cursor
-  like boolean
-  send back
-    call is-equal
-      call text-cursor-position(read cursor)
-      read cursor/length
-
-task text-cursor-peek
-  take cursor, like text-cursor
-  like text
-  send back
-    call char-at(read cursor/text, call text-cursor-position(read cursor))
-
-task text-cursor-peek-code
-  take cursor, like text-cursor
-  like number
-  send back
-    call char-code-at(read cursor/text, call text-cursor-position(read cursor))
-
-task text-cursor-read
-  take cursor, like text-cursor
-  like text
-  save value
-    call text-cursor-peek(read cursor)
-  call set(read cursor/position, code 0, call add(call text-cursor-position(read cursor), code 1))
-  send back, read value
 
 task is-json-whitespace
   take code, like number
@@ -500,12 +446,23 @@ task parse-json-array
     make json-array
       bind items, read items
 
+# parses a whole document already held as one string — the common case, and the only one that existed before
+# streaming. Builds a materialized cursor and reads it in full.
 task read-json
   take input, like text
   like json-value
   send back
     call parse-json-value
       call make-text-cursor(read input)
+
+# parses one JSON value from an already-built cursor, materialized or streaming — the entry point a caller with
+# a real streaming source uses, via `make-streaming-text-cursor`. `read-json` above is `read-json-stream` over a
+# materialized cursor; the two do the same parse, just starting from a different cursor construction.
+task read-json-stream
+  take cursor, like text-cursor
+  like json-value
+  send back
+    call parse-json-value(read cursor)
 
 task write-json-string
   take value, like text

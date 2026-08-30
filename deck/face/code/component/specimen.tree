@@ -5,18 +5,18 @@
 #   sample -> the text to render in the script
 #   class  -> extra classes, used to apply the script's @font-face family (the font is a package artifact)
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone specimen
+view specimen
   take host, like view
   take class
   take sample
-  zone div
+  view div
     bind data-slot, text <specimen>
     bind class, read class
     read

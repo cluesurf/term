@@ -4,65 +4,65 @@
 # pass-through `class`, plus a `slot` for its children. No baked styling: theme via CSS on [data-slot=card] (and the
 # sub-slots) or pass classes through `class`. Compose them: `zone card / zone card-header / zone card-title ...`.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone card
+view card
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <card>
     bind class, read class
     slot
 
-zone card-header
+view card-header
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <card-header>
     bind class, read class
     slot
 
-zone card-title
+view card-title
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <card-title>
     bind class, read class
     slot
 
-zone card-description
+view card-description
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <card-description>
     bind class, read class
     slot
 
-zone card-action
+view card-action
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <card-action>
     bind class, read class
     slot
 
-zone card-content
+view card-content
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <card-content>
     bind class, read class
     slot
 
-zone card-footer
+view card-footer
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <card-footer>
     bind class, read class
     slot

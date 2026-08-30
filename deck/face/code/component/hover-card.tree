@@ -1,7 +1,7 @@
 
 # hover-card — headless, behavior-complete via the shared disclosure controller (mirrors popover). Parts: hover-card,
 # hover-card-trigger (toggles), hover-card-content (mounts when open, reactive data-state). Consumer passes a `control`.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -11,19 +11,19 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone hover-card
+view hover-card
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <hover-card>
     bind class, read class
     slot
 
-zone hover-card-trigger
+view hover-card-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <hover-card-trigger>
     bind aria-expanded
@@ -35,7 +35,7 @@ zone hover-card-trigger
     bind class, read class
     slot
 
-zone hover-card-content
+view hover-card-content
   take host, like view
   take class
   take control
@@ -44,7 +44,7 @@ zone hover-card-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <hover-card-content>
         bind role, text <menu>
         bind data-state
@@ -53,10 +53,10 @@ zone hover-card-content
         bind class, read class
         slot
 
-zone hover-card-item
+view hover-card-item
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <hover-card-item>
     bind role, text <menuitem>
     bind class, read class

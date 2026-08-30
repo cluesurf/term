@@ -1,5 +1,5 @@
 // The look CSS backend: a static-output compiler that turns the `look` DSL into a plain stylesheet at build time
-// (Tailwind-style, zero runtime). It is the CSS counterpart of `zone-lower.ts`: where zones lower to backend functions,
+// (Tailwind-style, zero runtime). It is the CSS counterpart of `view-lower.ts`: where zones lower to backend functions,
 // look rules lower to a stylesheet string. CSS is not a normal compile target (TS / Rust / Kotlin / Swift), so it gets
 // its own static-output pass rather than going through the term IR.
 //

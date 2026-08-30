@@ -79,7 +79,9 @@ export function spanOfNode(node: Node | undefined): Span | undefined {
   }
 }
 
-function wordOf(node: Node | undefined): string | undefined {
+// exported for reuse by other tree-CST-reading compilers (feed-mill.ts's grammar reader among them) — these four
+// are generic ".tree node -> word/phrase/text" readers, nothing here is mill's own rule vocabulary specifically
+export function wordOf(node: Node | undefined): string | undefined {
   if (!node) {
     return undefined
   }
@@ -109,7 +111,7 @@ function wordOf(node: Node | undefined): string | undefined {
 
 // the full word chain a node denotes: a multi-word value parses as nested heads (`vitest run` is
 // vitest > run), so a phrase reconstructs by walking head plus terms recursively, space-joined
-function phraseOf(node: Node | undefined): string | undefined {
+export function phraseOf(node: Node | undefined): string | undefined {
   const head = wordOf(node)
 
   if (head === undefined || node?.kind !== 'group') {
@@ -134,13 +136,13 @@ function phraseOf(node: Node | undefined): string | undefined {
   return parts.join(' ')
 }
 
-function headWord(group: GroupNode): string | undefined {
+export function headWord(group: GroupNode): string | undefined {
   return group.nodes[0]?.kind === 'name'
     ? wordOf(group.nodes[0])
     : undefined
 }
 
-function textOf(node: Node): string {
+export function textOf(node: Node): string {
   return node.kind === 'text'
     ? node.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join('')
     : ''

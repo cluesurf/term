@@ -1,5 +1,5 @@
 // The route-lowering pass: turns `hook` route statements (the routing DSL) into a runnable `route(host, path)`
-// dispatcher function. It is the routing counterpart of `zone-lower`. Because the dom layer is env-abstracted (a
+// dispatcher function. It is the routing counterpart of `view-lower`. Because the dom layer is env-abstracted (a
 // browser Element or an in-memory server node behind the same `view` API), ONE dispatcher works for both client and
 // server -- the only difference is the boot (browser mounts on document.body and listens for navigation; a server
 // renders per request). So the routing API is identical across environments; this pass is env-agnostic.

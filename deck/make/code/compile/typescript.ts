@@ -8,7 +8,7 @@ import type {
   Program,
   Statement,
   Type,
-  ZoneNode,
+  ViewNode,
 } from '@term/make/code/compile/node'
 import {
   exhausted,
@@ -878,7 +878,7 @@ function makeEmitter(
   // render runtime (element / text / dynamic / attribute / event / append / show / each) is imported by the zone's
   // own module. See note/seed/plan/zone-components.md.
   const emitZone = (
-    node: Extract<Statement, { form: 'zone' }>,
+    node: Extract<Statement, { form: 'view' }>,
   ): string => {
     let counter = 0
 
@@ -887,7 +887,7 @@ function makeEmitter(
     // build a node into `out`, returning its variable name. Render-runtime calls are positional, in the param order of
     // each task in code/zone/render.tree: element(tag), text(value), dynamic(source), attribute(node, name, value),
     // event(node, name, handler).
-    const build = (zone: ZoneNode, out: string[]): string => {
+    const build = (zone: ViewNode, out: string[]): string => {
       // a named element (`name x`) is emitted under that name, so handlers elsewhere in the zone can read it
       const ref =
         zone.form === 'element' && zone.ref ? toCamel(zone.ref) : next()
@@ -926,7 +926,7 @@ function makeEmitter(
     // the positional render calls for the control-flow nodes (host comes first)
     const showCall = (
       host: string,
-      zone: Extract<ZoneNode, { form: 'fork' }>,
+      zone: Extract<ViewNode, { form: 'fork' }>,
     ): string => {
       const branch = zone.branches[0]
 
@@ -940,7 +940,7 @@ function makeEmitter(
 
     const eachCall = (
       host: string,
-      zone: Extract<ZoneNode, { form: 'walk' }>,
+      zone: Extract<ViewNode, { form: 'walk' }>,
     ): string =>
       // the iterable is passed as a getter so `each` can read it inside an effect (reactive list rendering)
       `each(${host}, () => ${expression(zone.iterable)}, ${fragment(
@@ -952,7 +952,7 @@ function makeEmitter(
     // given (the top level under the host in HMR mode), record the single removable node per child: a built element /
     // text ref directly, a fork / walk wrapped in a container so its whole subtree can be removed on hot-swap.
     const attach = (
-      zone: ZoneNode,
+      zone: ViewNode,
       parent: string,
       out: string[],
       collect?: string[],
@@ -989,7 +989,7 @@ function makeEmitter(
 
     // a body list as a thunk `(params) => view` returning one node (children attached under a fragment element).
     // Not an IIFE: it is the `then` / `other` / `build` callback the render runtime invokes.
-    const fragment = (params: string[], body: ZoneNode[]): string => {
+    const fragment = (params: string[], body: ViewNode[]): string => {
       const out: string[] = []
       const only = body[0]
 
@@ -1020,7 +1020,7 @@ function makeEmitter(
     // a top-level `save` whose value creates a signal (`save count / call make-signal / ...`). Its value is preserved
     // across a hot-swap, so in HMR mode it is seeded from the snapshot kept by the dev client.
     const isSignalSave = (
-      child: Extract<ZoneNode, { form: 'save' }>,
+      child: Extract<ViewNode, { form: 'save' }>,
     ): boolean =>
       child.value.form === 'call' &&
       child.value.callee.form === 'variable' &&
@@ -1454,7 +1454,7 @@ function makeEmitter(
       case 'bind':
         // a declarative native binding: no declaration is emitted; it renders inline at each call site
         return ''
-      case 'zone':
+      case 'view':
         // a view component: emit a builder over the render runtime (element / text / dynamic / show / each)
         return emitZone(node)
       case 'dock':

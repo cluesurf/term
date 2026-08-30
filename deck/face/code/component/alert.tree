@@ -2,36 +2,36 @@
 # Alert — headless, ported from shadcn (alert.tsx). A callout with a title and description. `variant` is a data
 # attribute for theming (default / destructive). role=alert for a11y. Parts: alert, alert-title, alert-description.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone alert
+view alert
   take host, like view
   take class
   take variant
-  zone div
+  view div
     bind data-slot, text <alert>
     bind data-variant, read variant
     bind role, text <alert>
     bind class, read class
     slot
 
-zone alert-title
+view alert-title
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <alert-title>
     bind class, read class
     slot
 
-zone alert-description
+view alert-description
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <alert-description>
     bind class, read class
     slot

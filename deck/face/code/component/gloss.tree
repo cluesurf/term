@@ -4,28 +4,28 @@
 #   words -> list of { form, gloss }; `form` is the source-language word, `gloss` its interlinear label
 #            (e.g. "walk-PST"). Lay the words in a row and stack form over gloss via CSS on [data-slot=gloss].
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone gloss
+view gloss
   take host, like view
   take words
-  zone div
+  view div
     bind data-slot, text <gloss>
     walk list, read words
       hook next
         take site, name word
-        zone div
+        view div
           bind data-slot, text <gloss-word>
-          zone div
+          view div
             bind data-slot, text <gloss-form>
             read
               read word/form
-          zone div
+          view div
             bind data-slot, text <gloss-tag>
             read
               read word/gloss

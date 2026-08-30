@@ -1,72 +1,35 @@
 
+# Targets `code-view-def` in @term/seed/code/lang, which is what this grammar has always built. That form is the
+# flat one (every field `like text`), not the component AST in @term/seed/code/view. The two were both called
+# `zone-def` until 2026-08-30, in one package where names are global, which is the collision the naming rule warns
+# corrupts types. Renaming them apart ended it. Pointing this mint at the real AST instead is a separate change
+# and belongs with the other code-role grammar problems (mill-self-hosting).
+
+load @term/seed/code/lang
+  find code-view-def
+
 mint view
+  case view, mint view-def
+    site view
+
+mint view-def, like code-view-def
   case name
     site name
-  case latch, mint latch
-    site latch
-  case child, mint child
-    site child
+  case take, mint take
+    site take
+  case hook, mint hook
+    site hook
+  case tune, mint tune
+    site tune
+  case view, mint view-def
+    site view
+  case note, mint note
+    site note
   hook make
-    make view
+    make code-view-def
       bind name, read name
-      bind latch, read latch
-      bind child, read child
-
-mint check
-  case name
-    site name
-  case child, mint child
-    site child
-  hook make
-    make view-check
-      bind name, read name
-      bind child, read child
-
-mint list
-  case trace
-    site trace
-  case start, mint start
-    site start
-  case child, mint child
-    site child
-  hook make
-    make view-list
-      bind trace, read trace
-      bind start, read start
-      bind child, read child
-
-mint start
-  case term
-    site term
-  case start
-    site start
-  hook make
-    make view-start
-      bind term, read term
-      bind start, read start
-
-mint child
-  case name
-    site name
-  case mount, mint mount
-    site mount
-  case watch, mint watch
-    site watch
-  case child, mint child
-    site child
-  hook make
-    make view-child
-      bind name, read name
-      bind mount, read mount
-      bind watch, read watch
-      bind child, read child
-
-mint watch
-  case name
-    site name
-  case cause, mint cause
-    site cause
-  hook make
-    make view-watch
-      bind name, read name
-      bind cause, read cause
+      bind take, read take
+      bind hook, read hook
+      bind tune, read tune
+      bind view, read view
+      bind note, read note

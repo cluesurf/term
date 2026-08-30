@@ -3,28 +3,28 @@
 # role=radio with data-state (checked / unchecked); `press` selects it. Parts: radio-group (root), radio-group-item
 # (the radio button) + radio-group-indicator (the dot).
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone radio-group
+view radio-group
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <radio-group>
     bind role, text <radiogroup>
     bind class, read class
     slot
 
-zone radio-group-item
+view radio-group-item
   take host, like view
   take class
   take state
   take checked
   take press
-  zone button
+  view button
     bind type, text <button>
     bind role, text <radio>
     bind data-slot, text <radio-group-item>
@@ -32,6 +32,6 @@ zone radio-group-item
     bind aria-checked, read checked
     bind class, read class
     hook click, call press
-    zone span
+    view span
       bind data-slot, text <radio-group-indicator>
       bind data-state, read state

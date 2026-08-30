@@ -127,14 +127,14 @@ if (result.ok) {
 
   ok('a take reads with its type', file.view[0]?.take[0]?.like?.name === 'text')
   ok('a take is named apart from the file scope', file.view[0]?.take[0]?.name === 'theme')
-  ok('a component use reads', body[0]?.form === 'zone')
+  ok('a component use reads', body[0]?.form === 'view')
   ok(
     'a component name keeps its scope',
-    body[0]?.form === 'zone' && body[0].value.name === 'text/heading',
+    body[0]?.form === 'view' && body[0].value.name === 'text/heading',
   )
   ok(
     'a call reads as a value',
-    body[0]?.form === 'zone' && body[0].value.bind[1]?.bond.form === 'call',
+    body[0]?.form === 'view' && body[0].value.bind[1]?.bond.form === 'call',
   )
   ok('a walk reads', body[2]?.form === 'walk')
   ok(
@@ -210,17 +210,17 @@ if (result.ok) {
   const zone = program[0]
 
   ok('one zone statement per view', program.length === 1)
-  ok('the zone keeps the view name', zone?.form === 'zone' && zone.name === 'page')
+  ok('the zone keeps the view name', zone?.form === 'view' && zone.name === 'page')
 
   // a `take`, then every name the host supplies: the typed `host` parameter and the two query results
   ok(
     'the zone takes the mount host, its parameter, and its resolved queries',
-    zone?.form === 'zone' &&
+    zone?.form === 'view' &&
       zone.params.map(p => p.name).join(',') === 'host,theme,slug,language,vowel',
-    zone?.form === 'zone' ? zone.params.map(p => p.name).join(',') : '',
+    zone?.form === 'view' ? zone.params.map(p => p.name).join(',') : '',
   )
 
-  const body = zone?.form === 'zone' ? zone.body : []
+  const body = zone?.form === 'view' ? zone.body : []
 
   ok('a component use lowers to an element', body[0]?.form === 'element')
   ok(
@@ -337,26 +337,49 @@ ok(
 
 ok(
   'it compiles to exactly one zone statement',
-  built.ok && built.program.length === 1 && built.program[0]?.form === 'zone',
+  built.ok && built.program.length === 1 && built.program[0]?.form === 'view',
 )
 
-// The SAME TEXT under the code role does not compile: `view page` is not a statement there, so the code mill
-// reads it as a call to an undefined name. That difference is the whole point of the role deciding rather than
-// the content, and it is why a document cannot define a component: its file is in the other role.
-const asCode = compile(
-  { file: '/app/code/quenya.tree', text: DOC },
+// Both roles read `view`, because a component is one concept. What differs is AUTHORITY: a component may hold
+// state, a document may not, and the role of the FILE is what decides. That is the security model, and it is why
+// a document cannot define a component even though it uses the same word.
+const STATEFUL = `
+view counter
+  take host
+  save count, code 0
+  view div
+    text <hello>
+`
+
+const asDocument = compile(
+  { file: '/app/page/counter.tree', text: STATEFUL },
   { roleOf, optimize: false },
 )
 
-ok('the same text under the code role does not compile', !asCode.ok)
+ok('a document may not hold state', !asDocument.ok)
 ok(
-  'and it fails because "view" is not a code statement',
-  !asCode.ok && asCode.diagnostics.some(d => /the name "view" is not defined/.test(d.message)),
-  asCode.ok ? '' : asCode.diagnostics.map(d => d.message).slice(0, 2).join(' | '),
+  'and is told why, by name',
+  !asDocument.ok && asDocument.diagnostics.some(d => /cannot hold state/.test(d.message)),
+  asDocument.ok ? '' : asDocument.diagnostics.map(d => d.message).slice(0, 2).join(' | '),
+)
+
+ok(
+  'the same word in the code role is not refused for holding state',
+  (() => {
+    const asComponent = compile(
+      { file: '/app/code/counter.tree', text: STATEFUL },
+      { roleOf, optimize: false },
+    )
+
+    return (
+      asComponent.ok ||
+      !asComponent.diagnostics.some(d => /cannot hold state/.test(d.message))
+    )
+  })(),
 )
 
 // ---- a counted walk ----
-// `walk size` normalises into a `walk list` over `range(base, head)`, because `zone-walk` carries only a list walk
+// `walk size` normalises into a `walk list` over `range(base, head)`, because `view-walk` carries only a list walk
 // and adding a counted one would touch every pass that reads a walk. `range` is a render-runtime task.
 
 const COUNTED = `
@@ -389,7 +412,7 @@ ok(
 
 if (countedRead.ok) {
   const zone = lowerView(countedRead.file)[0]
-  const body = zone?.form === 'zone' ? zone.body : []
+  const body = zone?.form === 'view' ? zone.body : []
 
   ok('both counted walks lower to a walk', body.length === 2 && body.every(node => node.form === 'walk'))
   ok(
@@ -454,7 +477,7 @@ ok(
 
 if (expanded.ok) {
   const zone = expanded.program[0]
-  const body = zone?.form === 'zone' ? zone.body : []
+  const body = zone?.form === 'view' ? zone.body : []
 
   ok('two fuses expand to two nodes', body.length === 2)
   ok('an expanded node is the macro body', body[0]?.form === 'element')

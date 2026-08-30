@@ -1,7 +1,7 @@
 
 # context-menu — headless, behavior-complete via the shared disclosure controller (mirrors popover). Parts: context-menu,
 # context-menu-trigger (toggles), context-menu-content (mounts when open, reactive data-state). Consumer passes a `control`.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -11,19 +11,19 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone context-menu
+view context-menu
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <context-menu>
     bind class, read class
     slot
 
-zone context-menu-trigger
+view context-menu-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <context-menu-trigger>
     bind aria-expanded
@@ -35,7 +35,7 @@ zone context-menu-trigger
     bind class, read class
     slot
 
-zone context-menu-content
+view context-menu-content
   take host, like view
   take class
   take control
@@ -44,7 +44,7 @@ zone context-menu-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <context-menu-content>
         bind role, text <menu>
         bind data-state
@@ -53,10 +53,10 @@ zone context-menu-content
         bind class, read class
         slot
 
-zone context-menu-item
+view context-menu-item
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <context-menu-item>
     bind role, text <menuitem>
     bind class, read class

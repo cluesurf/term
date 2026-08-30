@@ -1,60 +1,47 @@
 
+# The `view` head in the CODE role: a component, with nothing held back. State, events, effects and native calls
+# are all reachable from one, because a component is code we wrote and reviewed.
+#
+# `view` is the head in BOTH roles and the role decides the authority. In the `view` role it PLACES a component
+# and defines only the document, and a document cannot define one because its file is in the other role. That is
+# the security model stated as one sentence. See note/term/view/06-mill.md.
+#
+# Was spelled `zone` until 2026-08-30. `deck/zone/` is the environment and secret system and shares nothing with
+# this but the old name, which is why the name had to move.
+
+load @term/mill/code/code/take/mine
+  find take
+
+load @term/mill/code/code/hook/mine
+  find hook
+
+load @term/mill/code/code/tune/mine
+  find tune
+
+load @term/mill/code/code/note/mine
+  find note
+
 mine view
+  mine list
+    mine form, like view-def
+      site view
+
+mine view-def
   mine term, term view
     mine term
       site name
     mine list
-      mine form, like latch
-        site latch
+      mine form, like take
+        site take
     mine list
-      mine form, like child
-        site child
-
-mine check
-  mine term, term check
-    mine term
-      site name
+      mine form, like hook
+        site hook
     mine list
-      mine form, like child
-        site child
-
-mine list
-  mine term, term list
-    mine term
-      site trace
+      mine form, like tune
+        site tune
     mine list
-      mine form, like start
-        site start
-    mine list
-      mine form, like child
-        site child
-
-mine start
-  mine term, term start
-    mine term
-      site term
-    mine term, term term
-      mine term
-        site start
-
-mine child
-  mine term, term view
-    mine term
-      site name
-    mine list
-      mine form, like mount
-        site mount
-    mine list
-      mine form, like watch
-        site watch
-    mine list
-      mine form, like child
-        site child
-
-mine watch
-  mine term, term watch
-    mine term
-      site name
-    mine list
-      mine form, like cause
-        site cause
+      mine form, like view-def
+        site view
+    mine maybe
+      mine form, like note
+        site note

@@ -6,6 +6,16 @@ note draft
 #
 # `send <name>` emits a match as a named field on the enclosing rule. `take`/`bind` is reserved for parameters a
 # rule receives from its caller (mine int's width/order/sign, an offset passed down for mine at) — hex needs none.
+#
+# `mine value` (new): the rule's own result, an ordinary Term expression over its `send`-named captures — the
+# grammar describes SHAPE (sequence, alternation, repetition), value computation stays ordinary Term (real
+# helpers like `hex-digit-value`, not arithmetic reinvented as grammar syntax). Without one, a rule's value is
+# whatever it captured with no further combination needed — true for `hex` (a `mine list`'s own value is already
+# the list of its matches) but not for `hex-digit`/`hex-byte`, which combine more than one capture into one
+# scalar. Found missing, not assumed: `note/term/project/feed-compiler.md`'s first real compile attempt (`hex`,
+# the simplest dialect) discovered the original version of this file had no way to express "combine two nibble
+# captures into a byte" at all — every earlier session that hand-wrote ./code.tree's `read-hex` did that
+# combination in the reader's own logic, invisibly, without the grammar ever having to say it.
 
 mine hex
   mine list
@@ -16,6 +26,10 @@ mine hex-byte
     send high
   mine form, form hex-digit
     send low
+  mine value
+    call add
+      call multiply(read high, code 16)
+      read low
 
 mine hex-digit
   mine any
@@ -28,3 +42,7 @@ mine hex-digit
     mine range
       bind base, text <A>
       bind head, text <F>
+  send char
+  mine value
+    call hex-digit-value
+      call char-code-at(read char, code 0)

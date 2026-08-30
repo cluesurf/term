@@ -6,46 +6,46 @@
 # behavioral add-ons (a `present` primitive for exit animation is the noted follow-up); the parts here are the
 # themeable structure.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone dialog
+view dialog
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <dialog>
     bind class, read class
     slot
 
-zone dialog-trigger
+view dialog-trigger
   take host, like view
   take class
   take press
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <dialog-trigger>
     bind class, read class
     hook click, call press
     slot
 
-zone dialog-overlay
+view dialog-overlay
   take host, like view
   take class
   take state
-  zone div
+  view div
     bind data-slot, text <dialog-overlay>
     bind data-state, read state
     bind class, read class
 
-zone dialog-content
+view dialog-content
   take host, like view
   take class
   take state
-  zone div
+  view div
     bind data-slot, text <dialog-content>
     bind data-state, read state
     bind role, text <dialog>
@@ -53,43 +53,43 @@ zone dialog-content
     bind class, read class
     slot
 
-zone dialog-header
+view dialog-header
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <dialog-header>
     bind class, read class
     slot
 
-zone dialog-title
+view dialog-title
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <dialog-title>
     bind class, read class
     slot
 
-zone dialog-description
+view dialog-description
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <dialog-description>
     bind class, read class
     slot
 
-zone dialog-footer
+view dialog-footer
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <dialog-footer>
     bind class, read class
     slot
 
-zone dialog-close
+view dialog-close
   take host, like view
   take class
   take press
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <dialog-close>
     bind aria-label, text <Close>

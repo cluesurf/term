@@ -11,7 +11,7 @@
 # theme animates the panel; the content mounts only while open. Parts: accordion, accordion-item, accordion-trigger,
 # accordion-content.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -21,19 +21,19 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone accordion
+view accordion
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <accordion>
     bind class, read class
     slot
 
-zone accordion-item
+view accordion-item
   take host, like view
   take class
   take control
-  zone div
+  view div
     bind data-slot, text <accordion-item>
     bind data-state
       call disclosure-state
@@ -41,11 +41,11 @@ zone accordion-item
     bind class, read class
     slot
 
-zone accordion-trigger
+view accordion-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <accordion-trigger>
     bind aria-expanded
@@ -60,7 +60,7 @@ zone accordion-trigger
         bind self, read control
     slot
 
-zone accordion-content
+view accordion-content
   take host, like view
   take class
   take control
@@ -69,7 +69,7 @@ zone accordion-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <accordion-content>
         bind role, text <region>
         bind data-state

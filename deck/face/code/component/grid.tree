@@ -11,7 +11,7 @@
 # computeFit (the JS fitter the block / block-css / virtual variants reuse) lives in logic/grid; it is verified to match
 # shared.ts exactly. block-cq itself needs no fitter -- the browser does the column math from the `@container` rules.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -20,23 +20,23 @@ load @term/site/code/dom/dom
 # the grid container. `class` is the config class (e.g. `grid-cq-2-372`): the theme gives it `container-type:
 # inline-size` and styles `.row` / `.cell` descendants. The single `.row` holds the cells; flex-wrap there centers /
 # aligns each row (including the partial last row) on its own, the one layout CSS Grid cannot do without subgrid hacks.
-zone grid
+view grid
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <grid>
     bind class, read class
-    zone div
+    view div
       bind class, text <row>
       slot
 
 # one grid cell — a flex column so its child can grow to fill the row-stretched height (matches the React `.bcqg-cell`).
 # The per-config `@container` rules in the theme size this `.cell` via its `flex` basis + `min-width` (scoped under the
 # config class as `.grid-cq-* .cell`, so the bare `.cell` / `.row` names never leak to other components).
-zone grid-item
+view grid-item
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <grid-item>
     bind class, text <cell>
     slot

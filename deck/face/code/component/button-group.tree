@@ -1,15 +1,15 @@
 
 # Button group — headless. Groups buttons into a segmented control. Theme the joined borders/radius in CSS.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone button-group
+view button-group
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <button-group>
     bind class, read class
     slot

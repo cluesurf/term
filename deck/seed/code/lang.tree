@@ -294,11 +294,11 @@ form code-tree-body
 form code-slot
   link name, like text
 
-form zone-def
+form code-view-def
   link name, like text
   link take, list code-take
   link hook, list code-hook
   link view, like text
   link tune, like text
-  link zone, list zone-def
+  link zone, list code-view-def
   link note, like text

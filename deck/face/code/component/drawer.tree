@@ -2,7 +2,7 @@
 # drawer — headless, behavior-complete via the shared disclosure controller (mirrors dialog). Parts: drawer,
 # drawer-trigger, drawer-overlay, drawer-content, drawer-header, drawer-title, drawer-description, drawer-footer,
 # drawer-close. Overlay + content mount when open with reactive data-state. Consumer passes a `control`.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -12,19 +12,19 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone drawer
+view drawer
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <drawer>
     bind class, read class
     slot
 
-zone drawer-trigger
+view drawer-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <drawer-trigger>
     hook click
@@ -33,7 +33,7 @@ zone drawer-trigger
     bind class, read class
     slot
 
-zone drawer-content
+view drawer-content
   take host, like view
   take class
   take control
@@ -42,7 +42,7 @@ zone drawer-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <drawer-content>
         bind role, text <dialog>
         bind aria-modal, text <true>
@@ -52,43 +52,43 @@ zone drawer-content
         bind class, read class
         slot
 
-zone drawer-header
+view drawer-header
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <drawer-header>
     bind class, read class
     slot
 
-zone drawer-title
+view drawer-title
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <drawer-title>
     bind class, read class
     slot
 
-zone drawer-description
+view drawer-description
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <drawer-description>
     bind class, read class
     slot
 
-zone drawer-footer
+view drawer-footer
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <drawer-footer>
     bind class, read class
     slot
 
-zone drawer-close
+view drawer-close
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <drawer-close>
     bind aria-label, text <Close>

@@ -29,7 +29,7 @@ import type {
   Program,
   Statement,
   Type,
-  ZoneNode,
+  ViewNode,
 } from '@term/make/code/compile/node'
 import {
   BOOLEAN,
@@ -1848,7 +1848,7 @@ export function check(
   }
 
   // type-check a zone's view: infer each embedded expression with the zone's params in scope, threading `save` bindings
-  function checkZone(node: Extract<Statement, { form: 'zone' }>): void {
+  function checkZone(node: Extract<Statement, { form: 'view' }>): void {
     currentBounds = []
 
     const env: Env = new Map(moduleEnv)
@@ -1860,10 +1860,10 @@ export function check(
       })
     }
 
-    // element refs (`zone input / name x`) are `view`-typed locals, pre-declared so a handler can read any of them
+    // element refs (`view input / name x`) are `view`-typed locals, pre-declared so a handler can read any of them
     const refs: string[] = []
 
-    const walkRefs = (list: ZoneNode[]): void => {
+    const walkRefs = (list: ViewNode[]): void => {
       for (const member of list) {
         if (member.form === 'element') {
           if (member.ref) {
@@ -1894,7 +1894,7 @@ export function check(
     checkZoneNodes(node.body, env)
   }
 
-  function checkZoneNodes(nodes: ZoneNode[], env: Env): void {
+  function checkZoneNodes(nodes: ViewNode[], env: Env): void {
     for (const node of nodes) {
       switch (node.form) {
         case 'element':
@@ -1990,7 +1990,7 @@ export function check(
       checkFunction(statement)
     }
     // zones are type-checked whole-program (not part of the per-definition incremental path yet)
-    else if (statement.form === 'zone' && only === undefined) {
+    else if (statement.form === 'view' && only === undefined) {
       checkZone(statement)
     }
   }

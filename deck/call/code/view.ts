@@ -110,7 +110,7 @@ function look(file: string, read: ViewFile): Look {
 
       const value = one.value as Record<string, unknown> | undefined
 
-      if (one.form === 'zone' && value) {
+      if (one.form === 'view' && value) {
         count((value.node ?? []) as { form: string }[], depth + 1)
       } else if (one.form === 'walk' && value) {
         for (const next of (value.next ?? []) as { node: { form: string }[] }[]) {

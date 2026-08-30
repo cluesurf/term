@@ -1,6 +1,6 @@
 
-load @term/seed/code/zone
-  find zone-def
+load @term/seed/code/view
+  find view-def
 
 load @term/seed/code/take
   find take
@@ -11,7 +11,7 @@ load @term/mill/code/view/node/mint
 load @term/mill/code/view/seed/mint
   find view-like
 
-mint view-def, like zone-def
+mint view-def, like view-def
   case name
     site name
   case take, mint view-take
@@ -19,7 +19,7 @@ mint view-def, like zone-def
   case node, mint view-node
     site node
   hook make
-    make zone-def
+    make view-def
       bind name, read name
       bind take, read take
       bind node, read node

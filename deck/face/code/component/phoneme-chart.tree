@@ -4,28 +4,28 @@
 #   sounds -> list of { symbol, label }; `symbol` is the IPA / script glyph, `label` the description (e.g. "voiced
 #             bilabial nasal"). Group and lay out via CSS on [data-slot=phoneme-chart].
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone phoneme-chart
+view phoneme-chart
   take host, like view
   take sounds
-  zone div
+  view div
     bind data-slot, text <phoneme-chart>
     walk list, read sounds
       hook next
         take site, name sound
-        zone div
+        view div
           bind data-slot, text <phoneme>
-          zone span
+          view span
             bind data-slot, text <phoneme-symbol>
             read
               read sound/symbol
-          zone span
+          view span
             bind data-slot, text <phoneme-label>
             read
               read sound/label

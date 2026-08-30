@@ -34,7 +34,7 @@ import { findUnused } from '@term/make/code/check/unused'
 import { pruneToReachable } from '@term/make/code/ir/prune'
 import { simplify } from '@term/make/code/ir/simplify'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
-import { lowerZones } from '@term/make/code/compile/zone-lower'
+import { lowerZones } from '@term/make/code/compile/view-lower'
 import { compileLookCss } from '@term/make/code/compile/look-css'
 import {
   expandData,
@@ -54,7 +54,7 @@ import type {
   Statement,
 } from '@term/make/code/compile/node'
 
-// The render-runtime helpers that `lowerZones` (compile/zone-lower.ts)
+// The render-runtime helpers that `lowerZones` (compile/view-lower.ts)
 // synthesizes calls to when it lowers a `zone` component. Because that
 // lowering runs after the reachability prune, these must be pinned as roots
 // whenever a program contains a zone, or they get shaken out and dangle. The
@@ -431,7 +431,7 @@ export function compileProgram(
       }
     }
 
-    // Zone lowering (further below) rewrites `zone` components into calls to
+    // View lowering (further below) rewrites `zone` components into calls to
     // the render runtime (element / text / attribute / dynamic / event /
     // append / show / each / ...). That lowering runs AFTER this prune, so the
     // helpers are not yet referenced by the still-unlowered zones and would be
@@ -440,7 +440,7 @@ export function compileProgram(
     // transitively the dom primitives they call, survive the shake.
     let pruneRoots = roots
 
-    if (program.some(statement => statement.form === 'zone')) {
+    if (program.some(statement => statement.form === 'view')) {
       pruneRoots = new Set(roots)
 
       for (const helper of ZONE_RENDER_RUNTIME) {
@@ -628,10 +628,10 @@ export function compileProgram(
     ? simplify(tsProgram, roots)
     : optimized
 
-  // Zone lowering: rewrite every `zone` into a plain `function` over the render
+  // View lowering: rewrite every `zone` into a plain `function` over the render
   // runtime (+ component calls / slots), so every backend emits components as
   // ordinary functions with no zone-specific codegen. Runs last, after simplify,
-  // exactly where the zone emit used to happen. See code/compile/zone-lower.ts.
+  // exactly where the zone emit used to happen. See code/compile/view-lower.ts.
   const loweredProgram = lowerZones(optimized)
   const loweredTs = hasTraitGenerics
     ? lowerZones(tsOptimized)

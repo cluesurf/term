@@ -219,7 +219,7 @@ export function emitHvm(input: Program): string {
       statement.form === 'instance' ||
       statement.form === 'native' ||
       statement.form === 'bind' ||
-      statement.form === 'zone'
+      statement.form === 'view'
     ) {
       // declarations with no runtime value in this fragment; skip silently (they carry no HVM definition)
     } else {

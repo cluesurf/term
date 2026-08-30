@@ -2214,7 +2214,7 @@ export function emitRust(
       }
 
       case 'bind':
-      case 'zone':
+      case 'view':
       case 'dock':
       case 'tell':
       case 'roll':

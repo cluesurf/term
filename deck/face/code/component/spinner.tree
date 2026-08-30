@@ -1,15 +1,15 @@
 
 # Spinner — headless. A loading indicator (theme the animation in CSS). role=status for a11y.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone spinner
+view spinner
   take host, like view
   take class
-  zone span
+  view span
     bind data-slot, text <spinner>
     bind role, text <status>
     bind aria-label, text <Loading>

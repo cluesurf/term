@@ -93,7 +93,7 @@ export function dispatch(
   const args: Record<string, ArgValue> = {}
   const positionals: string[] = []
 
-  // a variadic command (`zone call npm run dev`) carries a child command
+  // a variadic command (`view call npm run dev`) carries a child command
   // line in its trailing take. Once the child's argv begins, its own
   // flags (`node -e`, `npm --version`) must NOT be read as this
   // command's flags. So for a variadic route, flag parsing stops at the
@@ -159,7 +159,7 @@ export function dispatch(
 
   // bind positionals to the command's declared takes, in order. A take
   // already filled by a flag does NOT consume a positional: otherwise
-  // `zone call --tier dev node script.js` would spend `node` on the
+  // `view call --tier dev node script.js` would spend `node` on the
   // (already-set) tier slot and mis-bind the command name. The cursor
   // only advances when a positional is actually taken.
   let posCursor = 0
@@ -323,7 +323,7 @@ export type RunInput = {
  * `process.argv`; tests feed it a fake argv and a fake resolver.
  *
  * Exit codes: the task's own number result passes through unchanged
- * (so `zone call npm test` fails a build exactly as `npm test` would),
+ * (so `view call npm test` fails a build exactly as `npm test` would),
  * a non-number result is 0, and a usage error is 2 without ever
  * reaching the task.
  */
@@ -333,7 +333,7 @@ export type RunInput = {
  * A console compiled from `deck.tree` knows its package name, which is right
  * when it is run directly and wrong when it is run as a subcommand of
  * something else. `term zone` sets this so the help says `term zone read`
- * rather than `zone read`, and a person can paste what they are shown.
+ * rather than `view read`, and a person can paste what they are shown.
  */
 function shownName(name: string): string {
   return process.env.TERM_LINE_NAME || name
@@ -346,7 +346,7 @@ export async function runCommandLine(input: RunInput): Promise<number> {
   const err = input.err ?? ((line: string) => console.error(line))
 
   // strip help flags anywhere in the line, remembering that help was
-  // asked for. `zone code save --help` renders the save command's help.
+  // asked for. `view code save --help` renders the save command's help.
   const wantHelp = argv.some(a => a === '--help' || a === '-h')
   const bare = argv.filter(a => a !== '--help' && a !== '-h')
 
@@ -398,7 +398,7 @@ export async function runCommandLine(input: RunInput): Promise<number> {
     return 2
   }
 
-  // a group command with no bound task (like `zone code`) lists its
+  // a group command with no bound task (like `view code`) lists its
   // subcommands instead of failing opaquely
   if (!hit.task) {
     if (hit.route.children.length > 0) {

@@ -5,7 +5,7 @@
 # the Zag-model behavior core for editing: pure logic, no styling, reused everywhere. See note/seed/face-interaction-
 # system.md.
 
-load @term/site/code/zone/reactive
+load @term/site/code/view/reactive
   find signal
   find make-signal
   find read-signal

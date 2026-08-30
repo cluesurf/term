@@ -28,7 +28,7 @@
 # Other parts (unchanged, all pure CSS keyed off data-attrs): balanced (text-wrap: balance), truncated (line-clamp to
 # data-lines), fitted (scale text to fill its box; the measurement loop is a noted dom-primitive follow-up).
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -40,7 +40,7 @@ load ../logic/text-visibility
 # props ride as data attributes the theme maps to the exact CSS values (see lookClasses); `style` is the React inline-
 # style passthrough; `direction` is the `dir` attribute. Named `text-span` (not `text`) so it never shadows the render
 # runtime's `text` primitive (create-text); the per-tag variants below follow the same `text-<tag>` scheme.
-zone text-span
+view text-span
   take host, like view
   take class
   take font
@@ -51,7 +51,7 @@ zone text-span
   take direction
   take style
   take opacity
-  zone span
+  view span
     name text-node
     bind data-slot, text <text>
     bind data-font, read font
@@ -71,7 +71,7 @@ zone text-span
 
 # heading-tag variants — React `<TypeText tag="h1">` etc. Same typography contract, different rendered element. The
 # renderer needs a literal tag name, so each tag is its own zone (callers pick the one matching the React `tag` prop).
-zone text-h1
+view text-h1
   take host, like view
   take class
   take font
@@ -82,7 +82,7 @@ zone text-h1
   take direction
   take style
   take opacity
-  zone h1
+  view h1
     name text-node
     bind data-slot, text <text>
     bind data-font, read font
@@ -100,7 +100,7 @@ zone text-h1
         bind opacity, read opacity
     slot
 
-zone text-h2
+view text-h2
   take host, like view
   take class
   take font
@@ -111,7 +111,7 @@ zone text-h2
   take direction
   take style
   take opacity
-  zone h2
+  view h2
     name text-node
     bind data-slot, text <text>
     bind data-font, read font
@@ -129,7 +129,7 @@ zone text-h2
         bind opacity, read opacity
     slot
 
-zone text-h3
+view text-h3
   take host, like view
   take class
   take font
@@ -140,7 +140,7 @@ zone text-h3
   take direction
   take style
   take opacity
-  zone h3
+  view h3
     name text-node
     bind data-slot, text <text>
     bind data-font, read font
@@ -158,7 +158,7 @@ zone text-h3
         bind opacity, read opacity
     slot
 
-zone text-p
+view text-p
   take host, like view
   take class
   take font
@@ -169,7 +169,7 @@ zone text-p
   take direction
   take style
   take opacity
-  zone p
+  view p
     name text-node
     bind data-slot, text <text>
     bind data-font, read font
@@ -189,7 +189,7 @@ zone text-p
 
 # anchor-tag variant — React `<TypeText tag="a" href=...>`. Adds the href / target / rel passthroughs from the React
 # prop surface alongside the typography contract.
-zone text-a
+view text-a
   take host, like view
   take class
   take font
@@ -203,7 +203,7 @@ zone text-a
   take href
   take target
   take rel
-  zone a
+  view a
     name text-node
     bind data-slot, text <text>
     bind data-font, read font
@@ -225,20 +225,20 @@ zone text-a
     slot
 
 # balanced wrapping — the theme applies `text-wrap: balance` on [data-slot=balanced]. Pure CSS, fully headless.
-zone balanced
+view balanced
   take host, like view
   take class
-  zone span
+  view span
     bind data-slot, text <balanced>
     bind class, read class
     slot
 
 # truncate to `lines` lines with an ellipsis — the theme applies line-clamp keyed off data-lines. Pure CSS.
-zone truncated
+view truncated
   take host, like view
   take class
   take lines
-  zone span
+  view span
     bind data-slot, text <truncated>
     bind data-lines, read lines
     bind class, read class
@@ -246,10 +246,10 @@ zone truncated
 
 # fit the text to fill its container (the font size scales to the box). The measurement + resize loop is a dom
 # primitive (ResizeObserver + a binary-search on font size), the remaining piece; this is the themeable shell.
-zone fitted
+view fitted
   take host, like view
   take class
-  zone span
+  view span
     bind data-slot, text <fitted>
     bind class, read class
     slot

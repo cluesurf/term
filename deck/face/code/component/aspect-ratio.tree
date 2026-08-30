@@ -2,16 +2,16 @@
 # Aspect ratio — headless, ported from shadcn (aspect-ratio.tsx). A box that holds a fixed width/height ratio. The
 # ratio is applied via CSS (theme sets aspect-ratio from a style/class); this provides the slot + styling hook.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone aspect-ratio
+view aspect-ratio
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <aspect-ratio>
     bind class, read class
     slot

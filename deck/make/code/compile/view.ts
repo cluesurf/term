@@ -10,7 +10,7 @@
 // is what keeps the grammar true while the mill executor is being built. When that executor lands this file is
 // deleted and the gate becomes a differential. Same shape the `host` dialect used, for the same reason.
 //
-// The body reuses the component AST rather than restating it, so a document lowers through zone-lower.ts and
+// The body reuses the component AST rather than restating it, so a document lowers through view-lower.ts and
 // every backend emits it as an ordinary function. What this reader will NOT build is as much the point as what
 // it will: no computed local, no attribute or event handler, no unbounded loop. See note/term/view/.
 
@@ -32,7 +32,7 @@ import type {
   Expression,
   Program,
   Statement,
-  ZoneNode as CompilerZoneNode,
+  ViewNode as CompilerZoneNode,
 } from '@term/make/code/compile/node'
 import type { ViewCatalog } from '@term/make/code/compile/view-catalog'
 import type { ViewCaps } from '@term/make/code/compile/view-cap'
@@ -61,7 +61,7 @@ export type Seed =
 export type SeedCall = { name: string; bind: Bind[]; slot: Seed[] }
 
 export type ViewNode =
-  | { form: 'zone'; value: ViewUse; span: Span }
+  | { form: 'view'; value: ViewUse; span: Span }
   | { form: 'text'; value: string; span: Span }
   | { form: 'walk'; value: ViewWalk; span: Span }
   | { form: 'fork'; value: ViewFork; span: Span }
@@ -640,7 +640,7 @@ export function readView(
           }
         }
 
-        return { form: 'zone', value: { name, bind, node }, span }
+        return { form: 'view', value: { name, bind, node }, span }
       }
       case 'text': {
         const value = textOf(group)
@@ -1070,7 +1070,7 @@ export function readView(
       nodeSum++
 
       switch (node.form) {
-        case 'zone':
+        case 'view':
           for (const bind of node.value.bind) {
             seedDepth(bind.bond, 1)
           }
@@ -1242,7 +1242,7 @@ export function readView(
     const seenNodes = (nodes: ViewNode[]): void => {
       for (const node of nodes) {
         switch (node.form) {
-          case 'zone':
+          case 'view':
             if (!catalog.view.has(node.value.name)) {
               error(
                 node.span,
@@ -1417,7 +1417,7 @@ export function readView(
   const checkBody = (nodes: ViewNode[], scope: Set<string>, view: string): void => {
     for (const node of nodes) {
       switch (node.form) {
-        case 'zone':
+        case 'view':
           for (const bind of node.value.bind) {
             checkBodySeed(bind.bond, scope, view)
           }
@@ -1462,7 +1462,7 @@ export function readView(
   const places = (nodes: ViewNode[], into: Set<string>): Set<string> => {
     for (const node of nodes) {
       switch (node.form) {
-        case 'zone':
+        case 'view':
           into.add(node.value.name)
           places(node.value.node, into)
           break
@@ -1833,7 +1833,7 @@ function spanOf(node: Node | RootNode): Span {
 
 
 // ---- lowering ----
-// A document becomes one `zone` Statement per `view`, and nothing downstream changes. `compile/zone-lower.ts`
+// A document becomes one `zone` Statement per `view`, and nothing downstream changes. `compile/view-lower.ts`
 // rewrites a zone into a plain function over the render runtime, so every backend emits it for free. That reuse
 // is the whole reason the dialect targets the zone AST rather than carrying one of its own.
 //
@@ -1864,7 +1864,7 @@ export function lowerView(file: ViewFile): Program {
 
   for (const def of file.view) {
     program.push({
-      form: 'zone',
+      form: 'view',
       name: def.name,
       params: [
         // the view to mount into, first, which is what every zone component takes and what `append` needs. A
@@ -1883,7 +1883,7 @@ export function lowerView(file: ViewFile): Program {
 
 function lowerNode(node: ViewNode, fold: Map<string, Seed>): CompilerZoneNode {
   switch (node.form) {
-    case 'zone':
+    case 'view':
       return {
         form: 'element',
         name: node.value.name,
@@ -2178,7 +2178,7 @@ function gather(
 ): void {
   for (const node of nodes) {
     switch (node.form) {
-      case 'zone':
+      case 'view':
         uses.add(node.value.name)
         gatherSeeds(node.value.bind.map(one => one.bond), calls, marks)
         gather(node.value.node, uses, calls, marks)

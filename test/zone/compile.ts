@@ -1,4 +1,4 @@
-// Zone codegen test: compile a counter zone to a reactive component, then run it on the runtime.
+// View codegen test: compile a counter zone to a reactive component, then run it on the runtime.
 // The generated module is written inside the project so the @/ alias resolves. Run: npx tsx test/zone/compile.ts
 
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { compileZone } from '@term/make/code/zone/compile'
 
-const SOURCE = `zone counter
+const SOURCE = `view counter
   state count, code 0
   hook click
     save count

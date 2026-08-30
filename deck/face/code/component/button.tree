@@ -5,19 +5,19 @@
 # `class` prop. The click handler is passed in via `press`. This is the Radix/Ark headless model, not shadcn's styled
 # one — the parts + state attributes are here; the look is entirely the consumer's.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone button
+view button
   take host, like view
   take class
   take variant
   take size
-  zone tag-button
+  view tag-button
     seed data-slot, text <button>
     seed data-variant, read variant
     seed data-size, read size

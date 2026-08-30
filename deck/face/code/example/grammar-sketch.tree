@@ -8,7 +8,7 @@
 #   rows    -> the paradigm's rows (list of { label, cells })
 #   words   -> an interlinear example (list of { form, gloss })
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
@@ -23,30 +23,30 @@ load ../component/paradigm
 load ../component/gloss
   find gloss
 
-zone grammar-sketch
+view grammar-sketch
   take host, like view
   take sounds
   take columns
   take rows
   take words
-  zone document
+  view document
     bind title, text <A Grammar Sketch>
-    zone section
+    view section
       bind data-slot, text <document-section>
-      zone h2
+      view h2
         text <Sounds>
-      zone phoneme-chart
+      view phoneme-chart
         bind sounds, read sounds
-    zone section
+    view section
       bind data-slot, text <document-section>
-      zone h2
+      view h2
         text <Noun inflection>
-      zone paradigm
+      view paradigm
         bind columns, read columns
         bind rows, read rows
-    zone section
+    view section
       bind data-slot, text <document-section>
-      zone h2
+      view h2
         text <Example>
-      zone gloss
+      view gloss
         bind words, read words

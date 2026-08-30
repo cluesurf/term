@@ -5,24 +5,24 @@
 #   src   -> the audio URL (an uploaded artifact)
 #   label -> the caption (e.g. the word being pronounced)
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone sound
+view sound
   take host, like view
   take src
   take label
-  zone figure
+  view figure
     bind data-slot, text <sound>
-    zone audio
+    view audio
       bind data-slot, text <sound-audio>
       bind controls, text <true>
       bind src, read src
-    zone figcaption
+    view figcaption
       bind data-slot, text <sound-label>
       read
         read label

@@ -16,10 +16,10 @@ load @term/mill/code/code/note/mine
 
 mine zone
   mine list
-    mine form, like zone-def
+    mine form, like view-def
       site zone
 
-mine zone-def
+mine view-def
   mine term, term zone
     mine term
       site name
@@ -36,7 +36,7 @@ mine zone-def
       mine form, like tune
         site tune
     mine list
-      mine form, like zone-def
+      mine form, like view-def
         site zone
     mine maybe
       mine form, like note

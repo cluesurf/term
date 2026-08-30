@@ -1,12 +1,20 @@
-# The byte cursor and writer every binary dialect's code.tree reads and writes against. A dialect whose input already
-# arrives as `text` (JSON, CSS, ANSI) reads it directly with the stdlib's own `char-at` / `char-code-at`, no cursor
-# needed — this is for the dialects whose input is raw bytes. See note/term/feed/02-cursor.md.
+# The byte cursor, text cursor, and writer every dialect's code.tree reads and writes against — streaming-capable
+# throughout, so a dialect that reads strictly forward can parse a file far larger than memory a chunk at a time
+# instead of requiring the whole input materialized first. See note/term/feed/08-streaming.md. A dialect that
+# genuinely needs random access (OTF's offset tables) uses a materialized cursor exactly as before; `seek` halts
+# outright if called against a streaming one, rather than silently producing a wrong answer.
+
+load @term/seed/code/boolean
+  find and
+  find not
 
 load @term/seed/code/list
   find push
   find get
   find set
   find size
+  find concat
+  find drop-first
 
 load @term/seed/code/bit
   find bitwise-and
@@ -15,6 +23,12 @@ load @term/seed/code/float
   find round-down
   find to-decimal
   find to-number
+
+load @term/seed/code/text
+  find char-count
+  find char-at
+  find char-code-at
+  find substring
 
 # a byte order for a multi-byte integer field
 form byte-order
@@ -26,40 +40,63 @@ form integer-sign
   case signed
   case unsigned
 
-# a position into a byte buffer. Every read advances `position`. Passed by reference: every task below mutates the
-# cursor it is given rather than returning a new one, the same way `@term/host`'s `feed` mutates its `stream-reader`.
+# a position into a byte buffer, and (when `pull` is `some`) the streaming source that buffer is a bounded
+# window onto. Every read advances `position`. Passed by reference: every task below mutates the cursor it is
+# given rather than returning a new one, the same way `@term/host`'s `feed` mutates its `stream-reader`.
 #
-# `position` is a one-element list, not a plain `like number` field, on purpose — not for any reason internal to
-# this package. Confirmed by a minimal, reproducible probe (not guessed): a `form` field mutated by one task and
-# read by another, across separate calls against the same instance, silently loses the mutation on the Rust and
-# Swift backends (`note/term/feed/02-cursor.md`, `feedback_term_rust_swift_struct_field_mutation_bug` in memory —
-# the same bug also confirmed to affect `@term/host`'s own `stream-reader`, never caught because its native test
-# suite never exercises `stream.tree`). A `like list` field does not have this problem: `array` gets unconditional
-# `Rc<RefCell<...>>` reference semantics in the Rust backend's own type representation, confirmed by an identical
-# probe against a one-element list. Fixing the actual bug means changing how the Rust and Swift backends represent
-# every mutated `form`, which is compiler work with an ecosystem-wide blast radius, not scoped to this package —
-# out of scope here. This is the workaround: every `position` read goes through `get(position, 0)`, every write
-# through `set(position, 0, value)`, so the mutation rides on a type that already works correctly everywhere.
+# `position` and `bytes` are one-element lists, not plain `like number` / `like list, like u8` fields, on
+# purpose — not for any reason internal to this package. Confirmed by a minimal, reproducible probe (not
+# guessed): a `form` field mutated by one task and read by another, across separate calls against the same
+# instance, silently loses the mutation on the Rust and Swift backends (`note/term/feed/02-cursor.md`,
+# `feedback_term_rust_swift_struct_field_mutation_bug` in memory — the same bug also confirmed to affect
+# `@term/host`'s own `stream-reader`, never caught because its native test suite never exercises `stream.tree`).
+# A `like list` field does not have this problem: `array` gets unconditional `Rc<RefCell<...>>` reference
+# semantics in the Rust backend's own type representation, confirmed by an identical probe against a one-element
+# list. Fixing the actual bug means changing how the Rust and Swift backends represent every mutated `form`,
+# which is compiler work with an ecosystem-wide blast radius, not scoped to this package — out of scope here.
+# This is the workaround: every `position`/`bytes` read goes through `get(cell, 0)`, every write through
+# `set(cell, 0, value)`, so the mutation rides on a type that already works correctly everywhere. `bytes` needs
+# the same cell wrapping `position` does specifically because streaming mode periodically REPLACES it with a
+# shorter list (`feed-cursor-compact`, below) — a plain field couldn't carry that reassignment across calls
+# either, for the identical reason.
+#
+# `pull` is `none` for a cursor built from an already-materialized buffer (`make-cursor`) and `some` for one
+# built from a streaming source (`make-streaming-cursor`) — a zero-argument task that hands back `some(chunk)`
+# for more bytes or `none` at end of input, the same shape `catch`'s `take work, like task` already uses
+# elsewhere in the stdlib (`@term/seed/code/error.tree`). The cursor knows nothing about WHERE those bytes come
+# from — a real file, a socket, an in-memory list of pre-split chunks for testing — that's `./source.tree`'s
+# concern, layered on top. See note/term/feed/08-streaming.md.
 form feed-cursor
   link bytes
     like list
-      like u8
+      like list
+        like u8
   link position
     like list
       like number
+  link pull
+    like maybe
+      like task
+        like maybe
+          like list
+            like u8
+  link exhausted
+    like list
+      like boolean
 
-task make-cursor
-  take bytes
+task cursor-bytes
+  take cursor, like feed-cursor
+  like list
+    like u8
+  send back
+    call get(read cursor/bytes, code 0)
+
+task set-cursor-bytes
+  take cursor, like feed-cursor
+  take value
     like list
       like u8
-  like feed-cursor
-  save position
-    make list
-  call push(read position, code 0)
-  send back
-    make feed-cursor
-      bind bytes, read bytes
-      bind position, read position
+  call set(read cursor/bytes, code 0, read value)
 
 task cursor-position
   take cursor, like feed-cursor
@@ -72,12 +109,114 @@ task set-cursor-position
   take value, like number
   call set(read cursor/position, code 0, read value)
 
+task make-cursor
+  take bytes
+    like list
+      like u8
+  like feed-cursor
+  save position
+    make list
+  call push(read position, code 0)
+  save bytes-cell
+    make list
+  call push(read bytes-cell, read bytes)
+  save exhausted
+    make list
+  call push(read exhausted, true)
+  send back
+    make feed-cursor
+      bind bytes, read bytes-cell
+      bind position, read position
+      bind pull, make none
+      bind exhausted, read exhausted
+
+# a cursor over a streaming source instead of an already-materialized buffer: memory stays bounded to the
+# current window (compacted every `feed-cursor-compact-threshold` bytes, below) rather than the whole input, so
+# a gigabyte-scale file never needs a gigabyte-scale list in memory at once. Only dialects that read strictly
+# forward, never seeking backward past what they've already consumed, can use one — `seek` halts if called
+# against a streaming cursor (below). `./source.tree` is where a real file becomes a `pull` task.
+task make-streaming-cursor
+  take pull
+    like task
+      like maybe
+        like list
+          like u8
+  like feed-cursor
+  save position
+    make list
+  call push(read position, code 0)
+  save bytes-cell
+    make list
+  call push(read bytes-cell, make list)
+  save exhausted
+    make list
+  call push(read exhausted, false)
+  send back
+    make feed-cursor
+      bind bytes, read bytes-cell
+      bind position, read position
+      bind pull
+        make some
+          bind value, read pull
+      bind exhausted, read exhausted
+
+# a streaming cursor's window is compacted (its consumed prefix dropped) once it exceeds this many bytes, so the
+# buffer never grows past roughly one chunk's worth of already-read data plus one fresh pull. 64 KiB: large
+# enough that compaction (an O(remaining) list copy) is rare relative to the byte-at-a-time reads between
+# compactions, small enough that peak memory for the buffer itself stays a rounding error next to a real file.
+host feed-cursor-compact-threshold, code 65536
+
+task feed-cursor-compact
+  take cursor, like feed-cursor
+  save pos
+    call cursor-position(read cursor)
+  fork test
+    hook test
+      call is-above(read pos, read feed-cursor-compact-threshold)
+    hook hold
+      call set-cursor-bytes
+        read cursor
+        call drop-first(call cursor-bytes(read cursor), read pos)
+      call set-cursor-position(read cursor, code 0)
+
+# pulls and appends chunks from the cursor's source until the current position has at least one more byte
+# available, or the source is exhausted. A no-op for a materialized cursor (`pull` is `none`) or a streaming one
+# whose source already signaled end of input — the common case once a parse is under way, so this is one `fork
+# case` and one comparison per call, not per byte.
+task feed-cursor-ensure-available
+  take cursor, like feed-cursor
+  fork case, read cursor/pull
+    case none
+      send back
+    case some
+      link value
+      walk test
+        hook test
+          call and
+            call is-minimum
+              call cursor-position(read cursor)
+              call size(call cursor-bytes(read cursor))
+            call not, call get(read cursor/exhausted, code 0)
+        hook hold
+          save chunk
+            call value
+          fork case, read chunk
+            case none
+              call set(read cursor/exhausted, code 0, true)
+            case some
+              link value
+              call set-cursor-bytes
+                read cursor
+                call concat(call cursor-bytes(read cursor), read value)
+              call feed-cursor-compact(read cursor)
+
 task remaining
   take cursor, like feed-cursor
   like number
+  call feed-cursor-ensure-available(read cursor)
   send back
     call subtract
-      call size(read cursor/bytes)
+      call size(call cursor-bytes(read cursor))
       call cursor-position(read cursor)
 
 task at-end
@@ -91,8 +230,9 @@ task at-end
 task peek-byte
   take cursor, like feed-cursor
   like u8
+  call feed-cursor-ensure-available(read cursor)
   send back
-    call get(read cursor/bytes, call cursor-position(read cursor))
+    call get(call cursor-bytes(read cursor), call cursor-position(read cursor))
 
 task read-byte
   take cursor, like feed-cursor
@@ -113,12 +253,20 @@ task skip
 
 # reposition the cursor to `base + offset` (an OTF/ELF-style table-relative offset; `base` defaults to 0, an
 # absolute offset from the buffer's own start), giving back the position it was at, so a caller restores it after
-# an offset-relative read (`mine at`) with `seek(cursor, prior-position)`
+# an offset-relative read (`mine at`) with `seek(cursor, prior-position)`. Refuses a streaming cursor outright —
+# `feed-cursor-compact` has already thrown away bytes before the current window, and there is no way to seek
+# forward past what a source has produced yet either without turning "read forward" into "buffer everything,"
+# which defeats streaming's entire point. A format that needs this (OTF's offset tables) is a format that
+# cannot stream; see note/term/feed/08-streaming.md.
 task seek
   take cursor, like feed-cursor
   take offset, like number
   take base, like number, fall 0
   like number
+  fork case, read cursor/pull
+    case some
+      halt <cannot seek a streaming cursor: this format needs random access, which cannot stream>
+    case none
   save prior
     call cursor-position(read cursor)
   call set-cursor-position(read cursor, call add(read base, read offset))
@@ -236,6 +384,206 @@ task read-int
           save index
             call add(read index, code 1)
   send back, read magnitude
+
+# a position into a text buffer, streaming-capable the same way `feed-cursor` is above — `json`'s and PDF's own
+# object-model reader both used to define their own copy of this exact shape (`text-cursor` in json/code.tree,
+# `pdf-cursor` in pdf/1.7/object/code.tree); this is that hoist, done once a second text dialect actually needed
+# it, per the comment that used to sit at the top of json/code.tree.
+#
+# `length` cannot be a fixed field cached once at construction the way the pre-streaming version was: a
+# streaming cursor doesn't know the total length up front, that's the whole point. Instead it's a cell tracking
+# the CURRENT buffer's length, updated incrementally as chunks arrive (each chunk's own `char-count` added to the
+# running total) rather than recomputed from the whole accumulated buffer on every check — recomputing per
+# refill would reintroduce the exact O(n²) `text-cursor-at-end` regression `02-cursor.md` already documents and
+# fixed once, just via a different path (per-refill instead of per-character).
+#
+# Compaction slices with `substring`, not `text/string.tree`'s `slice`: `char-at`/`char-code-at`/`substring` (all
+# three, `text.tree`) share the native UTF-16-code-unit index space, while `char-count` counts Unicode SCALAR
+# values (`Array.from`-based) — a pre-existing mismatch in the stdlib for any text with astral characters
+# (surrogate pairs), not introduced here. Using `substring` keeps compaction in the same index space `position`
+# already advances through via `text-cursor-read`, so it does not make that pre-existing mismatch any worse; it
+# would take a stdlib-wide fix (`text.tree` itself) to actually close it, out of scope for this package.
+form text-cursor
+  link text
+    like list
+      like text
+  link position
+    like list
+      like number
+  link length
+    like list
+      like number
+  link pull
+    like maybe
+      like task
+        like maybe
+          like text
+  link exhausted
+    like list
+      like boolean
+
+task cursor-text
+  take cursor, like text-cursor
+  like text
+  send back
+    call get(read cursor/text, code 0)
+
+task set-cursor-text
+  take cursor, like text-cursor
+  take value, like text
+  call set(read cursor/text, code 0, read value)
+
+task text-cursor-position
+  take cursor, like text-cursor
+  like number
+  send back
+    call get(read cursor/position, code 0)
+
+task set-text-cursor-position
+  take cursor, like text-cursor
+  take value, like number
+  call set(read cursor/position, code 0, read value)
+
+task text-cursor-length
+  take cursor, like text-cursor
+  like number
+  send back
+    call get(read cursor/length, code 0)
+
+task make-text-cursor
+  take value, like text
+  like text-cursor
+  save position
+    make list
+  call push(read position, code 0)
+  save text-cell
+    make list
+  call push(read text-cell, read value)
+  save length
+    make list
+  call push(read length, call char-count(read value))
+  save exhausted
+    make list
+  call push(read exhausted, true)
+  send back
+    make text-cursor
+      bind text, read text-cell
+      bind position, read position
+      bind length, read length
+      bind pull, make none
+      bind exhausted, read exhausted
+
+# a text cursor over a streaming source instead of an already-materialized string, the same shape
+# `make-streaming-cursor` is for bytes. `pull` hands back `some(chunk)` for more text or `none` at end of input —
+# it is a TEXT chunk, not raw undecoded bytes, so a multi-byte UTF-8 sequence split across a chunk boundary is
+# the source's problem to avoid (a real decoding text-stream reader never splits mid-character), not this
+# cursor's: pushing that concern to the source is what keeps this cursor's own logic identical to the
+# materialized case everywhere except where it refills.
+task make-streaming-text-cursor
+  take pull
+    like task
+      like maybe
+        like text
+  like text-cursor
+  save position
+    make list
+  call push(read position, code 0)
+  save text-cell
+    make list
+  call push(read text-cell, text <>)
+  save length
+    make list
+  call push(read length, code 0)
+  save exhausted
+    make list
+  call push(read exhausted, false)
+  send back
+    make text-cursor
+      bind text, read text-cell
+      bind position, read position
+      bind length, read length
+      bind pull
+        make some
+          bind value, read pull
+      bind exhausted, read exhausted
+
+host text-cursor-compact-threshold, code 65536
+
+task text-cursor-compact
+  take cursor, like text-cursor
+  save pos
+    call text-cursor-position(read cursor)
+  fork test
+    hook test
+      call is-above(read pos, read text-cursor-compact-threshold)
+    hook hold
+      call set-cursor-text
+        read cursor
+        call substring(call cursor-text(read cursor), read pos)
+      call set-text-cursor-position(read cursor, code 0)
+      call set(read cursor/length, code 0, call subtract(call text-cursor-length(read cursor), read pos))
+
+task text-cursor-ensure-available
+  take cursor, like text-cursor
+  fork case, read cursor/pull
+    case none
+      send back
+    case some
+      link value
+      walk test
+        hook test
+          call and
+            call is-minimum
+              call text-cursor-position(read cursor)
+              call text-cursor-length(read cursor)
+            call not, call get(read cursor/exhausted, code 0)
+        hook hold
+          save chunk
+            call value
+          fork case, read chunk
+            case none
+              call set(read cursor/exhausted, code 0, true)
+            case some
+              link value
+              call set-cursor-text
+                read cursor
+                call concat(call cursor-text(read cursor), read value)
+              call set
+                read cursor/length
+                code 0
+                call add(call text-cursor-length(read cursor), call char-count(read value))
+              call text-cursor-compact(read cursor)
+
+task text-cursor-at-end
+  take cursor, like text-cursor
+  like boolean
+  call text-cursor-ensure-available(read cursor)
+  send back
+    call is-equal
+      call text-cursor-position(read cursor)
+      call text-cursor-length(read cursor)
+
+task text-cursor-peek
+  take cursor, like text-cursor
+  like text
+  call text-cursor-ensure-available(read cursor)
+  send back
+    call char-at(call cursor-text(read cursor), call text-cursor-position(read cursor))
+
+task text-cursor-peek-code
+  take cursor, like text-cursor
+  like number
+  call text-cursor-ensure-available(read cursor)
+  send back
+    call char-code-at(call cursor-text(read cursor), call text-cursor-position(read cursor))
+
+task text-cursor-read
+  take cursor, like text-cursor
+  like text
+  save value
+    call text-cursor-peek(read cursor)
+  call set-text-cursor-position(read cursor, call add(call text-cursor-position(read cursor), code 1))
+  send back, read value
 
 # an accumulating byte buffer. `to-bytes` hands back the finished list; every `write-*` appends to it in place.
 form feed-writer

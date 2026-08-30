@@ -5,7 +5,7 @@
 # currently trips a generic-signal inference limit; passing the value controller through the consumer sidesteps it).
 # Parts: select, select-trigger, select-value, select-content, select-item, select-group, select-label.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -15,19 +15,19 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone select
+view select
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <select>
     bind class, read class
     slot
 
-zone select-trigger
+view select-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <select-trigger>
     bind role, text <combobox>
@@ -43,15 +43,15 @@ zone select-trigger
     bind class, read class
     slot
 
-zone select-value
+view select-value
   take host, like view
   take class
-  zone span
+  view span
     bind data-slot, text <select-value>
     bind class, read class
     slot
 
-zone select-content
+view select-content
   take host, like view
   take class
   take control
@@ -60,7 +60,7 @@ zone select-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <select-content>
         bind role, text <listbox>
         bind data-state
@@ -69,11 +69,11 @@ zone select-content
         bind class, read class
         slot
 
-zone select-item
+view select-item
   take host, like view
   take class
   take press
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <select-item>
     bind role, text <option>
@@ -81,19 +81,19 @@ zone select-item
     bind class, read class
     slot
 
-zone select-group
+view select-group
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <select-group>
     bind role, text <group>
     bind class, read class
     slot
 
-zone select-label
+view select-label
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <select-label>
     bind class, read class
     slot

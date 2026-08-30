@@ -8,7 +8,7 @@ load @term/site/code/dom/dom
   find get-value
   find set-value
 
-load @term/site/code/zone/reactive
+load @term/site/code/view/reactive
   find signal
   find make-signal
   find read-signal
@@ -50,7 +50,7 @@ task add-post
     read body-field
     text <>
 
-zone blog
+view blog
   take host, like view
 
   # the growing list of posts, held in a signal so the list re-renders on change
@@ -58,27 +58,27 @@ zone blog
     call make-signal
       make list
 
-  zone div
-    zone input
+  view div
+    view input
       name title-input
-    zone textarea
+    view textarea
       name body-input
-    zone button
+    view button
       seed click
         call add-post
           read title-input
           read body-input
           read posts
       text <Add post>
-    zone div
+    view div
       name post-list
       walk list, call read-signal(read posts)
         hook next
           take site, name item
-          zone div
-            zone h2
+          view div
+            view h2
               read
                 read item/title
-            zone p
+            view p
               read
                 read item/body

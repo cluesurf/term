@@ -26,8 +26,8 @@ import type {
   Proof,
   Statement,
   Type,
-  ZoneAttribute,
-  ZoneNode,
+  ViewAttribute,
+  ViewNode,
 } from '@term/make/code/compile/node'
 import {
   BOOLEAN,
@@ -108,7 +108,7 @@ const HOST_ANNOTATION = new Set([
 // so a path is built from the parts here instead of from the flattened string. Returns undefined when the name holds
 // no interpolation, so the caller uses the plain string path.
 // the declaration keywords a `find` may name before the found name: `find form file`
-const FIND_KINDS = new Set(['tree', 'form', 'host', 'task', 'mask', 'bind', 'rule', 'mill', 'mine', 'mint', 'zone', 'role', 'test'])
+const FIND_KINDS = new Set(['tree', 'form', 'host', 'task', 'mask', 'bind', 'rule', 'mill', 'mine', 'mint', 'view', 'role', 'test'])
 
 function dynamicPathExpression(
   node: Node | undefined,
@@ -4325,8 +4325,8 @@ export function mill(tree: RootNode, file: string): MillResult {
   function buildZoneNodes(
     nodes: Node[],
     scope: Set<string>,
-  ): ZoneNode[] {
-    const out: ZoneNode[] = []
+  ): ViewNode[] {
+    const out: ViewNode[] = []
 
     for (const node of nodes) {
       if (node.kind === 'text') {
@@ -4347,11 +4347,11 @@ export function mill(tree: RootNode, file: string): MillResult {
       const span = spanOf(node)
 
       switch (headName(node)) {
-        // `node <tag>` is `zone <tag>` that forces an html element even when `<tag>` is also a component name (the
+        // `node <tag>` is `view <tag>` that forces an html element even when `<tag>` is also a component name (the
         // escape hatch for rendering a real `<select>` inside a same-named component, e.g. native-select).
         case 'node':
 
-        case 'zone': {
+        case 'view': {
           const forced = headName(node) === 'node'
           const nameGroup = rest(node)[0]
           const elName =
@@ -4363,7 +4363,7 @@ export function mill(tree: RootNode, file: string): MillResult {
             break
           }
 
-          const attributes: ZoneAttribute[] = []
+          const attributes: ViewAttribute[] = []
           const props: { name: string; value: Expression }[] = []
           const children: Node[] = []
 
@@ -4667,7 +4667,7 @@ export function mill(tree: RootNode, file: string): MillResult {
       )
 
     return {
-      form: 'zone',
+      form: 'view',
       name,
       params,
       body: buildZoneNodes(bodyNodes, scope),
@@ -4714,7 +4714,7 @@ export function mill(tree: RootNode, file: string): MillResult {
 
     const zoneChild = rest(group).find(
       (n): n is GroupNode =>
-        n.kind === 'group' && headName(n) === 'zone',
+        n.kind === 'group' && headName(n) === 'view',
     )
 
     if (zoneChild) {
@@ -4897,7 +4897,7 @@ export function mill(tree: RootNode, file: string): MillResult {
   for (const group of tree.nodes) {
     const keyword = headName(group)
 
-    if (keyword === 'zone') {
+    if (keyword === 'view') {
       const zone = buildZone(group)
 
       if (zone) {
@@ -5000,7 +5000,7 @@ export function mill(tree: RootNode, file: string): MillResult {
       const isRoute = rest(group).some(
         n =>
           n.kind === 'group' &&
-          (headName(n) === 'zone' ||
+          (headName(n) === 'view' ||
             // a resource route: `hook </vibe.pdf> / seed proxy, text <url>` has no zone; the server streams the asset
             (headName(n) === 'seed' &&
               rest(n)[0]?.kind === 'group' &&

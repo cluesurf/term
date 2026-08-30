@@ -99,7 +99,7 @@ const asProgram = new IncrementalAnalyzer(undefined, () => null)
 const good = await asDoc.analyze({ file: 'page.tree', text: DOCUMENT })
 
 ok('the server path reads a document', good.diagnostics.length === 0, JSON.stringify(good.diagnostics.map(d => d.message)))
-ok('and hands back its lowered program', good.program?.length === 1 && good.program[0]?.form === 'zone')
+ok('and hands back its lowered program', good.program?.length === 1 && good.program[0]?.form === 'view')
 
 const wrong = await asProgram.analyze({ file: 'page.tree', text: DOCUMENT })
 
@@ -108,7 +108,7 @@ const wrong = await asProgram.analyze({ file: 'page.tree', text: DOCUMENT })
 // and hands back a program that is not a component. That silence is exactly why the role has to reach here.
 ok(
   'the same text without the role is not read as a document',
-  !(wrong.program?.length === 1 && wrong.program[0]?.form === 'zone'),
+  !(wrong.program?.length === 1 && wrong.program[0]?.form === 'view'),
   JSON.stringify(wrong.program?.map(one => one.form)),
 )
 

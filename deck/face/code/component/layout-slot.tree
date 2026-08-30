@@ -9,12 +9,12 @@
 # generic `set-slot` writes any region; one generic `region` outlet renders any region -- both parameterized by the
 # region signal, so there is no per-region boilerplate beyond the signals themselves.
 
-load @term/site/code/zone/reactive
+load @term/site/code/view/reactive
   find signal
   find make-signal
   find read-signal
   find write-signal
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find dynamic-view
 load @term/site/code/dom/dom
@@ -72,7 +72,7 @@ task clear-slot
 # the `<Region>` outlet: render a region's registered component into `host`, reactively. `dynamic-view` re-runs
 # `source` whenever the slot signal changes: it reads the slot (subscribing), builds the current component into a fresh
 # fragment, and returns it, so registering / clearing / overriding a region swaps its rendered view with no wiring.
-zone region
+view region
   take host, like view
   take slot, like signal
   call dynamic-view

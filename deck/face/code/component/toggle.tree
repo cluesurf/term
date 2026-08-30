@@ -1,7 +1,7 @@
 
 # Toggle — headless, behavior-complete. A two-state pressable button backed by disclosure (pressed = open). aria-pressed
 # + data-state reactive; click toggles. Consumer passes a `control`.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -11,11 +11,11 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone toggle
+view toggle
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <toggle>
     bind aria-pressed

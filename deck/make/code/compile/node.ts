@@ -429,10 +429,10 @@ export type Statement =
     }
   // a component (view) definition, lowered from the `zone` DSL (book/site navigation, state, forms)
   | {
-      form: 'zone'
+      form: 'view'
       name: string
       params: { name: string; type?: Type }[]
-      body: ZoneNode[]
+      body: ViewNode[]
       span: Span
     }
   // a routing / CLI dock, lowered from the `dock` DSL (book/site/routes, navigation; book/line/calls)
@@ -455,24 +455,24 @@ export type Statement =
 
 // ---- the zone (component / view) AST ----
 // an attribute or event binding on an element: `seed class, read theme` (attribute) or `seed click, call add` (event)
-export type ZoneAttribute = {
+export type ViewAttribute = {
   name: string
   value: Expression
   event: boolean
   span: Span
 }
-export type ZoneNode =
-  // `zone div` / `zone counter`: an html element or nested component. `props` are component inputs (`bind id, ...`).
+export type ViewNode =
+  // `view div` / `view counter`: an html element or nested component. `props` are component inputs (`bind id, ...`).
   | {
       form: 'element'
       name: string
-      attributes: ZoneAttribute[]
+      attributes: ViewAttribute[]
       props: { name: string; value: Expression }[]
-      children: ZoneNode[]
-      // an optional ref: `zone input / name title-field` binds the built element to `title-field`, a `view`-typed local
+      children: ViewNode[]
+      // an optional ref: `view input / name title-field` binds the built element to `title-field`, a `view`-typed local
       // the rest of the zone (e.g. an event handler) can read
       ref?: string
-      // `node <tag>` (vs `zone <tag>`) forces an html element even when `<tag>` is also a component name. The escape
+      // `node <tag>` (vs `view <tag>`) forces an html element even when `<tag>` is also a component name. The escape
       // hatch for rendering a real `<select>` / `<dialog>` / etc. inside a component of the same name (e.g. native-select).
       forced?: boolean
       span: Span
@@ -485,8 +485,8 @@ export type ZoneNode =
   // a conditional render: `fork test` with `hook test` / `hook hold` / `hook miss`
   | {
       form: 'fork'
-      branches: { cond: Expression; body: ZoneNode[] }[]
-      otherwise?: ZoneNode[]
+      branches: { cond: Expression; body: ViewNode[] }[]
+      otherwise?: ViewNode[]
       span: Span
     }
   // a list render: `walk list, read items` / `hook next` / `take site, name item`
@@ -494,7 +494,7 @@ export type ZoneNode =
       form: 'walk'
       iterable: Expression
       item: string
-      body: ZoneNode[]
+      body: ViewNode[]
       span: Span
     }
   // a computed local: `save total / call count, ...`
@@ -540,7 +540,7 @@ export type DockRoute = {
   takes: DockTake[]
   methods: DockMethod[]
   calls: DockCall[]
-  // a client route renders a component: `zone user-detail / bind id, read id`
+  // a client route renders a component: `view user-detail / bind id, read id`
   component?: { name: string; props: DockArgument[] }
   directives: { name: string; value?: Expression }[]
   sends: { name: string; value?: Expression }[]

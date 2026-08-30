@@ -1,4 +1,4 @@
-// Zone component codegen: compile a `zone` to a fine-grained reactive component on the runtime in reactive.ts.
+// View component codegen: compile a `zone` to a fine-grained reactive component on the runtime in reactive.ts.
 // State becomes signals, hook bodies become handlers that read with `()` and write with the setter. This is the
 // Solid-model structure (run-once setup, signals), emitted as clean TypeScript. See
 // note/research/vibe/computation/plans/15-components.md. Browser-safe (returns a string).
@@ -49,21 +49,21 @@ function toPascal(name: string): string {
   return c.charAt(0).toUpperCase() + c.slice(1)
 }
 
-export type ZoneResult =
+export type ViewResult =
   | { ok: true; typescript: string }
   | { ok: false; diagnostics: Diagnostic[] }
 
 export function compileZone(source: {
   file: string
   text: string
-}): ZoneResult {
+}): ViewResult {
   const parsed = parse(source)
 
   if (!parsed.ok) {
     return { ok: false, diagnostics: parsed.diagnostics }
   }
 
-  const zoneGroup = parsed.tree.nodes.find(g => head(g) === 'zone')
+  const zoneGroup = parsed.tree.nodes.find(g => head(g) === 'view')
 
   if (!zoneGroup) {
     return { ok: false, diagnostics: [] }

@@ -2,7 +2,7 @@
 # Sidebar — headless. A collapsible app sidebar. The collapse state is a shared disclosure controller (open = expanded);
 # the trigger toggles it. Parts: sidebar (root, reactive data-state expanded/collapsed), sidebar-trigger, sidebar-
 # header, sidebar-content, sidebar-footer, sidebar-group, sidebar-menu, sidebar-menu-item.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -12,11 +12,11 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone sidebar
+view sidebar
   take host, like view
   take class
   take control
-  zone div
+  view div
     bind data-slot, text <sidebar>
     bind data-state
       call disclosure-state
@@ -24,11 +24,11 @@ zone sidebar
     bind class, read class
     slot
 
-zone sidebar-trigger
+view sidebar-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <sidebar-trigger>
     bind aria-label, text <Toggle sidebar>
@@ -38,50 +38,50 @@ zone sidebar-trigger
     bind class, read class
     slot
 
-zone sidebar-header
+view sidebar-header
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <sidebar-header>
     bind class, read class
     slot
 
-zone sidebar-content
+view sidebar-content
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <sidebar-content>
     bind class, read class
     slot
 
-zone sidebar-footer
+view sidebar-footer
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <sidebar-footer>
     bind class, read class
     slot
 
-zone sidebar-group
+view sidebar-group
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <sidebar-group>
     bind class, read class
     slot
 
-zone sidebar-menu
+view sidebar-menu
   take host, like view
   take class
-  zone ul
+  view ul
     bind data-slot, text <sidebar-menu>
     bind class, read class
     slot
 
-zone sidebar-menu-item
+view sidebar-menu-item
   take host, like view
   take class
-  zone li
+  view li
     bind data-slot, text <sidebar-menu-item>
     bind class, read class
     slot

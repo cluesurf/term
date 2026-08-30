@@ -8,7 +8,7 @@
 # role=checkbox + reactive data-state (checked/unchecked) + aria-checked; click toggles. The indicator (check mark)
 # shows via CSS on [data-state=checked]. Parts: checkbox (root button) + checkbox-indicator.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -18,11 +18,11 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone checkbox
+view checkbox
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind role, text <checkbox>
     bind data-slot, text <checkbox>
@@ -36,7 +36,7 @@ zone checkbox
     hook click
       call toggle-disclosure
         bind self, read control
-    zone span
+    view span
       bind data-slot, text <checkbox-indicator>
       bind data-state
         call disclosure-state

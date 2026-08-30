@@ -6,7 +6,7 @@
 # viewport + Layout: Environment just wraps the page in Layout, which owns the viewport signal and the responsive
 # three-section shell. The page fills Layout's middle `slot` through this one.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -14,7 +14,7 @@ load @term/site/code/dom/dom
 load ./layout
   find layout
 
-zone environment
+view environment
   take host, like view
-  zone layout
+  view layout
     slot

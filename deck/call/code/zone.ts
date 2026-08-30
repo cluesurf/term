@@ -73,14 +73,14 @@ export async function callZone({
     {
       stdio: 'inherit',
       // The console names itself in its own usage. Run this way it is a
-      // subcommand, so it should say `term zone read`, not `zone read`.
+      // subcommand, so it should say `term zone read`, not `view read`.
       env: { ...process.env, TERM_LINE_NAME: 'term zone' },
     },
   )
 
   await new Promise<void>(done => {
     child.on('exit', (code, signal) => {
-      // the child's exit code passes through: a command run under `zone load`
+      // the child's exit code passes through: a command run under `view load`
       // that failed must fail here too, or a script cannot tell.
       if (signal) {
         process.kill(process.pid, signal)

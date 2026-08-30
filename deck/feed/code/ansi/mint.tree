@@ -18,11 +18,11 @@ host escape, code #h1B
 host delete, code #h7F
 
 task mint
-  fold mint-zone-text
+  fold mint-view-text
     bind zone, read ansi-text-from-zone
 
 mint ansi-text-from-zone
-  take zone, like zone-text
+  take zone, like view-text
 
   save text-fill
     call tint-hash/read

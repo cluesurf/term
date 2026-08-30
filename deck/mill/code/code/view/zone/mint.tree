@@ -1,12 +1,12 @@
 
 load @term/seed/code/lang
-  find zone-def
+  find code-view-def
 
 mint zone
   case zone, mint zone-def
     site zone
 
-mint zone-def, like zone-def
+mint zone-def, like code-view-def
   case name
     site name
   case take, mint take
@@ -22,7 +22,7 @@ mint zone-def, like zone-def
   case note, mint note
     site note
   hook make
-    make zone-def
+    make code-view-def
       bind name, read name
       bind take, read take
       bind hook, read hook

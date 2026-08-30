@@ -2,17 +2,17 @@
 # Separator — headless, ported from shadcn (separator.tsx). A divider line. `orientation` is a data attribute
 # (horizontal / vertical) for theming. role=separator for a11y. No children.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone separator
+view separator
   take host, like view
   take class
   take orientation
-  zone div
+  view div
     bind data-slot, text <separator>
     bind data-orientation, read orientation
     bind role, text <separator>

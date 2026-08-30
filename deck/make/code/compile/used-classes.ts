@@ -9,7 +9,7 @@
 
 import type {
   Program,
-  ZoneNode,
+  ViewNode,
 } from '@term/make/code/compile/node'
 
 export type UsedClasses = {
@@ -20,7 +20,7 @@ export type UsedClasses = {
 }
 
 function walk(
-  nodes: ZoneNode[],
+  nodes: ViewNode[],
   out: Set<string>,
   flag: { dynamic: boolean },
 ): void {
@@ -66,7 +66,7 @@ export function collectUsedClasses(program: Program): UsedClasses {
   const flag = { dynamic: false }
 
   for (const node of program) {
-    if (node.form === 'zone') {
+    if (node.form === 'view') {
       walk(node.body, out, flag)
     }
   }

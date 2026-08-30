@@ -1,7 +1,7 @@
 
 # Menubar — headless. A horizontal bar of menus (like an app menu bar). Parts: menubar, menubar-menu, menubar-trigger,
 # menubar-content, menubar-item. Each menu's open/close is a shared disclosure controller passed as `control`.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -11,27 +11,27 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone menubar
+view menubar
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <menubar>
     bind class, read class
     slot
 
-zone menubar-menu
+view menubar-menu
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <menubar-menu>
     bind class, read class
     slot
 
-zone menubar-trigger
+view menubar-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <menubar-trigger>
     bind aria-expanded
@@ -43,7 +43,7 @@ zone menubar-trigger
     bind class, read class
     slot
 
-zone menubar-content
+view menubar-content
   take host, like view
   take class
   take control
@@ -52,7 +52,7 @@ zone menubar-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <menubar-content>
         bind role, text <menu>
         bind data-state
@@ -61,10 +61,10 @@ zone menubar-content
         bind class, read class
         slot
 
-zone menubar-item
+view menubar-item
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <menubar-item>
     bind role, text <menuitem>
     bind class, read class

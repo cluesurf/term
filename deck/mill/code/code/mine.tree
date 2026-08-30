@@ -80,9 +80,6 @@ load @term/mill/code/code/tune/mine
 load @term/mill/code/code/view/mine
   find view
 
-load @term/mill/code/code/zone/mine
-  find zone
-
 load @term/mill/code/code/bind/mine
   find bind-def
 

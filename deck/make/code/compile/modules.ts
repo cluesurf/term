@@ -234,7 +234,7 @@ function definedNames(
   for (const statement of program) {
     const file = origin?.get(statement) ?? ENTRY
 
-    if (statement.form === 'function' || statement.form === 'zone') {
+    if (statement.form === 'function' || statement.form === 'view') {
       values.set(statement.name, file)
     } else if (
       statement.form === 'record-type' ||
@@ -349,7 +349,7 @@ export function emitModules(
 
     // a zone module is a self-accepting HMR boundary: it emits state-preserving hot wiring (see below), which calls a
     // few render-runtime helpers that are not otherwise in the module's AST. Add them so they get imported.
-    const isZone = statements.some(s => s.form === 'zone')
+    const isZone = statements.some(s => s.form === 'view')
 
     if (isZone) {
       for (const helper of ZONE_MODULE_RUNTIME) {

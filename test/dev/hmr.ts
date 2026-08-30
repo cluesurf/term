@@ -25,7 +25,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 function node(
   graph: ModuleGraph,
   name: string,
-  zone = false,
+  view = false,
 ): ModuleNode {
   const n = graph.ensure(
     `/${name}.tree`,

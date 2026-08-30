@@ -9,7 +9,7 @@
 # A trigger reflects `data-state` active/inactive (reactive) + `aria-selected`, and selects on click; the content
 # mounts only while its value is selected. Parts: tabs, tabs-list, tabs-trigger, tabs-content.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -19,29 +19,29 @@ load ../logic/selection
   find selection-state
   find select-value
 
-zone tabs
+view tabs
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <tabs>
     bind class, read class
     slot
 
-zone tabs-list
+view tabs-list
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <tabs-list>
     bind role, text <tablist>
     bind class, read class
     slot
 
-zone tabs-trigger
+view tabs-trigger
   take host, like view
   take class
   take control
   take value
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <tabs-trigger>
     bind role, text <tab>
@@ -60,7 +60,7 @@ zone tabs-trigger
         bind value, read value
     slot
 
-zone tabs-content
+view tabs-content
   take host, like view
   take class
   take control
@@ -71,7 +71,7 @@ zone tabs-content
         bind self, read control
         bind value, read value
     hook hold
-      zone div
+      view div
         bind data-slot, text <tabs-content>
         bind role, text <tabpanel>
         bind class, read class

@@ -16,7 +16,7 @@ task make
   fold make-zone
     bind zone, read test-case
 
-zone test-case
+view test-case
   take side, like size
     base 0
   take case
@@ -27,81 +27,81 @@ zone test-case
 
   scan case/form
     case like test-band
-      zone test-band
+      view test-band
         bind band, read case
         bind side, read side
     case like test-call
-      zone test-call
+      view test-call
         bind call, read case
         bind side, read side
     case like test-hold
-      zone test-hold
+      view test-hold
         bind hold, read case
         bind side, read side
 
-zone side
+view side
   take size, like size
 
   walk size, read size
-    zone text, text <  >
+    view text, text <  >
 
-zone test-band
+view test-band
   take band
   take side
-  zone side, read side
-  zone text, text band
+  view side, read side
+  view text, text band
     fuse gray
-  zone text, text < >
-  zone text, text <\<>
+  view text, text < >
+  view text, text <\<>
     fuse gray
-  zone text, read band/head
-  zone text, text <\>>
+  view text, read band/head
+  view text, text <\>>
     fuse gray
-  zone text, text <\n>
+  view text, text <\n>
   walk list, read band/nest
     hook link
-      zone test-case
+      view test-case
         bind case, read link
         bind side
           call add
             code 1
             read size
 
-zone test-rise
+view test-rise
   take call
   take side, like size
-  zone side, read side
-  zone text, text rise
+  view side, read side
+  view text, text rise
     fuse green
-  zone text, text < >
-  zone text, text <\<>
+  view text, text < >
+  view text, text <\<>
     fuse gray
-  zone text, read band/head
+  view text, read band/head
     fuse green-bold
-  zone text, text <\>>
+  view text, text <\>>
     fuse gray
-  zone text, text <\n>
-  zone side
+  view text, text <\n>
+  view side
     call add
       code 1
       read side
-  zone text, text time
+  view text, text time
     fuse gray
-  zone text, text <\<>
+  view text, text <\<>
     fuse gray
   fork roll
     hook test
       call call/time/is-less(50)
       hook hold
-        zone text, read call/time
+        view text, read call/time
           fuse green-bold
     hook test
       call call/time/is-less(200)
       hook hold
-        zone text, read call/time
+        view text, read call/time
           fuse yellow-bold
     hook fall # default case
-      zone text, read call/time
+      view text, read call/time
         fuse red-bold
-  zone text, text <\>>
+  view text, text <\>>
     fuse gray

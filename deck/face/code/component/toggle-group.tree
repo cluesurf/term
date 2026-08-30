@@ -3,7 +3,7 @@
 # active. Each item gets a `value`; the trigger reflects data-state active/inactive + aria-pressed and selects on
 # click. Consumer passes one `control` (make-selection). Parts: toggle-group, toggle-group-item.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -13,21 +13,21 @@ load ../logic/selection
   find selection-state
   find select-value
 
-zone toggle-group
+view toggle-group
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <toggle-group>
     bind role, text <group>
     bind class, read class
     slot
 
-zone toggle-group-item
+view toggle-group-item
   take host, like view
   take class
   take control
   take value
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <toggle-group-item>
     bind data-state

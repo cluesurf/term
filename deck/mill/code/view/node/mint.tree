@@ -1,22 +1,22 @@
 
-load @term/seed/code/zone
-  find zone-node
-  find zone-element
-  find zone-text
-  find zone-walk
-  find zone-walk-next
-  find zone-walk-site
-  find zone-fork
-  find zone-fork-hook
-  find zone-fork-test
-  find zone-fork-hold
-  find zone-fork-miss
+load @term/seed/code/view
+  find view-node
+  find view-element
+  find view-text
+  find view-walk
+  find view-walk-next
+  find view-walk-site
+  find view-fork
+  find view-fork-hook
+  find view-fork-test
+  find view-fork-hold
+  find view-fork-miss
 
 load @term/mill/code/view/seed/mint
   find view-seed
   find view-bind
 
-mint view-node, like zone-node
+mint view-node, like view-node
   case zone, mint view-use
     site zone
   case text, mint view-text
@@ -26,7 +26,7 @@ mint view-node, like zone-node
   case fork, mint view-fork
     site fork
 
-mint view-use, like zone-element
+mint view-use, like view-element
   case name
     site name
   case bind, mint view-bind
@@ -34,53 +34,53 @@ mint view-use, like zone-element
   case node, mint view-node
     site node
   hook make
-    make zone-element
+    make view-element
       bind name, read name
       bind bind, read bind
       bind node, read node
 
-mint view-text, like zone-text
+mint view-text, like view-text
   case text
     site text
   hook make
-    make zone-text
+    make view-text
       bind text, read text
 
-mint view-walk, like zone-walk
+mint view-walk, like view-walk
   case road, mint view-seed
     site road
   case next, mint view-walk-next
     site next
   hook make
-    make zone-walk
+    make view-walk
       bind road, read road
       bind next, read next
 
-mint view-walk-next, like zone-walk-next
+mint view-walk-next, like view-walk-next
   case site, mint view-walk-site
     site site
   case node, mint view-node
     site node
   hook make
-    make zone-walk-next
+    make view-walk-next
       bind site, read site
       bind node, read node
 
-mint view-walk-site, like zone-walk-site
+mint view-walk-site, like view-walk-site
   case name
     site name
   hook make
-    make zone-walk-site
+    make view-walk-site
       bind name, read name
 
-mint view-fork, like zone-fork
+mint view-fork, like view-fork
   case hook, mint view-fork-hook
     site hook
   hook make
-    make zone-fork
+    make view-fork
       bind hook, read hook
 
-mint view-fork-hook, like zone-fork-hook
+mint view-fork-hook, like view-fork-hook
   case test, mint view-fork-test
     site test
   case hold, mint view-fork-hold
@@ -88,23 +88,23 @@ mint view-fork-hook, like zone-fork-hook
   case miss, mint view-fork-miss
     site miss
 
-mint view-fork-test, like zone-fork-test
+mint view-fork-test, like view-fork-test
   case seed, mint view-seed
     site seed
   hook make
-    make zone-fork-test
+    make view-fork-test
       bind seed, read seed
 
-mint view-fork-hold, like zone-fork-hold
+mint view-fork-hold, like view-fork-hold
   case node, mint view-node
     site node
   hook make
-    make zone-fork-hold
+    make view-fork-hold
       bind node, read node
 
-mint view-fork-miss, like zone-fork-miss
+mint view-fork-miss, like view-fork-miss
   case node, mint view-node
     site node
   hook make
-    make zone-fork-miss
+    make view-fork-miss
       bind node, read node

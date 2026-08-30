@@ -176,7 +176,7 @@ export function emitWgsl(input: Program): string {
       case 'native':
         return unsupported('WGSL', node.form, '//')
       case 'bind':
-      case 'zone':
+      case 'view':
       case 'dock':
       case 'tell':
       case 'roll':

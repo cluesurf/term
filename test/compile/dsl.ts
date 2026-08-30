@@ -39,12 +39,12 @@ function main(): void {
   // a zone component lowers to a `zone` statement with params and a body
   {
     const program = lower(
-      `zone counter\n  take label, like text\n  zone div\n    read app/count\n`,
+      `view counter\n  take label, like text\n  view div\n    read app/count\n`,
     )
 
     const zone = program.find(
-      (s): s is Extract<Statement, { form: 'zone' }> =>
-        s.form === 'zone',
+      (s): s is Extract<Statement, { form: 'view' }> =>
+        s.form === 'view',
     )
 
     ok('zone lowers to a zone statement', zone !== undefined)
@@ -136,7 +136,7 @@ function main(): void {
   // a client route lowers to a dock that renders a zone component
   {
     const program = lower(
-      `dock /counter\n  zone counter\n    bind label, text <hits>\n`,
+      `dock /counter\n  view counter\n    bind label, text <hits>\n`,
     )
 
     const dock = program.find(

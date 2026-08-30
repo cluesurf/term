@@ -15,7 +15,7 @@ task mint
   fold make-mint
 
 mint make-ansi-text-from-zone
-  take zone, like zone-text
+  take zone, like view-text
 
   save text-fill
     call tint-hash/read

@@ -2,33 +2,33 @@
 # Chart — headless chart container. A themeable wrapper + tooltip / legend slots; the actual plotting delegates to a
 # chart engine (a canvas/svg render or a docked chart lib) the consumer mounts inside. Parts: chart, chart-tooltip,
 # chart-legend. role=img with an aria-label for a11y.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone chart
+view chart
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <chart>
     bind role, text <img>
     bind class, read class
     slot
 
-zone chart-tooltip
+view chart-tooltip
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <chart-tooltip>
     bind class, read class
     slot
 
-zone chart-legend
+view chart-legend
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <chart-legend>
     bind class, read class
     slot

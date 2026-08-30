@@ -13,7 +13,7 @@ import type {
   Expression,
   Program,
   Statement,
-  ZoneNode,
+  ViewNode,
 } from '@term/make/code/compile/node'
 import {
   BINARY_BUILTIN,
@@ -403,8 +403,8 @@ export function resolve(
       }
 
       // a zone (view component): resolve names in its body the same as a function (params in scope, `save` declares).
-      // Element refs (`zone input / name x`) are pre-declared so an event handler can read a ref defined anywhere.
-      case 'zone': {
+      // Element refs (`view input / name x`) are pre-declared so an event handler can read a ref defined anywhere.
+      case 'view': {
         stack.push(new Map())
 
         for (const param of node.params) {
@@ -423,10 +423,10 @@ export function resolve(
   }
 
   // every element ref (`name x`) anywhere in a zone's view tree, so they can be declared up front
-  function collectZoneRefs(nodes: ZoneNode[]): string[] {
+  function collectZoneRefs(nodes: ViewNode[]): string[] {
     const refs: string[] = []
 
-    const walk = (list: ZoneNode[]): void => {
+    const walk = (list: ViewNode[]): void => {
       for (const node of list) {
         if (node.form === 'element') {
           if (node.ref) {
@@ -455,7 +455,7 @@ export function resolve(
 
   // resolve names inside a zone's view tree: attribute / event / read expressions, `save` (which declares a local),
   // and the recursive children / branches / list bodies
-  function resolveZoneNodes(nodes: ZoneNode[]): void {
+  function resolveZoneNodes(nodes: ViewNode[]): void {
     for (const node of nodes) {
       switch (node.form) {
         case 'element':

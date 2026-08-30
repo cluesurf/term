@@ -1,7 +1,7 @@
 
 # Collapsible — headless, behavior-complete via the shared disclosure controller. Parts: collapsible, collapsible-
 # trigger (toggles), collapsible-content (mounts when open, reactive data-state). Consumer passes a `control`.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -11,19 +11,19 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone collapsible
+view collapsible
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <collapsible>
     bind class, read class
     slot
 
-zone collapsible-trigger
+view collapsible-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <collapsible-trigger>
     bind aria-expanded
@@ -35,7 +35,7 @@ zone collapsible-trigger
     bind class, read class
     slot
 
-zone collapsible-content
+view collapsible-content
   take host, like view
   take class
   take control
@@ -44,7 +44,7 @@ zone collapsible-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <collapsible-content>
         bind data-state
           call disclosure-state

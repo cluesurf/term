@@ -887,7 +887,7 @@ export async function callBoot(input: {
 
     // a command-line program runs ONCE with the forwarded arguments and
     // exits with the command's own code. No port, no watcher, no server
-    // lifecycle - `term boot cli.tree -- show` behaves like `zone show`.
+    // lifecycle - `term boot cli.tree -- show` behaves like `view show`.
     if (built.cli) {
       // A command-line tool runs in the USER'S cwd, not the app dir. A
       // server needs the app dir (its `build/` and `deck.tree` live

@@ -7,7 +7,7 @@
 # combobox-empty, combobox-item, combobox-group, combobox-label. Headless: every part carries data-slot + a class
 # prop; open/closed flows through data-state for CSS animation.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -17,19 +17,19 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone combobox
+view combobox
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <combobox>
     bind class, read class
     slot
 
-zone combobox-trigger
+view combobox-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <combobox-trigger>
     bind role, text <combobox>
@@ -46,7 +46,7 @@ zone combobox-trigger
     bind class, read class
     slot
 
-zone combobox-content
+view combobox-content
   take host, like view
   take class
   take control
@@ -55,7 +55,7 @@ zone combobox-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <combobox-content>
         bind data-state
           call disclosure-state
@@ -63,11 +63,11 @@ zone combobox-content
         bind class, read class
         slot
 
-zone combobox-input
+view combobox-input
   take host, like view
   take class
   take input
-  zone input
+  view input
     bind data-slot, text <combobox-input>
     bind type, text <text>
     bind role, text <combobox>
@@ -75,37 +75,37 @@ zone combobox-input
     hook input, call input
     bind class, read class
 
-zone combobox-empty
+view combobox-empty
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <combobox-empty>
     bind role, text <presentation>
     bind class, read class
     slot
 
-zone combobox-group
+view combobox-group
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <combobox-group>
     bind role, text <group>
     bind class, read class
     slot
 
-zone combobox-label
+view combobox-label
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <combobox-label>
     bind class, read class
     slot
 
-zone combobox-item
+view combobox-item
   take host, like view
   take class
   take press
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <combobox-item>
     bind role, text <option>

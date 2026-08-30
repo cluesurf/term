@@ -4,7 +4,7 @@
 # shortcut is also a palette entry (one source of truth). Pure logic; the actual keydown listener is wired by the app
 # shell (it calls `resolve-key` with the pressed chord). See note/seed/face-interaction-system.md.
 
-load @term/site/code/zone/reactive
+load @term/site/code/view/reactive
   find signal
   find make-signal
   find read-signal

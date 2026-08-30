@@ -1450,7 +1450,7 @@ export function emitKotlin(
       case 'native':
         return ''
       case 'bind':
-      case 'zone':
+      case 'view':
       case 'dock':
       case 'tell':
       case 'roll':

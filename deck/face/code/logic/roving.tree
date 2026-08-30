@@ -4,7 +4,7 @@
 # and focuses the active item via an effect calling the dom `focus` (now available). Keydown is wired in the view
 # (`hook keydown` -> move-next/move-prev). Pure index logic, the Zag-model behavior core.
 
-load @term/site/code/zone/reactive
+load @term/site/code/view/reactive
   find signal
   find make-signal
   find read-signal

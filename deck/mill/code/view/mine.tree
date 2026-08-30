@@ -28,8 +28,8 @@
 # are gone and their bodies stand where each `fuse` was. See note/term/view/02-macro.md.
 #
 # What the mill will NOT build is as much the point as what it will. The body reuses the component AST, which can
-# express things a document may not have, so this grammar has no way to reach `zone-save` (a computed local),
-# `zone-seed` (an attribute or an event handler), or a `walk` whose mode is `test`. See note/term/view/05-sandbox.md.
+# express things a document may not have, so this grammar has no way to reach `view-save` (a computed local),
+# `view-seed` (an attribute or an event handler), or a `walk` whose mode is `test`. See note/term/view/05-sandbox.md.
 
 load @term/mill/code/view/load/mine
   find view-load

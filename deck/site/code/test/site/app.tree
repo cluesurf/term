@@ -3,13 +3,13 @@
 # updates reactively (fine-grained, no re-render). Compiled against the browser DOM and bundled, this runs in a page;
 # the headless test runs it against a DOM stub. `mount-app` takes the host node to render into (the document body).
 
-load ../../zone/render
+load ../../view/render
   find element
   find text
   find dynamic
   find event
   find mount
-load ../../zone/reactive
+load ../../view/reactive
   find make-signal
   find read-signal
   find write-signal

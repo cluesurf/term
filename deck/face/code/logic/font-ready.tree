@@ -11,7 +11,7 @@
 # crossfade in the React `use-text` is intentionally reduced here to hidden -> (snap | fade-in) -> real, plus the
 # timeout fallback, which covers those three goals for single-font sites like form.surf.
 
-load @term/site/code/zone/reactive
+load @term/site/code/view/reactive
   find signal
   find make-signal
   find read-signal

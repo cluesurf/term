@@ -2,32 +2,32 @@
 # Resizable — headless. Split panels with draggable handles. Parts: resizable-group (the container), resizable-panel,
 # resizable-handle (the drag bar). Pointer-drag resizing is a behavioral add-on (needs pointer-move bindings); these
 # are the themeable structure with role + aria for the handle.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone resizable-group
+view resizable-group
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <resizable-group>
     bind class, read class
     slot
 
-zone resizable-panel
+view resizable-panel
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <resizable-panel>
     bind class, read class
     slot
 
-zone resizable-handle
+view resizable-handle
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <resizable-handle>
     bind role, text <separator>
     bind tabindex, text <0>

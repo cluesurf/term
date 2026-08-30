@@ -1,47 +1,47 @@
 
 # Empty — headless. An empty-state placeholder with media / title / description / content parts.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone empty
+view empty
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <empty>
     bind class, read class
     slot
 
-zone empty-media
+view empty-media
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <empty-media>
     bind class, read class
     slot
 
-zone empty-title
+view empty-title
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <empty-title>
     bind class, read class
     slot
 
-zone empty-description
+view empty-description
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <empty-description>
     bind class, read class
     slot
 
-zone empty-content
+view empty-content
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <empty-content>
     bind class, read class
     slot

@@ -1,55 +1,55 @@
 
 # Item — headless. A generic list row with media / content / title / description / actions parts.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone item
+view item
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <item>
     bind class, read class
     slot
 
-zone item-media
+view item-media
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <item-media>
     bind class, read class
     slot
 
-zone item-content
+view item-content
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <item-content>
     bind class, read class
     slot
 
-zone item-title
+view item-title
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <item-title>
     bind class, read class
     slot
 
-zone item-description
+view item-description
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <item-description>
     bind class, read class
     slot
 
-zone item-actions
+view item-actions
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <item-actions>
     bind class, read class
     slot

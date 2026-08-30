@@ -38,7 +38,7 @@ function scanImports(text: string): ImportScan {
         // `zone` in the code role and `view` in the view role are the same concept, a component, and both mean the
         // emitter will synthesize render-runtime calls. A top-level `view` is only ever a document, because the
         // code role's own `view` head is a stale grammar nothing uses. See note/term/view/06-mill.md.
-        if (kw === 'zone' || kw === 'view') {
+        if (kw === 'view' || kw === 'view') {
           hasZone = true
         } else {
           // the path is the first token after the keyword, up to a comma or space.
@@ -75,7 +75,7 @@ export type Resolver = (
 // which the emitter synthesizes rather than the user importing. So a module containing a zone implicitly depends on it.
 // `load @path` / `bear @path` (re-exports) both pull the target into the merged program; because the program is one
 // flat namespace, a `bear`ed definition is visible to anything importing this module. `scanImports` (above) reads both.
-const ZONE_RUNTIME_MODULE = '@cluesurf/site/code/zone/render'
+const VIEW_RUNTIME_MODULE = '@cluesurf/site/code/view/render'
 
 // the entry plus every module it transitively loads, dependencies first (so forms are defined before use)
 export function collectModules(
@@ -108,7 +108,7 @@ export function collectModules(
       !paths.some(p => p.endsWith('zone/render')) &&
       !source.file.endsWith('zone/render.tree')
     ) {
-      paths.push(ZONE_RUNTIME_MODULE)
+      paths.push(VIEW_RUNTIME_MODULE)
     }
 
     for (const path of paths) {

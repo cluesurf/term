@@ -1,4 +1,4 @@
-// Zone component test: compile a real `zone` (view component) through the full pipeline (parse -> mill -> resolve ->
+// View component test: compile a real `zone` (view component) through the full pipeline (parse -> mill -> resolve ->
 // infer -> emit) and run it, confirming it builds DOM via the render runtime and that a `read` is reactive (writing the
 // signal updates the mounted node). Run: npx tsx test/zone/component.ts
 
@@ -29,7 +29,7 @@ const SEED = path.resolve(
 )
 const resolve = projectResolver(SEED, 'node')
 
-const SOURCE = `load @cluesurf/site/code/zone/render
+const SOURCE = `load @cluesurf/site/code/view/render
   find element
   find text
   find dynamic
@@ -38,15 +38,15 @@ const SOURCE = `load @cluesurf/site/code/zone/render
 load @cluesurf/site/code/dom/dom
   find view
   find append
-load @cluesurf/site/code/zone/reactive
+load @cluesurf/site/code/view/reactive
   find make-signal
   find read-signal
   find write-signal
 
-zone label
+view label
   take host, like view
   take value
-  zone div
+  view div
     seed role, text <box>
     read
       call read-signal
@@ -54,7 +54,7 @@ zone label
 `
 
 // Stage B: control flow. `fork` lowers to `show` (conditional subtree), `walk` lowers to `each` (list rendering).
-const SOURCE_CONTROL = `load @cluesurf/site/code/zone/render
+const SOURCE_CONTROL = `load @cluesurf/site/code/view/render
   find element
   find text
   find dynamic
@@ -64,24 +64,24 @@ load @cluesurf/site/code/dom/dom
   find view
   find append
 
-zone gallery
+view gallery
   take host, like view
   take ready
   take items
-  zone ul
+  view ul
     fork
       hook test
         read ready
       hook hold
-        zone li
+        view li
           text <ready>
       hook miss
-        zone li
+        view li
           text <waiting>
     walk list, read items
       hook next
         take site, name row
-        zone li
+        view li
           read
             read row
 `

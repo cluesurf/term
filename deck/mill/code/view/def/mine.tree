@@ -5,8 +5,8 @@
 #     view text/heading
 #       bind text, read title
 #
-# Mints the stdlib `zone-def`, which is the component AST's own definition node, so a document lowers through
-# `compile/zone-lower.ts` and every backend emits it as an ordinary function with no new machinery. That reuse
+# Mints the stdlib `view-def`, which is the component AST's own definition node, so a document lowers through
+# `compile/view-lower.ts` and every backend emits it as an ordinary function with no new machinery. That reuse
 # is the whole reason the dialect targets the zone AST. See note/term/view/07-lowering.md.
 #
 # `view` is the head in BOTH roles and the role decides the authority: in the `code` role it DEFINES a component
@@ -14,7 +14,7 @@
 # cannot define a component because its file is in the other role, which is the security model stated as one
 # sentence. See note/term/view/06-mill.md.
 #
-# A description is a `#` comment, which is what a comment is in Term. `zone-def` carries a name, its parameters
+# A description is a `#` comment, which is what a comment is in Term. `view-def` carries a name, its parameters
 # and its body, with no field for prose.
 
 load @term/mill/code/view/node/mine

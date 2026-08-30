@@ -3,7 +3,7 @@
 # handler, and reactive `state` (selected/today/outside) for theming. Date math (which days, month nav) is the
 # consumer's (or a future date controller); these are the themeable, a11y-wired grid. Parts: calendar, calendar-header,
 # calendar-title, calendar-nav, calendar-grid, calendar-row, calendar-cell, calendar-day.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -13,71 +13,71 @@ load ../logic/selection
   find is-selected
   find select-value
 
-zone calendar
+view calendar
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <calendar>
     bind class, read class
     slot
 
-zone calendar-header
+view calendar-header
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <calendar-header>
     bind class, read class
     slot
 
-zone calendar-title
+view calendar-title
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <calendar-title>
     bind class, read class
     slot
 
-zone calendar-nav
+view calendar-nav
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <calendar-nav>
     bind class, read class
     slot
 
-zone calendar-grid
+view calendar-grid
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <calendar-grid>
     bind role, text <grid>
     bind class, read class
     slot
 
-zone calendar-row
+view calendar-row
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <calendar-row>
     bind role, text <row>
     bind class, read class
     slot
 
-zone calendar-cell
+view calendar-cell
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <calendar-cell>
     bind role, text <gridcell>
     bind class, read class
     slot
 
-zone calendar-day
+view calendar-day
   take host, like view
   take class
   take control
   take value
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <calendar-day>
     bind role, text <gridcell>

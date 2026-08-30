@@ -3,7 +3,7 @@
 # key through the registry, so the same action declaration powers the toolbar, the palette, and a shortcut. Parts:
 # toolbar (role=toolbar), toolbar-button, toolbar-separator. Theme via data-slot.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -11,21 +11,21 @@ load @term/site/code/dom/dom
 load ../logic/registry
   find run-action
 
-zone toolbar
+view toolbar
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <toolbar>
     bind role, text <toolbar>
     bind class, read class
     slot
 
-zone toolbar-button
+view toolbar-button
   take host, like view
   take class
   take registry, like signal
   take key
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <toolbar-button>
     hook click
@@ -35,10 +35,10 @@ zone toolbar-button
     bind class, read class
     slot
 
-zone toolbar-separator
+view toolbar-separator
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <toolbar-separator>
     bind role, text <separator>
     bind aria-orientation, text <vertical>

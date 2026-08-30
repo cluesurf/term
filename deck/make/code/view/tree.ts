@@ -1,4 +1,4 @@
-// Zone / dock emit to Seed (.tree). Takes the compile AST the mill produced for a `zone` or `dock` and emits the
+// View / dock emit to Seed (.tree). Takes the compile AST the mill produced for a `zone` or `dock` and emits the
 // `.tree` source that calls the render runtime in site.tree (zone/render, zone/reactive, dom/dom). A `zone` becomes a
 // `task` that builds its view; a `dock` becomes a route descriptor. This is the canonical, backend-agnostic lowering:
 // the emitted `.tree` itself compiles to every target (the DOM work is delegated to native per env). Pure / browser-safe.
@@ -8,7 +8,7 @@ import type {
   Expression,
   Statement,
   Type,
-  ZoneNode,
+  ViewNode,
 } from '@term/make/code/compile/node'
 
 const OP_NAME: Record<string, string> = {
@@ -107,7 +107,7 @@ const fresh = (ctx: Context, base: string): string =>
 
 // emit the `.tree` that builds one zone node and appends it under `host`
 function zoneNode(
-  node: ZoneNode,
+  node: ViewNode,
   host: string,
   depth: number,
   ctx: Context,
@@ -258,7 +258,7 @@ function zoneNode(
 
 // build a list of nodes into a fresh container and return it (used where a single node must be returned)
 function fragment(
-  nodes: ZoneNode[],
+  nodes: ViewNode[],
   depth: number,
   ctx: Context,
 ): string[] {
@@ -280,7 +280,7 @@ function fragment(
 
 // emit a `zone` definition as a `task` that builds its view through the render runtime
 export function emitZoneTree(
-  zone: Extract<Statement, { form: 'zone' }>,
+  zone: Extract<Statement, { form: 'view' }>,
 ): string {
   const ctx: Context = { count: 0 }
   const out: string[] = [`task ${zone.name}`, `  take host, like node`]
@@ -328,7 +328,7 @@ function route(node: DockRoute, depth: number): string[] {
 
   if (node.component) {
     out.push(
-      `${pad(depth + 1)}bind zone, text <${node.component.name}>`,
+      `${pad(depth + 1)}bind view, text <${node.component.name}>`,
     )
   }
 

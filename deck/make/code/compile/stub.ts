@@ -41,7 +41,7 @@ export function stubProgram(program: Program): Program {
       case 'instance':
       case 'bind':
       case 'native':
-      case 'zone':
+      case 'view':
         out.push(statement)
         break
 

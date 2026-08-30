@@ -8,7 +8,7 @@
 # role=switch + reactive data-state (checked/unchecked, derived from disclosure-state mapped on) drive a11y + the CSS
 # thumb slide; aria-checked tracks the boolean; click toggles. Parts: switch (root button) + switch-thumb.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -18,11 +18,11 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone switch
+view switch
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind role, text <switch>
     bind data-slot, text <switch>
@@ -36,7 +36,7 @@ zone switch
     hook click
       call toggle-disclosure
         bind self, read control
-    zone span
+    view span
       bind data-slot, text <switch-thumb>
       bind data-state
         call disclosure-state

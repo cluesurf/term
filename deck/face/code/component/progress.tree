@@ -3,17 +3,17 @@
 # can size the indicator from CSS ([data-slot=progress-indicator] width keyed off the value, or a CSS var). Parts:
 # progress (the bar), progress-indicator (the fill).
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
   find append
 
-zone progress
+view progress
   take host, like view
   take class
   take value
-  zone div
+  view div
     bind data-slot, text <progress>
     bind role, text <progressbar>
     bind aria-valuemin, text <0>
@@ -22,11 +22,11 @@ zone progress
     bind class, read class
     slot
 
-zone progress-indicator
+view progress-indicator
   take host, like view
   take class
   take value
-  zone div
+  view div
     bind data-slot, text <progress-indicator>
     bind data-value, read value
     bind class, read class

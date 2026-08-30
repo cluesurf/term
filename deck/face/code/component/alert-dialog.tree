@@ -2,7 +2,7 @@
 # alert-dialog — headless, behavior-complete via the shared disclosure controller (mirrors dialog). Parts: alert-dialog,
 # alert-dialog-trigger, alert-dialog-overlay, alert-dialog-content, alert-dialog-header, alert-dialog-title, alert-dialog-description, alert-dialog-footer,
 # alert-dialog-close. Overlay + content mount when open with reactive data-state. Consumer passes a `control`.
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -12,19 +12,19 @@ load ../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
-zone alert-dialog
+view alert-dialog
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <alert-dialog>
     bind class, read class
     slot
 
-zone alert-dialog-trigger
+view alert-dialog-trigger
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <alert-dialog-trigger>
     hook click
@@ -33,7 +33,7 @@ zone alert-dialog-trigger
     bind class, read class
     slot
 
-zone alert-dialog-content
+view alert-dialog-content
   take host, like view
   take class
   take control
@@ -42,7 +42,7 @@ zone alert-dialog-content
       call disclosure-open
         bind self, read control
     hook hold
-      zone div
+      view div
         bind data-slot, text <alert-dialog-content>
         bind role, text <dialog>
         bind aria-modal, text <true>
@@ -52,43 +52,43 @@ zone alert-dialog-content
         bind class, read class
         slot
 
-zone alert-dialog-header
+view alert-dialog-header
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <alert-dialog-header>
     bind class, read class
     slot
 
-zone alert-dialog-title
+view alert-dialog-title
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <alert-dialog-title>
     bind class, read class
     slot
 
-zone alert-dialog-description
+view alert-dialog-description
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <alert-dialog-description>
     bind class, read class
     slot
 
-zone alert-dialog-footer
+view alert-dialog-footer
   take host, like view
   take class
-  zone div
+  view div
     bind data-slot, text <alert-dialog-footer>
     bind class, read class
     slot
 
-zone alert-dialog-close
+view alert-dialog-close
   take host, like view
   take class
   take control
-  zone button
+  view button
     bind type, text <button>
     bind data-slot, text <alert-dialog-close>
     bind aria-label, text <Close>

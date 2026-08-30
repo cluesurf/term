@@ -6,46 +6,46 @@
 #   rows    -> list of { label, cells } down the side; each cell is { text } (the inflected form)
 # The top-left corner cell is intentionally blank. Compose it inside a document zone with `zone paradigm / bind ...`.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
   find text
 load @term/site/code/dom/dom
   find view
   find append
 
-zone paradigm
+view paradigm
   take host, like view
   take columns
   take rows
-  zone table
+  view table
     bind data-slot, text <paradigm>
-    zone thead
+    view thead
       bind data-slot, text <paradigm-head>
-      zone tr
-        zone th
+      view tr
+        view th
           bind data-slot, text <paradigm-corner>
           text < >
         walk list, read columns
           hook next
             take site, name column
-            zone th
+            view th
               bind data-slot, text <paradigm-column>
               read
                 read column/label
-    zone tbody
+    view tbody
       bind data-slot, text <paradigm-body>
       walk list, read rows
         hook next
           take site, name row
-          zone tr
-            zone th
+          view tr
+            view th
               bind data-slot, text <paradigm-row>
               read
                 read row/label
             walk list, read row/cells
               hook next
                 take site, name cell
-                zone td
+                view td
                   bind data-slot, text <paradigm-cell>
                   read
                     read cell/text

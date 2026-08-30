@@ -3,14 +3,14 @@
 # emit target the compiler produces from the zone AST. State is a signal; the click handler writes it; the count
 # text is `dynamic`, so its effect re-runs the read and updates the node when the signal changes.
 
-load ../../zone/render
+load ../../view/render
   find element
   find text
   find dynamic
   find event
   find mount
 
-load ../../zone/reactive
+load ../../view/reactive
   find make-signal
   find read-signal
   find write-signal

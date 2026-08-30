@@ -5,7 +5,7 @@
 # input + open/close + highlighted-index are layered on with a query signal + the disclosure/selection controllers by
 # the app shell; this is the themeable, registry-driven list.
 
-load @term/site/code/zone/render
+load @term/site/code/view/render
   find element
 load @term/site/code/dom/dom
   find view
@@ -14,28 +14,28 @@ load ../logic/registry
   find list-actions
   find run-action
 
-zone command-palette
+view command-palette
   take host, like view
   take class
   take registry, like signal
   save actions
     call list-actions
       bind self, read registry
-  zone div
+  view div
     bind data-slot, text <command-palette>
     bind role, text <dialog>
     bind class, read class
-    zone input
+    view input
       bind data-slot, text <command-input>
       bind type, text <text>
       bind placeholder, text <Type a command...>
-    zone div
+    view div
       bind data-slot, text <command-list>
       bind role, text <listbox>
       walk list, read actions
         hook next
           take site, name entry
-          zone button
+          view button
             bind type, text <button>
             bind data-slot, text <command-item>
             bind role, text <option>
