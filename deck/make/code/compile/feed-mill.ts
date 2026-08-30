@@ -25,7 +25,7 @@ import { headWord, textOf, wordOf } from './mill-run'
 
 export type FeedMineRule =
   | { kind: 'list'; children: FeedMineRule[] }
-  | { kind: 'any'; children: FeedMineRule[] }
+  | { kind: 'any'; children: FeedMineRule[]; send?: string }
   | { kind: 'range'; base: string; head: string }
   | { kind: 'form'; name: string; send?: string }
   | { kind: 'value'; expr: GroupNode }
@@ -33,19 +33,45 @@ export type FeedMineRule =
 
 export type FeedMineGrammar = Map<string, FeedMineRule[]>
 
+// a standalone `send <name>` that follows a value-producing rule (`mine any` here; `mine form` already carries
+// its own nested `send`, see `readFeedMineRule`'s `form` case) renames THAT rule's own capture — it never
+// introduces a second, disconnected local. Runs once over every rules array as it's built (the top-level body
+// of a named rule, and each `list`/`any`'s own children), so a compiler pass never has to guess which capture a
+// trailing `send` belongs to.
+function mergeSends(rules: FeedMineRule[]): FeedMineRule[] {
+  const out: FeedMineRule[] = []
+
+  for (const rule of rules) {
+    const prior = out[out.length - 1]
+
+    if (rule.kind === 'send' && prior && prior.kind === 'any' && !prior.send) {
+      prior.send = rule.name
+
+      continue
+    }
+
+    out.push(rule)
+  }
+
+  return out
+}
+
+// `bind <key>, <value>` is the comma form throughout every mine.tree in this package: `bind`'s own children are
+// THREE flat siblings (bind-name, key, value), never the value nested inside the key — confirmed against the
+// real parse of hex/mine.tree's `bind base, text <0>`, not assumed from the paren/stacked-form reasoning that
+// caused `printNode`'s `call` bug above.
 function bindTextOf(group: GroupNode, name: string): string | undefined {
   for (const child of group.nodes) {
-    if (child.kind === 'group' && headWord(child) === 'bind') {
-      const keyNode = child.nodes[1]
-      const key = keyNode?.kind === 'group' ? wordOf(keyNode.nodes[0]) : wordOf(keyNode)
+    if (child.kind === 'group' && headWord(child) === 'bind' && wordOf(child.nodes[1]) === name) {
+      // `child.nodes[2]` is the VALUE POSITION's own group (`text <0>`: `[name(text), textNode]`), not the
+      // literal text itself — `textOf` only handles a bare TextNode directly, so it silently returned `''` for
+      // this group (not `undefined`), which made `base && head` in the `range` case below falsely fail: `''` is
+      // falsy in JS the same way `undefined` is, so the range never registered as matched. Caught by running the
+      // compiler against hex's real grammar and finding every range came back empty, not assumed correct.
+      const valueGroup = child.nodes[2]
+      const textNode = valueGroup?.kind === 'group' ? valueGroup.nodes[1] : undefined
 
-      if (key !== name) {
-        continue
-      }
-
-      const valueNode = keyNode?.kind === 'group' ? keyNode.nodes[1] : child.nodes[2]
-
-      return valueNode ? textOf(valueNode) : undefined
+      return textNode ? textOf(textNode) : undefined
     }
   }
 
@@ -79,7 +105,7 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
       }
     }
 
-    return out
+    return mergeSends(out)
   }
 
   switch (kind) {
@@ -143,7 +169,7 @@ export function readFeedMineGrammar(tree: RootNode): FeedMineGrammar {
       }
     }
 
-    grammar.set(name, rules)
+    grammar.set(name, mergeSends(rules))
   }
 
   return grammar
@@ -173,11 +199,54 @@ export function printNode(node: Node): string {
         return ''
       }
 
+      // `call` is special-cased on purpose: real Term treats `call f, a, b`, `call f(a, b)`, and the stacked
+      // indented form as ONE meaning ("callee f, arguments [a, b]"), merging the callee's own nested children
+      // with any further call-level siblings into a single flat argument list (CLAUDE.md's comma-chain rule:
+      // "call f(a, b) and call f, a, b and the stacked form are one call"). A naive "head(rest...)" print here
+      // would mangle this — found the hard way: it printed a two-argument `call(add, ...)` from a
+      // one-argument-to-`add` expression, discovered debugging the very first generated file this compiler
+      // produced, not assumed safe going in.
+      const headName = wordOf(head)
+
+      // `code <n>` and `text <...>` are literal PREFIXES, not calls: their single child (an integer/decimal/
+      // radix node, or a text node) already carries the whole value, so print it directly rather than
+      // recursing through `printNode` on the child (which would print the child's OWN full `code <n>`/
+      // `text <...>` form and double the prefix — `code(code 16)` — the bug this special case exists to avoid).
+      if ((headName === 'code' || headName === 'text') && node.nodes.length === 2) {
+        const literal = node.nodes[1]!
+
+        if (literal.kind === 'integer' || literal.kind === 'decimal' || literal.kind === 'radix') {
+          return `code ${literal.value}`
+        }
+
+        if (literal.kind === 'text') {
+          return `text <${textOf(literal)}>`
+        }
+      }
+
+      if (headName === 'call' && node.nodes.length >= 2) {
+        const calleeNode = node.nodes[1]!
+        const calleeName = calleeNode.kind === 'group' ? printNode(calleeNode.nodes[0]!) : printNode(calleeNode)
+        const calleeArgs = calleeNode.kind === 'group' ? calleeNode.nodes.slice(1) : []
+        const allArgs = [...calleeArgs, ...node.nodes.slice(2)]
+
+        return allArgs.length === 0 ? `call ${calleeName}` : `call ${calleeName}(${allArgs.map(printNode).join(', ')})`
+      }
+
       const headText = printNode(head)
       const rest = node.nodes.slice(1)
 
       if (rest.length === 0) {
         return headText
+      }
+
+      // `code`/`text`/`read` (and anything else) with exactly one argument print space-separated
+      // (`code 16`, `read high`), not parenthesized (`code(16)`) — `code`/`text` specifically MUST: their single
+      // child already prints its own full `code <n>`/`text <...>` form (the literal-node cases above), so
+      // wrapping that in another `head(...)` would double the prefix (`code(code 16)`), a real bug caught by
+      // this compiler's own first generated file, not a style preference.
+      if (rest.length === 1) {
+        return `${headText} ${printNode(rest[0]!)}`
       }
 
       return `${headText}(${rest.map(printNode).join(', ')})`
@@ -191,6 +260,7 @@ export function printNode(node: Node): string {
 
 const CURSOR_IMPORTS = [
   'find text-cursor',
+  'find make-text-cursor',
   'find text-cursor-at-end',
   'find text-cursor-peek',
   'find text-cursor-peek-code',
@@ -341,7 +411,7 @@ function compileExpr(
 
       helpers.push(...compileAnyHelper(helperName, rule.children))
 
-      const localName = `char-${sends.length}`
+      const localName = rule.send ?? `char-${sends.length}`
 
       sends.push(localName)
 

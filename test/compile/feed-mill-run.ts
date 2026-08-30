@@ -13,7 +13,7 @@ import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv } from '@term/make/code/compile/native'
+import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { extendForms } from '@term/make/code/check/extend'
 import { disambiguateOverloads } from '@term/make/code/check/overload'
@@ -82,7 +82,7 @@ const grammar = readFeedMineGrammar(mineParsed.tree)
 ok('grammar reads all three named rules', grammar.size === 3, `got ${[...grammar.keys()].join(', ')}`)
 
 // 2. generate .tree source from the grammar alone
-const generated = compileFeedMine(grammar, '../../hex/code', ['load ../../hex/code', '  find hex-digit-value', ''])
+const generated = compileFeedMine(grammar, '@term/feed/code/base', ['load @term/feed/code/hex/code', '  find hex-digit-value', ''])
 const entry = `${generated}\ntask round-generated-hex\n  take input, like text\n  like text\n  save cursor\n    call make-text-cursor(read input)\n  save bytes\n    call read-hex(read cursor)\n  send back\n    call write-hex(read bytes)\n`
 
 console.log('--- generated .tree source ---')
@@ -126,31 +126,35 @@ function frontEnd(text: string, roots: string[]): Program {
   return simplify(program, new Set(roots))
 }
 
+const CASES: [string, string, string][] = [
+  ['lowercase round trips', '00ff7a', '00ff7a'],
+  ['uppercase input still lower-cases', '00FF7A', '00ff7a'],
+  ['the empty string round trips to itself', '', ''],
+  ['a longer real-looking value', 'deadbeefcafef00d', 'deadbeefcafef00d'],
+]
+
 try {
   const program = frontEnd(entry, ['round-generated-hex'])
   const ts = emitTypeScript(program)
   ok('generated hex reader compiles through the ordinary pipeline', true)
 
-  // 4. run it (Node, via a temp module) against the same fixtures deck/feed/test/hex.tree proves, and diff
-  // against the hand-written read-hex/write-hex on the identical inputs
+  // 4. run it through tsx (the generated file is real TypeScript, with type annotations Node can't execute
+  // directly) against the same fixtures deck/feed/test/hex.tree proves, one process printing one line per case
   const { writeFileSync, mkdtempSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')
+  const { execFileSync } = await import('node:child_process')
   const dir = mkdtempSync(join(tmpdir(), 'feed-mill-run-'))
-  const file = join(dir, 'generated.mjs')
-  writeFileSync(file, ts.replace(/^export /gm, 'export '))
+  const file = join(dir, 'generated.ts')
+  const inputs = CASES.map(([, input]) => JSON.stringify(input))
+  const main = `\nfor (const input of [${inputs.join(', ')}]) { console.log(roundGeneratedHex(input)) }\n`
+  writeFileSync(file, `${ts}${main}`)
 
-  const mod = await import(file)
-  const CASES: [string, string, string][] = [
-    ['lowercase round trips', '00ff7a', '00ff7a'],
-    ['uppercase input still lower-cases', '00FF7A', '00ff7a'],
-    ['the empty string round trips to itself', '', ''],
-    ['a longer real-looking value', 'deadbeefcafef00d', 'deadbeefcafef00d'],
-  ]
+  const output = execFileSync('npx', ['tsx', file], { encoding: 'utf8' }).trim().split('\n')
 
-  for (const [name, input, want] of CASES) {
-    const got = mod.roundGeneratedHex(input)
+  CASES.forEach(([name, , want], i) => {
+    const got = output[i]
     ok(`generated hex: ${name}`, got === want, `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`)
-  }
+  })
 } catch (error) {
   ok('generated hex reader compiles through the ordinary pipeline', false, String((error as Error).stack ?? error))
 }
