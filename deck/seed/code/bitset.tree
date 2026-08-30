@@ -14,7 +14,9 @@ load @term/seed/code/list
   find set
 
 form bitset
-  link words, like list
+  link words
+    like list
+      like number
 
   # grow the word list so word index `w` exists, filling new slots with zero
   task reserve

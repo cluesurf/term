@@ -1,5 +1,8 @@
-# SHELVED 2026-08-30 (file-level, the hold/ tree itself is IN the build now): this file still uses names or
-# syntax the resolver refuses. Delete `note draft` once its body is finished.
+# SUPERSEDED 2026-08-30, kept as a record. A port sketch of V8's date-delay.js (plus hebcal leads) from
+# before the stdlib had a time story. The live design is `code/date.tree` (now, decompose) over
+# `code/time.tree`, with `code/calendar.tree` formatting, parsing and shifting the epoch timestamp and
+# `code/duration.tree` measuring spans, each backed by per-platform runtime shims. Rebuilding this sketch
+# would duplicate that. The hebcal links matter if a Hebrew calendar is ever wanted.
 note draft
 
 load @term/seed/code/math

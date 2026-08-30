@@ -25,6 +25,7 @@ import {
   moduleExports,
   scanDefs,
 } from '@term/make/code/resolve'
+import { projectRoleOf } from '@term/call/code/role-of'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   buildIndex,
@@ -135,6 +136,36 @@ function hoverMarkdown(
 
 // the resolver for an opened document, built from its own file path. A non-`file:` uri has no project on disk, so it
 // resolves nothing (the document is still type-checked in isolation).
+// The role a project's `role.tree` gives a file, cached per project root. A `view` document is read by its own
+// gate rather than milled as code, so without this the editor underlines every `view` line as an undefined name.
+const roles = new Map<string, (file: string) => string | null>()
+
+function roleFor(uri: string): ((file: string) => string | null) | undefined {
+  if (!uri.startsWith('file:')) {
+    return undefined
+  }
+
+  try {
+    const path = fileURLToPath(uri)
+    const root = findProjectRoot(path)
+
+    if (!root) {
+      return undefined
+    }
+
+    let known = roles.get(root)
+
+    if (!known) {
+      known = projectRoleOf(root)
+      roles.set(root, known)
+    }
+
+    return known
+  } catch {
+    return undefined
+  }
+}
+
 function resolverFor(uri: string): Resolver | undefined {
   if (!uri.startsWith('file:')) {
     return undefined
@@ -594,7 +625,9 @@ export class LanguageServer {
       // and stdlib imports resolve exactly as a build would. A non-file uri or a file outside any project falls back
       // to the bundled stdlib only.
       const resolve = this.resolve ?? resolverFor(uri)
-      analyzer = new IncrementalAnalyzer(resolve)
+      // the role a project's `role.tree` gives a file, so a `view` document is read by its own gate rather than
+      // milled as code. Read once per project root and cached by `projectRoleOf`.
+      analyzer = new IncrementalAnalyzer(resolve, roleFor(uri))
       this.analyzers.set(uri, analyzer)
     }
 

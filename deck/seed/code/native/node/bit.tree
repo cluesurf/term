@@ -1,4 +1,4 @@
-# node bitwise integer ops (the 32-bit JavaScript operators), via the linked bit runtime shim. Internal: reached only through the public bit API.
+# node bitwise integer ops (64-bit, through BigInt in the runtime shim, matching the compiled backends). Internal: reached only through the public bit API.
 
 dock load
   load <global:bit>, name bit

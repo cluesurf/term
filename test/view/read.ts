@@ -170,6 +170,17 @@ refuses('mixed positional and named arguments',
   'find v\n  task <filter:phoneme>\n  hold is-equal\n    read self/a\n    bind other, text <b>\n',
   'mixes positional and named')
 refuses('a body head that is not a node', 'view page\n  wibble x\n', 'not part of a document body')
+// every word a document cannot say gets its own sentence, because "unknown head" is correct and useless
+refuses('a note', 'note async\n', 'carries no metadata')
+refuses('a wait', 'wait true\n', 'nothing a document writes is asynchronous')
+refuses('a roll', 'roll metric\n', 'declares nothing for the hive')
+refuses('a tell', 'tell @deck/form\n', 'decides nothing about what a customer is told')
+refuses('a rule', 'rule a-thing\n', 'declares no theorem')
+refuses('a line', 'line thing\n', 'is not a command')
+refuses('a mask', 'mask thing\n', 'cannot declare a trait')
+refuses('a halt', 'halt <boom>\n', 'cannot raise')
+refuses('a bear', 'bear ./x\n', 'cannot re-export')
+
 refuses('a take that shadows a host', 'host slug, like text\nview page\n  take slug, like text\n', 'two answers')
 
 // ---- every read resolves ----

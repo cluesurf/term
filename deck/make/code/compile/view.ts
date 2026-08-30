@@ -23,12 +23,20 @@ import type {
 } from '@term/make/code/parser/tree'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
+import { parse } from '@term/make/code/parser/tree'
+import {
+  expandTemplates,
+  collectTemplates,
+} from '@term/make/code/compile/template'
 import type {
   Expression,
   Program,
   Statement,
   ZoneNode as CompilerZoneNode,
 } from '@term/make/code/compile/node'
+import type { ViewCatalog } from '@term/make/code/compile/view-catalog'
+import type { ViewCaps } from '@term/make/code/compile/view-cap'
+import { VIEW_CAPS, capMessage } from '@term/make/code/compile/view-cap'
 
 // ---- the forms ----
 // One per form in @term/seed/code/view-file, plus the ones reused from zone, seed, bind, road, like and take.
@@ -117,12 +125,45 @@ export const VIEW_REFUSED_HEAD = new Map<string, string>([
   ['halt', 'a document cannot raise'],
   ['tree', 'a macro is expanded before this point, so a `tree` here means the expander did not run'],
   ['fuse', 'a macro is expanded before this point, so a `fuse` here means the expander did not run'],
+  ['note', 'a document carries no metadata. `note async` and `note unsafe` have no meaning here, and a comment is `#`'],
+  ['wait', 'nothing a document writes is asynchronous. Every query is resolved before rendering starts'],
+  ['dock', 'a document cannot reach a native module'],
+  ['roll', 'a document declares nothing for the hive'],
+  ['tell', 'a document decides nothing about what a customer is told'],
+  ['rule', 'a document declares no theorem'],
+  ['line', 'a document is not a command'],
+  ['seed', 'a document sets no attribute and no event handler. A component takes its values by `bind`'],
+])
+
+// The operators people reach for that no catalog should register, and the reason for each. A catalog could of
+// course leave any operator out, and then the message is the ordinary one. These four get a sentence because
+// they are the ones an author will assume are there.
+const REFUSED_CALL = new Map<string, string>([
+  ['random', 'it is not deterministic, so a document would render differently on the server and in the browser, and differently on two reads'],
+  ['uuid', 'it is not deterministic, so a document would render differently on the server and in the browser, and differently on two reads'],
+  ['now', 'it is not deterministic. The host passes the time in as a `host` parameter, which also makes a document testable'],
+  ['resolve', 'it performs input and output, and a renderer does neither. That is what lets one compiled document run on a server and in a browser'],
+  ['walk', 'iteration is the `walk` head, and two spellings of one thing drift apart'],
+  ['loop', 'iteration is the `walk` head, and two spellings of one thing drift apart'],
+  ['branch', 'branching is the `fork` head, and two spellings of one thing drift apart'],
+  ['switch', 'branching is the `fork` head, and two spellings of one thing drift apart'],
+  ['match', 'branching is the `fork` head, and two spellings of one thing drift apart'],
+  ['pick', 'branching is the `fork` head, and two spellings of one thing drift apart'],
+  ['attempt', 'it catches an error, and a document has nothing to catch'],
+  ['parse-json', 'it turns text into a shape nothing typed'],
 ])
 
 const SORT_WAY = new Set(['rise', 'fall'])
 const MEET_MODE = new Set(['and', 'or', 'not'])
 
-export function readView(tree: RootNode, file: string): ViewResult {
+export function readView(
+  tree: RootNode,
+  file: string,
+  // The four closed vocabularies. Absent means no name is checked, which is what the grammar and lowering tests
+  // want; a project supplies one and then every name a document says is checked against it.
+  catalog?: ViewCatalog,
+  caps: ViewCaps = VIEW_CAPS,
+): ViewResult {
   const diagnostics: Diagnostic[] = []
 
   const error = (span: Span, message: string): void => {
@@ -972,6 +1013,292 @@ export function readView(tree: RootNode, file: string): ViewResult {
     return { step: path.split('/').filter(step => step.length > 0) }
   }
 
+  // ---- every bound has a number ----
+  // Measured on the EXPANDED document, because that is what a browser builds. The tree arrives here already
+  // expanded: `compile/template.ts` runs before any reader. See note/term/view/05-sandbox.md.
+
+  const span0 = out.view[0]?.span ?? out.find[0]?.span ?? out.host[0]?.span
+
+  const over = (cap: keyof ViewCaps, said: number): void => {
+    if (said > caps[cap] && span0) {
+      error(span0, capMessage(cap, said, caps))
+    }
+  }
+
+  over('find', out.find.length)
+  over('host', out.host.length)
+  over('view', out.view.length)
+
+  let nodeSum = 0
+  let deepest = 0
+  let callSum = 0
+
+  const seedDepth = (seed: Seed, depth: number): void => {
+    if (seed.form !== 'call') {
+      return
+    }
+
+    callSum++
+
+    if (depth > caps.callDeep) {
+      error(seed.span, capMessage('callDeep', depth, caps))
+
+      return
+    }
+
+    for (const one of [...seed.value.slot, ...seed.value.bind.map(b => b.bond)]) {
+      seedDepth(one, depth + 1)
+    }
+  }
+
+  // `walks` is the chain of enclosing walk bounds, so the product is the number of nodes the innermost body can
+  // build. A counted walk knows its own bound; a list walk does not, so it counts as the iteration cap.
+  const measure = (nodes: ViewNode[], depth: number, walks: number[]): void => {
+    deepest = Math.max(deepest, depth)
+
+    if (depth > caps.deep) {
+      const at = nodes[0]?.span
+
+      if (at) {
+        error(at, capMessage('deep', depth, caps))
+      }
+
+      return
+    }
+
+    for (const node of nodes) {
+      nodeSum++
+
+      switch (node.form) {
+        case 'zone':
+          for (const bind of node.value.bind) {
+            seedDepth(bind.bond, 1)
+          }
+
+          measure(node.value.node, depth + 1, walks)
+          break
+        case 'walk': {
+          seedDepth(node.value.road, 1)
+
+          const bound = countedBound(node.value.road)
+          const inner = [...walks, bound]
+
+          if (inner.length > caps.walkDeep) {
+            error(node.span, capMessage('walkDeep', inner.length, caps))
+            break
+          }
+
+          const product = inner.reduce((a, b) => a * b, 1)
+
+          if (product > caps.walkSum) {
+            error(node.span, capMessage('walkSum', product, caps))
+            break
+          }
+
+          for (const next of node.value.next) {
+            measure(next.node, depth + 1, inner)
+          }
+
+          break
+        }
+        case 'fork':
+          for (const hook of node.value.hook) {
+            if (hook.form === 'test') {
+              seedDepth(hook.seed, 1)
+            } else {
+              measure(hook.node, depth + 1, walks)
+            }
+          }
+
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  for (const def of out.view) {
+    measure(def.node, 1, [])
+  }
+
+  over('node', nodeSum)
+  over('callSum', callSum)
+
+  // ---- the four closed vocabularies ----
+  // Checked here rather than at each site, so one walk answers for the whole file and the messages come out in
+  // file order. A name outside a catalog fails the compile, and the same registry answers for the save path and
+  // the editor. See note/term/view/04-catalog.md.
+
+  if (catalog) {
+    for (const load of out.load) {
+      if (!catalog.load.has(load.path)) {
+        error(
+          load.span,
+          `"${load.path}" is not a package this document may load. ${near(load.path, catalog.load)}`,
+        )
+      }
+    }
+
+    for (const find of out.find) {
+      const query = catalog.task.get(find.task)
+
+      if (!query) {
+        error(
+          find.span,
+          `"${find.task}" is not a registered query. ${near(find.task, new Set(catalog.task.keys()))}`,
+        )
+
+        continue
+      }
+
+      if (query.size !== undefined && find.size !== undefined && find.size > query.size) {
+        error(
+          find.span,
+          `"${find.name}" asks for ${find.size} and "${find.task}" caps at ${query.size}`,
+        )
+      }
+
+      // a predicate the resolver cannot push down to an index is a full table read wearing the costume of a
+      // filter, so the catalog says per field which ones it can answer
+      const holdOf = (hold: ViewHold): void => {
+        const first = [...hold.slot, ...hold.bind.map(one => one.bond)][0]
+        const road = first?.form === 'read' ? first.value.step : []
+
+        if (road[0] !== 'self' || road.length < 2) {
+          return
+        }
+
+        const field = road.slice(1).join('/')
+        const known = query.site.get(field)
+
+        if (!known) {
+          error(
+            hold.span,
+            `"${find.task}" has no filterable field "${field}". ${near(field, new Set(query.site.keys()))}`,
+          )
+
+          return
+        }
+
+        if (!known.hold.has(hold.name)) {
+          error(
+            hold.span,
+            `"${field}" does not accept "${hold.name}", because no index answers it. It accepts ${[...known.hold].sort().join(', ') || 'nothing'}`,
+          )
+        }
+      }
+
+      const meetOf = (meet: ViewMeet): void => {
+        for (const hold of meet.hold) {
+          holdOf(hold)
+        }
+
+        for (const inner of meet.meet) {
+          meetOf(inner)
+        }
+      }
+
+      for (const hold of find.hold) {
+        holdOf(hold)
+      }
+
+      if (find.meet) {
+        meetOf(find.meet)
+      }
+
+      for (const sort of find.sort) {
+        const field = sort.road.step.slice(1).join('/')
+        const known = query.site.get(field)
+
+        if (!known?.sort) {
+          error(
+            sort.span,
+            `"${find.task}" does not sort on "${field}", because no ordered index answers it`,
+          )
+        }
+      }
+    }
+
+    const seenCalls = (seed: Seed): void => {
+      if (seed.form === 'call') {
+        // `range` is the render runtime's, synthesized for a counted walk, never written by an author
+        if (seed.value.name !== 'range' && !catalog.call.has(seed.value.name)) {
+          const why = REFUSED_CALL.get(seed.value.name)
+
+          error(
+            seed.span,
+            why
+              ? `"${seed.value.name}" is not an operator a document may apply: ${why}`
+              : `"${seed.value.name}" is not a registered operator. ${near(seed.value.name, catalog.call)}`,
+          )
+        }
+
+        for (const one of [...seed.value.slot, ...seed.value.bind.map(b => b.bond)]) {
+          seenCalls(one)
+        }
+      }
+    }
+
+    const seenNodes = (nodes: ViewNode[]): void => {
+      for (const node of nodes) {
+        switch (node.form) {
+          case 'zone':
+            if (!catalog.view.has(node.value.name)) {
+              error(
+                node.span,
+                `"${node.value.name}" is not a component this document may place. ${near(node.value.name, catalog.view)}`,
+              )
+            }
+
+            for (const bind of node.value.bind) {
+              seenCalls(bind.bond)
+            }
+
+            seenNodes(node.value.node)
+            break
+          case 'walk':
+            seenCalls(node.value.road)
+
+            for (const next of node.value.next) {
+              seenNodes(next.node)
+            }
+
+            break
+          case 'fork':
+            for (const hook of node.value.hook) {
+              if (hook.form === 'test') {
+                seenCalls(hook.seed)
+              } else {
+                seenNodes(hook.node)
+              }
+            }
+
+            break
+          default:
+            break
+        }
+      }
+    }
+
+    for (const def of out.view) {
+      seenNodes(def.node)
+    }
+
+    for (const host of out.host) {
+      if (host.bond) {
+        seenCalls(host.bond)
+      }
+    }
+
+    for (const find of out.find) {
+      for (const hold of find.hold) {
+        for (const one of [...hold.slot, ...hold.bind.map(b => b.bond)]) {
+          seenCalls(one)
+        }
+      }
+    }
+  }
+
   // ---- every read resolves ----
   // Run after the whole file is read, because a `host` may be declared below the `find` that reads it.
   //
@@ -1128,6 +1455,51 @@ export function readView(tree: RootNode, file: string): ViewResult {
     }
   }
 
+  // A view that places itself never finishes rendering. Detected over the read forms rather than the parse tree,
+  // because by here a component use and a view definition are told apart.
+  const placed = new Map<string, Set<string>>()
+
+  const places = (nodes: ViewNode[], into: Set<string>): Set<string> => {
+    for (const node of nodes) {
+      switch (node.form) {
+        case 'zone':
+          into.add(node.value.name)
+          places(node.value.node, into)
+          break
+        case 'walk':
+          for (const next of node.value.next) {
+            places(next.node, into)
+          }
+
+          break
+        case 'fork':
+          for (const hook of node.value.hook) {
+            if (hook.form !== 'test') {
+              places(hook.node, into)
+            }
+          }
+
+          break
+        default:
+          break
+      }
+    }
+
+    return into
+  }
+
+  for (const def of out.view) {
+    placed.set(def.name, places(def.node, new Set()))
+  }
+
+  for (const def of out.view) {
+    const ring = ringFrom(def.name, placed)
+
+    if (ring) {
+      error(def.span, `a view cannot place itself, and this one does: ${ring}`)
+    }
+  }
+
   for (const def of out.view) {
     const scope = new Set<string>([
       ...def.take.map(take => take.name),
@@ -1144,6 +1516,230 @@ export function readView(tree: RootNode, file: string): ViewResult {
 
   return { ok: true, file: out, diagnostics }
 }
+
+// The cycle a view is in, named, or nothing. Depth first over the places-graph, which is small.
+function ringFrom(start: string, graph: Map<string, Set<string>>): string | undefined {
+  const walk = (name: string, path: string[], seen: Set<string>): string | undefined => {
+    if (seen.has(name)) {
+      const at = path.indexOf(name)
+
+      return [...path.slice(at === -1 ? 0 : at), name].join(' places ')
+    }
+
+    const next = graph.get(name)
+
+    if (!next) {
+      return undefined
+    }
+
+    seen.add(name)
+
+    for (const one of next) {
+      const found = walk(one, [...path, name], seen)
+
+      if (found) {
+        return found
+      }
+    }
+
+    seen.delete(name)
+
+    return undefined
+  }
+
+  return walk(start, [], new Set())
+}
+
+// The bound of a counted walk when it is a literal range, so nested walks can be multiplied out. A list walk, or
+// a range whose bounds are read at run time, counts as the iteration cap instead.
+function countedBound(road: Seed): number {
+  if (road.form === 'call' && road.value.name === 'range') {
+    const [base, head] = road.value.slot
+
+    if (base?.form === 'mark' && head?.form === 'mark') {
+      return Math.max(0, head.value - base.value)
+    }
+  }
+
+  return 1000
+}
+
+// The nearest registered name, so a typo says what was probably meant instead of only what was wrong. Plain edit
+// distance over a small closed list, which is what these always are.
+function near(said: string, known: Set<string>): string {
+  let best: string | undefined
+  let cost = Math.max(2, Math.floor(said.length / 3))
+
+  for (const one of known) {
+    const far = distance(said, one)
+
+    if (far <= cost) {
+      cost = far
+      best = one
+    }
+  }
+
+  if (best) {
+    return `Did you mean "${best}"?`
+  }
+
+  return known.size === 0
+    ? 'The catalog registers none.'
+    : `The catalog registers ${known.size}.`
+}
+
+function distance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i)
+
+  for (let i = 1; i <= a.length; i++) {
+    let last = row[0]!
+    row[0] = i
+
+    for (let j = 1; j <= b.length; j++) {
+      const keep = row[j]!
+      row[j] = Math.min(
+        row[j]! + 1,
+        row[j - 1]! + 1,
+        last + (a[i - 1] === b[j - 1] ? 0 : 1),
+      )
+      last = keep
+    }
+  }
+
+  return row[b.length]!
+}
+
+// ---- the one gate ----
+// The compiler, `term view`, and a save path all call THIS, so the three cannot answer differently about what a
+// document may say. A second copy of a check is a second answer, and the two disagree eventually.
+//
+// It is the whole path in order: parse, then cycles BEFORE expansion (expansion is what a cycle crashes), then
+// expand, then read against the catalog and the caps. Skipping a stage would prove less than a save does.
+
+export type ViewCheck = {
+  catalog?: ViewCatalog
+  caps?: ViewCaps
+}
+
+export function checkView(
+  source: { file: string; text: string },
+  options: ViewCheck = {},
+): ViewResult {
+  const parsed = parse(source)
+
+  if (!parsed.ok) {
+    return { ok: false, diagnostics: parsed.diagnostics }
+  }
+
+  const rings = viewCycles(parsed.tree, source.file)
+
+  if (rings.length > 0) {
+    return { ok: false, diagnostics: rings }
+  }
+
+  return readView(
+    expandTemplates(parsed.tree, collectTemplates(parsed.tree)),
+    source.file,
+    options.catalog,
+    options.caps,
+  )
+}
+
+// ---- macro cycles ----
+// Run BEFORE expansion, because expansion is what a cycle destroys: `compile/template.ts` recurses on a `fuse`
+// and a macro that fuses itself takes the stack down with it. A crash is not a diagnostic, and an author who can
+// crash the compiler by writing two lines is a bound that does not hold.
+//
+// Walks the parse tree rather than the read forms, because by the time a `view-file` exists the macros are gone.
+
+export function viewCycles(tree: RootNode, file: string): Diagnostic[] {
+  const body = new Map<string, GroupNode>()
+
+  for (const node of tree.nodes) {
+    if (node.kind === 'group' && headOf(node) === 'tree') {
+      const name = keyOf(node)
+
+      if (name) {
+        body.set(name, node)
+      }
+    }
+  }
+
+  const fused = (group: GroupNode, into: Set<string> = new Set()): Set<string> => {
+    for (const node of group.nodes) {
+      if (node.kind !== 'group') {
+        continue
+      }
+
+      if (headOf(node) === 'fuse') {
+        const name = keyOf(node)
+
+        if (name) {
+          into.add(name)
+        }
+      }
+
+      fused(node, into)
+    }
+
+    return into
+  }
+
+  const edges = new Map<string, Set<string>>()
+
+  for (const [name, group] of body) {
+    edges.set(name, fused(group))
+  }
+
+  const diagnostics: Diagnostic[] = []
+  const said = new Set<string>()
+
+  // depth-first, keeping the path, so the message can name the cycle rather than only that there is one
+  const walk = (name: string, path: string[], seen: Set<string>): void => {
+    if (seen.has(name)) {
+      const at = path.indexOf(name)
+      const ring = [...path.slice(at === -1 ? 0 : at), name].join(' fuses ')
+
+      if (!said.has(ring)) {
+        said.add(ring)
+
+        const group = body.get(path[0] ?? name)
+
+        diagnostics.push(
+          diagnose('syntax-error', {
+            file,
+            span: group ? spanOf(group) : ZERO,
+            message: `a macro cannot fuse itself, and this one does: ${ring}`,
+          }),
+        )
+      }
+
+      return
+    }
+
+    const next = edges.get(name)
+
+    if (!next) {
+      return
+    }
+
+    seen.add(name)
+
+    for (const one of next) {
+      walk(one, [...path, name], seen)
+    }
+
+    seen.delete(name)
+  }
+
+  for (const name of body.keys()) {
+    walk(name, [], new Set())
+  }
+
+  return diagnostics
+}
+
+const ZERO: Span = { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
 
 // ---- node helpers ----
 // Local, following compile/host.ts, so the reader stays independent of the code mill.

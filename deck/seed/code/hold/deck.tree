@@ -1,5 +1,7 @@
-# SHELVED 2026-08-30 (file-level, the hold/ tree itself is IN the build now): this file still uses names or
-# syntax the resolver refuses. Delete `note draft` once its body is finished.
+# SUPERSEDED 2026-08-30, kept as a record. A sketch of the deck form built on @term/base's record system.
+# The live design is `code/deck.tree`: `form deck` and the deck-* family as plain stdlib forms. Names are
+# package-global, so this file's `form deck` collides with the live one and the two cannot coexist; the
+# @term/base-backed variant is a base-integration decision, not a missing module.
 note draft
 
 load @term/base

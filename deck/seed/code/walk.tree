@@ -12,12 +12,12 @@ form walk
   head t
   link pull
     like task
-      like maybe
+      like maybe t
 
   # the next element, or none at the end
   task next
     take self
-    like maybe
+    like maybe t
     send back
       call self/pull
 
@@ -29,12 +29,12 @@ form walk
       like task
         take item, like t
         like s
-    like walk
+    like walk s
     send back
       make walk
         bind pull
           task pull
-            like maybe
+            like maybe s
             save item
               call self/pull
             fork case, read item
@@ -55,12 +55,12 @@ form walk
       like task
         take item, like t
         like boolean
-    like walk
+    like walk t
     send back
       make walk
         bind pull
           task pull
-            like maybe
+            like maybe t
             walk test
               hook test
                 true
@@ -86,7 +86,7 @@ form walk
   task take
     take self
     take count, like number
-    like walk
+    like walk t
     save box
       make list
     call push
@@ -96,7 +96,7 @@ form walk
       make walk
         bind pull
           task pull
-            like maybe
+            like maybe t
             save taken
               call get
                 read box
@@ -132,7 +132,7 @@ form walk
   task drop
     take self
     take count, like number
-    like walk
+    like walk t
     save box
       make list
     call push
@@ -142,7 +142,7 @@ form walk
       make walk
         bind pull
           task pull
-            like maybe
+            like maybe t
             walk test
               hook test
                 call is-below
@@ -240,7 +240,7 @@ form walk
       like task
         take item, like t
         like boolean
-    like maybe
+    like maybe t
     walk test
       hook test
         true
@@ -334,8 +334,10 @@ form walk
 # a walk over a list, front to back
 task from-list
   head t
-  take items, like list
-  like walk
+  take items
+    like list
+      like t
+  like walk t
   save box
     make list
   call push
@@ -345,7 +347,7 @@ task from-list
     make walk
       bind pull
         task pull
-          like maybe
+          like maybe t
           save index
             call get
               read box
@@ -376,7 +378,7 @@ task from-list
 task count-from
   take start, like number
   take step, like number
-  like walk
+  like walk number
   save box
     make list
   call push
@@ -386,7 +388,7 @@ task count-from
     make walk
       bind pull
         task pull
-          like maybe
+          like maybe number
           save current
             call get
               read box

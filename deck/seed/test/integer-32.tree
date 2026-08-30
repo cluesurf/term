@@ -1,0 +1,156 @@
+# The i32 operation vectors, ported from the shelved table sketch at code/hold/integer/32/case.tree
+# onto the live template tasks (code/integer/n.tree, instantiated by code/integer/32.tree). The sketch
+# wrote unsigned bit patterns; here each expectation is the signed 32-bit value the live `i32-wrap`
+# semantics produce. The sketch's rotate tables have no live counterpart (the template has no rotate),
+# so they stay recorded there until one exists.
+#
+# Run with: term test
+
+load @term/seed/code/integer/32
+  find i32-shift-left
+  find i32-shift-right
+  find i32-checked-add
+  find i32-maximum-value
+
+test i32-shift-left-start
+  want hold
+    call is-equal
+      call i32-shift-left
+        code 1
+        code 1
+      code 2
+
+test i32-shift-left-middle
+  want hold
+    call is-equal
+      call i32-shift-left
+        code 536870912
+        code 1
+      code 1073741824
+
+test i32-shift-left-wraps-to-sign
+  want hold
+    call is-equal
+      call i32-shift-left
+        code 1073741824
+        code 1
+      code -2147483648
+
+test i32-shift-left-zero
+  want hold
+    call is-equal
+      call i32-shift-left
+        code 0
+        code 1
+      code 0
+
+test i32-shift-right-start
+  want hold
+    call is-equal
+      call i32-shift-right
+        code 1073741824
+        code 1
+      code 536870912
+
+test i32-shift-right-end
+  want hold
+    call is-equal
+      call i32-shift-right
+        code 1
+        code 1
+      code 0
+
+test i32-shift-right-zero
+  want hold
+    call is-equal
+      call i32-shift-right
+        code 0
+        code 1
+      code 0
+
+test i32-checked-add-zero
+  save sum
+    call i32-checked-add
+      code 0
+      code 0
+  save good, false
+  fork case, read sum
+    case some
+      save good
+        call is-equal
+          read value
+          code 0
+    case none
+      save good, false
+  want hold, read good
+
+test i32-checked-add-small
+  save sum
+    call i32-checked-add
+      code 0
+      code 1
+  save good, false
+  fork case, read sum
+    case some
+      save good
+        call is-equal
+          read value
+          code 1
+    case none
+      save good, false
+  want hold, read good
+
+test i32-checked-add-inner
+  save sum
+    call i32-checked-add
+      code 1000
+      code 1000
+  save good, false
+  fork case, read sum
+    case some
+      save good
+        call is-equal
+          read value
+          code 2000
+    case none
+      save good, false
+  want hold, read good
+
+test i32-checked-add-boundary-base
+  save sum
+    call i32-checked-add
+      call i32-maximum-value
+      code 1
+  save overflowed, false
+  fork case, read sum
+    case some
+      save overflowed, false
+    case none
+      save overflowed, true
+  want hold, read overflowed
+
+test i32-checked-add-boundary-head
+  save sum
+    call i32-checked-add
+      code 1
+      call i32-maximum-value
+  save overflowed, false
+  fork case, read sum
+    case some
+      save overflowed, false
+    case none
+      save overflowed, true
+  want hold, read overflowed
+
+test i32-checked-add-max
+  save sum
+    call i32-checked-add
+      call i32-maximum-value
+      call i32-maximum-value
+  save overflowed, false
+  fork case, read sum
+    case some
+      save overflowed, false
+    case none
+      save overflowed, true
+  want hold, read overflowed

@@ -3,6 +3,11 @@
 load @term/seed/code/console
   find log
 
+# equality descends structurally through the compare runtime, so `want` needs no equality mask on
+# the element type (rust would otherwise demand PartialEq on `t`)
+dock load
+  load <global:compare>, name compare-runtime
+
 # the meta object a test block constructs: a name and the work that returns whether it passed
 
 form test
@@ -38,7 +43,7 @@ task want
   take expect, like t
   like boolean
   send back
-    call is-equal
+    call compare-runtime/deep-equal
       read got
       read expect
 
@@ -51,7 +56,7 @@ task deny
   like boolean
   send back
     call is-equal
-      call is-equal
+      call compare-runtime/deep-equal
         read got
         read expect
       false

@@ -739,7 +739,7 @@ function runSuiteRust(suite: Suite): void {
   // in its closure can actually halt (hex/json/gzip/otf-head/otf-maxp all have a raising path somewhere;
   // otf-hhea/otf-os2 don't, since neither reader validates anything that halts), so the call site has to match
   // whichever the emitter actually produced rather than assume every suite is fallible.
-  const fallible = new RegExp(`fn ${fn}\\([^)]*\\)\\s*->\\s*Result<`).test(emitted)
+  const fallible = new RegExp(`fn ${fn}\\([^)]*\\)\\s*->\\s*(?:std::result::)?Result<`).test(emitted)
   const callExpr = (arg: string): string =>
     fallible ? `${fn}(${arg}).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })` : `${fn}(${arg})`
   const main = `\nfn main() {\n  let inputs: Vec<&str> = vec![${inputs.join(', ')}];\n  for input in inputs { print!("{}\\u{1e}", ${callExpr('input.to_string()')}); }\n}\n`

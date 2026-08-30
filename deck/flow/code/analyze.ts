@@ -53,7 +53,13 @@ export function toLspDiagnostic(d: Diagnostic): LspDiagnostic {
 
 export function analyze(
   document: { file: string; text: string },
-  options?: { resolve?: Resolver; cache?: CompileCache },
+  options?: {
+    resolve?: Resolver
+    cache?: CompileCache
+    // the role a project's `role.tree` gives a file. Without it a `view`-role document is milled as code and
+    // every `view` line is underlined as an undefined name, which is both wrong and the opposite of helpful.
+    roleOf?: (file: string) => string | null | undefined
+  },
 ): { diagnostics: LspDiagnostic[]; program?: Program } {
   // the editor needs the un-optimized program (every call site intact for navigation / find-references), not the
   // inlined / specialized shape the build emits

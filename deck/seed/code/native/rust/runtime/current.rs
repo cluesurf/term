@@ -5,8 +5,9 @@ mod current {
         std::process::id() as i64
     }
 
-    pub fn arguments() -> Vec<String> {
-        std::env::args().collect()
+    // the seed list representation: a reference-counted mutable vec
+    pub fn arguments() -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
+        std::rc::Rc::new(std::cell::RefCell::new(std::env::args().collect()))
     }
 
     pub fn directory() -> String {
@@ -26,7 +27,7 @@ mod current {
     }
 
     // `signal` is one of "terminate", "interrupt", "hangup"; anything else is ignored
-    pub fn listen(signal: String, handler: fn()) {
+    pub fn listen(signal: String, handler: std::rc::Rc<dyn Fn()>) {
         let number = match signal.as_str() {
             "terminate" => libc::SIGTERM,
             "interrupt" => libc::SIGINT,
@@ -34,8 +35,22 @@ mod current {
             _ => return,
         };
 
+        // the handler is an Rc closure, so not Send by construction. The emitted program is
+        // single threaded, and registration keeps the closure alive for the process lifetime,
+        // so asserting Send/Sync on the trampoline is sound here.
+        struct Trampoline(std::rc::Rc<dyn Fn()>);
+        unsafe impl Send for Trampoline {}
+        unsafe impl Sync for Trampoline {}
+        impl Trampoline {
+            // a method call captures the whole struct in the closure below; a bare field read
+            // would capture only the non-Send field and lose the Send/Sync assertion
+            fn call(&self) {
+                (self.0)()
+            }
+        }
+        let trampoline = Trampoline(handler);
         unsafe {
-            let _ = signal_hook::low_level::register(number, handler);
+            let _ = signal_hook::low_level::register(number, move || trampoline.call());
         }
     }
 }

@@ -56,6 +56,30 @@ function vname(name: string): string {
   return RUST_RESERVED.has(snakeName) ? `${snakeName}_` : snakeName
 }
 
+// outer parens around an assigned or returned value are the binary case's grouping: rustc warns on
+// them there (unused_parens), so a BALANCED outer pair is stripped
+function bare(rendered: string): string {
+  if (!rendered.startsWith('(') || !rendered.endsWith(')')) {
+    return rendered
+  }
+
+  let depth = 0
+
+  for (let i = 0; i < rendered.length; i++) {
+    if (rendered[i] === '(') {
+      depth += 1
+    } else if (rendered[i] === ')') {
+      depth -= 1
+
+      if (depth === 0 && i < rendered.length - 1) {
+        return rendered
+      }
+    }
+  }
+
+  return rendered.slice(1, -1)
+}
+
 function snake(name: string): string {
   const snakeName = name.replace(/-/g, '_')
 
@@ -247,6 +271,10 @@ export function emitRust(
   // struct / variant fields that hold a closure (a `Box<dyn Fn>`): calling one needs parentheses (`(r.handle)(x)`),
   // since rust would otherwise read `r.handle(x)` as a method call on a field named `handle`.
   const closureFields = new Set<string>()
+  // a variant field whose type is the enclosing enum itself (`node.next: linked-list t`): rust refuses the
+  // infinitely sized enum, so the field is stored as `Rc<Enum>`, wrapped at construction and unwrapped
+  // (cloned out) at the match binding. Keyed `variant/field`.
+  const recursiveFields = new Set<string>()
 
   for (const node of program) {
     if (node.form !== 'record-type') {
@@ -264,6 +292,9 @@ export function emitRust(
       for (const f of v.fields) {
         if (f.type.kind === 'function') {
           closureFields.add(f.name)
+        }
+        if (f.type.kind === 'named' && f.type.name === node.name) {
+          recursiveFields.add(`${v.name}/${f.name}`)
         }
       }
     }
@@ -943,7 +974,9 @@ export function emitRust(
               : expr(a)
           })()
 
-          return boxUnknown(params?.[i], a, rendered)
+          // a binary's grouping parens are redundant at argument position (the comma delimits):
+          // rustc warns unused_parens on them
+          return bare(boxUnknown(params?.[i], a, rendered))
         })
 
         // a trailing `need false` parameter left out at the call site still exists in the native signature:
@@ -1026,7 +1059,12 @@ export function emitRust(
 
         if (owner) {
           const fields = node.fields.map(
-            f => `${snake(f.name)}: ${owned(f.value)}`,
+            f =>
+              `${snake(f.name)}: ${
+                recursiveFields.has(`${node.name}/${f.name}`)
+                  ? `std::rc::Rc::new(${owned(f.value)})`
+                  : owned(f.value)
+              }`,
           )
 
           return fields.length > 0
@@ -1458,7 +1496,7 @@ export function emitRust(
           return `let mut ${vname(node.name)}: std::rc::Rc<dyn std::any::Any> = std::rc::Rc::new(${owned(node.init)});`
         }
 
-        return `let mut ${vname(node.name)}${ann || emptyAnn(node.init)} = ${owned(node.init)};`
+        return `let mut ${vname(node.name)}${ann || emptyAnn(node.init)} = ${bare(owned(node.init))};`
       }
       case 'assign': {
         // an assignment to a mutated capture writes through the cell: `*x.borrow_mut() = v`, and a field of a
@@ -1472,47 +1510,24 @@ export function emitRust(
           moduleSlots.has(node.target.name) &&
           !localNames.has(node.target.name)
         ) {
-          return `{ let __slot_value = ${owned(node.value)}; ${moduleConstName(node.target.name)}.with(|v| *v.borrow_mut() = Some(__slot_value)); }`
+          return `{ let __slot_value = ${bare(owned(node.value))}; ${moduleConstName(node.target.name)}.with(|v| *v.borrow_mut() = Some(__slot_value)); }`
         }
 
         const cellTarget = cellAssignTarget(node.target)
 
         if (cellTarget) {
-          return `{ let __cell_value = ${expr(
-            node.value,
+          return `{ let __cell_value = ${bare(
+            expr(node.value),
           )}; ${cellTarget} ${node.op} __cell_value; }`
         }
 
         return node.op === '='
-          ? `${expr(node.target)} = ${owned(node.value)};`
-          : `${expr(node.target)} ${node.op} ${expr(node.value)};`
+          ? `${expr(node.target)} = ${bare(owned(node.value))};`
+          : `${expr(node.target)} ${node.op} ${bare(expr(node.value))};`
       }
       case 'expression':
         return `${expr(node.expr)};`
       case 'return': {
-        // outer parens around the returned value are the binary case's grouping: rustc warns on them in
-        // return position (unused_parens), so a BALANCED outer pair is stripped
-        const bare = (rendered: string): string => {
-          if (!rendered.startsWith('(') || !rendered.endsWith(')')) {
-            return rendered
-          }
-
-          let depth = 0
-
-          for (let i = 0; i < rendered.length; i++) {
-            if (rendered[i] === '(') {
-              depth += 1
-            } else if (rendered[i] === ')') {
-              depth -= 1
-
-              if (depth === 0 && i < rendered.length - 1) {
-                return rendered
-              }
-            }
-          }
-
-          return rendered.slice(1, -1)
-        }
 
         // a list-returning function that returns a native dock call directly wraps the shim's plain `Vec`
         const value = !node.value
@@ -1544,11 +1559,11 @@ export function emitRust(
             : undefined
 
         if (guardDepth > 0) {
-          return `return Ok(Some(${boxedUnit ?? casted}));`
+          return `return std::result::Result::Ok(Some(${boxedUnit ?? casted}));`
         }
 
         if (currentRaising) {
-          return `return Ok(${boxedUnit ?? casted});`
+          return `return std::result::Result::Ok(${boxedUnit ?? casted});`
         }
 
         return node.value || boxedUnit ? `return ${boxedUnit ?? casted};` : 'return;'
@@ -1575,7 +1590,7 @@ export function emitRust(
               : `(${expr(node.value)}).clone()`
 
         if (currentRaising || guardDepth > 0) {
-          return `return Err(${carrier});`
+          return `return std::result::Result::Err(${carrier});`
         }
 
         return `{ let raised = ${carrier}; eprintln!("{}", raised); std::process::exit(1) }`
@@ -1600,12 +1615,12 @@ export function emitRust(
         guardDepth++
         const body = block(node.body, d + 2)
         guardDepth--
-        const returned = outerRaising ? 'return Ok(value)' : 'return value'
+        const returned = outerRaising ? 'return std::result::Result::Ok(value)' : 'return value'
         const handler = node.catch
-          ? `Err(${vname(node.catch.name)}) => {\n${block(node.catch.body, d + 2)}\n${pad(d + 1)}}`
-          : 'Err(_) => {}'
+          ? `std::result::Result::Err(${vname(node.catch.name)}) => {\n${block(node.catch.body, d + 2)}\n${pad(d + 1)}}`
+          : 'std::result::Result::Err(_) => {}'
 
-        return `match (|| -> Result<Option<${result}>, TermException> {\n${body}\n${pad(d + 1)}Ok(None)\n${pad(d)}})() {\n${pad(d + 1)}Ok(Some(value)) => ${returned},\n${pad(d + 1)}Ok(None) => {}\n${pad(d + 1)}${handler}\n${pad(d)}}`
+        return `match (|| -> std::result::Result<Option<${result}>, TermException> {\n${body}\n${pad(d + 1)}std::result::Result::Ok(None)\n${pad(d)}})() {\n${pad(d + 1)}std::result::Result::Ok(Some(value)) => ${returned},\n${pad(d + 1)}std::result::Result::Ok(None) => {}\n${pad(d + 1)}${handler}\n${pad(d)}}`
       }
 
       case 'for-each': {
@@ -1748,9 +1763,18 @@ export function emitRust(
             }
           }
 
+          // a recursive field arrives Rc-wrapped (see recursiveFields); clone it out so the branch body
+          // sees the plain enum value it was written against
+          const unwraps = locals
+            .filter(({ field }) => recursiveFields.has(`${b.label}/${field}`))
+            .map(
+              ({ local }) =>
+                `${pad(d + 2)}let ${snake(local)} = (*${snake(local)}).clone();`,
+            )
+
           return `${pad(d + 1)}${pascal(owner)}::${pascal(
             b.label,
-          )}${pattern} => {\n${body}\n${pad(d + 1)}}`
+          )}${pattern} => {\n${[...unwraps, body].join('\n')}\n${pad(d + 1)}}`
         })
 
         if (node.otherwise) {
@@ -1963,7 +1987,7 @@ export function emitRust(
         const plainResult =
           declaredResult && declaredResult.kind !== 'unit' ? rustType(declaredResult) : ''
         const ret = raising.has(node.name)
-          ? ` -> Result<${plainResult || '()'}, TermException>`
+          ? ` -> std::result::Result<${plainResult || '()'}, TermException>`
           : plainResult
             ? ` -> ${plainResult}`
             : ''
@@ -2008,15 +2032,75 @@ export function emitRust(
         // a guard returned from inside it (the body's or the handler's `send back`), which Rust cannot see through
         // the match, so the fall-through is marked unreachable
         const last = node.body[node.body.length - 1]
+        // an if-chain WITH an else whose every branch visibly returns diverges in rustc's own analysis,
+        // so an unreachable!() after it draws the unreachable_code warning instead of helping
+        const rustSeesDivergence = (s: Statement | undefined): boolean => {
+          const branchReturns = (body: Statement[]): boolean => {
+            const end = body[body.length - 1]
+
+            return (
+              end?.form === 'return' ||
+              end?.form === 'throw' ||
+              rustSeesDivergence(end)
+            )
+          }
+
+          if (s?.form === 'if') {
+            return (
+              Boolean(s.otherwise) &&
+              s.branches.every(b => branchReturns(b.body)) &&
+              branchReturns(s.otherwise!)
+            )
+          }
+
+          // an ENUM match (rustc-checked exhaustive) with every arm returning: rustc sees it diverge.
+          // The other match shapes get a wildcard arm from this emitter (text and exception subjects
+          // always, bool with fewer than two literal arms), and an EMPTY wildcard keeps a live
+          // fall-through, so only the shapes whose emitted arms all return count here.
+          if (s?.form === 'match' && !s.exceptionArms) {
+            const labels = s.cases.map(b => b.label)
+            const booleans =
+              labels.length > 0 &&
+              labels.every(l => l === 'true' || l === 'false')
+            const text = s.subject.type?.kind === 'string'
+            const wildcard =
+              text ||
+              (booleans && (s.otherwise || s.cases.length < 2))
+
+            if (wildcard || (booleans && s.cases.length < 2)) {
+              // the wildcard arm is the otherwise (or empty): diverges only when an otherwise
+              // exists and returns
+              return (
+                Boolean(s.otherwise) &&
+                s.cases.every(b => branchReturns(b.body)) &&
+                branchReturns(s.otherwise!)
+              )
+            }
+
+            return (
+              s.cases.every(b => branchReturns(b.body)) &&
+              (!s.otherwise || branchReturns(s.otherwise))
+            )
+          }
+
+          return false
+        }
+        const lastDiverges =
+          last?.form === 'return' ||
+          last?.form === 'throw' ||
+          rustSeesDivergence(last)
         const tail =
-          currentRaising && (!node.result || node.result.kind === 'unit')
-            ? `${pad(d + 1)}Ok(())`
+          currentRaising &&
+          (!node.result || node.result.kind === 'unit') &&
+          !lastDiverges
+            ? `${pad(d + 1)}std::result::Result::Ok(())`
             : (last?.form === 'guard' ||
                   last?.form === 'if' ||
                   last?.form === 'while' ||
                   last?.form === 'match') &&
                 node.result &&
-                node.result.kind !== 'unit'
+                node.result.kind !== 'unit' &&
+                !rustSeesDivergence(last)
               ? // a valued task whose body ends in branching that returns from every live path: rustc cannot
                 // always see the coverage (an `if` chain with no `else`), so the fall-through is marked
                 `${pad(d + 1)}unreachable!()`
@@ -2055,7 +2139,12 @@ export function emitRust(
         if (node.variants.length > 0) {
           const cases = node.variants.map(v => {
             const fields = v.fields.map(
-              f => `${snake(f.name)}: ${rustType(f.type)}`,
+              f =>
+                `${snake(f.name)}: ${
+                  recursiveFields.has(`${v.name}/${f.name}`)
+                    ? `std::rc::Rc<${rustType(f.type)}>`
+                    : rustType(f.type)
+                }`,
             )
 
             return `${pad(d + 1)}${pascal(v.name)}${

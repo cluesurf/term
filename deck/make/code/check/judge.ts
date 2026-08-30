@@ -1094,8 +1094,15 @@ function convert(level: number, a: Value, b: Value): boolean {
     return convertSpine(level, a.spine, b.spine)
   }
 
+  // flex-flex with different heads: try either orientation. Solving `?a := ?b x` fails the scope
+  // check when ?a's spine lacks x, but `?b := \ x. ?a` is a valid Miller pattern the other way
+  // (seen as `?6` against `?7 t` when a generic task's fresh list element meets an abstracted one).
   if (a.v === 'flex') {
-    return solveMeta(level, a.id, a.spine, b)
+    if (solveMeta(level, a.id, a.spine, b)) {
+      return true
+    }
+
+    return b.v === 'flex' && solveMeta(level, b.id, b.spine, a)
   }
 
   if (b.v === 'flex') {

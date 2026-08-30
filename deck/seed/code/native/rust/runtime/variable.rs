@@ -15,8 +15,9 @@ mod variable {
         std::env::remove_var(&name)
     }
 
-    pub fn list() -> HashMap<String, String> {
-        std::env::vars().collect()
+    // the seed hash representation: a reference-counted mutable map
+    pub fn list() -> std::rc::Rc<std::cell::RefCell<HashMap<String, String>>> {
+        std::rc::Rc::new(std::cell::RefCell::new(std::env::vars().collect()))
     }
 
     pub fn check(name: String) -> bool {

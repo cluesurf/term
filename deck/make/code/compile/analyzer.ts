@@ -8,6 +8,8 @@
 import { QueryCompiler } from '@term/make/code/compile/incremental'
 import { LOW, HIGH } from '@term/make/code/compile/query'
 import { collectModules } from '@term/make/code/compile/load'
+import { checkView, lowerView } from '@term/make/code/compile/view'
+import type { ViewCatalog } from '@term/make/code/compile/view-catalog'
 import type { Resolver, Source } from '@term/make/code/compile/load'
 import type { Program } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
@@ -17,7 +19,14 @@ export class IncrementalAnalyzer {
   readonly compiler = new QueryCompiler()
   private files: string[] = []
 
-  constructor(private readonly resolve?: Resolver) {}
+  constructor(
+    private readonly resolve?: Resolver,
+    // the role a project's `role.tree` gives a file. A `view` document takes an early return below: it is read by
+    // its own gate, not milled as code, and the incremental machinery buys it nothing because its imports are
+    // catalog packages with no cross-module checking to do. Without this the editor underlines every `view` line.
+    private readonly roleOf?: (file: string) => string | null | undefined,
+    private readonly catalog?: ViewCatalog,
+  ) {}
 
   // analyze a document: collect its module graph, set sources, return incremental diagnostics + the typed program.
   // `program` is the whole merged graph (for full types: hover, signatures); `documentProgram` is just this document's
@@ -28,6 +37,20 @@ export class IncrementalAnalyzer {
     program?: Program
     documentProgram?: Program
   }> {
+    // a `view`-role document: the same gate the compiler, `term view` and a save path call, so the editor can
+    // never be more permissive than a save nor more strict
+    if (this.roleOf?.(document.file) === 'view') {
+      const read = checkView(document, { catalog: this.catalog })
+
+      if (!read.ok) {
+        return { diagnostics: read.diagnostics }
+      }
+
+      const program = lowerView(read.file)
+
+      return { diagnostics: [], program, documentProgram: program }
+    }
+
     const sources = this.resolve
       ? collectModules(document, this.resolve).sources
       : [document]

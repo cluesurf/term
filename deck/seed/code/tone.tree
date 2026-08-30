@@ -126,16 +126,20 @@ task tone-pack
           save held, code 1
         hook miss
           save held, code 0
+          # mask the window to 32 bits: the bit ops are 64-bit on every backend now, so the buffer
+          # would otherwise grow one byte per step past the JS host's 2^53 exact range
           save buffer
-            call bitwise-or
-              call shift-left
-                read buffer
-                code 8
+            call bitwise-and
+              code 4294967295
               call bitwise-or
                 call shift-left
-                  read half
-                  code 4
-                read nibble
+                  read buffer
+                  code 8
+                call bitwise-or
+                  call shift-left
+                    read half
+                    code 4
+                  read nibble
           save bits
             call add
               read bits
@@ -249,12 +253,15 @@ task tone-unpack
           read tone-wide-alpha
           read ch
           code 0
+      # the same 32-bit window mask as the pack side
       save buffer
-        call bitwise-or
-          call shift-left
-            read buffer
-            code 5
-          read value
+        call bitwise-and
+          code 4294967295
+          call bitwise-or
+            call shift-left
+              read buffer
+              code 5
+            read value
       save bits
         call add
           read bits

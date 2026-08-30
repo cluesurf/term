@@ -9,7 +9,9 @@ load @term/seed/code/maybe
   find maybe
 
 form heap
-  link items, like list
+  link items
+    like list
+      like number
 
   # write value at an index in place (native splice: delete one, insert one)
   task put

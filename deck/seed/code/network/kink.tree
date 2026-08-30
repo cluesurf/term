@@ -1,3 +1,16 @@
+# SHELVED 2026-08-30, out of the build. Delete `note draft` to bring it back.
+#
+# Superseded by `code/exception.tree`, the same way `code/error.tree` was: every
+# exception is a form that is `like exception` and pins its `note`, and a raise
+# constructs the form at the `halt`. This module predates that design. It raises
+# a plain record through `halt kink`, which the checker now types as passing a
+# callee's exception on, not as a raise, so the rust backend hands the record to
+# the carrier and refuses. The failures it enumerates map onto the standard
+# forms: connection-refused is `refusal`, dns-not-found is `absence`, timeout is
+# `timeout`, connection-reset is `outage`. Nothing imports this module.
+
+note draft
+
 
 form network-kink
   link code, like text

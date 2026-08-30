@@ -1,5 +1,8 @@
-# SHELVED 2026-08-30 (file-level, the hold/ tree itself is IN the build now): this file still uses names or
-# syntax the resolver refuses. Delete `note draft` once its body is finished.
+# SUPERSEDED 2026-08-30, kept as a record. The i32 vector tables for the hold/test.tree runner (itself
+# superseded). The shift and checked-add vectors are live as ordinary `test` blocks in
+# deck/seed/test/integer-32.tree, with expectations in the signed values `i32-wrap` produces. The
+# rotate-head / rotate-base tables stay only here: the live integer template (code/integer/n.tree) has
+# no rotate tasks yet, and these tables are the spec for them when one is added.
 note draft
 
 host max

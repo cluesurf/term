@@ -17,7 +17,7 @@ bind do-big-from-text
   case rust
     load <num_bigint::BigInt>
     load <std::str::FromStr>
-    text <num_bigint::BigInt::from_str(&$value).unwrap()>
+    text <std::rc::Rc::new(num_bigint::BigInt::from_str(&$value).unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
   case kotlin
     text <java.math.BigInteger($value)>
 
@@ -29,7 +29,7 @@ bind do-big-from-number
   case browser
     text <BigInt($value)>
   case rust
-    text <num_bigint::BigInt::from($value)>
+    text <std::rc::Rc::new(num_bigint::BigInt::from($value)) as std::rc::Rc\<dyn std::any::Any\>>
   case kotlin
     text <java.math.BigInteger.valueOf($value)>
 
@@ -54,7 +54,7 @@ bind do-big-add
   case browser
     text <$a + $b>
   case rust
-    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() + $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
+    text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() + $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
   case kotlin
     text <($a as java.math.BigInteger).add($b as java.math.BigInteger)>
 
@@ -67,7 +67,7 @@ bind do-big-subtract
   case browser
     text <$a - $b>
   case rust
-    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() - $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
+    text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() - $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
   case kotlin
     text <($a as java.math.BigInteger).subtract($b as java.math.BigInteger)>
 
@@ -80,7 +80,7 @@ bind do-big-multiply
   case browser
     text <$a * $b>
   case rust
-    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() * $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
+    text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() * $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
   case kotlin
     text <($a as java.math.BigInteger).multiply($b as java.math.BigInteger)>
 
@@ -93,7 +93,7 @@ bind do-big-divide
   case browser
     text <$a / $b>
   case rust
-    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() / $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
+    text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() / $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
   case kotlin
     text <($a as java.math.BigInteger).divide($b as java.math.BigInteger)>
 
@@ -106,7 +106,7 @@ bind do-big-remainder
   case browser
     text <$a % $b>
   case rust
-    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() % $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
+    text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() % $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
   case kotlin
     text <($a as java.math.BigInteger).remainder($b as java.math.BigInteger)>
 
@@ -118,7 +118,7 @@ bind do-big-negate
   case browser
     text <-$value>
   case rust
-    text <-&$value>
+    text <std::rc::Rc::new(-$value.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
   case kotlin
     text <($value as java.math.BigInteger).negate()>
 

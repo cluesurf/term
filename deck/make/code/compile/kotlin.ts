@@ -835,8 +835,41 @@ export function emitKotlin(
       case 'closure': {
         // a function literal as a Kotlin lambda. A lambda's value is its last expression, so the trailing `send back X`
         // becomes a bare `X` (an explicit `return` inside a lambda would non-locally return from the enclosing function).
-        const params = node.params.map(p => camel(p.name)).join(', ')
+        // A body with a return anywhere ELSE (inside a when arm, a loop) cannot be a lambda at all: Kotlin
+        // prohibits non-local returns, so that closure lowers to an anonymous function, where return is legal.
+        const deepReturn = (value: unknown): boolean => {
+          if (!value || typeof value !== 'object') {
+            return false
+          }
+          if (Array.isArray(value)) {
+            return value.some(deepReturn)
+          }
+          const record = value as Record<string, unknown>
+          if (record.form === 'closure') {
+            return false
+          }
+          if (record.form === 'return') {
+            return true
+          }
+          return Object.values(record).some(deepReturn)
+        }
         const last = node.body[node.body.length - 1]
+        const nonTailReturn =
+          node.body.slice(0, -1).some(deepReturn) ||
+          (last !== undefined && last.form !== 'return' && deepReturn(last))
+        if (nonTailReturn) {
+          const typed = node.params
+            .map(p => `${camel(p.name)}: ${kotlinType(p.type)}`)
+            .join(', ')
+          const result =
+            node.result ??
+            (node.type?.kind === 'function' ? node.type.result : undefined)
+          const resultText = result ? `: ${kotlinType(result)}` : ''
+          const body = node.body.map(s => stmt(s, 1)).filter(Boolean)
+
+          return `fun(${typed})${resultText} {\n${body.join('\n')}\n${'  '.repeat(0)}}`
+        }
+        const params = node.params.map(p => camel(p.name)).join(', ')
         const lead = node.body
           .slice(0, -1)
           .map(s => stmt(s, 0))

@@ -159,31 +159,41 @@ host md5-shifts
   code 15
   code 21
 
-# a value reduced to its unsigned 32-bit form
+# a value reduced to its unsigned 32-bit form. The mask is explicit: the bit ops are 64-bit on
+# every backend (the JS hosts run them through BigInt), so nothing truncates implicitly.
 task md5-wrap
   take x, like number
   like number
   send back
-    call unsigned-shift-right
+    call bitwise-and
       read x
-      code 0
+      code 4294967295
 
-# rotate a 32-bit value left by c
+# rotate a 32-bit value left by c. The high part masks BEFORE shifting so the product stays under
+# 2^32: on the JS hosts a number is exact only to 2^53, and an unmasked u32 shifted left 31 passes it.
 task md5-rotate-left
   take x, like number
   take c, like number
   like number
   send back
-    call md5-wrap
-      call bitwise-or
-        call shift-left
-          read x
-          read c
-        call unsigned-shift-right
+    call bitwise-or
+      call shift-left
+        call bitwise-and
           read x
           call subtract
-            code 32
-            read c
+            call shift-left
+              code 1
+              call subtract
+                code 32
+                read c
+            code 1
+        read c
+      call unsigned-shift-right
+        call md5-wrap
+          read x
+        call subtract
+          code 32
+          read c
 
 # the digest of a byte list, as 32 lowercase hex characters
 task calculate-md5

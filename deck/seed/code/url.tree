@@ -17,7 +17,7 @@ bind do-parse
   case browser
     text <new URL($href, $base)>
   case rust
-    text <url::Url::parse($base).unwrap().join(&$href).unwrap()>
+    text <std::rc::Rc::new(url::Url::parse(&$base).unwrap().join(&$href).unwrap()) as std::rc::Rc<dyn std::any::Any>>
   case swift
     load <Foundation>
     text <URLComponents(url: URL(string: $href, relativeTo: URL(string: $base))!, resolvingAgainstBaseURL: true)!>

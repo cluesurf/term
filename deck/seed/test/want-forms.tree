@@ -1,0 +1,23 @@
+# The `want` assertion forms: the indented body and the one-line `want <mode>, <expr>` are the same
+# assertion. The one-line form silently dropped its expression until 2026-08-30 (the preprocessor
+# only read indented lines, so the guard tested an empty condition and failed whatever it said);
+# these hold the fix.
+#
+# Run with: term test
+
+test want-inline-literal
+  want hold, true
+
+test want-inline-read
+  save good, false
+  save good, true
+  want hold, read good
+
+test want-inline-miss
+  want miss, false
+
+test want-indented-body
+  want hold
+    call is-equal
+      code 3
+      code 3

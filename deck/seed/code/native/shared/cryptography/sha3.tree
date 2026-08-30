@@ -101,14 +101,15 @@ host sha3-rc-hi
   code 0
   code 2147483648
 
-# a value reduced to its unsigned 32-bit form
+# a value reduced to its unsigned 32-bit form. The mask is explicit: the bit ops are 64-bit on
+# every backend (the JS hosts run them through BigInt), so nothing truncates implicitly.
 task sha3-wrap
   take x, like number
   like number
   send back
-    call unsigned-shift-right
+    call bitwise-and
       read x
-      code 0
+      code 4294967295
 
 # the LOW half of a 64-bit left rotation of the lane (l, h) by n
 task sha3-rotl-lo
@@ -136,17 +137,27 @@ task sha3-rotl-lo
           call subtract
             read n
             code 32
+  # the shifted half masks BEFORE the shift so the product stays under 2^32 (a JS host number is
+  # exact only to 2^53)
   send back
-    call sha3-wrap
-      call bitwise-or
-        call shift-left
+    call bitwise-or
+      call shift-left
+        call bitwise-and
           read l
-          read n
-        call unsigned-shift-right
-          read h
           call subtract
-            code 32
-            read n
+            call shift-left
+              code 1
+              call subtract
+                code 32
+                read n
+            code 1
+        read n
+      call unsigned-shift-right
+        call sha3-wrap
+          read h
+        call subtract
+          code 32
+          read n
 
 # the HIGH half of a 64-bit left rotation of the lane (l, h) by n
 task sha3-rotl-hi
@@ -174,17 +185,27 @@ task sha3-rotl-hi
           call subtract
             read n
             code 32
+  # the shifted half masks BEFORE the shift so the product stays under 2^32 (a JS host number is
+  # exact only to 2^53)
   send back
-    call sha3-wrap
-      call bitwise-or
-        call shift-left
+    call bitwise-or
+      call shift-left
+        call bitwise-and
           read h
-          read n
-        call unsigned-shift-right
-          read l
           call subtract
-            code 32
-            read n
+            call shift-left
+              code 1
+              call subtract
+                code 32
+                read n
+            code 1
+        read n
+      call unsigned-shift-right
+        call sha3-wrap
+          read l
+        call subtract
+          code 32
+          read n
 
 # one Keccak-f[1600] permutation over the state halves, in place
 task sha3-keccak

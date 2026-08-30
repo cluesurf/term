@@ -60,11 +60,18 @@ function statements(body: string[], base: number): string[][] {
 // by failing the task on the wrong branch: `want hold` fails when the expression misses (`hook miss`), `want miss`
 // fails when it holds (`hook hold`).
 function guard(group: string[]): string[] {
-  const mode = group[0]!.trim().split(/\s+/)[1] ?? 'hold'
+  // the head line is `want <mode>` with the condition indented under it, or the one-line form
+  // `want <mode>, <expr>` with the condition inline after the comma. The inline expression used to
+  // be dropped on the floor (an empty condition, so the test failed no matter what it said).
+  const head = /^want(?:\s+(hold|miss))?\s*(?:,\s*(.*))?$/.exec(
+    group[0]!.trim(),
+  )
+  const mode = head?.[1] ?? 'hold'
+  const inline = head?.[2]?.trim()
   // the body (everything under the `want` line) is the boolean condition; shift it +2 to sit under `hook test`
-  const condition = group
-    .slice(1)
-    .map(line => (blank(line) ? line : `  ${line}`))
+  const condition = inline
+    ? [`      ${inline}`]
+    : group.slice(1).map(line => (blank(line) ? line : `  ${line}`))
 
   const failOn = mode === 'miss' ? 'hook hold' : 'hook miss'
 

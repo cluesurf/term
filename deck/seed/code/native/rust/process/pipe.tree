@@ -1,8 +1,5 @@
-
 dock load
-  load <std::io>, name io
-  load <std::io::Read>, name read-trait
-  load <std::io::Write>, name write-trait
+  load <global:pipe>, name pipe-runtime
 
 load @term/seed/code/process
   find child
@@ -12,33 +9,7 @@ task connect
   take from, like child
   take to, like child
 
-  save stdout
-    call from/dock/stdout/take
-  save stdin
-    call to/dock/stdin/take
-
-  save buf
-    make list
-      code 8192
-
-  walk test, true
-    hook step
-      save n
-        call stdout/read
-          read buf
-          halt kink
-      fork test
-        hook test
-          call is-equal
-            bind a, read n
-            bind b, code 0
-        hook hold
-          halt
-      call stdin/write-all
-        call buf/slice
-          code 0
-          read n
-        halt kink
-
-  call drop
-    read stdin
+  call pipe-runtime/connect
+    read from/dock
+    read to/dock
+    wait true

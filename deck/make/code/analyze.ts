@@ -8,6 +8,8 @@ import type { RootNode } from '@term/make/code/parser/tree'
 import { parseTolerant } from '@term/make/code/parser/tree'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
+import { checkView, lowerView } from '@term/make/code/compile/view'
+import type { ViewCatalog } from '@term/make/code/compile/view-catalog'
 import { compileProgram } from '@term/make/code/compile/compile'
 import { formatTree } from '@term/make/code/format/format'
 import { lint, applyFixes } from '@term/make/code/lint/lint'
@@ -24,8 +26,9 @@ import { lintData } from '@term/make/code/lint/rules/data-grammar'
 
 export type Analysis = {
   tree: RootNode
-  // what the file is: a program, or a data file (the host dialect), which has no program
-  kind: 'code' | 'data'
+  // what the file is: a program, a data file (the host dialect), or a view-role document. The last two carry no
+  // lint findings of the code role's kind, and a document's canonical layout is the ordinary tree formatter's.
+  kind: 'code' | 'data' | 'view'
   program: Program | null
   diagnostics: Diagnostic[]
   // render the canonical formatting (from the tree, so it works even with type errors)
@@ -82,11 +85,40 @@ function suppressions(tree: RootNode): Map<number, Set<string>> {
   return map
 }
 
-export function analyze(source: {
-  file: string
-  text: string
-}): Analysis {
+export function analyze(
+  source: {
+    file: string
+    text: string
+  },
+  options?: {
+    // the role a project's `role.tree` gives this file. A `view` document is read by its own reader, not by the
+    // code mill, so without this the editor underlines every `view` line as an undefined name.
+    role?: string | null
+    catalog?: ViewCatalog
+  },
+): Analysis {
   const { tree, diagnostics } = parseTolerant(source)
+
+  // the `view` role: the sandboxed document dialect. Same gate the compiler and `term view` call, so the editor
+  // cannot be more permissive than a save. Its canonical layout is the ordinary tree formatter's, because a
+  // document IS tree syntax. See note/term/view/.
+  if (options?.role === 'view') {
+    const read = checkView(source, { catalog: options.catalog })
+    const program = read.ok ? lowerView(read.file) : null
+
+    return {
+      tree,
+      kind: 'view',
+      program,
+      diagnostics: [...diagnostics, ...(read.ok ? [] : read.diagnostics)],
+      format: () => (diagnostics.length ? source.text : formatTree(tree)),
+      lint: () => [],
+      fix: () => source.text,
+      // the gate already ran, so there is nothing left to check separately. A document has no type checker of its
+      // own: what it may say is decided by the grammar, the catalog and the caps, all of them inside `checkView`.
+      check: () => (read.ok ? [] : read.diagnostics),
+    }
+  }
 
   // a data file (the host dialect, see code/compile/host.ts) has no program: it is read by the data reader, its
   // canonical layout is the data writer's, and its lint findings are the grammar's rules

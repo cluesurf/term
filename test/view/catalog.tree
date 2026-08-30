@@ -1,0 +1,174 @@
+# A reference catalog: the shape a project supplies, and the scope decision written as data rather than as prose.
+#
+# The compiler carries none of this. What a document may reach is the project's decision, and word.surf's answer
+# is not the language's. Copy it, cut it down, and check it in, so a review can see the reachable surface change.
+#
+# The operator names are the real ones from mesh/deck/base/code/task/<scope>/make.ts, scope by scope. Three scopes
+# are absent and each for its own reason, stated here because a reader will otherwise assume an oversight:
+#
+#   control   `walk` and `loop` would be a second spelling of the `walk` head, and `branch`, `switch`, `match`
+#             and `pick` a second spelling of `fork`. Two spellings of one thing is the drift every rule here
+#             exists to stop. `attempt` catches an error, and a document has nothing to catch.
+#   random    `random` and `uuid` are not deterministic, so a document would render differently on the server and
+#             in the browser, and differently on two reads, which breaks the content-addressed cache.
+#   resource  `resolve` performs input and output, and the renderer does neither. That is what lets one compiled
+#             component run on a server and in a browser.
+#
+# `now` is cut from `date` and `parse_json` from `type`, for the same two reasons in miniature: the first is not
+# deterministic, and the second turns text into a shape nothing typed. The host passes the time in as a `host`
+# parameter, which also makes a document testable.
+#
+# See note/term/view/04-catalog.md.
+
+host deck, <reference>
+
+list load
+  <@view/text>
+  <@view/hold>
+  <@view/data>
+  <@view/sound>
+  <@view/media>
+  <@view/turn>
+
+list view
+  <text/heading>
+  <text/paragraph>
+  <text/callout>
+  <text/quote>
+  <text/code>
+  <text/gloss>
+  <text/item>
+  <text/list>
+  <hold/grid>
+  <hold/columns>
+  <hold/block>
+  <hold/box>
+  <hold/divider>
+  <hold/section>
+  <data/table>
+  <data/key-value>
+  <data/timeline>
+  <data/row>
+  <sound/phoneme-chart>
+  <sound/ipa-grid>
+  <sound/script-sample>
+  <sound/paradigm-table>
+  <sound/minimal-pair>
+  <sound/word-card>
+  <media/image>
+  <media/audio>
+  <media/video>
+  <media/figure>
+  <turn/tabs>
+  <turn/accordion>
+  <turn/toggle>
+  <turn/copy>
+  <turn/link>
+  <turn/when>
+
+# string
+list call
+  <format>
+  <join>
+  <lowercase>
+  <normalize>
+  <pad-end>
+  <pad-start>
+  <replace>
+  <scan>
+  <split>
+  <titlecase>
+  <trim>
+  <uppercase>
+  <weld>
+  # math
+  <absolute>
+  <add>
+  <ceil>
+  <clamp>
+  <divide>
+  <floor>
+  <max>
+  <mean>
+  <min>
+  <modulo>
+  <multiply>
+  <power>
+  <root>
+  <round>
+  <subtract>
+  <sum>
+  # boolean
+  <and>
+  <eq>
+  <gt>
+  <gte>
+  <lt>
+  <lte>
+  <ne>
+  <negate>
+  <or>
+  # date, without `now`
+  <diff>
+  <format-date>
+  <parse-date>
+  <shift>
+  # type, without `parse-json`
+  <cast>
+  <is>
+  <to-boolean>
+  <to-number>
+  <to-string>
+  # list, without the seven that take a callback. `keep`, `morph`, `find`, `locate` and `group` are evaluated
+  # once per item against a sub-tree the author writes, and a document has no way to write one: `tree` is a
+  # macro, not a function, and giving it a calling convention would be a second spelling of `walk` and `fork`.
+  # An author filters by walking the list and forking inside it, which is the same power with the bound in the
+  # head rather than in an operator's argument. `sort` and `dedupe` are cut with them because both are only
+  # useful here with a key, and a key is a callback. See note/term/view/04-catalog.md.
+  <chain>
+  <count>
+  <flatten>
+  <nth>
+  <pair>
+  <reverse>
+  <slice>
+
+list task
+  mesh
+    host name, <select:language>
+    host back, <one>
+    list site
+      mesh
+        host name, <slug>
+        list hold
+          <is-equal>
+        host sort, false
+  mesh
+    host name, <filter:phoneme>
+    host back, <list>
+    host size, 500
+    list site
+      mesh
+        host name, <language>
+        list hold
+          <is-equal>
+        host sort, false
+      mesh
+        host name, <kind>
+        list hold
+          <is-equal>
+          <is-unequal>
+        host sort, false
+      mesh
+        host name, <rank>
+        list hold
+          <is-equal>
+          <is-above>
+          <is-below>
+        host sort, true
+      mesh
+        host name, <symbol>
+        list hold
+          <is-equal>
+          <is-within>
+        host sort, true

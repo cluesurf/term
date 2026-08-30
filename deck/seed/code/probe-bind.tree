@@ -4,7 +4,9 @@ load @term/seed/code/list
 
 form box
   link tag, like text
-  link items, like list
+  link items
+    like list
+      like text
 
 task add
   take b, like box

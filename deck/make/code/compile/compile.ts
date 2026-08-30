@@ -12,7 +12,7 @@ import {
 } from '@term/make/code/compile/template'
 import type { Template } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
-import { readView, lowerView } from '@term/make/code/compile/view'
+import { checkView, lowerView } from '@term/make/code/compile/view'
 import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
@@ -360,12 +360,11 @@ function millUnit(
 
   // expand phase: tree/fuse templates (including those imported from other modules), so injected code goes through
   // the mill, resolver, and type checker. A document gets this too, which is where its macros go.
-  const expanded = expandTemplates(parsed.tree, templates)
-
   // the `view` role: the sandboxed document dialect. Four statement heads, none of which declares anything the
-  // author wrote, read by its own reader and lowered to the zone AST the code role already emits.
+  // author wrote. `checkView` is the ONE gate the compiler, `term view` and a save path all call, so the three
+  // cannot answer differently about what a document may say. It does its own parse, cycle check and expansion.
   if (role === 'view') {
-    const read = readView(expanded, unit.file)
+    const read = checkView(unit)
 
     if (!read.ok) {
       return { ok: false, diagnostics: read.diagnostics }
@@ -373,6 +372,8 @@ function millUnit(
 
     return { ok: true, program: lowerView(read.file) }
   }
+
+  const expanded = expandTemplates(parsed.tree, templates)
 
   return mill(expanded, unit.file)
 }

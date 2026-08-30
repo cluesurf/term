@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
+import { nativePrelude } from '@term/make/code/compile/native'
 import type { Source } from '@term/make/code/compile/load'
 import { render } from '@term/make/code/parser/diagnostic'
 
@@ -60,9 +61,15 @@ async function loadProgram(
     throw new Error('compile failed')
   }
 
+  // a module that docks a runtime global (`dock load <global:compare>`) needs its shim prepended,
+  // the same way the test runner and the build do
+  const prelude = nativePrelude(result.program, 'node', path =>
+    existsSync(path) ? readFileSync(path, 'utf8') : undefined,
+  )
+
   const dir = mkdtempSync(join(tmpdir(), 'seed-stdlib-'))
   const file = join(dir, 'module.ts')
-  writeFileSync(file, result.typescript)
+  writeFileSync(file, `${prelude}\n${result.typescript}`)
 
   return (await import(pathToFileURL(file).href)) as Record<
     string,

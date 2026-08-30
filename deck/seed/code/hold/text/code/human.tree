@@ -23126,7 +23126,7 @@ task get-grapheme-break-property
                                                 hook hold
                                                   send back, make control
       # unlisted code points are treated as a break property of "Other"
-      make other
+      send back, make other
 
 task get-emoji-property
   take code
@@ -24821,5 +24821,5 @@ task get-emoji-property
                                 hook hold
                                   send back, make extended-pictographic
       # unlisted code points are treated as a break property of "Other"
-      make other
+      send back, make other
 

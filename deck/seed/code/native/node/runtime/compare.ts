@@ -3,7 +3,7 @@
 // else answers by identity. Kept behavior-identical to the Term implementation it replaced (see
 // native/shared/test/compare.tree, 2026-08-31: the body moved into per-backend shims so the rust, swift and
 // kotlin builds do not need structural operations over their boxed dynamics).
-const compareRuntime = {
+const compare = {
   deepEqual(a: unknown, b: unknown): boolean {
     if (a === b) {
       return true

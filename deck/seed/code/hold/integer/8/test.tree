@@ -1,5 +1,6 @@
-# SHELVED 2026-08-30 (file-level, the hold/ tree itself is IN the build now): this file still uses names or
-# syntax the resolver refuses. Delete `note draft` once its body is finished.
+# SUPERSEDED 2026-08-30, kept as a record. Calls the hold/test.tree suite runner (itself superseded:
+# it needed call-reflection the language does not have) against a `suite` table this file never defined.
+# The live pattern for the same intent is a `test` block per vector; see deck/seed/test/integer-32.tree.
 note draft
 
 load @term/seed/code/shared/test

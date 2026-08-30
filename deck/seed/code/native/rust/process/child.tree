@@ -1,8 +1,5 @@
-
 dock load
-  load <std::io>, name io
-  load <std::io::Read>, name read-trait
-  load <std::io::Write>, name write-trait
+  load <global:child>, name child-runtime
 
 load @term/seed/code/process
   find child
@@ -12,46 +9,41 @@ task wait
   take child, like child
   like size
 
-  save status
-    call child/dock/wait
-      halt kink
-
   send back
-    call status/code
+    call child-runtime/wait
+      read child/dock
 
 task stop
   take child, like child
   take form, like text, fall text <gentle>
 
-  fork test, call is-equal(read form, text <force>)
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <force>
     hook hold
-      call child/dock/kill
-        halt kink
+      call child-runtime/kill
+        read child/dock
     hook miss
-      save id
-        call child/dock/id
-      call libc/kill
-        read id
-        read libc/sigterm
+      call child-runtime/stop
+        read child/dock
 
 task write
   note async
   take child, like child
   take data, like text
 
-  save stdin
-    call child/dock/stdin/as-mut
-
-  call stdin/write-all
-    call data/as-bytes
-    halt kink
+  call child-runtime/write
+    read child/dock
+    read data
 
 task close
   note async
   take child, like child
 
-  call drop
-    call child/dock/stdin/take
+  call child-runtime/close
+    read child/dock
 
 task read
   note async
@@ -60,44 +52,12 @@ task read
   take format, like text, fall text <text>
   like text
 
-  save buf, make string
-
   fork test, call is-equal(read kind, text <stderr>)
     hook hold
-      save stream
-        call child/dock/stderr/as-mut
-      call stream/read-to-string
-        read buf
-        halt kink
+      send back
+        call child-runtime/read-error
+          read child/dock
     hook miss
-      save stream
-        call child/dock/stdout/as-mut
-      call stream/read-to-string
-        read buf
-        halt kink
-
-  send back, read buf
-
-task stream
-  note async
-  take child, like child
-  take kind, like text, fall text <stdout>
-  take format, like text, fall text <bytes>
-  like list
-
-  save source
-    fork test, call is-equal(read kind, text <stderr>)
-      hook hold
-        save s
-          call child/dock/stderr/take
-        send back
-          call io/buf-reader/new
-            read s
-      hook miss
-        save s
-          call child/dock/stdout/take
-        send back
-          call io/buf-reader/new
-            read s
-
-  send back, read source
+      send back
+        call child-runtime/read-out
+          read child/dock

@@ -1242,7 +1242,9 @@ export function emitSwift(
         return `await ${expr(node.expr, bind)}`
 
       case 'closure': {
-        // a function literal as a Swift closure. The trailing `send back X` becomes the closure's value expression.
+        // a function literal as a Swift closure. The trailing `send back X` becomes the closure's value
+        // expression when it stands alone; with statements before it the implicit-return rule no longer
+        // applies, so the `return` stays explicit.
         const last = node.body[node.body.length - 1]
         const lead = node.body
           .slice(0, -1)
@@ -1251,7 +1253,9 @@ export function emitSwift(
 
         const tail =
           last?.form === 'return' && last.value
-            ? expr(last.value, bind)
+            ? lead.length > 0
+              ? `return ${expr(last.value, bind)}`
+              : expr(last.value, bind)
             : last
               ? stmt(last, 0, bind)
               : ''
@@ -1259,11 +1263,19 @@ export function emitSwift(
         // an async closure carries an explicit `(params) async -> Ret in` signature: Swift closures express async in
         // the signature (there is no async-block form), and the explicit types let `let f = { ... }` infer the async
         // function type without a separate annotation. The call site `await`s the result.
+        // A sync closure with a DECLARED result gets an explicit `-> Ret` too: a leading-dot value
+        // (`.some(value: x)`) in its body has no context to resolve against otherwise. Its params stay
+        // BARE names: a param the source never annotated has no recorded type (it would print `Void`),
+        // and Swift infers bare params from the expected function type.
         const signature = node.async
           ? `(${node.params
               .map(p => `${camel(p.name)}: ${swiftType(p.type)}`)
               .join(', ')}) async -> ${swiftType(node.result)} in `
-          : `(${node.params.map(p => camel(p.name)).join(', ')}) in `
+          : node.result
+            ? `(${node.params
+                .map(p => camel(p.name))
+                .join(', ')}) -> ${swiftType(node.result)} in `
+            : `(${node.params.map(p => camel(p.name)).join(', ')}) in `
 
         return `{ ${signature}${[...lead, tail]
           .filter(Boolean)
@@ -1465,9 +1477,17 @@ export function emitSwift(
         }
 
         // annotate an ADT binding so leading-dot construction has a type to infer from. An anonymous record's
-        // type is `named ''` (a nested `host` constant) and cannot be spelled: no annotation, Swift infers
+        // type is `named ''` (a nested `host` constant) and cannot be spelled: no annotation, Swift infers.
+        // A call (or awaited call) carries its own type, so no annotation there either: inside a nested
+        // closure the checker can lose an enclosing generic and record a defaulted argument (`Maybe<Int>`
+        // for `Maybe<T>`), and the call's native type is the correct one.
+        const carriesOwnType =
+          node.init.form === 'call' ||
+          (node.init.form === 'await' && node.init.expr.form === 'call')
         const annotation =
-          node.type?.kind === 'named' && node.type.name ? `: ${swiftType(node.type)}` : ''
+          node.type?.kind === 'named' && node.type.name && !carriesOwnType
+            ? `: ${swiftType(node.type)}`
+            : ''
 
         return `${node.mutable || assignedAnywhere.has(node.name) ? 'var' : 'let'} ${vname(
           node.name,

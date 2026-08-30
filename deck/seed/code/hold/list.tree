@@ -1,6 +1,8 @@
-# SHELVED 2026-08-30 (file-level; hold/ itself is IN the build): a growable-list design that writes record
-# fields (growth-factor, capacity, line) onto a native array. It needs its own form before it can build; the
-# module comes back once redesigned. Delete `note draft` then.
+# SUPERSEDED 2026-08-30, kept as a record. A growable-list design that writes bookkeeping fields
+# (`growth-factor`, `capacity`) onto a native array value (`save list/growth-factor`), which the type
+# system refuses: a native list has no such fields. The native list is itself growable on every backend
+# (push reallocates), so the design solves a problem the stdlib no longer has. A capacity-managing list
+# would need its own form holding the array, which is `list/deque.tree`'s territory.
 note draft
 
 load @term/seed/code/hold/text/code/utf-8

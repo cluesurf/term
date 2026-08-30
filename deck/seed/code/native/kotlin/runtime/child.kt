@@ -1,30 +1,34 @@
 // Child process runtime. Reached only through the public process API.
 object childRuntime {
-    fun wait(proc: Process): Long {
+    // the dock handle arrives as the dynamic; a handle of the wrong shape reads as a finished process
+    private fun of(dock: Any?): Process? = dock as? Process
+
+    fun wait(dock: Any?): Long {
+        val proc = of(dock) ?: return -1L
         proc.waitFor()
 
         return proc.exitValue().toLong()
     }
 
-    fun stop(proc: Process) {
-        proc.destroy()
+    fun stop(dock: Any?) {
+        of(dock)?.destroy()
     }
 
-    fun kill(proc: Process) {
-        proc.destroyForcibly()
+    fun kill(dock: Any?) {
+        of(dock)?.destroyForcibly()
     }
 
-    fun write(proc: Process, data: String) {
-        proc.outputStream.write(data.toByteArray())
+    fun write(dock: Any?, data: String) {
+        of(dock)?.outputStream?.write(data.toByteArray())
     }
 
-    fun close(proc: Process) {
-        proc.outputStream.close()
+    fun close(dock: Any?) {
+        of(dock)?.outputStream?.close()
     }
 
-    fun readOut(proc: Process): String =
-        proc.inputStream.bufferedReader().readText()
+    fun readOut(dock: Any?): String =
+        of(dock)?.inputStream?.bufferedReader()?.readText() ?: ""
 
-    fun readError(proc: Process): String =
-        proc.errorStream.bufferedReader().readText()
+    fun readError(dock: Any?): String =
+        of(dock)?.errorStream?.bufferedReader()?.readText() ?: ""
 }

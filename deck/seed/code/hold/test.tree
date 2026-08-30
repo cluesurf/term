@@ -1,5 +1,8 @@
-# SHELVED 2026-08-30 (file-level, the hold/ tree itself is IN the build now): this file still uses names or
-# syntax the resolver refuses. Delete `note draft` once its body is finished.
+# SUPERSEDED 2026-08-30, kept as a record. A data-driven suite runner that reflects over a call's
+# children (`read call/nest`), which the language does not expose and deliberately will not: code is not
+# data at run time. The live test story is `code/test.tree` (case / run / want / deny) plus `test` blocks
+# executed by `term test`. The table sketches this was meant to drive are in hold/integer/, their
+# portable vectors ported to deck/seed/test/integer-32.tree as ordinary test blocks.
 note draft
 
 task test-suite

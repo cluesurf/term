@@ -9,13 +9,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { parse } from '@term/make/code/parser/tree'
-import {
-  readView,
-  viewManifest,
-  type ViewFile,
-} from '@term/make/code/compile/view'
-import { expandTemplates, collectTemplates } from '@term/make/code/compile/template'
+import { checkView, viewManifest, type ViewFile } from '@term/make/code/compile/view'
 
 export type ViewCall = {
   root: string
@@ -58,20 +52,10 @@ export async function callView(input: ViewCall): Promise<void> {
 
   for (const file of files) {
     const text = readFileSync(file, 'utf8')
-    const parsed = parse({ file, text })
     const name = relative(input.root, file) || file
 
-    if (!parsed.ok) {
-      failed++
-      report(name, parsed.diagnostics)
-      continue
-    }
-
-    // a document's macros expand before the reader, the same as in a build
-    const read = readView(
-      expandTemplates(parsed.tree, collectTemplates(parsed.tree)),
-      file,
-    )
+    // the one gate: the same call the compiler and a save path make, so the three cannot drift
+    const read = checkView({ file, text })
 
     if (!read.ok) {
       failed++

@@ -9,7 +9,9 @@ load @term/seed/code/line/float/32/vector-4
   find make-vector-4
 
 form matrix-4
-  link cells, like list
+  link cells
+    like list
+      like float
 
   # read the cell at (row, column)
   task get
