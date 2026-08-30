@@ -13,7 +13,7 @@ export type Type =
   | { kind: 'boolean' }
   | { kind: 'string' }
   | { kind: 'unit' }
-  | { kind: 'unknown' }
+  | { kind: 'unknown'; free?: boolean }
   // the host's dynamic value: a JS `any`, a rust `serde_json::Value`, a swift / kotlin `Any`. The opaque result of
   // `json.parse`, navigated by the json accessors. Distinct from `unknown` (an inference hole that defaults to number).
   | { kind: 'dynamic' }
@@ -45,6 +45,9 @@ export const BOOLEAN: Type = { kind: 'boolean' }
 export const STRING: Type = { kind: 'string' }
 export const UNIT: Type = { kind: 'unit' }
 export const UNKNOWN: Type = { kind: 'unknown' }
+// a slot the source left EMPTY (a bare `like list`'s element), as opposed to a spelled `like unknown`: the
+// checker seeds it as a fresh inference variable, so the concrete element is inferred from usage
+export const FREE_UNKNOWN: Type = { kind: 'unknown', free: true }
 export const DYNAMIC: Type = { kind: 'dynamic' }
 export const BYTES: Type = { kind: 'bytes' }
 

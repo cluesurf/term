@@ -1,0 +1,42 @@
+
+# A view definition: the document itself, or a named fragment of it.
+#
+#   view page
+#     view text/heading
+#       bind text, read title
+#
+# Mints the stdlib `zone-def`, which is the component AST's own definition node, so a document lowers through
+# `compile/zone-lower.ts` and every backend emits it as an ordinary function with no new machinery. That reuse
+# is the whole reason the dialect targets the zone AST. See note/term/view/07-lowering.md.
+#
+# `view` is the head in BOTH roles and the role decides the authority: in the `code` role it DEFINES a component
+# with nothing held back, here it defines only the document and places components someone else wrote. A document
+# cannot define a component because its file is in the other role, which is the security model stated as one
+# sentence. See note/term/view/06-mill.md.
+#
+# A description is a `#` comment, which is what a comment is in Term. `zone-def` carries a name, its parameters
+# and its body, with no field for prose.
+
+load @term/mill/code/view/node/mine
+  find view-node
+
+load @term/mill/code/view/seed/mine
+  find view-like
+
+mine view-def
+  mine term, term view
+    site name
+    mine list
+      mine form, like view-take
+        site take
+    mine list
+      mine form, like view-node
+        site node
+
+# `take slug, like text`: one parameter, carrying its type so a use can be checked against the definition.
+mine view-take
+  mine term, term take
+    site name
+    mine maybe
+      mine form, like view-like
+        site like

@@ -1,27 +1,30 @@
-
-fetch @term/tree/code/latin/number
-  catch mine digit
+note draft
+# Checked spec, not compiled code: `mine`/`form`/`any`/`range`/`send` are the feed grammar DSL's own vocabulary
+# (note/term/feed/01-grammar.md), never real Term identifiers, so this file can never pass `term make`'s type
+# checker and is shelved from the build on purpose, the same as every mine.tree/mint.tree in this package and in
+# @term/mill. The real, compiling reader for this dialect is ./code.tree. See note/term/feed/05-parser-and-mill.md.
+#
+# `send <name>` emits a match as a named field on the enclosing rule. `take`/`bind` is reserved for parameters a
+# rule receives from its caller (mine int's width/order/sign, an offset passed down for mine at) — hex needs none.
 
 mine hex
-  mine any
-    mine range
-      bind start, share <A>
-      bind front, share <F>
-    mine range
-      bind start, share <a>
-      bind front, share <f>
-    mine form, form digit
+  mine list
+    mine form, form hex-byte
 
-mine lowercase-hex
-  mine any
-    mine range
-      bind start, share <a>
-      bind front, share <f>
-    mine form, form digit
+mine hex-byte
+  mine form, form hex-digit
+    send high
+  mine form, form hex-digit
+    send low
 
-mine uppercase-hex
+mine hex-digit
   mine any
     mine range
-      bind start, share <A>
-      bind front, share <F>
-    mine form, form digit
+      bind base, text <0>
+      bind head, text <9>
+    mine range
+      bind base, text <a>
+      bind head, text <f>
+    mine range
+      bind base, text <A>
+      bind head, text <F>

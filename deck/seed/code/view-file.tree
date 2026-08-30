@@ -83,12 +83,16 @@ form view-find
   link name, like term
   link task, like text
   link meet, like view-meet
+  link hold, list view-hold
   link sort, list view-sort
   link size, like integer
   link slot, like integer
 
-# A group of predicates. `mode` is `and`, `or` or `not`, and `not` takes exactly one child. Bare `hold` lines with
-# no `meet` around them are an implicit `and`.
+# A group of predicates. `mode` is `and`, `or` or `not`, and `not` takes exactly one child.
+#
+# A `find` carries BOTH a `meet` and a bare `hold` list, and that is not redundancy. Bare predicates with no
+# `meet` around them are an implicit `and`, which is the common single-predicate case, and giving them their own
+# field means the mint builds each shape without a conditional.
 form view-meet
   link mode, like term
   link hold, list view-hold
@@ -103,6 +107,7 @@ form view-meet
 form view-hold
   link name, like term
   link bind, list bind
+  link slot, list seed
 
 # One ordering, most significant first. `way` is `rise` or `fall`.
 form view-sort

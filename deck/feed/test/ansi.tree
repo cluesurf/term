@@ -1,0 +1,66 @@
+# The ansi escape catalog against literal expected sequences. Run: term test, from deck/feed.
+#
+# `\x1b` isn't a valid Term text escape (only \< \> \{ \} \n \r \t \\ are), so the expected strings below build ESC
+# through `rune-to-text` too, the same way ./code/ansi/code.tree itself has to.
+
+load @term/seed/code/rune
+  find rune-to-text
+
+load @term/seed/code/text/string
+  find concat
+
+load ../code/ansi/code
+  find reset-all-modes
+  find set-bold-mode
+  find move-cursor-to-home-position
+  find move-cursor-to-line-and-column
+  find set-color-foreground-256
+  find set-color-foreground-rgb
+  find make-cursor-invisible
+
+task esc
+  like text
+  send back
+    call rune-to-text(code 27)
+
+test <reset-all-modes is ESC[0m>
+  want hold
+    call is-equal
+      call reset-all-modes
+      call concat(call esc, text <[0m>)
+
+test <set-bold-mode is ESC[1m>
+  want hold
+    call is-equal
+      call set-bold-mode
+      call concat(call esc, text <[1m>)
+
+test <move-cursor-to-home-position is ESC[H>
+  want hold
+    call is-equal
+      call move-cursor-to-home-position
+      call concat(call esc, text <[H>)
+
+test <move-cursor-to-line-and-column interpolates both numbers>
+  want hold
+    call is-equal
+      call move-cursor-to-line-and-column(code 3, code 12)
+      call concat(call esc, text <[3;12H>)
+
+test <set-color-foreground-256 interpolates the palette index>
+  want hold
+    call is-equal
+      call set-color-foreground-256(code 200)
+      call concat(call esc, text <[38;5;200m>)
+
+test <set-color-foreground-rgb interpolates all three channels>
+  want hold
+    call is-equal
+      call set-color-foreground-rgb(code 10, code 20, code 30)
+      call concat(call esc, text <[38;2;10;20;30m>)
+
+test <make-cursor-invisible is ESC[?25l>
+  want hold
+    call is-equal
+      call make-cursor-invisible
+      call concat(call esc, text <[?25l>)

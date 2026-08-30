@@ -1,0 +1,35 @@
+
+load @term/seed/code/zone
+  find zone-def
+
+load @term/seed/code/take
+  find take
+
+load @term/mill/code/view/node/mint
+  find view-node
+
+load @term/mill/code/view/seed/mint
+  find view-like
+
+mint view-def, like zone-def
+  case name
+    site name
+  case take, mint view-take
+    site take
+  case node, mint view-node
+    site node
+  hook make
+    make zone-def
+      bind name, read name
+      bind take, read take
+      bind node, read node
+
+mint view-take, like take
+  case name
+    site name
+  case like, mint view-like
+    site like
+  hook make
+    make take
+      bind name, read name
+      bind like, read like

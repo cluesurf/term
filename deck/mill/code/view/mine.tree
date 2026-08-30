@@ -1,0 +1,56 @@
+
+# The `view` role: the grammar of a sandboxed document, the dialect a page or a guide is written in.
+#
+# Four statement heads reach the mill and not one of them declares anything the author wrote. `load` reaches the
+# approved catalogs, `host` names a constant or a parameter the route fills, `find` names a query the host
+# resolves before rendering, and `view` defines the document.
+#
+#   load @view/text
+#     find heading
+#
+#   host slug, like text
+#   host title, text <How Quenya sounds>
+#
+#   find vowel
+#     task <filter:phoneme>
+#     meet and
+#       hold is-equal
+#         read self/kind
+#         text <vowel>
+#     sort rise, read self/height
+#
+#   view page
+#     view text/heading
+#       bind text, read title
+#
+# `tree` and `fuse` are the fifth head and its use site, and neither appears here. A macro is expanded on the
+# parse tree by `compile/template.ts` before any mill runs, so by the time this grammar reads a file the macros
+# are gone and their bodies stand where each `fuse` was. See note/term/view/02-macro.md.
+#
+# What the mill will NOT build is as much the point as what it will. The body reuses the component AST, which can
+# express things a document may not have, so this grammar has no way to reach `zone-save` (a computed local),
+# `zone-seed` (an attribute or an event handler), or a `walk` whose mode is `test`. See note/term/view/05-sandbox.md.
+
+load @term/mill/code/view/load/mine
+  find view-load
+
+load @term/mill/code/view/host/mine
+  find view-host
+
+load @term/mill/code/view/find/mine
+  find view-find
+
+load @term/mill/code/view/def/mine
+  find view-def
+
+mine view-file
+  mine list
+    mine any
+      mine form, like view-load
+        site load
+      mine form, like view-host
+        site host
+      mine form, like view-find
+        site find
+      mine form, like view-def
+        site view

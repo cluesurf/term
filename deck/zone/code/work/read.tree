@@ -357,19 +357,46 @@ task pull
               call past-stamp
                 read old/good
             hook miss
-              call show-line
-                call join-text
-                  make list
-                    text <The cache is still good, >
-                    call gap-text
-                      read old/good
-                    text <. Nothing was fetched.>
-              call show-line
-                text <>
-              call show-line
-                text <Run `term zone read --fresh` to fetch anyway.>
-              send back
-                code 0
+              # STILL GOOD MEANS BOTH THINGS, not just the clock.
+              #
+              # A cache inside its window that was built against a DIFFERENT
+              # declaration is not good. It holds the names the OLD
+              # declaration asked for, so a name just added is missing and a
+              # value just repointed is the old one, and neither shows up as
+              # an error: the read simply returns early and says nothing was
+              # fetched.
+              #
+              # `zone test` already refused such a cache, with `the cache was
+              # built against this declaration` and `Run \`term zone read\``.
+              # Running exactly that answered `The cache is still good, in 8
+              # hours. Nothing was fetched.` and exited 0. The check and the
+              # fix disagreed, and the only way through was a flag that
+              # neither of them named.
+              save mark-now
+                call mark-deck
+                  read body
+                  wait true
+              save same-deck
+                call equal
+                  read old/deck
+                  read mark-now
+              fork test
+                hook test
+                  read same-deck
+                hook hold
+                  call show-line
+                    call join-text
+                      make list
+                        text <The cache is still good, >
+                        call gap-text
+                          read old/good
+                        text <. Nothing was fetched.>
+                  call show-line
+                    text <>
+                  call show-line
+                    text <Run `term zone read --fresh` to fetch anyway.>
+                  send back
+                    code 0
 
   save bond-got
     call read-bond

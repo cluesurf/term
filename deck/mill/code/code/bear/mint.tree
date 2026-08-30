@@ -1,7 +1,4 @@
 
-load @term/seed/code/bear
-  find bear
-
 mint bear
   case path
     site path

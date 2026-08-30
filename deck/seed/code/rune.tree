@@ -164,3 +164,27 @@ task make-rune
     make rune
       bind code, read code
 
+# the one-character text of a code point. Named `rune-to-text`, not `to-text`: `@term/seed/code/bytes` already owns
+# that name, and top-level task names are package-global. Inlines directly on every backend (a single native
+# constructor call, unlike the Unicode predicates above), so no runtime shim.
+bind do-rune-to-text
+  take code, like number
+  like text
+  case node
+    text <String.fromCodePoint($code)>
+  case browser
+    text <String.fromCodePoint($code)>
+  case rust
+    text <char::from_u32($code as u32).map(|c| c.to_string()).unwrap_or_default()>
+  case swift
+    text <(Unicode.Scalar(UInt32($code)).map { String($0) } ?? "")>
+  case kotlin
+    text <String(Character.toChars($code.toInt()))>
+
+task rune-to-text
+  take code, like number
+  like text
+  send back
+    call do-rune-to-text
+      read code
+

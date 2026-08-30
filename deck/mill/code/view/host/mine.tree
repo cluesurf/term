@@ -1,0 +1,22 @@
+
+# `host <name>, <value>` is a constant. `host <name>, like <type>` is a parameter the route fills.
+#
+#   host title, text <How Quenya sounds>
+#   host row-cap, 20
+#   host slug, like text
+#
+# Parameters live at file scope rather than as a `take` on a view, because a `find` resolves before any component
+# is built, so a value scoped to a component does not exist yet when a filter needs to read it.
+
+load @term/mill/code/view/seed/mine
+  find view-seed
+  find view-like
+
+mine view-host
+  mine term, term host
+    site name
+    mine any
+      mine form, like view-seed
+        site bond
+      mine form, like view-like
+        site like

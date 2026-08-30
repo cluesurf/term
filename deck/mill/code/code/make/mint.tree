@@ -1,7 +1,4 @@
 
-load @term/seed/code/make
-  find make
-
 mint make
   case name
     site name

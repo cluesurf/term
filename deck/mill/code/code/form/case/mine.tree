@@ -1,3 +1,6 @@
+load @term/mill/code/code/form/link/mine
+  find link
+
 
 mine base
   mine term, term base
@@ -71,3 +74,11 @@ mine free
   mine term, term free
     mine term
       site term
+
+mine case
+  mine term, term case
+    mine term
+      site name
+    mine list
+      mine form, like link
+        site link

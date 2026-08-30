@@ -1,9 +1,9 @@
 
-load @term/seed/code/hold
-  find hold
+load @term/seed/code/lang
+  find code-hold
   find hold-hook
 
-mint hold, like hold
+mint hold, like code-hold
   case name
     site name
   case bind, mint bind

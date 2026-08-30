@@ -8,13 +8,13 @@ load @term/mill/code/code/fork/mine
 load @term/mill/code/code/save/mine
   find save
 
-load @term/mill/code/code/save/send
+load @term/mill/code/code/send/mine
   find send
 
-load @term/mill/code/code/save/halt
+load @term/mill/code/code/halt/mine
   find halt
 
-load @term/mill/code/code/save/bust
+load @term/mill/code/code/bust/mine
   find bust
 
 mine flow

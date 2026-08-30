@@ -1,8 +1,8 @@
 
-load @term/seed/code/bind
-  find bind
+load @term/seed/code/lang
+  find code-bind
 
-mint bind, like bind
+mint bind, like code-bind
   case name
     site term
   case seed, mint seed

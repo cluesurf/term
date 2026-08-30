@@ -1,0 +1,20 @@
+
+load @term/seed/code/view-file
+  find view-host
+
+load @term/mill/code/view/seed/mint
+  find view-seed
+  find view-like
+
+mint view-host, like view-host
+  case name
+    site name
+  case bond, mint view-seed
+    site bond
+  case like, mint view-like
+    site like
+  hook make
+    make view-host
+      bind name, read name
+      bind bond, read bond
+      bind like, read like

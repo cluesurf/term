@@ -1,0 +1,51 @@
+
+# One query. `task` is the catalog id as text, because `select:language` is not a Term name.
+#
+#   find vowel
+#     task <filter:phoneme>
+#     meet and
+#       hold is-equal
+#         read self/kind
+#         text <vowel>
+#     sort rise, read self/height
+#     size 50
+#
+# The document never runs this. The host reads it off the manifest, fills the holes from the `host` values,
+# resolves it with the READER's permissions rather than the author's, and passes the result in as a parameter.
+# See note/term/view/03-find.md.
+#
+# Both a `meet` and bare `hold` lines are allowed. Bare predicates are an implicit `and`, which is the common
+# single-predicate case, and giving them their own site means the mint builds each shape without a conditional.
+
+load @term/mill/code/view/meet/mine
+  find view-meet
+
+load @term/mill/code/view/hold/mine
+  find view-hold
+
+load @term/mill/code/view/sort/mine
+  find view-sort
+
+mine view-find
+  mine term, term find
+    site name
+    mine term, term task
+      mine text
+        site task
+    mine maybe
+      mine form, like view-meet
+        site meet
+    mine list
+      mine form, like view-hold
+        site hold
+    mine list
+      mine form, like view-sort
+        site sort
+    mine maybe
+      mine term, term size
+        mine code
+          site size
+    mine maybe
+      mine term, term slot
+        mine code
+          site slot

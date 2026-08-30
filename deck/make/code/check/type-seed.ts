@@ -33,24 +33,28 @@ export function makeSeedType(
         return generic
       }
 
-      // `list` is the native array type: `like list` is array<unknown>, `like list<t>` is array<t>
+      // `list` is the native array type: `like list<t>` is array<t>, and a BARE `like list` leaves the element a
+      // fresh inference variable filled from usage -- a native backend then emits the concrete element instead of
+      // the boxed dynamic (`SeedList<String>`, never `SeedList<Any>`). A list that genuinely mixes elements says
+      // so: `like list, like unknown`.
       if (type.name === 'list') {
         return {
           kind: 'array',
           element: type.args?.[0]
             ? seed(type.args[0], generics)
-            : UNKNOWN,
+            : sub.fresh(),
         }
       }
 
-      // `hash` is the native map type: `like hash<k, v>` is map<k, v>, `like hash` is map<unknown, unknown>
+      // `hash` is the native map type, with the same rule: `like hash<k, v>` is map<k, v>, and a bare `like hash`
+      // infers its key and value from usage
       if (type.name === 'hash') {
         return {
           kind: 'map',
-          key: type.args?.[0] ? seed(type.args[0], generics) : UNKNOWN,
+          key: type.args?.[0] ? seed(type.args[0], generics) : sub.fresh(),
           value: type.args?.[1]
             ? seed(type.args[1], generics)
-            : UNKNOWN,
+            : sub.fresh(),
         }
       }
 
@@ -91,6 +95,12 @@ export function makeSeedType(
 
     if (type.kind === 'array') {
       return { kind: 'array', element: seed(type.element, generics) }
+    }
+
+    // a slot the source left empty (`free`): a fresh variable, filled from usage; a spelled `like unknown` stays
+    // the gradual type
+    if (type.kind === 'unknown' && type.free) {
+      return sub.fresh()
     }
 
     if (type.kind === 'map') {

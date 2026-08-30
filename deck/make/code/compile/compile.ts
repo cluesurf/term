@@ -12,6 +12,7 @@ import {
 } from '@term/make/code/compile/template'
 import type { Template } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
+import { readView, lowerView } from '@term/make/code/compile/view'
 import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
@@ -247,13 +248,17 @@ export function compile(
 
     for (const unit of sources) {
       // mill cache: reuse a module's parse + expand + mill when its text (and the template set) is unchanged
+      // the role a project's `role.tree` gives this module. A `view` file is the sandboxed document dialect and is
+      // read by compile/view.ts, not by the code mill. See note/term/view/06-mill.md.
+      const unitRole = options?.roleOf?.(unit.file) ?? undefined
+
       const milled = cache
         ? cache.milledUnit(
-            `${unit.file}\u0000${templateKey}`,
+            `${unit.file}\u0000${templateKey}\u0000${unitRole ?? ''}`,
             unit.text,
-            () => millUnit(unit, templates),
+            () => millUnit(unit, templates, unitRole),
           )
-        : millUnit(unit, templates)
+        : millUnit(unit, templates, unitRole)
 
       if (!milled.ok) {
         return { ok: false, diagnostics: milled.diagnostics }
@@ -343,6 +348,7 @@ function compileData(source: { file: string; text: string }): CompileResult {
 function millUnit(
   unit: { file: string; text: string },
   templates?: Map<string, Template>,
+  role?: string,
 ):
   | { ok: true; program: Program }
   | { ok: false; diagnostics: Diagnostic[] } {
@@ -353,8 +359,22 @@ function millUnit(
   }
 
   // expand phase: tree/fuse templates (including those imported from other modules), so injected code goes through
-  // the mill, resolver, and type checker
-  return mill(expandTemplates(parsed.tree, templates), unit.file)
+  // the mill, resolver, and type checker. A document gets this too, which is where its macros go.
+  const expanded = expandTemplates(parsed.tree, templates)
+
+  // the `view` role: the sandboxed document dialect. Four statement heads, none of which declares anything the
+  // author wrote, read by its own reader and lowered to the zone AST the code role already emits.
+  if (role === 'view') {
+    const read = readView(expanded, unit.file)
+
+    if (!read.ok) {
+      return { ok: false, diagnostics: read.diagnostics }
+    }
+
+    return { ok: true, program: lowerView(read.file) }
+  }
+
+  return mill(expanded, unit.file)
 }
 
 // The checking core: everything downstream of parse and mill. Takes an already-milled program so the editor path

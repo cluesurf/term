@@ -1,5 +1,5 @@
 
-load @term/seed/code/slot
+load @term/seed/code/lang
   find code-slot
 
 mint slot, like code-slot

@@ -1,7 +1,4 @@
 
-load @term/seed/code/next
-  find next
-
 mint next
   hook make
     make next

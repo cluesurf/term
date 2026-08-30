@@ -1,0 +1,110 @@
+
+load @term/seed/code/zone
+  find zone-node
+  find zone-element
+  find zone-text
+  find zone-walk
+  find zone-walk-next
+  find zone-walk-site
+  find zone-fork
+  find zone-fork-hook
+  find zone-fork-test
+  find zone-fork-hold
+  find zone-fork-miss
+
+load @term/mill/code/view/seed/mint
+  find view-seed
+  find view-bind
+
+mint view-node, like zone-node
+  case zone, mint view-use
+    site zone
+  case text, mint view-text
+    site text
+  case walk, mint view-walk
+    site walk
+  case fork, mint view-fork
+    site fork
+
+mint view-use, like zone-element
+  case name
+    site name
+  case bind, mint view-bind
+    site bind
+  case node, mint view-node
+    site node
+  hook make
+    make zone-element
+      bind name, read name
+      bind bind, read bind
+      bind node, read node
+
+mint view-text, like zone-text
+  case text
+    site text
+  hook make
+    make zone-text
+      bind text, read text
+
+mint view-walk, like zone-walk
+  case road, mint view-seed
+    site road
+  case next, mint view-walk-next
+    site next
+  hook make
+    make zone-walk
+      bind road, read road
+      bind next, read next
+
+mint view-walk-next, like zone-walk-next
+  case site, mint view-walk-site
+    site site
+  case node, mint view-node
+    site node
+  hook make
+    make zone-walk-next
+      bind site, read site
+      bind node, read node
+
+mint view-walk-site, like zone-walk-site
+  case name
+    site name
+  hook make
+    make zone-walk-site
+      bind name, read name
+
+mint view-fork, like zone-fork
+  case hook, mint view-fork-hook
+    site hook
+  hook make
+    make zone-fork
+      bind hook, read hook
+
+mint view-fork-hook, like zone-fork-hook
+  case test, mint view-fork-test
+    site test
+  case hold, mint view-fork-hold
+    site hold
+  case miss, mint view-fork-miss
+    site miss
+
+mint view-fork-test, like zone-fork-test
+  case seed, mint view-seed
+    site seed
+  hook make
+    make zone-fork-test
+      bind seed, read seed
+
+mint view-fork-hold, like zone-fork-hold
+  case node, mint view-node
+    site node
+  hook make
+    make zone-fork-hold
+      bind node, read node
+
+mint view-fork-miss, like zone-fork-miss
+  case node, mint view-node
+    site node
+  hook make
+    make zone-fork-miss
+      bind node, read node

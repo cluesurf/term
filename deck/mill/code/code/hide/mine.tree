@@ -1,0 +1,6 @@
+# `hide <what>` on a declaration: visibility (`hide take` keeps a field out of the constructor).
+
+mine hide
+  mine term, term hide
+    mine term
+      site term

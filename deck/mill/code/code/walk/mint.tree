@@ -1,8 +1,4 @@
 
-load @term/seed/code/walk
-  find walk
-  find hook
-
 mint walk
   case mode
     site mode

@@ -1,7 +1,4 @@
 
-load @term/seed/code/mask
-  find mask
-
 mint mask
   case name
     site name

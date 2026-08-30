@@ -1,0 +1,6 @@
+# a `book` block at module level: the embedded document (the note dialect owns its body).
+
+mine book
+  mine term, term book
+    mine term
+      site name

@@ -1,0 +1,32 @@
+
+# One predicate that must hold of a record. `hold` is the language's existing word for a constraint, with the
+# shape the code role already gives it: a name and a list of `bind` children.
+#
+#   hold is-equal
+#     read self/kind
+#     text <vowel>
+#
+#   hold is-within
+#     bind self, read self/symbol
+#     bind other, text <aeiou>
+#
+# `self` is the record under test, which is the language's own meaning of `self`. Every other read reaches a
+# `host`. Arguments are positional (`slot`) or named with the predicate's own parameter names (`bind`), and
+# mixing the two in one `hold` is an error.
+#
+# Which predicates a field accepts is declared per field by the query catalog, and one the resolver cannot push
+# down to an index is refused. See note/term/view/03-find.md.
+
+load @term/mill/code/view/seed/mine
+  find view-seed
+  find view-bind
+
+mine view-hold
+  mine term, term hold
+    site name
+    mine list
+      mine any
+        mine form, like view-bind
+          site bind
+        mine form, like view-seed
+          site slot

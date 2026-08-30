@@ -1,7 +1,4 @@
 
-load @term/seed/code/wear
-  find wear
-
 mint wear
   case name
     site name

@@ -1,0 +1,6 @@
+# `tag <name>` on a declaration: a label the tooling reads (grouping, filtering); one word per tag line.
+
+mine tag
+  mine term, term tag
+    mine term
+      site name

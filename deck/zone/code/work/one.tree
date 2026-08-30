@@ -1,8 +1,15 @@
 # One secret at a time.
 #
-#   term zone save some-key      write it, read from a hidden prompt
-#   term zone read some-key      fetch just that one, when it drifted
-#   term zone toss some-key      remove it at the provider
+#   term zone save --name some-key   write it, read from a hidden prompt
+#   term zone read --name some-key   ask about that one, when it drifted
+#   term zone toss --name some-key   remove it at the provider
+#
+# `--name` IS NOT OPTIONAL, and the bare positional is not a shorthand for
+# it. The first positional binds to `--spot`, a zone PATH, so
+# `term zone save some-key` walks the whole declaration and reports on
+# projects instead of prompting for a value. It exits 0, which is why the
+# form was documented that way here and in note/term/commands.md for as long
+# as it was: it does not look like it failed.
 #
 # THE VALUE IS NEVER SEEN. It is typed with echo off, handed to the provider
 # SDK as a function argument, and never reaches a file, an argument, a log or

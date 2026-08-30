@@ -392,7 +392,7 @@ export function emitSwift(
         (n): n is Extract<Statement, { form: 'native' }> =>
           n.form === 'native' && n.kind === 'type',
       )
-      .map(n => [n.alias, n.module]),
+      .map(n => [n.alias, n.module === 'any' ? 'Any' : n.module]),
   )
 
   // how many type parameters each generic form declares, for a reference that names the form without them
@@ -1324,9 +1324,10 @@ export function emitSwift(
   const stmt = (node: Statement, d: number, bind: Bindings): string => {
     switch (node.form) {
       case 'let': {
-        // annotate an ADT binding so leading-dot construction has a type to infer from
+        // annotate an ADT binding so leading-dot construction has a type to infer from. An anonymous record's
+        // type is `named ''` (a nested `host` constant) and cannot be spelled: no annotation, Swift infers
         const annotation =
-          node.type?.kind === 'named' ? `: ${swiftType(node.type)}` : ''
+          node.type?.kind === 'named' && node.type.name ? `: ${swiftType(node.type)}` : ''
 
         return `${node.mutable || assignedAnywhere.has(node.name) ? 'var' : 'let'} ${vname(
           node.name,
@@ -1543,12 +1544,16 @@ export function emitSwift(
         const previousReturnsArray = fnReturnsArray
         fnReturnsArray = node.result?.kind === 'array'
 
-        const bodyText = [
-          ...shadows,
-          block(node.body, d + 1, new Map()),
-        ]
-          .filter(Boolean)
-          .join('\n')
+        // a signature-only stub compiles: its body is the not-implemented trap
+        const bodyText =
+          node.body.length === 0
+            ? `${pad(d + 1)}fatalError(${JSON.stringify(`stub: ${node.name}`)})`
+            : [
+                ...shadows,
+                block(node.body, d + 1, new Map()),
+              ]
+                .filter(Boolean)
+                .join('\n')
 
         fnReturnsArray = previousReturnsArray
 
@@ -1672,6 +1677,13 @@ export function emitSwift(
     if (!imports.includes(line)) {
       imports.push(line)
     }
+  }
+
+  // the string API lowers to Foundation methods (`range(of:)`, case transforms): import it always, rather than
+  // relying on a prelude shim to have done so (a module with no shim got no Foundation and failed on its first
+  // string search). A duplicate import is harmless.
+  if (!imports.includes('import Foundation')) {
+    imports.unshift('import Foundation')
   }
 
   const body = program

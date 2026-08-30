@@ -35,6 +35,8 @@ mine mill-mine-child
       site code
     mine form, like mill-mine-path
       site path
+    mine form, like mill-mine-node
+      site node
     mine form, like mill-mine-form
       site form
 
@@ -83,6 +85,11 @@ mine mill-mine-code
 mine mill-mine-path
   mine term, term path
     site name
+
+# `mine node` consumes any ONE node, capturing nothing: the skip a mixed file needs (a dialect's own heads mined,
+# every ordinary Term statement passed over)
+mine mill-mine-node
+  mine term, term node
 
 mine mill-mine-form
   mine term, term form

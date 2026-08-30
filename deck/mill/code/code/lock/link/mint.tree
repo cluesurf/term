@@ -1,5 +1,5 @@
 
-load @term/mill/code/code/lock/link
+load @term/seed/code/lang
   find lock-link
   find lock-link-load
 

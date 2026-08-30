@@ -205,7 +205,14 @@ export function emitRust(
         (n): n is Extract<Statement, { form: 'native' }> =>
           n.form === 'native' && n.kind === 'type',
       )
-      .map(n => [n.alias, n.module]),
+      // `load <any>` is the portable opaque spelling (a public module's handle with no per-backend type): the
+      // boxed dynamic here, `Any` on Swift and Kotlin
+      .map(n => [
+        n.alias,
+        n.module === 'any'
+          ? 'std::rc::Rc<dyn std::any::Any>'
+          : n.module,
+      ]),
   )
 
   const variantOwner = new Map<string, string>()
@@ -1670,9 +1677,13 @@ export function emitRust(
             : last?.form === 'guard' && node.result && node.result.kind !== 'unit'
               ? `${pad(d + 1)}unreachable!()`
               : ''
-        const bodyText = [...shadows, block(node.body, d + 1), tail]
-          .filter(Boolean)
-          .join('\n')
+        // a signature-only stub compiles: its body is the not-implemented panic
+        const bodyText =
+          node.body.length === 0
+            ? `${pad(d + 1)}unimplemented!(${JSON.stringify(`stub: ${node.name}`)})`
+            : [...shadows, block(node.body, d + 1), tail]
+                .filter(Boolean)
+                .join('\n')
 
         currentRaising = previousRaising
         currentResult = previousResult

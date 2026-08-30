@@ -1,7 +1,4 @@
 
-load @term/seed/code/back
-  find back
-
 mint back
   case seed, mint seed
     site seed

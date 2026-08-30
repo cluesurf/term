@@ -1,0 +1,24 @@
+
+# `load @view/text` with a `find` per name taken, and an optional local alias.
+#
+#   load @view/sound
+#     find phoneme-chart
+#     find paradigm-table, name paradigm
+#
+# The path is a package in the approved catalog and never a file. There is no relative form and no absolute form,
+# so the reachable set of a document is exactly what its manifest declares. See note/term/view/04-catalog.md.
+
+mine view-load
+  mine term, term load
+    mine path
+      site path
+    mine list
+      mine form, like view-load-find
+        site find
+
+mine view-load-find
+  mine term, term find
+    site name
+    mine maybe
+      mine term, term name
+        site alias

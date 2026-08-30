@@ -1,11 +1,8 @@
 
-deck @term/code
-  head <The Seed Content Grammar Library>
-  term <information>
-  term <computation>
-  term <library>
-  face <Lance Pollard>, site <lp@elk.fm>
-  read ./book
-  lock <Apache 2.0>
-  mark <0.0.1>
+deck @term/feed
+  head <Text and binary format grammars: a checked mine/mint spec per dialect, read and written against one cursor>
+  code <0.0.0>
+  lock mit
   bear ./code
+  test ./test
+  link @term/seed, code <0.0.x>

@@ -1,5 +1,5 @@
 
-load @term/seed/code/text
+load @term/seed/code/lang
   find text-def
 
 mint text

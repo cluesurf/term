@@ -1,10 +1,10 @@
 
-load @term/seed/code/import
-  find import
+# `like load` references the import form
+load @term/seed/code/lang
+  find code-import
   find import-reference
 
-# `like load` references the import form
-mint load, like import
+mint load, like code-import
   case path
     site path
   case find, mint reference

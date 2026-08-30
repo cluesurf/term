@@ -1,3 +1,7 @@
+note draft
+# Stale pre-rename draft (regex, not the mine DSL). Kept for reference only. See note/term/feed/03-worked-examples.md
+# for the real (checked-spec-only, still hand-sketched) mine.tree this dialect needs, and ./code.tree for what
+# actually compiles today. Not built: the read side hasn't been ported yet, only the write side has.
 
 mine ansi
   \x1b\[[0-9;]*m

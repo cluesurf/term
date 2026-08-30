@@ -1,0 +1,6 @@
+# a `cast` block at module level: a conversion declaration by name.
+
+mine cast
+  mine term, term cast
+    mine term
+      site name

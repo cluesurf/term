@@ -1,0 +1,6 @@
+# `fold <name>` on a declaration: names the transform the mint dialect applies to the value.
+
+mine fold
+  mine term, term fold
+    mine term
+      site name

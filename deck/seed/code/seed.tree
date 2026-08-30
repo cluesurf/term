@@ -28,6 +28,13 @@ form seed-wave
   link value, like boolean
 
 # a value produced by a call: `call add / bind a, ... / bind b, ...`
+#
+# `slot` holds the POSITIONAL arguments, which is what `call add / read a / read b` writes and what 1,049 of the
+# comparisons in the tree use. It was added 2026-08-29: before it the form carried only `bind`, so a positional
+# argument had nowhere to land, and the code role's own call mill matched one with no `site` and dropped it. The
+# checker puts a `bind` in the callee's declared position by name and a `slot` by order, and mixing the two in
+# one call is an error.
 form seed-call
   link name, like term
   link bind, list bind
+  link slot, list seed

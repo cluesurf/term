@@ -1,0 +1,24 @@
+
+load @term/seed/code/view-file
+  find view-load
+  find view-load-find
+
+mint view-load, like view-load
+  case path
+    site path
+  case find, mint view-load-find
+    site find
+  hook make
+    make view-load
+      bind path, read path
+      bind find, read find
+
+mint view-load-find, like view-load-find
+  case name
+    site name
+  case alias
+    site alias
+  hook make
+    make view-load-find
+      bind name, read name
+      bind alias, read alias

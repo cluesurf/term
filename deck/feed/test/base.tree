@@ -1,0 +1,107 @@
+# The cursor and writer against each other. Run: term test, from deck/feed.
+
+load @term/seed/code/list
+  find push
+
+load ../code/base
+  find make-cursor
+  find at-end
+  find read-byte
+  find read-int
+  find seek
+  find make-writer
+  find write-int
+  find to-bytes
+  find byte-order
+  find integer-sign
+
+task bytes-of-4
+  like list
+    like u8
+  save result
+    make list
+  call push(read result, code 0x01)
+  call push(read result, code 0x02)
+  call push(read result, code 0x03)
+  call push(read result, code 0x04)
+  send back, read result
+
+task bytes-of-1-255
+  like list
+    like u8
+  save result
+    make list
+  call push(read result, code 0xff)
+  send back, read result
+
+test <a big-endian u32 reads high byte first>
+  want hold
+    call is-equal
+      call read-int
+        call make-cursor(call bytes-of-4)
+        code 4
+        make big
+        make unsigned
+      code 16909060
+
+test <a little-endian u32 reads low byte first>
+  want hold
+    call is-equal
+      call read-int
+        call make-cursor(call bytes-of-4)
+        code 4
+        make little
+        make unsigned
+      code 67305985
+
+test <a signed byte above 127 reads negative>
+  want hold
+    call is-equal
+      call read-int
+        call make-cursor(call bytes-of-1-255)
+        code 1
+        make big
+        make signed
+      code -1
+
+test <write-int then read-int round trips, both byte orders>
+  save writer
+    call make-writer
+  call write-int(read writer, code 16909060, code 4, make big)
+  want hold
+    call is-equal
+      call read-int
+        call make-cursor(call to-bytes(read writer))
+        code 4
+        make big
+        make unsigned
+      code 16909060
+
+test <a cursor is at-end after reading every byte>
+  save cursor
+    call make-cursor(call bytes-of-4)
+  call read-byte(read cursor)
+  call read-byte(read cursor)
+  call read-byte(read cursor)
+  call read-byte(read cursor)
+  want hold
+    call at-end(read cursor)
+
+test <seek returns the cursor's prior position>
+  save cursor
+    call make-cursor(call bytes-of-4)
+  call read-byte(read cursor)
+  want hold
+    call is-equal
+      call seek(read cursor, code 3)
+      code 1
+
+test <seek moves the cursor to the new position>
+  save cursor
+    call make-cursor(call bytes-of-4)
+  call read-byte(read cursor)
+  call seek(read cursor, code 3)
+  want hold
+    call is-equal
+      call read-byte(read cursor)
+      code 4

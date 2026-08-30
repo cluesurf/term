@@ -1,17 +1,8 @@
-
-load @term/mill/code/deck/link/mine
-  find deck-link
-  find deck-term
-  find deck-deck
-
-load @term/mill/code/deck/mind/mine
-  find deck-mind
-
-load @term/mill/code/deck/host/mine
-  find deck-host
-
-load @term/mill/code/deck/case/mine
-  find deck-case
+# The deck manifest grammar, written against the REAL deck.tree files of this tree (14 packages surveyed
+# 2026-08-29), not an idealized one: the name is a path word (`deck @term/seed`), the fields come in any order,
+# and an unknown field passes over with `mine node` the way the hand-rolled reader ignores it. The executor
+# (compile/mill-run.ts) reads a manifest through this; test/compile/mill-run.ts holds it against
+# deck/deck/code/manifest.ts on every manifest in the tree.
 
 load @term/mill/code/deck/role/mine
   find role
@@ -28,63 +19,137 @@ mine deck
         site role
       mine form, like load
         site load
+      mine node
 
 mine deck-def
   mine term, term deck
+    mine path
+      site name
+    mine list
+      mine any
+        mine form, like deck-head
+          site head
+        mine form, like deck-code
+          site code
+        mine form, like deck-mark
+          site mark
+        mine form, like deck-lock
+          site lock
+        mine form, like deck-link
+          site link
+        mine form, like deck-bear
+          site bear
+        mine form, like deck-test
+          site test
+        mine form, like deck-line
+          site line
+        mine form, like deck-make
+          site make
+        mine form, like deck-term
+          site term
+        mine form, like deck-text
+          site text
+        mine form, like deck-cite
+          site cite
+        mine form, like deck-sort
+          site sort
+        mine node
+
+# `head <one line about the package>`
+mine deck-head
+  mine term, term head
+    mine text
+      site text
+
+# `code <0.0.16>`: the version
+mine deck-code
+  mine term, term code
+    mine text
+      site text
+
+# `mark <0.0.1>`: the version in its older spelling, or `mark private`
+mine deck-mark
+  mine term, term mark
+    mine any
+      mine text
+        site text
+      mine term
+        site term
+
+# `lock mit` or `lock <Apache 2.0>`
+mine deck-lock
+  mine term, term lock
+    mine any
+      mine text
+        site text
+      mine term
+        site term
+
+# `link @term/seed, code <0.0.x>` (or the older `mark <0.0.x>`)
+mine deck-link
+  mine term, term link
+    mine path
+      site name
+    mine maybe
+      mine any
+        mine term, term code
+          mine text
+            site code
+        mine term, term mark
+          mine text
+            site code
+
+# `bear ./code`: what the package exports
+mine deck-bear
+  mine term, term bear
+    mine path
+      site path
+
+# `test ./test`
+mine deck-test
+  mine term, term test
+    mine path
+      site path
+
+# `line ./code/line`: the CLI entry
+mine deck-line
+  mine term, term line
+    mine path
+      site path
+
+# `make <security>`: a keyword, repeatable
+mine deck-make
+  mine term, term make
+    mine text
+      site text
+
+# `term <Apache 2.0>`: a licence or keyword term
+mine deck-term
+  mine term, term term
+    mine text
+      site text
+
+# `text <The Term Secret Access Library>`: the long title
+mine deck-text
+  mine term, term text
+    mine text
+      site text
+
+# `cite <Lance Pollard>, base <lp@elk.fm>`
+mine deck-cite
+  mine term, term cite
     mine text
       site name
     mine maybe
-      mine term, term mark
+      mine term, term base
         mine text
-          site mark
-    mine maybe
-      mine term, term head
-        mine text
-          site head
-    mine maybe
-      mine term, term lock
-        site lock
-    mine maybe
-      mine term, term sort
-        site sort
-    mine maybe
-      mine term, term site
-        mine text
-          site site
-    mine maybe
-      mine term, term view
-        site view
-    mine maybe
-      mine term, term mark
-        mine term, term private
-          site hide
-    mine maybe
-      mine term, term task
-        site task
-    mine maybe
-      mine term, term book
-        site book
-    mine maybe
-      mine term, term role
-        site role
-    mine maybe
-      mine term, term call
-        site call
-    mine list
-      mine form, like deck-term
+          site base
+
+# `sort library`
+mine deck-sort
+  mine term, term sort
+    mine any
+      mine text
+        site text
+      mine term
         site term
-    mine list
-      mine form, like deck-mind
-        site mind
-    mine list
-      mine form, like deck-link
-        site link
-    mine list
-      mine form, like deck-host
-        site host
-    mine list
-      mine form, like deck-deck
-        site deck
-    mine list
-      mine form, like deck-case
-        site case

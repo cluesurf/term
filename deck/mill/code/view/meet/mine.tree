@@ -1,0 +1,28 @@
+
+# A group of predicates: `meet and`, `meet or`, `meet not`. Nests, which is what the code role's own `meet`
+# already does, so one spelling covers both roles.
+#
+#   meet and
+#     hold is-equal
+#       read self/kind
+#       text <vowel>
+#     meet not
+#       hold is-equal
+#         read self/status
+#         text <archived>
+#
+# `meet not` takes exactly one child. Any other arity is a diagnostic, and it is the one mode that needs the
+# message because it is the one with an arity.
+
+load @term/mill/code/view/hold/mine
+  find view-hold
+
+mine view-meet
+  mine term, term meet
+    site mode
+    mine list
+      mine form, like view-hold
+        site hold
+    mine list
+      mine form, like view-meet
+        site meet

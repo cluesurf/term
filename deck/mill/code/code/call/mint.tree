@@ -1,9 +1,9 @@
 
-load @term/seed/code/call
-  find call
-  find hook
+load @term/seed/code/lang
+  find code-call
+  find code-hook
 
-mint call, like call
+mint call, like code-call
   case name
     site name
   case bind, mint bind
@@ -22,7 +22,7 @@ mint call, like call
       bind turn, read turn
       bind hook, read hook
 
-mint hook, like hook
+mint hook, like code-hook
   case name
     site name
   case line

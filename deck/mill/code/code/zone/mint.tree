@@ -1,5 +1,5 @@
 
-load @term/seed/code/zone
+load @term/seed/code/lang
   find zone-def
 
 mint zone

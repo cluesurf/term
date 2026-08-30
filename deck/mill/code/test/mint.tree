@@ -1,0 +1,22 @@
+# The test dialect's definitions, by name: what a mint / tree / zone file declares. The bodies stay with the
+# dialect's own runtime; this mint lifts the roster (the names), which is what the registry and the docs read.
+
+mint test
+  case mint, mint test-mint
+    site mint
+  case tree, mint test-tree
+    site tree
+  case zone, mint test-zone
+    site zone
+
+mint test-mint
+  case name
+    site name
+
+mint test-tree
+  case name
+    site name
+
+mint test-zone
+  case name
+    site name

@@ -1,6 +1,5 @@
 
-load @term/seed/code/take
-  find take
+load @term/seed/code/lang
   find take-value
 
 mint take

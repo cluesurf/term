@@ -1,8 +1,12 @@
-# Build the `data` forms of @term/host from a mined host file. One mint per mine; `hook make` constructs the value.
+# Build the `data` forms of @term/host from a mined host file. One mint per mine; `hook make` constructs the
+# value. A case with a site and no make passes the capture through: a literal keeps its own data kind (text,
+# number, decimal per the parser's node), a matched sub-form keeps its minted value. The executor
+# (compile/mill-run.ts) runs this against the fixtures and matches compile/host.ts byte for byte.
 
 load @term/host/code/base
   find data
   find data-entry
+  find data-tree
 
 mint host
   case tree, mint host-tree
@@ -13,18 +17,28 @@ mint host
     site mesh
 
 mint host-entry, like data-entry
-  case host, mint host-host
-    site host
+  case value, mint host-value
+    site value
+  case map, mint host-map
+    site map
   case list, mint host-list
     site list
   case fuse, mint host-fuse
     site fuse
 
-mint host-host, like data-entry
+mint host-value, like data-entry
   case name
     site name
   case value, mint host-scalar
     site value
+  hook make
+    make data-entry
+      bind name, read name
+      bind base, read value
+
+mint host-map, like data-entry
+  case name
+    site name
   case entry, mint host-entry
     site entry
   hook make
@@ -43,8 +57,15 @@ mint host-list, like data-entry
     make data-entry
       bind name, read name
       bind base
-        make list
+        make array
           bind list, read item
+
+mint host-sublist, like data
+  case item, mint host-item
+    site item
+  hook make
+    make array
+      bind list, read item
 
 mint host-mesh, like data
   case entry, mint host-entry
@@ -58,22 +79,30 @@ mint host-item, like data
     site scalar
   case mesh, mint host-mesh
     site mesh
-  case list, mint host-list
+  case list, mint host-sublist
     site list
   case fuse, mint host-fuse
     site fuse
 
-mint host-tree
+mint host-tree, like data-tree
   case name
     site name
   case entry, mint host-entry
     site entry
   case item, mint host-item
     site item
+  hook make
+    make data-tree
+      bind name, read name
+      bind entries, read entry
+      bind items, read item
 
-mint host-fuse
+mint host-fuse, like data
   case name
     site name
+  hook make
+    make graft
+      bind name, read name
 
 mint host-scalar, like data
   case text

@@ -1,8 +1,224 @@
+# The byte cursor and writer every binary dialect's code.tree reads and writes against. A dialect whose input already
+# arrives as `text` (JSON, CSS, ANSI) reads it directly with the stdlib's own `char-at` / `char-code-at`, no cursor
+# needed — this is for the dialects whose input is raw bytes. See note/term/feed/02-cursor.md.
 
-bear ./latin/mine
-bear ./latin/number/mine
-bear ./latin/whitespace
-bear ./css/mine
-  find mine css
-bear ./xml/mine
-  find mine xml
+load @term/seed/code/list
+  find push
+  find get
+  find size
+
+load @term/seed/code/bit
+  find bitwise-and
+  find shift-left
+  find shift-right
+
+# a byte order for a multi-byte integer field
+form byte-order
+  case big
+  case little
+
+# whether a fixed-width integer field's top bit is a sign bit
+form integer-sign
+  case signed
+  case unsigned
+
+# a position into a byte buffer. Every read advances `position`. Passed by reference: every task below mutates the
+# cursor it is given rather than returning a new one, the same way `@term/host`'s `feed` mutates its `stream-reader`.
+form feed-cursor
+  link bytes
+    like list
+      like u8
+  link position, like number
+
+task make-cursor
+  take bytes
+    like list
+      like u8
+  like feed-cursor
+  send back
+    make feed-cursor
+      bind bytes, read bytes
+      bind position, code 0
+
+task remaining
+  take cursor, like feed-cursor
+  like number
+  send back
+    call subtract
+      call size(read cursor/bytes)
+      read cursor/position
+
+task at-end
+  take cursor, like feed-cursor
+  like boolean
+  send back
+    call is-equal
+      call remaining(read cursor)
+      code 0
+
+task peek-byte
+  take cursor, like feed-cursor
+  like u8
+  send back
+    call get(read cursor/bytes, read cursor/position)
+
+task read-byte
+  take cursor, like feed-cursor
+  like u8
+  save value
+    call peek-byte(read cursor)
+  save cursor/position
+    call add(read cursor/position, code 1)
+  send back, read value
+
+task skip
+  take cursor, like feed-cursor
+  take width, like number
+  save cursor/position
+    call add(read cursor/position, read width)
+
+# reposition the cursor to an absolute byte offset, giving back the position it was at, so a caller restores it after
+# an offset-relative read (`mine at`) with `seek(cursor, read prior-position)`
+task seek
+  take cursor, like feed-cursor
+  take offset, like number
+  like number
+  save prior, read cursor/position
+  save cursor/position, read offset
+  send back, read prior
+
+task read-bytes
+  take cursor, like feed-cursor
+  take width, like number
+  like list
+    like u8
+  save result
+    make list
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, read width)
+    hook hold
+      call push(read result, call read-byte(read cursor))
+      save index
+        call add(read index, code 1)
+  send back, read result
+
+# a fixed-width integer field. Big-endian folds high byte first; little-endian folds low byte first with a growing
+# shift. Both loops touch the cursor exactly `width` times, so cost is linear in the field's own width and nothing
+# else — no allocation beyond the returned number.
+task read-int
+  take cursor, like feed-cursor
+  take width, like number
+  take order, like byte-order
+  take sign, like integer-sign
+  like number
+  save magnitude, code 0
+  save index, code 0
+  fork case, read order
+    case big
+      walk test
+        hook test
+          call is-below(read index, read width)
+        hook hold
+          save magnitude
+            call add
+              call shift-left(read magnitude, code 8)
+              call read-byte(read cursor)
+          save index
+            call add(read index, code 1)
+    case little
+      save shift, code 0
+      walk test
+        hook test
+          call is-below(read index, read width)
+        hook hold
+          save magnitude
+            call add
+              read magnitude
+              call shift-left(call read-byte(read cursor), read shift)
+          save shift
+            call add(read shift, code 8)
+          save index
+            call add(read index, code 1)
+  fork case, read sign
+    case unsigned
+      send back, read magnitude
+    case signed
+      save half, call shift-left(code 1, call subtract(call multiply(read width, code 8), code 1))
+      fork test
+        hook test
+          call is-minimum(read magnitude, read half)
+        hook hold
+          send back
+            call subtract
+              read magnitude
+              call shift-left(code 1, call multiply(read width, code 8))
+      send back, read magnitude
+
+# an accumulating byte buffer. `to-bytes` hands back the finished list; every `write-*` appends to it in place.
+form feed-writer
+  link bytes
+    like list
+      like u8
+
+task make-writer
+  like feed-writer
+  send back
+    make feed-writer
+      bind bytes, make list
+
+task write-byte
+  take writer, like feed-writer
+  take value, like u8
+  call push(read writer/bytes, read value)
+
+task write-bytes
+  take writer, like feed-writer
+  take block
+    like list
+      like u8
+  walk list, read block
+    hook next
+      take site, name value
+      call write-byte(read writer, read value)
+
+task write-int
+  take writer, like feed-writer
+  take value, like number
+  take width, like number
+  take order, like byte-order
+  fork case, read order
+    case big
+      save index
+        call subtract(read width, code 1)
+      walk test
+        hook test
+          call is-minimum(read index, code 0)
+        hook hold
+          call write-byte
+            read writer
+            call bitwise-and
+              call shift-right(read value, call multiply(read index, code 8))
+              code 0xff
+          save index
+            call subtract(read index, code 1)
+    case little
+      save index, code 0
+      walk test
+        hook test
+          call is-below(read index, read width)
+        hook hold
+          call write-byte
+            read writer
+            call bitwise-and
+              call shift-right(read value, call multiply(read index, code 8))
+              code 0xff
+          save index
+            call add(read index, code 1)
+
+task to-bytes
+  take writer, like feed-writer
+  like list
+    like u8
+  send back, read writer/bytes

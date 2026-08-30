@@ -1,0 +1,111 @@
+
+# One node of a document body. Four shapes, all mintng the stdlib `zone-node`, which is the component AST's own
+# body node.
+#
+#   view text/heading        place a component from the catalog
+#     bind text, read title
+#   text <Vowels>            a literal text node
+#   walk list, read vowel    map a list to components
+#   fork test                a branch
+#
+# What is NOT here is the point. `zone-node` also carries `save` (a computed local) and `zone-element` also
+# carries `seed` (an attribute or an event handler), and this grammar has no way to reach either, so the mint
+# cannot build one. `walk test`, the while loop, is likewise unreachable: only `walk list` is matched, so a
+# document's every loop carries its own end. See note/term/view/05-sandbox.md.
+#
+# `walk size` is not matched yet. `zone-walk` carries a list and an item and has no counted form, so the counted
+# spelling needs either a mode on that form or a lowering onto a range, which is decided in view-dialect-0021.
+
+load @term/mill/code/view/seed/mine
+  find view-seed
+  find view-bind
+
+mine view-node
+  mine any
+    mine form, like view-use
+      site zone
+    mine form, like view-text
+      site text
+    mine form, like view-walk
+      site walk
+    mine form, like view-fork
+      site fork
+
+# `view <scope>/<component>`: place a component from the catalog. Children nest below and become its content.
+mine view-use
+  mine term, term view
+    site name
+    mine list
+      mine form, like view-bind
+        site bind
+    mine list
+      mine form, like view-node
+        site node
+
+mine view-text
+  mine term, term text
+    mine text
+      site text
+
+# `walk list, read vowel / hook next / take site, name sound / <body>`
+mine view-walk
+  mine term, term walk
+    mine term, term list
+    mine form, like view-seed
+      site road
+    mine list
+      mine form, like view-walk-next
+        site next
+
+mine view-walk-next
+  mine term, term hook
+    mine term, term next
+    mine maybe
+      mine form, like view-walk-site
+        site site
+    mine list
+      mine form, like view-node
+        site node
+
+mine view-walk-site
+  mine term, term take
+    mine term, term site
+    mine term, term name
+      site name
+
+# `fork test` with `hook test` / `hook hold` / `hook miss`, a flat list paired during lowering
+mine view-fork
+  mine term, term fork
+    mine term, term test
+    mine list
+      mine form, like view-fork-hook
+        site hook
+
+mine view-fork-hook
+  mine any
+    mine form, like view-fork-test
+      site test
+    mine form, like view-fork-hold
+      site hold
+    mine form, like view-fork-miss
+      site miss
+
+mine view-fork-test
+  mine term, term hook
+    mine term, term test
+    mine form, like view-seed
+      site seed
+
+mine view-fork-hold
+  mine term, term hook
+    mine term, term hold
+    mine list
+      mine form, like view-node
+        site node
+
+mine view-fork-miss
+  mine term, term hook
+    mine term, term miss
+    mine list
+      mine form, like view-node
+        site node

@@ -1,7 +1,4 @@
 
-load @term/seed/code/tune
-  find tune
-
 mint tune
   case name
     site name

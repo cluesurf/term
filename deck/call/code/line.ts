@@ -32,6 +32,14 @@ import { callLook } from '@term/call/code/look'
 import { callRoll } from '@term/call/code/roll'
 import { callMold } from '@term/call/code/mold'
 import { logFail, warn } from '@term/make/code/tint'
+import {
+  callBaseCheck,
+  callBaseDiff,
+  callBaseInit,
+  callBaseList,
+  callBaseLog,
+  callBaseShow,
+} from '@term/call/code/base'
 
 const COMMANDS = [
   'wake',
@@ -147,6 +155,69 @@ const cli = yargs(hideBin(process.argv))
     default: 'line',
     description: 'Response format',
   })
+  .command('base <verb>', 'The base record system', yargs =>
+    yargs
+      .command('init', 'Create a repository here', {}, () => {
+        callBaseInit({ root })
+      })
+      .command(
+        'log [branch]',
+        'Commits per branch, newest first',
+        y =>
+          y.positional('branch', {
+            type: 'string',
+            description: 'one branch, or omit for all',
+          }),
+        argv => {
+          callBaseLog({ root, ...(argv.branch ? { branch: argv.branch } : {}) })
+        },
+      )
+      .command(
+        'diff <to> [from]',
+        'Field-level changes between two commits',
+        y =>
+          y
+            .positional('to', { type: 'string', demandOption: true })
+            .positional('from', {
+              type: 'string',
+              description: 'omit to diff from empty',
+            }),
+        argv => {
+          callBaseDiff({
+            root,
+            to: String(argv.to),
+            ...(argv.from ? { from: String(argv.from) } : {}),
+          })
+        },
+      )
+      .command(
+        'show <commit> <mark>',
+        'One record in canonical form, which is what is hashed',
+        y =>
+          y
+            .positional('commit', { type: 'string', demandOption: true })
+            .positional('mark', { type: 'string', demandOption: true }),
+        argv => {
+          callBaseShow({
+            root,
+            commit: String(argv.commit),
+            mark: String(argv.mark),
+          })
+        },
+      )
+      .command(
+        'list <commit>',
+        'Every record at a commit',
+        y => y.positional('commit', { type: 'string', demandOption: true }),
+        argv => {
+          callBaseList({ root, commit: String(argv.commit) })
+        },
+      )
+      .command('check', 'Whether the repository is coherent', {}, () => {
+        callBaseCheck({ root })
+      })
+      .demandCommand(1, 'which base verb?'),
+  )
   .command(
     'wake [name]',
     'Scaffold a new Seed project',

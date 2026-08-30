@@ -1,0 +1,36 @@
+# The test dialect: @term/seed/code/test's mint and view files (ansi.tree, tint.tree). A file mixes ordinary Term
+# statements with the dialect's own heads, so the grammar mines the definitions (`mint`, `tree`, `zone` by name)
+# and passes every other statement over with `mine node`. Read by the executor (compile/mill-run.ts), never by
+# the ordinary compile path — the decision of mill-self-hosting's open question, settled 2026-08-29.
+
+mine test
+  mine list
+    mine any
+      mine form, like test-mint
+        site mint
+      mine form, like test-tree
+        site tree
+      mine form, like test-zone
+        site zone
+      mine node
+
+mine test-mint
+  mine term, term mint
+    mine term
+      site name
+    mine list
+      mine node
+
+mine test-tree
+  mine term, term tree
+    mine term
+      site name
+    mine list
+      mine node
+
+mine test-zone
+  mine term, term zone
+    mine term
+      site name
+    mine list
+      mine node

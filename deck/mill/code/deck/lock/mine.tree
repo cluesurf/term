@@ -1,0 +1,55 @@
+# The lockfile grammar: `lock <version>` then one `deck` entry per resolved package, each with its pinned
+# code, its content hash, its store site and its links. Written by deck/deck/code/lock.ts (writeLockfile),
+# read back through the executor; test/compile/mill-run.ts holds the two against each other.
+
+mine lock-file
+  mine list
+    mine any
+      mine form, like lock-head
+        site head
+      mine form, like lock-deck
+        site deck
+
+mine lock-head
+  mine term, term lock
+    mine text
+      site version
+
+mine lock-deck
+  mine term, term deck
+    mine path
+      site name
+    mine list
+      mine any
+        mine form, like lock-code
+          site code
+        mine form, like lock-hash
+          site hash
+        mine form, like lock-site
+          site site
+        mine form, like lock-link
+          site link
+
+mine lock-code
+  mine term, term code
+    mine text
+      site text
+
+mine lock-hash
+  mine term, term hash
+    mine text
+      site text
+
+mine lock-site
+  mine term, term site
+    mine text
+      site text
+
+mine lock-link
+  mine term, term link
+    mine path
+      site name
+    mine maybe
+      mine term, term code
+        mine text
+          site code

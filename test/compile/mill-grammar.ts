@@ -30,7 +30,7 @@ const MILL = join(TERM, 'deck/mill/code')
 const SEED = join(TERM, 'deck/seed/code')
 
 // the roles held to zero problems
-const HELD = new Set(['host', 'mill', 'deck', 'note'])
+const HELD = new Set(['host', 'mill', 'deck', 'note', 'code', 'test', 'view'])
 
 function walk(dir: string, into: string[] = []): string[] {
   for (const name of readdirSync(dir).sort()) {
@@ -103,7 +103,7 @@ function declared(file: string): Set<string> {
   for (const group of parsed.tree.nodes) {
     const head = headOf(group)
 
-    if (['form', 'task', 'mine', 'mint', 'mill', 'bind', 'mask', 'host'].includes(head)) {
+    if (['form', 'task', 'mine', 'mint', 'mill', 'bind', 'mask', 'host', 'tree'].includes(head)) {
       names.add(wordAt(group, 1))
     }
   }
@@ -165,13 +165,12 @@ for (const file of files) {
     }
 
     const like = group.nodes.find(n => n.kind === 'group' && headOf(n) === 'like') as GroupNode | undefined
+    // a mint NAMED `like` (the type-annotation head's own mint) reads as an empty like-group here; only a like
+    // clause with an argument names the built form
+    const likeName = like ? wordAt(like, 1) : ''
 
-    if (like) {
-      const name = wordAt(like, 1)
-
-      if (!known.has(name)) {
-        problems.push({ file, what: `mints "like ${name}", which no load of this file brings in` })
-      }
+    if (likeName && !known.has(likeName)) {
+      problems.push({ file, what: `mints "like ${likeName}", which no load of this file brings in` })
     }
   }
 }
@@ -204,6 +203,55 @@ ok('the host grammar captures a number', /mine code\n\s+site number/.test(hostMi
 for (const word of ['true', 'false', 'void']) {
   ok(`the host grammar reads the word "${word}"`, new RegExp(`mine term, term ${word}\\b`).test(hostMine))
 }
+
+// the view grammar reads every head of the sandboxed dialect, and reaches none of what a document may not have
+const viewMine = [
+  'mine', 'load/mine', 'host/mine', 'find/mine', 'hold/mine', 'meet/mine',
+  'sort/mine', 'seed/mine', 'def/mine', 'node/mine',
+]
+  .map(part => readFileSync(join(MILL, `view/${part}.tree`), 'utf8'))
+  .join('\n')
+
+// the grammar with its prose removed. The absence checks below read the RULES, and every one of these words is
+// named in a comment explaining why the grammar cannot reach it.
+const viewRules = viewMine
+  .split('\n')
+  .filter(line => !/^\s*#/.test(line))
+  .join('\n')
+
+for (const head of ['load', 'host', 'find', 'view']) {
+  ok(
+    `the view grammar reads the statement head "${head}"`,
+    new RegExp(`mine term, term ${head}\\b`).test(viewMine),
+  )
+}
+
+for (const head of ['task', 'hold', 'meet', 'sort', 'walk', 'fork', 'text', 'call', 'bind', 'read', 'take']) {
+  ok(
+    `the view grammar reads "${head}"`,
+    new RegExp(`mine term, term ${head}\\b`).test(viewMine),
+  )
+}
+
+// the bounds, as absences the grammar can be read for. A document that cannot SAY a thing is a stronger claim
+// than a reader that refuses it, and these are the three the shared component AST would otherwise allow.
+ok(
+  'the view grammar cannot reach a computed local (zone-save)',
+  !/zone-save/.test(viewRules),
+)
+ok(
+  'the view grammar cannot reach an attribute or event handler (zone-seed)',
+  !/zone-seed/.test(viewRules),
+)
+ok(
+  'the view grammar matches only "walk list", never "walk test"',
+  /mine term, term walk\n\s+mine term, term list\b/.test(viewRules) &&
+    !/mine term, term walk\n\s+mine term, term test\b/.test(viewRules),
+)
+ok(
+  'the view grammar has no statement head that declares a function',
+  !/mine term, term task\n\s+site name/.test(viewRules) && !/mine term, term dock\b/.test(viewRules),
+)
 
 const byRole = new Map<string, number>()
 

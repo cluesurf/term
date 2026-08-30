@@ -143,7 +143,7 @@ export function emitKotlin(
         (n): n is Extract<Statement, { form: 'native' }> =>
           n.form === 'native' && n.kind === 'type',
       )
-      .map(n => [n.alias, n.module]),
+      .map(n => [n.alias, n.module === 'any' ? 'Any' : n.module]),
   )
 
   // how many type parameters each generic form declares, for a reference that names the form without them
@@ -1066,9 +1066,14 @@ export function emitKotlin(
             p => `${pad(d + 1)}var ${camel(p.name)} = ${camel(p.name)}`,
           )
 
-        const bodyText = [...shadows, block(node.body, d + 1)]
-          .filter(Boolean)
-          .join('\n')
+        // a signature-only stub (a public module whose impl arrives from the platform module in a fuller closure)
+        // still compiles: its body is the not-implemented panic
+        const bodyText =
+          node.body.length === 0
+            ? `${pad(d + 1)}TODO(${JSON.stringify(`stub: ${node.name}`)})`
+            : [...shadows, block(node.body, d + 1)]
+                .filter(Boolean)
+                .join('\n')
 
         return `${suspend}fun ${generics}${camel(
           node.name,
@@ -1137,7 +1142,11 @@ export function emitKotlin(
           ? `<${node.params.map(p => p.toUpperCase()).join(', ')}>`
           : ''
 
-        const decl = `data class ${pascal(node.name)}${generics}(${fields})`
+        // a data class needs a constructor parameter; a form with no fields (a method-only interface form) is a
+        // plain class
+        const decl = node.fields.length > 0
+          ? `data class ${pascal(node.name)}${generics}(${fields})`
+          : `class ${pascal(node.name)}${generics}`
         // a form that implements traits declares them on the data class with overrides delegating to the free functions
         const impls = conformances.get(node.name) ?? []
 

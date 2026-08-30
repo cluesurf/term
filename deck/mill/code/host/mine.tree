@@ -1,5 +1,8 @@
 # The host dialect: Term data. Five heads and six literals, no code. The compact heads (`h`, `l`, `m`, `t`, `f`)
-# are the same grammar with a shorter spelling. See note/term/host/05-parser-and-mill.md.
+# are the same grammar with a shorter spelling. Each alternative is split so its mint constructs without a
+# conditional: a keyed `host` with a scalar (host-value) is a different rule from one with entries (host-map),
+# and a keyed `list` (host-list, an entry) from a bare nested one (host-sublist, an item).
+# See note/term/host/05-parser-and-mill.md.
 
 mine host
   mine list
@@ -13,32 +16,44 @@ mine host
 
 mine host-entry
   mine any
-    mine form, like host-host
-      site host
+    mine form, like host-value
+      site value
+    mine form, like host-map
+      site map
     mine form, like host-list
       site list
     mine form, like host-fuse
       site fuse
 
-# `host <key>` with one scalar is a scalar entry; with `host` / `list` / `fuse` children it is a map; with neither
-# it is an empty map
-mine host-host
+# `host <key>, <scalar>` is a scalar entry
+mine host-value
   mine term, term host
     mine term
       site name
-    mine maybe
-      mine form, like host-scalar
-        site value
+    mine form, like host-scalar
+      site value
+
+# `host <key>` with `host` / `list` / `fuse` children is a map entry; with none, an empty map
+mine host-map
+  mine term, term host
+    mine term
+      site name
     mine list
       mine form, like host-entry
         site entry
 
-# `list <key>` is an entry whose value is a list; `list` without a key is a nested list item
+# `list <key>` is an entry whose value is a list
 mine host-list
   mine term, term list
-    mine maybe
-      mine term
-        site name
+    mine term
+      site name
+    mine list
+      mine form, like host-item
+        site item
+
+# `list` without a key is a nested list item
+mine host-sublist
+  mine term, term list
     mine list
       mine form, like host-item
         site item
@@ -56,7 +71,7 @@ mine host-item
       site scalar
     mine form, like host-mesh
       site mesh
-    mine form, like host-list
+    mine form, like host-sublist
       site list
     mine form, like host-fuse
       site fuse

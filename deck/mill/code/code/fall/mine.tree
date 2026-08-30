@@ -1,0 +1,9 @@
+# `fall <value>` on a parameter: the default filled in when the argument is left out.
+
+load @term/mill/code/code/seed/mine
+  find seed
+
+mine fall
+  mine term, term fall
+    mine form, like seed
+      site seed

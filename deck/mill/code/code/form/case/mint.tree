@@ -1,11 +1,4 @@
 
-load @term/seed/code/case
-  find head
-  find base
-  find list
-  find draw
-  find free
-
 mint head
   case name
     site name

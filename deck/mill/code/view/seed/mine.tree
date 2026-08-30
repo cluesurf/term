@@ -1,0 +1,68 @@
+
+# A value: a literal, a path read, or a catalog operator applied to arguments. Mints the stdlib `seed`, the same
+# value node the code role uses, so a component property and a filter operand read alike.
+#
+#   text <vowel>          20          true          read self/kind          call titlecase / read name
+#
+# A `call` names an operator in the closed catalog and can never define one, because the dialect has no `task`
+# statement head. Its arguments are positional or named with the operator's own parameter names, never both in
+# one call. See note/term/view/04-catalog.md.
+
+mine view-seed
+  mine any
+    mine form, like view-seed-text
+      site text
+    mine form, like view-seed-mark
+      site mark
+    mine form, like view-seed-wave
+      site wave
+    mine form, like view-seed-read
+      site read
+    mine form, like view-seed-call
+      site call
+
+mine view-seed-text
+  mine term, term text
+    mine text
+      site text
+
+mine view-seed-mark
+  mine code
+    site value
+
+mine view-seed-wave
+  mine any
+    mine term, term true
+      site true
+    mine term, term false
+      site false
+
+mine view-seed-read
+  mine term, term read
+    mine path
+      site road
+
+mine view-seed-call
+  mine term, term call
+    site name
+    mine list
+      mine any
+        mine form, like view-bind
+          site bind
+        mine form, like view-seed
+          site slot
+
+# `bind <name>, <value>`: one named argument, one component property, one predicate operand.
+mine view-bind
+  mine term, term bind
+    site name
+    mine form, like view-seed
+      site bond
+
+# `like text`: a type, for a `host` that is a parameter rather than a constant.
+mine view-like
+  mine term, term like
+    site name
+    mine list
+      mine form, like view-like
+        site arg

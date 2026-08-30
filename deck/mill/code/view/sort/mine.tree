@@ -1,0 +1,17 @@
+
+# One ordering, most significant first. `rise` ascends and `fall` descends.
+#
+#   sort fall, read self/frequency
+#   sort rise, read self/symbol
+#
+# Four letters, like every other head in the language. The long pair appears once in the whole tree, inside a
+# comment. A sort key must be indexed, for the same reason a predicate must, and the catalog says which are.
+
+load @term/mill/code/view/seed/mine
+  find view-seed-read
+
+mine view-sort
+  mine term, term sort
+    site way
+    mine form, like view-seed-read
+      site road

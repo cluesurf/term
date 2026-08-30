@@ -1,0 +1,91 @@
+
+load @term/seed/code/seed
+  find seed
+  find seed-text
+  find seed-mark
+  find seed-wave
+  find seed-call
+
+load @term/seed/code/bind
+  find bind
+
+load @term/seed/code/road
+  find road
+
+load @term/seed/code/like
+  find like
+
+mint view-seed, like seed
+  case text, mint view-seed-text
+    site text
+  case mark, mint view-seed-mark
+    site mark
+  case wave, mint view-seed-wave
+    site wave
+  case read
+    site read
+  case call, mint view-seed-call
+    site call
+
+mint view-seed-text, like seed-text
+  case text
+    site text
+  hook make
+    make seed-text
+      bind text, read text
+
+mint view-seed-mark, like seed-mark
+  case value
+    site value
+  hook make
+    make seed-mark
+      bind value, read value
+
+mint view-seed-wave, like seed-wave
+  case true
+    site true
+  case false
+    site false
+  hook make
+    make seed-wave
+      bind value, read true
+
+mint view-seed-read, like road
+  case road
+    site step
+  hook make
+    make road
+      bind step, read step
+
+mint view-seed-call, like seed-call
+  case name
+    site name
+  case bind, mint view-bind
+    site bind
+  case slot, mint view-seed
+    site slot
+  hook make
+    make seed-call
+      bind name, read name
+      bind bind, read bind
+      bind slot, read slot
+
+mint view-bind, like bind
+  case name
+    site term
+  case bond, mint view-seed
+    site bond
+  hook make
+    make bind
+      bind term, read term
+      bind bond, read bond
+
+mint view-like, like like
+  case name
+    site name
+  case arg, mint view-like
+    site arg
+  hook make
+    make like
+      bind name, read name
+      bind arg, read arg

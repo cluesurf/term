@@ -1,6 +1,5 @@
 
-load @term/seed/code/link
-  find link
+load @term/seed/code/lang
   find link-take
 
 mint link

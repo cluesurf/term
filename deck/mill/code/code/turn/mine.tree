@@ -1,0 +1,6 @@
+# `turn next` inside a loop body: the continue marker; the term names which turn.
+
+mine turn
+  mine term, term turn
+    mine term
+      site term

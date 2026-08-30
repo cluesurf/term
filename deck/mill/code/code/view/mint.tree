@@ -1,12 +1,4 @@
 
-load @term/seed/code/view
-  find view
-  find view-child
-  find view-watch
-  find view-list
-  find view-start
-  find view-check
-
 mint view
   case name
     site name

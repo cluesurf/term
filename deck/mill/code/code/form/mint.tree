@@ -1,8 +1,4 @@
 
-load @term/seed/code/form
-  find form
-  find bond
-
 mint form
   case name
     site name

@@ -1,8 +1,11 @@
 
+load @term/seed/code/lang
+  find code-task
+
 load @term/mill/code/code/tool/flow/mint
   find flow
 
-mint task, like task
+mint task, like code-task
   case name
     site name
   case head, mint head

@@ -1,9 +1,4 @@
 
-load @term/seed/code/like
-  find like
-  find or
-  find and
-
 mint like
   case or, mint or
     site value

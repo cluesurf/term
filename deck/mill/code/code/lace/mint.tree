@@ -1,9 +1,4 @@
 
-load @term/seed/code/lace
-  find lace
-  find walk
-  find test
-
 mint lace
   case name
     site name

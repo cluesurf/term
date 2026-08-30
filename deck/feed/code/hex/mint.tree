@@ -1,0 +1,14 @@
+note draft
+# Checked spec, not compiled code — see the note at the top of ./mine.tree. The real writer is ./code.tree's
+# write-hex.
+
+mint hex
+  mint list, read bytes
+    mint hex-byte, slot value
+
+mint hex-byte
+  take value, like u8
+  mint hex-digit
+    call shift-right(read value, code 4)
+  mint hex-digit
+    call bitwise-and(read value, code 0x0f)

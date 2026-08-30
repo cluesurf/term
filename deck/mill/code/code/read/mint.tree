@@ -1,7 +1,4 @@
 
-load @term/seed/code/read
-  find read
-
 mint read
   case name
     site name

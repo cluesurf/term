@@ -1,0 +1,190 @@
+# A representative slice of the ANSI/SGR/cursor escape catalog, real and compiling, ported from the old
+# `feed/code/ansi/mint.tree` draft's field list (dead syntax, real catalog — see note/term/feed/03-worked-examples.md).
+# ESC (0x1b) has no printable escape in a Term text literal (only \< \> \{ \} \n \r \t \\ are recognized, confirmed
+# by reading deck/make/code/compile/mill.ts's unescapeText), so it's built once through the new
+# @term/seed/code/rune `rune-to-text`, added for exactly this. Not the full ~80-sequence catalog from the old
+# draft — one representative case per category (reset, style, absolute/relative cursor motion, erase, 256-color,
+# RGB, named color, visibility). Extending it is copy-paste from here, not new design.
+
+load @term/seed/code/rune
+  find rune-to-text
+
+task escape
+  like text
+  send back
+    call rune-to-text(code 27)
+
+task reset-all-modes
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[0m>
+
+task set-bold-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[1m>
+
+task reset-bold-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[22m>
+
+task set-underline-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[4m>
+
+task reset-underline-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[24m>
+
+task move-cursor-to-home-position
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[H>
+
+task move-cursor-to-line-and-column
+  take line, like number
+  take column, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[{{line}};{{column}}H>
+
+task move-cursor-up
+  take rows, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[{{rows}}A>
+
+task move-cursor-down
+  take rows, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[{{rows}}B>
+
+task move-cursor-right
+  take columns, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[{{columns}}C>
+
+task move-cursor-left
+  take columns, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[{{columns}}D>
+
+task erase-screen
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[2J>
+
+task erase-line
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[2K>
+
+task set-color-foreground-256
+  take value, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[38;5;{{value}}m>
+
+task set-color-background-256
+  take value, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[48;5;{{value}}m>
+
+task set-color-foreground-rgb
+  take r, like number
+  take g, like number
+  take b, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[38;2;{{r}};{{g}};{{b}}m>
+
+task set-color-background-rgb
+  take r, like number
+  take g, like number
+  take b, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[48;2;{{r}};{{g}};{{b}}m>
+
+task set-red-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[31m>
+
+task set-green-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[32m>
+
+task set-blue-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[34m>
+
+task set-default-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[39m>
+
+task make-cursor-invisible
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[?25l>
+
+task make-cursor-visible
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[?25h>

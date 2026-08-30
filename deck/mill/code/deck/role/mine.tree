@@ -1,14 +1,14 @@
-
 mine role
   mine term, term role
-    site name
+    mine term
+      site name
     mine list
       mine form, like role-take
         site take
 
 mine role-take
   mine term, term take
-    mine text
+    mine path
       site glob
     mine list
       mine form, like role-miss
@@ -16,5 +16,5 @@ mine role-take
 
 mine role-miss
   mine term, term miss
-    mine text
+    mine path
       site glob

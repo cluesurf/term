@@ -1,0 +1,19 @@
+
+load @term/seed/code/view-file
+  find view-meet
+
+load @term/mill/code/view/hold/mint
+  find view-hold
+
+mint view-meet, like view-meet
+  case mode
+    site mode
+  case hold, mint view-hold
+    site hold
+  case meet, mint view-meet
+    site meet
+  hook make
+    make view-meet
+      bind mode, read mode
+      bind hold, read hold
+      bind meet, read meet

@@ -1,0 +1,47 @@
+# read-hex / write-hex against each other. Run: term test, from deck/feed.
+#
+# Comparisons go through write-hex back to text, never straight list-to-list `is-equal`: it compiles to JS `==`
+# (host/test/hex.ts, checked directly), which is reference equality on an array, so two separately-built lists with
+# identical contents never compare equal. A round trip through text sidesteps it and is a legitimate test of a
+# codec on its own terms.
+
+load @term/seed/code/list
+  find push
+
+load ../code/hex/code
+  find read-hex
+  find write-hex
+
+task bytes-of-3
+  like list
+    like u8
+  save result
+    make list
+  call push(read result, code 0x00)
+  call push(read result, code 0xff)
+  call push(read result, code 0x7a)
+  send back, read result
+
+test <write-hex lower-cases and zero-pads>
+  want hold
+    call is-equal
+      call write-hex(call bytes-of-3)
+      text <00ff7a>
+
+test <read-hex then write-hex round trips, lowercase>
+  want hold
+    call is-equal
+      call write-hex(call read-hex(text <00ff7a>))
+      text <00ff7a>
+
+test <read-hex accepts uppercase digits, write-hex still lower-cases>
+  want hold
+    call is-equal
+      call write-hex(call read-hex(text <00FF7A>))
+      text <00ff7a>
+
+test <read-hex of the empty string round trips to the empty string>
+  want hold
+    call is-equal
+      call write-hex(call read-hex(text <>))
+      text <>

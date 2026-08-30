@@ -1,0 +1,6 @@
+# a `kink` block at module level: an error declaration by name.
+
+mine kink
+  mine term, term kink
+    mine term
+      site name

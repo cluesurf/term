@@ -37,6 +37,7 @@ import {
   NUMBER,
   STRING,
   UNIT,
+  FREE_UNKNOWN,
   UNKNOWN,
 } from '@term/make/code/compile/node'
 
@@ -280,7 +281,7 @@ function parseType(node: Node): Type {
 
     return {
       kind: 'array',
-      element: elementLike ? parseLikeType(elementLike) : UNKNOWN,
+      element: elementLike ? parseLikeType(elementLike) : FREE_UNKNOWN,
     }
   }
 
@@ -293,8 +294,8 @@ function parseType(node: Node): Type {
 
     return {
       kind: 'map',
-      key: likes[0] ? parseLikeType(likes[0]) : UNKNOWN,
-      value: likes[1] ? parseLikeType(likes[1]) : UNKNOWN,
+      key: likes[0] ? parseLikeType(likes[0]) : FREE_UNKNOWN,
+      value: likes[1] ? parseLikeType(likes[1]) : FREE_UNKNOWN,
     }
   }
 
@@ -541,7 +542,7 @@ function parseLikeType(likeGroup: GroupNode): Type {
 
     return {
       kind: 'array',
-      element: elementLike ? parseLikeType(elementLike) : UNKNOWN,
+      element: elementLike ? parseLikeType(elementLike) : FREE_UNKNOWN,
     }
   }
 
@@ -556,8 +557,8 @@ function parseLikeType(likeGroup: GroupNode): Type {
 
     return {
       kind: 'map',
-      key: likes[0] ? parseLikeType(likes[0]) : UNKNOWN,
-      value: likes[1] ? parseLikeType(likes[1]) : UNKNOWN,
+      key: likes[0] ? parseLikeType(likes[0]) : FREE_UNKNOWN,
+      value: likes[1] ? parseLikeType(likes[1]) : FREE_UNKNOWN,
     }
   }
 

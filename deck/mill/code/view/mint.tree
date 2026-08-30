@@ -1,0 +1,31 @@
+
+load @term/seed/code/view-file
+  find view-file
+
+load @term/mill/code/view/load/mint
+  find view-load
+
+load @term/mill/code/view/host/mint
+  find view-host
+
+load @term/mill/code/view/find/mint
+  find view-find
+
+load @term/mill/code/view/def/mint
+  find view-def
+
+mint view-file, like view-file
+  case load, mint view-load
+    site load
+  case host, mint view-host
+    site host
+  case find, mint view-find
+    site find
+  case view, mint view-def
+    site view
+  hook make
+    make view-file
+      bind load, read load
+      bind host, read host
+      bind find, read find
+      bind view, read view

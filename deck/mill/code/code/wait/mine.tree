@@ -1,0 +1,9 @@
+# `wait true` on a call site: the await marker, a literal value under the head.
+
+load @term/mill/code/code/seed/mine
+  find seed
+
+mine wait
+  mine term, term wait
+    mine form, like seed
+      site seed

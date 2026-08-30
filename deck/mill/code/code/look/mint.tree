@@ -3,7 +3,7 @@
 # The shared builder (seed) comes from the code building-block mill by name. Mirrors the zone DSL builder
 # (../zone/mint).
 
-load @term/seed/code/look
+load @term/seed/code/lang
   find face-rule
   find style-rule
   find look-element

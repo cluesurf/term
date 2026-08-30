@@ -1,16 +1,4 @@
 
-load @term/seed/code/flow
-  find flow
-  find show
-  find dive
-  find hint
-  find tell
-  find bust
-  find halt
-  find save
-  find turn
-  find back
-
 mint flow
   case call, mint call
     site call

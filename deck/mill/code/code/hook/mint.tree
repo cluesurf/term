@@ -1,8 +1,8 @@
 
-load @term/seed/code/hook
-  find hook
+load @term/seed/code/lang
+  find code-hook
 
-mint hook, like hook
+mint hook, like code-hook
   case name
     site name
   case line

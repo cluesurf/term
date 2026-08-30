@@ -1,0 +1,16 @@
+
+load @term/seed/code/view-file
+  find view-sort
+
+load @term/mill/code/view/seed/mint
+  find view-seed-read
+
+mint view-sort, like view-sort
+  case way
+    site way
+  case road, mint view-seed-read
+    site road
+  hook make
+    make view-sort
+      bind way, read way
+      bind road, read road

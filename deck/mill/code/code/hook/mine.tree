@@ -1,8 +1,8 @@
 
-load @term/mill/code/code/line/mine
+load @term/mill/code/code/call/mine
   find line
 
-load @term/mill/code/code/base/mine
+load @term/mill/code/code/form/case/mine
   find base
 
 load @term/mill/code/code/tool/flow/mine

@@ -1,0 +1,108 @@
+# The real, compiling hex/binary codec. Matches the spec in ./mine.tree and ./mint.tree field for field: `read-hex`
+# is `mine hex-byte`'s `high`/`low` nibble pair walked across the input; `write-hex` is `mint hex-byte`'s split
+# mirrored. Input is `text`, not a byte cursor — hex digits are already characters, so the stdlib's own `char-at` /
+# `char-code-at` read them directly, no UTF-8 decode step needed. See note/term/feed/05-parser-and-mill.md.
+
+load @term/seed/code/boolean
+  find and
+
+load @term/seed/code/text
+  find char-count
+  find char-at
+  find char-code-at
+
+load @term/seed/code/text/string
+  find concat
+
+load @term/seed/code/list
+  find push
+
+load @term/seed/code/bit
+  find shift-left
+  find shift-right
+  find bitwise-and
+
+host hex-digits, text <0123456789abcdef>
+
+# the value 0-15 of one hex-digit character, by its char code
+task hex-digit-value
+  take code, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum(read code, code 48)
+        call is-maximum(read code, code 57)
+    hook hold
+      send back
+        call subtract(read code, code 48)
+    hook test
+      call and
+        call is-minimum(read code, code 97)
+        call is-maximum(read code, code 102)
+    hook hold
+      send back
+        call subtract(read code, code 87)
+    hook test
+      call and
+        call is-minimum(read code, code 65)
+        call is-maximum(read code, code 70)
+    hook hold
+      send back
+        call subtract(read code, code 55)
+    hook miss
+      halt <invalid hex digit>
+
+# the hex-digit character for one nibble value 0-15
+task nibble-to-hex-char
+  take value, like number
+  like text
+  send back
+    call char-at(read hex-digits, read value)
+
+task read-hex
+  take input, like text
+  like list
+    like u8
+  save result
+    make list
+  save length
+    call char-count(read input)
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, read length)
+    hook hold
+      save high
+        call hex-digit-value
+          call char-code-at(read input, read index)
+      save low
+        call hex-digit-value
+          call char-code-at(read input, call add(read index, code 1))
+      call push
+        read result
+        call add
+          call shift-left(read high, code 4)
+          read low
+      save index
+        call add(read index, code 2)
+  send back, read result
+
+task write-hex
+  take input
+    like list
+      like u8
+  like text
+  save result, text <>
+  walk list, read input
+    hook next
+      take site, name value
+      save result
+        call concat
+          read result
+          call concat
+            call nibble-to-hex-char
+              call shift-right(read value, code 4)
+            call nibble-to-hex-char
+              call bitwise-and(read value, code 0x0f)
+  send back, read result

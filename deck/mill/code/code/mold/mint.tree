@@ -1,5 +1,5 @@
 
-load @term/seed/code/case-type
+load @term/seed/code/lang
   find case-type
 
 mint case-type, like case-type

@@ -1,5 +1,5 @@
 
-load @term/seed/code/fuse
+load @term/seed/code/lang
   find code-fuse
   find code-fuse-bind
 

@@ -5,7 +5,7 @@ load @term/mill/code/code/head/mine
 load @term/mill/code/code/like/mine
   find like
 
-load @term/mill/code/code/link/mine
+load @term/mill/code/code/form/link/mine
   find link
 
 load @term/mill/code/code/bind/mine

@@ -1,5 +1,5 @@
 
-load @term/seed/code/seed
+load @term/seed/code/lang
   find seed-item
 
 mint host, like seed-item
