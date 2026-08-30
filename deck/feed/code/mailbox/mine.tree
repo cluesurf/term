@@ -1,0 +1,49 @@
+
+mine mailbox
+  mine crown
+    mine form, form address-spec
+    mine block
+      mine sieve
+        mine form, form phrase
+      mine form, form route-addr
+
+mine address-spec
+  mine chunk, share <@>
+  mine form, form domain
+
+mine local-part
+  mine form, form word
+  mine chain
+    mine chunk, share <.>
+    mine form, form word
+
+mine domain
+  mine form, form sub-domain
+  mine chain
+    mine chunk, share <.>
+    mine form, form sub-domain
+
+mine sub-domain
+  mine crown
+    mine form, form domain-ref
+    mine form, form domain-literal
+
+mine domain-ref
+  mine form, form atom
+
+mine domain-literal
+  mine chunk, share <[>
+  mine chain
+    mine crown
+      mine form, form dtext
+      mine form, form quoted-pair
+  mine chunk, share <]>
+
+mine dtext
+  mine form, form char
+    mine leave
+      mine crown
+        mine chunk, share <[>
+        mine chunk, share <]>
+        mine chunk, share <\\>
+        mine form, form carriage-return

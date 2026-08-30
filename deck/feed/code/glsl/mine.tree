@@ -1,0 +1,1579 @@
+
+mine translation-unit
+  mine form, form version-statement
+  mine form, form extension-statement-list
+  mine form, form external-declaration-list
+
+version-statement:
+    mine crown
+    mine form, form VERSION
+  mine form, form INTCONSTANT
+  mine form, form EOL
+    mine form, form VERSION
+  mine form, form INTCONSTANT
+  mine form, form IDENTIFIER
+  mine form, form EOL
+
+mine pragma-statement
+  mine crown
+    mine form, form PRAGMA-DEBUG-ON
+  mine form, form EOL
+    mine form, form PRAGMA-DEBUG-OFF
+  mine form, form EOL
+    mine crown
+    mine form, form PRAGMA-OPTIMIZE-ON
+  mine form, form EOL
+    mine form, form PRAGMA-OPTIMIZE-OFF
+  mine form, form EOL
+    mine form, form PRAGMA-INVARIANT-ALL
+  mine form, form EOL
+
+extension-statement-list:
+    mine form, form extension-statement-list
+  mine form, form extension-statement
+
+mine extension-statement
+  mine form, form EXTENSION
+  mine form, form extension-name=IDENTIFIER
+  mine form, form COLON
+  mine form, form extension-status=IDENTIFIER
+  mine form, form EOL
+
+mine external-declaration-list
+  mine crown
+    mine form, form single=external-declaration
+    mine form, form prefix=external-declaration-list
+  mine form, form lastDecl=external-declaration
+    mine form, form prefix=external-declaration-list
+  mine form, form lastExtension=extension-statement
+
+mine variable-identifier
+  mine form, form IDENTIFIER
+
+mine primary-expression
+  mine crown
+    mine form, form variable-identifier
+    mine form, form INTCONSTANT
+    mine crown
+    mine form, form UINTCONSTANT
+    mine form, form FLOATCONSTANT
+    mine crown
+    mine form, form BOOLCONSTANT
+    mine form, form LPAREN
+  mine form, form expression
+  mine form, form RPAREN
+
+mine postfix-expression
+  mine crown
+    mine form, form primary-expression
+    mine form, form postfix-expression
+  mine form, form LBRACKET
+  mine form, form integer-expression
+  mine form, form RBRACKET
+    mine crown
+    mine form, form postfix-expression
+  mine form, form DOT
+  mine form, form method-call-generic
+    mine form, form postfix-expression
+  mine form, form DOT
+  mine form, form IDENTIFIER
+    mine crown
+    mine form, form postfix-expression
+  mine form, form INC-OP
+    mine form, form postfix-expression
+  mine form, form DEC-OP
+    mine form, form function-call-generic
+
+mine integer-expression
+  mine form, form expression
+
+mine function-call-generic
+  mine crown
+    mine form, form function-call-header-with-parameters
+  mine form, form RPAREN
+    mine form, form function-call-header-no-parameters
+  mine form, form RPAREN
+
+mine function-call-header-no-parameters
+  mine crown
+    mine form, form function-call-header
+  mine form, form VOID-TOK
+    mine form, form function-call-header
+
+mine function-call-header-with-parameters
+  mine crown
+    mine form, form function-call-header
+  mine form, form assignment-expression
+    mine form, form function-call-header-with-parameters
+  mine form, form COMMA
+  mine form, form assignment-expression
+
+mine function-call-header
+  mine form, form function-identifier
+  mine form, form array-specifier?
+  mine form, form LPAREN
+  mine form, form //
+  mine form, form The
+  mine form, form array-specifier
+  mine form, form is
+  mine form, form there
+  mine form, form to
+  mine form, form allow
+  mine form, form for
+  mine form, form vector
+  mine form, form type
+  mine form, form constructors,
+  mine form, form e.g.
+  mine form, form int[2](1,
+  mine form, form 2)
+
+mine function-identifier
+  mine crown
+    mine form, form builtin-type-specifier-nonarray
+  mine form, form //
+  mine form, form type
+  mine form, form constructor
+    mine form, form variable-identifier
+
+mine method-call-generic
+  mine crown
+    mine form, form method-call-header-with-parameters
+  mine form, form RPAREN
+    mine form, form method-call-header-no-parameters
+  mine form, form RPAREN
+
+mine method-call-header-no-parameters
+  mine crown
+    mine form, form method-call-header
+  mine form, form VOID-TOK
+    mine form, form method-call-header
+
+mine method-call-header-with-parameters
+  mine crown
+    mine form, form method-call-header
+  mine form, form assignment-expression
+    mine form, form method-call-header-with-parameters
+  mine form, form COMMA
+  mine form, form assignment-expression
+
+mine method-call-header
+  mine form, form variable-identifier
+  mine form, form LPAREN
+
+mine unary-expression
+  mine crown
+    mine form, form postfix-expression
+    mine form, form INC-OP
+  mine form, form unary-expression
+    mine crown
+    mine form, form DEC-OP
+  mine form, form unary-expression
+    mine form, form unary-operator
+  mine form, form unary-expression
+
+mine unary-operator
+  mine crown
+    mine form, form PLUS-OP
+    mine form, form MINUS-OP
+    mine crown
+    mine form, form NOT-OP
+    mine form, form BNEG-OP
+
+mine multiplicative-expression
+  mine form, form operands+=unary-expression
+  mine form, form ((operators+=TIMES-OP
+  mine form, form |
+  mine form, form operators+=DIV-OP
+  mine form, form |
+  mine form, form operators+=MOD-OP)
+  mine form, form operands+=unary-expression)*
+
+mine additive-expression
+  mine form, form operands+=multiplicative-expression
+  mine form, form ((operators+=PLUS-OP
+  mine form, form |
+  mine form, form operators+=MINUS-OP)
+  mine form, form operands+=multiplicative-expression)*
+
+mine shift-expression
+  mine form, form operands+=additive-expression
+  mine form, form ((operators+=LEFT-OP
+  mine form, form |
+  mine form, form operators+=RIGHT-OP)
+  mine form, form operands+=additive-expression)*
+
+mine relational-expression
+  mine form, form operands+=shift-expression
+  mine form, form ((operators+=LT-OP
+  mine form, form |
+  mine form, form operators+=GT-OP
+  mine form, form |
+  mine form, form operators+=LE-OP
+  mine form, form |
+  mine form, form operators+=GE-OP)
+  mine form, form operands+=shift-expression)*
+
+mine equality-expression
+  mine form, form operands+=relational-expression
+  mine form, form ((operators+=EQ-OP
+  mine form, form |
+  mine form, form operators+=NE-OP)
+  mine form, form operands+=relational-expression)*
+
+mine and-expression
+  mine form, form operands+=equality-expression
+  mine form, form (operators+=BAND-OP
+  mine form, form operands+=equality-expression)*
+
+mine exclusive-or-expression
+  mine form, form operands+=and-expression
+  mine form, form (operators+=BXOR-OP
+  mine form, form operands+=and-expression)*
+
+mine inclusive-or-expression
+  mine form, form operands+=exclusive-or-expression
+  mine form, form (operators+=BOR-OP
+  mine form, form operands+=exclusive-or-expression)*
+
+mine logical-and-expression
+  mine form, form operands+=inclusive-or-expression
+  mine form, form (operators+=AND-OP
+  mine form, form operands+=inclusive-or-expression)*
+
+mine logical-xor-expression
+  mine form, form operands+=logical-and-expression
+  mine form, form (operators+=XOR-OP
+  mine form, form operands+=logical-and-expression)*
+
+mine logical-or-expression
+  mine form, form operands+=logical-xor-expression
+  mine form, form (operators+=OR-OP
+  mine form, form operands+=logical-xor-expression)*
+
+mine conditional-expression
+  mine form, form logical-or-expression
+  mine form, form (QUERY-OP
+  mine form, form expression
+  mine form, form COLON
+  mine form, form assignment-expression)*
+
+mine assignment-expression
+  mine crown
+    mine form, form conditional-expression
+    mine form, form unary-expression
+  mine form, form assignment-operator
+  mine form, form assignment-expression
+
+mine assignment-operator
+  mine crown
+    mine form, form ASSIGN-OP
+    mine form, form MUL-ASSIGN
+
+    mine form, form DIV-ASSIGN
+    mine form, form MOD-ASSIGN
+
+    mine form, form ADD-ASSIGN
+    mine form, form SUB-ASSIGN
+
+    mine form, form LEFT-ASSIGN
+    mine form, form RIGHT-ASSIGN
+
+    mine form, form AND-ASSIGN
+    mine form, form XOR-ASSIGN
+    mine form, form OR-ASSIGN
+
+mine expression
+  mine form, form operands+=assignment-expression
+  mine form, form (operators+=COMMA
+  mine form, form operands+=assignment-expression)*
+
+mine constant-expression
+  mine form, form conditional-expression
+
+mine declaration
+  mine crown
+    mine form, form function-prototype
+  mine form, form SEMICOLON
+    mine form, form init-declarator-list
+  mine form, form SEMICOLON
+    mine crown
+    mine form, form PRECISION
+  mine form, form precision-qualifier
+  mine form, form type-specifier
+  mine form, form SEMICOLON
+    mine form, form interface-block
+
+mine function-prototype
+  mine form, form function-declarator
+  mine form, form RPAREN
+
+mine function-declarator
+  mine crown
+    mine form, form function-header
+    mine form, form function-header-with-parameters
+
+mine function-header-with-parameters
+  mine crown
+    mine block
+      mine form, form function-header
+      mine form, form parameter-declaration
+    mine block
+      mine form, form function-header-with-parameters
+      mine form, form COMMA
+      mine form, form parameter-declaration
+
+mine function-header
+  mine form, form fully-specified-type
+  mine form, form variable-identifier
+  mine form, form LPAREN
+
+mine parameter-declarator
+  mine crown
+    mine form, form type-specifier
+  mine form, form IDENTIFIER
+    mine form, form type-specifier
+  mine form, form IDENTIFIER
+  mine form, form array-specifier
+
+mine parameter-declaration
+  mine crown
+    mine form, form parameter-qualifier
+  mine form, form parameter-declarator
+    mine form, form parameter-qualifier
+  mine form, form parameter-type-specifier
+
+parameter-qualifier:
+   // empty
+    mine crown
+    mine form, form CONST-TOK
+  mine form, form parameter-qualifier
+    mine form, form PRECISE
+  mine form, form parameter-qualifier
+    mine crown
+    mine form, form parameter-direction-qualifier
+  mine form, form parameter-qualifier
+    mine form, form precision-qualifier
+  mine form, form parameter-qualifier
+
+mine parameter-direction-qualifier
+  mine crown
+    mine form, form IN-TOK
+    mine form, form OUT-TOK
+    mine form, form INOUT-TOK
+
+mine parameter-type-specifier
+  mine form, form type-specifier
+
+mine init-declarator-list
+  mine crown
+    mine form, form single-declaration
+    mine form, form init-declarator-list
+  mine form, form COMMA
+  mine form, form IDENTIFIER
+    mine crown
+    mine form, form init-declarator-list
+  mine form, form COMMA
+  mine form, form IDENTIFIER
+  mine form, form array-specifier
+    mine block
+      mine form, form init-declarator-list
+      mine form, form COMMA
+      mine form, form IDENTIFIER
+      mine form, form array-specifier
+      mine form, form ASSIGN-OP
+      mine form, form initializer
+    mine block
+      mine form, form init-declarator-list
+      mine form, form COMMA
+      mine form, form IDENTIFIER
+      mine form, form ASSIGN-OP
+      mine form, form initializer
+
+   // Grammar Note: No 'enum', or 'typedef'.
+mine single-declaration
+  mine crown
+    mine form, form fully-specified-type
+    mine form, form fully-specified-type
+  mine form, form IDENTIFIER
+    mine crown
+    mine form, form fully-specified-type
+  mine form, form IDENTIFIER
+  mine form, form array-specifier
+    mine form, form fully-specified-type
+  mine form, form IDENTIFIER
+  mine form, form array-specifier
+  mine form, form ASSIGN-OP
+  mine form, form initializer
+    mine crown
+    mine form, form fully-specified-type
+  mine form, form IDENTIFIER
+  mine form, form ASSIGN-OP
+  mine form, form initializer
+    mine form, form INVARIANT
+  mine form, form variable-identifier
+    mine form, form PRECISE
+  mine form, form variable-identifier
+
+mine fully-specified-type
+  mine crown
+    mine form, form type-specifier
+    mine form, form type-qualifier
+  mine form, form type-specifier
+
+mine layout-qualifier
+  mine form, form LAYOUT-TOK
+  mine form, form LPAREN
+  mine form, form layout-qualifier-id-list
+  mine form, form RPAREN
+
+mine layout-qualifier-id-list
+  mine crown
+    mine form, form layout-qualifier-id
+    mine form, form layout-qualifier-id-list
+  mine form, form COMMA
+  mine form, form layout-qualifier-id
+
+mine integer-constant
+  mine crown
+    mine form, form INTCONSTANT
+    mine form, form UINTCONSTANT
+
+mine layout-qualifier-id
+  mine crown
+    mine form, form IDENTIFIER
+    mine form, form IDENTIFIER
+  mine form, form ASSIGN-OP
+  mine form, form integer-constant
+    mine form, form interface-block-layout-qualifier
+
+mine interface-block-layout-qualifier
+  mine crown
+    mine form, form ROW-MAJOR
+    mine form, form PACKED-TOK
+
+mine interpolation-qualifier
+  mine crown
+    mine form, form SMOOTH
+    mine form, form FLAT
+    mine form, form NOPERSPECTIVE
+
+mine type-qualifier
+  mine crown
+    mine crown
+    mine form, form INVARIANT
+    mine form, form PRECISE
+    mine crown
+    mine form, form auxiliary-storage-qualifier
+    mine form, form storage-qualifier
+    mine crown
+    mine form, form interpolation-qualifier
+    mine form, form layout-qualifier
+    mine crown
+    mine form, form precision-qualifier
+    mine form, form PRECISE
+  mine form, form type-qualifier
+    mine crown
+    mine form, form INVARIANT
+  mine form, form type-qualifier
+    mine form, form interpolation-qualifier
+  mine form, form type-qualifier
+    mine crown
+    mine form, form layout-qualifier
+  mine form, form type-qualifier
+    mine form, form auxiliary-storage-qualifier
+  mine form, form type-qualifier
+    mine crown
+    mine form, form storage-qualifier
+  mine form, form type-qualifier
+    mine form, form precision-qualifier
+  mine form, form type-qualifier
+
+mine auxiliary-storage-qualifier
+  mine crown
+    mine form, form CENTROID
+    mine form, form SAMPLE
+
+mine storage-qualifier
+  mine crown
+    mine form, form CONST-TOK
+    mine form, form ATTRIBUTE
+    mine crown
+    mine form, form VARYING
+    mine form, form IN-TOK
+    mine crown
+    mine form, form OUT-TOK
+    mine form, form UNIFORM
+    mine crown
+    mine form, form COHERENT
+    mine form, form VOLATILE
+    mine crown
+    mine form, form RESTRICT
+    mine form, form READONLY
+    mine crown
+    mine form, form WRITEONLY
+    mine form, form SHARED
+
+mine array-specifier
+  mine crown
+    mine form, form LBRACKET
+  mine form, form RBRACKET
+    mine form, form LBRACKET
+  mine form, form constant-expression
+  mine form, form RBRACKET
+    mine crown
+    mine form, form array-specifier
+  mine form, form LBRACKET
+  mine form, form RBRACKET
+    mine form, form array-specifier
+  mine form, form LBRACKET
+  mine form, form constant-expression
+  mine form, form RBRACKET
+
+mine type-specifier
+  mine crown
+    mine form, form type-specifier-nonarray
+    mine form, form type-specifier-nonarray
+  mine form, form array-specifier
+
+mine type-specifier-nonarray
+  mine crown
+    mine form, form builtin-type-specifier-nonarray
+    mine form, form struct-specifier
+    mine form, form IDENTIFIER
+
+mine builtin-type-specifier-nonarray
+  mine crown
+    mine form, form VOID-TOK
+    mine form, form FLOAT-TOK
+    mine crown
+    mine form, form INT-TOK
+    mine form, form UINT-TOK
+    mine crown
+    mine form, form BOOL-TOK
+    mine form, form VEC2
+    mine crown
+    mine form, form VEC3
+    mine form, form VEC4
+    mine crown
+    mine form, form BVEC2
+    mine form, form BVEC3
+    mine crown
+    mine form, form BVEC4
+    mine form, form IVEC2
+    mine crown
+    mine form, form IVEC3
+    mine form, form IVEC4
+    mine crown
+    mine form, form UVEC2
+    mine form, form UVEC3
+    mine crown
+    mine form, form UVEC4
+    mine form, form MAT2X2
+    mine crown
+    mine form, form MAT2X3
+    mine form, form MAT2X4
+    mine crown
+    mine form, form MAT3X2
+    mine form, form MAT3X3
+    mine crown
+    mine form, form MAT3X4
+    mine form, form MAT4X2
+    mine crown
+    mine form, form MAT4X3
+    mine form, form MAT4X4
+    mine crown
+    mine form, form SAMPLER1D
+    mine form, form SAMPLER2D
+    mine crown
+    mine form, form SAMPLER2DRECT
+    mine form, form SAMPLER3D
+    mine crown
+    mine form, form SAMPLERCUBE
+    mine form, form SAMPLEREXTERNALOES
+    mine crown
+    mine form, form SAMPLER1DSHADOW
+    mine form, form SAMPLER2DSHADOW
+    mine crown
+    mine form, form SAMPLER2DRECTSHADOW
+    mine form, form SAMPLERCUBESHADOW
+    mine crown
+    mine form, form SAMPLER1DARRAY
+    mine form, form SAMPLER2DARRAY
+    mine crown
+    mine form, form SAMPLER1DARRAYSHADOW
+    mine form, form SAMPLER2DARRAYSHADOW
+    mine crown
+    mine form, form SAMPLERBUFFER
+    mine form, form SAMPLERCUBEARRAY
+    mine crown
+    mine form, form SAMPLERCUBEARRAYSHADOW
+    mine form, form ISAMPLER1D
+    mine crown
+    mine form, form ISAMPLER2D
+    mine form, form ISAMPLER2DRECT
+    mine crown
+    mine form, form ISAMPLER3D
+    mine form, form ISAMPLERCUBE
+    mine crown
+    mine form, form ISAMPLER1DARRAY
+    mine form, form ISAMPLER2DARRAY
+    mine crown
+    mine form, form ISAMPLERBUFFER
+    mine form, form ISAMPLERCUBEARRAY
+    mine crown
+    mine form, form USAMPLER1D
+    mine form, form USAMPLER2D
+    mine crown
+    mine form, form USAMPLER2DRECT
+    mine form, form USAMPLER3D
+    mine crown
+    mine form, form USAMPLERCUBE
+    mine form, form USAMPLER1DARRAY
+    mine crown
+    mine form, form USAMPLER2DARRAY
+    mine form, form USAMPLERBUFFER
+    mine crown
+    mine form, form USAMPLERCUBEARRAY
+    mine form, form SAMPLER2DMS
+    mine crown
+    mine form, form ISAMPLER2DMS
+    mine form, form USAMPLER2DMS
+    mine crown
+    mine form, form SAMPLER2DMSARRAY
+    mine form, form ISAMPLER2DMSARRAY
+    mine crown
+    mine form, form USAMPLER2DMSARRAY
+    mine form, form IMAGE1D
+    mine crown
+    mine form, form IMAGE2D
+    mine form, form IMAGE3D
+    mine crown
+    mine form, form IMAGE2DRECT
+    mine form, form IMAGECUBE
+    mine crown
+    mine form, form IMAGEBUFFER
+    mine form, form IMAGE1DARRAY
+    mine crown
+    mine form, form IMAGE2DARRAY
+    mine form, form IMAGECUBEARRAY
+    mine crown
+    mine form, form IMAGE2DMS
+    mine form, form IMAGE2DMSARRAY
+    mine crown
+    mine form, form IIMAGE1D
+    mine form, form IIMAGE2D
+    mine crown
+    mine form, form IIMAGE3D
+    mine form, form IIMAGE2DRECT
+    mine crown
+    mine form, form IIMAGECUBE
+    mine form, form IIMAGEBUFFER
+    mine crown
+    mine form, form IIMAGE1DARRAY
+    mine form, form IIMAGE2DARRAY
+    mine crown
+    mine form, form IIMAGECUBEARRAY
+    mine form, form IIMAGE2DMS
+    mine crown
+    mine form, form IIMAGE2DMSARRAY
+    mine form, form UIMAGE1D
+    mine crown
+    mine form, form UIMAGE2D
+    mine form, form UIMAGE3D
+    mine crown
+    mine form, form UIMAGE2DRECT
+    mine form, form UIMAGECUBE
+    mine crown
+    mine form, form UIMAGEBUFFER
+    mine form, form UIMAGE1DARRAY
+    mine crown
+    mine form, form UIMAGE2DARRAY
+    mine form, form UIMAGECUBEARRAY
+    mine crown
+    mine form, form UIMAGE2DMS
+    mine form, form UIMAGE2DMSARRAY
+    mine form, form ATOMIC-UINT
+
+mine precision-qualifier
+  mine crown
+    mine form, form HIGHP
+    mine form, form MEDIUMP
+    mine form, form LOWP
+
+mine struct-specifier
+  mine form, form STRUCT
+  mine form, form IDENTIFIER?
+  mine form, form LBRACE
+  mine form, form member-list
+  mine form, form RBRACE
+
+mine member-list
+  mine crown
+    mine form, form member-declaration
+    mine form, form member-list
+  mine form, form member-declaration
+
+mine member-declaration
+  mine form, form fully-specified-type
+  mine form, form struct-declarator-list
+  mine form, form SEMICOLON
+
+mine struct-declarator-list
+  mine crown
+    mine form, form struct-declarator
+    mine form, form struct-declarator-list
+  mine form, form COMMA
+  mine form, form struct-declarator
+
+mine struct-declarator
+  mine crown
+    mine form, form IDENTIFIER
+    mine form, form IDENTIFIER
+  mine form, form array-specifier
+
+mine initializer
+  mine crown
+    mine form, form assignment-expression
+    mine form, form LBRACE
+  mine form, form initializer-list
+  mine form, form RBRACE
+    mine form, form LBRACE
+  mine form, form initializer-list
+  mine form, form COMMA
+  mine form, form RBRACE
+
+mine initializer-list
+  mine crown
+    mine form, form initializer
+    mine form, form initializer-list
+  mine form, form COMMA
+  mine form, form initializer
+
+mine declaration-statement
+  mine form, form declaration
+
+mine statement
+  mine crown
+    mine form, form if-then-statement
+    mine form, form if-then-else-statement
+    mine crown
+    mine form, form for-statement
+    mine form, form while-statement
+    mine form, form statement-no-trailing-substatement
+
+mine statement-no-short-if
+  mine crown
+    mine form, form if-then-else-statement-no-short-if
+    mine form, form for-statement-no-short-if
+    mine crown
+    mine form, form while-statement-no-short-if
+    mine form, form statement-no-trailing-substatement
+
+mine statement-no-trailing-substatement
+  mine crown
+    mine form, form block-statement
+    mine form, form expression-statement
+    mine crown
+    mine form, form empty-statement
+    mine form, form declaration-statement
+    mine crown
+    mine form, form switch-statement
+    mine form, form do-statement
+    mine form, form jump-statement
+
+mine block-statement
+  mine form, form LBRACE
+  mine form, form statement-list?
+  mine form, form RBRACE
+
+mine statement-list
+  mine form, form statement+
+
+mine expression-statement
+  mine form, form expression
+  mine form, form SEMICOLON
+
+mine empty-statement
+  mine form, form SEMICOLON
+
+mine if-then-statement
+  mine form, form IF
+  mine form, form LPAREN
+  mine form, form expression
+  mine form, form RPAREN
+  mine form, form statement
+
+mine if-then-else-statement
+  mine form, form IF
+  mine form, form LPAREN
+  mine form, form expression
+  mine form, form RPAREN
+  mine form, form statement-no-short-if
+  mine form, form ELSE
+  mine form, form statement
+
+mine if-then-else-statement-no-short-if
+  mine form, form IF
+  mine form, form LPAREN
+  mine form, form expression
+  mine form, form RPAREN
+  mine form, form statement-no-short-if
+  mine form, form ELSE
+  mine form, form statement-no-short-if
+
+mine condition
+  mine crown
+    mine form, form expression
+    mine form, form fully-specified-type
+  mine form, form IDENTIFIER
+  mine form, form ASSIGN-OP
+  mine form, form initializer
+
+mine switch-statement
+  mine form, form SWITCH
+  mine form, form LPAREN
+  mine form, form expression
+  mine form, form RPAREN
+  mine form, form switch-body
+
+mine switch-body
+  mine crown
+    mine form, form LBRACE
+  mine form, form RBRACE
+    mine form, form LBRACE
+  mine form, form case-statement-list
+  mine form, form RBRACE
+
+mine case-label
+  mine crown
+    mine form, form CASE
+  mine form, form expression
+  mine form, form COLON
+    mine form, form DEFAULT
+  mine form, form COLON
+
+mine case-label-list
+  mine crown
+    mine form, form case-label
+    mine form, form case-label-list
+  mine form, form case-label
+
+mine case-statement
+  mine crown
+    mine form, form case-label-list
+  mine form, form statement
+    mine form, form case-statement
+  mine form, form statement
+
+mine case-statement-list
+  mine crown
+    mine form, form case-statement
+    mine form, form case-statement-list
+  mine form, form case-statement
+
+mine do-statement
+  mine form, form DO
+  mine form, form statement
+  mine form, form WHILE
+  mine form, form LPAREN
+  mine form, form expression
+  mine form, form RPAREN
+  mine form, form SEMICOLON
+
+mine for-statement
+  mine form, form FOR
+  mine form, form LPAREN
+  mine form, form for-init-statement
+  mine form, form condition?
+  mine form, form SEMICOLON
+  mine form, form expression?
+  mine form, form RPAREN
+  mine form, form statement
+
+mine for-statement-no-short-if
+  mine form, form FOR
+  mine form, form LPAREN
+  mine form, form for-init-statement
+  mine form, form condition?
+  mine form, form SEMICOLON
+  mine form, form expression?
+  mine form, form RPAREN
+  mine form, form statement-no-short-if
+
+mine while-statement
+  mine form, form WHILE
+  mine form, form LPAREN
+  mine form, form condition
+  mine form, form RPAREN
+  mine form, form statement
+
+mine while-statement-no-short-if
+  mine form, form WHILE
+  mine form, form LPAREN
+  mine form, form condition
+  mine form, form RPAREN
+  mine form, form statement-no-short-if
+
+mine for-init-statement
+  mine crown
+    mine form, form empty-statement
+    mine form, form expression-statement
+    mine form, form declaration-statement
+
+mine jump-statement
+  mine crown
+    mine form, form CONTINUE
+  mine form, form SEMICOLON
+    mine form, form BREAK
+  mine form, form SEMICOLON
+    mine crown
+    mine form, form RETURN
+  mine form, form SEMICOLON
+    mine form, form RETURN
+  mine form, form expression
+  mine form, form SEMICOLON
+    mine form, form DISCARD
+  mine form, form SEMICOLON
+
+mine external-declaration
+  mine crown
+    mine form, form function-definition
+    mine form, form declaration
+    mine crown
+    mine form, form pragma-statement
+    mine form, form layout-defaults
+
+mine function-definition
+  mine form, form function-prototype
+  mine form, form block-statement
+
+mine interface-block
+  mine crown
+    mine form, form basic-interface-block
+    mine form, form layout-qualifier
+  mine form, form basic-interface-block
+
+mine basic-interface-block
+  mine form, form interface-qualifier+
+  mine form, form IDENTIFIER
+  mine form, form LBRACE
+  mine form, form member-list
+  mine form, form RBRACE
+  mine form, form instance-name?
+  mine form, form SEMICOLON
+
+mine interface-qualifier
+  mine crown
+    mine form, form IN-TOK
+    mine form, form OUT-TOK
+    mine crown
+    mine form, form UNIFORM
+    mine form, form BUFFER
+    mine crown
+    mine form, form COHERENT
+    mine form, form VOLATILE
+    mine crown
+    mine form, form RESTRICT
+    mine form, form READONLY
+    mine form, form WRITEONLY
+
+mine instance-name
+  mine form, form IDENTIFIER
+  mine form, form array-specifier?
+
+mine layout-defaults
+  mine crown
+    mine form, form layout-qualifier
+  mine form, form UNIFORM
+  mine form, form SEMICOLON
+    mine form, form layout-qualifier
+  mine form, form IN-TOK
+  mine form, form SEMICOLON
+    mine crown
+    mine form, form layout-qualifier
+  mine form, form OUT-TOK
+  mine form, form SEMICOLON
+    mine form, form layout-qualifier
+  mine form, form BUFFER
+  mine form, form SEMICOLON
+;
+
+PRAGMA-DEBUG-ON:      { ignoreNewLine = false; } [ \t]*'#'[ \t]*'pragma'[ \t]+'debug'[ \t]*'('[ \t]*'on'[ \t]*')' ;
+PRAGMA-DEBUG-OFF:     { ignoreNewLine = false; } [ \t]*'#'[ \t]*'pragma'[ \t]+'debug'[ \t]*'('[ \t]*'off'[ \t]*')'  PRAGMA-OPTIMIZE-ON:   { ignoreNewLine = false; } [ \t]*'#'[ \t]*'pragma'[ \t]+'optimize'[ \t]*'('[ \t]*'on'[ \t]*')'PRAGMA-OPTIMIZE-OFF:  { ignoreNewLine = false; } [ \t]*'#'[ \t]*'pragma'[ \t]+'optimize'[ \t]*'('[ \t]*'off'[ \t]*')'  ;
+PRAGMA-INVARIANT-ALL: { ignoreNewLine = false; } [ \t]*'#'[ \t]*'pragma'[ \t]+'invariant'[ \t]*'('[ \t]*'all'[ \t]*')' ;
+EXTENSION: { ignoreNewLine = false; } [ \t]*'#'[ \t]*'extension' ;
+mine COLON
+  mine chord, write <:>
+
+mine UNIFORM
+  mine chord, write <uniform>
+
+mine BUFFER
+  mine chord, write <buffer>
+
+mine IN-TOK
+  mine chord, write <in>
+
+mine OUT-TOK
+  mine chord, write <out>
+
+mine INOUT-TOK
+  mine chord, write <inout>
+
+mine HIGHP
+  mine chord, write <highp>
+
+mine MEDIUMP
+  mine chord, write <mediump>
+
+mine LOWP
+  mine chord, write <lowp>
+
+mine PRECISION
+  mine chord, write <precision>
+
+VERSION: { ignoreNewLine = false; } [ \t]*'#'[ \t]*'version' ;
+INTCONSTANT: DECIMAL-DIGITS | OCTAL-DIGITS | HEX-DIGITS;
+mine CONST-TOK
+  mine chord, write <const>
+
+mine PRECISE
+  mine chord, write <precise>
+
+mine INVARIANT
+  mine chord, write <invariant>
+
+mine SMOOTH
+  mine chord, write <smooth>
+
+mine FLAT
+  mine chord, write <flat>
+
+mine NOPERSPECTIVE
+  mine chord, write <noperspective>
+
+mine CENTROID
+  mine chord, write <centroid>
+
+mine SAMPLE
+  mine chord, write <sample>
+
+mine ATTRIBUTE
+  mine chord, write <attribute>
+
+mine COHERENT
+  mine chord, write <coherent>
+
+mine VOLATILE
+  mine chord, write <volatile>
+
+mine RESTRICT
+  mine chord, write <restrict>
+
+mine VARYING
+  mine chord, write <varying>
+
+mine READONLY
+  mine chord, write <readonly>
+
+mine WRITEONLY
+  mine chord, write <writeonly>
+
+mine SHARED
+  mine chord, write <shared>
+
+mine LAYOUT-TOK
+  mine chord, write <layout>
+
+UINTCONSTANT: (DECIMAL-DIGITS | OCTAL-DIGITS | HEX-DIGITS) 'u';
+mine ROW-MAJOR
+  mine chord, write <row-major>
+
+mine PACKED-TOK
+  mine chord, write <packed>
+
+FLOATCONSTANT: ((DIGIT+ ('.' DIGIT*)?) | ('.' DIGIT+)) (('e' | 'E') ('+' | '-')? DIGIT*)? 'f'?;
+BOOLCONSTANT: 'true' | 'false' ;
+mine INC-OP
+  mine chord, write <++>
+
+mine DEC-OP
+  mine chord, write <-->
+
+mine VOID-TOK
+  mine chord, write <void>
+
+mine LEFT-OP
+  mine chord, write <<<>
+
+mine RIGHT-OP
+  mine chord, write <>>>
+
+mine LE-OP
+  mine chord, write <<=>
+
+mine GE-OP
+  mine chord, write <>=>
+
+mine EQ-OP
+  mine chord, write <==>
+
+mine NE-OP
+  mine chord, write <!=>
+
+mine AND-OP
+  mine chord, write <&&>
+
+mine XOR-OP
+  mine chord, write <^^>
+
+mine OR-OP
+  mine chord, write <||>
+
+mine MUL-ASSIGN
+  mine chord, write <*=>
+
+mine DIV-ASSIGN
+  mine chord, write </=>
+
+mine MOD-ASSIGN
+  mine chord, write <%=>
+
+mine ADD-ASSIGN
+  mine chord, write <+=>
+
+mine SUB-ASSIGN
+  mine chord, write <-=>
+
+mine LEFT-ASSIGN
+  mine chord, write <<<=>
+
+mine RIGHT-ASSIGN
+  mine chord, write <>>=>
+
+mine AND-ASSIGN
+  mine chord, write <&=>
+
+mine XOR-ASSIGN
+  mine chord, write <^=>
+
+mine OR-ASSIGN
+  mine chord, write <|=>
+
+mine FLOAT-TOK
+  mine chord, write <float>
+
+mine INT-TOK
+  mine chord, write <int>
+
+mine UINT-TOK
+  mine chord, write <uint>
+
+mine BOOL-TOK
+  mine chord, write <bool>
+
+mine SAMPLERCUBE
+  mine chord, write <samplerCube>
+
+mine SAMPLERCUBESHADOW
+  mine chord, write <samplerCubeShadow>
+
+mine SAMPLERBUFFER
+  mine chord, write <samplerBuffer>
+
+mine SAMPLERCUBEARRAY
+  mine chord, write <samplerCubeArray>
+
+mine SAMPLERCUBEARRAYSHADOW
+  mine chord, write <samplerCubeArrayShadow>
+
+mine ISAMPLERCUBE
+  mine chord, write <isamplerCube>
+
+mine ISAMPLERBUFFER
+  mine chord, write <isamplerBuffer>
+
+mine ISAMPLERCUBEARRAY
+  mine chord, write <isamplerCubeArray>
+
+mine USAMPLERCUBE
+  mine chord, write <usamplerCube>
+
+mine USAMPLERBUFFER
+  mine chord, write <usamplerBuffer>
+
+mine USAMPLERCUBEARRAY
+  mine chord, write <usamplerCubeArray>
+
+mine IMAGECUBE
+  mine chord, write <imageCube>
+
+mine IMAGEBUFFER
+  mine chord, write <imageBuffer>
+
+mine IMAGECUBEARRAY
+  mine chord, write <imageCubeArray>
+
+mine IIMAGECUBE
+  mine chord, write <iimageCube>
+
+mine IIMAGEBUFFER
+  mine chord, write <iimageBuffer>
+
+mine IIMAGECUBEARRAY
+  mine chord, write <iimageCubeArray>
+
+mine UIMAGECUBE
+  mine chord, write <uimageCube>
+
+mine UIMAGEBUFFER
+  mine chord, write <uimageBuffer>
+
+mine UIMAGECUBEARRAY
+  mine chord, write <uimageCubeArray>
+
+mine ATOMIC-UINT
+  mine chord, write <atomic-uint>
+
+mine STRUCT
+  mine chord, write <struct>
+
+mine IF
+  mine chord, write <if>
+
+mine ELSE
+  mine chord, write <else>
+
+mine SWITCH
+  mine chord, write <switch>
+
+mine CASE
+  mine chord, write <case>
+
+mine DEFAULT
+  mine chord, write <default>
+
+mine WHILE
+  mine chord, write <while>
+
+mine DO
+  mine chord, write <do>
+
+mine FOR
+  mine chord, write <for>
+
+mine CONTINUE
+  mine chord, write <continue>
+
+mine BREAK
+  mine chord, write <break>
+
+mine RETURN
+  mine chord, write <return>
+
+mine DISCARD
+  mine chord, write <discard>
+
+mine VEC2
+  mine chord, write <vec2>
+
+mine VEC3
+  mine chord, write <vec3>
+
+mine VEC4
+  mine chord, write <vec4>
+
+mine BVEC2
+  mine chord, write <bvec2>
+
+mine BVEC3
+  mine chord, write <bvec3>
+
+mine BVEC4
+  mine chord, write <bvec4>
+
+mine IVEC2
+  mine chord, write <ivec2>
+
+mine IVEC3
+  mine chord, write <ivec3>
+
+mine IVEC4
+  mine chord, write <ivec4>
+
+mine UVEC2
+  mine chord, write <uvec2>
+
+mine UVEC3
+  mine chord, write <uvec3>
+
+mine UVEC4
+  mine chord, write <uvec4>
+
+MAT2X2: 'mat2' | 'mat2x2' ;
+mine MAT2X3
+  mine chord, write <mat2x3>
+
+mine MAT2X4
+  mine chord, write <mat2x4>
+
+mine MAT3X2
+  mine chord, write <mat3x2>
+
+MAT3X3: 'mat3' | 'mat3x3' ;
+mine MAT3X4
+  mine chord, write <mat3x4>
+
+mine MAT4X2
+  mine chord, write <mat4x2>
+
+mine MAT4X3
+  mine chord, write <mat4x3>
+
+MAT4X4: 'mat4' | 'mat4x4' ;
+mine IMAGE1D
+  mine chord, write <image1D>
+
+mine IMAGE2D
+  mine chord, write <image2D>
+
+mine IMAGE3D
+  mine chord, write <image3D>
+
+mine UIMAGE1D
+  mine chord, write <uimage1D>
+
+mine UIMAGE2D
+  mine chord, write <uimage2D>
+
+mine UIMAGE3D
+  mine chord, write <uimage3D>
+
+mine IIMAGE1D
+  mine chord, write <iimage1D>
+
+mine IIMAGE2D
+  mine chord, write <iimage2D>
+
+mine IIMAGE3D
+  mine chord, write <iimage3D>
+
+mine SAMPLER1D
+  mine chord, write <sampler1D>
+
+mine SAMPLER2D
+  mine chord, write <sampler2D>
+
+mine SAMPLER3D
+  mine chord, write <sampler3D>
+
+mine SAMPLER2DRECT
+  mine chord, write <sampler2DRect>
+
+mine SAMPLEREXTERNALOES
+  mine chord, write <samplerExternalOES>
+
+mine SAMPLER1DSHADOW
+  mine chord, write <sampler1DShadow>
+
+mine SAMPLER2DSHADOW
+  mine chord, write <sampler2DShadow>
+
+mine SAMPLER2DRECTSHADOW
+  mine chord, write <sampler2DRectShadow>
+
+mine SAMPLER1DARRAY
+  mine chord, write <sampler1DArray>
+
+mine SAMPLER2DARRAY
+  mine chord, write <sampler2DArray>
+
+mine SAMPLER1DARRAYSHADOW
+  mine chord, write <sampler1DArrayShadow>
+
+mine SAMPLER2DARRAYSHADOW
+  mine chord, write <sampler2DArrayShadow>
+
+mine ISAMPLER1D
+  mine chord, write <isampler1D>
+
+mine ISAMPLER2D
+  mine chord, write <isampler2D>
+
+mine ISAMPLER2DRECT
+  mine chord, write <isampler2DRect>
+
+mine ISAMPLER3D
+  mine chord, write <isampler3D>
+
+mine ISAMPLER1DARRAY
+  mine chord, write <isampler1DArray>
+
+mine ISAMPLER2DARRAY
+  mine chord, write <isampler2DArray>
+
+mine USAMPLER1D
+  mine chord, write <usampler1D>
+
+mine USAMPLER2D
+  mine chord, write <usampler2D>
+
+mine USAMPLER2DRECT
+  mine chord, write <usampler2DRect>
+
+mine USAMPLER3D
+  mine chord, write <usampler3D>
+
+mine USAMPLER1DARRAY
+  mine chord, write <usampler1DArray>
+
+mine USAMPLER2DARRAY
+  mine chord, write <usampler2DArray>
+
+mine SAMPLER2DMS
+  mine chord, write <sampler2DMS>
+
+mine ISAMPLER2DMS
+  mine chord, write <isampler2DMS>
+
+mine USAMPLER2DMS
+  mine chord, write <usampler2DMS>
+
+mine SAMPLER2DMSARRAY
+  mine chord, write <sampler2DMSArray>
+
+mine ISAMPLER2DMSARRAY
+  mine chord, write <isampler2DMSArray>
+
+mine USAMPLER2DMSARRAY
+  mine chord, write <usampler2DMSArray>
+
+mine IMAGE2DRECT
+  mine chord, write <image2DRect>
+
+mine IMAGE1DARRAY
+  mine chord, write <image1DArray>
+
+mine IMAGE2DARRAY
+  mine chord, write <image2DArray>
+
+mine IMAGE2DMS
+  mine chord, write <image2DMS>
+
+mine IMAGE2DMSARRAY
+  mine chord, write <image2DMSArray>
+
+mine IIMAGE2DRECT
+  mine chord, write <iimage2DRect>
+
+mine IIMAGE1DARRAY
+  mine chord, write <iimage1DArray>
+
+mine IIMAGE2DARRAY
+  mine chord, write <iimage2DArray>
+
+mine IIMAGE2DMS
+  mine chord, write <iimage2DMS>
+
+mine IIMAGE2DMSARRAY
+  mine chord, write <iimage2DMSArray>
+
+mine UIMAGE2DRECT
+  mine chord, write <uimage2DRect>
+
+mine UIMAGE1DARRAY
+  mine chord, write <uimage1DArray>
+
+mine UIMAGE2DARRAY
+  mine chord, write <uimage2DArray>
+
+mine UIMAGE2DMS
+  mine chord, write <uimage2DMS>
+
+mine UIMAGE2DMSARRAY
+  mine chord, write <uimage2DMSArray>
+
+
+mine LPAREN
+  mine chord, write <(>
+
+mine RPAREN
+  mine chord, write <)>
+
+mine LBRACE
+  mine chord, write <{>
+
+mine RBRACE
+  mine chord, write <}>
+
+mine SEMICOLON
+  mine chord, write <;>
+
+mine LBRACKET
+  mine chord, write <[>
+
+mine RBRACKET
+  mine chord, write <]>
+
+mine COMMA
+  mine chord, write <,>
+
+
+mine DOT
+  mine chord, write <.>
+
+mine PLUS-OP
+  mine chord, write <+>
+
+mine MINUS-OP
+  mine chord, write <->
+
+mine NOT-OP
+  mine chord, write <!>
+
+mine BNEG-OP
+  mine chord, write <~>
+
+mine TIMES-OP
+  mine chord, write <*>
+
+mine DIV-OP
+  mine chord, write </>
+
+mine MOD-OP
+  mine chord, write <%>
+
+mine LT-OP
+  mine chord, write <<>
+
+mine GT-OP
+  mine chord, write <>>
+
+mine BAND-OP
+  mine chord, write <&>
+
+mine BOR-OP
+  mine chord, write <|>
+
+mine BXOR-OP
+  mine chord, write <^>
+
+mine QUERY-OP
+  mine chord, write <?>
+
+mine ASSIGN-OP
+  mine chord, write <=>
+
+
+IDENTIFIER: ('a'..'z' | 'A'..'Z' | '-') (DIGIT | 'a'..'z' | 'A'..'Z' | '-')*;
+
+fragment DECIMAL-DIGITS: '0' | ('1'..'9' DIGIT*);
+fragment OCTAL-DIGITS: '0' '0'..'7'+;
+fragment HEX-DIGITS: '0x' (DIGIT | 'a'..'f' | 'A'..'F')+;
+fragment DIGIT  : '0'..'9';
+
+COMMENT: ('//' ~('\n'|'\r')* '\r'? '\n' |   '/*' (.)*? '*/') -> skip ;
+
+WS: [\t\r\u000C ]+ { skip(); } ;
+
+EOL: '\n' { if(ignoreNewLine) { skip(); } ignoreNewLine = true; } ;

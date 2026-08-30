@@ -1,0 +1,1120 @@
+
+form sheet
+  base rule, list rule
+form rule
+  base comment, list comment
+form selector
+  form rule
+  base path, list text
+  base declaration, list declaration
+form path
+  base node, list text
+form pseudo-selector
+  form selector
+form comment
+  base text, form text
+form comment-block
+form comment-line
+form import
+  form rule
+  base path
+form media
+  form rule
+form document
+  form rule
+form charset
+  form rule
+form namespace
+  form rule
+form supports
+  form rule
+form keyframe-list
+  form rule
+form keyframe
+  form rule
+form page
+  form rule
+form font
+  form rule
+form base
+  form rule
+form custom-media
+  form rule
+form declaration
+form background-declaration
+  state color
+  state url
+
+form accent-color-declaration
+
+form align-content-declaration
+
+form align-items-declaration
+
+form align-self-declaration
+
+form alignment-baseline-declaration
+
+form all-declaration
+
+form animation-declaration
+
+form animation-delay-declaration
+
+form animation-direction-declaration
+
+form animation-duration-declaration
+
+form animation-fill-mode-declaration
+
+form animation-iteration-count-declaration
+
+form animation-name-declaration
+
+form animation-play-state-declaration
+
+form animation-timing-function-declaration
+
+form appearance-declaration
+
+form aspect-ratio-declaration
+
+form azimuth-declaration
+
+form backface-visibility-declaration
+
+form background-declaration
+
+form background-attachment-declaration
+
+form background-blend-mode-declaration
+
+form background-clip-declaration
+
+form background-color-declaration
+
+form background-image-declaration
+
+form background-origin-declaration
+
+form background-position-declaration
+
+form background-repeat-declaration
+
+form background-size-declaration
+
+form baseline-shift-declaration
+
+form baseline-source-declaration
+
+form block-ellipsis-declaration
+
+form block-size-declaration
+
+form block-step-declaration
+
+form block-step-align-declaration
+
+form block-step-insert-declaration
+
+form block-step-round-declaration
+
+form block-step-size-declaration
+
+form bookmark-label-declaration
+
+form bookmark-level-declaration
+
+form bookmark-state-declaration
+
+form border-declaration
+
+form border-block-declaration
+
+form border-block-color-declaration
+
+form border-block-end-declaration
+
+form border-block-end-color-declaration
+
+form border-block-end-style-declaration
+
+form border-block-end-width-declaration
+
+form border-block-start-declaration
+
+form border-block-start-color-declaration
+
+form border-block-start-style-declaration
+
+form border-block-start-width-declaration
+
+form border-block-style-declaration
+
+form border-block-width-declaration
+
+form border-bottom-declaration
+
+form border-bottom-color-declaration
+
+form border-bottom-left-radius-declaration
+
+form border-bottom-right-radius-declaration
+
+form border-bottom-style-declaration
+
+form border-bottom-width-declaration
+
+form border-boundary-declaration
+
+form border-collapse-declaration
+
+form border-color-declaration
+
+form border-end-end-radius-declaration
+
+form border-end-start-radius-declaration
+
+form border-image-declaration
+
+form border-image-outset-declaration
+
+form border-image-repeat-declaration
+
+form border-image-slice-declaration
+
+form border-image-source-declaration
+
+form border-image-width-declaration
+
+form border-inline-declaration
+
+form border-inline-color-declaration
+
+form border-inline-end-declaration
+
+form border-inline-end-color-declaration
+
+form border-inline-end-style-declaration
+
+form border-inline-end-width-declaration
+
+form border-inline-start-declaration
+
+form border-inline-start-color-declaration
+
+form border-inline-start-style-declaration
+
+form border-inline-start-width-declaration
+
+form border-inline-style-declaration
+
+form border-inline-width-declaration
+
+form border-left-declaration
+
+form border-left-color-declaration
+
+form border-left-style-declaration
+
+form border-left-width-declaration
+
+form border-radius-declaration
+
+form border-right-declaration
+
+form border-right-color-declaration
+
+form border-right-style-declaration
+
+form border-right-width-declaration
+
+form border-spacing-declaration
+
+form border-start-end-radius-declaration
+
+form border-start-start-radius-declaration
+
+form border-style-declaration
+
+form border-top-declaration
+
+form border-top-color-declaration
+
+form border-top-left-radius-declaration
+
+form border-top-right-radius-declaration
+
+form border-top-style-declaration
+
+form border-top-width-declaration
+
+form border-width-declaration
+
+form bottom-declaration
+
+form box-decoration-break-declaration
+
+form box-shadow-declaration
+
+form box-sizing-declaration
+
+form box-snap-declaration
+
+form break-after-declaration
+
+form break-before-declaration
+
+form break-inside-declaration
+
+form caption-side-declaration
+
+form caret-declaration
+
+form caret-color-declaration
+
+form caret-shape-declaration
+
+form chains-declaration
+
+form clear-declaration
+
+form clip-declaration
+
+form clip-path-declaration
+
+form clip-rule-declaration
+
+form color-declaration
+
+form color-adjust-declaration
+
+form color-interpolation-filters-declaration
+
+form color-scheme-declaration
+
+form column-count-declaration
+
+form column-fill-declaration
+
+form column-gap-declaration
+
+form column-rule-declaration
+
+form column-rule-color-declaration
+
+form column-rule-style-declaration
+
+form column-rule-width-declaration
+
+form column-span-declaration
+
+form column-width-declaration
+
+form columns-declaration
+
+form contain-declaration
+
+form contain-intrinsic-block-size-declaration
+
+form contain-intrinsic-height-declaration
+
+form contain-intrinsic-inline-size-declaration
+
+form contain-intrinsic-size-declaration
+
+form contain-intrinsic-width-declaration
+
+form content-declaration
+
+form content-visibility-declaration
+
+form continue-declaration
+
+form counter-increment-declaration
+
+form counter-reset-declaration
+
+form counter-set-declaration
+
+form cue-declaration
+
+form cue-after-declaration
+
+form cue-before-declaration
+
+form cursor-declaration
+
+form direction-declaration
+
+form display-declaration
+
+form dominant-baseline-declaration
+
+form elevation-declaration
+
+form empty-cells-declaration
+
+form fill-declaration
+
+form fill-break-declaration
+
+form fill-color-declaration
+
+form fill-image-declaration
+
+form fill-opacity-declaration
+
+form fill-origin-declaration
+
+form fill-position-declaration
+
+form fill-repeat-declaration
+
+form fill-rule-declaration
+
+form fill-size-declaration
+
+form filter-declaration
+
+form flex-declaration
+
+form flex-basis-declaration
+
+form flex-direction-declaration
+
+form flex-flow-declaration
+
+form flex-grow-declaration
+
+form flex-shrink-declaration
+
+form flex-wrap-declaration
+
+form float-declaration
+
+form float-defer-declaration
+
+form float-offset-declaration
+
+form float-reference-declaration
+
+form flood-color-declaration
+
+form flood-opacity-declaration
+
+form flow-declaration
+
+form flow-from-declaration
+
+form flow-into-declaration
+
+form font-declaration
+
+form font-family-declaration
+
+form font-feature-settings-declaration
+
+form font-kerning-declaration
+
+form font-language-override-declaration
+
+form font-optical-sizing-declaration
+
+form font-palette-declaration
+
+form font-size-declaration
+
+form font-size-adjust-declaration
+
+form font-stretch-declaration
+
+form font-style-declaration
+
+form font-synthesis-declaration
+
+form font-synthesis-small-caps-declaration
+
+form font-synthesis-style-declaration
+
+form font-synthesis-weight-declaration
+
+form font-variant-declaration
+
+form font-variant-alternates-declaration
+
+form font-variant-caps-declaration
+
+form font-variant-east-asian-declaration
+
+form font-variant-emoji-declaration
+
+form font-variant-ligatures-declaration
+
+form font-variant-numeric-declaration
+
+form font-variant-position-declaration
+
+form font-variation-settings-declaration
+
+form font-weight-declaration
+
+form footnote-display-declaration
+
+form footnote-policy-declaration
+
+form forced-color-adjust-declaration
+
+form gap-declaration
+
+form glyph-orientation-vertical-declaration
+
+form grid-declaration
+
+form grid-area-declaration
+
+form grid-auto-columns-declaration
+
+form grid-auto-flow-declaration
+
+form grid-auto-rows-declaration
+
+form grid-column-declaration
+
+form grid-column-end-declaration
+
+form grid-column-start-declaration
+
+form grid-row-declaration
+
+form grid-row-end-declaration
+
+form grid-row-start-declaration
+
+form grid-template-declaration
+
+form grid-template-areas-declaration
+
+form grid-template-columns-declaration
+
+form grid-template-rows-declaration
+
+form hanging-punctuation-declaration
+
+form height-declaration
+
+form hyphenate-character-declaration
+
+form hyphenate-limit-chars-declaration
+
+form hyphenate-limit-last-declaration
+
+form hyphenate-limit-lines-declaration
+
+form hyphenate-limit-zone-declaration
+
+form hyphens-declaration
+
+form image-orientation-declaration
+
+form image-rendering-declaration
+
+form image-resolution-declaration
+
+form initial-letter-declaration
+
+form initial-letter-align-declaration
+
+form initial-letter-wrap-declaration
+
+form inline-size-declaration
+
+form inline-sizing-declaration
+
+form inset-declaration
+
+form inset-block-declaration
+
+form inset-block-end-declaration
+
+form inset-block-start-declaration
+
+form inset-inline-declaration
+
+form inset-inline-end-declaration
+
+form inset-inline-start-declaration
+
+form isolation-declaration
+
+form justify-content-declaration
+
+form justify-items-declaration
+
+form justify-self-declaration
+
+form leading-trim-declaration
+
+form left-declaration
+
+form letter-spacing-declaration
+
+form lighting-color-declaration
+
+form line-break-declaration
+
+form line-clamp-declaration
+
+form line-grid-declaration
+
+form line-height-declaration
+
+form line-height-step-declaration
+
+form line-padding-declaration
+
+form line-snap-declaration
+
+form list-style-declaration
+
+form list-style-image-declaration
+
+form list-style-position-declaration
+
+form list-style-type-declaration
+
+form margin-declaration
+
+form margin-block-declaration
+
+form margin-block-end-declaration
+
+form margin-block-start-declaration
+
+form margin-bottom-declaration
+
+form margin-break-declaration
+
+form margin-inline-declaration
+
+form margin-inline-end-declaration
+
+form margin-inline-start-declaration
+
+form margin-left-declaration
+
+form margin-right-declaration
+
+form margin-top-declaration
+
+form margin-trim-declaration
+
+form marker-declaration
+
+form marker-end-declaration
+
+form marker-knockout-left-declaration
+
+form marker-knockout-right-declaration
+
+form marker-mid-declaration
+
+form marker-pattern-declaration
+
+form marker-segment-declaration
+
+form marker-side-declaration
+
+form marker-start-declaration
+
+form mask-declaration
+
+form mask-border-declaration
+
+form mask-border-mode-declaration
+
+form mask-border-outset-declaration
+
+form mask-border-repeat-declaration
+
+form mask-border-slice-declaration
+
+form mask-border-source-declaration
+
+form mask-border-width-declaration
+
+form mask-clip-declaration
+
+form mask-composite-declaration
+
+form mask-image-declaration
+
+form mask-mode-declaration
+
+form mask-origin-declaration
+
+form mask-position-declaration
+
+form mask-repeat-declaration
+
+form mask-size-declaration
+
+form mask-type-declaration
+
+form max-block-size-declaration
+
+form max-height-declaration
+
+form max-inline-size-declaration
+
+form max-lines-declaration
+
+form max-width-declaration
+
+form min-block-size-declaration
+
+form min-height-declaration
+
+form min-inline-size-declaration
+
+form min-intrinsic-sizing-declaration
+
+form min-width-declaration
+
+form mix-blend-mode-declaration
+
+form nav-down-declaration
+
+form nav-left-declaration
+
+form nav-right-declaration
+
+form nav-up-declaration
+
+form object-fit-declaration
+
+form object-position-declaration
+
+form offset-declaration
+
+form offset-anchor-declaration
+
+form offset-distance-declaration
+
+form offset-path-declaration
+
+form offset-position-declaration
+
+form offset-rotate-declaration
+
+form opacity-declaration
+
+form order-declaration
+
+form orphans-declaration
+
+form outline-declaration
+
+form outline-color-declaration
+
+form outline-offset-declaration
+
+form outline-style-declaration
+
+form outline-width-declaration
+
+form overflow-declaration
+
+form overflow-anchor-declaration
+
+form overflow-block-declaration
+
+form overflow-clip-margin-declaration
+
+form overflow-inline-declaration
+
+form overflow-wrap-declaration
+
+form overflow-x-declaration
+
+form overflow-y-declaration
+
+form overscroll-behavior-declaration
+
+form overscroll-behavior-block-declaration
+
+form overscroll-behavior-inline-declaration
+
+form overscroll-behavior-x-declaration
+
+form overscroll-behavior-y-declaration
+
+form padding-declaration
+
+form padding-block-declaration
+
+form padding-block-end-declaration
+
+form padding-block-start-declaration
+
+form padding-bottom-declaration
+
+form padding-inline-declaration
+
+form padding-inline-end-declaration
+
+form padding-inline-start-declaration
+
+form padding-left-declaration
+
+form padding-right-declaration
+
+form padding-top-declaration
+
+form page-declaration
+
+form page-break-after-declaration
+
+form page-break-before-declaration
+
+form page-break-inside-declaration
+
+form pause-declaration
+
+form pause-after-declaration
+
+form pause-before-declaration
+
+form perspective-declaration
+
+form perspective-origin-declaration
+
+form pitch-declaration
+
+form pitch-range-declaration
+
+form place-content-declaration
+
+form place-items-declaration
+
+form place-self-declaration
+
+form play-during-declaration
+
+form position-declaration
+
+form print-color-adjust-declaration
+
+form quotes-declaration
+
+form region-fragment-declaration
+
+form resize-declaration
+
+form rest-declaration
+
+form rest-after-declaration
+
+form rest-before-declaration
+
+form richness-declaration
+
+form right-declaration
+
+form rotate-declaration
+
+form row-gap-declaration
+
+form ruby-align-declaration
+
+form ruby-merge-declaration
+
+form ruby-overhang-declaration
+
+form ruby-position-declaration
+
+form running-declaration
+
+form scale-declaration
+
+form scroll-behavior-declaration
+
+form scroll-margin-declaration
+
+form scroll-margin-block-declaration
+
+form scroll-margin-block-end-declaration
+
+form scroll-margin-block-start-declaration
+
+form scroll-margin-bottom-declaration
+
+form scroll-margin-inline-declaration
+
+form scroll-margin-inline-end-declaration
+
+form scroll-margin-inline-start-declaration
+
+form scroll-margin-left-declaration
+
+form scroll-margin-right-declaration
+
+form scroll-margin-top-declaration
+
+form scroll-padding-declaration
+
+form scroll-padding-block-declaration
+
+form scroll-padding-block-end-declaration
+
+form scroll-padding-block-start-declaration
+
+form scroll-padding-bottom-declaration
+
+form scroll-padding-inline-declaration
+
+form scroll-padding-inline-end-declaration
+
+form scroll-padding-inline-start-declaration
+
+form scroll-padding-left-declaration
+
+form scroll-padding-right-declaration
+
+form scroll-padding-top-declaration
+
+form scroll-snap-align-declaration
+
+form scroll-snap-stop-declaration
+
+form scroll-snap-type-declaration
+
+form scrollbar-color-declaration
+
+form scrollbar-gutter-declaration
+
+form scrollbar-width-declaration
+
+form shape-image-threshold-declaration
+
+form shape-inside-declaration
+
+form shape-margin-declaration
+
+form shape-outside-declaration
+
+form spatial-navigation-action-declaration
+
+form spatial-navigation-contain-declaration
+
+form spatial-navigation-function-declaration
+
+form speak-declaration
+
+form speak-as-declaration
+
+form speak-header-declaration
+
+form speak-numeral-declaration
+
+form speak-punctuation-declaration
+
+form speech-rate-declaration
+
+form stress-declaration
+
+form string-set-declaration
+
+form stroke-declaration
+
+form stroke-align-declaration
+
+form stroke-alignment-declaration
+
+form stroke-break-declaration
+
+form stroke-color-declaration
+
+form stroke-dash-corner-declaration
+
+form stroke-dash-justify-declaration
+
+form stroke-dashadjust-declaration
+
+form stroke-dasharray-declaration
+
+form stroke-dashcorner-declaration
+
+form stroke-dashoffset-declaration
+
+form stroke-image-declaration
+
+form stroke-linecap-declaration
+
+form stroke-linejoin-declaration
+
+form stroke-miterlimit-declaration
+
+form stroke-opacity-declaration
+
+form stroke-origin-declaration
+
+form stroke-position-declaration
+
+form stroke-repeat-declaration
+
+form stroke-size-declaration
+
+form stroke-width-declaration
+
+form tab-size-declaration
+
+form table-layout-declaration
+
+form text-align-declaration
+
+form text-align-all-declaration
+
+form text-align-last-declaration
+
+form text-combine-upright-declaration
+
+form text-decoration-declaration
+
+form text-decoration-color-declaration
+
+form text-decoration-line-declaration
+
+form text-decoration-skip-declaration
+
+form text-decoration-skip-box-declaration
+
+form text-decoration-skip-ink-declaration
+
+form text-decoration-skip-inset-declaration
+
+form text-decoration-skip-self-declaration
+
+form text-decoration-skip-spaces-declaration
+
+form text-decoration-style-declaration
+
+form text-decoration-thickness-declaration
+
+form text-edge-declaration
+
+form text-emphasis-declaration
+
+form text-emphasis-color-declaration
+
+form text-emphasis-position-declaration
+
+form text-emphasis-skip-declaration
+
+form text-emphasis-style-declaration
+
+form text-group-align-declaration
+
+form text-indent-declaration
+
+form text-justify-declaration
+
+form text-orientation-declaration
+
+form text-overflow-declaration
+
+form text-shadow-declaration
+
+form text-space-collapse-declaration
+
+form text-space-trim-declaration
+
+form text-spacing-declaration
+
+form text-transform-declaration
+
+form text-underline-offset-declaration
+
+form text-underline-position-declaration
+
+form text-wrap-declaration
+
+form top-declaration
+
+form transform-declaration
+
+form transform-box-declaration
+
+form transform-origin-declaration
+
+form transform-style-declaration
+
+form transition-declaration
+
+form transition-delay-declaration
+
+form transition-duration-declaration
+
+form transition-property-declaration
+
+form transition-timing-function-declaration
+
+form translate-declaration
+
+form unicode-bidi-declaration
+
+form user-select-declaration
+
+form vertical-align-declaration
+
+form visibility-declaration
+
+form voice-balance-declaration
+
+form voice-duration-declaration
+
+form voice-family-declaration
+
+form voice-pitch-declaration
+
+form voice-range-declaration
+
+form voice-rate-declaration
+
+form voice-stress-declaration
+
+form voice-volume-declaration
+
+form volume-declaration
+
+form white-space-declaration
+
+form widows-declaration
+
+form width-declaration
+
+form will-change-declaration
+
+form word-boundary-detection-declaration
+
+form word-boundary-expansion-declaration
+
+form word-break-declaration
+
+form word-spacing-declaration
+
+form word-wrap-declaration
+
+form wrap-after-declaration
+
+form wrap-before-declaration
+
+form wrap-flow-declaration
+
+form wrap-inside-declaration
+
+form wrap-through-declaration
+
+form writing-mode-declaration
+
+form z-index-declaration

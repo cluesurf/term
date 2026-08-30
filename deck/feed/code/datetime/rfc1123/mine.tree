@@ -1,0 +1,10 @@
+
+mine rfc1123-date
+  mine form, form short-weekday
+  mine chord, share <,>
+  mine form, form space
+  mine form, form date1
+  mine form, form space
+  mine form, form time
+  mine form, form space
+  mine chord, share <GMT>

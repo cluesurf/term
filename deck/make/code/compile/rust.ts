@@ -101,16 +101,17 @@ function rustType(type: Type | undefined): string {
     }
 
     case 'function': {
-      // a boxed trait object, not `impl Fn`: this is the one function type that works in every position -- a
-      // parameter, a return, a struct field, AND a collection element (`Vec<Box<dyn Fn>>`, `HashMap<_, Box<dyn Fn>>`).
+      // a shared trait object, not `impl Fn`: this is the one function type that works in every position -- a
+      // parameter, a return, a struct field, AND a collection element. `Rc` (not `Box`) so a record holding a
+      // closure is still `Clone`, the property every walk over a list of records relies on (the hive's ears).
       const params = type.params.map(rustType).join(', ')
       const result = rustType(type.result)
 
       // an async function value returns a boxed, pinned future (Rust has no async `Fn` sugar): the callable yields
       // `Pin<Box<dyn Future<Output = R>>>`, which the call site `.await`s. Matches the async-closure emission below.
       return type.effects?.includes('async')
-        ? `Box<dyn Fn(${params}) -> std::pin::Pin<Box<dyn std::future::Future<Output = ${result}>>>>`
-        : `Box<dyn Fn(${params}) -> ${result}>`
+        ? `std::rc::Rc<dyn Fn(${params}) -> std::pin::Pin<Box<dyn std::future::Future<Output = ${result}>>>>`
+        : `std::rc::Rc<dyn Fn(${params}) -> ${result}>`
     }
     case 'number':
       return 'i64'
@@ -919,8 +920,8 @@ export function emitRust(program: Program): string {
         // caller `.await`s (Rust closures can't themselves be `async`). The `let`/parameter type annotation supplies
         // the `Pin<Box<dyn Future>>` return so the concrete async block coerces to the boxed trait object.
         const boxed = node.async
-          ? `Box::new(move |${params}| std::boxed::Box::pin(async move { ${body} }))`
-          : `Box::new(move |${params}| { ${body} })`
+          ? `std::rc::Rc::new(move |${params}| std::boxed::Box::pin(async move { ${body} }))`
+          : `std::rc::Rc::new(move |${params}| { ${body} })`
 
         return handleClones ? `{ ${handleClones} ${boxed} }` : boxed
       }
@@ -992,6 +993,8 @@ export function emitRust(program: Program): string {
         return `${data}.contains(&${arg[0]})`
       case 'indexOf':
         return `${data}.iter().position(|e| *e == ${arg[0]}).map(|i| i as i64).unwrap_or(-1)`
+      case 'lastIndexOf':
+        return `${data}.iter().rposition(|e| *e == ${arg[0]}).map(|i| i as i64).unwrap_or(-1)`
       case 'concat':
         return wrapList(
           `[${data}.clone(), ${arg[0]}.borrow().clone()].concat()`,
@@ -1665,18 +1668,10 @@ export function emitRust(program: Program): string {
           ? `<${node.params.map(p => p.toUpperCase()).join(', ')}>`
           : ''
 
-        // a struct/enum is `Clone` unless it holds a closure (`Box<dyn Fn>` is not Clone). Deriving Clone lets a value
-        // be shared at a call site rather than moved -- the same property the Rc-wrapped collections rely on.
-        const hasClosureField =
-          node.variants.length > 0
-            ? node.variants.some(v =>
-                v.fields.some(f => f.type.kind === 'function'),
-              )
-            : node.fields.some(f => f.type.kind === 'function')
-
-        const derive = hasClosureField
-          ? ''
-          : `#[derive(Clone)]\n${pad(d)}`
+        // every struct/enum is `Clone`: a closure field is an `Rc<dyn Fn>` (a cheap shared handle), so even a
+        // record holding one clones. Deriving Clone lets a value be shared at a call site rather than moved --
+        // the same property the Rc-wrapped collections rely on.
+        const derive = `#[derive(Clone)]\n${pad(d)}`
 
         if (node.variants.length > 0) {
           const cases = node.variants.map(v => {

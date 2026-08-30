@@ -1,0 +1,2534 @@
+
+state data-type-32
+  state addr
+    state name, <Elf32_Addr>
+    state size, 4
+    state alignment, 4
+    state purpose, <Unsigned program address>
+  state half
+    state name, <Elf32_Half>
+    state size, 2
+    state alignment, 2
+    state purpose, <Unsigned medium integer>
+  state off
+    state name, <Elf32_Off>
+    state size, 4
+    state alignment, 4
+    state purpose, <Unsigned file offset>
+  state sword
+    state name, <Elf32_Sword>
+    state size, 4
+    state alignment, 4
+    state purpose, <Signed integer>
+  state word
+    state name, <Elf32_Word>
+    state size, 4
+    state alignment, 4
+    state purpose, <Unsigned integer>
+  state unsigned-char
+    state name, <unsigned char>
+    state size, 1
+    state alignment, 1
+    state purpose, <Unsigned small integer>
+
+state data-type-64
+  state addr
+    state name, <Elf64_Addr>
+    state size, 8
+    state alignment, 8
+    state purpose, <Unsigned program address>
+  state half
+    state name, <Elf64_Half>
+    state size, 2
+    state alignment, 2
+    state purpose, <Unsigned medium integer>
+  state off
+    state name, <Elf64_Off>
+    state size, 8
+    state alignment, 8
+    state purpose, <Unsigned file offset>
+  state sword
+    state name, <Elf64_Sword>
+    state size, 4
+    state alignment, 4
+    state purpose, <Signed integer>
+  state word
+    state name, <Elf64_Word>
+    state size, 4
+    state alignment, 4
+    state purpose, <Unsigned integer>
+  state xword
+    state name, <Elf64_Xword>
+    state size, 8
+    state alignment, 8
+    state purpose, <Unsigned long integer>
+  state sxword
+    state name, <Elf64_Sxword>
+    state size, 8
+    state alignment, 8
+    state purpose, <Signed long integer>
+  state unsigned-char
+    state name, <unsigned char>
+    state size, 1
+    state alignment, 1
+    state purpose, <Unsigned small integer>
+
+state type
+  state none
+    state name, <ET_NONE>
+    state value, 0
+    state description, <No file type>
+  state rel
+    state name, <ET_REL>
+    state value, 1
+    state description, <Relocatable file>
+  state exec
+    state name, <ET_EXEC>
+    state value, 2
+    state description, <Executable file>
+  state dyn
+    state name, <ET_DYN>
+    state value, 3
+    state description, <Shared object file>
+  state core
+    state name, <ET_CORE>
+    state value, 4
+    state description, <Core file>
+  state loproc
+    state name, <ET_LOPROC>
+    state value, #xff00
+    state description, <Processor-specific>
+  state hiproc
+    state name, <ET_HIPROC>
+    state value, #xffff
+    state description, <Processor-specific>
+
+state machine
+  state none
+    state name, <EM_NONE>
+    state value, 0
+    state description, <No machine>
+  state sparc
+    state name, <EM_SPARC>
+    state value, 2
+    state description, <SPARC>
+  state 386
+    state name, <EM_386>
+    state value, 3
+    state description, <Intel 80386>
+  state sparc32plus
+    state name, <EM_SPARC32PLUS>
+    state value, 18
+    state description, <Sun SPARC 32+>
+  state sparcv9
+    state name, <EM_SPARCV9>
+    state value, 43
+    state description, <SPARC V9>
+  state amd64
+    state name, <EM_AMD64>
+    state value, 62
+    state description, <AMD 64>
+
+state version
+  state none
+    state name, <EV_NONE>
+    state value, 0
+    state description, <Invalid version>
+  state current
+    state name, <EV_CURRENT>
+    state value, >=1
+    state description, <Current version>
+
+state flags
+  state ext-mask
+    state name, <EF_SPARC_EXT_MASK>
+    state value, #xffff00
+    state description, <Vendor Extension mask>
+  state 32plus
+    state name, <EF_SPARC_32PLUS>
+    state value, #x000100
+    state description, <Generic V8+ features>
+  state sun-us1
+    state name, <EF_SPARC_SUN_US1>
+    state value, #x000200
+    state description, <Sun UltraSPARC 1 Extensions>
+  state hal-r1
+    state name, <EF_SPARC_HAL_R1>
+    state value, #x000400
+    state description, <HAL R1 Extensions>
+  state sun-us3
+    state name, <EF_SPARC_SUN_US3>
+    state value, #x000800
+    state description, <Sun UltraSPARC 3 Extensions>
+  state sparcv9-mm
+    state name, <EF_SPARCV9_MM>
+    state value, #x3
+    state description, <Mask for Memory Model>
+  state sparcv9-tso
+    state name, <EF_SPARCV9_TSO>
+    state value, #x0
+    state description, <Total Store Ordering>
+  state sparcv9-pso
+    state name, <EF_SPARCV9_PSO>
+    state value, #x1
+    state description, <Partial Store Ordering>
+  state sparcv9-rmo
+    state name, <EF_SPARCV9_RMO>
+    state value, #x2
+    state description, <Relaxed Memory Ordering>
+
+state identification-index
+  state mag0
+    state name, <EI_MAG0>
+    state value, 0
+    state purpose, <File identification>
+  state mag1
+    state name, <EI_MAG1>
+    state value, 1
+    state purpose, <File identification>
+  state mag2
+    state name, <EI_MAG2>
+    state value, 2
+    state purpose, <File identification>
+  state mag3
+    state name, <EI_MAG3>
+    state value, 3
+    state purpose, <File identification>
+  state class
+    state name, <EI_CLASS>
+    state value, 4
+    state purpose, <File class>
+  state data
+    state name, <EI_DATA>
+    state value, 5
+    state purpose, <Data encoding>
+  state version
+    state name, <EI_VERSION>
+    state value, 6
+    state purpose, <File version>
+  state osabi
+    state name, <EI_OSABI>
+    state value, 7
+    state purpose, <Operating system/ABI identification>
+  state abiversion
+    state name, <EI_ABIVERSION>
+    state value, 8
+    state purpose, <ABI version>
+  state pad
+    state name, <EI_PAD>
+    state value, 9
+    state purpose, <Start of padding bytes>
+  state nident
+    state name, <EI_NIDENT>
+    state value, 16
+    state purpose, <Size of e_ident[]>
+
+state magic
+  state 0
+    state name, <ELFMAG0>
+    state value, #x7f
+    state position, e_ident[EI_MAG0]
+  state 1
+    state name, <ELFMAG1>
+    state value, 'E'
+    state position, e_ident[EI_MAG1]
+  state 2
+    state name, <ELFMAG2>
+    state value, 'L'
+    state position, e_ident[EI_MAG2]
+  state 3
+    state name, <ELFMAG3>
+    state value, 'F'
+    state position, e_ident[EI_MAG3]
+
+state class
+  state none
+    state name, <ELFCLASSNONE>
+    state value, 0
+    state description, <Invalid class>
+  state 32
+    state name, <ELFCLASS32>
+    state value, 1
+    state description, <32–bit objects>
+  state 64
+    state name, <ELFCLASS64>
+    state value, 2
+    state description, <64–bit objects>
+
+state data
+  state none
+    state name, <ELFDATANONE>
+    state value, 0
+    state description, <Invalid data encoding>
+  state 2lsb
+    state name, <ELFDATA2LSB>
+    state value, 1
+    state description, <See Figure 12-2.>
+  state 2msb
+    state name, <ELFDATA2MSB>
+    state value, 2
+    state description, <See Figure 12-3.>
+
+state special-section-index
+  state undef
+    state name, <SHN_UNDEF>
+    state value, 0
+  state loreserve
+    state name, <SHN_LORESERVE>
+    state value, #xff00
+  state loproc
+    state name, <SHN_LOPROC>
+    state value, #xff00
+  state before
+    state name, <SHN_BEFORE>
+    state value, #xff00
+  state after
+    state name, <SHN_AFTER>
+    state value, #xff01
+  state amd64-lcommon
+    state name, <SHN_AMD64_LCOMMON>
+    state value, #xff02
+  state hiproc
+    state name, <SHN_HIPROC>
+    state value, #xff1f
+  state loos
+    state name, <SHN_LOOS>
+    state value, #xff20
+  state losunw
+    state name, <SHN_LOSUNW>
+    state value, #xff3f
+  state sunw-ignore
+    state name, <SHN_SUNW_IGNORE>
+    state value, #xff3f
+  state hisunw
+    state name, <SHN_HISUNW>
+    state value, #xff3f
+  state hios
+    state name, <SHN_HIOS>
+    state value, #xff3f
+  state abs
+    state name, <SHN_ABS>
+    state value, #xfff1
+  state common
+    state name, <SHN_COMMON>
+    state value, #xfff2
+  state xindex
+    state name, <SHN_XINDEX>
+    state value, #xffff
+  state hireserve
+    state name, <SHN_HIRESERVE>
+    state value, #xffff
+
+state section-type
+  state null
+    state name, <SHT_NULL>
+    state value, 0
+  state progbits
+    state name, <SHT_PROGBITS>
+    state value, 1
+  state symtab
+    state name, <SHT_SYMTAB>
+    state value, 2
+  state strtab
+    state name, <SHT_STRTAB>
+    state value, 3
+  state rela
+    state name, <SHT_RELA>
+    state value, 4
+  state hash
+    state name, <SHT_HASH>
+    state value, 5
+  state dynamic
+    state name, <SHT_DYNAMIC>
+    state value, 6
+  state note
+    state name, <SHT_NOTE>
+    state value, 7
+  state nobits
+    state name, <SHT_NOBITS>
+    state value, 8
+  state rel
+    state name, <SHT_REL>
+    state value, 9
+  state shlib
+    state name, <SHT_SHLIB>
+    state value, 10
+  state dynsym
+    state name, <SHT_DYNSYM>
+    state value, 11
+  state init-array
+    state name, <SHT_INIT_ARRAY>
+    state value, 14
+  state fini-array
+    state name, <SHT_FINI_ARRAY>
+    state value, 15
+  state preinit-array
+    state name, <SHT_PREINIT_ARRAY>
+    state value, 16
+  state group
+    state name, <SHT_GROUP>
+    state value, 17
+  state symtab-shndx
+    state name, <SHT_SYMTAB_SHNDX>
+    state value, 18
+  state loos
+    state name, <SHT_LOOS>
+    state value, #x60000000
+  state losunw
+    state name, <SHT_LOSUNW>
+    state value, #x6fffffef
+  state sunw-capchain
+    state name, <SHT_SUNW_capchain>
+    state value, #x6fffffef
+  state sunw-capinfo
+    state name, <SHT_SUNW_capinfo>
+    state value, #x6ffffff0
+  state sunw-symsort
+    state name, <SHT_SUNW_symsort>
+    state value, #x6ffffff1
+  state sunw-tlssort
+    state name, <SHT_SUNW_tlssort>
+    state value, #x6ffffff2
+  state sunw-ldynsym
+    state name, <SHT_SUNW_LDYNSYM>
+    state value, #x6ffffff3
+  state sunw-dof
+    state name, <SHT_SUNW_dof>
+    state value, #x6ffffff4
+  state sunw-cap
+    state name, <SHT_SUNW_cap>
+    state value, #x6ffffff5
+  state sunw-signature
+    state name, <SHT_SUNW_SIGNATURE>
+    state value, #x6ffffff6
+  state sunw-annotate
+    state name, <SHT_SUNW_ANNOTATE>
+    state value, #x6ffffff7
+  state sunw-debugstr
+    state name, <SHT_SUNW_DEBUGSTR>
+    state value, #x6ffffff8
+  state sunw-debug
+    state name, <SHT_SUNW_DEBUG>
+    state value, #x6ffffff9
+  state sunw-move
+    state name, <SHT_SUNW_move>
+    state value, #x6ffffffa
+  state sunw-comdat
+    state name, <SHT_SUNW_COMDAT>
+    state value, #x6ffffffb
+  state sunw-syminfo
+    state name, <SHT_SUNW_syminfo>
+    state value, #x6ffffffc
+  state sunw-verdef
+    state name, <SHT_SUNW_verdef>
+    state value, #x6ffffffd
+  state sunw-verneed
+    state name, <SHT_SUNW_verneed>
+    state value, #x6ffffffe
+  state sunw-versym
+    state name, <SHT_SUNW_versym>
+    state value, #x6fffffff
+  state hisunw
+    state name, <SHT_HISUNW>
+    state value, #x6fffffff
+  state hios
+    state name, <SHT_HIOS>
+    state value, #x6fffffff
+  state loproc
+    state name, <SHT_LOPROC>
+    state value, #x70000000
+  state gotdata
+    state name, <SHT_SPARC_GOTDATA>
+    state value, #x70000000
+  state amd64-unwind
+    state name, <SHT_AMD64_UNWIND>
+    state value, #x70000001
+  state hiproc
+    state name, <SHT_HIPROC>
+    state value, #x7fffffff
+  state louser
+    state name, <SHT_LOUSER>
+    state value, #x80000000
+  state hiuser
+    state name, <SHT_HIUSER>
+    state value, #xffffffff
+
+state section-header-table-entry-index
+  state name
+    state name, <sh_name>
+    state value, 0
+    state description, <No name>
+  state type
+    state name, <sh_type>
+    state value, SHT_NULL
+    state description, <Inactive>
+  state flags
+    state name, <sh_flags>
+    state value, 0
+    state description, <No flags>
+  state addr
+    state name, <sh_addr>
+    state value, 0
+    state description, <No address>
+  state offset
+    state name, <sh_offset>
+    state value, 0
+    state description, <No file offset>
+  state size
+    state name, <sh_size>
+    state value, 0
+    state description, <No size>
+  state link
+    state name, <sh_link>
+    state value, SHN_UNDEF
+    state description, <No link>
+  state info
+    state name, <sh_info>
+    state value, 0
+    state description, <No auxiliary information>
+  state addralign
+    state name, <sh_addralign>
+    state value, 0
+    state description, <No alignment>
+  state entsize
+    state name, <sh_entsize>
+    state value, 0
+    state description, <No entries>
+
+state extended-section-header-table-entry-index
+  state name
+    state name, <sh_name>
+    state value, 0
+    state description, <No name>
+  state type
+    state name, <sh_type>
+    state value, SHT_NULL
+    state description, <Inactive>
+  state flags
+    state name, <sh_flags>
+    state value, 0
+    state description, <No flags>
+  state addr
+    state name, <sh_addr>
+    state value, 0
+    state description, <No address>
+  state offset
+    state name, <sh_offset>
+    state value, 0
+    state description, <No file offset>
+  state size
+    state name, <sh_size>
+    state value, e_shnum
+    state description, <The number of entries in the section header table>
+  state link
+    state name, <sh_link>
+    state value, e_shstrndx
+    state description, <The section header index of the entry that is associated with the section name string table>
+  state info
+    state name, <sh_info>
+    state value, e_phnum
+    state description, <The number of entries in the program header table>
+  state addralign
+    state name, <sh_addralign>
+    state value, 0
+    state description, <No alignment>
+  state entsize
+    state name, <sh_entsize>
+    state value, 0
+    state description, <No entries>
+
+state section-attribute-flag
+  state write
+    state name, <SHF_WRITE>
+    state value, #x1
+  state alloc
+    state name, <SHF_ALLOC>
+    state value, #x2
+  state execinstr
+    state name, <SHF_EXECINSTR>
+    state value, #x4
+  state merge
+    state name, <SHF_MERGE>
+    state value, #x10
+  state strings
+    state name, <SHF_STRINGS>
+    state value, #x20
+  state info-link
+    state name, <SHF_INFO_LINK>
+    state value, #x40
+  state link-order
+    state name, <SHF_LINK_ORDER>
+    state value, #x80
+  state os-nonconforming
+    state name, <SHF_OS_NONCONFORMING>
+    state value, #x100
+  state group
+    state name, <SHF_GROUP>
+    state value, #x200
+  state tls
+    state name, <SHF_TLS>
+    state value, #x400
+  state maskos
+    state name, <SHF_MASKOS>
+    state value, #x0ff00000
+  state amd64-large
+    state name, <SHF_AMD64_LARGE>
+    state value, #x10000000
+  state ordered
+    state name, <SHF_ORDERED>
+    state value, #x40000000
+  state exclude
+    state name, <SHF_EXCLUDE>
+    state value, #x80000000
+  state maskproc
+    state name, <SHF_MASKPROC>
+    state value, #xf0000000
+
+state sh-link
+  state dynamic
+    state sh_type, <SHT_DYNAMIC>
+    state sh_link, <The section header index of the associated string table.>
+    state sh_info, <0>
+  state hash
+    state sh_type, <SHT_HASH>
+    state sh_link, <The section header index of the associated symbol table.>
+    state sh_info, <0>
+  state relsht-rela
+    state sh_type, <SHT_RELSHT_RELA>
+    state sh_link, <The section header index of the associated symbol table.
+    state sh_info, <If the sh_flags member contains the SHF_INFO_LINK flag, the <section header index of the section to which the relocation applies, otherwise 0. See also Table 12-10 and Relocation Sections.>
+  state symtabsht-dynsym
+    state sh_type, <SHT_SYMTABSHT_DYNSYM>
+    state sh_link, <The section header index of the associated string table.
+    state sh_info, <One greater than the symbol table index of the last local <symbol, STB_LOCAL.>
+  state group
+    state sh_type, <SHT_GROUP>
+    state sh_link, <The section header index of the associated symbol table.
+    state sh_info, <The symbol table index of an entry in the associated symbol <table. The name of the specified symbol table entry provides a signature for the section group.>
+  state symtab-shndx
+    state sh_type, <SHT_SYMTAB_SHNDX>
+    state sh_link, <The section header index of the associated symbol table.
+    state sh_info, <0|>
+  state sunw-cap
+    state sh_type, <SHT_SUNW_cap>
+    state sh_link, <If symbol capabilities exist, the section header index of the associated SHT_SUNW_capinfo table, otherwise 0.
+    state sh_info, <If any capabilities refer to named strings, the section <header index of the associated string table, otherwise 0.>
+  state sunw-capinfo
+    state sh_type, <SHT_SUNW_capinfo>
+    state sh_link, <The section header index of the associated symbol table.>
+    state sh_info, <For a dynamic object, the section header index of the associated SHT_SUNW_capchain table, otherwise 0.>
+  state sunw-symsort
+    state sh_type, <SHT_SUNW_symsort>
+    state sh_link, <The section header index of the associated symbol table.>
+    state sh_info, <0>
+  state sunw-tlssort
+    state sh_type, <SHT_SUNW_tlssort>
+    state sh_link, <The section header index of the associated symbol table.>
+    state sh_info, <0>
+  state sunw-ldynsym
+    state sh_type, <SHT_SUNW_LDYNSYM>
+    state sh_link, <The section header index of the associated string table. This index is the same string table used by the SHT_DYNSYM section.>
+    state sh_info, <One greater than the symbol table index of the last local symbol, STB_LOCAL. Since SHT_SUNW_LDYNSYM only contains local symbols, sh_info is equivalent to the number of symbols in the table.>
+  state sunw-move
+    state sh_type, <SHT_SUNW_move>
+    state sh_link, <The section header index of the associated symbol table.>
+    state sh_info, <0>
+  state sunw-comdat
+    state sh_type, <SHT_SUNW_COMDAT>
+    state sh_link, <0>
+    state sh_info, <0>
+  state sunw-syminfo
+    state sh_type, <SHT_SUNW_syminfo>
+    state sh_link, <The section header index of the associated symbol table.>
+    state sh_info, <The section header index of the associated .dynamic section.>
+  state sunw-verdef
+    state sh_type, <SHT_SUNW_verdef>
+    state sh_link, <The section header index of the associated string table.>
+    state sh_info, <The number of version definitions within the section.>
+  state sunw-verneed
+    state sh_type, <SHT_SUNW_verneed>
+    state sh_link, <The section header index of the associated string table.>
+    state sh_info, <The number of version dependencies within the section.>
+  state sunw-versym
+    state sh_type, <SHT_SUNW_versym>
+    state sh_link, <The section header index of the associated symbol table.>
+    state sh_info, <0>
+
+state special-section
+  state bss
+    state name, <.bss>
+    state type, <SHT_NOBITS>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state comment
+    state name, <.comment>
+    state type, <SHT_PROGBITS>
+    state attribute, <None>
+  state data
+    state name, <.data>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state data-1
+    state name, <.data-1>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state dynamic
+    state name, <.dynamic>
+    state type, <SHT_DYNAMIC>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state dynstr
+    state name, <.dynstr>
+    state type, <SHT_STRTAB>
+    state attribute, <SHF_ALLOC>
+  state dynsym
+    state name, <.dynsym>
+    state type, <SHT_DYNSYM>
+    state attribute, <SHF_ALLOC>
+  state eh-frame-hdr
+    state name, <.eh_frame_hdr>
+    state type, <SHT_AMD64_UNWIND>
+    state attribute, <SHF_ALLOC>
+  state eh-frame
+    state name, <.eh_frame>
+    state type, <SHT_AMD64_UNWIND>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state fini
+    state name, <.fini>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC + SHF_EXECINSTR>
+  state fini-array
+    state name, <.fini_array>
+    state type, <SHT_FINI_ARRAY>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state got
+    state name, <.got>
+    state type, <SHT_PROGBITS>
+    state attribute, <See Global Offset Table (Processor-Specific)>
+  state hash
+    state name, <.hash>
+    state type, <SHT_HASH>
+    state attribute, <SHF_ALLOC>
+  state init
+    state name, <.init>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC + SHF_EXECINSTR>
+  state init-array
+    state name, <.init_array>
+    state type, <SHT_INIT_ARRAY>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state interp
+    state name, <.interp>
+    state type, <SHT_PROGBITS>
+    state attribute, <See Program Interpreter>
+  state note
+    state name, <.note>
+    state type, <SHT_NOTE>
+    state attribute, <None>
+  state lbss
+    state name, <.lbss>
+    state type, <SHT_NOBITS>
+    state attribute, <SHF_ALLOC + SHF_WRITE + SHF_AMD64_LARGE>
+  state ldata-ldata1
+    state name, <.ldata, .ldata1>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC + SHF_WRITE + SHF_AMD64_LARGE>
+  state lrodata-lrodata1
+    state name, <.lrodata, .lrodata1>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC + SHF_AMD64_LARGE>
+  state plt
+    state name, <.plt>
+    state type, <SHT_PROGBITS>
+    state attribute, <See Procedure Linkage Table (Processor-Specific)>
+  state preinit-array
+    state name, <.preinit_array>
+    state type, <SHT_PREINIT_ARRAY>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state rela
+    state name, <.rela>
+    state type, <SHT_RELA>
+    state attribute, <None>
+  state relname
+    state name, <.relname>
+    state type, <SHT_REL>
+    state attribute, <See Relocation Sections>
+  state relaname
+    state name, <.relaname>
+    state type, <SHT_RELA>
+    state attribute, <See Relocation Sections>
+  state rodata-rodata1
+    state name, <.rodata, .rodata1>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC>
+  state shstrtab
+    state name, <.shstrtab>
+    state type, <SHT_STRTAB>
+    state attribute, <None>
+  state strtab
+    state name, <.strtab>
+    state type, <SHT_STRTAB>
+    state attribute, <Refer to the explanation following this table.>
+  state symtab
+    state name, <.symtab>
+    state type, <SHT_SYMTAB>
+    state attribute, <See Symbol Table Section>
+  state symtab-shndx
+    state name, <.symtab_shndx>
+    state type, <SHT_SYMTAB_SHNDX>
+    state attribute, <See Symbol Table Section>
+  state tbss
+    state name, <.tbss>
+    state type, <SHT_NOBITS>
+    state attribute, <SHF_ALLOC + SHF_WRITE + SHF_TLS>
+  state tdata-tdata1
+    state name, <.tdata, .tdata1>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC + SHF_WRITE + SHF_TLS>
+  state text
+    state name, <.text>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC + SHF_EXECINSTR>
+  state sunw-bss
+    state name, <.SUNW_bss>
+    state type, <SHT_NOBITS>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state sunw-cap
+    state name, <.SUNW_cap>
+    state type, <SHT_SUNW_cap>
+    state attribute, <SHF_ALLOC>
+  state sunw-capchain
+    state name, <.SUNW_capchain>
+    state type, <SHT_SUNW_capchain>
+    state attribute, <SHF_ALLOC>
+  state sunw-capinfo
+    state name, <.SUNW_capinfo>
+    state type, <SHT_SUNW_capinfo>
+    state attribute, <SHF_ALLOC>
+  state sunw-heap
+    state name, <.SUNW_heap>
+    state type, <SHT_PROGBITS>
+    state attribute, <SHF_ALLOC + SHF_WRITE>
+  state sunw-ldynsym
+    state name, <.SUNW_ldynsym>
+    state type, <SHT_SUNW_LDYNSYM>
+    state attribute, <SHF_ALLOC>
+  state sunw-dynsymsort
+    state name, <.SUNW_dynsymsort>
+    state type, <SHT_SUNW_symsort>
+    state attribute, <SHF_ALLOC>
+  state sunw-dymtlssort
+    state name, <.SUNW_dymtlssort>
+    state type, <SHT_SUNW_tlssort>
+    state attribute, <SHF_ALLOC>
+  state sunw-move
+    state name, <.SUNW_move>
+    state type, <SHT_SUNW_move>
+    state attribute, <SHF_ALLOC>
+  state sunw-reloc
+    state name, <.SUNW_reloc>
+    state type, <SHT_RELSHT_RELA>
+    state attribute, <SHF_ALLOC>
+  state sunw-syminfo
+    state name, <.SUNW_syminfo>
+    state type, <SHT_SUNW_syminfo>
+    state attribute, <SHF_ALLOC>
+  state sunw-version
+    state name, <.SUNW_version>
+    state type, <SHT_SUNW_verdefSHT_SUNW_verneedSHT_SUNW_versym>
+    state attribute, <SHF_ALLOC>
+
+state group-section-flag
+  state grp-comdat
+    state name, <GRP_COMDAT>
+    state value, #x1
+
+state capability-array-tag
+  state sunw-null
+    state name, <CA_SUNW_NULL>
+    state value, 0
+  state sunw-hw-1
+    state name, <CA_SUNW_HW_1>
+    state value, 1
+  state sunw-sf-1
+    state name, <CA_SUNW_SF_1>
+    state value, 2
+  state sunw-hw-2
+    state name, <CA_SUNW_HW_2>
+    state value, 3
+  state sunw-plat
+    state name, <CA_SUNW_PLAT>
+    state value, 4
+  state sunw-mach
+    state name, <CA_SUNW_MACH>
+    state value, 5
+  state sunw-id
+    state name, <CA_SUNW_ID>
+    state value, 6
+
+state sparc-relocation-type
+  state none
+    state name, <R_SPARC_NONE>
+    state value, 0
+    state field, None
+    state calculation, <None>
+  state 8
+    state name, <R_SPARC_8>
+    state value, 1
+    state field, V-byte8
+    state calculation, <S + A>
+  state 16
+    state name, <R_SPARC_16>
+    state value, 2
+    state field, V-half16
+    state calculation, <S + A>
+  state 32
+    state name, <R_SPARC_32>
+    state value, 3
+    state field, V-word32
+    state calculation, <S + A>
+  state disp8
+    state name, <R_SPARC_DISP8>
+    state value, 4
+    state field, V-byte8
+    state calculation, <S + A - P>
+  state disp16
+    state name, <R_SPARC_DISP16>
+    state value, 5
+    state field, V-half16
+    state calculation, <S + A - P>
+  state disp32
+    state name, <R_SPARC_DISP32>
+    state value, 6
+    state field, V-disp32
+    state calculation, <S + A - P>
+  state wdisp30
+    state name, <R_SPARC_WDISP30>
+    state value, 7
+    state field, V-disp30
+    state calculation, <(S + A - P) > 2>
+  state wdisp22
+    state name, <R_SPARC_WDISP22>
+    state value, 8
+    state field, V-disp22
+    state calculation, <(S + A - P) > 2>
+  state hi22
+    state name, <R_SPARC_HI22>
+    state value, 9
+    state field, T-imm22
+    state calculation, <(S + A) > 10>
+  state 22
+    state name, <R_SPARC_22>
+    state value, 10
+    state field, V-imm22
+    state calculation, <S + A>
+  state 13
+    state name, <R_SPARC_13>
+    state value, 11
+    state field, V-simm13
+    state calculation, <S + A>
+  state lo10
+    state name, <R_SPARC_LO10>
+    state value, 12
+    state field, T-simm13
+    state calculation, <(S + A) & #x3ff>
+  state got10
+    state name, <R_SPARC_GOT10>
+    state value, 13
+    state field, T-simm13
+    state calculation, <G & #x3ff>
+  state got13
+    state name, <R_SPARC_GOT13>
+    state value, 14
+    state field, V-simm13
+    state calculation, <G>
+  state got22
+    state name, <R_SPARC_GOT22>
+    state value, 15
+    state field, T-simm22
+    state calculation, <G > 10>
+  state pc10
+    state name, <R_SPARC_PC10>
+    state value, 16
+    state field, T-simm13
+    state calculation, <(S + A - P) & #x3ff>
+  state pc22
+    state name, <R_SPARC_PC22>
+    state value, 17
+    state field, V-disp22
+    state calculation, <(S + A - P) > 10>
+  state wplt30
+    state name, <R_SPARC_WPLT30>
+    state value, 18
+    state field, V-disp30
+    state calculation, <(L + A - P) > 2>
+  state copy
+    state name, <R_SPARC_COPY>
+    state value, 19
+    state field, None
+    state calculation, <Refer to the explanation following this table.>
+  state glob-dat
+    state name, <R_SPARC_GLOB_DAT>
+    state value, 20
+    state field, V-word32
+    state calculation, <S + A>
+  state jmp-slot
+    state name, <R_SPARC_JMP_SLOT>
+    state value, 21
+    state field, None
+    state calculation, <Refer to the explanation following this table.>
+  state relative
+    state name, <R_SPARC_RELATIVE>
+    state value, 22
+    state field, V-word32
+    state calculation, <B + A>
+  state ua32
+    state name, <R_SPARC_UA32>
+    state value, 23
+    state field, V-word32
+    state calculation, <S + A>
+  state plt32
+    state name, <R_SPARC_PLT32>
+    state value, 24
+    state field, V-word32
+    state calculation, <L + A>
+  state hiplt22
+    state name, <R_SPARC_HIPLT22>
+    state value, 25
+    state field, T-imm22
+    state calculation, <(L + A) > 10>
+  state loplt10
+    state name, <R_SPARC_LOPLT10>
+    state value, 26
+    state field, T-simm13
+    state calculation, <(L + A) & #x3ff>
+  state pcplt32
+    state name, <R_SPARC_PCPLT32>
+    state value, 27
+    state field, V-word32
+    state calculation, <L + A - P>
+  state pcplt22
+    state name, <R_SPARC_PCPLT22>
+    state value, 28
+    state field, V-disp22
+    state calculation, <(L + A - P) > 10>
+  state pcplt10
+    state name, <R_SPARC_PCPLT10>
+    state value, 29
+    state field, V-simm13
+    state calculation, <(L + A - P) & #x3ff>
+  state 10
+    state name, <R_SPARC_10>
+    state value, 30
+    state field, V-simm10
+    state calculation, <S + A>
+  state 11
+    state name, <R_SPARC_11>
+    state value, 31
+    state field, V-simm11
+    state calculation, <S + A>
+  state hh22
+    state name, <R_SPARC_HH22>
+    state value, 34
+    state field, V-imm22
+    state calculation, <(S + A) > 42>
+  state hm10
+    state name, <R_SPARC_HM10>
+    state value, 35
+    state field, T-simm13
+    state calculation, <((S + A) > 32) & #x3ff>
+  state lm22
+    state name, <R_SPARC_LM22>
+    state value, 36
+    state field, T-imm22
+    state calculation, <(S + A) > 10>
+  state pc-hh22
+    state name, <R_SPARC_PC_HH22>
+    state value, 37
+    state field, V-imm22
+    state calculation, <(S + A - P) > 42>
+  state pc-hm10
+    state name, <R_SPARC_PC_HM10>
+    state value, 38
+    state field, T-simm13
+    state calculation, <((S + A - P) > 32) & #x3ff>
+  state pc-lm22
+    state name, <R_SPARC_PC_LM22>
+    state value, 39
+    state field, T-imm22
+    state calculation, <(S + A - P) > 10>
+  state wdisp16
+    state name, <R_SPARC_WDISP16>
+    state value, 40
+    state field, V-d2/disp14
+    state calculation, <(S + A - P) > 2>
+  state wdisp19
+    state name, <R_SPARC_WDISP19>
+    state value, 41
+    state field, V-disp19
+    state calculation, <(S + A - P) > 2>
+  state 7
+    state name, <R_SPARC_7>
+    state value, 43
+    state field, V-imm7
+    state calculation, <S + A>
+  state 5
+    state name, <R_SPARC_5>
+    state value, 44
+    state field, V-imm5
+    state calculation, <S + A>
+  state 6
+    state name, <R_SPARC_6>
+    state value, 45
+    state field, V-imm6
+    state calculation, <S + A>
+  state hix22
+    state name, <R_SPARC_HIX22>
+    state value, 48
+    state field, V-imm22
+    state calculation, <((S + A) ^ #xffffffffffffffff) > 10>
+  state lox10
+    state name, <R_SPARC_LOX10>
+    state value, 49
+    state field, T-simm13
+    state calculation, <((S + A) & #x3ff) < 0x1c00>
+  state h44
+    state name, <R_SPARC_H44>
+    state value, 50
+    state field, V-imm22
+    state calculation, <(S + A) > 22>
+  state m44
+    state name, <R_SPARC_M44>
+    state value, 51
+    state field, T-imm10
+    state calculation, <((S + A) > 12) & #x3ff>
+  state l44
+    state name, <R_SPARC_L44>
+    state value, 52
+    state field, T-imm13
+    state calculation, <(S + A) & #xfff>
+  state register
+    state name, <R_SPARC_REGISTER>
+    state value, 53
+    state field, V-word32
+    state calculation, <S + A>
+  state ua16
+    state name, <R_SPARC_UA16>
+    state value, 55
+    state field, V-half16
+    state calculation, <S + A>
+  state gotdata-hix22
+    state name, <R_SPARC_GOTDATA_HIX22>
+    state value, 80
+    state field, V-imm22
+    state calculation, <((S + A - GOT) > 10) ^ ((S + A - GOT) > 31)>
+  state gotdata-lox10
+    state name, <R_SPARC_GOTDATA_LOX10>
+    state value, 81
+    state field, T-imm13
+    state calculation, <((S + A - GOT) & #x3ff) < (((S + A - GOT) > 31) & <0x1c00)
+  state gotdata-op-hix22
+    state name, <R_SPARC_GOTDATA_OP_HIX22>
+    state value, 82
+    state field, T-imm22
+    state calculation, <(G > 10) ^ (G > 31)>
+  state gotdata-op-lox10
+    state name, <R_SPARC_GOTDATA_OP_LOX10>
+    state value, 83
+    state field, T-imm13
+    state calculation, <(G & #x3ff) < ((G > 31) & 0x1c00)>
+  state gotdata-op
+    state name, <R_SPARC_GOTDATA_OP>
+    state value, 84
+    state field, Word32
+    state calculation, <Refer to the explanation following this table.>
+  state size32
+    state name, <R_SPARC_SIZE32>
+    state value, 86
+    state field, V-word32
+    state calculation, <Z + A>
+  state wdisp10
+    state name, <R_SPARC_WDISP10>
+    state value, 88
+    state field, V-d2/disp8
+    state calculation, <(S + A - P) > 2>
+
+state 64-bit-sparc-relocation-type
+  state hi22
+    state name, <R_SPARC_HI22>
+    state value, 9
+    state field, V-imm22
+    state calculation, <(S + A) > 10>
+  state glob-dat
+    state name, <R_SPARC_GLOB_DAT>
+    state value, 20
+    state field, V-xword64
+    state calculation, <S + A>
+  state relative
+    state name, <R_SPARC_RELATIVE>
+    state value, 22
+    state field, V-xword64
+    state calculation, <B + A>
+  state 64
+    state name, <R_SPARC_64>
+    state value, 32
+    state field, V-xword64
+    state calculation, <S + A>
+  state olo10
+    state name, <R_SPARC_OLO10>
+    state value, 33
+    state field, V-simm13
+    state calculation, <((S + A) & #x3ff) + O>
+  state disp64
+    state name, <R_SPARC_DISP64>
+    state value, 46
+    state field, V-xword64
+    state calculation, <S + A - P>
+  state plt64
+    state name, <R_SPARC_PLT64>
+    state value, 47
+    state field, V-xword64
+    state calculation, <L + A>
+  state register
+    state name, <R_SPARC_REGISTER>
+    state value, 53
+    state field, V-xword64
+    state calculation, <S + A>
+  state ua64
+    state name, <R_SPARC_UA64>
+    state value, 54
+    state field, V-xword64
+    state calculation, <S + A>
+  state h34
+    state name, <R_SPARC_H34>
+    state value, 85
+    state field, V-imm22
+    state calculation, <(S + A) > 12>
+  state size64
+    state name, <R_SPARC_SIZE64>
+    state value, 87
+    state field, V-xword64
+    state calculation, <Z + A>
+
+state 32-bit-x86-relocation-type
+  state 386-none
+    state name, <R_386_NONE>
+    state value, 0
+    state field, None
+    state calculation, <None>
+  state 386-32
+    state name, <R_386_32>
+    state value, 1
+    state field, word32
+    state calculation, <S + A>
+  state 386-pc32
+    state name, <R_386_PC32>
+    state value, 2
+    state field, word32
+    state calculation, <S + A - P>
+  state 386-got32
+    state name, <R_386_GOT32>
+    state value, 3
+    state field, word32
+    state calculation, <G + A>
+  state 386-plt32
+    state name, <R_386_PLT32>
+    state value, 4
+    state field, word32
+    state calculation, <L + A - P>
+  state 386-copy
+    state name, <R_386_COPY>
+    state value, 5
+    state field, None
+    state calculation, <Refer to the explanation following this table.>
+  state 386-glob-dat
+    state name, <R_386_GLOB_DAT>
+    state value, 6
+    state field, word32
+    state calculation, <S>
+  state 386-jmp-slot
+    state name, <R_386_JMP_SLOT>
+    state value, 7
+    state field, word32
+    state calculation, <S>
+  state 386-relative
+    state name, <R_386_RELATIVE>
+    state value, 8
+    state field, word32
+    state calculation, <B + A>
+  state 386-gotoff
+    state name, <R_386_GOTOFF>
+    state value, 9
+    state field, word32
+    state calculation, <S + A - GOT>
+  state 386-gotpc
+    state name, <R_386_GOTPC>
+    state value, 10
+    state field, word32
+    state calculation, <GOT + A - P>
+  state 386-32plt
+    state name, <R_386_32PLT>
+    state value, 11
+    state field, word32
+    state calculation, <L + A>
+  state 386-16
+    state name, <R_386_16>
+    state value, 20
+    state field, word16
+    state calculation, <S + A>
+  state 386-pc16
+    state name, <R_386_PC16>
+    state value, 21
+    state field, word16
+    state calculation, <S + A - P>
+  state 386-8
+    state name, <R_386_8>
+    state value, 22
+    state field, word8
+    state calculation, <S + A>
+  state 386-pc8
+    state name, <R_386_PC8>
+    state value, 23
+    state field, word8
+    state calculation, <S + A - P>
+  state 386-size32
+    state name, <R_386_SIZE32>
+    state value, 38
+    state field, word32
+    state calculation, <Z + A>
+
+state x64-elf-relocation-types
+  state amd64-none
+    state name, <R_AMD64_NONE>
+    state value, 0
+    state field, None
+    state calculation, <None>
+  state amd64-64
+    state name, <R_AMD64_64>
+    state value, 1
+    state field, word64
+    state calculation, <S + A>
+  state amd64-pc32
+    state name, <R_AMD64_PC32>
+    state value, 2
+    state field, word32
+    state calculation, <S + A - P>
+  state amd64-got32
+    state name, <R_AMD64_GOT32>
+    state value, 3
+    state field, word32
+    state calculation, <G + A>
+  state amd64-plt32
+    state name, <R_AMD64_PLT32>
+    state value, 4
+    state field, word32
+    state calculation, <L + A - P>
+  state amd64-copy
+    state name, <R_AMD64_COPY>
+    state value, 5
+    state field, None
+    state calculation, <Refer to the explanation following this table.>
+  state amd64-glob-dat
+    state name, <R_AMD64_GLOB_DAT>
+    state value, 6
+    state field, word64
+    state calculation, <S>
+  state amd64-jump-slot
+    state name, <R_AMD64_JUMP_SLOT>
+    state value, 7
+    state field, word64
+    state calculation, <S>
+  state amd64-relative
+    state name, <R_AMD64_RELATIVE>
+    state value, 8
+    state field, word64
+    state calculation, <B + A>
+  state amd64-gotpcrel
+    state name, <R_AMD64_GOTPCREL>
+    state value, 9
+    state field, word32
+    state calculation, <G + GOT + A - P>
+  state amd64-32
+    state name, <R_AMD64_32>
+    state value, 10
+    state field, word32
+    state calculation, <S + A>
+  state amd64-32s
+    state name, <R_AMD64_32S>
+    state value, 11
+    state field, word32
+    state calculation, <S + A>
+  state amd64-16
+    state name, <R_AMD64_16>
+    state value, 12
+    state field, word16
+    state calculation, <S + A>
+  state amd64-pc16
+    state name, <R_AMD64_PC16>
+    state value, 13
+    state field, word16
+    state calculation, <S + A - P>
+  state amd64-8
+    state name, <R_AMD64_8>
+    state value, 14
+    state field, word8
+    state calculation, <S + A>
+  state amd64-pc8
+    state name, <R_AMD64_PC8>
+    state value, 15
+    state field, word8
+    state calculation, <S + A - P>
+  state amd64-pc64
+    state name, <R_AMD64_PC64>
+    state value, 24
+    state field, word64
+    state calculation, <S + A - P>
+  state amd64-gotoff64
+    state name, <R_AMD64_GOTOFF64>
+    state value, 25
+    state field, word64
+    state calculation, <S + A - GOT>
+  state amd64-gotpc32
+    state name, <R_AMD64_GOTPC32>
+    state value, 26
+    state field, word32
+    state calculation, <GOT + A + P>
+  state amd64-size32
+    state name, <R_AMD64_SIZE32>
+    state value, 32
+    state field, word32
+    state calculation, <Z + A>
+  state amd64-size64
+    state name, <R_AMD64_SIZE64>
+    state value, 33
+    state field, word64
+    state calculation, <Z + A>
+
+state string-table-indexes
+  state 0
+    state string, None
+  state 1
+    state string, name
+  state 7
+    state string, Variable
+  state 11
+    state string, able
+  state 16
+    state string, able
+  state 24
+    state string, null string
+
+state symbol-binding
+  state local
+    state name, <STB_LOCAL>
+    state value, 0
+  state global
+    state name, <STB_GLOBAL>
+    state value, 1
+  state weak
+    state name, <STB_WEAK>
+    state value, 2
+  state loos
+    state name, <STB_LOOS>
+    state value, 10
+  state hios
+    state name, <STB_HIOS>
+    state value, 12
+  state loproc
+    state name, <STB_LOPROC>
+    state value, 13
+  state hiproc
+    state name, <STB_HIPROC>
+    state value, 15
+
+state symbol-type
+  state notype
+    state name, <STT_NOTYPE>
+    state value, 0
+  state object
+    state name, <STT_OBJECT>
+    state value, 1
+  state func
+    state name, <STT_FUNC>
+    state value, 2
+  state section
+    state name, <STT_SECTION>
+    state value, 3
+  state file
+    state name, <STT_FILE>
+    state value, 4
+  state common
+    state name, <STT_COMMON>
+    state value, 5
+  state tls
+    state name, <STT_TLS>
+    state value, 6
+  state loos
+    state name, <STT_LOOS>
+    state value, 10
+  state hios
+    state name, <STT_HIOS>
+    state value, 12
+  state loproc
+    state name, <STT_LOPROC>
+    state value, 13
+  state register
+    state name, <STT_SPARC_REGISTER>
+    state value, 13
+  state hiproc
+    state name, <STT_HIPROC>
+    state value, 15
+
+state symbol-visibility
+  state default
+    state name, <STV_DEFAULT>
+    state value, 0
+  state internal
+    state name, <STV_INTERNAL>
+    state value, 1
+  state hidden
+    state name, <STV_HIDDEN>
+    state value, 2
+  state protected
+    state name, <STV_PROTECTED>
+    state value, 3
+  state exported
+    state name, <STV_EXPORTED>
+    state value, 4
+  state singleton
+    state name, <STV_SINGLETON>
+    state value, 5
+  state eliminate
+    state name, <STV_ELIMINATE>
+    state value, 6
+
+state symbol-table-entry-index
+  state name
+    state name, <st_name>
+    state value, 0
+    state description, <No name>
+  state value
+    state name, <st_value>
+    state value, 0
+    state description, <Zero>
+value
+  state st-size
+    state name, <st_size>
+    state value, 0
+    state description, <No size>
+  state st-info
+    state name, <st_info>
+    state value, 0
+    state description, <No type, <local binding>
+  state st-other
+    state name, <st_other>
+    state value, 0
+state st-shndx
+    state name, <st_shndx>
+    state value, SHN_UNDEF
+    state description, <No section>
+
+state sparc-elf-symbol-table-entry-register-symbol
+  state
+    state field, st_name
+    state description, <Index into the string table for the name of the symbol, or the value 0 for a scratch register.>
+  state
+    state field, st_value
+    state description, <Register number. See the ABI manual for integer register assignments.>
+  state
+    state field, st_size
+    state description, <Unused (0).>
+  state
+    state field, st_info
+    state description, <Bind is typically STB_GLOBAL, type must be STT_SPARC_REGISTER.>
+  state
+    state field, st_other
+    state description, <Unused (0).>
+  state
+    state field, st_shndx
+    state description, <SHN_ABS if this object initializes this register symbol,SHN_UNDEF otherwise.>
+
+state sparc-elf-register-numbers
+  state sto-sparc-register-g2
+    state name, <STO_SPARC_REGISTER_G2>
+    state value, #x2
+    state description, <%g2>
+  state sto-sparc-register-g3
+    state name, <STO_SPARC_REGISTER_G3>
+    state value, #x3
+    state description, <%g3>
+
+state si-boundto
+  state syminfo-bt-self
+    state name, <SYMINFO_BT_SELF>
+    state value, #xffff
+    state description, <Symbol bound to self.>
+  state syminfo-bt-parent
+    state name, <SYMINFO_BT_PARENT>
+    state value, #xfffe
+    state description, <Symbol bound to parent. The parent is the first object to cause this dynamic object to be loaded.>
+  state syminfo-bt-none
+    state name, <SYMINFO_BT_NONE>
+    state value, #xfffd
+    state description, <Symbol has no special symbol binding.>
+  state syminfo-bt-extern
+    state name, <SYMINFO_BT_EXTERN>
+    state value, #xfffc
+    state description, <Symbol definition is external.>
+
+state si-flags
+  state syminfo-flg-direct
+    state name, <SYMINFO_FLG_DIRECT>
+    state value, #x01
+    state description, <Symbol reference has a direct association to the object containing the definition.>
+  state syminfo-flg-filter
+    state name, <SYMINFO_FLG_FILTER>
+    state value, #x02
+    state description, <Symbol definition acts as a standard filter.>
+  state syminfo-flg-copy
+    state name, <SYMINFO_FLG_COPY>
+    state value, #x04
+    state description, <Symbol definition is the result of a copy-relocation.>
+  state syminfo-flg-lazyload
+    state name, <SYMINFO_FLG_LAZYLOAD>
+    state value, #x08
+    state description, <Symbol reference is to an object that should be lazily loaded.>
+  state syminfo-flg-directbind
+    state name, <SYMINFO_FLG_DIRECTBIND>
+    state value, #x10
+    state description, <Symbol reference should be bound directly to the definition.>
+  state syminfo-flg-noextdirect
+    state name, <SYMINFO_FLG_NOEXTDIRECT>
+    state value, #x20
+    state description, <Do not allow an external reference to directly bind to this symbol definition.>
+  state syminfo-flg-auxiliary
+    state name, <SYMINFO_FLG_AUXILIARY>
+    state value, #x40
+    state description, <Symbol definition acts as an auxiliary filter.>
+  state syminfo-flg-interpose
+    state name, <SYMINFO_FLG_INTERPOSE>
+    state value, #x80
+    state description, <Symbol definition acts as an interposer. This attribute is only applicable for dynamic executables.>
+  state syminfo-flg-cap
+    state name, <SYMINFO_FLG_CAP>
+    state value, #x100
+    state description, <Symbol is associated with capabilities.>
+  state syminfo-flg-deferred
+    state name, <SYMINFO_FLG_DEFERRED>
+    state value, #x200
+    state description, <Symbol should not be included in BIND_NOW relocations.>
+
+state vd-version
+  state none
+    state name, <VER_DEF_NONE>
+    state value, 0
+    state description, <Invalid version.>
+  state current
+    state name, <VER_DEF_CURRENT>
+    state value, >=1
+    state description, <Current version.>
+
+state vd-flags
+  state base
+    state name, <VER_FLG_BASE>
+    state value, #x1
+    state description, <Version definition of the file.>
+  state weak
+    state name, <VER_FLG_WEAK>
+    state value, #x2
+    state description, <Weak version identifier.>
+
+state vn-version
+  state none
+    state name, <VER_NEED_NONE>
+    state value, 0
+    state description, <Invalid version.>
+  state current
+    state name, <VER_NEED_CURRENT>
+    state value, >=1
+    state description, <Current version.>
+
+state vna-flags
+  state weak
+    state name, <VER_FLG_WEAK>
+    state value, #x2
+    state description, <Weak version identifier.>
+  state info
+    state name, <VER_FLG_INFO>
+    state value, #x4
+    state description, <SHT_SUNW_versym reference exists for informational purposes, and need not be validated at runtime.>
+
+state version-dependency-indexes
+  state local
+    state name, <VER_NDX_LOCAL>
+    state value, 0
+    state description, <Symbol has local scope.>
+  state global
+    state name, <VER_NDX_GLOBAL>
+    state value, 1
+    state description, <Symbol has global scope and is assigned to the base version definition.>
+  state
+    state value, >1
+    state description, <Symbol has global scope and is assigned to a user-defined version definition, SHT_SUNW_verdef, or a version dependency, SHT_SUNW_verneed.>
+
+state segment-type
+  state null
+    state name, <PT_NULL>
+    state value, 0
+  state load
+    state name, <PT_LOAD>
+    state value, 1
+  state dynamic
+    state name, <PT_DYNAMIC>
+    state value, 2
+  state interp
+    state name, <PT_INTERP>
+    state value, 3
+  state note
+    state name, <PT_NOTE>
+    state value, 4
+  state shlib
+    state name, <PT_SHLIB>
+    state value, 5
+  state phdr
+    state name, <PT_PHDR>
+    state value, 6
+  state tls
+    state name, <PT_TLS>
+    state value, 7
+  state loos
+    state name, <PT_LOOS>
+    state value, #x60000000
+  state sunw-unwind
+    state name, <PT_SUNW_UNWIND>
+    state value, #x6464e550
+  state sunw-eh-frame
+    state name, <PT_SUNW_EH_FRAME>
+    state value, #x6474e550
+  state losunw
+    state name, <PT_LOSUNW>
+    state value, #x6ffffffa
+  state sunwbss
+    state name, <PT_SUNWBSS>
+    state value, #x6ffffffa
+  state sunwstack
+    state name, <PT_SUNWSTACK>
+    state value, #x6ffffffb
+  state sunwdtrace
+    state name, <PT_SUNWDTRACE>
+    state value, #x6ffffffc
+  state sunwcap
+    state name, <PT_SUNWCAP>
+    state value, #x6ffffffd
+  state hisunw
+    state name, <PT_HISUNW>
+    state value, #x6fffffff
+  state hios
+    state name, <PT_HIOS>
+    state value, #x6fffffff
+  state loproc
+    state name, <PT_LOPROC>
+    state value, #x70000000
+  state hiproc
+    state name, <PT_HIPROC>
+    state value, #x7fffffff
+
+state segment-flag
+  state x
+    state name, <PF_X>
+    state value, #x1
+    state description, <Execute>
+  state w
+    state name, <PF_W>
+    state value, #x2
+    state description, <Write>
+  state r
+    state name, <PF_R>
+    state value, #x4
+    state description, <Read>
+  state maskproc
+    state name, <PF_MASKPROC>
+    state value, #xf0000000
+    state description, <Unspecified>
+
+state segment-permission
+  state 0
+    state flags, <None>
+    state exact, <All access denied>
+    state allowable, <All access denied>
+  state 1
+    state flags, <PF_X>
+    state exact, <Execute only>
+    state allowable, <Read, execute>
+  state 2
+    state flags, <PF_W>
+    state exact, <Write only>
+    state allowable, <Read, write, execute>
+  state 3
+    state flags, <PF_W + PF_X>
+    state exact, <Write, execute>
+    state allowable, <Read, write, execute>
+  state 4
+    state flags, <PF_R>
+    state exact, <Read only>
+    state allowable, <Read, execute>
+  state 5
+    state flags, <PF_R + PF_X>
+    state exact, <Read, execute>
+    state allowable, <Read, execute>
+  state 6
+    state flags, <PF_R + PF_W>
+    state exact, <Read, write>
+    state allowable, <Read, write, execute>
+  state 7
+    state flags, <PF_R + PF_W + PF_X>
+    state exact, <Read, write, execute>
+    state allowable, <Read, write, execute>
+
+state sparc-64k-alignment-program-header-segment
+  state type
+    state text, PT_LOAD
+    state data, PT_LOAD
+  state offset
+    state text, #x0
+    state data, #x4000
+  state vaddr
+    state text, #x10000
+    state data, #x24000
+  state paddr
+    state text, Unspecified
+    state data, Unspecified
+  state filesize
+    state text, #x3a82
+    state data, #x4f5
+  state memsz
+    state text, #x3a82
+    state data, #x10a4
+  state flags
+    state text, PF_R + PF_X
+    state data, PF_R + PF_W + PF_X
+  state align
+    state text, #x10000
+    state data, #x10000
+
+state 32-bit-x86-64k-alignment-program-header-segments
+  state type
+    state text, PT_LOAD
+    state data, PT_LOAD
+  state offset
+    state text, #x0
+    state data, #x4000
+  state vaddr
+    state text, #x8050000
+    state data, #x8064000
+  state paddr
+    state text, Unspecified
+    state data, Unspecified
+  state filesize
+    state text, #x32fd
+    state data, #x3a0
+  state memsz
+    state text, #x32fd
+    state data, #xdc4
+  state flags
+    state text, PF_R + PF_X
+    state data, PF_R + PF_W + PF_X
+  state align
+    state text, #x10000
+    state data, #x10000
+
+state 32-bit-sparc-example-shared-object-segment-address
+  state
+    state source, File
+    state text, #x0
+    state data, #x4000
+    state base, #x0
+  state
+    state source, Process 1
+    state text, #xc0000000
+    state data, #xc0024000
+    state base, #xc0000000
+  state
+    state source, Process 2
+    state text, #xc0010000
+    state data, #xc0034000
+    state base, #xc0010000
+  state
+    state source, Process 3
+    state text, #xd0020000
+    state data, #xd0024000
+    state base, #xd0020000
+  state
+    state source, Process 4
+    state text, #xd0030000
+    state data, #xd0034000
+    state base, #xd0030000
+
+state 32-bit-x86-elf-example-shared-object-segment-addresses
+  state
+    state source, File
+    state text, #x0
+    state data, #x4000
+    state base, #x0
+  state
+    state source, Process 1
+    state text, #x8000000
+    state data, #x8004000
+    state base, #x80000000
+  state
+    state source, Process 2
+    state text, #x80081000
+    state data, #x80085000
+    state base, #x80081000
+  state
+    state source, Process 3
+    state text, #x900c0000
+    state data, #x900c4000
+    state base, #x900c0000
+  state
+    state source, Process 4
+    state text, #x900c6000
+    state data, #x900ca000
+    state base, #x900c6000
+
+state dynamic-array-tag
+  state null
+    state name, <DT_NULL>
+    state value, 0
+    state d_un, Ignored
+    state executable, Mandatory
+    state shared-object, <Mandatory>
+  state needed
+    state name, <DT_NEEDED>
+    state value, 1
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state pltrelsz
+    state name, <DT_PLTRELSZ>
+    state value, 2
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state pltgot
+    state name, <DT_PLTGOT>
+    state value, 3
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state hash
+    state name, <DT_HASH>
+    state value, 4
+    state d_un, d_ptr
+    state executable, Mandatory
+    state shared-object, <Mandatory>
+  state strtab
+    state name, <DT_STRTAB>
+    state value, 5
+    state d_un, d_ptr
+    state executable, Mandatory
+    state shared-object, <Mandatory>
+  state symtab
+    state name, <DT_SYMTAB>
+    state value, 6
+    state d_un, d_ptr
+    state executable, Mandatory
+    state shared-object, <Mandatory>
+  state rela
+    state name, <DT_RELA>
+    state value, 7
+    state d_un, d_ptr
+    state executable, Mandatory
+    state shared-object, <Optional>
+  state relasz
+    state name, <DT_RELASZ>
+    state value, 8
+    state d_un, d_val
+    state executable, Mandatory
+    state shared-object, <Optional>
+  state relaent
+    state name, <DT_RELAENT>
+    state value, 9
+    state d_un, d_val
+    state executable, Mandatory
+    state shared-object, <Optional>
+  state strsz
+    state name, <DT_STRSZ>
+    state value, 10
+    state d_un, d_val
+    state executable, Mandatory
+    state shared-object, <Mandatory>
+  state syment
+    state name, <DT_SYMENT>
+    state value, 11
+    state d_un, d_val
+    state executable, Mandatory
+    state shared-object, <Mandatory>
+  state init
+    state name, <DT_INIT>
+    state value, 12
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state fini
+    state name, <DT_FINI>
+    state value, 13
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state soname
+    state name, <DT_SONAME>
+    state value, 14
+    state d_un, d_val
+    state executable, Ignored
+    state shared-object, <Optional>
+  state rpath
+    state name, <DT_RPATH>
+    state value, 15
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state symbolic
+    state name, <DT_SYMBOLIC>
+    state value, 16
+    state d_un, Ignored
+    state executable, Ignored
+    state shared-object, <Optional>
+  state rel
+    state name, <DT_REL>
+    state value, 17
+    state d_un, d_ptr
+    state executable, Mandatory
+    state shared-object, <Optional>
+  state relsz
+    state name, <DT_RELSZ>
+    state value, 18
+    state d_un, d_val
+    state executable, Mandatory
+    state shared-object, <Optional>
+  state relent
+    state name, <DT_RELENT>
+    state value, 19
+    state d_un, d_val
+    state executable, Mandatory
+    state shared-object, <Optional>
+  state pltrel
+    state name, <DT_PLTREL>
+    state value, 20
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state debug
+    state name, <DT_DEBUG>
+    state value, 21
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Ignored>
+  state textrel
+    state name, <DT_TEXTREL>
+    state value, 22
+    state d_un, Ignored
+    state executable, Optional
+    state shared-object, <Optional>
+  state jmprel
+    state name, <DT_JMPREL>
+    state value, 23
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state bind-now
+    state name, <DT_BIND_NOW>
+    state value, 24
+    state d_un, Ignored
+    state executable, Optional
+    state shared-object, <Optional>
+  state init-array
+    state name, <DT_INIT_ARRAY>
+    state value, 25
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state fini-array
+    state name, <DT_FINI_ARRAY>
+    state value, 26
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state init-arraysz
+    state name, <DT_INIT_ARRAYSZ>
+    state value, 27
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state fini-arraysz
+    state name, <DT_FINI_ARRAYSZ>
+    state value, 28
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state runpath
+    state name, <DT_RUNPATH>
+    state value, 29
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state flags
+    state name, <DT_FLAGS>
+    state value, 30
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state encoding
+    state name, <DT_ENCODING>
+    state value, 32
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state preinit-array
+    state name, <DT_PREINIT_ARRAY>
+    state value, 32
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Ignored>
+  state preinit-arraysz
+    state name, <DT_PREINIT_ARRAYSZ>
+    state value, 33
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Ignored>
+  state maxpostags
+    state name, <DT_MAXPOSTAGS>
+    state value, 34
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state loos
+    state name, <DT_LOOS>
+    state value, #x6000000d
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state sunw-auxiliary
+    state name, <DT_SUNW_AUXILIARY>
+    state value, #x6000000d
+    state d_un, d_ptr
+    state executable, Unspecified
+    state shared-object, <Optional>
+  state sunw-rtldinf
+    state name, <DT_SUNW_RTLDINF>
+    state value, #x6000000e
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-filter
+    state name, <DT_SUNW_FILTER>
+    state value, #x6000000e
+    state d_un, d_ptr
+    state executable, Unspecified
+    state shared-object, <Optional>
+  state sunw-cap
+    state name, <DT_SUNW_CAP>
+    state value, #x60000010
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-symtab
+    state name, <DT_SUNW_SYMTAB>
+    state value, #x60000011
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-symsz
+    state name, <DT_SUNW_SYMSZ>
+    state value, #x60000012
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-encoding
+    state name, <DT_SUNW_ENCODING>
+    state value, #x60000013
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state sunw-sortent
+    state name, <DT_SUNW_SORTENT>
+    state value, #x60000013
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-symsort
+    state name, <DT_SUNW_SYMSORT>
+    state value, #x60000014
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-symsortsz
+    state name, <DT_SUNW_SYMSORTSZ>
+    state value, #x60000015
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-tlssort
+    state name, <DT_SUNW_TLSSORT>
+    state value, #x60000016
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-tlssortsz
+    state name, <DT_SUNW_TLSSORTSZ>
+    state value, #x60000017
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-capinfo
+    state name, <DT_SUNW_CAPINFO>
+    state value, #x60000018
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-strpad
+    state name, <DT_SUNW_STRPAD>
+    state value, #x60000019
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-capchain
+    state name, <DT_SUNW_CAPCHAIN>
+    state value, #x6000001a
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-ldmach
+    state name, <DT_SUNW_LDMACH>
+    state value, #x6000001b
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-capchainent
+    state name, <DT_SUNW_CAPCHAINENT>
+    state value, #x6000001d
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state sunw-capchainsz
+    state name, <DT_SUNW_CAPCHAINSZ>
+    state value, #x6000001f
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state hios
+    state name, <DT_HIOS>
+    state value, #x6ffff000
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state valrnglo
+    state name, <DT_VALRNGLO>
+    state value, #x6ffffd00
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state checksum
+    state name, <DT_CHECKSUM>
+    state value, #x6ffffdf8
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state pltpadsz
+    state name, <DT_PLTPADSZ>
+    state value, #x6ffffdf9
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state moveent
+    state name, <DT_MOVEENT>
+    state value, #x6ffffdfa
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state movesz
+    state name, <DT_MOVESZ>
+    state value, #x6ffffdfb
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state posflag-1
+    state name, <DT_POSFLAG_1>
+    state value, #x6ffffdfd
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state syminsz
+    state name, <DT_SYMINSZ>
+    state value, #x6ffffdfe
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state syminent
+    state name, <DT_SYMINENT>
+    state value, #x6ffffdff
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state valrnghi
+    state name, <DT_VALRNGHI>
+    state value, #x6ffffdff
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state addrrnglo
+    state name, <DT_ADDRRNGLO>
+    state value, #x6ffffe00
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state config
+    state name, <DT_CONFIG>
+    state value, #x6ffffefa
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state depaudit
+    state name, <DT_DEPAUDIT>
+    state value, #x6ffffefb
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state audit
+    state name, <DT_AUDIT>
+    state value, #x6ffffefc
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state pltpad
+    state name, <DT_PLTPAD>
+    state value, #x6ffffefd
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state movetab
+    state name, <DT_MOVETAB>
+    state value, #x6ffffefe
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state syminfo
+    state name, <DT_SYMINFO>
+    state value, #x6ffffeff
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state addrrnghi
+    state name, <DT_ADDRRNGHI>
+    state value, #x6ffffeff
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state relacount
+    state name, <DT_RELACOUNT>
+    state value, #x6ffffff9
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state relcount
+    state name, <DT_RELCOUNT>
+    state value, #x6ffffffa
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state flags-1
+    state name, <DT_FLAGS_1>
+    state value, #x6ffffffb
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state verdef
+    state name, <DT_VERDEF>
+    state value, #x6ffffffc
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state verdefnum
+    state name, <DT_VERDEFNUM>
+    state value, #x6ffffffd
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state verneed
+    state name, <DT_VERNEED>
+    state value, #x6ffffffe
+    state d_un, d_ptr
+    state executable, Optional
+    state shared-object, <Optional>
+  state verneednum
+    state name, <DT_VERNEEDNUM>
+    state value, #x6fffffff
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state loproc
+    state name, <DT_LOPROC>
+    state value, #x70000000
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+  state sparc-register
+    state name, <DT_SPARC_REGISTER>
+    state value, #x70000001
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state auxiliary
+    state name, <DT_AUXILIARY>
+    state value, #x7ffffffd
+    state d_un, d_val
+    state executable, Unspecified
+    state shared-object, <Optional>
+  state used
+    state name, <DT_USED>
+    state value, #x7ffffffe
+    state d_un, d_val
+    state executable, Optional
+    state shared-object, <Optional>
+  state filter
+    state name, <DT_FILTER>
+    state value, #x7fffffff
+    state d_un, d_val
+    state executable, Unspecified
+    state shared-object, <Optional>
+  state hiproc
+    state name, <DT_HIPROC>
+    state value, #x7fffffff
+    state d_un, Unspecified
+    state executable, Unspecified
+    state shared-object, <Unspecified>
+
+state dynamic-flag
+  state origin
+    state name, <DF_ORIGIN>
+    state value, #x1
+    state description, <$ORIGIN processing required>
+  state symbolic
+    state name, <DF_SYMBOLIC>
+    state value, #x2
+    state description, <Symbolic symbol resolution required>
+  state textrel
+    state name, <DF_TEXTREL>
+    state value, #x4
+    state description, <Text relocations exist>
+  state bind-now
+    state name, <DF_BIND_NOW>
+    state value, #x8
+    state description, <Non-lazy binding required>
+  state static-tls
+    state name, <DF_STATIC_TLS>
+    state value, #x10
+    state description, <Object uses static thread-local storage scheme>
+  state 1-now
+    state name, <DF_1_NOW>
+    state value, #x1
+    state description, <Perform complete relocation processing.>
+  state 1-global
+    state name, <DF_1_GLOBAL>
+    state value, #x2
+    state description, <Unused.>
+  state 1-group
+    state name, <DF_1_GROUP>
+    state value, #x4
+    state description, <Indicate object is a member of a group.>
+  state 1-nodelete
+    state name, <DF_1_NODELETE>
+    state value, #x8
+    state description, <Object cannot be deleted from a process.>
+  state 1-loadfltr
+    state name, <DF_1_LOADFLTR>
+    state value, #x10
+    state description, <Ensure immediate loading of filtees.>
+  state 1-initfirst
+    state name, <DF_1_INITFIRST>
+    state value, #x20
+    state description, <Objects' initialization occurs first.>
+  state 1-noopen
+    state name, <DF_1_NOOPEN>
+    state value, #x40
+    state description, <Object can not be used with dlopen(3C).>
+  state 1-origin
+    state name, <DF_1_ORIGIN>
+    state value, #x80
+    state description, <$ORIGIN processing required.>
+  state 1-direct
+    state name, <DF_1_DIRECT>
+    state value, #x100
+    state description, <Direct bindings enabled.>
+  state 1-interpose
+    state name, <DF_1_INTERPOSE>
+    state value, #x400
+    state description, <Object is an interposer.>
+  state 1-nodeflib
+    state name, <DF_1_NODEFLIB>
+    state value, #x800
+    state description, <Ignore the default library search path.>
+  state 1-nodump
+    state name, <DF_1_NODUMP>
+    state value, #x1000
+    state description, <Object cannot be dumped with dldump(3C).>
+  state 1-confalt
+    state name, <DF_1_CONFALT>
+    state value, #x2000
+    state description, <Object is a configuration alternative.>
+  state 1-endfiltee
+    state name, <DF_1_ENDFILTEE>
+    state value, #x4000
+    state description, <Filtee terminates filter's search.>
+  state 1-dispreldne
+    state name, <DF_1_DISPRELDNE>
+    state value, #x8000
+    state description, <Displacement relocation has been carried out.>
+  state 1-disprelpnd
+    state name, <DF_1_DISPRELPND>
+    state value, #x10000
+    state description, <Displacement relocation pending.>
+  state 1-nodirect
+    state name, <DF_1_NODIRECT>
+    state value, #x20000
+    state description, <Object contains non-direct bindings.>
+  state 1-ignmuldef
+    state name, <DF_1_IGNMULDEF>
+    state value, #x40000
+    state description, <Internal use.>
+  state 1-noksyms
+    state name, <DF_1_NOKSYMS>
+    state value, #x80000
+    state description, <Internal use.>
+  state 1-nohdr
+    state name, <DF_1_NOHDR>
+    state value, #x100000
+    state description, <Internal use.>
+  state 1-edited
+    state name, <DF_1_EDITED>
+    state value, #x200000
+    state description, <Object has been modified since originally built.>
+  state 1-noreloc
+    state name, <DF_1_NORELOC>
+    state value, #x400000
+    state description, <Internal use.>
+  state 1-symintpose
+    state name, <DF_1_SYMINTPOSE>
+    state value, #x800000
+    state description, <Individual symbol interposers exist.>
+  state 1-globaudit
+    state name, <DF_1_GLOBAUDIT>
+    state value, #x1000000
+    state description, <Establish global auditing.>
+  state 1-singleton
+    state name, <DF_1_SINGLETON>
+    state value, #x2000000
+    state description, <Singleton symbols exist.>
+
+state dynamic-position-flag
+  state lazyload
+    state name, <DF_P1_LAZYLOAD>
+    state value, #x1
+    state description, <Identify lazy loaded dependency.>
+  state groupperm
+    state name, <DF_P1_GROUPPERM>
+    state value, #x2
+    state description, <Identify group dependency.>

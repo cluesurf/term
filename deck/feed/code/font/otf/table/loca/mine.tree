@@ -1,0 +1,23 @@
+
+weave loca-table
+  start data
+  start start
+  start num-glyphs
+  start short-version
+
+  check has
+    bind build, share short-version
+    catch mine
+      mine chain
+        bind front, share num-glyphs + 1
+        mine form, form ushort
+          weave glyph-offset
+        cause divide
+          bind start, share glyph-offset
+          bind front, share 2
+          store glyph-offset
+    catch fault
+      mine chain
+        bind front, share num-glyphs + 1
+        mine form, form ulong
+          weave glyph-offset

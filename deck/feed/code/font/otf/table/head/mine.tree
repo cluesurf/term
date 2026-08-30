@@ -1,0 +1,65 @@
+
+mine head-table
+  mine form, form head-table-version
+  mine form, form head-table-font-revision
+  mine form, form head-table-checksum-adjustment
+  mine form, form head-table-magic-number
+  mine form, form head-table-flags
+  head.unitsPerEm = p.parseUShort();
+  mine form, form head-table-units-per-em
+  head.created = p.parseLongDateTime();
+  mine form, form head-table-created-at-time
+  head.modified = p.parseLongDateTime();
+  mine form, form head-table-modified-at-time
+  head.xMin = p.parseShort();
+  mine form, form head-table-x-min
+  head.yMin = p.parseShort();
+  mine form, form head-table-y-min
+  head.xMax = p.parseShort();
+  mine form, form head-table-x-max
+  head.yMax = p.parseShort();
+  mine form, form head-table-y-max
+  head.macStyle = p.parseUShort();
+  mine form, form head-table-mac-style
+  head.lowestRecPPEM = p.parseUShort();
+  mine form, form head-table-lowest-rec-ppem
+  head.fontDirectionHint = p.parseShort();
+  mine form, form head-table-font-direction-hint
+  head.indexToLocFormat = p.parseShort();
+  mine form, form head-table-index-to-loc-format
+  head.glyphDataFormat = p.parseShort();
+  mine form, form head-table-glyph-data-format
+
+mine head-table-version
+  mine form, form head-table-version-major
+  mine form, form head-table-version-minor
+
+mine head-table-version-major
+  mine form, form count-2
+
+mine head-table-version-minor
+  mine form, form count-2
+
+mine head-table-font-revision
+  mine form, form decimal
+  mine form, form fraction
+
+mine decimal
+  mine form, form count-2
+
+mine fraction
+  mine form, form count-2
+
+mine head-table-checksum-adjustment
+  mine count
+    bind count, share 4
+
+mine head-table-magic-number
+  mine write, share #h5F0F3CF5
+
+mine head-table-flags
+  mine form, form count-2
+
+mine count-2
+  mine count
+    bind count, share 2

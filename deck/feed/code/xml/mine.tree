@@ -1,0 +1,1221 @@
+
+mine xml
+  mine form, form document
+
+mine document
+  mine form, form prolog
+  mine form, form element
+  mine chain, form miscellaneous
+
+mine prolog
+  mine sieve
+    mine form, form xml-declaration
+  mine chain
+    mine form, form miscellaneous
+  mine sieve
+    mine form, form document-type-declaration
+    mine chain
+      mine form, form miscellaneous
+
+mine xml-declaration
+  mine chunk, chunk <\<?xml >
+  mine form, form version
+  mine sieve
+    mine form, form encoding-declaration
+  mine sieve
+    mine form, form sd-declaration
+  mine sieve
+    mine form, form space
+  mine chunk, chunk <?\>>
+
+mine version
+  mine chunk, chunk <version>
+  mine form, form equal
+  mine crown
+    mine version-number-single-quotes
+    mine version-number-double-quotes
+
+mine version-number-single-quotes
+  mine chunk, chunk <'>
+  mine form, form version-number
+  mine chunk, chunk <'>
+
+mine version-number-double-quotes
+  mine chunk, chunk <">
+  mine form, form version-number
+  mine chunk, chunk <">
+
+mine equal
+  mine sieve, mine form, form space
+  mine chunk, chunk <=>
+  mine sieve, mine form, form space
+
+mine version-number
+  mine chunk, chunk <1.0>
+
+mine miscellaneous
+  mine crown
+    mine form, form comment
+    mine form, form processing-instruction
+    mine form, form space
+
+mine names
+  mine form, form name
+  mine chain
+    mine chunk, share <20u>
+    mine form, form name
+
+mine name
+  mine crown
+    mine form, form letter
+    mine shard, <_>
+    mine shard, <:>
+  mine chain, form name-character
+
+mine character
+  mine crown
+    mine chunk, chunk #x9
+    mine chunk, chunk #xA
+    mine chunk, chunk #xD
+    mine bound
+      bind start, chunk #x20
+      bind front, chunk #xD7FF
+    mine bound
+      bind start, chunk #xE000
+      bind front, chunk #xFFFD
+    mine bound
+      bind start, chunk #x10000
+      bind front, chunk #x10FFFF
+
+mine space
+  mine chain
+    bind start, share 1
+    mine crown
+      mine chunk, chunk #x20
+      mine chunk, chunk #x9
+      mine chunk, chunk #xD
+      mine chunk, chunk #xA
+
+mine name-character
+  mine crown
+    mine form, form letter
+    mine form, form digit
+    mine shard, <.>
+    mine shard, <->
+    mine shard, <_>
+    mine shard, <:>
+    mine form, form combining-character
+    mine form, form Extender
+
+mine name-token
+  mine floor, 1
+    mine form, form name-character
+
+mine name-tokens
+  mine form, form name-token (20u name-token)*
+
+mine entity-value
+  mine crown
+    mine chunk
+      mine shard, |"|
+      mine chain
+        mine crown
+          mine sieve
+            mine shard, |^%&"|
+          mine form, form PEreference
+          mine form, form reference
+      mine shard, |"|
+    "'" ([^%&'] | PEreference | reference)* "'"
+
+mine attribute-value
+  mine crown
+    mine form, form attribute-value-double-quoted
+    mine form, form attribute-value-single-quoted
+
+mine attribute-value-double-quoted
+  mine chunk, chunk <">
+  mine chain
+    mine crown
+      mine leave
+        mine crown
+          mine chunk, chunk <\<>
+          mine chunk, chunk <&>
+          mine chunk, chunk <">
+      mine form, form reference
+  mine chunk, chunk <">
+
+mine attribute-value-single-quoted
+  mine chunk, chunk <'>
+  mine chain
+    mine crown
+      mine leave
+        mine crown
+          mine chunk, chunk <\<>
+          mine chunk, chunk <&>
+          mine chunk, chunk <'>
+      mine form, form reference
+  mine chunk, chunk <'>
+
+mine reference
+  mine crown
+    mine form, form entity-reference
+    mine form, form character-reference
+
+mine entity-reference
+  mine chunk, chunk <&>
+  mine form, form name
+  mine chunk, chunk <;>
+
+mine character-reference
+  mine crown
+    mine block
+      mine chunk, chunk <&#>
+      mine chain
+        bind start, share 1
+        mine form, form digit
+      mine chunk, chunk <;>
+    mine block
+      mine chunk, chunk <&#x>
+      mine chain
+        bind start, share 1
+        mine form, form hex
+      mine chunk, chunk <;>
+
+mine system-literal
+  mine crown
+    mine form, form system-literal-double-quoted
+    mine form, form system-literal-single-quoted
+
+mine system-literal-double-quoted
+  mine chunk, chunk <">
+  mine chain
+    mine leave
+      mine chunk, chunk <">
+  mine chunk, chunk <">
+
+mine system-literal-single-quoted
+  mine chunk, chunk <'>
+  mine chain
+    mine leave
+      mine chunk, chunk <'>
+  mine chunk, chunk <'>
+
+mine pubid-literal
+  mine form, form '"' Pubidcharacter* '"' | "'" (Pubidcharacter - "'")* "'"
+mine Pubidcharacter
+  mine form, form 20u | Du | Au | [a-zA-Z0-9]
+                 |  [-'()+,./:=?;!*#@$_%]
+
+mine character-data
+  mine chain
+    mine leave
+      mine chunk, chunk <\<>
+      mine chunk, chunk <&>
+  mine chunk, chunk <->
+  mine block
+    mine chain
+      mine leave
+        mine chunk, chunk <\<>
+        mine chunk, chunk <&>
+    mine chunk, chunk <]]\>>
+    mine chain
+      mine leave
+        mine chunk, chunk <\<>
+        mine chunk, chunk <&>
+
+mine comment
+  mine chunk, chunk <\<!-->
+    mine chain
+      mine crown
+        mine form, form character
+          mine leave
+            mine chunk, chunk <->
+        mine block
+          mine chunk, chunk <->
+          mine form, form character
+            mine leave
+              mine chunk, chunk <->
+  mine chunk, chunk <--\>>
+
+mine processing-instruction
+  mine form, form '<?' processing-instruction-target (S (character* - (character* '?>' character*)))? '?>'
+
+mine processing-instruction-target
+  mine form, form name - (('X' | 'x') ('M' | 'm') ('L' | 'l'))
+
+mine cd-section
+  mine form, form cdata-start cdata cdata-end
+
+mine cdata-start
+  mine chunk, chunk <\<![CDATA[>
+
+mine cdata
+  mine form, form (character* - (character* ']]>' character*))
+
+mine cdata-end
+  mine form, form <]]\>>
+
+mine document-type-declaration
+  mine form, form '<!DOCTYPE' S name (S ExternalID)? S? ('[' intSubset ']' S?)? '>'
+
+mine DeclSep
+  mine form, form PEreference | S
+
+mine intSubset
+  mine form, form (markupdecl | DeclSep)*
+
+mine markupdecl
+  mine form, form elementdecl | AttlistDecl | EntityDecl | NotationDecl
+                 |  processing-instruction | comment
+
+mine extSubset
+  mine form, form TextDecl? extSubsetDecl
+
+mine extSubsetDecl
+  mine form, form ( markupdecl | conditionalSect | DeclSep)*
+
+mine sd-declaration
+  mine form, form S 'standalone' equal
+             (("'" ('yes' | 'no') "'") | ('"' ('yes' | 'no') '"'))
+
+mine element
+  mine crown
+    mine form, form empty-element-tag
+    mine block
+      mine form, form start-element-tag
+      mine form, form content
+      mine form, form end-element-tag
+
+mine start-element-tag
+  mine chunk, chunk <\<>
+  mine form, form name
+  mine chain
+    mine form, form space
+    mine form, form attribute
+  mine sieve
+    mine form, form space
+  mine chunk, chunk <\>>
+
+mine attribute
+  mine form, form attribute-name
+  mine form, form equal
+  mine form, form attribute-value
+
+mine attribute-name
+  mine form, form name
+
+mine end-element-tag
+  mine chunk, chunk <\</>
+  mine form, form name
+  mine sieve, mine form, form space
+  mine chunk, chunk <\>>
+
+mine content
+  mine sieve, mine form, form character-data
+  mine chain
+    mine crown
+      mine form, form element
+      mine form, form reference
+      mine form, form cd-section
+      mine form, form processing-instruction
+      mine form, form comment
+    mine sieve, mine form, form character-data
+
+mine empty-element
+  mine form, form '<' name (S attribute)* S? '/>'
+
+mine elementdecl
+  mine form, form '<!ELEMENT' S name S contentspec S? '>'
+mine contentspec
+  mine form, form 'EMPTY' | 'ANY' | Mixed | children
+mine children
+  mine form, form (choice | seq) ('?' | '*' | '+')?
+mine cp
+  mine form, form (name | choice | seq) ('?' | '*' | '+')?
+mine choice
+  mine form, form '(' S? cp ( S? '|' S? cp )+ S? ')'
+mine seq
+  mine form, form '(' S? cp ( S? ',' S? cp )* S? ')'
+mine Mixed
+  mine form, form '(' S? '#PCDATA' (S? '|' S? name)* S? ')*'
+               |  '(' S? '#PCDATA' S? ')'
+
+mine AttlistDecl
+  mine form, form '<!ATTLIST' S name AttDef* S? '>'
+mine AttDef
+  mine form, form S name S AttType S DefaultDecl
+mine AttType
+  mine form, form string-type | tokenized-type | enumerated-type
+mine string-type
+  mine form, form 'CDATA'
+mine tokenized-type
+  mine form, form 'ID' | 'IDREF' | 'IDREFS' | 'ENTITY'
+                    |  'ENTITIES' | 'NMTOKEN' | 'NMTOKENS'
+mine enumerated-type
+  mine form, form NotationType | Enumeration
+mine NotationType
+  mine form, form 'NOTATION' S '(' S? name (S? '|' S? name)* S? ')'
+mine Enumeration
+  mine form, form '(' S? name-token (S? '|' S? name-token)* S? ')'
+mine DefaultDecl
+  mine form, form '#REQUIRED' | '#IMPLIED' | (('#FIXED' S)? attribute-value)
+
+mine conditionalSect
+  mine form, form includeSect | ignoreSect
+mine includeSect
+  mine form, form '<![' S? 'INCLUDE' S? '[' extSubsetDecl ']]>'
+mine ignoreSect
+  mine form, form '<![' S? 'IGNORE' S? '[' ignoreSectContents* ']]>'
+mine ignoreSectContents
+  mine form, form Ignore ('<![' ignoreSectContents ']]>' Ignore)*
+mine Ignore
+  mine form, form character* - (character* ('<![' | ']]>') character*)
+
+mine PEreference
+  mine form, form '%' name ';'
+
+mine EntityDecl
+  mine form, form GEDecl | PEDecl
+mine GEDecl
+  mine form, form '<!ENTITY' S name S EntityDef S? '>'
+mine PEDecl
+  mine form, form '<!ENTITY' S '%' S name S PEDef S? '>'
+mine EntityDef
+  mine form, form entity-value | (ExternalID NDataDecl?)
+mine PEDef
+  mine form, form entity-value | ExternalID
+mine ExternalID
+  mine form, form 'SYSTEM' S system-literal
+                    |  'PUBLIC' S pubid-literal S system-literal
+mine NDataDecl
+  mine form, form S 'NDATA' S name
+
+mine TextDecl
+  mine form, form '<?xml' version? encoding-declaration S? '?>'
+mine extParsedEnt
+  mine form, form TextDecl? content
+mine encoding-declaration
+  mine form, form S 'encoding' equal ('"' Encname '"' | "'" Encname "'" )
+mine Encname
+  mine form, form [A-Za-z] ([A-Za-z0-9._] | '-')*
+mine NotationDecl
+  mine form, form '<!NOTATION' S name S (ExternalID | PublicID) S? '>'
+mine PublicID
+  mine form, form 'PUBLIC' S pubid-literal
+
+letter
+  mine form, form base-character
+  mine form, form ideographic
+
+mine base-character
+  mine crown
+    mine bound
+      bind start, chunk #x41
+      bind front, chunk #x5A
+    mine bound
+      bind start, chunk #x61
+      bind front, chunk #x7A
+    mine bound
+      bind start, chunk #xC0
+      bind front, chunk #xD6
+    mine bound
+      bind start, chunk #xD8
+      bind front, chunk #xF6
+    mine bound
+      bind start, chunk #xF8
+      bind front, chunk #xFF
+    mine bound
+      bind start, chunk #x100
+      bind front, chunk #x131
+    mine bound
+      bind start, chunk #x134
+      bind front, chunk #x13E
+    mine bound
+      bind start, chunk #x141
+      bind front, chunk #x148
+    mine bound
+      bind start, chunk #x14A
+      bind front, chunk #x17E
+    mine bound
+      bind start, chunk #x180
+      bind front, chunk #x1C3
+    mine bound
+      bind start, chunk #x1CD
+      bind front, chunk #x1F0
+    mine bound
+      bind start, chunk #x1F4
+      bind front, chunk #x1F5
+    mine bound
+      bind start, chunk #x1FA
+      bind front, chunk #x217
+    mine bound
+      bind start, chunk #x250
+      bind front, chunk #x2A8
+    mine bound
+      bind start, chunk #x2BB
+      bind front, chunk #x2C1
+    mine chunk, chunk #x386
+    mine bound
+      bind start, chunk #x388
+      bind front, chunk #x38A
+    mine chunk, chunk #x38C
+    mine bound
+      bind start, chunk #x38E
+      bind front, chunk #x3A1
+    mine bound
+      bind start, chunk #x3A3
+      bind front, chunk #x3CE
+    mine bound
+      bind start, chunk #x3D0
+      bind front, chunk #x3D6
+    mine chunk, chunk #x3DA
+    mine chunk, chunk #x3DC
+    mine chunk, chunk #x3DE
+    mine chunk, chunk #x3E0
+    mine bound
+      bind start, chunk #x3E2
+      bind front, chunk #x3F3
+    mine bound
+      bind start, chunk #x401
+      bind front, chunk #x40C
+    mine bound
+      bind start, chunk #x40E
+      bind front, chunk #x44F
+    mine bound
+      bind start, chunk #x451
+      bind front, chunk #x45C
+    mine bound
+      bind start, chunk #x45E
+      bind front, chunk #x481
+    mine bound
+      bind start, chunk #x490
+      bind front, chunk #x4C4
+    mine bound
+      bind start, chunk #x4C7
+      bind front, chunk #x4C8
+    mine bound
+      bind start, chunk #x4CB
+      bind front, chunk #x4CC
+    mine bound
+      bind start, chunk #x4D0
+      bind front, chunk #x4EB
+    mine bound
+      bind start, chunk #x4EE
+      bind front, chunk #x4F5
+    mine bound
+      bind start, chunk #x4F8
+      bind front, chunk #x4F9
+    mine bound
+      bind start, chunk #x531
+      bind front, chunk #x556
+    mine chunk, chunk #x559
+    mine bound
+      bind start, chunk #x561
+      bind front, chunk #x586
+    mine bound
+      bind start, chunk #x5D0
+      bind front, chunk #x5EA
+    mine bound
+      bind start, chunk #x5F0
+      bind front, chunk #x5F2
+    mine bound
+      bind start, chunk #x621
+      bind front, chunk #x63A
+    mine bound
+      bind start, chunk #x641
+      bind front, chunk #x64A
+    mine bound
+      bind start, chunk #x671
+      bind front, chunk #x6B7
+    mine bound
+      bind start, chunk #x6BA
+      bind front, chunk #x6BE
+    mine bound
+      bind start, chunk #x6C0
+      bind front, chunk #x6CE
+    mine bound
+      bind start, chunk #x6D0
+      bind front, chunk #x6D3
+    mine chunk, chunk #x6D5
+    mine bound
+      bind start, chunk #x6E5
+      bind front, chunk #x6E6
+    mine bound
+      bind start, chunk #x905
+      bind front, chunk #x939
+    mine chunk, chunk #x93D
+    mine bound
+      bind start, chunk #x958
+      bind front, chunk #x961
+    mine bound
+      bind start, chunk #x985
+      bind front, chunk #x98C
+    mine bound
+      bind start, chunk #x98F
+      bind front, chunk #x990
+    mine bound
+      bind start, chunk #x993
+      bind front, chunk #x9A8
+    mine bound
+      bind start, chunk #x9AA
+      bind front, chunk #x9B0
+    mine chunk, chunk #x9B2
+    mine bound
+      bind start, chunk #x9B6
+      bind front, chunk #x9B9
+    mine bound
+      bind start, chunk #x9DC
+      bind front, chunk #x9DD
+    mine bound
+      bind start, chunk #x9DF
+      bind front, chunk #x9E1
+    mine bound
+      bind start, chunk #x9F0
+      bind front, chunk #x9F1
+    mine bound
+      bind start, chunk #xA05
+      bind front, chunk #xA0A
+    mine bound
+      bind start, chunk #xA0F
+      bind front, chunk #xA10
+    mine bound
+      bind start, chunk #xA13
+      bind front, chunk #xA28
+    mine bound
+      bind start, chunk #xA2A
+      bind front, chunk #xA30
+    mine bound
+      bind start, chunk #xA32
+      bind front, chunk #xA33
+    mine bound
+      bind start, chunk #xA35
+      bind front, chunk #xA36
+    mine bound
+      bind start, chunk #xA38
+      bind front, chunk #xA39
+    mine bound
+      bind start, chunk #xA59
+      bind front, chunk #xA5C
+    mine chunk, chunk #xA5E
+    mine bound
+      bind start, chunk #xA72
+      bind front, chunk #xA74
+    mine bound
+      bind start, chunk #xA85
+      bind front, chunk #xA8B
+    mine chunk, chunk #xA8D
+    mine bound
+      bind start, chunk #xA8F
+      bind front, chunk #xA91
+    mine bound
+      bind start, chunk #xA93
+      bind front, chunk #xAA8
+    mine bound
+      bind start, chunk #xAAA
+      bind front, chunk #xAB0
+    mine bound
+      bind start, chunk #xAB2
+      bind front, chunk #xAB3
+    mine bound
+      bind start, chunk #xAB5
+      bind front, chunk #xAB9
+    mine chunk, chunk #xABD
+    mine chunk, chunk #xAE0
+    mine bound
+      bind start, chunk #xB05
+      bind front, chunk #xB0C
+    mine bound
+      bind start, chunk #xB0F
+      bind front, chunk #xB10
+    mine bound
+      bind start, chunk #xB13
+      bind front, chunk #xB28
+    mine bound
+      bind start, chunk #xB2A
+      bind front, chunk #xB30
+    mine bound
+      bind start, chunk #xB32
+      bind front, chunk #xB33
+    mine bound
+      bind start, chunk #xB36
+      bind front, chunk #xB39
+    mine chunk, chunk #xB3D
+    mine bound
+      bind start, chunk #xB5C
+      bind front, chunk #xB5D
+    mine bound
+      bind start, chunk #xB5F
+      bind front, chunk #xB61
+    mine bound
+      bind start, chunk #xB85
+      bind front, chunk #xB8A
+    mine bound
+      bind start, chunk #xB8E
+      bind front, chunk #xB90
+    mine bound
+      bind start, chunk #xB92
+      bind front, chunk #xB95
+    mine bound
+      bind start, chunk #xB99
+      bind front, chunk #xB9A
+    mine chunk, chunk #xB9C
+    mine bound
+      bind start, chunk #xB9E
+      bind front, chunk #xB9F
+    mine bound
+      bind start, chunk #xBA3
+      bind front, chunk #xBA4
+    mine bound
+      bind start, chunk #xBA8
+      bind front, chunk #xBAA
+    mine bound
+      bind start, chunk #xBAE
+      bind front, chunk #xBB5
+    mine bound
+      bind start, chunk #xBB7
+      bind front, chunk #xBB9
+    mine bound
+      bind start, chunk #xC05
+      bind front, chunk #xC0C
+    mine bound
+      bind start, chunk #xC0E
+      bind front, chunk #xC10
+    mine bound
+      bind start, chunk #xC12
+      bind front, chunk #xC28
+    mine bound
+      bind start, chunk #xC2A
+      bind front, chunk #xC33
+    mine bound
+      bind start, chunk #xC35
+      bind front, chunk #xC39
+    mine bound
+      bind start, chunk #xC60
+      bind front, chunk #xC61
+    mine bound
+      bind start, chunk #xC85
+      bind front, chunk #xC8C
+    mine bound
+      bind start, chunk #xC8E
+      bind front, chunk #xC90
+    mine bound
+      bind start, chunk #xC92
+      bind front, chunk #xCA8
+    mine bound
+      bind start, chunk #xCAA
+      bind front, chunk #xCB3
+    mine bound
+      bind start, chunk #xCB5
+      bind front, chunk #xCB9
+    mine chunk, chunk #xCDE
+    mine bound
+      bind start, chunk #xCE0
+      bind front, chunk #xCE1
+    mine bound
+      bind start, chunk #xD05
+      bind front, chunk #xD0C
+    mine bound
+      bind start, chunk #xD0E
+      bind front, chunk #xD10
+    mine bound
+      bind start, chunk #xD12
+      bind front, chunk #xD28
+    mine bound
+      bind start, chunk #xD2A
+      bind front, chunk #xD39
+    mine bound
+      bind start, chunk #xD60
+      bind front, chunk #xD61
+    mine bound
+      bind start, chunk #xE01
+      bind front, chunk #xE2E
+    mine chunk, chunk #xE30
+    mine bound
+      bind start, chunk #xE32
+      bind front, chunk #xE33
+    mine bound
+      bind start, chunk #xE40
+      bind front, chunk #xE45
+    mine bound
+      bind start, chunk #xE81
+      bind front, chunk #xE82
+    mine chunk, chunk #xE84
+    mine bound
+      bind start, chunk #xE87
+      bind front, chunk #xE88
+    mine chunk, chunk #xE8A
+  mine chunk, chunk #xE8D
+    mine bound
+      bind start, chunk #xE94
+      bind front, chunk #xE97
+    mine bound
+      bind start, chunk #xE99
+      bind front, chunk #xE9F
+    mine bound
+      bind start, chunk #xEA1
+      bind front, chunk #xEA3
+    mine chunk, chunk #xEA5
+    mine chunk, chunk #xEA7
+    mine bound
+      bind start, chunk #xEAA
+      bind front, chunk #xEAB
+    mine bound
+      bind start, chunk #xEAD
+      bind front, chunk #xEAE
+    mine chunk, chunk #xEB0
+  mine bound
+      bind start, chunk #xEB2
+      bind front, chunk #xEB3
+    mine chunk, chunk #xEBD
+    mine bound
+      bind start, chunk #xEC0
+      bind front, chunk #xEC4
+    mine bound
+      bind start, chunk #xF40
+      bind front, chunk #xF47
+    mine bound
+      bind start, chunk #xF49
+      bind front, chunk #xF69
+    mine bound
+      bind start, chunk #x10A0
+      bind front, chunk #x10C5
+    mine bound
+      bind start, chunk #x10D0
+      bind front, chunk #x10F6
+    mine chunk, chunk #x1100
+  mine bound
+      bind start, chunk #x1102
+      bind front, chunk #x1103
+    mine bound
+      bind start, chunk #x1105
+      bind front, chunk #x1107
+    mine chunk, chunk #x1109
+    mine bound
+      bind start, chunk #x110B
+      bind front, chunk #x110C
+    mine bound
+      bind start, chunk #x110E
+      bind front, chunk #x1112
+    mine chunk, chunk #x113C
+    mine chunk, chunk #x113E
+    mine chunk, chunk #x1140
+    mine chunk, chunk #x114C
+    mine chunk, chunk #x114E
+  mine chunk, chunk #x1150
+    mine bound
+      bind start, chunk #x1154
+      bind front, chunk #x1155
+    mine chunk, chunk #x1159
+    mine bound
+      bind start, chunk #x115F
+      bind front, chunk #x1161
+    mine chunk, chunk #x1163
+  mine chunk, chunk #x1165
+    mine chunk, chunk #x1167
+    mine chunk, chunk #x1169
+    mine bound
+      bind start, chunk #x116D
+      bind front, chunk #x116E
+    mine bound
+      bind start, chunk #x1172
+      bind front, chunk #x1173
+    mine chunk, chunk #x1175
+    mine chunk, chunk #x119E
+    mine chunk, chunk #x11A8
+    mine chunk, chunk #x11AB
+    mine bound
+      bind start, chunk #x11AE
+      bind front, chunk #x11AF
+    mine bound
+      bind start, chunk #x11B7
+      bind front, chunk #x11B8
+    mine chunk, chunk #x11BA
+    mine bound
+      bind start, chunk #x11BC
+      bind front, chunk #x11C2
+    mine chunk, chunk #x11EB
+    mine chunk, chunk #x11F0
+    mine chunk, chunk #x11F9
+    mine bound
+      bind start, chunk #x1E00
+      bind front, chunk #x1E9B
+    mine bound
+      bind start, chunk #x1EA0
+      bind front, chunk #x1EF9
+    mine bound
+      bind start, chunk #x1F00
+      bind front, chunk #x1F15
+    mine bound
+      bind start, chunk #x1F18
+      bind front, chunk #x1F1D
+    mine bound
+      bind start, chunk #x1F20
+      bind front, chunk #x1F45
+    mine bound
+      bind start, chunk #x1F48
+      bind front, chunk #x1F4D
+    mine bound
+      bind start, chunk #x1F50
+      bind front, chunk #x1F57
+    mine chunk, chunk #x1F59
+    mine chunk, chunk #x1F5B
+    mine chunk, chunk #x1F5D
+    mine bound
+      bind start, chunk #x1F5F
+      bind front, chunk #x1F7D
+    mine bound
+      bind start, chunk #x1F80
+      bind front, chunk #x1FB4
+    mine bound
+      bind start, chunk #x1FB6
+      bind front, chunk #x1FBC
+    mine chunk, chunk #x1FBE
+    mine bound
+      bind start, chunk #x1FC2
+      bind front, chunk #x1FC4
+    mine bound
+      bind start, chunk #x1FC6
+      bind front, chunk #x1FCC
+    mine bound
+      bind start, chunk #x1FD0
+      bind front, chunk #x1FD3
+    mine bound
+      bind start, chunk #x1FD6
+      bind front, chunk #x1FDB
+    mine bound
+      bind start, chunk #x1FE0
+      bind front, chunk #x1FEC
+    mine bound
+      bind start, chunk #x1FF2
+      bind front, chunk #x1FF4
+    mine bound
+      bind start, chunk #x1FF6
+      bind front, chunk #x1FFC
+    mine chunk, chunk #x2126
+  mine bound
+      bind start, chunk #x212A
+      bind front, chunk #x212B
+    mine chunk, chunk #x212E
+    mine bound
+      bind start, chunk #x2180
+      bind front, chunk #x2182
+    mine bound
+      bind start, chunk #x3041
+      bind front, chunk #x3094
+    mine bound
+      bind start, chunk #x30A1
+      bind front, chunk #x30FA
+    mine bound
+      bind start, chunk #x3105
+      bind front, chunk #x312C
+    mine bound
+      bind start, chunk #xAC00
+      bind front, chunk #xD7A3
+
+mine ideographic
+  mine crown
+    mine bound
+      bind start, chunk #x4E00
+      bind front, chunk #x9FA5
+    bind chunk, chunk #x3007
+    mine bound
+      bind start, chunk #x3021
+      bind front, chunk #x3029
+
+mine combining-character
+  mine crown
+    mine bound
+      bind start, chunk #x300
+      bind front, chunk #x345
+    mine bound
+      bind start, chunk #x360
+      bind front, chunk #x361
+    mine bound
+      bind start, chunk #x483
+      bind front, chunk #x486
+    mine bound
+      bind start, chunk #x591
+      bind front, chunk #x5A1
+    mine bound
+      bind start, chunk #x5A3
+      bind front, chunk #x5B9
+    mine bound
+      bind start, chunk #x5BB
+      bind front, chunk #x5BD
+    mine chunk, chunk #x5BF
+    mine bound
+      bind start, chunk #x5C1
+      bind front, chunk #x5C2
+    mine chunk, chunk #x5C4
+    mine bound
+      bind start, chunk #x64B
+      bind front, chunk #x652
+    mine chunk, chunk #x670
+    mine bound
+      bind start, chunk #x6D6
+      bind front, chunk #x6DC
+    mine bound
+      bind start, chunk #x6DD
+      bind front, chunk #x6DF
+    mine bound
+      bind start, chunk #x6E0
+      bind front, chunk #x6E4
+    mine bound
+      bind start, chunk #x6E7
+      bind front, chunk #x6E8
+    mine bound
+      bind start, chunk #x6EA
+      bind front, chunk #x6ED
+    mine bound
+      bind start, chunk #x901
+      bind front, chunk #x903
+    mine chunk, chunk #x93C
+    mine bound
+      bind start, chunk #x93E
+      bind front, chunk #x94C
+    mine chunk, chunk #x94D
+    mine bound
+      bind start, chunk #x951
+      bind front, chunk #x954
+    mine bound
+      bind start, chunk #x962
+      bind front, chunk #x963
+    mine bound
+      bind start, chunk #x981
+      bind front, chunk #x983
+    mine chunk, chunk #x9BC
+    mine chunk, chunk #x9BE
+    mine chunk, chunk #x9BF
+    mine bound
+      bind start, chunk #x9C0
+      bind front, chunk #x9C4
+    mine bound
+      bind start, chunk #x9C7
+      bind front, chunk #x9C8
+    mine bound
+      bind start, chunk #x9CB
+      bind front, chunk #x9CD
+    mine chunk, chunk #x9D7
+    mine bound
+      bind start, chunk #x9E2
+      bind front, chunk #x9E3
+    mine chunk, chunk #xA02
+    mine chunk, chunk #xA3C
+    mine chunk, chunk #xA3E
+    mine chunk, chunk #xA3F
+    mine bound
+      bind start, chunk #xA40
+      bind front, chunk #xA42
+    mine bound
+      bind start, chunk #xA47
+      bind front, chunk #xA48
+    mine bound
+      bind start, chunk #xA4B
+      bind front, chunk #xA4D
+    mine bound
+      bind start, chunk #xA70
+      bind front, chunk #xA71
+    mine bound
+      bind start, chunk #xA81
+      bind front, chunk #xA83
+    mine chunk, chunk #xABC
+    mine bound
+      bind start, chunk #xABE
+      bind front, chunk #xAC5
+    mine bound
+      bind start, chunk #xAC7
+      bind front, chunk #xAC9
+    mine bound
+      bind start, chunk #xACB
+      bind front, chunk #xACD
+    mine bound
+      bind start, chunk #xB01
+      bind front, chunk #xB03
+    mine chunk, chunk #xB3C
+    mine bound
+      bind start, chunk #xB3E
+      bind front, chunk #xB43
+    mine bound
+      bind start, chunk #xB47
+      bind front, chunk #xB48
+    mine bound
+      bind start, chunk #xB4B
+      bind front, chunk #xB4D
+    mine bound
+      bind start, chunk #xB56
+      bind front, chunk #xB57
+    mine bound
+      bind start, chunk #xB82
+      bind front, chunk #xB83
+    mine bound
+      bind start, chunk #xBBE
+      bind front, chunk #xBC2
+    mine bound
+      bind start, chunk #xBC6
+      bind front, chunk #xBC8
+    mine bound
+      bind start, chunk #xBCA
+      bind front, chunk #xBCD
+    mine chunk, chunk #xBD7
+    mine bound
+      bind start, chunk #xC01
+      bind front, chunk #xC03
+    mine bound
+      bind start, chunk #xC3E
+      bind front, chunk #xC44
+    mine bound
+      bind start, chunk #xC46
+      bind front, chunk #xC48
+    mine bound
+      bind start, chunk #xC4A
+      bind front, chunk #xC4D
+    mine bound
+      bind start, chunk #xC55
+      bind front, chunk #xC56
+    mine bound
+      bind start, chunk #xC82
+      bind front, chunk #xC83
+    mine bound
+      bind start, chunk #xCBE
+      bind front, chunk #xCC4
+    mine bound
+      bind start, chunk #xCC6
+      bind front, chunk #xCC8
+    mine bound
+      bind start, chunk #xCCA
+      bind front, chunk #xCCD
+    mine bound
+      bind start, chunk #xCD5
+      bind front, chunk #xCD6
+    mine bound
+      bind start, chunk #xD02
+      bind front, chunk #xD03
+    mine bound
+      bind start, chunk #xD3E
+      bind front, chunk #xD43
+    mine bound
+      bind start, chunk #xD46
+      bind front, chunk #xD48
+    mine bound
+      bind start, chunk #xD4A
+      bind front, chunk #xD4D
+    mine chunk, chunk #xD57
+    mine chunk, chunk #xE31
+    mine bound
+      bind start, chunk #xE34
+      bind front, chunk #xE3A
+    mine bound
+      bind start, chunk #xE47
+      bind front, chunk #xE4E
+    mine chunk, chunk #xEB1
+    mine bound
+      bind start, chunk #xEB4
+      bind front, chunk #xEB9
+    mine bound
+      bind start, chunk #xEBB
+      bind front, chunk #xEBC
+    mine bound
+      bind start, chunk #xEC8
+      bind front, chunk #xECD
+    mine bound
+      bind start, chunk #xF18
+      bind front, chunk #xF19
+    mine chunk, chunk #xF35
+    mine chunk, chunk #xF37
+    mine chunk, chunk #xF39
+    mine chunk, chunk #xF3E
+    mine chunk, chunk #xF3F
+    mine bound
+      bind start, chunk #xF71
+      bind front, chunk #xF84
+    mine bound
+      bind start, chunk #xF86
+      bind front, chunk #xF8B
+    mine bound
+      bind start, chunk #xF90
+      bind front, chunk #xF95
+    mine chunk, chunk #xF97
+    mine bound
+      bind start, chunk #xF99
+      bind front, chunk #xFAD
+    mine bound
+      bind start, chunk #xFB1
+      bind front, chunk #xFB7
+    mine chunk, chunk #xFB9
+    mine bound
+      bind start, chunk #x20D0
+      bind front, chunk #x20DC
+    mine chunk, chunk #x20E1
+    mine bound
+      bind start, chunk #x302A
+      bind front, chunk #x302F
+    mine chunk, chunk #x3099
+    mine chunk, chunk #x309A
+
+mine digit
+  mine crown
+    mine bound
+      bind start, chunk #x30
+      bind front, chunk #x39
+    mine bound
+      bind start, chunk #x660
+      bind front, chunk #x669
+    mine bound
+      bind start, chunk #x6F0
+      bind front, chunk #x6F9
+    mine bound
+      bind start, chunk #x966
+      bind front, chunk #x96F
+    mine bound
+      bind start, chunk #x9E6
+      bind front, chunk #x9EF
+    mine bound
+      bind start, chunk #xA66
+      bind front, chunk #xA6F
+    mine bound
+      bind start, chunk #xAE6
+      bind front, chunk #xAEF
+    mine bound
+      bind start, chunk #xB66
+      bind front, chunk #xB6F
+    mine bound
+      bind start, chunk #xBE7
+      bind front, chunk #xBEF
+    mine bound
+      bind start, chunk #xC66
+      bind front, chunk #xC6F
+    mine bound
+      bind start, chunk #xCE6
+      bind front, chunk #xCEF
+    mine bound
+      bind start, chunk #xD66
+      bind front, chunk #xD6F
+    mine bound
+      bind start, chunk #xE50
+      bind front, chunk #xE59
+    mine bound
+      bind start, chunk #xED0
+      bind front, chunk #xED9
+    mine bound
+      bind start, chunk #xF20
+      bind front, chunk #xF29
+
+mine Extender
+  mine crown
+    mine chunk, chunk #xB7
+    mine chunk, chunk #x2D0
+    mine chunk, chunk #x2D1
+    mine chunk, chunk #x387
+    mine chunk, chunk #x640
+    mine chunk, chunk #xE46
+    mine chunk, chunk #xEC6
+    mine chunk, chunk #x3005
+    mine bound
+      bind start, chunk #x3031
+      bind front, chunk #x3035
+    mine bound
+      bind start, chunk #x309D
+      bind front, chunk #x309E
+    mine bound
+      bind start, chunk #x30FC
+      bind front, chunk #x30FE

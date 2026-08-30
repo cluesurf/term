@@ -1,0 +1,361 @@
+
+# https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+# https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+
+host terminal-bell, code #h07
+host backspace, code #h08
+host horizontal-tab, code #h09
+host linefeed-newline, code #h0A
+host vertical-tab, code #h0B
+host form-feed, code #h0C
+host carriage-return, code #h0D
+host escape, code #h1B
+host delete, code #h7F
+
+task mint
+  fold mint-zone-text
+    bind zone, read ansi-text-from-zone
+
+mint ansi-text-from-zone
+  take zone, like zone-text
+
+  save text-fill
+    call tint-hash/read
+      read zone/text-fill
+  fork test, call is-present, read text-fill
+    mint form, form text-fill
+  fork test, call is-present, read zone/text-bold
+    mint form, form set-bold-mode
+  mint text, read zone/text
+  mint form, form reset-all-modes
+
+mint move-cursor-to-home-position
+  note <Moves cursor to home position (0, 0).>
+  mint text, text <{escape}[H>
+
+mint move-cursor-to-line-and-column
+  note <Moves cursor to line #, column #.>
+  take line, like unsigned-integer-8
+  take column, like unsigned-integer-8
+  mint text, text <{escape}[{line};{column}H>
+
+mint move-cursor-up
+  note <Moves cursor up # lines>
+  take number, like unsigned-integer-8
+  mint text, text <{escape}[{number}A>
+
+mint move-cursor-down
+  note <Moves cursor down # lines.>
+  take number, like unsigned-integer-8
+  mint text, text <{escape}[{number}B>
+
+mint move-cursor-right
+  note <Moves cursor right # columns.>
+  take number, like unsigned-integer-8
+  mint text, text <{escape}[{number}C>
+
+mint move-cursor-left
+  note <Moves cursor left # columns.>
+  take number, like unsigned-integer-8
+  mint text, text <{escape}[{number}D>
+
+mint move-cursor-to-beginning-of-next-line
+  note <Moves cursor to beginning of next line, # lines down.>
+  take number, like unsigned-integer-8
+  mint text, text <{escape}[{number}E>
+
+mint move-cursor-to-beginning-of-previous-line
+  note <Moves cursor to beginning of previous line, # lines up.>
+  take number, like unsigned-integer-8
+  mint text, text <{escape}[{number}F>
+
+mint move-cursor-to-column
+  note <Moves cursor to column #.>
+  take number, like unsigned-integer-8
+  mint text, text <{escape}[{number}G>
+
+mint request-cursor-position
+  note <Request cursor position.>
+  mint text, text <{escape}[6n>
+
+mint move-cursor-up-one-line-with-scrolling
+  note <Moves cursor one line up, scrolling if needed.>
+  mint text, text <{escape}[M>
+
+mint save-cursor-position
+  note <Save cursor position.>
+  mint text, text <{escape}[7>
+
+mint restore-cursor-position
+  note <Restores the cursor to the last saved position.>
+  mint text, text <{escape}[8>
+
+mint erase-in-display
+  note <Erase in display (same as ESC[0J).>
+  mint text, text <{escape}[J>
+
+mint erase-from-cursor-until-end-of-scren
+  note <Erase from cursor until end of screen.>
+  mint text, text <{escape}[0J>
+
+mint erase-from-cursor-to-beginning-of-scren
+  note <Erase from cursor to beginning of screen.>
+  mint text, text <{escape}[1J>
+
+mint erase-screen
+  note <Erase entire screen.>
+  mint text, text <{escape}[2J>
+
+mint erase-saved-lines
+  note <Erase saved lines.>
+  mint text, text <{escape}[3J>
+
+mint erase-in-line
+  note <Erase in line (same as ESC[0K).>
+  mint text, text <{escape}[K>
+
+mint erase-from-cursor-to-end-of-line
+  note <Erase from cursor to end of line.>
+  mint text, text <{escape}[0K>
+
+mint erase-from-start-of-line-to-cursor
+  note <Erase start of line to the cursor.>
+  mint text, text <{escape}[1K>
+
+mint erase-line
+  note <Erase the entire line.>
+  mint text, text <{escape}[2K>
+
+mint reset-all-modes
+  note <Reset all modes (styles and colors).>
+  mint text, text <{escape}[0m>
+
+mint set-bold-mode
+  mint text, text <{escape}[1m>
+
+mint reset-bold-mode
+  mint text, text <{escape}[22m>
+
+mint set-dim-mode
+  mint text, text <{escape}[2m>
+
+mint reset-dim-mode
+  mint text, text <{escape}[22m>
+
+mint set-faint-mode
+  mint text, text <{escape}[2m>
+
+mint reset-faint-mode
+  mint text, text <{escape}[22m>
+
+mint set-italic-mode
+  mint text, text <{escape}[3m>
+
+mint reset-italic-mode
+  mint text, text <{escape}[23m>
+
+mint set-underline-mode
+  mint text, text <{escape}[4m>
+
+mint reset-underline-mode
+  mint text, text <{escape}[24m>
+
+mint set-blinking-mode
+  mint text, text <{escape}[5m>
+
+mint reset-blinking-mode
+  mint text, text <{escape}[25m>
+
+mint set-inverse-mode
+  mint text, text <{escape}[7m>
+
+mint reset-inverse-mode
+  mint text, text <{escape}[27m>
+
+mint set-hidden-mode
+  mint text, text <{escape}[8m>
+
+mint reset-hidden-mode
+  mint text, text <{escape}[28m>
+
+mint set-strike-through-mode
+  mint text, text <{escape}[9m>
+
+mint reset-strike-through-mode
+  mint text, text <{escape}[29m>
+
+mint set-black-foreground
+  mint text, text <{escape}[30m>
+
+host basic-foreground-hash
+  host black, read set-black-foreground
+  host red, read set-red-foreground
+  host green, read set-green-foreground
+
+mint set-black-background
+  mint text, text <{escape}[40m>
+
+mint set-red-foreground
+  mint text, text <{escape}[31m>
+
+mint set-red-background
+  mint text, text <{escape}[41m>
+
+mint set-green-foreground
+  mint text, text <{escape}[32m>
+
+mint set-green-background
+  mint text, text <{escape}[42m>
+
+mint set-yellow-foreground
+  mint text, text <{escape}[33m>
+
+mint set-yellow-background
+  mint text, text <{escape}[43m>
+
+mint set-blue-foreground
+  mint text, text <{escape}[34m>
+
+mint set-blue-background
+  mint text, text <{escape}[44m>
+
+mint set-magenta-foreground
+  mint text, text <{escape}[35m>
+
+mint set-magenta-background
+  mint text, text <{escape}[45m>
+
+mint set-cyan-foreground
+  mint text, text <{escape}[36m>
+
+mint set-cyan-background
+  mint text, text <{escape}[46m>
+
+mint set-white-foreground
+  mint text, text <{escape}[37m>
+
+mint set-white-background
+  mint text, text <{escape}[47m>
+
+mint set-default-foreground
+  mint text, text <{escape}[39m>
+
+mint set-default-background
+  mint text, text <{escape}[49m>
+
+mint reset-color-foreground
+  mint text, text <{escape}[0m>
+
+mint reset-color-background
+  mint text, text <{escape}[0m>
+
+mint set-bright-black-foreground
+  mint text, text <{escape}[90m>
+
+mint set-bright-black-background
+  mint text, text <{escape}[100m>
+
+mint set-bright-red-foreground
+  mint text, text <{escape}[91m>
+
+mint set-bright-red-background
+  mint text, text <{escape}[101m>
+
+mint set-bright-green-foreground
+  mint text, text <{escape}[92m>
+
+mint set-bright-green-background
+  mint text, text <{escape}[102m>
+
+mint set-bright-yellow-foreground
+  mint text, text <{escape}[93m>
+
+mint set-bright-yellow-background
+  mint text, text <{escape}[103m>
+
+mint set-bright-blue-foreground
+  mint text, text <{escape}[94m>
+
+mint set-bright-blue-background
+  mint text, text <{escape}[104m>
+
+mint set-bright-magenta-foreground
+  mint text, text <{escape}[95m>
+
+mint set-bright-magenta-background
+  mint text, text <{escape}[105m>
+
+mint set-bright-cyan-foreground
+  mint text, text <{escape}[96m>
+
+mint set-bright-cyan-background
+  mint text, text <{escape}[106m>
+
+mint set-bright-white-foreground
+  mint text, text <{escape}[97m>
+
+mint set-bright-white-background
+  mint text, text <{escape}[107m>
+
+mint set-color-foreground-256
+  take number, like unsigned-integer-8
+  mint text, text <{escape}[38;5;{number}m>
+
+mint set-color-background-256
+  take number, like unsigned-integer-8
+  mint text, text <{escape}[48;5;{number}m>
+
+mint set-color-foreground-rgb
+  take r, like unsigned-integer-8
+  take g, like unsigned-integer-8
+  take b, like unsigned-integer-8
+  mint text, text <{escape}[38;2;{r};{g};{b}m>
+
+mint set-color-background-rgb
+  take r, like unsigned-integer-8
+  take g, like unsigned-integer-8
+  take b, like unsigned-integer-8
+  mint text, text <{escape}[48;2;{r};{g};{b}m>
+
+# ESC[={value}h	Changes the screen width or type to the mode specified by value.
+# ESC[=0h	40 x 25 monochrome (text)
+# ESC[=1h	40 x 25 color (text)
+# ESC[=2h	80 x 25 monochrome (text)
+# ESC[=3h	80 x 25 color (text)
+# ESC[=4h	320 x 200 4-color (graphics)
+# ESC[=5h	320 x 200 monochrome (graphics)
+# ESC[=6h	640 x 200 monochrome (graphics)
+# ESC[=7h	Enables line wrapping
+# ESC[=13h	320 x 200 color (graphics)
+# ESC[=14h	640 x 200 color (16-color graphics)
+# ESC[=15h	640 x 350 monochrome (2-color graphics)
+# ESC[=16h	640 x 350 color (16-color graphics)
+# ESC[=17h	640 x 480 monochrome (2-color graphics)
+# ESC[=18h	640 x 480 color (16-color graphics)
+# ESC[=19h	320 x 200 color (256-color graphics)
+# ESC[={value}l	Resets the mode by using the same values that Set Mode uses, except for 7, which disables line wrapping. The last character in this escape sequence is a lowercase L.
+
+mint make-cursor-invisible
+  note <Make cursor invisible.>
+  mint text, text <{escape}[?25l>
+
+mint make-cursor-visible
+  note <Make cursor visible.>
+  mint text, text <{escape}[?25h>
+
+mint restore-screen
+  note <Restore screen.>
+  mint text, text <{escape}[?47l>
+
+mint save-screen
+  note <Save screen.>
+  mint text, text <{escape}[?47h>
+
+mint enable-alternative-buffer
+  note <Enables the alternative buffer.>
+  mint text, text <{escape}[?1049h>
+
+mint disable-alternative-buffer
+  note <Disables the alternative buffer.>
+  mint text, text <{escape}[?1049l>
+

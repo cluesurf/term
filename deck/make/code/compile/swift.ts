@@ -356,6 +356,16 @@ export function emitSwift(program: Program): string {
   // declarative native bindings render their `case swift` template at call sites
   const binds = collectBinds(program)
 
+  // every name assigned anywhere (whole, or through a member path): a module-level binding one of these targets must
+  // be a `var` (`hive.roll = kept` in hive-clear writes through the module's `host hive`)
+  const assignedAnywhere = new Set<string>()
+
+  for (const node of program) {
+    if (node.form === 'function') {
+      reassigned(node.body, assignedAnywhere)
+    }
+  }
+
   // a function's free inference variables become named generic parameters; this maps each to its letter for the
   // duration of that function's emission, so `(t) -> ?5` prints as `(T) -> U` with `U` declared, not an unused `S`.
   let varNames = new Map<number, string>()
@@ -1198,6 +1208,8 @@ export function emitSwift(program: Program): string {
         return `${data}.contains(${arg[0]})`
       case 'indexOf':
         return `Int(${data}.firstIndex(of: ${arg[0]}) ?? -1)`
+      case 'lastIndexOf':
+        return `Int(${data}.lastIndex(of: ${arg[0]}) ?? -1)`
       case 'concat':
         return `SeedList(${data} + ${arg[0]}.data)`
       case 'slice':
@@ -1302,7 +1314,7 @@ export function emitSwift(program: Program): string {
         const annotation =
           node.type?.kind === 'named' ? `: ${swiftType(node.type)}` : ''
 
-        return `${node.mutable ? 'var' : 'let'} ${vname(
+        return `${node.mutable || assignedAnywhere.has(node.name) ? 'var' : 'let'} ${vname(
           node.name,
         )}${annotation} = ${expr(node.init, bind)}`
       }
@@ -1486,8 +1498,13 @@ export function emitSwift(program: Program): string {
 
       case 'function': {
         const generics = genericClause(node) // sets varNames for the param/result/body emission that follows
+        // a function-typed parameter is `@escaping`: the callee may store it (a hive ear, a route handler), and
+        // marking one that is only called is harmless
         const params = node.params
-          .map(p => `_ ${vname(p.name)}: ${swiftType(p.type)}`)
+          .map(
+            p =>
+              `_ ${vname(p.name)}: ${p.type?.kind === 'function' ? '@escaping ' : ''}${swiftType(p.type)}`,
+          )
           .join(', ')
 
         const asyncMark = node.async ? ' async' : ''

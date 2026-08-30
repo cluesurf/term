@@ -48,6 +48,7 @@ const ARRAY_METHODS = new Set([
   'at',
   'includes',
   'indexOf',
+  'lastIndexOf',
   'concat',
   'slice',
   'toReversed',
@@ -69,6 +70,7 @@ const ARRAY_METHODS = new Set([
 export const ARRAY_OP_BOUND: Record<string, 'eq' | 'display'> = {
   includes: 'eq',
   indexOf: 'eq',
+  lastIndexOf: 'eq',
   join: 'display',
 }
 

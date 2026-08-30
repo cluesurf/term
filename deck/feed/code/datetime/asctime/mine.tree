@@ -1,0 +1,42 @@
+
+mine asctime-date
+  mine form, form short-weekday
+  mine form, form sp
+  mine form, form date3
+  mine form, form sp
+  mine form, form time
+  mine form, form sp
+  mine chain
+    mine count, share 4
+    mine form, form digit
+
+mine date3
+  mine form, form month
+  mine form, form sp
+  mine crown
+    mine form, form digit2
+    mine chunk
+      mine form, form sp
+      mine form, form digit
+
+mine short-weekday
+  mine crown
+    mine chord, share <Mon>
+    mine chord, share <Tue>
+    mine chord, share <Wed>
+    mine chord, share <Thu>
+    mine chord, share <Fri>
+    mine chord, share <Sat>
+    mine chord, share <Sun>
+
+mine time
+  mine form, form digit2
+  mine chord, share <:>
+  mine form, form digit2
+  mine chord, share <:>
+  mine form, form digit2
+
+mine digit2
+  mine chain
+    mine count, share 2
+    mine form, form digit

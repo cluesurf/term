@@ -1,0 +1,53 @@
+
+mine controls
+  mine crown
+    mine bound
+      mine start, share 0
+      mine front, share 31
+    mine chord, share 127
+
+mine linear-whitespace
+  mine sieve, mine form, form carriage-return-line-feed
+  mine crest
+    bind start, share 1
+    mine crown
+      bind form, form space
+      bind form, form horizontal-tab
+
+mine text
+  mine bound
+    bind start, share 0
+    bind front, share 255
+    mine leave
+      mine form, form controls
+
+mine token
+  mine crest
+    bind start, share 1
+    mine form, form char
+      mine leave
+        mine crown
+          mine form, form controls
+          mine form, form separator-list
+
+mine separator-list
+  mine crown
+    mine chord, share <(>
+    mine chord, share <)>
+    mine chord, share <<>
+    mine chord, share <>>
+    mine chord, share <@>
+    mine chord, share <,>
+    mine chord, share <;>
+    mine chord, share <:>
+    mine chord, share <\\>
+    mine chord, share <\|>
+    mine chord, share </>
+    mine chord, share <[>
+    mine chord, share <]>
+    mine chord, share <?>
+    mine chord, share <=>
+    mine chord, share <\{>
+    mine chord, share <\}>
+    mine form, form sp
+    mine form, form ht

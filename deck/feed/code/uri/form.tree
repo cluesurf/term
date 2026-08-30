@@ -1,0 +1,25 @@
+
+field uri
+  state port, field integer
+  state protocol, field integer
+  state host, field string
+
+field port
+
+field host
+
+field path
+
+field hash
+
+field query
+
+field protocol
+
+field domain
+
+field auth
+
+field user
+
+field password

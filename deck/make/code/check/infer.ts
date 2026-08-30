@@ -1983,6 +1983,12 @@ export function check(
       // to that parameter's name (so `make none` in a generic method types as maybe<s>, emittable as a native enum).
       zonkBody(statement.body, signature.genericNames)
     }
+    // a module-level binding zonks too: `host hive` builds a record whose empty-list fields were unified with the
+    // form's declared element types, and a native backend reads the literal's type to spell the collection
+    // (`mutableListOf<HiveDeck>()`); without this the free element variable defaulted to a number
+    else if (statement.form === 'let' && only === undefined) {
+      zonkBody([statement], new Map())
+    }
   }
 
   return diagnostics

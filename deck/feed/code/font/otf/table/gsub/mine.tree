@@ -1,0 +1,39 @@
+
+# https://github.com/opentypejs/opentype.js/blob/88f7c1755ceec3326cdac4de53bc5ec89d38a615/src/parse.js#L519
+
+mine gsub-table
+  mine form, form gsub-table-version
+    weave version
+  check or
+    check mine
+      bind start, share 1
+      bind front, share version
+    check mine
+      bind start, share 1.1
+      bind front, share version
+    catch fault
+      leave build
+  check mine
+    bind start, share 1
+    bind front, share version
+    mine form, form script-list
+    mine form, form feature-list
+    mine form, form lookup-list
+  check mine
+    bind start, share 1.1
+    bind front, share version
+    mine form, form script-list
+    mine form, form feature-list
+    mine form, form lookup-list
+    mine form, form feature-variation-list
+
+mine script-list
+  mine form, form pointer
+
+mine pointer
+  mine form, form struct-offset
+    weave struct-offset
+  check greater
+    bind start, share struct-offset
+    bind front, share 0
+    return new Parser(this.data, this.offset + structOffset).parseStruct(description)

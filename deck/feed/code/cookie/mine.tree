@@ -1,0 +1,242 @@
+mine OWS
+  mine flow
+    mine maybe
+      mine form, form obs-fold
+    mine form, form WSP
+
+mine obs-fold
+  mine form, form CRLF
+
+mine set-cookie-string
+  mine form, form cookie-pair
+  mine flow
+    mine text, text <;>
+    mine form, form SP
+    mine form, form cookie-av
+
+mine cookie-pair
+  mine form, form cookie-name
+  mine text, text <=>
+  mine form, form cookie-value
+
+mine cookie-name
+  mine form, form token
+
+mine cookie-value
+  look after
+    mine list
+      mine form, form cookie-octet
+    mine hunk
+      mine form, form DQUOTE
+      mine list, form cookie-octet
+      mine form, form DQUOTE
+
+mine cookie-octet
+  look after
+    mine chunk, share #u0021
+    mine bound
+      bind start, share #u0023
+      bind front, share #u002B
+    bind bound
+      bind start, share #u002D
+      bind front, share #u003A
+    bind bound
+      bind start, share #u003C
+      bind front, share #u005B
+    bind bound
+      bind start, share #u005D
+      bind front, share #u007E
+
+mine controls
+  look after
+    mine bound
+      bind start, share #u0000
+      bind front, share #u001F
+    mine chunk, share #u007F
+
+mine token
+  mine shift
+    look after
+      mine form, form controls
+      mine form, form non-token-separators
+
+mine non-token-separators
+  mine chunk, share <(>
+  mine chunk, share <)>
+  mine chunk, share <\<>
+  mine chunk, share <\>>
+  mine chunk, share <@>
+  mine chunk, share <,>
+  mine chunk, share <;>
+  mine chunk, share <:>
+  mine chunk, share <\\>
+  mine chunk, share <">
+  mine chunk, share </>
+  mine chunk, share <[>
+  mine chunk, share <]>
+  mine chunk, share <?>
+  mine chunk, share <=>
+  mine chunk, share <\{>
+  mine chunk, share <\}>
+  mine form, form SP
+  mine form, form HT
+
+mine cookie-av
+  mine form, form expires-av
+  mine form, form max-age-av
+  mine form, form domain-av
+  mine form, form path-av
+  mine form, form secure-av
+  mine form, form httponly-av
+  mine form, form extension-av
+
+mine expires-av
+  mine chunk, share <Expires=>
+    bind sense, text false
+  mine form, form sane-cookie-date
+
+mine sane-cookie-date
+  mine form, <rfc1123-date, defined in [RFC2616], Section 3.3.1>
+
+mine max-age-av
+  mine chunk, share <Max-Age=>
+    bind sense, text false
+  mine form, form non-zero-digit
+  mine list
+    mine form, form DIGIT
+
+mine non-zero-digit
+  mine bound
+    bind start, share 1
+    bind front, share 9
+
+mine domain-av
+  mine chunk, share <Domain=>
+    bind sense, text false
+  mine form, form domain-value
+
+mine domain-value
+  mine form, form subdomain
+
+mine subdomain
+  look after
+    mine form, form label
+    mine block
+      mine form, form subdomain
+      mine chunk, share <.>
+      mine form, form label
+
+mine label
+  mine form, form letter
+  mine maybe
+    mine maybe
+      mine form, form ldh-str
+    mine form, form let-dig
+
+mine ldh-str
+  look after
+    mine form, form let-dig-hyp
+    mine block
+      mine form, form let-dig-hyp
+      mine form, form ldh-str
+
+mine let-dig-hyp
+  look after
+    mine form, form let-dig
+    mine chunk, share <->
+
+mine let-dig
+  look after
+    mine form, form letter
+    mine form, form digit
+
+mine letter
+  look after
+    mine bound
+      mine start, share a
+      mine start, share z
+    mine bound
+      mine start, share A
+      mine start, share Z
+
+mine digit
+  mine bound
+    mine start, share 0
+    mine start, share 9
+
+mine path-av
+  mine chunk, share <Path=>
+    bind sense, text false
+  mine form, form path-value
+
+mine path-value
+  mine form, form char
+    mine shift
+      look after
+        mine form, form controls
+        mine chunk, share <;>
+
+mine char
+  mine bound
+    bind start, share #u0001
+    bind front, share #u007F
+
+mine secure-av
+  mine chunk, share <Secure>
+    bind sense, text false
+
+mine httponly-av
+  mine chunk, share <HttpOnly>
+    bind sense, text false
+
+mine extension-av
+  mine form, form char
+    mine shift
+      look after
+        mine form, form controls
+        mine chunk, share <;>
+
+mine cookie-header
+  mine form, share <Cookie:>
+    bind sense, text false
+  mine form, form OWS
+  mine form, form cookie-string
+  mine form, form OWS
+
+mine cookie-string
+  mine form, cookie-pair
+  mine flow
+    mine chunk, share <;>
+    mine form, form SP
+    mine form, form cookie-pair
+
+mine cookie-date
+  mine form, *delimiter date-token-list *delimiter
+
+mine date-token-list
+  mine form, date-token *( 1*delimiter date-token )
+
+mine date-token
+  mine form, 1*non-delimiter
+
+mine delimiter
+  mine form, %x09 / %x20-2F / %x3B-40 / %x5B-60 / %x7B-7E
+mine non-delimiter
+  mine form, %x00-08 / %x0A-1F / DIGIT / ":" / ALPHA / %x7F-FF
+mine non-digit
+  mine form, %x00-2F / %x3A-FF
+
+mine day-of-month
+  mine form, 1*2DIGIT ( non-digit *OCTET )
+mine month
+  mine form, ( "jan" / "feb" / "mar" / "apr" /
+                       "may" / "jun" / "jul" / "aug" /
+                       "sep" / "oct" / "nov" / "dec" ) *OCTET
+mine year
+  mine form, 2*4DIGIT ( non-digit *OCTET )
+mine time
+  mine form, hms-time ( non-digit *OCTET )
+mine hms-time
+  mine form, time-field ":" time-field ":" time-field
+mine time-field
+  mine form, 1*2DIGIT

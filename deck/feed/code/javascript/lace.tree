@@ -1,0 +1,39 @@
+
+lace javascript
+  base program
+
+  test test-is-equal
+    bind base, link program/form/name
+    bind head, term module
+    hook match
+      lace form, form module
+        bind module, link program
+    hook fault
+      lace form, form script
+        bind script, link program
+
+lace module
+  base module
+
+  walk module/import
+    lace form, form import
+      bind import, link base
+  walk module/statement
+    lace form, form statement
+      bind statement, link base
+
+lace import
+  base import
+
+  lace case
+    lace form, form input-properties
+    lace form, form input-default
+    lace form, form input-namespace
+  lace form, form new-line
+
+lace statement
+
+lace identifier
+  base identifier
+
+  lace text, link identifier/name

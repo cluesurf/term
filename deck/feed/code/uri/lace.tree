@@ -1,0 +1,39 @@
+
+lace uri
+  take uri
+
+  test has
+    bind seed, read uri/scheme
+    lace text, read uri/scheme
+    lace text, read <:>
+  test has
+    bind seed, read uri/login
+    lace text, read uri/login
+    lace text, read <@>
+  test has
+    bind seed, read uri/host
+    lace text, read uri/host
+  test has
+    bind seed, read uri/port
+    lace text, read <:>
+    lace text, read uri/port
+  lace class, class absolute-uri
+    bind seed, read uri
+
+lace absolute-uri
+  take uri
+
+  walk uri/path
+    lace text, read </>
+    lace text, read block
+  test has
+    bind seed, read login/query
+    lace text, read <?>
+    walk login/query
+      lace text, read block/key
+      lace text, read <=>
+      lace text, read block/value
+  test has
+    bind seed, read login/fragment
+    lace text, read <#>
+    lace text, read login/fragment

@@ -759,6 +759,8 @@ export function emitKotlin(program: Program): string {
         return `${target}.contains(${arg[0]})`
       case 'indexOf':
         return `${target}.indexOf(${arg[0]}).toLong()`
+      case 'lastIndexOf':
+        return `${target}.lastIndexOf(${arg[0]}).toLong()`
       case 'concat':
         return `(${target} + ${arg[0]}).toMutableList()`
       case 'slice':

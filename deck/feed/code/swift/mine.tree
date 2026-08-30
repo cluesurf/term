@@ -1,0 +1,2604 @@
+
+# mine whitespace
+#   mine list
+#     bind base, size 1
+#     mine any
+#       mine form, form line-break
+#       mine form, form inline-space
+#       mine form, form comment
+#       mine form, form multiline-comment
+#       mine form. form line-tabulation
+#       mine form. form null
+#       mine form. form form-feed
+
+# mine line-tabulation
+#   mine #u000b
+
+# mine null
+#   mine #u0000
+
+# mine form-feed
+#   mine #u000c
+
+# mine line-break
+#   mine any
+#     mine #u000A
+#     mine #u000D
+#     mine flow
+#       mine #u000D
+#       mine #u000A
+
+# mine inline-spaces
+#   inline-space
+#   mine not
+#     mine form, form inline-spaces
+# mine inline-space
+#   U+0009 or U+0020
+
+# mine comment
+#   // comment-text line-break
+
+# mine multiline-comment
+#   /* multiline-comment-text */
+
+# mine comment-text
+#   comment-text-item
+#   mine not
+#     mine form, form comment-text
+
+# mine comment-text-item
+#   Any Unicode scalar value except U+000A or U+000D
+
+# mine multiline-comment-text
+#   multiline-comment-text-item
+#   mine not
+#     mine form, form multiline-comment-text
+# mine multiline-comment-text-item
+#   multiline-comment
+
+# mine multiline-comment-text-item
+#   comment-text-item
+
+# mine multiline-comment-text-item
+#   Any Unicode scalar value except /* or */
+
+# mine identifier
+#   mine form, form identifier-head
+#   mine not
+#     mine form, form identifier-characters
+
+# mine identifier-2
+#   mine <`>
+#   mine form, form identifier-head
+#   mine not
+#     mine form, form identifier-characters
+#   mine <`>
+
+# mine identifier-3
+#   implicit-parameter-name
+
+# mine identifier-4
+#   property-wrapper-projection
+
+# mine identifier-list
+#   identifier | identifier , identifier-list
+
+# mine identifier-head
+#   Upper- or lowercase letter A through Z
+
+# mine identifier-head
+#   _
+
+# mine identifier-head
+#   U+00A8, U+00AA, U+00AD, U+00AF, U+00B2–U+00B5, or U+00B7–U+00BA
+
+# mine identifier-head
+#   U+00BC–U+00BE, U+00C0–U+00D6, U+00D8–U+00F6, or U+00F8–U+00FF
+
+# mine identifier-head
+#   U+0100–U+02FF, U+0370–U+167F, U+1681–U+180D, or U+180F–U+1DBF
+
+# mine identifier-head
+#   U+1E00–U+1FFF
+
+# mine identifier-head
+#   U+200B–U+200D, U+202A–U+202E, U+203F–U+2040, U+2054, or U+2060–U+206F
+
+# mine identifier-head
+#   U+2070–U+20CF, U+2100–U+218F, U+2460–U+24FF, or U+2776–U+2793
+
+# mine identifier-head
+#   U+2C00–U+2DFF or U+2E80–U+2FFF
+
+# mine identifier-head
+#   U+3004–U+3007, U+3021–U+302F, U+3031–U+303F, or U+3040–U+D7FF
+
+# mine identifier-head
+#   U+F900–U+FD3D, U+FD40–U+FDCF, U+FDF0–U+FE1F, or U+FE30–U+FE44
+
+# mine identifier-head
+#   U+FE47–U+FFFD
+
+# mine identifier-head
+#   U+10000–U+1FFFD, U+20000–U+2FFFD, U+30000–U+3FFFD, or U+40000–U+4FFFD
+
+# mine identifier-head
+#   U+50000–U+5FFFD, U+60000–U+6FFFD, U+70000–U+7FFFD, or U+80000–U+8FFFD
+
+# mine identifier-head
+#   U+90000–U+9FFFD, U+A0000–U+AFFFD, U+B0000–U+BFFFD, or U+C0000–U+CFFFD
+
+# mine identifier-head
+#   U+D0000–U+DFFFD or U+E0000–U+EFFFD
+
+# mine identifier-character
+#   Digit 0 through 9
+
+# mine identifier-character
+#   U+0300–U+036F, U+1DC0–U+1DFF, U+20D0–U+20FF, or U+FE20–U+FE2F
+
+# mine identifier-character
+#   identifier-head
+
+# mine identifier-characters
+#   identifier-character
+#   mine not
+#     mine form, form identifier-characters
+# mine implicit-parameter-name
+#   $ decimal-digits
+
+# mine property-wrapper-projection
+#   $ identifier-characters
+
+# GRAMMAR OF A LITERAL
+
+# mine literal
+#   numeric-literal | string-literal | boolean-literal | nil-literal
+
+# mine numeric-literal
+#   -opt integer-literal | -opt floating-point-literal
+
+# mine boolean-literal
+#   true | false
+
+# mine nil-literal
+#   nil
+
+# GRAMMAR OF AN INTEGER LITERAL
+
+# mine integer-literal
+#   binary-literal
+
+# mine integer-literal
+#   octal-literal
+
+# mine integer-literal
+#   decimal-literal
+
+# mine integer-literal
+#   hexadecimal-literal
+
+# mine binary-literal
+#   0b binary-digit
+#   mine not
+#     mine form, form binary-literal-characters
+# mine binary-digit
+#   Digit 0 or 1
+
+# mine binary-literal-character
+#   binary-digit | _
+
+# mine binary-literal-characters
+#   binary-literal-character
+#   mine not
+#     mine form, form binary-literal-characters
+# mine octal-literal
+#   0o octal-digit
+#   mine not
+#     mine form, form octal-literal-characters
+# mine octal-digit
+#   Digit 0 through 7
+
+# mine octal-literal-character
+#   octal-digit | _
+
+# mine octal-literal-characters
+#   octal-literal-character
+#   mine not
+#     mine form, form octal-literal-characters
+# mine decimal-literal
+#   decimal-digit
+#   mine not
+#     mine form, form decimal-literal-characters
+# mine decimal-digit
+#   Digit 0 through 9
+
+# mine decimal-digits
+#   decimal-digit
+#   mine not
+#     mine form, form decimal-digits
+# mine decimal-literal-character
+#   decimal-digit | _
+
+# mine decimal-literal-characters
+#   decimal-literal-character
+#   mine not
+#     mine form, form decimal-literal-characters
+# mine hexadecimal-literal
+#   0x hexadecimal-digit
+#   mine not
+#     mine form, form hexadecimal-literal-characters
+# mine hexadecimal-digit
+#   Digit 0 through 9, a through f, or A through F
+
+# mine hexadecimal-literal-character
+#   hexadecimal-digit | _
+
+# mine hexadecimal-literal-characters
+#   hexadecimal-literal-character
+#   mine not
+#     mine form, form hexadecimal-literal-characters
+# GRAMMAR OF A FLOATING-POINT LITERAL
+
+# mine floating-point-literal
+#   decimal-literal decimal-fraction opt
+#   mine not
+#     mine form, form decimal-exponent
+# mine floating-point-literal
+#   hexadecimal-literal
+#   mine not
+#     mine form, form hexadecimal-fraction
+#   hexadecimal-exponent
+
+# mine decimal-fraction
+#   . decimal-literal
+
+# mine decimal-exponent
+#   floating-point-e
+#   mine not
+#     mine form, form sign
+#   decimal-literal
+
+# mine hexadecimal-fraction
+#   . hexadecimal-digit
+#   mine not
+#     mine form, form hexadecimal-literal-characters
+# mine hexadecimal-exponent
+#   floating-point-p
+#   mine not
+#     mine form, form sign
+#   decimal-literal
+
+# mine floating-point-e
+#   e | E
+
+# mine floating-point-p
+#   p | P
+
+# mine sign
+#   + | -
+
+# GRAMMAR OF A STRING LITERAL
+
+# mine string-literal
+#   static-string-literal | interpolated-string-literal
+
+# mine string-literal-opening-delimiter
+
+#   mine not
+#     mine form, form extended-string-literal-delimiter
+#   "
+
+# mine string-literal-closing-delimiter
+#   "
+#   mine not
+#     mine form, form extended-string-literal-delimiter
+# mine static-string-literal
+#   string-literal-opening-delimiter
+#   mine not
+#     mine form, form quoted-text
+#   string-literal-closing-delimiter
+
+# mine static-string-literal
+#   multiline-string-literal-opening-delimiter
+#   mine not
+#     mine form, form multiline-quoted-text
+#   multiline-string-literal-closing-delimiter
+
+# mine multiline-string-literal-opening-delimiter
+
+#   mine not
+#     mine form, form extended-string-literal-delimiter
+#   """
+
+# mine multiline-string-literal-closing-delimiter
+#   """
+#   mine not
+#     mine form, form extended-string-literal-delimiter
+# mine extended-string-literal-delimiter
+#   #
+#   mine not
+#     mine form, form extended-string-literal-delimiter
+# mine quoted-text
+#   quoted-text-item
+#   mine not
+#     mine form, form quoted-text
+# mine quoted-text-item
+#   escaped-character
+
+# mine quoted-text-item
+#   Any Unicode scalar value except ", \, U+000A, or U+000D
+
+# mine multiline-quoted-text
+#   multiline-quoted-text-item
+#   mine not
+#     mine form, form multiline-quoted-text
+# mine multiline-quoted-text-item
+#   escaped-character
+
+# mine multiline-quoted-text-item
+#   Any Unicode scalar value except \
+
+# mine multiline-quoted-text-item
+#   escaped-newline
+
+# mine interpolated-string-literal
+#   string-literal-opening-delimiter
+#   mine not
+#     mine form, form interpolated-text
+#   string-literal-closing-delimiter
+
+# mine interpolated-string-literal
+#   multiline-string-literal-opening-delimiter
+#   mine not
+#     mine form, form multiline-interpolated-text
+#   multiline-string-literal-closing-delimiter
+
+# mine interpolated-text
+#   interpolated-text-item
+#   mine not
+#     mine form, form interpolated-text
+# mine interpolated-text-item
+#   \( expression ) | quoted-text-item
+
+# mine multiline-interpolated-text
+#   multiline-interpolated-text-item
+#   mine not
+#     mine form, form multiline-interpolated-text
+# mine multiline-interpolated-text-item
+#   \( expression ) | multiline-quoted-text-item
+
+# mine escape-sequence
+#   \ extended-string-literal-delimiter
+
+# mine escaped-character
+#   escape-sequence 0 | escape-sequence \ | escape-sequence t | escape-sequence n | escape-sequence r | escape-sequence " | escape-sequence '
+
+# mine escaped-character
+#   escape-sequence u { unicode-scalar-digits }
+
+# mine unicode-scalar-digits
+#   Between one and eight hexadecimal digits
+
+# mine escaped-newline
+#   escape-sequence
+#   mine not
+#     mine form, form inline-spaces
+#   line-break
+
+# GRAMMAR OF OPERATORS
+
+# mine operator
+#   operator-head
+#   mine not
+#     mine form, form operator-characters
+# mine operator
+#   dot-operator-head dot-operator-characters
+
+# mine operator-head
+#   / | = | - | + | ! | * | % | < | > | & | | | ^ | ~ | ?
+
+# mine operator-head
+#   U+00A1–U+00A7
+
+# mine operator-head
+#   U+00A9 or U+00AB
+
+# mine operator-head
+#   U+00AC or U+00AE
+
+# mine operator-head
+#   U+00B0–U+00B1
+
+# mine operator-head
+#   U+00B6, U+00BB, U+00BF, U+00D7, or U+00F7
+
+# mine operator-head
+#   U+2016–U+2017
+
+# mine operator-head
+#   U+2020–U+2027
+
+# mine operator-head
+#   U+2030–U+203E
+
+# mine operator-head
+#   U+2041–U+2053
+
+# mine operator-head
+#   U+2055–U+205E
+
+# mine operator-head
+#   U+2190–U+23FF
+
+# mine operator-head
+#   U+2500–U+2775
+
+# mine operator-head
+#   U+2794–U+2BFF
+
+# mine operator-head
+#   U+2E00–U+2E7F
+
+# mine operator-head
+#   U+3001–U+3003
+
+# mine operator-head
+#   U+3008–U+3020
+
+# mine operator-head
+#   U+3030
+
+# mine operator-character
+#   operator-head
+
+# mine operator-character
+#   U+0300–U+036F
+
+# mine operator-character
+#   U+1DC0–U+1DFF
+
+# mine operator-character
+#   U+20D0–U+20FF
+
+# mine operator-character
+#   U+FE00–U+FE0F
+
+# mine operator-character
+#   U+FE20–U+FE2F
+
+# mine operator-character
+#   U+E0100–U+E01EF
+
+# mine operator-characters
+#   operator-character
+#   mine not
+#     mine form, form operator-characters
+# mine dot-operator-head
+#   .
+
+# mine dot-operator-character
+#   . | operator-character
+
+# mine dot-operator-characters
+#   dot-operator-character
+#   mine not
+#     mine form, form dot-operator-characters
+# mine binary-operator
+#   operator
+
+# mine prefix-operator
+#   operator
+
+# mine postfix-operator
+#   operator
+
+# Types
+# GRAMMAR OF A TYPE
+
+# mine type
+#   function-type
+
+# mine type
+#   array-type
+
+# mine type
+#   dictionary-type
+
+# mine type
+#   type-identifier
+
+# mine type
+#   tuple-type
+
+# mine type
+#   optional-type
+
+# mine type
+#   implicitly-unwrapped-optional-type
+
+# mine type
+#   protocol-composition-type
+
+# mine type
+#   opaque-type
+
+# mine type
+#   metatype-type
+
+# mine type
+#   any-type
+
+# mine type
+#   self-type
+
+# mine type
+#   ( type )
+
+# GRAMMAR OF A TYPE ANNOTATION
+
+# mine type-annotation
+#   :
+#   mine not
+#     mine form, form attributes
+#   inoutopt type
+
+# GRAMMAR OF A TYPE IDENTIFIER
+
+# mine type-identifier
+#   type-name
+#   mine not
+#     mine form, form generic-argument-clause
+#   | type-name
+#   mine not
+#     mine form, form generic-argument-clause
+#   . type-identifier
+
+# mine type-name
+#   identifier
+
+# GRAMMAR OF A TUPLE TYPE
+
+# mine tuple-type
+#   ( ) | ( tuple-type-element , tuple-type-element-list )
+
+# mine tuple-type-element-list
+#   tuple-type-element | tuple-type-element , tuple-type-element-list
+
+# mine tuple-type-element
+#   element-name type-annotation | type
+
+# mine element-name
+#   identifier
+
+# GRAMMAR OF A FUNCTION TYPE
+
+# mine function-type
+
+#   mine not
+#     mine form, form attributes
+#   function-type-argument-clause throwsopt -> type
+
+# mine function-type-argument-clause
+#   ( )
+
+# mine function-type-argument-clause
+#   ( function-type-argument-list ...opt )
+
+# mine function-type-argument-list
+#   function-type-argument | function-type-argument , function-type-argument-list
+
+# mine function-type-argument
+
+#   mine not
+#     mine form, form attributes
+#   inoutopt type | argument-label type-annotation
+
+# mine argument-label
+#   identifier
+
+# GRAMMAR OF AN ARRAY TYPE
+
+# mine array-type
+#   [ type ]
+
+# GRAMMAR OF A DICTIONARY TYPE
+
+# mine dictionary-type
+#   [ type : type ]
+
+# GRAMMAR OF AN OPTIONAL TYPE
+
+# mine optional-type
+#   type ?
+
+# GRAMMAR OF AN IMPLICITLY UNWRAPPED OPTIONAL TYPE
+
+# mine implicitly-unwrapped-optional-type
+#   type !
+
+# GRAMMAR OF A PROTOCOL COMPOSITION TYPE
+
+# mine protocol-composition-type
+#   type-identifier & protocol-composition-continuation
+
+# mine protocol-composition-continuation
+#   type-identifier | protocol-composition-type
+
+# GRAMMAR OF AN OPAQUE TYPE
+
+# mine opaque-type
+#   some type
+
+# GRAMMAR OF A METATYPE TYPE
+
+# mine metatype-type
+#   type . Type | type . Protocol
+
+# GRAMMAR OF AN ANY TYPE
+
+# mine any-type
+#   Any
+
+# GRAMMAR OF A SELF TYPE
+
+# mine self-type
+#   Self
+
+# GRAMMAR OF A TYPE INHERITANCE CLAUSE
+
+# mine type-inheritance-clause
+#   : type-inheritance-list
+
+# mine type-inheritance-list
+#   type-identifier | type-identifier , type-inheritance-list
+
+# Expressions
+# GRAMMAR OF AN EXPRESSION
+
+# mine expression
+
+#   mine not
+#     mine form, form try-operator
+
+#   mine not
+#     mine form, form await-operator
+#   prefix-expression
+#   mine not
+#     mine form, form binary-expressions
+# mine expression-list
+#   expression | expression , expression-list
+
+# GRAMMAR OF A PREFIX EXPRESSION
+
+# mine prefix-expression
+
+#   mine not
+#     mine form, form prefix-operator
+#   postfix-expression
+
+# mine prefix-expression
+#   in-out-expression
+
+# GRAMMAR OF AN IN-OUT EXPRESSION
+
+# mine in-out-expression
+#   & identifier
+
+# GRAMMAR OF A TRY EXPRESSION
+
+# mine try-operator
+#   try | try ? | try !
+
+# GRAMMAR OF AN AWAIT EXPRESSION
+
+# mine await-operator
+#   await
+
+# GRAMMAR OF A BINARY EXPRESSION
+
+# mine binary-expression
+#   binary-operator prefix-expression
+
+# mine binary-expression
+#   assignment-operator
+#   mine not
+#     mine form, form try-operator
+#   prefix-expression
+
+# mine binary-expression
+#   conditional-operator
+#   mine not
+#     mine form, form try-operator
+#   prefix-expression
+
+# mine binary-expression
+#   type-casting-operator
+
+# mine binary-expressions
+#   binary-expression
+#   mine not
+#     mine form, form binary-expressions
+# GRAMMAR OF AN ASSIGNMENT OPERATOR
+
+# mine assignment-operator
+#   =
+
+# GRAMMAR OF A CONDITIONAL OPERATOR
+
+# mine conditional-operator
+#   ? expression :
+
+# GRAMMAR OF A TYPE-CASTING OPERATOR
+
+# mine type-casting-operator
+#   is type
+
+# mine type-casting-operator
+#   as type
+
+# mine type-casting-operator
+#   as ? type
+
+# mine type-casting-operator
+#   as ! type
+
+# GRAMMAR OF A PRIMARY EXPRESSION
+
+# mine primary-expression
+#   identifier
+#   mine not
+#     mine form, form generic-argument-clause
+# mine primary-expression
+#   literal-expression
+
+# mine primary-expression
+#   self-expression
+
+# mine primary-expression
+#   superform-expression
+
+# mine primary-expression
+#   closure-expression
+
+# mine primary-expression
+#   parenthesized-expression
+
+# mine primary-expression
+#   tuple-expression
+
+# mine primary-expression
+#   implicit-member-expression
+
+# mine primary-expression
+#   wildcard-expression
+
+# mine primary-expression
+#   key-path-expression
+
+# mine primary-expression
+#   selector-expression
+
+# mine primary-expression
+#   key-path-string-expression
+
+# GRAMMAR OF A LITERAL EXPRESSION
+
+# mine literal-expression
+#   literal
+
+# mine literal-expression
+#   array-literal | dictionary-literal | playground-literal
+
+# mine literal-expression
+#   #file | #fileID | #filePath
+
+# mine literal-expression
+#   #line | #column | #function | #dsohandle
+
+# mine array-literal
+#   [
+#   mine not
+#     mine form, form array-literal-items
+#   ]
+
+# mine array-literal-items
+#   array-literal-item ,opt | array-literal-item , array-literal-items
+
+# mine array-literal-item
+#   expression
+
+# mine dictionary-literal
+#   [ dictionary-literal-items ] | [ : ]
+
+# mine dictionary-literal-items
+#   dictionary-literal-item ,opt | dictionary-literal-item , dictionary-literal-items
+
+# mine dictionary-literal-item
+#   expression : expression
+
+# mine playground-literal
+#   #colorLiteral ( red : expression , green : expression , blue : expression , alpha : expression )
+
+# mine playground-literal
+#   #fileLiteral ( resourceName : expression )
+
+# mine playground-literal
+#   #imageLiteral ( resourceName : expression )
+
+# GRAMMAR OF A SELF EXPRESSION
+
+# mine self-expression
+#   self | self-method-expression | self-subscript-expression | self-initializer-expression
+
+# mine self-method-expression
+#   self . identifier
+
+# mine self-subscript-expression
+#   self [ function-call-argument-list ]
+
+# mine self-initializer-expression
+#   self . init
+
+# GRAMMAR OF A SUPERform EXPRESSION
+
+# mine superform-expression
+#   superform-method-expression | superform-subscript-expression | superform-initializer-expression
+
+# mine superform-method-expression
+#   super . identifier
+
+# mine superform-subscript-expression
+#   super [ function-call-argument-list ]
+
+# mine superform-initializer-expression
+#   super . init
+
+# GRAMMAR OF A CLOSURE EXPRESSION
+
+# mine closure-expression
+#   {
+#   mine not
+#     mine form, form closure-signature
+
+#   mine not
+#     mine form, form statements
+#   }
+
+# mine closure-signature
+
+#   mine not
+#     mine form, form capture-list
+#   closure-parameter-clause throwsopt
+#   mine not
+#     mine form, form function-result
+#   in
+
+# mine closure-signature
+#   capture-list in
+
+# mine closure-parameter-clause
+#   ( ) | ( closure-parameter-list ) | identifier-list
+
+# mine closure-parameter-list
+#   closure-parameter | closure-parameter , closure-parameter-list
+
+# mine closure-parameter
+#   closure-parameter-name
+#   mine not
+#     mine form, form type-annotation
+# mine closure-parameter
+#   closure-parameter-name type-annotation ...
+
+# mine closure-parameter-name
+#   identifier
+
+# mine capture-list
+#   [ capture-list-items ]
+
+# mine capture-list-items
+#   capture-list-item | capture-list-item , capture-list-items
+
+# mine capture-list-item
+
+#   mine not
+#     mine form, form capture-specifier
+#   identifier
+
+# mine capture-list-item
+
+#   mine not
+#     mine form, form capture-specifier
+#   identifier = expression
+
+# mine capture-list-item
+
+#   mine not
+#     mine form, form capture-specifier
+#   self-expression
+
+# mine capture-specifier
+#   weak | unowned | unowned(safe) | unowned(unsafe)
+
+# GRAMMAR OF A IMPLICIT MEMBER EXPRESSION
+
+# mine implicit-member-expression
+#   . identifier
+
+# mine implicit-member-expression
+#   . identifier . postfix-expression
+
+# GRAMMAR OF A PARENTHESIZED EXPRESSION
+
+# mine parenthesized-expression
+#   ( expression )
+
+# GRAMMAR OF A TUPLE EXPRESSION
+
+# mine tuple-expression
+#   ( ) | ( tuple-element , tuple-element-list )
+
+# mine tuple-element-list
+#   tuple-element | tuple-element , tuple-element-list
+
+# mine tuple-element
+#   expression | identifier : expression
+
+# GRAMMAR OF A WILDCARD EXPRESSION
+
+# mine wildcard-expression
+#   _
+
+# GRAMMAR OF A KEY-PATH EXPRESSION
+
+# mine key-path-expression
+#   \
+#   mine not
+#     mine form, form type
+#   . key-path-components
+
+# mine key-path-components
+#   key-path-component | key-path-component . key-path-components
+
+# mine key-path-component
+#   identifier
+#   mine not
+#     mine form, form key-path-postfixes
+#   | key-path-postfixes
+
+# mine key-path-postfixes
+#   key-path-postfix
+#   mine not
+#     mine form, form key-path-postfixes
+# mine key-path-postfix
+#   ? | ! | self | [ function-call-argument-list ]
+
+# GRAMMAR OF A SELECTOR EXPRESSION
+
+# mine selector-expression
+#   #selector ( expression )
+
+# mine selector-expression
+#   #selector ( getter: expression )
+
+# mine selector-expression
+#   #selector ( setter: expression )
+
+# GRAMMAR OF A KEY-PATH STRING EXPRESSION
+
+# mine key-path-string-expression
+#   #keyPath ( expression )
+
+# GRAMMAR OF A POSTFIX EXPRESSION
+
+# mine postfix-expression
+#   primary-expression
+
+# mine postfix-expression
+#   postfix-expression postfix-operator
+
+# mine postfix-expression
+#   function-call-expression
+
+# mine postfix-expression
+#   initializer-expression
+
+# mine postfix-expression
+#   explicit-member-expression
+
+# mine postfix-expression
+#   postfix-self-expression
+
+# mine postfix-expression
+#   subscript-expression
+
+# mine postfix-expression
+#   forced-value-expression
+
+# mine postfix-expression
+#   optional-chaining-expression
+
+# GRAMMAR OF A FUNCTION CALL EXPRESSION
+
+# mine function-call-expression
+#   postfix-expression function-call-argument-clause
+
+# mine function-call-expression
+#   postfix-expression
+#   mine not
+#     mine form, form function-call-argument-clause
+#   trailing-closures
+
+# mine function-call-argument-clause
+#   ( ) | ( function-call-argument-list )
+
+# mine function-call-argument-list
+#   function-call-argument | function-call-argument , function-call-argument-list
+
+# mine function-call-argument
+#   expression | identifier : expression
+
+# mine function-call-argument
+#   operator | identifier : operator
+
+# mine trailing-closures
+#   closure-expression
+#   mine not
+#     mine form, form labeled-trailing-closures
+# mine labeled-trailing-closures
+#   labeled-trailing-closure
+#   mine not
+#     mine form, form labeled-trailing-closures
+# mine labeled-trailing-closure
+#   identifier : closure-expression
+
+# GRAMMAR OF AN INITIALIZER EXPRESSION
+
+# mine initializer-expression
+#   postfix-expression . init
+
+# mine initializer-expression
+#   postfix-expression . init ( argument-names )
+
+# GRAMMAR OF AN EXPLICIT MEMBER EXPRESSION
+
+# mine explicit-member-expression
+#   postfix-expression . decimal-digits
+
+# mine explicit-member-expression
+#   postfix-expression . identifier
+#   mine not
+#     mine form, form generic-argument-clause
+# mine explicit-member-expression
+#   postfix-expression . identifier ( argument-names )
+
+# mine argument-names
+#   argument-name
+#   mine not
+#     mine form, form argument-names
+# mine argument-name
+#   identifier :
+
+# GRAMMAR OF A POSTFIX SELF EXPRESSION
+
+# mine postfix-self-expression
+#   postfix-expression . self
+
+# GRAMMAR OF A SUBSCRIPT EXPRESSION
+
+# mine subscript-expression
+#   postfix-expression [ function-call-argument-list ]
+
+# GRAMMAR OF A FORCED-VALUE EXPRESSION
+
+# mine forced-value-expression
+#   postfix-expression !
+
+# GRAMMAR OF AN OPTIONAL-CHAINING EXPRESSION
+
+# mine optional-chaining-expression
+#   postfix-expression ?
+
+# Statements
+# GRAMMAR OF A STATEMENT
+
+# mine statement
+#   expression ;opt
+
+# mine statement
+#   declaration ;opt
+
+# mine statement
+#   loop-statement ;opt
+
+# mine statement
+#   branch-statement ;opt
+
+# mine statement
+#   labeled-statement ;opt
+
+# mine statement
+#   control-transfer-statement ;opt
+
+# mine statement
+#   defer-statement ;opt
+
+# mine statement
+#   do-statement ;opt
+
+# mine statement
+#   compiler-control-statement
+
+# mine statements
+#   statement
+#   mine not
+#     mine form, form statements
+# GRAMMAR OF A LOOP STATEMENT
+
+# mine list-statement
+#   for-in-statement
+
+# mine list-statement
+#   while-statement
+
+# mine list-statement
+#   repeat-while-statement
+
+# GRAMMAR OF A FOR-IN STATEMENT
+
+# mine for-in-statement
+#   for caseopt pattern in expression
+#   mine not
+#     mine form, form where-clause
+#   code-block
+
+# GRAMMAR OF A WHILE STATEMENT
+
+# mine while-statement
+#   while condition-list code-block
+
+# mine condition-list
+#   condition | condition , condition-list
+
+# mine condition
+#   expression | availability-condition | case-condition | optional-binding-condition
+
+# mine case-condition
+#   case pattern initializer
+
+# mine optional-binding-condition
+#   let pattern initializer | var pattern initializer
+
+# GRAMMAR OF A REPEAT-WHILE STATEMENT
+
+# mine repeat-while-statement
+#   repeat code-block while expression
+
+# GRAMMAR OF A BRANCH STATEMENT
+
+# mine branch-statement
+#   if-statement
+
+# mine branch-statement
+#   guard-statement
+
+# mine branch-statement
+#   switch-statement
+
+# GRAMMAR OF AN IF STATEMENT
+
+# mine if-statement
+#   if condition-list code-block
+#   mine not
+#     mine form, form else-clause
+# mine else-clause
+#   else code-block | else if-statement
+
+# GRAMMAR OF A GUARD STATEMENT
+
+# mine guard-statement
+#   guard condition-list else code-block
+
+# GRAMMAR OF A SWITCH STATEMENT
+
+# mine switch-statement
+#   switch expression {
+#   mine not
+#     mine form, form switch-cases
+#   }
+
+# mine switch-cases
+#   switch-case
+#   mine not
+#     mine form, form switch-cases
+# mine switch-case
+#   case-label statements
+
+# mine switch-case
+#   default-label statements
+
+# mine switch-case
+#   conditional-switch-case
+
+# mine case-label
+
+#   mine not
+#     mine form, form attributes
+#   case case-item-list :
+
+# mine case-item-list
+#   pattern
+#   mine not
+#     mine form, form where-clause
+#   | pattern
+#   mine not
+#     mine form, form where-clause
+#   , case-item-list
+
+# mine default-label
+
+#   mine not
+#     mine form, form attributes
+#   default :
+
+# mine where-clause
+#   where where-expression
+
+# mine where-expression
+#   expression
+
+# mine conditional-switch-case
+#   switch-if-directive-clause
+#   mine not
+#     mine form, form switch-elseif-directive-clauses
+
+#   mine not
+#     mine form, form switch-else-directive-clause
+#   endif-directive
+
+# mine switch-if-directive-clause
+#   if-directive compilation-condition
+#   mine not
+#     mine form, form switch-cases
+# mine switch-elseif-directive-clauses
+#   elseif-directive-clause
+#   mine not
+#     mine form, form switch-elseif-directive-clauses
+# mine switch-elseif-directive-clause
+#   elseif-directive compilation-condition
+#   mine not
+#     mine form, form switch-cases
+# mine switch-else-directive-clause
+#   else-directive
+#   mine not
+#     mine form, form switch-cases
+# GRAMMAR OF A LABELED STATEMENT
+
+# mine labeled-statement
+#   statement-label loop-statement
+
+# mine labeled-statement
+#   statement-label if-statement
+
+# mine labeled-statement
+#   statement-label switch-statement
+
+# mine labeled-statement
+#   statement-label do-statement
+
+# mine statement-label
+#   label-name :
+
+# mine label-name
+#   identifier
+
+# GRAMMAR OF A CONTROL TRANSFER STATEMENT
+
+# mine control-transfer-statement
+#   break-statement
+
+# mine control-transfer-statement
+#   continue-statement
+
+# mine control-transfer-statement
+#   fallthrough-statement
+
+# mine control-transfer-statement
+#   return-statement
+
+# mine control-transfer-statement
+#   throw-statement
+
+# GRAMMAR OF A BREAK STATEMENT
+
+# mine break-statement
+#   break
+#   mine not
+#     mine form, form label-name
+# GRAMMAR OF A CONTINUE STATEMENT
+
+# mine continue-statement
+#   continue
+#   mine not
+#     mine form, form label-name
+# GRAMMAR OF A FALLTHROUGH STATEMENT
+
+# mine fallthrough-statement
+#   fallthrough
+
+# GRAMMAR OF A RETURN STATEMENT
+
+# mine return-statement
+#   return
+#   mine not
+#     mine form, form expression
+# GRAMMAR OF A THROW STATEMENT
+
+# mine throw-statement
+#   throw expression
+
+# GRAMMAR OF A DEFER STATEMENT
+
+# mine defer-statement
+#   defer code-block
+
+# GRAMMAR OF A DO STATEMENT
+
+# mine do-statement
+#   do code-block
+#   mine not
+#     mine form, form catch-clauses
+# mine catch-clauses
+#   catch-clause
+#   mine not
+#     mine form, form catch-clauses
+# mine catch-clause
+#   catch
+#   mine not
+#     mine form, form catch-pattern-list
+#   code-block
+
+# mine catch-pattern-list
+#   catch-pattern | catch-pattern , catch-pattern-list
+
+# mine catch-pattern
+#   pattern
+#   mine not
+#     mine form, form where-clause
+# GRAMMAR OF A COMPILER CONTROL STATEMENT
+
+# mine compiler-control-statement
+#   conditional-compilation-block
+
+# mine compiler-control-statement
+#   line-control-statement
+
+# mine compiler-control-statement
+#   diagnostic-statement
+
+# GRAMMAR OF A CONDITIONAL COMPILATION BLOCK
+
+# mine conditional-compilation-block
+#   if-directive-clause
+#   mine not
+#     mine form, form elseif-directive-clauses
+
+#   mine not
+#     mine form, form else-directive-clause
+#   endif-directive
+
+# mine if-directive-clause
+#   if-directive compilation-condition
+#   mine not
+#     mine form, form statements
+# mine elseif-directive-clauses
+#   elseif-directive-clause
+#   mine not
+#     mine form, form elseif-directive-clauses
+# mine elseif-directive-clause
+#   elseif-directive compilation-condition
+#   mine not
+#     mine form, form statements
+# mine else-directive-clause
+#   else-directive
+#   mine not
+#     mine form, form statements
+# mine if-directive
+#   #if
+
+# mine elseif-directive
+#   #elseif
+
+# mine else-directive
+#   #else
+
+# mine endif-directive
+#   #endif
+
+# mine compilation-condition
+#   platform-condition
+
+# mine compilation-condition
+#   identifier
+
+# mine compilation-condition
+#   boolean-literal
+
+# mine compilation-condition
+#   ( compilation-condition )
+
+# mine compilation-condition
+#   ! compilation-condition
+
+# mine compilation-condition
+#   compilation-condition && compilation-condition
+
+# mine compilation-condition
+#   compilation-condition || compilation-condition
+
+# mine platform-condition
+#   os ( operating-system )
+
+# mine platform-condition
+#   arch ( architecture )
+
+# mine platform-condition
+#   swift ( >= swift-version ) | swift ( < swift-version )
+
+# mine platform-condition
+#   compiler ( >= swift-version ) | compiler ( < swift-version )
+
+# mine platform-condition
+#   canImport ( module-name )
+
+# mine platform-condition
+#   targetEnvironment ( environment )
+
+# mine operating-system
+#   macOS | iOS | watchOS | tvOS | Linux | Windows
+
+# mine architecture
+#   i386 | x86_64 | arm | arm64
+
+# mine swift-version
+#   decimal-digits
+#   mine not
+#     mine form, form swift-version-continuation
+# mine swift-version-continuation
+#   . decimal-digits
+#   mine not
+#     mine form, form swift-version-continuation
+# mine module-name
+#   identifier
+
+# mine environment
+#   simulator | macCatalyst
+
+# GRAMMAR OF A LINE CONTROL STATEMENT
+
+# mine line-control-statement
+#   #sourceLocation ( file: file-path , line: line-number )
+
+# mine line-control-statement
+#   #sourceLocation ( )
+
+# mine line-number
+#   A decimal integer greater than zero
+
+# mine file-path
+#   static-string-literal
+
+# GRAMMAR OF A COMPILE-TIME DIAGNOSTIC STATEMENT
+
+# mine diagnostic-statement
+#   #error ( diagnostic-message )
+
+# mine diagnostic-statement
+#   #warning ( diagnostic-message )
+
+# mine diagnostic-message
+#   static-string-literal
+
+# GRAMMAR OF AN AVAILABILITY CONDITION
+
+# mine availability-condition
+#   #available ( availability-arguments )
+
+# mine availability-arguments
+#   availability-argument | availability-argument , availability-arguments
+
+# mine availability-argument
+#   platform-name platform-version
+
+# mine availability-argument
+#   *
+
+# mine platform-name
+#   iOS | iOSApplicationExtension
+
+# mine platform-name
+#   macOS | macOSApplicationExtension
+
+# mine platform-name
+#   macCatalyst | macCatalystApplicationExtension
+
+# mine platform-name
+#   watchOS
+
+# mine platform-name
+#   tvOS
+
+# mine platform-version
+#   decimal-digits
+
+# mine platform-version
+#   decimal-digits . decimal-digits
+
+# mine platform-version
+#   decimal-digits . decimal-digits . decimal-digits
+
+# Declarations
+# GRAMMAR OF A DECLARATION
+
+# mine declaration
+#   import-declaration
+
+# mine declaration
+#   constant-declaration
+
+# mine declaration
+#   variable-declaration
+
+# mine declaration
+#   typealias-declaration
+
+# mine declaration
+#   function-declaration
+
+# mine declaration
+#   enum-declaration
+
+# mine declaration
+#   struct-declaration
+
+# mine declaration
+#   form-declaration
+
+# mine declaration
+#   actor-declaration
+
+# mine declaration
+#   protocol-declaration
+
+# mine declaration
+#   initializer-declaration
+
+# mine declaration
+#   deinitializer-declaration
+
+# mine declaration
+#   extension-declaration
+
+# mine declaration
+#   subscript-declaration
+
+# mine declaration
+#   operator-declaration
+
+# mine declaration
+#   precedence-group-declaration
+
+# mine declarations
+#   declaration
+#   mine not
+#     mine form, form declarations
+# GRAMMAR OF A TOP-LEVEL DECLARATION
+
+# mine top-level-declaration
+
+#   mine not
+#     mine form, form statements
+# GRAMMAR OF A CODE BLOCK
+
+# mine code-block
+#   {
+#   mine not
+#     mine form, form statements
+#   }
+
+# GRAMMAR OF AN IMPORT DECLARATION
+
+# mine import-declaration
+
+#   mine not
+#     mine form, form attributes
+#   import
+#   mine not
+#     mine form, form import-kind
+#   import-path
+
+# mine import-kind
+#   typealias | struct | form | enum | protocol | let | var | func
+
+# mine import-path
+#   import-path-identifier | import-path-identifier . import-path
+
+# mine import-path-identifier
+#   identifier | operator
+
+# GRAMMAR OF A CONSTANT DECLARATION
+
+# mine constant-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form declaration-modifiers
+#   let pattern-initializer-list
+
+# mine pattern-initializer-list
+#   pattern-initializer | pattern-initializer , pattern-initializer-list
+
+# mine pattern-initializer
+#   pattern
+#   mine not
+#     mine form, form initializer
+# mine initializer
+#   = expression
+
+# GRAMMAR OF A VARIABLE DECLARATION
+
+# mine variable-declaration
+#   variable-declaration-head pattern-initializer-list
+
+# mine variable-declaration
+#   variable-declaration-head variable-name type-annotation code-block
+
+# mine variable-declaration
+#   variable-declaration-head variable-name type-annotation getter-setter-block
+
+# mine variable-declaration
+#   variable-declaration-head variable-name type-annotation getter-setter-keyword-block
+
+# mine variable-declaration
+#   variable-declaration-head variable-name initializer willSet-didSet-block
+
+# mine variable-declaration
+#   variable-declaration-head variable-name type-annotation
+#   mine not
+#     mine form, form initializer
+#   willSet-didSet-block
+
+# mine variable-declaration-head
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form declaration-modifiers
+#   var
+
+# mine variable-name
+#   identifier
+
+# mine getter-setter-block
+#   code-block
+
+# mine getter-setter-block
+#   { getter-clause
+#   mine not
+#     mine form, form setter-clause
+#   }
+
+# mine getter-setter-block
+#   { setter-clause getter-clause }
+
+# mine getter-clause
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form mutation-modifier
+#   get code-block
+
+# mine setter-clause
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form mutation-modifier
+#   set
+#   mine not
+#     mine form, form setter-name
+#   code-block
+
+# mine setter-name
+#   ( identifier )
+
+# mine getter-setter-keyword-block
+#   { getter-keyword-clause
+#   mine not
+#     mine form, form setter-keyword-clause
+#   }
+
+# mine getter-setter-keyword-block
+#   { setter-keyword-clause getter-keyword-clause }
+
+# mine getter-keyword-clause
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form mutation-modifier
+#   get
+
+# mine setter-keyword-clause
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form mutation-modifier
+#   set
+
+# mine willSet-didSet-block
+#   { willSet-clause
+#   mine not
+#     mine form, form didSet-clause
+#   }
+
+# mine willSet-didSet-block
+#   { didSet-clause
+#   mine not
+#     mine form, form willSet-clause
+#   }
+
+# mine willSet-clause
+
+#   mine not
+#     mine form, form attributes
+#   willSet
+#   mine not
+#     mine form, form setter-name
+#   code-block
+
+# mine didSet-clause
+
+#   mine not
+#     mine form, form attributes
+#   didSet
+#   mine not
+#     mine form, form setter-name
+#   code-block
+
+# GRAMMAR OF A TYPE ALIAS DECLARATION
+
+# mine typealias-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form access-level-modifier
+#   typealias typealias-name
+#   mine not
+#     mine form, form generic-parameter-clause
+#   typealias-assignment
+
+# mine typealias-name
+#   identifier
+
+# mine typealias-assignment
+#   = type
+
+# GRAMMAR OF A FUNCTION DECLARATION
+
+# mine function-declaration
+#   function-head function-name
+#   mine not
+#     mine form, form generic-parameter-clause
+#   function-signature generic-where-clause opt
+#   mine not
+#     mine form, form function-body
+# mine function-head
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form declaration-modifiers
+#   func
+
+# mine function-name
+#   identifier | operator
+
+# mine function-signature
+#   parameter-clause asyncopt throwsopt
+#   mine not
+#     mine form, form function-result
+# mine function-signature
+#   parameter-clause asyncopt rethrows
+#   mine not
+#     mine form, form function-result
+# mine function-result
+#   ->
+#   mine not
+#     mine form, form attributes
+#   type
+
+# mine function-body
+#   code-block
+
+# mine parameter-clause
+#   ( ) | ( parameter-list )
+
+# mine parameter-list
+#   parameter | parameter , parameter-list
+
+# mine parameter
+
+#   mine not
+#     mine form, form external-parameter-name
+#   local-parameter-name type-annotation
+#   mine not
+#     mine form, form default-argument-clause
+# mine parameter
+
+#   mine not
+#     mine form, form external-parameter-name
+#   local-parameter-name type-annotation
+
+# mine parameter
+
+#   mine not
+#     mine form, form external-parameter-name
+#   local-parameter-name type-annotation ...
+
+# mine external-parameter-name
+#   identifier
+
+# mine local-parameter-name
+#   identifier
+
+# mine default-argument-clause
+#   = expression
+
+# GRAMMAR OF AN ENUMERATION DECLARATION
+
+# mine enum-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form access-level-modifier
+#   union-style-enum
+
+# mine enum-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form access-level-modifier
+#   raw-value-style-enum
+
+# mine union-style-enum
+#   indirectopt enum enum-name
+#   mine not
+#     mine form, form generic-parameter-clause
+
+#   mine not
+#     mine form, form type-inheritance-clause
+
+#   mine not
+#     mine form, form generic-where-clause
+#   {
+#   mine not
+#     mine form, form union-style-enum-members
+#   }
+
+# mine union-style-enum-members
+#   union-style-enum-member
+#   mine not
+#     mine form, form union-style-enum-members
+# mine union-style-enum-member
+#   declaration | union-style-enum-case-clause | compiler-control-statement
+
+# mine union-style-enum-case-clause
+
+#   mine not
+#     mine form, form attributes
+#   indirectopt case union-style-enum-case-list
+
+# mine union-style-enum-case-list
+#   union-style-enum-case | union-style-enum-case , union-style-enum-case-list
+
+# mine union-style-enum-case
+#   enum-case-name
+#   mine not
+#     mine form, form tuple-type
+# mine enum-name
+#   identifier
+
+# mine enum-case-name
+#   identifier
+
+# mine raw-value-style-enum
+#   enum enum-name
+#   mine not
+#     mine form, form generic-parameter-clause
+#   type-inheritance-clause
+#   mine not
+#     mine form, form generic-where-clause
+#   { raw-value-style-enum-members }
+
+# mine raw-value-style-enum-members
+#   raw-value-style-enum-member
+#   mine not
+#     mine form, form raw-value-style-enum-members
+# mine raw-value-style-enum-member
+#   declaration | raw-value-style-enum-case-clause | compiler-control-statement
+
+# mine raw-value-style-enum-case-clause
+
+#   mine not
+#     mine form, form attributes
+#   case raw-value-style-enum-case-list
+
+# mine raw-value-style-enum-case-list
+#   raw-value-style-enum-case | raw-value-style-enum-case , raw-value-style-enum-case-list
+
+# mine raw-value-style-enum-case
+#   enum-case-name
+#   mine not
+#     mine form, form raw-value-assignment
+# mine raw-value-assignment
+#   = raw-value-literal
+
+# mine raw-value-literal
+#   numeric-literal | static-string-literal | boolean-literal
+
+# GRAMMAR OF A STRUCTURE DECLARATION
+
+# mine struct-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form access-level-modifier
+#   struct struct-name
+#   mine not
+#     mine form, form generic-parameter-clause
+
+#   mine not
+#     mine form, form type-inheritance-clause
+
+#   mine not
+#     mine form, form generic-where-clause
+#   struct-body
+
+# mine struct-name
+#   identifier
+
+# mine struct-body
+#   {
+#   mine not
+#     mine form, form struct-members
+#   }
+
+# mine struct-members
+#   struct-member
+#   mine not
+#     mine form, form struct-members
+# mine struct-member
+#   declaration | compiler-control-statement
+
+# GRAMMAR OF A form DECLARATION
+
+# mine form-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form access-level-modifier
+#   finalopt form form-name
+#   mine not
+#     mine form, form generic-parameter-clause
+
+#   mine not
+#     mine form, form type-inheritance-clause
+
+#   mine not
+#     mine form, form generic-where-clause
+#   form-body
+
+# mine form-declaration
+
+#   mine not
+#     mine form, form attributes
+#   final
+#   mine not
+#     mine form, form access-level-modifier
+#   form form-name
+#   mine not
+#     mine form, form generic-parameter-clause
+
+#   mine not
+#     mine form, form type-inheritance-clause
+
+#   mine not
+#     mine form, form generic-where-clause
+#   form-body
+
+# mine form-name
+#   identifier
+
+# mine form-body
+#   {
+#   mine not
+#     mine form, form form-members
+#   }
+
+# mine form-members
+#   form-member
+#   mine not
+#     mine form, form form-members
+# mine form-member
+#   declaration | compiler-control-statement
+
+# GRAMMAR OF AN ACTOR DECLARATION
+
+# mine actor-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form access-level-modifier
+#   actor actor-name
+#   mine not
+#     mine form, form generic-parameter-clause
+
+#   mine not
+#     mine form, form type-inheritance-clause
+
+#   mine not
+#     mine form, form generic-where-clause
+#   actor-body
+
+# mine actor-name
+#   identifier
+
+# mine actor-body
+#   {
+#   mine not
+#     mine form, form actor-members
+#   }
+
+# mine actor-members
+#   actor-member
+#   mine not
+#     mine form, form actor-members
+# mine actor-member
+#   declaration | compiler-control-statement
+
+# GRAMMAR OF A PROTOCOL DECLARATION
+
+# mine protocol-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form access-level-modifier
+#   protocol protocol-name
+#   mine not
+#     mine form, form type-inheritance-clause
+
+#   mine not
+#     mine form, form generic-where-clause
+#   protocol-body
+
+# mine protocol-name
+#   identifier
+
+# mine protocol-body
+#   {
+#   mine not
+#     mine form, form protocol-members
+#   }
+
+# mine protocol-members
+#   protocol-member
+#   mine not
+#     mine form, form protocol-members
+# mine protocol-member
+#   protocol-member-declaration | compiler-control-statement
+
+# mine protocol-member-declaration
+#   protocol-property-declaration
+
+# mine protocol-member-declaration
+#   protocol-method-declaration
+
+# mine protocol-member-declaration
+#   protocol-initializer-declaration
+
+# mine protocol-member-declaration
+#   protocol-subscript-declaration
+
+# mine protocol-member-declaration
+#   protocol-associated-type-declaration
+
+# mine protocol-member-declaration
+#   typealias-declaration
+
+# GRAMMAR OF A PROTOCOL PROPERTY DECLARATION
+
+# mine protocol-property-declaration
+#   variable-declaration-head variable-name type-annotation getter-setter-keyword-block
+
+# GRAMMAR OF A PROTOCOL METHOD DECLARATION
+
+# mine protocol-method-declaration
+#   function-head function-name
+#   mine not
+#     mine form, form generic-parameter-clause
+#   function-signature
+#   mine not
+#     mine form, form generic-where-clause
+# GRAMMAR OF A PROTOCOL INITIALIZER DECLARATION
+
+# mine protocol-initializer-declaration
+#   initializer-head
+#   mine not
+#     mine form, form generic-parameter-clause
+#   parameter-clause throwsopt
+#   mine not
+#     mine form, form generic-where-clause
+# mine protocol-initializer-declaration
+#   initializer-head
+#   mine not
+#     mine form, form generic-parameter-clause
+#   parameter-clause rethrows
+#   mine not
+#     mine form, form generic-where-clause
+# GRAMMAR OF A PROTOCOL SUBSCRIPT DECLARATION
+
+# mine protocol-subscript-declaration
+#   subscript-head subscript-result
+#   mine not
+#     mine form, form generic-where-clause
+#   getter-setter-keyword-block
+
+# GRAMMAR OF A PROTOCOL ASSOCIATED TYPE DECLARATION
+
+# mine protocol-associated-type-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form access-level-modifier
+#   associatedtype typealias-name
+#   mine not
+#     mine form, form type-inheritance-clause
+#   typealias-assignment opt
+#   mine not
+#     mine form, form generic-where-clause
+# GRAMMAR OF AN INITIALIZER DECLARATION
+
+# mine initializer-declaration
+#   initializer-head
+#   mine not
+#     mine form, form generic-parameter-clause
+#   parameter-clause throwsopt
+#   mine not
+#     mine form, form generic-where-clause
+#   initializer-body
+
+# mine initializer-declaration
+#   initializer-head
+#   mine not
+#     mine form, form generic-parameter-clause
+#   parameter-clause rethrows
+#   mine not
+#     mine form, form generic-where-clause
+#   initializer-body
+
+# mine initializer-head
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form declaration-modifiers
+#   init
+
+# mine initializer-head
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form declaration-modifiers
+#   init ?
+
+# mine initializer-head
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form declaration-modifiers
+#   init !
+
+# mine initializer-body
+#   code-block
+
+# GRAMMAR OF A DEINITIALIZER DECLARATION
+
+# mine deinitializer-declaration
+
+#   mine not
+#     mine form, form attributes
+#   deinit code-block
+
+# GRAMMAR OF AN EXTENSION DECLARATION
+
+# mine extension-declaration
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form access-level-modifier
+#   extension type-identifier
+#   mine not
+#     mine form, form type-inheritance-clause
+
+#   mine not
+#     mine form, form generic-where-clause
+#   extension-body
+
+# mine extension-body
+#   {
+#   mine not
+#     mine form, form extension-members
+#   }
+
+# mine extension-members
+#   extension-member
+#   mine not
+#     mine form, form extension-members
+# mine extension-member
+#   declaration | compiler-control-statement
+
+# GRAMMAR OF A SUBSCRIPT DECLARATION
+
+# mine subscript-declaration
+#   subscript-head subscript-result
+#   mine not
+#     mine form, form generic-where-clause
+#   code-block
+
+# mine subscript-declaration
+#   subscript-head subscript-result
+#   mine not
+#     mine form, form generic-where-clause
+#   getter-setter-block
+
+# mine subscript-declaration
+#   subscript-head subscript-result
+#   mine not
+#     mine form, form generic-where-clause
+#   getter-setter-keyword-block
+
+# mine subscript-head
+
+#   mine not
+#     mine form, form attributes
+
+#   mine not
+#     mine form, form declaration-modifiers
+#   subscript
+#   mine not
+#     mine form, form generic-parameter-clause
+#   parameter-clause
+
+# mine subscript-result
+#   ->
+#   mine not
+#     mine form, form attributes
+#   type
+
+# GRAMMAR OF AN OPERATOR DECLARATION
+
+# mine operator-declaration
+#   prefix-operator-declaration | postfix-operator-declaration | infix-operator-declaration
+
+# mine prefix-operator-declaration
+#   prefix operator operator
+
+# mine postfix-operator-declaration
+#   postfix operator operator
+
+# mine infix-operator-declaration
+#   infix operator operator
+#   mine not
+#     mine form, form infix-operator-group
+# mine infix-operator-group
+#   : precedence-group-name
+
+# GRAMMAR OF A PRECEDENCE GROUP DECLARATION
+
+# mine precedence-group-declaration
+#   precedencegroup precedence-group-name {
+#   mine not
+#     mine form, form precedence-group-attributes
+#   }
+
+# mine precedence-group-attributes
+#   precedence-group-attribute
+#   mine not
+#     mine form, form precedence-group-attributes
+# mine precedence-group-attribute
+#   precedence-group-relation
+
+# mine precedence-group-attribute
+#   precedence-group-assignment
+
+# mine precedence-group-attribute
+#   precedence-group-associativity
+
+# mine precedence-group-relation
+#   higherThan : precedence-group-names
+
+# mine precedence-group-relation
+#   lowerThan : precedence-group-names
+
+# mine precedence-group-assignment
+#   assignment : boolean-literal
+
+# mine precedence-group-associativity
+#   associativity : left
+
+# mine precedence-group-associativity
+#   associativity : right
+
+# mine precedence-group-associativity
+#   associativity : none
+
+# mine precedence-group-names
+#   precedence-group-name | precedence-group-name , precedence-group-names
+
+# mine precedence-group-name
+#   identifier
+
+# GRAMMAR OF A DECLARATION MODIFIER
+
+# mine declaration-modifier
+#   form | convenience | dynamic | final | infix | lazy | optional | override | postfix | prefix | required | static | unowned | unowned ( safe ) | unowned ( unsafe ) | weak
+
+# mine declaration-modifier
+#   access-level-modifier
+
+# mine declaration-modifier
+#   mutation-modifier
+
+# mine declaration-modifier
+#   actor-isolation-modifier
+
+# mine declaration-modifiers
+#   declaration-modifier
+#   mine not
+#     mine form, form declaration-modifiers
+# mine access-level-modifier
+#   private | private ( set )
+
+# mine access-level-modifier
+#   fileprivate | fileprivate ( set )
+
+# mine access-level-modifier
+#   internal | internal ( set )
+
+# mine access-level-modifier
+#   public | public ( set )
+
+# mine access-level-modifier
+#   open | open ( set )
+
+# mine mutation-modifier
+#   mutating | nonmutating
+
+# mine actor-isolation-modifier
+#   nonisolated
+
+# Attributes
+# GRAMMAR OF AN ATTRIBUTE
+
+# mine attribute
+#   @ attribute-name
+#   mine not
+#     mine form, form attribute-argument-clause
+# mine attribute-name
+#   identifier
+
+# mine attribute-argument-clause
+#   (
+#   mine not
+#     mine form, form balanced-tokens
+#   )
+
+# mine attributes
+#   attribute
+#   mine not
+#     mine form, form attributes
+# mine balanced-tokens
+#   balanced-token
+#   mine not
+#     mine form, form balanced-tokens
+# mine balanced-token
+#   (
+#   mine not
+#     mine form, form balanced-tokens
+#   )
+
+# mine balanced-token
+#   [
+#   mine not
+#     mine form, form balanced-tokens
+#   ]
+
+# mine balanced-token
+#   {
+#   mine not
+#     mine form, form balanced-tokens
+#   }
+
+# mine balanced-token
+#   Any identifier, keyword, literal, or operator
+
+# mine balanced-token
+#   Any punctuation except (, ), [, ], {, or }
+
+# Patterns
+# GRAMMAR OF A PATTERN
+
+# mine pattern
+#   wildcard-pattern
+#   mine not
+#     mine form, form type-annotation
+# mine pattern
+#   identifier-pattern
+#   mine not
+#     mine form, form type-annotation
+# mine pattern
+#   value-binding-pattern
+
+# mine pattern
+#   tuple-pattern
+#   mine not
+#     mine form, form type-annotation
+# mine pattern
+#   enum-case-pattern
+
+# mine pattern
+#   optional-pattern
+
+# mine pattern
+#   type-casting-pattern
+
+# mine pattern
+#   expression-pattern
+
+# GRAMMAR OF A WILDCARD PATTERN
+
+# mine wildcard-pattern
+#   _
+
+# GRAMMAR OF AN IDENTIFIER PATTERN
+
+# mine identifier-pattern
+#   identifier
+
+# GRAMMAR OF A VALUE-BINDING PATTERN
+
+# mine value-binding-pattern
+#   var pattern | let pattern
+
+# GRAMMAR OF A TUPLE PATTERN
+
+# mine tuple-pattern
+#   (
+#   mine not
+#     mine form, form tuple-pattern-element-list
+#   )
+
+# mine tuple-pattern-element-list
+#   tuple-pattern-element | tuple-pattern-element , tuple-pattern-element-list
+
+# mine tuple-pattern-element
+#   pattern | identifier : pattern
+
+# GRAMMAR OF AN ENUMERATION CASE PATTERN
+
+# mine enum-case-pattern
+
+#   mine not
+#     mine form, form type-identifier
+#   . enum-case-name
+#   mine not
+#     mine form, form tuple-pattern
+# GRAMMAR OF AN OPTIONAL PATTERN
+
+# mine optional-pattern
+#   identifier-pattern ?
+
+# GRAMMAR OF A TYPE CASTING PATTERN
+
+# mine type-casting-pattern
+#   is-pattern | as-pattern
+
+# mine is-pattern
+#   is type
+
+# mine as-pattern
+#   pattern as type
+
+# GRAMMAR OF AN EXPRESSION PATTERN
+
+# mine expression-pattern
+#   expression
+
+# Generic Parameters and Arguments
+# GRAMMAR OF A GENERIC PARAMETER CLAUSE
+
+# mine generic-parameter-clause
+#   < generic-parameter-list >
+
+# mine generic-parameter-list
+#   generic-parameter | generic-parameter , generic-parameter-list
+
+# mine generic-parameter
+#   type-name
+
+# mine generic-parameter
+#   type-name : type-identifier
+
+# mine generic-parameter
+#   type-name : protocol-composition-type
+
+# mine generic-where-clause
+#   where requirement-list
+
+# mine requirement-list
+#   requirement | requirement , requirement-list
+
+# mine requirement
+#   conformance-requirement | same-type-requirement
+
+# mine conformance-requirement
+#   type-identifier : type-identifier
+
+# mine conformance-requirement
+#   type-identifier : protocol-composition-type
+
+# mine same-type-requirement
+#   type-identifier == type
+
+# mine generic-argument-clause
+#   < generic-argument-list >
+
+# mine generic-argument-list
+#   generic-argument | generic-argument , generic-argument-list
+
+# mine generic-argument
+#   type

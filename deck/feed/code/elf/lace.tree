@@ -1,0 +1,31 @@
+
+write elf-link
+  write field, field header
+  write sieve
+    write field, field program-header-table
+  write chain
+    write field, field section
+  write field, field section-header-table
+
+write elf-run
+  write field, field header
+  write field, field program-header-table
+  write chain
+    write field, field segment
+  write sieve
+    write field, field section-header-table
+
+write elf-half
+write elf-word
+write elf-address
+
+write elf-magic
+  write #x7f
+  write |ELF|
+
+write elf-identity
+  write field, field elf-magic
+  write field, field elf-class
+
+write elf-class
+  write share ELFCLASS64

@@ -1,0 +1,21 @@
+
+form tree-document
+  link list, list tree-block
+
+form tree-block
+  link text, like text
+  link list, list tree-node
+
+form tree-text
+  link list, list tree-node
+
+form tree-string
+  link text, like text
+
+form tree-span
+  link base, like tree-position
+  link head, like tree-position
+
+form tree-position
+  link line, like i32
+  link mark, like i32

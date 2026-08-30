@@ -1,0 +1,23 @@
+
+field request
+  state version, field float
+  state method, field method
+  state uri, field uri
+  state header, weave header
+  state content
+
+field response
+  state header, weave header
+  state status
+  state content
+
+class status
+
+class method
+
+class header
+  front name
+  front value
+
+class header accept
+  match header

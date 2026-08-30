@@ -1,0 +1,52 @@
+
+mine csv
+  start separator, share <,>
+
+  mine form, form header
+    bind separator, share separator
+  mine vfc
+    mine form, form row
+      bind separator, share separator
+
+mine header
+  start separator
+
+  mine form, form row
+    bind separator, share separator
+
+mine row
+  start separator
+
+  mine form, form column
+    bind separator, share separator
+  mine chain
+    mine chunk, share separator
+    mine form, form column
+      bind separator, share separator
+
+mine column
+  start separator
+
+  mine crown
+    mine chain
+      mine form, form non-separator
+        bind separator, share separator
+    mine block
+      mine chunk, share <">
+      mine form, form non-quoted-string
+      mine chunk, share <">
+
+mine non-separator
+  start separator
+
+  mine shift
+    mine chunk, share separator
+
+mine non-quote
+  mine shift
+    mine chunk, share <">
+
+mine non-quoted-string
+  mine crown
+    mine form, form non-quote
+    mine chunk, share <\\">

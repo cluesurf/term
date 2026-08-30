@@ -1,0 +1,42 @@
+
+load ./form
+  find tree-document
+  find tree-block
+  find tree-text
+  find tree-string
+
+mint tree, like tree-document
+  case indented-term, mint indented-term
+    slot list
+  hook make
+    make tree-document
+      bind list, read list
+
+mint indented-term, like tree-block
+  case name
+    slot text
+  case inline-term, mint indented-term
+    slot list
+  case number
+    slot list
+  case code
+    slot list
+  case inline-template, mint template
+    slot list
+  case path
+    slot list
+  case nested-child, mint indented-term
+    slot list
+  hook make
+    make tree-block
+      bind text, read text
+      bind list, read list
+
+mint template, like tree-text
+  case inline-string
+    slot list
+  case inline-code
+    slot list
+  hook make
+    make tree-text
+      bind list, read list

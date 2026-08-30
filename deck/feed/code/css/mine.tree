@@ -1,0 +1,1680 @@
+
+mine css
+  mine list
+    mine form, form property-declaration
+
+mine property-declaration
+  look after
+    mine form, form accent-color-declaration
+    mine form, form align-content-declaration
+    mine form, form align-items-declaration
+    mine form, form align-self-declaration
+    mine form, form alignment-baseline-declaration
+    mine form, form all-declaration
+    mine form, form animation-declaration
+    mine form, form animation-delay-declaration
+    mine form, form animation-direction-declaration
+    mine form, form animation-duration-declaration
+    mine form, form animation-fill-mode-declaration
+    mine form, form animation-iteration-count-declaration
+    mine form, form animation-name-declaration
+    mine form, form animation-play-state-declaration
+    mine form, form animation-timing-function-declaration
+    mine form, form appearance-declaration
+    mine form, form aspect-ratio-declaration
+    mine form, form azimuth-declaration
+    mine form, form backface-visibility-declaration
+    mine form, form background-declaration
+    mine form, form background-attachment-declaration
+    mine form, form background-blend-mode-declaration
+    mine form, form background-clip-declaration
+    mine form, form background-color-declaration
+    mine form, form background-image-declaration
+    mine form, form background-origin-declaration
+    mine form, form background-position-declaration
+    mine form, form background-repeat-declaration
+    mine form, form background-size-declaration
+    mine form, form baseline-shift-declaration
+    mine form, form baseline-source-declaration
+    mine form, form block-ellipsis-declaration
+    mine form, form block-size-declaration
+    mine form, form block-step-declaration
+    mine form, form block-step-align-declaration
+    mine form, form block-step-insert-declaration
+    mine form, form block-step-round-declaration
+    mine form, form block-step-size-declaration
+    mine form, form bookmark-label-declaration
+    mine form, form bookmark-level-declaration
+    mine form, form bookmark-state-declaration
+    mine form, form border-declaration
+    mine form, form border-block-declaration
+    mine form, form border-block-color-declaration
+    mine form, form border-block-end-declaration
+    mine form, form border-block-end-color-declaration
+    mine form, form border-block-end-style-declaration
+    mine form, form border-block-end-width-declaration
+    mine form, form border-block-start-declaration
+    mine form, form border-block-start-color-declaration
+    mine form, form border-block-start-style-declaration
+    mine form, form border-block-start-width-declaration
+    mine form, form border-block-style-declaration
+    mine form, form border-block-width-declaration
+    mine form, form border-bottom-declaration
+    mine form, form border-bottom-color-declaration
+    mine form, form border-bottom-left-radius-declaration
+    mine form, form border-bottom-right-radius-declaration
+    mine form, form border-bottom-style-declaration
+    mine form, form border-bottom-width-declaration
+    mine form, form border-boundary-declaration
+    mine form, form border-collapse-declaration
+    mine form, form border-color-declaration
+    mine form, form border-end-end-radius-declaration
+    mine form, form border-end-start-radius-declaration
+    mine form, form border-image-declaration
+    mine form, form border-image-outset-declaration
+    mine form, form border-image-repeat-declaration
+    mine form, form border-image-slice-declaration
+    mine form, form border-image-source-declaration
+    mine form, form border-image-width-declaration
+    mine form, form border-inline-declaration
+    mine form, form border-inline-color-declaration
+    mine form, form border-inline-end-declaration
+    mine form, form border-inline-end-color-declaration
+    mine form, form border-inline-end-style-declaration
+    mine form, form border-inline-end-width-declaration
+    mine form, form border-inline-start-declaration
+    mine form, form border-inline-start-color-declaration
+    mine form, form border-inline-start-style-declaration
+    mine form, form border-inline-start-width-declaration
+    mine form, form border-inline-style-declaration
+    mine form, form border-inline-width-declaration
+    mine form, form border-left-declaration
+    mine form, form border-left-color-declaration
+    mine form, form border-left-style-declaration
+    mine form, form border-left-width-declaration
+    mine form, form border-radius-declaration
+    mine form, form border-right-declaration
+    mine form, form border-right-color-declaration
+    mine form, form border-right-style-declaration
+    mine form, form border-right-width-declaration
+    mine form, form border-spacing-declaration
+    mine form, form border-start-end-radius-declaration
+    mine form, form border-start-start-radius-declaration
+    mine form, form border-style-declaration
+    mine form, form border-top-declaration
+    mine form, form border-top-color-declaration
+    mine form, form border-top-left-radius-declaration
+    mine form, form border-top-right-radius-declaration
+    mine form, form border-top-style-declaration
+    mine form, form border-top-width-declaration
+    mine form, form border-width-declaration
+    mine form, form bottom-declaration
+    mine form, form box-decoration-break-declaration
+    mine form, form box-shadow-declaration
+    mine form, form box-sizing-declaration
+    mine form, form box-snap-declaration
+    mine form, form break-after-declaration
+    mine form, form break-before-declaration
+    mine form, form break-inside-declaration
+    mine form, form caption-side-declaration
+    mine form, form caret-declaration
+    mine form, form caret-color-declaration
+    mine form, form caret-shape-declaration
+    mine form, form chains-declaration
+    mine form, form clear-declaration
+    mine form, form clip-declaration
+    mine form, form clip-path-declaration
+    mine form, form clip-rule-declaration
+    mine form, form color-declaration
+    mine form, form color-adjust-declaration
+    mine form, form color-interpolation-filters-declaration
+    mine form, form color-scheme-declaration
+    mine form, form column-count-declaration
+    mine form, form column-fill-declaration
+    mine form, form column-gap-declaration
+    mine form, form column-rule-declaration
+    mine form, form column-rule-color-declaration
+    mine form, form column-rule-style-declaration
+    mine form, form column-rule-width-declaration
+    mine form, form column-span-declaration
+    mine form, form column-width-declaration
+    mine form, form columns-declaration
+    mine form, form contain-declaration
+    mine form, form contain-intrinsic-block-size-declaration
+    mine form, form contain-intrinsic-height-declaration
+    mine form, form contain-intrinsic-inline-size-declaration
+    mine form, form contain-intrinsic-size-declaration
+    mine form, form contain-intrinsic-width-declaration
+    mine form, form content-declaration
+    mine form, form content-visibility-declaration
+    mine form, form continue-declaration
+    mine form, form counter-increment-declaration
+    mine form, form counter-reset-declaration
+    mine form, form counter-set-declaration
+    mine form, form cue-declaration
+    mine form, form cue-after-declaration
+    mine form, form cue-before-declaration
+    mine form, form cursor-declaration
+    mine form, form direction-declaration
+    mine form, form display-declaration
+    mine form, form dominant-baseline-declaration
+    mine form, form elevation-declaration
+    mine form, form empty-cells-declaration
+    mine form, form fill-declaration
+    mine form, form fill-break-declaration
+    mine form, form fill-color-declaration
+    mine form, form fill-image-declaration
+    mine form, form fill-opacity-declaration
+    mine form, form fill-origin-declaration
+    mine form, form fill-position-declaration
+    mine form, form fill-repeat-declaration
+    mine form, form fill-rule-declaration
+    mine form, form fill-size-declaration
+    mine form, form filter-declaration
+    mine form, form flex-declaration
+    mine form, form flex-basis-declaration
+    mine form, form flex-direction-declaration
+    mine form, form flex-flow-declaration
+    mine form, form flex-grow-declaration
+    mine form, form flex-shrink-declaration
+    mine form, form flex-wrap-declaration
+    mine form, form float-declaration
+    mine form, form float-defer-declaration
+    mine form, form float-offset-declaration
+    mine form, form float-reference-declaration
+    mine form, form flood-color-declaration
+    mine form, form flood-opacity-declaration
+    mine form, form flow-declaration
+    mine form, form flow-from-declaration
+    mine form, form flow-into-declaration
+    mine form, form font-declaration
+    mine form, form font-family-declaration
+    mine form, form font-feature-settings-declaration
+    mine form, form font-kerning-declaration
+    mine form, form font-language-override-declaration
+    mine form, form font-optical-sizing-declaration
+    mine form, form font-palette-declaration
+    mine form, form font-size-declaration
+    mine form, form font-size-adjust-declaration
+    mine form, form font-stretch-declaration
+    mine form, form font-style-declaration
+    mine form, form font-synthesis-declaration
+    mine form, form font-synthesis-small-caps-declaration
+    mine form, form font-synthesis-style-declaration
+    mine form, form font-synthesis-weight-declaration
+    mine form, form font-variant-declaration
+    mine form, form font-variant-alternates-declaration
+    mine form, form font-variant-caps-declaration
+    mine form, form font-variant-east-asian-declaration
+    mine form, form font-variant-emoji-declaration
+    mine form, form font-variant-ligatures-declaration
+    mine form, form font-variant-numeric-declaration
+    mine form, form font-variant-position-declaration
+    mine form, form font-variation-settings-declaration
+    mine form, form font-weight-declaration
+    mine form, form footnote-display-declaration
+    mine form, form footnote-policy-declaration
+    mine form, form forced-color-adjust-declaration
+    mine form, form gap-declaration
+    mine form, form glyph-orientation-vertical-declaration
+    mine form, form grid-declaration
+    mine form, form grid-area-declaration
+    mine form, form grid-auto-columns-declaration
+    mine form, form grid-auto-flow-declaration
+    mine form, form grid-auto-rows-declaration
+    mine form, form grid-column-declaration
+    mine form, form grid-column-end-declaration
+    mine form, form grid-column-start-declaration
+    mine form, form grid-row-declaration
+    mine form, form grid-row-end-declaration
+    mine form, form grid-row-start-declaration
+    mine form, form grid-template-declaration
+    mine form, form grid-template-areas-declaration
+    mine form, form grid-template-columns-declaration
+    mine form, form grid-template-rows-declaration
+    mine form, form hanging-punctuation-declaration
+    mine form, form height-declaration
+    mine form, form hyphenate-character-declaration
+    mine form, form hyphenate-limit-chars-declaration
+    mine form, form hyphenate-limit-last-declaration
+    mine form, form hyphenate-limit-lines-declaration
+    mine form, form hyphenate-limit-zone-declaration
+    mine form, form hyphens-declaration
+    mine form, form image-orientation-declaration
+    mine form, form image-rendering-declaration
+    mine form, form image-resolution-declaration
+    mine form, form initial-letter-declaration
+    mine form, form initial-letter-align-declaration
+    mine form, form initial-letter-wrap-declaration
+    mine form, form inline-size-declaration
+    mine form, form inline-sizing-declaration
+    mine form, form inset-declaration
+    mine form, form inset-block-declaration
+    mine form, form inset-block-end-declaration
+    mine form, form inset-block-start-declaration
+    mine form, form inset-inline-declaration
+    mine form, form inset-inline-end-declaration
+    mine form, form inset-inline-start-declaration
+    mine form, form isolation-declaration
+    mine form, form justify-content-declaration
+    mine form, form justify-items-declaration
+    mine form, form justify-self-declaration
+    mine form, form leading-trim-declaration
+    mine form, form left-declaration
+    mine form, form letter-spacing-declaration
+    mine form, form lighting-color-declaration
+    mine form, form line-break-declaration
+    mine form, form line-clamp-declaration
+    mine form, form line-grid-declaration
+    mine form, form line-height-declaration
+    mine form, form line-height-step-declaration
+    mine form, form line-padding-declaration
+    mine form, form line-snap-declaration
+    mine form, form list-style-declaration
+    mine form, form list-style-image-declaration
+    mine form, form list-style-position-declaration
+    mine form, form list-style-type-declaration
+    mine form, form margin-declaration
+    mine form, form margin-block-declaration
+    mine form, form margin-block-end-declaration
+    mine form, form margin-block-start-declaration
+    mine form, form margin-bottom-declaration
+    mine form, form margin-break-declaration
+    mine form, form margin-inline-declaration
+    mine form, form margin-inline-end-declaration
+    mine form, form margin-inline-start-declaration
+    mine form, form margin-left-declaration
+    mine form, form margin-right-declaration
+    mine form, form margin-top-declaration
+    mine form, form margin-trim-declaration
+    mine form, form marker-declaration
+    mine form, form marker-end-declaration
+    mine form, form marker-knockout-left-declaration
+    mine form, form marker-knockout-right-declaration
+    mine form, form marker-mid-declaration
+    mine form, form marker-pattern-declaration
+    mine form, form marker-segment-declaration
+    mine form, form marker-side-declaration
+    mine form, form marker-start-declaration
+    mine form, form mask-declaration
+    mine form, form mask-border-declaration
+    mine form, form mask-border-mode-declaration
+    mine form, form mask-border-outset-declaration
+    mine form, form mask-border-repeat-declaration
+    mine form, form mask-border-slice-declaration
+    mine form, form mask-border-source-declaration
+    mine form, form mask-border-width-declaration
+    mine form, form mask-clip-declaration
+    mine form, form mask-composite-declaration
+    mine form, form mask-image-declaration
+    mine form, form mask-mode-declaration
+    mine form, form mask-origin-declaration
+    mine form, form mask-position-declaration
+    mine form, form mask-repeat-declaration
+    mine form, form mask-size-declaration
+    mine form, form mask-type-declaration
+    mine form, form max-block-size-declaration
+    mine form, form max-height-declaration
+    mine form, form max-inline-size-declaration
+    mine form, form max-lines-declaration
+    mine form, form max-width-declaration
+    mine form, form min-block-size-declaration
+    mine form, form min-height-declaration
+    mine form, form min-inline-size-declaration
+    mine form, form min-intrinsic-sizing-declaration
+    mine form, form min-width-declaration
+    mine form, form mix-blend-mode-declaration
+    mine form, form nav-down-declaration
+    mine form, form nav-left-declaration
+    mine form, form nav-right-declaration
+    mine form, form nav-up-declaration
+    mine form, form object-fit-declaration
+    mine form, form object-position-declaration
+    mine form, form offset-declaration
+    mine form, form offset-anchor-declaration
+    mine form, form offset-distance-declaration
+    mine form, form offset-path-declaration
+    mine form, form offset-position-declaration
+    mine form, form offset-rotate-declaration
+    mine form, form opacity-declaration
+    mine form, form order-declaration
+    mine form, form orphans-declaration
+    mine form, form outline-declaration
+    mine form, form outline-color-declaration
+    mine form, form outline-offset-declaration
+    mine form, form outline-style-declaration
+    mine form, form outline-width-declaration
+    mine form, form overflow-declaration
+    mine form, form overflow-anchor-declaration
+    mine form, form overflow-block-declaration
+    mine form, form overflow-clip-margin-declaration
+    mine form, form overflow-inline-declaration
+    mine form, form overflow-wrap-declaration
+    mine form, form overflow-x-declaration
+    mine form, form overflow-y-declaration
+    mine form, form overscroll-behavior-declaration
+    mine form, form overscroll-behavior-block-declaration
+    mine form, form overscroll-behavior-inline-declaration
+    mine form, form overscroll-behavior-x-declaration
+    mine form, form overscroll-behavior-y-declaration
+    mine form, form padding-declaration
+    mine form, form padding-block-declaration
+    mine form, form padding-block-end-declaration
+    mine form, form padding-block-start-declaration
+    mine form, form padding-bottom-declaration
+    mine form, form padding-inline-declaration
+    mine form, form padding-inline-end-declaration
+    mine form, form padding-inline-start-declaration
+    mine form, form padding-left-declaration
+    mine form, form padding-right-declaration
+    mine form, form padding-top-declaration
+    mine form, form page-declaration
+    mine form, form page-break-after-declaration
+    mine form, form page-break-before-declaration
+    mine form, form page-break-inside-declaration
+    mine form, form pause-declaration
+    mine form, form pause-after-declaration
+    mine form, form pause-before-declaration
+    mine form, form perspective-declaration
+    mine form, form perspective-origin-declaration
+    mine form, form pitch-declaration
+    mine form, form pitch-range-declaration
+    mine form, form place-content-declaration
+    mine form, form place-items-declaration
+    mine form, form place-self-declaration
+    mine form, form play-during-declaration
+    mine form, form position-declaration
+    mine form, form print-color-adjust-declaration
+    mine form, form quotes-declaration
+    mine form, form region-fragment-declaration
+    mine form, form resize-declaration
+    mine form, form rest-declaration
+    mine form, form rest-after-declaration
+    mine form, form rest-before-declaration
+    mine form, form richness-declaration
+    mine form, form right-declaration
+    mine form, form rotate-declaration
+    mine form, form row-gap-declaration
+    mine form, form ruby-align-declaration
+    mine form, form ruby-merge-declaration
+    mine form, form ruby-overhang-declaration
+    mine form, form ruby-position-declaration
+    mine form, form running-declaration
+    mine form, form scale-declaration
+    mine form, form scroll-behavior-declaration
+    mine form, form scroll-margin-declaration
+    mine form, form scroll-margin-block-declaration
+    mine form, form scroll-margin-block-end-declaration
+    mine form, form scroll-margin-block-start-declaration
+    mine form, form scroll-margin-bottom-declaration
+    mine form, form scroll-margin-inline-declaration
+    mine form, form scroll-margin-inline-end-declaration
+    mine form, form scroll-margin-inline-start-declaration
+    mine form, form scroll-margin-left-declaration
+    mine form, form scroll-margin-right-declaration
+    mine form, form scroll-margin-top-declaration
+    mine form, form scroll-padding-declaration
+    mine form, form scroll-padding-block-declaration
+    mine form, form scroll-padding-block-end-declaration
+    mine form, form scroll-padding-block-start-declaration
+    mine form, form scroll-padding-bottom-declaration
+    mine form, form scroll-padding-inline-declaration
+    mine form, form scroll-padding-inline-end-declaration
+    mine form, form scroll-padding-inline-start-declaration
+    mine form, form scroll-padding-left-declaration
+    mine form, form scroll-padding-right-declaration
+    mine form, form scroll-padding-top-declaration
+    mine form, form scroll-snap-align-declaration
+    mine form, form scroll-snap-stop-declaration
+    mine form, form scroll-snap-type-declaration
+    mine form, form scrollbar-color-declaration
+    mine form, form scrollbar-gutter-declaration
+    mine form, form scrollbar-width-declaration
+    mine form, form shape-image-threshold-declaration
+    mine form, form shape-inside-declaration
+    mine form, form shape-margin-declaration
+    mine form, form shape-outside-declaration
+    mine form, form spatial-navigation-action-declaration
+    mine form, form spatial-navigation-contain-declaration
+    mine form, form spatial-navigation-function-declaration
+    mine form, form speak-declaration
+    mine form, form speak-as-declaration
+    mine form, form speak-header-declaration
+    mine form, form speak-numeral-declaration
+    mine form, form speak-punctuation-declaration
+    mine form, form speech-rate-declaration
+    mine form, form stress-declaration
+    mine form, form string-set-declaration
+    mine form, form stroke-declaration
+    mine form, form stroke-align-declaration
+    mine form, form stroke-alignment-declaration
+    mine form, form stroke-break-declaration
+    mine form, form stroke-color-declaration
+    mine form, form stroke-dash-corner-declaration
+    mine form, form stroke-dash-justify-declaration
+    mine form, form stroke-dashadjust-declaration
+    mine form, form stroke-dasharray-declaration
+    mine form, form stroke-dashcorner-declaration
+    mine form, form stroke-dashoffset-declaration
+    mine form, form stroke-image-declaration
+    mine form, form stroke-linecap-declaration
+    mine form, form stroke-linejoin-declaration
+    mine form, form stroke-miterlimit-declaration
+    mine form, form stroke-opacity-declaration
+    mine form, form stroke-origin-declaration
+    mine form, form stroke-position-declaration
+    mine form, form stroke-repeat-declaration
+    mine form, form stroke-size-declaration
+    mine form, form stroke-width-declaration
+    mine form, form tab-size-declaration
+    mine form, form table-layout-declaration
+    mine form, form text-align-declaration
+    mine form, form text-align-all-declaration
+    mine form, form text-align-last-declaration
+    mine form, form text-combine-upright-declaration
+    mine form, form text-decoration-declaration
+    mine form, form text-decoration-color-declaration
+    mine form, form text-decoration-line-declaration
+    mine form, form text-decoration-skip-declaration
+    mine form, form text-decoration-skip-box-declaration
+    mine form, form text-decoration-skip-ink-declaration
+    mine form, form text-decoration-skip-inset-declaration
+    mine form, form text-decoration-skip-self-declaration
+    mine form, form text-decoration-skip-spaces-declaration
+    mine form, form text-decoration-style-declaration
+    mine form, form text-decoration-thickness-declaration
+    mine form, form text-edge-declaration
+    mine form, form text-emphasis-declaration
+    mine form, form text-emphasis-color-declaration
+    mine form, form text-emphasis-position-declaration
+    mine form, form text-emphasis-skip-declaration
+    mine form, form text-emphasis-style-declaration
+    mine form, form text-group-align-declaration
+    mine form, form text-indent-declaration
+    mine form, form text-justify-declaration
+    mine form, form text-orientation-declaration
+    mine form, form text-overflow-declaration
+    mine form, form text-shadow-declaration
+    mine form, form text-space-collapse-declaration
+    mine form, form text-space-trim-declaration
+    mine form, form text-spacing-declaration
+    mine form, form text-transform-declaration
+    mine form, form text-underline-offset-declaration
+    mine form, form text-underline-position-declaration
+    mine form, form text-wrap-declaration
+    mine form, form top-declaration
+    mine form, form transform-declaration
+    mine form, form transform-box-declaration
+    mine form, form transform-origin-declaration
+    mine form, form transform-style-declaration
+    mine form, form transition-declaration
+    mine form, form transition-delay-declaration
+    mine form, form transition-duration-declaration
+    mine form, form transition-property-declaration
+    mine form, form transition-timing-function-declaration
+    mine form, form translate-declaration
+    mine form, form unicode-bidi-declaration
+    mine form, form user-select-declaration
+    mine form, form vertical-align-declaration
+    mine form, form visibility-declaration
+    mine form, form voice-balance-declaration
+    mine form, form voice-duration-declaration
+    mine form, form voice-family-declaration
+    mine form, form voice-pitch-declaration
+    mine form, form voice-range-declaration
+    mine form, form voice-rate-declaration
+    mine form, form voice-stress-declaration
+    mine form, form voice-volume-declaration
+    mine form, form volume-declaration
+    mine form, form white-space-declaration
+    mine form, form widows-declaration
+    mine form, form width-declaration
+    mine form, form will-change-declaration
+    mine form, form word-boundary-detection-declaration
+    mine form, form word-boundary-expansion-declaration
+    mine form, form word-break-declaration
+    mine form, form word-spacing-declaration
+    mine form, form word-wrap-declaration
+    mine form, form wrap-after-declaration
+    mine form, form wrap-before-declaration
+    mine form, form wrap-flow-declaration
+    mine form, form wrap-inside-declaration
+    mine form, form wrap-through-declaration
+    mine form, form writing-mode-declaration
+    mine form, form z-index-declaration
+
+mine accent-color-declaration
+  look after
+    mine form, form global-setter
+    mine form, form keyword-setter
+    mine form, form color
+
+mine align-content-declaration
+  align-content: center;
+  align-content: start;
+  align-content: end;
+  align-content: flex-start;
+  align-content: flex-end;
+  align-content: normal;
+  align-content: baseline;
+  align-content: first baseline;
+  align-content: last baseline;
+  align-content: space-between;
+  align-content: space-around;
+  align-content: space-evenly;
+  align-content: stretch;
+  align-content: safe center;
+  align-content: unsafe center;
+  align-content: inherit;
+  align-content: initial;
+  align-content: revert;
+  align-content: unset;
+
+mine align-items-declaration
+  align-items: normal;
+  align-items: stretch;
+
+  /* Positional alignment */
+  /* align-items does not take left and right values */
+  align-items: center; /* Pack items around the center */
+  align-items: start; /* Pack items from the start */
+  align-items: end; /* Pack items from the end */
+  align-items: flex-start; /* Pack flex items from the start */
+  align-items: flex-end; /* Pack flex items from the end */
+
+  /* Baseline alignment */
+  align-items: baseline;
+  align-items: first baseline;
+  align-items: last baseline; /* Overflow alignment (for positional alignment only) */
+  align-items: safe center;
+  align-items: unsafe center;
+
+  /* Global values */
+  align-items: inherit;
+  align-items: initial;
+  align-items: revert;
+  align-items: unset;
+
+mine align-self-declaration
+
+mine alignment-baseline-declaration
+
+mine all-declaration
+  mine chord, chord <all:>
+  mine form, form global-value
+
+mine animation-declaration
+
+mine animation-delay-declaration
+
+mine animation-direction-declaration
+
+mine animation-duration-declaration
+
+mine animation-fill-mode-declaration
+
+mine animation-iteration-count-declaration
+
+mine animation-name-declaration
+
+mine animation-play-state-declaration
+
+mine animation-timing-function-declaration
+
+mine appearance-declaration
+
+mine aspect-ratio-declaration
+
+mine azimuth-declaration
+
+mine backface-visibility-declaration
+
+mine background-declaration
+
+mine background-attachment-declaration
+
+mine background-blend-mode-declaration
+
+mine background-clip-declaration
+
+mine background-color-declaration
+
+mine background-image-declaration
+
+mine background-origin-declaration
+
+mine background-position-declaration
+
+mine background-repeat-declaration
+
+mine background-size-declaration
+
+mine baseline-shift-declaration
+
+mine baseline-source-declaration
+
+mine block-ellipsis-declaration
+
+mine block-size-declaration
+
+mine block-step-declaration
+
+mine block-step-align-declaration
+
+mine block-step-insert-declaration
+
+mine block-step-round-declaration
+
+mine block-step-size-declaration
+
+mine bookmark-label-declaration
+
+mine bookmark-level-declaration
+
+mine bookmark-state-declaration
+
+mine border-declaration
+
+mine border-block-declaration
+
+mine border-block-color-declaration
+
+mine border-block-end-declaration
+
+mine border-block-end-color-declaration
+
+mine border-block-end-style-declaration
+
+mine border-block-end-width-declaration
+
+mine border-block-start-declaration
+
+mine border-block-start-color-declaration
+
+mine border-block-start-style-declaration
+
+mine border-block-start-width-declaration
+
+mine border-block-style-declaration
+
+mine border-block-width-declaration
+
+mine border-bottom-declaration
+
+mine border-bottom-color-declaration
+
+mine border-bottom-left-radius-declaration
+
+mine border-bottom-right-radius-declaration
+
+mine border-bottom-style-declaration
+
+mine border-bottom-width-declaration
+
+mine border-boundary-declaration
+
+mine border-collapse-declaration
+
+mine border-color-declaration
+
+mine border-end-end-radius-declaration
+
+mine border-end-start-radius-declaration
+
+mine border-image-declaration
+
+mine border-image-outset-declaration
+
+mine border-image-repeat-declaration
+
+mine border-image-slice-declaration
+
+mine border-image-source-declaration
+
+mine border-image-width-declaration
+
+mine border-inline-declaration
+
+mine border-inline-color-declaration
+
+mine border-inline-end-declaration
+
+mine border-inline-end-color-declaration
+
+mine border-inline-end-style-declaration
+
+mine border-inline-end-width-declaration
+
+mine border-inline-start-declaration
+
+mine border-inline-start-color-declaration
+
+mine border-inline-start-style-declaration
+
+mine border-inline-start-width-declaration
+
+mine border-inline-style-declaration
+
+mine border-inline-width-declaration
+
+mine border-left-declaration
+
+mine border-left-color-declaration
+
+mine border-left-style-declaration
+
+mine border-left-width-declaration
+
+mine border-radius-declaration
+
+mine border-right-declaration
+
+mine border-right-color-declaration
+
+mine border-right-style-declaration
+
+mine border-right-width-declaration
+
+mine border-spacing-declaration
+
+mine border-start-end-radius-declaration
+
+mine border-start-start-radius-declaration
+
+mine border-style-declaration
+
+mine border-top-declaration
+
+mine border-top-color-declaration
+
+mine border-top-left-radius-declaration
+
+mine border-top-right-radius-declaration
+
+mine border-top-style-declaration
+
+mine border-top-width-declaration
+
+mine border-width-declaration
+
+mine bottom-declaration
+
+mine box-decoration-break-declaration
+
+mine box-shadow-declaration
+
+mine box-sizing-declaration
+
+mine box-snap-declaration
+
+mine break-after-declaration
+
+mine break-before-declaration
+
+mine break-inside-declaration
+
+mine caption-side-declaration
+
+mine caret-declaration
+
+mine caret-color-declaration
+
+mine caret-shape-declaration
+
+mine chains-declaration
+
+mine clear-declaration
+
+mine clip-declaration
+
+mine clip-path-declaration
+
+mine clip-rule-declaration
+
+mine color-declaration
+
+mine color-adjust-declaration
+
+mine color-interpolation-filters-declaration
+
+mine color-scheme-declaration
+
+mine column-count-declaration
+
+mine column-fill-declaration
+
+mine column-gap-declaration
+
+mine column-rule-declaration
+
+mine column-rule-color-declaration
+
+mine column-rule-style-declaration
+
+mine column-rule-width-declaration
+
+mine column-span-declaration
+
+mine column-width-declaration
+
+mine columns-declaration
+
+mine contain-declaration
+
+mine contain-intrinsic-block-size-declaration
+
+mine contain-intrinsic-height-declaration
+
+mine contain-intrinsic-inline-size-declaration
+
+mine contain-intrinsic-size-declaration
+
+mine contain-intrinsic-width-declaration
+
+mine content-declaration
+
+mine content-visibility-declaration
+
+mine continue-declaration
+
+mine counter-increment-declaration
+
+mine counter-reset-declaration
+
+mine counter-set-declaration
+
+mine cue-declaration
+
+mine cue-after-declaration
+
+mine cue-before-declaration
+
+mine cursor-declaration
+
+mine direction-declaration
+
+mine display-declaration
+
+mine dominant-baseline-declaration
+
+mine elevation-declaration
+
+mine empty-cells-declaration
+
+mine fill-declaration
+
+mine fill-break-declaration
+
+mine fill-color-declaration
+
+mine fill-image-declaration
+
+mine fill-opacity-declaration
+
+mine fill-origin-declaration
+
+mine fill-position-declaration
+
+mine fill-repeat-declaration
+
+mine fill-rule-declaration
+
+mine fill-size-declaration
+
+mine filter-declaration
+
+mine flex-declaration
+
+mine flex-basis-declaration
+
+mine flex-direction-declaration
+
+mine flex-flow-declaration
+
+mine flex-grow-declaration
+
+mine flex-shrink-declaration
+
+mine flex-wrap-declaration
+
+mine float-declaration
+
+mine float-defer-declaration
+
+mine float-offset-declaration
+
+mine float-reference-declaration
+
+mine flood-color-declaration
+
+mine flood-opacity-declaration
+
+mine flow-declaration
+
+mine flow-from-declaration
+
+mine flow-into-declaration
+
+mine font-declaration
+
+mine font-family-declaration
+
+mine font-feature-settings-declaration
+
+mine font-kerning-declaration
+
+mine font-language-override-declaration
+
+mine font-optical-sizing-declaration
+
+mine font-palette-declaration
+
+mine font-size-declaration
+
+mine font-size-adjust-declaration
+
+mine font-stretch-declaration
+
+mine font-style-declaration
+
+mine font-synthesis-declaration
+
+mine font-synthesis-small-caps-declaration
+
+mine font-synthesis-style-declaration
+
+mine font-synthesis-weight-declaration
+
+mine font-variant-declaration
+
+mine font-variant-alternates-declaration
+
+mine font-variant-caps-declaration
+
+mine font-variant-east-asian-declaration
+
+mine font-variant-emoji-declaration
+
+mine font-variant-ligatures-declaration
+
+mine font-variant-numeric-declaration
+
+mine font-variant-position-declaration
+
+mine font-variation-settings-declaration
+
+mine font-weight-declaration
+
+mine footnote-display-declaration
+
+mine footnote-policy-declaration
+
+mine forced-color-adjust-declaration
+
+mine gap-declaration
+
+mine glyph-orientation-vertical-declaration
+
+mine grid-declaration
+
+mine grid-area-declaration
+
+mine grid-auto-columns-declaration
+
+mine grid-auto-flow-declaration
+
+mine grid-auto-rows-declaration
+
+mine grid-column-declaration
+
+mine grid-column-end-declaration
+
+mine grid-column-start-declaration
+
+mine grid-row-declaration
+
+mine grid-row-end-declaration
+
+mine grid-row-start-declaration
+
+mine grid-template-declaration
+
+mine grid-template-areas-declaration
+
+mine grid-template-columns-declaration
+
+mine grid-template-rows-declaration
+
+mine hanging-punctuation-declaration
+
+mine height-declaration
+
+mine hyphenate-character-declaration
+
+mine hyphenate-limit-chars-declaration
+
+mine hyphenate-limit-last-declaration
+
+mine hyphenate-limit-lines-declaration
+
+mine hyphenate-limit-zone-declaration
+
+mine hyphens-declaration
+
+mine image-orientation-declaration
+
+mine image-rendering-declaration
+
+mine image-resolution-declaration
+
+mine initial-letter-declaration
+
+mine initial-letter-align-declaration
+
+mine initial-letter-wrap-declaration
+
+mine inline-size-declaration
+
+mine inline-sizing-declaration
+
+mine inset-declaration
+
+mine inset-block-declaration
+
+mine inset-block-end-declaration
+
+mine inset-block-start-declaration
+
+mine inset-inline-declaration
+
+mine inset-inline-end-declaration
+
+mine inset-inline-start-declaration
+
+mine isolation-declaration
+
+mine justify-content-declaration
+
+mine justify-items-declaration
+
+mine justify-self-declaration
+
+mine leading-trim-declaration
+
+mine left-declaration
+
+mine letter-spacing-declaration
+
+mine lighting-color-declaration
+
+mine line-break-declaration
+
+mine line-clamp-declaration
+
+mine line-grid-declaration
+
+mine line-height-declaration
+
+mine line-height-step-declaration
+
+mine line-padding-declaration
+
+mine line-snap-declaration
+
+mine list-style-declaration
+
+mine list-style-image-declaration
+
+mine list-style-position-declaration
+
+mine list-style-type-declaration
+
+mine margin-declaration
+
+mine margin-block-declaration
+
+mine margin-block-end-declaration
+
+mine margin-block-start-declaration
+
+mine margin-bottom-declaration
+
+mine margin-break-declaration
+
+mine margin-inline-declaration
+
+mine margin-inline-end-declaration
+
+mine margin-inline-start-declaration
+
+mine margin-left-declaration
+
+mine margin-right-declaration
+
+mine margin-top-declaration
+
+mine margin-trim-declaration
+
+mine marker-declaration
+
+mine marker-end-declaration
+
+mine marker-knockout-left-declaration
+
+mine marker-knockout-right-declaration
+
+mine marker-mid-declaration
+
+mine marker-pattern-declaration
+
+mine marker-segment-declaration
+
+mine marker-side-declaration
+
+mine marker-start-declaration
+
+mine mask-declaration
+
+mine mask-border-declaration
+
+mine mask-border-mode-declaration
+
+mine mask-border-outset-declaration
+
+mine mask-border-repeat-declaration
+
+mine mask-border-slice-declaration
+
+mine mask-border-source-declaration
+
+mine mask-border-width-declaration
+
+mine mask-clip-declaration
+
+mine mask-composite-declaration
+
+mine mask-image-declaration
+
+mine mask-mode-declaration
+
+mine mask-origin-declaration
+
+mine mask-position-declaration
+
+mine mask-repeat-declaration
+
+mine mask-size-declaration
+
+mine mask-type-declaration
+
+mine max-block-size-declaration
+
+mine max-height-declaration
+
+mine max-inline-size-declaration
+
+mine max-lines-declaration
+
+mine max-width-declaration
+
+mine min-block-size-declaration
+
+mine min-height-declaration
+
+mine min-inline-size-declaration
+
+mine min-intrinsic-sizing-declaration
+
+mine min-width-declaration
+
+mine mix-blend-mode-declaration
+
+mine nav-down-declaration
+
+mine nav-left-declaration
+
+mine nav-right-declaration
+
+mine nav-up-declaration
+
+mine object-fit-declaration
+
+mine object-position-declaration
+
+mine offset-declaration
+
+mine offset-anchor-declaration
+
+mine offset-distance-declaration
+
+mine offset-path-declaration
+
+mine offset-position-declaration
+
+mine offset-rotate-declaration
+
+mine opacity-declaration
+
+mine order-declaration
+
+mine orphans-declaration
+
+mine outline-declaration
+
+mine outline-color-declaration
+
+mine outline-offset-declaration
+
+mine outline-style-declaration
+
+mine outline-width-declaration
+
+mine overflow-declaration
+
+mine overflow-anchor-declaration
+
+mine overflow-block-declaration
+
+mine overflow-clip-margin-declaration
+
+mine overflow-inline-declaration
+
+mine overflow-wrap-declaration
+
+mine overflow-x-declaration
+
+mine overflow-y-declaration
+
+mine overscroll-behavior-declaration
+
+mine overscroll-behavior-block-declaration
+
+mine overscroll-behavior-inline-declaration
+
+mine overscroll-behavior-x-declaration
+
+mine overscroll-behavior-y-declaration
+
+mine padding-declaration
+
+mine padding-block-declaration
+
+mine padding-block-end-declaration
+
+mine padding-block-start-declaration
+
+mine padding-bottom-declaration
+
+mine padding-inline-declaration
+
+mine padding-inline-end-declaration
+
+mine padding-inline-start-declaration
+
+mine padding-left-declaration
+
+mine padding-right-declaration
+
+mine padding-top-declaration
+
+mine page-declaration
+
+mine page-break-after-declaration
+
+mine page-break-before-declaration
+
+mine page-break-inside-declaration
+
+mine pause-declaration
+
+mine pause-after-declaration
+
+mine pause-before-declaration
+
+mine perspective-declaration
+
+mine perspective-origin-declaration
+
+mine pitch-declaration
+
+mine pitch-range-declaration
+
+mine place-content-declaration
+
+mine place-items-declaration
+
+mine place-self-declaration
+
+mine play-during-declaration
+
+mine position-declaration
+
+mine print-color-adjust-declaration
+
+mine quotes-declaration
+
+mine region-fragment-declaration
+
+mine resize-declaration
+
+mine rest-declaration
+
+mine rest-after-declaration
+
+mine rest-before-declaration
+
+mine richness-declaration
+
+mine right-declaration
+
+mine rotate-declaration
+
+mine row-gap-declaration
+
+mine ruby-align-declaration
+  ruby-align: start;
+  ruby-align: center;
+  ruby-align: space-between;
+  ruby-align: space-around;
+
+  /* Global values */
+  ruby-align: inherit;
+  ruby-align: initial;
+  ruby-align: revert;
+  ruby-align: unset;
+
+mine ruby-overhang-declaration
+
+mine ruby-position-declaration
+
+mine running-declaration
+
+mine scale-declaration
+
+mine scroll-behavior-declaration
+
+mine scroll-margin-declaration
+
+mine scroll-margin-block-declaration
+
+mine scroll-margin-block-end-declaration
+
+mine scroll-margin-block-start-declaration
+
+mine scroll-margin-bottom-declaration
+
+mine scroll-margin-inline-declaration
+
+mine scroll-margin-inline-end-declaration
+
+mine scroll-margin-inline-start-declaration
+
+mine scroll-margin-left-declaration
+
+mine scroll-margin-right-declaration
+
+mine scroll-margin-top-declaration
+
+mine scroll-padding-declaration
+
+mine scroll-padding-block-declaration
+
+mine scroll-padding-block-end-declaration
+
+mine scroll-padding-block-start-declaration
+
+mine scroll-padding-bottom-declaration
+
+mine scroll-padding-inline-declaration
+
+mine scroll-padding-inline-end-declaration
+
+mine scroll-padding-inline-start-declaration
+
+mine scroll-padding-left-declaration
+
+mine scroll-padding-right-declaration
+
+mine scroll-padding-top-declaration
+
+mine scroll-snap-align-declaration
+
+mine scroll-snap-stop-declaration
+
+mine scroll-snap-type-declaration
+
+mine scrollbar-color-declaration
+
+mine scrollbar-gutter-declaration
+
+mine scrollbar-width-declaration
+
+mine shape-image-threshold-declaration
+
+mine shape-inside-declaration
+
+mine shape-margin-declaration
+
+mine shape-outside-declaration
+
+mine spatial-navigation-action-declaration
+
+mine spatial-navigation-contain-declaration
+
+mine spatial-navigation-function-declaration
+
+mine speak-declaration
+
+mine speak-as-declaration
+
+mine speak-header-declaration
+
+mine speak-numeral-declaration
+
+mine speak-punctuation-declaration
+
+mine speech-rate-declaration
+
+mine stress-declaration
+
+mine string-set-declaration
+
+mine stroke-declaration
+
+mine stroke-align-declaration
+
+mine stroke-alignment-declaration
+
+mine stroke-break-declaration
+
+mine stroke-color-declaration
+
+mine stroke-dash-corner-declaration
+
+mine stroke-dash-justify-declaration
+
+mine stroke-dashadjust-declaration
+
+mine stroke-dasharray-declaration
+
+mine stroke-dashcorner-declaration
+
+mine stroke-dashoffset-declaration
+
+mine stroke-image-declaration
+
+mine stroke-linecap-declaration
+
+mine stroke-linejoin-declaration
+
+mine stroke-miterlimit-declaration
+
+mine stroke-opacity-declaration
+
+mine stroke-origin-declaration
+
+mine stroke-position-declaration
+
+mine stroke-repeat-declaration
+
+mine stroke-size-declaration
+
+mine stroke-width-declaration
+
+mine tab-size-declaration
+
+mine table-layout-declaration
+
+mine text-align-declaration
+
+mine text-align-all-declaration
+
+mine text-align-last-declaration
+
+mine text-combine-upright-declaration
+
+mine text-decoration-declaration
+
+mine text-decoration-color-declaration
+
+mine text-decoration-line-declaration
+
+mine text-decoration-skip-declaration
+
+mine text-decoration-skip-box-declaration
+
+mine text-decoration-skip-ink-declaration
+
+mine text-decoration-skip-inset-declaration
+
+mine text-decoration-skip-self-declaration
+
+mine text-decoration-skip-spaces-declaration
+
+mine text-decoration-style-declaration
+
+mine text-decoration-thickness-declaration
+
+mine text-edge-declaration
+
+mine text-emphasis-declaration
+
+mine text-emphasis-color-declaration
+
+mine text-emphasis-position-declaration
+
+mine text-emphasis-skip-declaration
+
+mine text-emphasis-style-declaration
+
+mine text-group-align-declaration
+
+mine text-indent-declaration
+
+mine text-justify-declaration
+
+mine text-orientation-declaration
+
+mine text-overflow-declaration
+
+mine text-shadow-declaration
+
+mine text-space-collapse-declaration
+
+mine text-space-trim-declaration
+
+mine text-spacing-declaration
+
+mine text-transform-declaration
+
+mine text-underline-offset-declaration
+
+mine text-underline-position-declaration
+
+mine text-wrap-declaration
+
+mine top-declaration
+
+mine transform-declaration
+
+mine transform-box-declaration
+
+mine transform-origin-declaration
+
+mine transform-style-declaration
+
+mine transition-declaration
+
+mine transition-delay-declaration
+
+mine transition-duration-declaration
+
+mine transition-property-declaration
+
+mine transition-timing-function-declaration
+
+mine translate-declaration
+
+mine unicode-bidi-declaration
+
+mine user-select-declaration
+
+mine vertical-align-declaration
+
+mine visibility-declaration
+
+mine voice-balance-declaration
+
+mine voice-duration-declaration
+
+mine voice-family-declaration
+
+mine voice-pitch-declaration
+
+mine voice-range-declaration
+
+mine voice-rate-declaration
+
+mine voice-stress-declaration
+
+mine voice-volume-declaration
+
+mine volume-declaration
+
+mine white-space-declaration
+
+mine widows-declaration
+
+mine width-declaration
+
+mine will-change-declaration
+
+mine word-boundary-detection-declaration
+
+mine word-boundary-expansion-declaration
+
+mine word-break-declaration
+
+mine word-spacing-declaration
+
+mine word-wrap-declaration
+
+mine wrap-after-declaration
+
+mine wrap-before-declaration
+
+mine wrap-flow-declaration
+
+mine wrap-inside-declaration
+
+mine wrap-through-declaration
+
+mine writing-mode-declaration
+
+mine z-index-declaration
+
+mine global-value
+  mine chord, chord <initial>
+  mine chord, chord <inherit>
+  mine chord, chord <revert>
+  mine chord, chord <unset>

@@ -1,0 +1,1411 @@
+
+mine double-quote
+  mine chord, share 34
+
+host big
+  host ac, text <∿>
+  host ap-lboxquestion, text <⍰>
+  host ap-lboxupcaret, text <⍓>
+  host ap-lcomment, text <⍝>
+  host ap-ldownarrowbox, text <⍗>
+  host ap-linput, text <⍞>
+  host ap-linv, text <⌹>
+  host ap-lleftarrowbox, text <⍇>
+  host ap-llog, text <⍟>
+  host ap-lrightarrowbox, text <⍈>
+  host ap-luparrowbox, text <⍐>
+  host alpha, text <Α>
+  host angstroem, text <Å>
+  host barv, text <⫧>
+  host beta, text <Β>
+  host bot, text <⫫>
+  host bumpeq, text <≎>
+  host circle, text <●>
+  host cap, text <⋒>
+  host differential-d, text <ⅅ>
+  host checked-box, text <☑>
+  host chi, text <Χ>
+  host circle, text <○>
+  host coloneqq, text <⩴>
+  host complex-i, text <ⅈ>
+  host complex-j, text <ⅉ>
+  host cup, text <⋓>
+  host d-downarrow, text <⟱>
+  host dash-v, text <⫥>
+  host dash-v-dash, text <⟚>
+  host dashv, text <⫤>
+  host ddownarrow, text <⤋>
+  host delta, text <Δ>
+  host diamond, text <◇>
+  host diamondblack, text <◆>
+  host diamonddot, text <⟐>
+  host differential-d, text <ⅆ>
+  host digamma, text <Ϝ>
+  host doteq, text <≑>
+  host down-arrow-bar, text <⤓>
+  host down-left-tee-vector, text <⥞>
+  host down-left-vector-bar, text <⥖>
+  host down-right-tee-vector, text <⥟>
+  host down-right-vector-bar, text <⥗>
+  host downarrow, text <⇓>
+  host epsilon, text <Ε>
+  host equal, text <⩵>
+  host equiv, text <≣>
+  host eta, text <Η>
+  host euler, text <ℇ>
+  host exclam, text <‼>
+  host exponetial-e, text <ⅇ>
+  host finv, text <Ⅎ>
+  host game, text <⅁>
+  host gamma, text <}>
+  host hermaphrodite, text <⚥>
+  host im, text <ℑ>
+  host iota, text <Ι>
+  host join, text <⨝>
+  host kappa, text <Κ>
+  host koppa, text <Ϟ>
+  host leftcircle, text <◐>
+  host lhd, text <◀>
+  host l-leftarrow, text <⭅>
+  host lambda, text <Λ>
+  host lbag, text <⟅>
+  host lbrbrak, text <〘>
+  host left-arrow-bar, text <⇤>
+  host left-down-tee-vector, text <⥡>
+  host left-down-vector-bar, text <⥙>
+  host left-tee-vector, text <⥚>
+  host left-triangle-bar, text <⧏>
+  host left-up-tee-vector, text <⥠>
+  host left-up-vector-bar, text <⥘>
+  host left-vector-bar, text <⥒>
+  host leftarrow, text <⇐>
+  host leftrightarrow, text <⇔>
+  host lleftarrow, text <⇚>
+  host longleftarrow, text <⟸>
+  host longleftrightarrow, text <⟺>
+  host longmapsfrom, text <⟽>
+  host longmapsto, text <⟾>
+  host longrightarrow, text <⟹>
+  host lparen, text <⦅>
+  host lparengtr, text <⦕>
+  host lsh, text <↰>
+  host lvzigzag, text <⧚>
+  host maps-down, text <↧>
+  host maps-up, text <↥>
+  host mapsfrom, text <⤆>
+  host mapsto, text <⤇>
+  host micro, text <µ>
+  host nearrow, text <⇗>
+  host nested-greater-greater, text <⪢>
+  host nested-less-less, text <⪡>
+  host not, text <⫬>
+  host not-greater-less, text <≹>
+  host not-greater-tilde, text <≵>
+  host not-less-tilde, text <≴>
+  host nwarrow, text <⇖>
+  host omega, text <Ω>
+  host otimes, text <⨷>
+  host phi, text <Φ>
+  host pi, text <}>
+  host planckconst, text <ℎ>
+  host property-line, text <⅊>
+  host proportion, text <∷>
+  host psi, text <Ψ>
+  host qed, text <∎>
+  host question, text <⁇>
+  host rhd, text <▶>
+  host rightcircle, text <◗>
+  host righ-tcircle, text <◑>
+  host r-rightarrow, text <⭆>
+  host rbag, text <⟆>
+  host rbrbrak, text <〙>
+  host re, text <ℜ>
+  host rho, text <Ρ>
+  host right-arrow-bar, text <⇥>
+  host right-down-tee-vector, text <⥝>
+  host right-down-vector-bar, text <⥕>
+  host right-tee-vector, text <⥛>
+  host right-triangle-bar, text <⧐>
+  host right-up-tee-vector, text <⥜>
+  host right-up-vector-bar, text <⥔>
+  host right-vector-bar, text <⥓>
+  host rightarrow, text <⇒>
+  host rparen, text <⦆>
+  host rparenless, text <⦖>
+  host rrightarrow, text <⇛>
+  host rsh, text <↱>
+  host rvzigzag, text <⧛>
+  host same, text <⩶>
+  host sampi, text <Ϡ>
+  host searrow, text <⇘>
+  host sigma, text <}>
+  host sqcap, text <⩎>
+  host sqcup, text <⩏>
+  host square, text <☐>
+  host stigma, text <Ϛ>
+  host subset, text <⋐>
+  host sun, text <☉>
+  host supset, text <⋑>
+  host swarrow, text <⇙>
+  host tau, text <Τ>
+  host theta, text <Θ>
+  host top, text <⫪>
+  host u-uparrow, text <⟰>
+  host up-arrow-bar, text <⤒>
+  host uparrow, text <⇑>
+  host updownarrow, text <⇕>
+  host upsilon, text <Υ>
+  host uuparrow, text <⤊>
+  host v-dash, text <⊫>
+  host vert, text <⦀>
+  host vdash, text <⊩>
+  host vee, text <⩔>
+  host vvdash, text <⊪>
+  host wedge, text <⩓>
+  host x-box, text <☒>
+  host xi, text <Ξ>
+  host yup, text <⅄>
+  host zbar, text <Ƶ>
+  host zeta, text <Ζ>
+  host b-not, text <⫭>
+  host blacktriangledown, text <▼>
+  host blacktriangleup, text <▲>
+  host bot, text <⟘>
+  host cap, text <⋂>
+  host cup, text <⋃>
+  host cupdot, text <⨃>
+  host interleave, text <⫼>
+  host odot, text <⨀>
+  host oplus, text <⨁>
+  host otimes, text <⨂>
+  host slopedvee, text <⩗>
+  host slopedwedge, text <⩘>
+  host sqcap, text <⨅>
+  host sqcup, text <⨆>
+  host star, text <★>
+  host talloblong, text <⫿>
+  host top, text <⟙>
+  host triangledown, text <▽>
+  host triangleleft, text <⨞>
+  host triangleup, text <△>
+  host uplus, text <⨄>
+  host vee, text <⋁>
+  host wedge, text <⋀>
+  host whitestar, text <☆>
+  host cir-e, text <⧃>
+  host circled-r, text <®>
+  host dash-v, text <⫣>
+  host dash-vdash, text <⟛>
+  host equiv-dd, text <⩸>
+  host equiv-vert, text <⩨>
+  host equiv-vvert, text <⩩>
+  host gl-e, text <⪒>
+  host int-bar, text <⨎>
+  host isin-e, text <⋹>
+  host l-brace, text <⦃>
+  host lg-e, text <⪑>
+  host multimapdotboth-a, text <⊶>
+  host multimapdotboth-b, text <⊷>
+  host n-hdownarrow, text <⇟>
+  host n-huparrow, text <⇞>
+  host n-leftarrow, text <⇍>
+  host n-leftrightarrow, text <⇎>
+  host n-rightarrow, text <⇏>
+  host n-v-dash, text <⊯>
+  host n-vdash, text <⊮>
+  host n-vleftarrow, text <⇺>
+  host n-vleftarrowtail, text <⬺>
+  host n-vleftrightarrow, text <⇼>
+  host n-vtwoheadleftarrow, text <⬵>
+  host n-vtwoheadleftarrowtail, text <⬽>
+  host n-vtwoheadrightarrow, text <⤁>
+  host n-vtwoheadrightarrowtail, text <⤘>
+  host nh-vvert, text <⫵>
+  host nv-dash, text <⊭>
+  host nv-leftarrow, text <⤂>
+  host nv-leftrightarrow, text <⤄>
+  host nv-rightarrow, text <⤃>
+  host r-brace, text <⦄>
+  host sans-lmirrored, text <⅃>
+  host sans-lturned, text <⅂>
+  host simg-e, text <⪠>
+  host siml-e, text <⪟>
+  host theta, text <ϴ>
+  host up-mu, text <Μ>
+  host up-nu, text <Ν>
+  host up-omicron, text <Ο>
+  host upold-koppa, text <Ϙ>
+  host v-bar, text <⫨>
+  host v-barv, text <⫩>
+  host v-dash, text <⊨>
+  host v-ddash, text <⫢>
+  host var-vdash, text <⫦>
+host accurrent, text <⏦>
+host acidfree, text <♾>
+host acwcirclearrow, text <⥀>
+host acwgapcirclearrow, text <⟲>
+host acwleftarcarrow, text <⤹>
+host acwoverarcarrow, text <⤺>
+host acwunderarcarrow, text <⤻>
+host aleph, text <ℵ>
+host alpha, text <α>
+host amalg, text <⨿>
+host anchor, text <⚓>
+host angdnr, text <⦟>
+host angle, text <∠>
+host angles, text <⦞>
+host angleubar, text <⦤>
+host approx, text <≈>
+host approxeq, text <≊>
+host approxeqq, text <⩰>
+host approxident, text <≋>
+host aquarius, text <♒>
+host arceq, text <≘>
+host aries, text <♈>
+host arrowbullet, text <➢>
+host assert, text <⊦>
+host ast, text <∗>
+host asteq, text <⩮>
+host asymp, text <≍>
+host awint, text <⨑>
+host backcong, text <≌>
+host backdprime, text <‶>
+host backepsilon, text <϶>
+host backprime, text <‵>
+host backsim, text <∽>
+host backsimeq, text <⋍>
+host backtrprime, text <‷>
+host bagmember, text <⋿>
+host ballotx, text <✗>
+host barcap, text <⩃>
+host barcup, text <⩂>
+host barin, text <⋶>
+host barleftarrowrightarrowba, text <↹>
+host barleftharpoon, text <⥫>
+host barovernorthwestarrow, text <↸>
+host barrightarrowdiamond, text <⤠>
+host barrightharpoon, text <⥭>
+host barvee, text <⊽>
+host barwedge, text <⊼>
+host bbrktbrk, text <⎶>
+host bdtriplevdash, text <┆>
+host because, text <∵>
+host benzenr, text <⏣>
+host beta, text <β>
+host beth, text <ℶ>
+host between, text <≬>
+host bij, text <⤖>
+host biohazard, text <☣>
+host blackcircledownarrow, text <⧭>
+host blackcircledrightdot, text <⚈>
+host blackcircledtwodots, text <⚉>
+host blackcircleulquadwhite, text <◕>
+host blackdiamonddownarrow, text <⧪>
+host blackhourglass, text <⧗>
+host blackinwhitediamond, text <◈>
+host blackinwhitesquare, text <▣>
+host blacklozenge, text <⧫>
+host blackpointerleft, text <◄>
+host blackpointerright, text <►>
+host blacksmiley, text <☻>
+host blacksquare, text <⬛>
+host blacktriangledown, text <▾>
+host blacktriangleleft, text <◂>
+host blacktriangleright, text <▸>
+host blacktriangleup, text <▴>
+host blkhorzoval, text <⬬>
+host blkvertoval, text <⬮>
+host blockfull, text <█>
+host blockhalfshaded, text <▒>
+host blocklefthalf, text <▌>
+host blocklowhalf, text <▄>
+host blockqtrshaded, text <░>
+host blockrighthalf, text <▐>
+host blockthreeqtrshaded, text <▓>
+host blockuphalf, text <▀>
+host bot, text <⊥>
+host botsemicircle, text <◡>
+host bowtie, text <⋈>
+host boxast, text <⧆>
+host boxbar, text <◫>
+host boxbox, text <⧈>
+host boxbslash, text <⧅>
+host boxcircle, text <⧇>
+host boxdot, text <⊡>
+host boxminus, text <⊟>
+host boxonbox, text <⧉>
+host boxplus, text <⊞>
+host boxslash, text <⧄>
+host boxtimes, text <⊠>
+host bsimilarleftarrow, text <⭁>
+host bsimilarrightarrow, text <⭇>
+host bsolhsub, text <⟈>
+host btimes, text <⨲>
+host bullet, text <∙>
+host bullseye, text <◎>
+host bumpeq, text <≏>
+host bumpeqq, text <⪮>
+host cancer, text <♋>
+host cap, text <∩>
+host capbarcup, text <⩉>
+host capdot, text <⩀>
+host capovercup, text <⩇>
+host capricornus, text <♑>
+host capwedge, text <⩄>
+host caretinsert, text <‸>
+host carriagereturn, text <↵>
+host cat, text <⁀>
+host ccwundercurvearrow, text <⤿>
+host cdot, text <⋅>
+host cdotp, text <·>
+host cdots, text <⋯>
+host cent, text <¢>
+host checkmark, text <✓>
+host chi, text <χ>
+host cirbot, text <⟟>
+host circ, text <∘>
+host circeq, text <≗>
+host circlearrowleft, text <↺>
+host circlearrowright, text <↻>
+host circlebottomhalfblack, text <◒>
+host circledast, text <⊛>
+host circledbslash, text <⦸>
+host circledbullet, text <⦿>
+host circledcirc, text <⊚>
+host circleddash, text <⊝>
+host circledequal, text <⊜>
+host circledgtr, text <⧁>
+host circledless, text <⧀>
+host circledownarrow, text <⧬>
+host circledparallel, text <⦷>
+host circledrightdot, text <⚆>
+host circledstar, text <✪>
+host circledtwodots, text <⚇>
+host circledvert, text <⦶>
+host circledwhitebullet, text <⦾>
+host circlehbar, text <⦵>
+host circlellquad, text <◵>
+host circlelrquad, text <◶>
+host circleonleftarrow, text <⬰>
+host circleonrightarrow, text <⇴>
+host circletophalfblack, text <◓>
+host circleulquad, text <◴>
+host circleurquad, text <◷>
+host circleurquadblack, text <◔>
+host circlevertfill, text <◍>
+host cirfnint, text <⨐>
+host cirmid, text <⫯>
+host cirscir, text <⧂>
+host closedvarcap, text <⩍>
+host closedvarcup, text <⩌>
+host closedvarcupsmashprod, text <⩐>
+host closure, text <⁐>
+host clubsuit, text <♣>
+host coloneq, text <≔>
+host commaminus, text <⨩>
+host complement, text <∁>
+host concavediamond, text <⟡>
+host concavediamondtickleft, text <⟢>
+host concavediamondtickright, text <⟣>
+host cong, text <≅>
+host congdot, text <⩭>
+host conictaper, text <⌲>
+host conjquant, text <⨇>
+host coprod, text <∐>
+host corresponds, text <≙>
+host csub, text <⫏>
+host csube, text <⫑>
+host csup, text <⫐>
+host csupe, text <⫒>
+host cup, text <∪>
+host cupbarcap, text <⩈>
+host cupdot, text <⊍>
+host cupleftarrow, text <⊌>
+host cupovercap, text <⩆>
+host cupvee, text <⩅>
+host curlyeqprec, text <⋞>
+host curlyeqsucc, text <⋟>
+host curlyvee, text <⋎>
+host curlywedge, text <⋏>
+host curvearrowleft, text <↶>
+host curvearrowleftplus, text <⤽>
+host curvearrowright, text <↷>
+host curvearrowrightminus, text <⤼>
+host cwcirclearrow, text <⥁>
+host cwgapcirclearrow, text <⟳>
+host cwrightarcarrow, text <⤸>
+host cwundercurvearrow, text <⤾>
+host dagger, text <†>
+host daleth, text <ℸ>
+host danger, text <☡>
+host dashleftarrow, text <⇠>
+host dashrightarrow, text <⇢>
+host dashv, text <⊣>
+host dbkarow, text <⤏>
+host ddagger, text <‡>
+host ddots, text <⋱>
+host ddotseq, text <⩷>
+host delta, text <δ>
+host diameter, text <⌀>
+host diamond, text <⋄>
+host diamondbotblack, text <⬙>
+host diamondleftarrow, text <⤝>
+host diamondleftarrowbar, text <⤟>
+host diamondleftblack, text <⬖>
+host diamondrightblack, text <⬗>
+host diamondsuit, text <♢>
+host diamondtopblack, text <⬘>
+host dicei, text <⚀>
+host diceii, text <⚁>
+host diceiii, text <⚂>
+host diceiv, text <⚃>
+host dicev, text <⚄>
+host dicevi, text <⚅>
+host digamma, text <ϝ>
+host dingasterisk, text <✽>
+host disin, text <⋲>
+host disjquant, text <⨈>
+host div, text <÷>
+host divideontimes, text <⋇>
+host dlsh, text <↲>
+host doteq, text <≐>
+host dotequiv, text <⩧>
+host dotminus, text <∸>
+host dotplus, text <∔>
+host dotsim, text <⩪>
+host dotsminusdots, text <∺>
+host dottedcircle, text <◌>
+host dottedsquare, text <⬚>
+host dottimes, text <⨰>
+host doublebarvee, text <⩢>
+host doublebarwedge, text <⩞>
+host doubleplus, text <⧺>
+host downarrow, text <↓>
+host downarrowbarred, text <⤈>
+host downdasharrow, text <⇣>
+host downdownarrows, text <⇊>
+host downdownharpoons, text <⥥>
+host downfishtail, text <⥿>
+host downharpoonleft, text <⇃>
+host downharpoonright, text <⇂>
+host downrightcurvedarrow, text <⤵>
+host downtriangleleftblack, text <⧨>
+host downtrianglerightblack, text <⧩>
+host downuparrows, text <⇵>
+host downupharpoons, text <⥯>
+host downwhitearrow, text <⇩>
+host draftingarrow, text <➛>
+host drbkarow, text <⤐>
+host drsh, text <↳>
+host dsol, text <⧶>
+host dsub, text <⩤>
+host earth, text <♁>
+host egsdot, text <⪘>
+host eighthnote, text <♪>
+host elinters, text <⏧>
+host ell, text <ℓ>
+host elsdot, text <⪗>
+host emptyset, text <∅>
+host emptysetoarr, text <⦳>
+host emptysetoarrl, text <⦴>
+host emptysetobar, text <⦱>
+host emptysetocirc, text <⦲>
+host enleadertwodots, text <‥>
+host eparsl, text <⧣>
+host epsilon, text <ϵ>
+host eqcirc, text <≖>
+host eqcolon, text <≕>
+host eqdef, text <≝>
+host eqdot, text <⩦>
+host eqgtr, text <⋝>
+host eqless, text <⋜>
+host eqqgtr, text <⪚>
+host eqqless, text <⪙>
+host eqqplus, text <⩱>
+host eqqsim, text <⩳>
+host eqqslantgtr, text <⪜>
+host eqqslantless, text <⪛>
+host eqsim, text <≂>
+host eqslantgtr, text <⪖>
+host eqslantless, text <⪕>
+host equalleftarrow, text <⭀>
+host equalrightarrow, text <⥱>
+host equiv, text <≡>
+host eqvparsl, text <⧥>
+host errbarblackcircle, text <⧳>
+host errbarblackdiamond, text <⧱>
+host errbarblacksquare, text <⧯>
+host errbarcircle, text <⧲>
+host errbardiamond, text <⧰>
+host errbarsquare, text <⧮>
+host eta, text <η>
+host eth, text <ð>
+host euro, text <€>
+host exists, text <∃>
+host fallingdotseq, text <≒>
+host fbowtie, text <⧓>
+host fcmp, text <⨾>
+host fdiagovnearrow, text <⤯>
+host fdiagovrdiag, text <⤬>
+host female, text <♀>
+host ffun, text <⇻>
+host finj, text <⤕>
+host fint, text <⨏>
+host fisheye, text <◉>
+host flat, text <♭>
+host fltns, text <⏥>
+host forall, text <∀>
+host forks, text <⫝̸>
+host forksnot, text <⫝>
+host forkv, text <⫙>
+host fourth, text <⁗>
+host fourvdots, text <⦙>
+host fracslash, text <⁄>
+host frown, text <⌢>
+host frownie, text <☹>
+host fullouterjoin, text <⟗>
+host gamma, text <}>
+host gemini, text <♊>
+host geq, text <≥>
+host geqq, text <≧>
+host geqqslant, text <⫺>
+host geqslant, text <⩾>
+host gescc, text <⪩>
+host gesdot, text <⪀>
+host gesdoto, text <⪂>
+host gesdotol, text <⪄>
+host gesles, text <⪔>
+host gg, text <≫>
+host ggcurly, text <⪼>
+host ggg, text <⋙>
+host gggnest, text <⫸>
+host gimel, text <ℷ>
+host gla, text <⪥>
+host gleichstark, text <⧦>
+host glj, text <⪤>
+host gnapprox, text <⪊>
+host gneq, text <⪈>
+host gneqq, text <≩>
+host gnsim, text <⋧>
+host gsime, text <⪎>
+host gsiml, text <⪐>
+host gtcir, text <⩺>
+host gtlpar, text <⦠>
+host gtquest, text <⩼>
+host gtrapprox, text <⪆>
+host gtrarr, text <⥸>
+host gtrdot, text <⋗>
+host gtreqless, text <⋛>
+host gtreqqless, text <⪌>
+host gtrless, text <≷>
+host gtrsim, text <≳>
+host harrowextender, text <⎯>
+host hash, text <⋕>
+host hatapprox, text <⩯>
+host heartsuit, text <♡>
+host hermitmatrix, text <⊹>
+host hexagon, text <⎔>
+host hexagonblack, text <⬣>
+host hknearrow, text <⤤>
+host hknwarrow, text <⤣>
+host hksearow, text <⤥>
+host hkswarow, text <⤦>
+host hookleftarrow, text <↩>
+host hookrightarrow, text <↪>
+host horizbar, text <―>
+host hourglass, text <⧖>
+host house, text <⌂>
+host hrectangle, text <▭>
+host hrectangleblack, text <▬>
+host hslash, text <ℏ>
+host hyphenbullet, text <⁃>
+host hzigzag, text <〰>
+host iddots, text <⋰>
+host iiiint, text <⨌>
+host iiint, text <∭>
+host iinfin, text <⧜>
+host iint, text <∬>
+host imath, text <𝚤>
+host in, text <∈>
+host increment, text <∆>
+host infty, text <∞>
+host int, text <∫>
+host intbar, text <⨍>
+host intbottom, text <⌡>
+host intcap, text <⨙>
+host intclockwise, text <∱>
+host intcup, text <⨚>
+host intercal, text <⊺>
+host interleave, text <⫴>
+host intextender, text <⎮>
+host intlarhk, text <⨗>
+host intprod, text <⨼>
+host intprodr, text <⨽>
+host inttop, text <⌠>
+host intx, text <⨘>
+host invamp, text <⅋>
+host inversebullet, text <◘>
+host inversewhitecircle, text <◙>
+host invlazys, text <∾>
+host invneg, text <⌐>
+host invwhitelowerhalfcircle, text <◛>
+host invwhiteupperhalfcircle, text <◚>
+host iota, text <ι>
+host isindot, text <⋵>
+host isinobar, text <⋷>
+host isins, text <⋴>
+host isinvb, text <⋸>
+host jmath, text <𝚥>
+host jupiter, text <♃>
+host kappa, text <κ>
+host kernelcontraction, text <∻>
+host lambda, text <λ>
+host land, text <∧>
+host lang, text <⟪>
+host langle, text <⟨>
+host langledot, text <⦑>
+host laplac, text <⧠>
+host lat, text <⪫>
+host late, text <⪭>
+host lblkbrbrak, text <⦗>
+host lblot, text <⦉>
+host lbracelend, text <⎩>
+host lbracemid, text <⎨>
+host lbraceuend, text <⎧>
+host lbrackextender, text <⎢>
+host lbracklend, text <⎣>
+host lbracklltick, text <⦏>
+host lbrackubar, text <⦋>
+host lbrackuend, text <⎡>
+host lbrackultick, text <⦍>
+host lbrbrak, text <〔>
+host lceil, text <⌈>
+host lcurvyangle, text <⧼>
+host ldots, text <…>
+host leadsto, text <⤳>
+host leftarrow, text <←>
+host leftarrowapprox, text <⭊>
+host leftarrowbackapprox, text <⭂>
+host leftarrowbsimilar, text <⭋>
+host leftarrowless, text <⥷>
+host leftarrowonoplus, text <⬲>
+host leftarrowplus, text <⥆>
+host leftarrowshortrightarrow, text <⥃>
+host leftarrowsimilar, text <⥳>
+host leftarrowsubset, text <⥺>
+host leftarrowtail, text <↢>
+host leftarrowtriangle, text <⇽>
+host leftarrowx, text <⬾>
+host leftbarharpoon, text <⥪>
+host leftbkarrow, text <⤌>
+host leftcurvedarrow, text <⬿>
+host leftdbkarrow, text <⤎>
+host leftdbltail, text <⤛>
+host leftdotarrow, text <⬸>
+host leftdowncurvedarrow, text <⤶>
+host leftharpoondown, text <↽>
+host leftharpoonup, text <↼>
+host leftleftarrows, text <⇇>
+host leftleftharpoons, text <⥢>
+host leftmoon, text <☾>
+host leftouterjoin, text <⟕>
+host leftrightarrow, text <↔>
+host leftrightarrowcircle, text <⥈>
+host leftrightarrows, text <⇆>
+host leftrightarrowtriangle, text <⇿>
+host leftrightharpoon, text <⥊>
+host leftrightharpoondown, text <⥐>
+host leftrightharpoons, text <⇋>
+host leftrightharpoonsdown, text <⥧>
+host leftrightharpoonsup, text <⥦>
+host leftrightharpoonup, text <⥎>
+host leftrightsquigarrow, text <↭>
+host leftslice, text <⪦>
+host leftsquigarrow, text <⇜>
+host lefttail, text <⤙>
+host leftthreearrows, text <⬱>
+host leftthreetimes, text <⋋>
+host leftupdownharpoon, text <⥑>
+host leftwavearrow, text <↜>
+host leftwhitearrow, text <⇦>
+host leo, text <♌>
+host leq, text <≤>
+host leqq, text <≦>
+host leqqslant, text <⫹>
+host leqslant, text <⩽>
+host lescc, text <⪨>
+host lesdot, text <⩿>
+host lesdoto, text <⪁>
+host lesdotor, text <⪃>
+host lesges, text <⪓>
+host lessapprox, text <⪅>
+host lessdot, text <⋖>
+host lesseqgtr, text <⋚>
+host lesseqqgtr, text <⪋>
+host lessgtr, text <≶>
+host lesssim, text <≲>
+host lfbowtie, text <⧑>
+host lfloor, text <⌊>
+host lftimes, text <⧔>
+host lgblkcircle, text <⬤>
+host lgroup, text <⟮>
+host lgwhtcircle, text <◯>
+host lhd, text <◁>
+host libra, text <♎>
+host lightning, text <↯>
+host limg, text <⦇>
+host linefeed, text <↴>
+host ll, text <≪>
+host llarc, text <◟>
+host llblacktriangle, text <◣>
+host llbracket, text <⟦>
+host llcorner, text <⌞>
+host llcurly, text <⪻>
+host lll, text <⋘>
+host lllnest, text <⫷>
+host lltriangle, text <◺>
+host lmoustache, text <⎰>
+host lnapprox, text <⪉>
+host lneq, text <⪇>
+host lneqq, text <≨>
+host lnot, text <¬>
+host lnsim, text <⋦>
+host longdashv, text <⟞>
+host longdivision, text <⟌>
+host longleftarrow, text <⟵>
+host longleftrightarrow, text <⟷>
+host longleftsquigarrow, text <⬳>
+host longmapsfrom, text <⟻>
+host longmapsto, text <⟼>
+host longrightarrow, text <⟶>
+host longrightsquigarrow, text <⟿>
+host looparrowleft, text <↫>
+host looparrowright, text <↬>
+host lor, text <∨>
+host lowint, text <⨜>
+host lozenge, text <◊>
+host lozengeminus, text <⟠>
+host lparenextender, text <⎜>
+host lparenlend, text <⎝>
+host lparenless, text <⦓>
+host lparenuend, text <⎛>
+host lrarc, text <◞>
+host lrblacktriangle, text <◢>
+host lrcorner, text <⌟>
+host lrtriangle, text <◿>
+host lrtriangleeq, text <⧡>
+host lsime, text <⪍>
+host lsimg, text <⪏>
+host lsqhook, text <⫍>
+host ltcir, text <⩹>
+host ltimes, text <⋉>
+host ltlarr, text <⥶>
+host ltquest, text <⩻>
+host lvboxline, text <⎸>
+host lvzigzag, text <⧘>
+host male, text <♂>
+host maltese, text <✠>
+host mapsfrom, text <↤>
+host mapsto, text <↦>
+host pi, text <π>
+host mathord, text <⍹>
+host mdblkdiamond, text <⬥>
+host mdblklozenge, text <⬧>
+host mdlgblksquare, text <■>
+host mdlgwhtsquare, text <□>
+host mdsmblksquare, text <◾>
+host mdsmwhtcircle, text <⚬>
+host mdsmwhtsquare, text <◽>
+host mdwhtdiamond, text <⬦>
+host mdwhtlozenge, text <⬨>
+host measangledltosw, text <⦯>
+host measangledrtose, text <⦮>
+host measangleldtosw, text <⦫>
+host measanglelutonw, text <⦩>
+host measanglerdtose, text <⦪>
+host measanglerutone, text <⦨>
+host measangleultonw, text <⦭>
+host measangleurtone, text <⦬>
+host measeq, text <≞>
+host measuredangle, text <∡>
+host measuredangleleft, text <⦛>
+host measuredrightangle, text <⊾>
+host medblackstar, text <⭑>
+host medbullet, text <⚫>
+host medcirc, text <⚪>
+host medwhitestar, text <⭐>
+host mercury, text <☿>
+host mho, text <℧>
+host mid, text <∣>
+host midbarvee, text <⩝>
+host midbarwedge, text <⩜>
+host midcir, text <⫰>
+host minusdot, text <⨪>
+host minusfdots, text <⨫>
+host minusrdots, text <⨬>
+host mlcp, text <⫛>
+host models, text <⊧>
+host modtwosum, text <⨊>
+host mp, text <∓>
+host mu, text <μ>
+host multimap, text <⊸>
+host multimapboth, text <⧟>
+host multimapinv, text <⟜>
+host nabla, text <∇>
+host napprox, text <≉>
+host natural, text <♮>
+host ncong, text <≇>
+host nearrow, text <↗>
+host neg, text <¬>
+host neovnwarrow, text <⤱>
+host neovsearrow, text <⤮>
+host neptune, text <♆>
+host neq, text <≠>
+host nequiv, text <≢>
+host neswarrow, text <⤢>
+host neuter, text <⚲>
+host nexists, text <∄>
+host ngeq, text <≱>
+host ngtr, text <≯>
+host nhpar, text <⫲>
+host ni, text <∋>
+host niobar, text <⋾>
+host nis, text <⋼>
+host nisd, text <⋺>
+host nleftarrow, text <↚>
+host nleftrightarrow, text <↮>
+host nleq, text <≰>
+host nless, text <≮>
+host nlessgtr, text <≸>
+host nmid, text <∤>
+host nni, text <∌>
+host not, text <x̸>
+host eq, text <≠>
+host notasymp, text <≭>
+host notbackslash, text <⍀>
+host notin, text <∉>
+host notslash, text <⌿>
+host nparallel, text <∦>
+host npolint, text <⨔>
+host nprec, text <⊀>
+host npreceq, text <⋠>
+host nrightarrow, text <↛>
+host nsim, text <≁>
+host nsimeq, text <≄>
+host nsqsubseteq, text <⋢>
+host nsqsupseteq, text <⋣>
+host nsubset, text <⊄>
+host nsubseteq, text <⊈>
+host nsucc, text <⊁>
+host nsucceq, text <⋡>
+host nsupset, text <⊅>
+host nsupseteq, text <⊉>
+host ntriangleleft, text <⋪>
+host ntrianglelefteq, text <⋬>
+host ntriangleright, text <⋫>
+host ntrianglerighteq, text <⋭>
+host nu, text <ν>
+host nvdash, text <⊬>
+host nvinfty, text <⧞>
+host nvleftarrow, text <⇷>
+host nvleftarrowtail, text <⬹>
+host nvleftrightarrow, text <⇹>
+host nvtwoheadleftarrow, text <⬴>
+host nvtwoheadleftarrowtail, text <⬼>
+host nvtwoheadrightarrowtail, text <⤗>
+host nwarrow, text <↖>
+host nwovnearrow, text <⤲>
+host nwsearrow, text <⤡>
+host obar, text <⌽>
+host obot, text <⦺>
+host obrbrak, text <⏠>
+host odiv, text <⨸>
+host odot, text <⊙>
+host odotslashdot, text <⦼>
+host oiiint, text <∰>
+host oiint, text <∯>
+host oint, text <∮>
+host ointctrclockwise, text <∳>
+host olcross, text <⦻>
+host omega, text <ω>
+host ominus, text <⊖>
+host operp, text <⦹>
+host oplus, text <⊕>
+host opluslhrim, text <⨭>
+host oplusrhrim, text <⨮>
+host oslash, text <⊘>
+host otimes, text <⊗>
+host otimeshat, text <⨶>
+host otimeslhrim, text <⨴>
+host otimesrhrim, text <⨵>
+host overbrace, text <⏞>
+host overbracket, text <⎴>
+host overparen, text <⏜>
+host parallel, text <∥>
+host parallelogram, text <▱>
+host parallelogramblack, text <▰>
+host parsim, text <⫳>
+host partial, text <𝜕>
+host partialmeetcontraction, text <⪣>
+host pencil, text <✎>
+host pentagon, text <⬠>
+host pentagonblack, text <⬟>
+host perp, text <⟂>
+host perps, text <⫡>
+host pfun, text <⇸>
+host phi, text <ϕ>
+host pinj, text <⤔>
+host pisces, text <♓>
+host pitchfork, text <⋔>
+host plusdot, text <⨥>
+host pluseqq, text <⩲>
+host plushat, text <⨣>
+host plussim, text <⨦>
+host plussubtwo, text <⨧>
+host plustrif, text <⨨>
+host pluto, text <♇>
+host pm, text <±>
+host pointint, text <⨕>
+host pointright, text <☞>
+host postalmark, text <〒>
+host pounds, text <£>
+host prec, text <≺>
+host precapprox, text <⪷>
+host preccurlyeq, text <≼>
+host preceq, text <⪯>
+host preceqq, text <⪳>
+host precnapprox, text <⪹>
+host precneq, text <⪱>
+host precneqq, text <⪵>
+host precnsim, text <⋨>
+host precsim, text <≾>
+host prime, text <′>
+host prod, text <∏>
+host profline, text <⌒>
+host profsurf, text <⌓>
+host propto, text <∝>
+host prurel, text <⊰>
+host psi, text <ψ>
+host psur, text <⤀>
+host pullback, text <⟓>
+host pushout, text <⟔>
+host quarternote, text <♩>
+host questeq, text <≟>
+host radiation, text <☢>
+host rang, text <⟫>
+host rangle, text <⟩>
+host rangledot, text <⦒>
+host rangledownzigzagarrow, text <⍼>
+host rblkbrbrak, text <⦘>
+host rblot, text <⦊>
+host rbracelend, text <⎭>
+host rbracemid, text <⎬>
+host rbraceuend, text <⎫>
+host rbrackextender, text <⎥>
+host rbracklend, text <⎦>
+host rbracklrtick, text <⦎>
+host rbrackubar, text <⦌>
+host rbrackuend, text <⎤>
+host rbrackurtick, text <⦐>
+host rbrbrak, text <〕>
+host rceil, text <⌉>
+host rcurvyangle, text <⧽>
+host rdiagovfdiag, text <⤫>
+host rdiagovsearrow, text <⤰>
+host recycle, text <♻>
+host revangle, text <⦣>
+host revangleubar, text <⦥>
+host revemptyset, text <⦰>
+host revnmid, text <⫮>
+host rfbowtie, text <⧒>
+host rfloor, text <⌋>
+host rftimes, text <⧕>
+host rgroup, text <⟯>
+host rhd, text <▷>
+host rho, text <ρ>
+host rightangle, text <∟>
+host rightanglemdot, text <⦝>
+host rightanglesqr, text <⦜>
+host rightarrow, text <→>
+host rightarrowapprox, text <⥵>
+host rightarrowbackapprox, text <⭈>
+host rightarrowbsimilar, text <⭌>
+host rightarrowdiamond, text <⤞>
+host rightarrowgtr, text <⭃>
+host rightarrowonoplus, text <⟴>
+host rightarrowplus, text <⥅>
+host rightarrowshortleftarrow, text <⥂>
+host rightarrowsimilar, text <⥴>
+host rightarrowsupset, text <⭄>
+host rightarrowtail, text <↣>
+host rightarrowtriangle, text <⇾>
+host rightarrowx, text <⥇>
+host rightbarharpoon, text <⥬>
+host rightbkarrow, text <⤍>
+host rightdbltail, text <⤜>
+host rightdotarrow, text <⤑>
+host rightdowncurvedarrow, text <⤷>
+host rightharpoondown, text <⇁>
+host rightharpoonup, text <⇀>
+host rightimply, text <⥰>
+host rightleftarrows, text <⇄>
+host rightleftharpoon, text <⥋>
+host rightleftharpoons, text <⇌>
+host rightleftharpoonsdown, text <⥩>
+host rightleftharpoonsup, text <⥨>
+host rightmoon, text <☽>
+host rightouterjoin, text <⟖>
+host rightpentagon, text <⭔>
+host rightpentagonblack, text <⭓>
+host rightrightarrows, text <⇉>
+host rightrightharpoons, text <⥤>
+host rightslice, text <⪧>
+host rightsquigarrow, text <⇝>
+host righttail, text <⤚>
+host rightthreearrows, text <⇶>
+host rightthreetimes, text <⋌>
+host rightupdownharpoon, text <⥏>
+host rightwavearrow, text <↝>
+host rightwhitearrow, text <⇨>
+host rimg, text <⦈>
+host ringplus, text <⨢>
+host risingdotseq, text <≓>
+host rmoustache, text <⎱>
+host rparenextender, text <⎟>
+host rparengtr, text <⦔>
+host rparenlend, text <⎠>
+host rparenuend, text <⎞>
+host rppolint, text <⨒>
+host rrbracket, text <⟧>
+host rsolbar, text <⧷>
+host rsqhook, text <⫎>
+host rsub, text <⩥>
+host rtimes, text <⋊>
+host rtriltri, text <⧎>
+host ruledelayed, text <⧴>
+host rvboxline, text <⎹>
+host rvzigzag, text <⧙>
+host sagittarius, text <♐>
+host saturn, text <♄>
+host scorpio, text <♏>
+host scpolint, text <⨓>
+host scurel, text <⊱>
+host searrow, text <↘>
+host second, text <″>
+host seovnearrow, text <⤭>
+host setminus, text <⧵>
+host sharp, text <♯>
+host shortdowntack, text <⫟>
+host shortlefttack, text <⫞>
+host shortrightarrowleftarrow, text <⥄>
+host shortuptack, text <⫠>
+host shuffle, text <⧢>
+host sigma, text <σ>
+host sim, text <∼>
+host simeq, text <≃>
+host simgtr, text <⪞>
+host similarleftarrow, text <⭉>
+host similarrightarrow, text <⥲>
+host simless, text <⪝>
+host simminussim, text <⩬>
+host simneqq, text <≆>
+host simplus, text <⨤>
+host simrdots, text <⩫>
+host sixteenthnote, text <♬>
+host skull, text <☠>
+host slash, text <∕>
+host smallin, text <∊>
+host smallni, text <∍>
+host smallsetminus, text <∖>
+host smalltriangledown, text <▿>
+host smalltriangleleft, text <◃>
+host smalltriangleright, text <▹>
+host smalltriangleup, text <▵>
+host smashtimes, text <⨳>
+host smblkcircle, text <•>
+host smblkdiamond, text <⬩>
+host smblklozenge, text <⬪>
+host smblksquare, text <▪>
+host smeparsl, text <⧤>
+host smile, text <⌣>
+host smiley, text <☺>
+host smt, text <⪪>
+host smte, text <⪬>
+host smwhitestar, text <⭒>
+host smwhtcircle, text <◦>
+host smwhtlozenge, text <⬫>
+host smwhtsquare, text <▫>
+host spadesuit, text <♠>
+host spddot, text <¨>
+host sphericalangle, text <∢>
+host sphericalangleup, text <⦡>
+host spot, text <⦁>
+host sqcap, text <⊓>
+host sqcup, text <⊔>
+host sqint, text <⨖>
+host sqrt, text <√>
+host sqrtbottom, text <⎷>
+host sqsubset, text <⊏>
+host sqsubseteq, text <⊑>
+host sqsubsetneq, text <⋤>
+host sqsupset, text <⊐>
+host sqsupseteq, text <⊒>
+host sqsupsetneq, text <⋥>
+host square, text <⬜>
+host squarebotblack, text <⬓>
+host squarecrossfill, text <▩>
+host squarehfill, text <▤>
+host squarehvfill, text <▦>
+host squareleftblack, text <◧>
+host squarellblack, text <⬕>
+host squarellquad, text <◱>
+host squarelrblack, text <◪>
+host squarelrquad, text <◲>
+host squareneswfill, text <▨>
+host squarenwsefill, text <▧>
+host squarerightblack, text <◨>
+host squaretopblack, text <⬒>
+host squareulblack, text <◩>
+host squareulquad, text <◰>
+host squareurblack, text <⬔>
+host squareurquad, text <◳>
+host squarevfill, text <▥>
+host squoval, text <▢>
+host sslash, text <⫽>
+host star, text <⋆>
+host stareq, text <≛>
+host steaming, text <☕>
+host strictfi, text <⥼>
+host strictif, text <⥽>
+host strns, text <⏤>
+host subedot, text <⫃>
+host submult, text <⫁>
+host subrarr, text <⥹>
+host subset, text <⊂>
+host subsetapprox, text <⫉>
+host subsetcirc, text <⟃>
+host subsetdot, text <⪽>
+host subseteq, text <⊆>
+host subseteqq, text <⫅>
+host subsetneq, text <⊊>
+host subsetneqq, text <⫋>
+host subsetplus, text <⪿>
+host subsim, text <⫇>
+host subsub, text <⫕>
+host subsup, text <⫓>
+host succ, text <≻>
+host succapprox, text <⪸>
+host succcurlyeq, text <≽>
+host succeq, text <⪰>
+host succeqq, text <⪴>
+host succnapprox, text <⪺>
+host succneq, text <⪲>
+host succneqq, text <⪶>
+host succnsim, text <⋩>
+host succsim, text <≿>
+host sum, text <∑>
+host sumbottom, text <⎳>
+host sumint, text <⨋>
+host sumtop, text <⎲>
+host sun, text <☼>
+host supdsub, text <⫘>
+host supedot, text <⫄>
+host suphsol, text <⟉>
+host suphsub, text <⫗>
+host suplarr, text <⥻>
+host supmult, text <⫂>
+host supset, text <⊃>
+host supsetapprox, text <⫊>
+host supsetcirc, text <⟄>
+host supsetdot, text <⪾>
+host supseteq, text <⊇>
+host supseteqq, text <⫆>
+host supsetneq, text <⊋>
+host supsetneqq, text <⫌>
+host supsetplus, text <⫀>
+host supsim, text <⫈>
+host supsub, text <⫔>
+host supsup, text <⫖>
+host swarrow, text <↙>
+host swords, text <⚔>
+host talloblong, text <⫾>
+host tau, text <τ>
+host taurus, text <♉>
+host tcohm, text <Ω>
+host therefore, text <∴>
+host thermod, text <⧧>
+host theta, text <θ>
+host third, text <‴>
+host threedangle, text <⟀>
+host threedotcolon, text <⫶>
+host tieinfty, text <⧝>
+host times, text <×>
+host timesbar, text <⨱>
+host tminus, text <⧿>
+host to, text <→>
+host toea, text <⤨>
+host tona, text <⤧>
+host top, text <⊤>
+host topbot, text <⌶>
+host topcir, text <⫱>
+host topfork, text <⫚>
+host topsemicircle, text <◠>
+host tosa, text <⤩>
+host towa, text <⤪>
+host tplus, text <⧾>
+host trapezium, text <⏢>
+host trianglecdot, text <◬>
+host triangleleftblack, text <◭>
+host trianglelefteq, text <⊴>
+host triangleminus, text <⨺>
+host triangleodot, text <⧊>
+host triangleplus, text <⨹>
+host triangleq, text <≜>
+host trianglerightblack, text <◮>
+host trianglerighteq, text <⊵>
+host triangles, text <⧌>
+host triangleserifs, text <⧍>
+host triangletimes, text <⨻>
+host triangleubar, text <⧋>
+host tripleplus, text <⧻>
+host trslash, text <⫻>
+host turnangle, text <⦢>
+host turnediota, text <℩>
+host turnednot, text <⌙>
+host twocaps, text <⩋>
+host twocups, text <⩊>
+host twoheaddownarrow, text <↡>
+host twoheadleftarrow, text <↞>
+host twoheadleftarrowtail, text <⬻>
+host twoheadleftdbkarrow, text <⬷>
+host twoheadmapsfrom, text <⬶>
+host twoheadmapsto, text <⤅>
+host twoheadrightarrow, text <↠>
+host twoheaduparrow, text <↟>
+host twoheaduparrowcircle, text <⥉>
+host twolowline, text <‗>
+host twonotes, text <♫>
+host typecolon, text <⦂>
+host ubrbrak, text <⏡>
+host ularc, text <◜>
+host ulblacktriangle, text <◤>
+host ulcorner, text <⌜>
+host ultriangle, text <◸>
+host uminus, text <⩁>
+host underbrace, text <⏟>
+host underbracket, text <⎵>
+host underparen, text <⏝>
+host uparrow, text <↑>
+host uparrowbarred, text <⤉>
+host uparrowoncircle, text <⦽>
+host updasharrow, text <⇡>
+host updownarrow, text <↕>
+host updownarrowbar, text <↨>
+host updownarrows, text <⇅>
+host updownharpoonleftright, text <⥍>
+host updownharpoonrightleft, text <⥌>
+host updownharpoons, text <⥮>
+host upepsilon, text <ε>
+host upfishtail, text <⥾>
+host upharpoonleft, text <↿>
+host upharpoonright, text <↾>
+host upin, text <⟒>
+host upint, text <⨛>
+host upkoppa, text <ϟ>
+host uplus, text <⊎>
+host upoldkoppa, text <ϙ>
+host upomicron, text <ο>
+host uprightcurvearrow, text <⤴>
+host upsampi, text <ϡ>
+host upsilon, text <υ>
+host upstigma, text <ϛ>
+host upuparrows, text <⇈>
+host upupharpoons, text <⥣>
+host upvarbeta, text <ϐ>
+host upwhitearrow, text <⇧>
+host uranus, text <♅>
+host urarc, text <◝>
+host urblacktriangle, text <◥>
+host urcorner, text <⌝>
+host urtriangle, text <◹>
+host varbarwedge, text <⌅>
+host varcarriagereturn, text <⏎>
+host varclubsuit, text <♧>
+host vardiamondsuit, text <♦>
+host vardoublebarwedge, text <⌆>
+host varepsilon, text <ε>
+host varheartsuit, text <♥>
+host varhexagon, text <⬡>
+host varhexagonblack, text <⬢>
+host varhexagonlrbonds, text <⌬>
+host varisins, text <⋳>
+host varkappa, text <ϰ>
+host varlrtriangle, text <⊿>
+host varniobar, text <⋽>
+host varnis, text <⋻>
+host varnothing, text <∅>
+host varointclockwise, text <∲>
+host varphi, text <φ>
+host varpi, text <ϖ>
+host varprod, text <⨉>
+host varrho, text <ϱ>
+host varsigma, text <ς>
+host varspadesuit, text <♤>
+host varstar, text <✶>
+host vartheta, text <ϑ>
+host vartriangleleft, text <⊲>
+host vartriangleright, text <⊳>
+host varveebar, text <⩡>
+host vbraceextender, text <⎪>
+host vdash, text <⊢>
+host vdots, text <⋮>
+host vectimes, text <⨯>
+host vee, text <∨>
+host veebar, text <⊻>
+host veedot, text <⟇>
+host veedoublebar, text <⩣>
+host veeeq, text <≚>
+host veemidvert, text <⩛>
+host veeodot, text <⩒>
+host veeonvee, text <⩖>
+host veeonwedge, text <⩙>
+host viewdata, text <⌗>
+host virgo, text <♍>
+host vlongdash, text <⟝>
+host vrectangle, text <▯>
+host vrectangleblack, text <▮>
+host vysmblksquare, text <⬝>
+host vysmwhtsquare, text <⬞>
+host vzigzag, text <⦚>
+host warning, text <⚠>
+host wasylozenge, text <⌑>
+host wedge, text <∧>
+host wedgebar, text <⩟>
+host wedgedot, text <⟑>
+host wedgedoublebar, text <⩠>
+host wedgemidvert, text <⩚>
+host wedgeodot, text <⩑>
+host wedgeonwedge, text <⩕>
+host whitearrowupfrombar, text <⇪>
+host whiteinwhitetriangle, text <⟁>
+host whitepointerleft, text <◅>
+host whitepointerright, text <▻>
+host whitesquaretickleft, text <⟤>
+host whitesquaretickright, text <⟥>
+host whthorzoval, text <⬭>
+host whtvertoval, text <⬯>
+host wideangledown, text <⦦>
+host wideangleup, text <⦧>
+host wp, text <℘>
+host wr, text <≀>
+host xi, text <ξ>
+host xsol, text <⧸>
+host yen, text <¥>
+host yinyang, text <☯>
+host zcmp, text <⨟>
+host zeta, text <ζ>
+host zhide, text <⧹>
+host zpipe, text <⨠>
+host zproject, text <⨡>
+host line, text <\n>
+host space, text < >

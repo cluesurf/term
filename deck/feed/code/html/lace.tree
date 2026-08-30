@@ -1,0 +1,59 @@
+
+lace document
+  take tree
+  lace text, text <\<!doctype html\>>
+  lace form, form node
+    bind node, read tree
+
+lace node
+  take node
+
+  lace form, form node-base
+    bind node, read node
+  lace form, form content
+    bind node, read node
+  lace form, form node-head
+    bind node, read node
+
+lace content
+  take node
+
+  walk node/head
+    test test-match
+      bind base, read seed/form
+      bind head, read form flow
+      hook rise
+        lace text, read seed/text
+      hook fall
+        lace form, form node
+          bind node, read seed
+
+lace node-base
+  take node
+
+  lace text, text <\<>
+  lace text, read node/name
+  lace text, text < >
+  lace form, form bind-list
+    bind node, read node
+  lace text, text <\>>
+
+lace bind-list
+  take node
+
+  walk node/bind
+    lace text, read seed/name
+    lace text, text <=>
+    lace text, text <'>
+    lace form, form bind-bond
+      bind bond, read seed/bond
+    lace text, text <'>
+
+lace node-head
+  take node
+
+  lace text, text <\</>
+  lace text, read node/name
+  lace text, text <\>>
+
+lace bind-bond

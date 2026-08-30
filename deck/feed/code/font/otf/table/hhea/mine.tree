@@ -1,0 +1,55 @@
+
+mine hhea-table
+  mine form, form version
+  mine form, form ascender
+  mine form, form descender
+  mine form, form line-gap
+  mine form, form advance-width-max
+  mine form, form min-left-side-bearing
+  mine form, form min-right-side-bearing
+  mine form, form x-max-extent
+  mine form, form caret-slope-rise
+  mine form, form caret-slope-run
+  mine form, form caret-offset
+  mine count, bind count, share 8
+  mine form, form metric-data-format
+  mine form, form number-of-h-metrics
+
+mine version
+  mine form, form version
+
+mine ascender
+  mine form, form short
+
+mine descender
+  mine form, form short
+
+mine line-gap
+  mine form, form short
+
+mine advance-width-max
+  mine form, form ushort
+
+mine min-left-side-bearing
+  mine form, form short
+
+mine min-right-side-bearing
+  mine form, form short
+
+mine x-max-extent
+  mine form, form short
+
+mine caret-slope-rise
+  mine form, form short
+
+mine caret-slope-run
+  mine form, form short
+
+mine caret-offset
+  mine form, form short
+
+mine metric-data-format
+  mine form, form short
+
+mine number-of-h-metrics
+  mine form, form ushort

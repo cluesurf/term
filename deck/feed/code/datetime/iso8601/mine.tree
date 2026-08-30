@@ -1,0 +1,207 @@
+
+mine iso8601datetime
+  mine form, form date
+  mine shard, |T|
+  mine form, form time
+
+mine date
+  mine crown
+    mine form, form datespec-full
+    mine form, form datespec-year
+    mine form, form datespec-month
+    datespec-mday / datespec-week / datespec-wday / datespec-yday
+
+mine date-century
+  mine count, 2, form DIGIT
+
+mine date-decade
+  mine form, form DIGIT
+
+mine date-subdecade
+  mine form, form DIGIT
+
+mine date-year
+  mine form, form date-decade
+  mine form, form date-subdecade
+
+mine date-fullyear
+  mine form, form date-century
+  mine form, form date-year
+
+mine date-month
+  mine crown
+    mine shard, <01>
+    mine shard, <02>
+    mine shard, <03>
+    mine shard, <04>
+    mine shard, <05>
+    mine shard, <06>
+    mine shard, <07>
+    mine shard, <08>
+    mine shard, <09>
+    mine shard, <10>
+    mine shard, <11>
+    mine shard, <12>
+
+mine date-wday
+  mine slice, 1, 7
+
+mine date-mday
+  mine count, 2, form DIGIT
+
+mine date-yday
+  mine count, 3, form 3DIGIT
+
+mine date-week
+  mine count, 2, form 2DIGIT
+
+mine datepart-fullyear
+  mine sieve, form date-century
+  mine form, form date-year
+  mine sieve
+    mine shard, |-|
+
+mine datepart-ptyear
+  mine shard, |-|
+  mine sieve
+    mine form, form date-subdecade
+    mine sieve
+      mine shard, |-|
+
+mine datepart-wkyear
+  mine crown
+    mine form, form datepart-ptyear
+    mine form, form datepart-fullyear
+
+mine dateopt-century
+  mine shard, |-|
+  mine form, form date-century
+
+mine dateopt-fullyear
+  mine shard, |-|
+  mine form, form datepart-fullyear
+
+mine dateopt-year
+  mine shard, |-|
+  mine form, form date-year
+  mine sieve
+    mine shard, |-|
+
+mine dateopt-month
+  mine shard, |-|
+  mine form, form date-month
+  mine sieve
+    mine shard, |-|
+
+mine dateopt-week
+  mine shard, |-|
+  mine form, form date-week
+  mine sieve
+    mine shard, |-|
+
+mine datespec-full
+  mine form, form datepart-fullyear
+  mine form, form date-month
+  mine sieve
+    mine shard, |-|
+  mine form, form date-mday
+
+mine datespec-year
+  mine crown
+    mine form, form date-century
+    mine chunk
+      mine form, form dateopt-century
+      mine form, form date-year
+
+mine datespec-month
+  mine shard, |-|
+  mine form, form dateopt-year
+  mine form, form date-month
+  mine sieve
+    mine sieve
+      mine shard, |-|
+    mine form, form date-mday
+
+mine datespec-mday
+  mine shard, |--|
+  mine form, form dateopt-month
+  mine form, form date-mday
+
+mine datespec-week
+  mine form, form datepart-wkyear
+  mine shard, |W|
+  mine crown
+    mine form, form date-week
+    mine form, form dateopt-week date-wday
+
+mine datespec-wday
+  mine shard, |---|
+  mine form, form date-wday
+
+mine datespec-yday
+  mine form, form dateopt-fullyear
+  mine form, form date-yday
+
+mine time-hour
+  mine count, 2, form DIGIT
+
+mine time-minute       = 2DIGIT ; 00-59
+mine time-second       = 2DIGIT ; 00-58, 00-59, 00-60 based on
+                              ; leap-second rules
+mine time-fraction     = (|,| / |.|) 1*DIGIT
+mine time-numoffset    = (|+| / |-|) time-hour [[|:|] time-minute]
+mine time-zone         = |Z| / time-numoffset
+
+mine timeopt-hour      = |-| / (time-hour [|:|])
+mine timeopt-minute    = |-| / (time-minute [|:|])
+
+mine timespec-hour     = time-hour [[|:|] time-minute [[|:|] time-second]]
+mine timespec-minute   = timeopt-hour time-minute [[":"] time-second]
+mine timespec-second   = "-" timeopt-minute time-second
+mine timespec-base     = timespec-hour / timespec-minute / timespec-second
+
+mine time              = timespec-base [time-fraction] [time-zone]
+
+
+mine dur-second        = 1*DIGIT "S"
+mine dur-minute        = 1*DIGIT "M" [dur-second]
+mine dur-hour          = 1*DIGIT "H" [dur-minute]
+mine dur-time          = "T" (dur-hour / dur-minute / dur-second)
+mine dur-day           = 1*DIGIT "D"
+mine dur-week          = 1*DIGIT "W"
+mine dur-month         = 1*DIGIT "M" [dur-day]
+mine dur-year          = 1*DIGIT "Y" [dur-month]
+mine dur-date          = (dur-day / dur-month / dur-year) [dur-time]
+
+mine duration          = "P" (dur-date / dur-time / dur-week)
+
+
+mine period-explicit   = iso-date-time "/" iso-date-time
+mine period-start      = iso-date-time "/" duration
+mine period-end        = duration "/" iso-date-time
+
+mine period            = period-explicit / period-start / period-end
+
+mine date-fullyear   = 4DIGIT
+mine date-month      = 2DIGIT  ; 01-12
+mine date-mday       = 2DIGIT  ; 01-28, 01-29, 01-30, 01-31 based on
+                             ; month/year
+mine time-hour       = 2DIGIT  ; 00-23
+mine time-minute     = 2DIGIT  ; 00-59
+mine time-second     = 2DIGIT  ; 00-58, 00-59, 00-60 based on leap second
+                             ; rules
+mine time-secfrac    = "." 1*DIGIT
+mine time-numoffset  = ("+" / "-") time-hour ":" time-minute
+mine time-offset     = "Z" / time-numoffset
+
+mine partial-time    = time-hour ":" time-minute ":" time-second
+                     [time-secfrac]
+mine full-date       = date-fullyear "-" date-month "-" date-mday
+mine full-time       = partial-time time-offset
+
+mine date-time       = full-date "T" full-time
+
+   int leap_year(int year)
+   {
+       return (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+   }

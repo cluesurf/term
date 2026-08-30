@@ -1,0 +1,25 @@
+
+mine weekday-text
+  mine crown
+    mine chord, share <Monday>
+    mine chord, share <Tuesday>
+    mine chord, share <Wednesday>
+    mine chord, share <Thursday>
+    mine chord, share <Friday>
+    mine chord, share <Saturday>
+    mine chord, share <Sunday>
+
+mine month3-text
+  mine crown
+    mine chord, share <Jan>
+    mine chord, share <Feb>
+    mine chord, share <Mar>
+    mine chord, share <Apr>
+    mine chord, share <May>
+    mine chord, share <Jun>
+    mine chord, share <Jul>
+    mine chord, share <Aug>
+    mine chord, share <Sep>
+    mine chord, share <Oct>
+    mine chord, share <Nov>
+    mine chord, share <Dec>

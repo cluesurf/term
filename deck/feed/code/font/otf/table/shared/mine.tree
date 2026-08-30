@@ -1,0 +1,252 @@
+
+mine byte
+  mine shift
+    bind form, share uint8
+    bind count, share 1
+
+mine char
+  mine shift
+    bind form, share int8
+    bind count, share 1
+
+mine card8
+  mine form, form byte
+
+mine ushort
+  mine shift
+    bind form, share uint16
+    bind count, share 2
+
+mine card16
+  mine form, form ushort
+mine sid
+  mine form, form ushort
+mine offset16
+  mine form, form ushort
+
+mine short
+  mine shift
+    bind form, share int16
+    bind count, share 2
+
+mine f2dot14
+  mine shift
+    bind form, form int16
+    bind count, share 2
+
+mine ulong
+  mine shift
+    bind form, form uint32
+    bind count, share 4
+
+mine offset32
+  mine form, form uint32
+
+mine ulong
+  mine shift
+    bind form, form uint32
+    bind count, share 4
+
+mine fixed
+  mine form, form fixed-decimal
+  mine form, form fixed-fraction
+  cause divide
+    bind start, share fraction
+    bind front, share 65535
+    store denominator
+  cause add
+    bind start, share decimal
+    bind front, share denominator
+
+mine fixed-decimal
+  mine form, form short
+
+mine fixed-fraction
+  mine form, form ushort
+
+mine string
+  start length
+
+  mine chain
+    bind start, share 0
+    bind front, share length
+    cause add
+      bind start, share offset
+      bind front, share block
+      store position
+    mine form, form byte
+      bind offset, share position
+
+mine tag
+  mine form, form string
+    bind length, share 4
+
+mine ulong-list
+  mine form, form ulong
+    weave count
+  mine chain
+    bind front, share count
+    mine form, form uint32
+
+mine ushort-list
+  mine form, form ushort
+    weave count
+  mine chain
+    bind front, share count
+    mine form, form uint16
+
+mine short-list
+  start count
+  mine chain
+    bind front, share count
+    mine form, form int16
+
+mine byte-list
+  start count
+  mine chain
+    bind front, share count
+    mine form, form uint8
+
+mine value-record
+  start value-format
+
+  check bitwise-and
+    bind start, share value-format
+    bind front, share #h0001
+    mine form, form x-placement
+  check bitwise-and
+    bind start, share value-format
+    bind front, share #h0002
+    mine form, form y-placement
+  check bitwise-and
+    bind start, share value-format
+    bind front, share #h0004
+    mine form, form x-advance
+  check bitwise-and
+    bind start, share value-format
+    bind front, share #h0008
+    mine form, form y-advance
+
+  check bitwise-and
+    bind start, share value-format
+    bind front, share #h0010
+    mine form, form x-pla-device
+  check bitwise-and
+    bind start, share value-format
+    bind front, share #h0020
+    mine form, form y-pla-device
+  check bitwise-and
+    bind start, share value-format
+    bind front, share #h0040
+    mine form, form x-adv-device
+  check bitwise-and
+    bind start, share value-format
+    bind front, share #h0080
+    mine form, form y-adv-device
+
+mine x-placement
+  mine form, form short
+
+mine y-placement
+  mine form, form short
+
+mine x-advance
+  mine form, form short
+
+mine y-advance
+  mine form, form short
+
+mine x-pla-device
+  mine form, form short
+
+mine y-pla-device
+  mine form, form short
+
+mine x-adv-device
+  mine form, form short
+
+mine y-adv-device
+  mine form, form short
+
+mine script-list
+
+mine feature-list
+
+mine lookup-list
+
+mine feature-variation-list
+
+mine form-definition
+  mine form, form form-definition-format
+    weave format
+  check or
+    check mine
+      bind start, share format
+      bind front, share 1
+    check mine
+      bind start, share format
+      bind front, share 2
+    catch fault
+      leave build
+  check mine
+    bind start, share format
+    bind front, share 1
+    mine form, form start-glyph
+    mine chain
+      mine form, form form
+
+mine form-definition-format
+  mine form, form ushort
+
+mine start-glyph
+  mine form, form ushort
+
+mine form
+  mine form, form ushort
+
+mine coverage
+  mine form, form coverage-format
+    weave format
+  mine form, form coverage-count
+    weave count
+  check or
+    check mine
+      bind start, share format
+      bind front, share 1
+    check mine
+      bind start, share format
+      bind front, share 2
+    catch fault
+      leave build
+  check mine
+    bind start, share format
+    bind front, share 1
+    mine chain
+      bind count, share count
+      mine form, form coverage-glyph
+  check mine
+    bind start, share format
+    bind front, share 2
+    mine chain
+      bind count, share count
+      mine form, form coverage-range-start
+      mine form, form coverage-range-end
+      mine form, form coverage-range-index
+
+mine coverage-format
+  mine form, form ushort
+
+mine coverage-count
+  mine form, form ushort
+
+mine coverage-glyph
+  mine form, form ushort
+
+mine coverage-range-start
+  mine form, form ushort
+
+mine coverage-range-end
+  mine form, form ushort
+
+mine coverage-range-index
+  mine form, form ushort

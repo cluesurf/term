@@ -1,0 +1,81 @@
+
+write css
+  start sheet
+
+  drive sheet/rule
+    write class, class rule
+      mount rule, share block
+
+write rule
+  start rule
+
+  check has
+    mount build, share rule/comment/state
+    write class, share state-comment-block
+      write class, class comment-block
+        mount comment, share rule/comment
+    write class, share state-comment-line
+      write class, class comment-line
+        mount comment, share rule, comment
+
+  write check
+    share rule/state
+    write class, share state-media
+      write class, class media
+        mount media, share rule
+    write class, share state-keyframe-list
+      write class, class keyframe-list
+        mount list, share rule
+    write class, share state-selector
+      write class, class selector
+        mount media, share rule
+    write class, share state-font
+      write class, class font
+        mount media, share rule
+
+write comment-block
+write comment-line
+
+write selector
+  start selector
+
+  write bound, write <,\n>
+    share selector/path
+    write write, share block
+  write write, write < \{>
+  write write, write <\n>
+  write chain, share selector/declaration
+    write class, class declaration
+      mount declaration, share declaration
+  write write, write <\n>
+  write write, write <\}>
+
+write declaration
+  start declaration
+
+  check declaration/state
+    write class, share state-declaration-background
+    write catch
+      write class, class declaration-string
+        mount declaration, share declaration
+
+write font
+  write write, write <@font-face \{>
+  write class, class declaration-string
+    mount key, <family>
+    mount value, share family
+  write class, class font url list
+  write write, write <\}>
+
+write declaration-string
+  field key, match chord
+  field value, match chord
+
+  write write, share key
+  write write, write <: >
+  write write, write <">
+  write write, share value
+  write write, write <">
+  write write, write <;>
+
+write font-url-list

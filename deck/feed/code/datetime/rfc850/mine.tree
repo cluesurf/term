@@ -1,0 +1,35 @@
+
+fetch ../shared
+  catch mine month3-text
+  catch mine weekday-text
+
+mine rfc850-date
+  mine form, form weekday
+  mine chord, share <,>
+  mine form, form space
+  mine form, form date2
+  mine form, form space
+  mine form, form time
+  mine form, form space
+  mine chord, share <GMT>
+
+mine date1
+  mine form, form 2digit
+  mine form, form space
+  mine form, form month3-text
+  mine form, form space
+  mine form, form 4digit
+
+mine date2
+  mine form, form 2digit
+  mine chord, share <->
+  mine form, form month3-text
+  mine chord, share <->
+  mine form, form 2digit
+
+mine time
+  mine form, form 2digit
+  mine chord, share <:>
+  mine form, form 2digit
+  mine chord, share <:>
+  mine form, form 2digit

@@ -1,0 +1,448 @@
+
+state acnt
+  fixed32 version Version number of the accent attachment table (0x00010000 for the current version).
+  uint16  firstAccentGlyphIndex The first accented glyph index.
+  uint16  lastAccentGlyphIndex  The last accented glyph index.
+  uint32  descriptionOffset Offset in bytes to the description data.
+  uint32  extensionOffset Offset in bytes to the extension data.
+  uint32  secondaryOffset Offset in bytes to the secondary data.
+  variable  glyphs[numberOfAccentedGlyphs]
+  variable  ext[numberOfGlyphsWithMoreThan2Components]
+  variable  accents[numberOfSecondaryGlyphs]
+
+state acnt format 0
+  uint1 description Value = 0 indicates that there are only two components.
+  uint15  primaryGlyphIndex Number of columns of data.
+  uint8 primaryAttachmentPoint  Primary attachment control point number.
+  uint8 secondaryInfoIndex  Secondary attachment control point number.
+
+state acnt format 1
+  uint1 description Value = 1 indicates that there are more than two components
+  uint15  primaryGlyphIndex Primary glyph index number.
+  uint16  extensionOffset Byte offset to the beginning of the extensions subtable.
+
+state acnt extension format
+  uint1 components  Value = 0 indicates that there are more components. Value = 1 indicates that this is the last component.
+  uint7 secondaryInfoIndex[numberComponents]  Secondary information index for the first component.
+  uint8 primaryAttachmentPoint[numberComponents]  Primary attachment control point for the first component.
+
+state acnt secondary data format
+  uint16  secondaryGlyphIndex Secondary glyph index. A maximum of 255 entries are allowed.
+  uint8 secondaryGlyphAttachmentNumber  Secondary glyph attachment index number.
+
+state ankr header
+  UInt16  version Version number (set to zero)
+  UInt16  flags Flags (currently unused; set to zero)
+  UInt32  lookupTableOffset Offset to the table's lookup table; currently this is always 0x0000000C
+  UInt32  glyphDataTableOffset  Offset to the glyph data table
+  UInt32  numPoints Number of anchor points for this glyph
+UInt32[]  anchorPoints  Individual anchor points. Each anchor point is a two-byte signed x-coordinate followed by a two-byte signed y-coordinate
+
+state avar header
+  fixed32 version Table version; set to 0x00010000.
+  int32 axisCount The number of variation axes.
+  shortFracSegment  segment[axisCount]  The segment maps for each axis.
+
+state avar shortFracSegment
+uint16  pairCount The number of pairs for this axis.
+shortFracCorrespondence correspondence[pairCount] The array of correspondence values.
+
+state avar shortFracCorrespondence
+shortFrac fromCoord Value in normalized user space.
+shortFrac toCoord Value in normalized axis space.
+
+state cmap index
+  UInt16  version Version number (Set to zero)
+  UInt16  numberSubtables Number of encoding subtables
+
+state cmap encoding subtable
+  UInt16  platformID  Platform identifier
+  UInt16  platformSpecificID  Platform-specific encoding identifier
+  UInt32  offset  Offset of the mapping table
+
+stack 'cmap' Platforms
+0 Unicode Indicates Unicode version.
+1 Macintosh Script Manager code.
+2 (reserved; do not use)
+3 Microsoft Microsoft encoding.
+
+stack Unicode Platform-specific Encoding Identifiers
+0 Default semantics
+1 Version 1.1 semantics
+2 ISO 10646 1993 semantics (deprecated)
+3 Unicode 2.0 or later semantics (BMP only)
+4 Unicode 2.0 or later semantics (non-BMP characters allowed)
+5 Unicode Variation Sequences
+6 Full Unicode coverage (used with type 13.0 cmaps by OpenType)
+
+stack Windows Platform-specific Encoding Identifiers
+0 Symbol
+1 Unicode BMP-only (UCS-2)
+2 Shift-JIS
+3 PRC
+4 BigFive
+5 Johab
+10  Unicode UCS-4
+
+stack Platform Identifiers
+0 4 Unicode, 2.0 or later.
+0 < 4 Unicode, version of Unicode
+3 10  Windows, Unicode UCS-4
+3 1 Windows, Unicode BMP (UCS-2)
+3 0 Windows, Symbol
+
+state cmap format 0
+  UInt16  format  Set to 0
+  UInt16  length  Length in bytes of the subtable (set to 262 for format 0)
+  UInt16  language  Language code (see above)
+  UInt8 glyphIndexArray[256]  An array that maps character codes to glyph index values
+
+state cmap format 2
+  UInt16  format  Set to 2
+  UInt16  length  Total table length in bytes
+  UInt16  language  Language code (see above)
+  UInt16  subHeaderKeys[256]  Array that maps high bytes to subHeaders: value is index * 8
+  UInt16 * 4  subHeaders[variable]  Variable length array of subHeader structures
+  UInt16  glyphIndexArray[variable] Variable length array containing subarrays
+
+state cmap format 4
+  UInt16  format  Format number is set to 4
+  UInt16  length  Length of subtable in bytes
+  UInt16  language  Language code (see above)
+  UInt16  segCountX2  2 * segCount
+  UInt16  searchRange 2 * (2**FLOOR(log2(segCount)))
+  UInt16  entrySelector log2(searchRange/2)
+  UInt16  rangeShift  (2 * segCount) - searchRange
+  UInt16  endCode[segCount] Ending character code for each segment, last = 0xFFFF.
+  UInt16  reservedPad This value should be zero
+  UInt16  startCode[segCount] Starting character code for each segment
+  UInt16  idDelta[segCount] Delta for all character codes in segment
+  UInt16  idRangeOffset[segCount] Offset in bytes to glyph indexArray, or 0
+  UInt16  glyphIndexArray[variable] Glyph index array
+
+state cmap format 6
+UInt16  format  Format number is set to 6
+UInt16  length  Length in bytes
+UInt16  language  Language code (see above)
+UInt16  firstCode First character code of subrange
+UInt16  entryCount  Number of character codes in subrange
+UInt16  glyphIndexArray[entryCount] Array of glyph index values for character codes in the range
+
+state cmap format 8
+  Fixed32 format  Subtable format; set to 8.0
+  UInt32  length  Byte length of this subtable (including the header)
+  UInt32  language  Language code (see above)
+  UInt8 is32[65536] Tightly packed array of bits (8K bytes total) indicating whether the particular 16-bit (index) value is the start of a 32-bit character code
+  UInt32  nGroups Number of groupings which follow
+
+state cmap format 10
+  Fixed32 format  Subtable format; set to 10.0
+  UInt32  length  Byte length of this subtable (including the header)
+  UInt32  language  Language code (see above)
+  UInt32  startCharCode First character code covered
+  UInt32  numChars  Number of character codes covered
+  UInt16  glyphs[]  Array of glyph indices for the character codes covered
+
+state cmap format 12
+  Fixed32 format  Subtable format; set to 12.0
+  UInt32  length  Byte length of this subtable (including the header)
+  UInt32  language  Language code (see above)
+  UInt32  nGroups Number of groupings which follow
+
+state cvar table
+  fixed32 version Set to 0x00010000 (1.0).
+  uint16  tupleCount  Flags in high-order 4 bits, count in low-order 12 bits.
+  uint16  offsetToData  Offset from start of CVT Variations table to the start of the tuple data.
+  tupleVariation  tuple[tupleCount] Array of tuples.
+  uint8 pointNumbers[]  Packed array of point numbers.
+  uint8 tupleData[] Packed deltas for each tuple.
+
+state glyf
+  int16 numberOfContours  If the number of contours is positive or zero, it is a single glyph;
+  If the number of contours less than zero, the glyph is compound
+  FWord xMin  Minimum x for coordinate data
+  FWord yMin  Minimum y for coordinate data
+  FWord xMax  Maximum x for coordinate data
+  FWord yMax  Maximum y for coordinate data
+
+state glyf simple definition
+  uint16  endPtsOfContours[n] Array of last points of each contour; n is the number of contours; array entries are point indices
+  uint16  instructionLength Total number of bytes needed for instructions
+  uint8 instructions[instructionLength] Array of instructions for this glyph
+  uint8 flags[variable] Array of flags
+  uint8 or int16  xCoordinates[]  Array of x-coordinates; the first is relative to (0,0), others are relative to previous point
+  uint8 or int16  yCoordinates[]  Array of y-coordinates; the first is relative to (0,0), others are relative to previous point
+
+stack outline flags
+  On Curve  0 If set, the point is on the curve;
+  Otherwise, it is off the curve.
+  x-Short Vector  1 If set, the corresponding x-coordinate is 1 byte long;
+  Otherwise, the corresponding x-coordinate is 2 bytes long
+  y-Short Vector  2 If set, the corresponding y-coordinate is 1 byte long;
+  Otherwise, the corresponding y-coordinate is 2 bytes long
+  Repeat  3 If set, the next byte specifies the number of additional times this set of flags is to be repeated. In this way, the number of flags listed can be smaller than the number of points in a character.
+  This x is same (Positive x-Short vector)  4 This flag has one of two meanings, depending on how the x-Short Vector flag is set.
+  If the x-Short Vector bit is set, this bit describes the sign of the value, with a value of 1 equalling positive and a zero value negative.
+  If the x-short Vector bit is not set, and this bit is set, then the current x-coordinate is the same as the previous x-coordinate.
+  If the x-short Vector bit is not set, and this bit is not set, the current x-coordinate is a signed 16-bit delta vector. In this case, the delta vector is the change in x
+  This y is same (Positive y-Short vector)  5 This flag has one of two meanings, depending on how the y-Short Vector flag is set.
+  If the y-Short Vector bit is set, this bit describes the sign of the value, with a value of 1 equalling positive and a zero value negative.
+  If the y-short Vector bit is not set, and this bit is set, then the current y-coordinate is the same as the previous y-coordinate.
+  If the y-short Vector bit is not set, and this bit is not set, the current y-coordinate is a signed 16-bit delta vector. In this case, the delta vector is the change in y
+  Reserved  6 - 7 Set to zero
+
+state glyf compound
+  uint16  flags Component flag
+  uint16  glyphIndex  Glyph index of component
+  int16, uint16, int8 or uint8  argument1 X-offset for component or point number; type depends on bits 0 and 1 in component flags
+  int16, uint16, int8 or uint8  argument2 Y-offset for component or point number type depends on bits 0 and 1 in component flags
+  transformation option One of the transformation options from Table 19
+
+stack glyf component flags
+ARG_1_AND_2_ARE_WORDS 0 If set, the arguments are words;
+If not set, they are bytes.
+ARGS_ARE_XY_VALUES  1 If set, the arguments are xy values;
+If not set, they are points.
+ROUND_XY_TO_GRID  2 If set, round the xy values to grid;
+if not set do not round xy values to grid (relevant only to bit 1 is set)
+WE_HAVE_A_SCALE 3 If set, there is a simple scale for the component.
+If not set, scale is 1.0.
+(this bit is obsolete)  4 (obsolete; set to zero)
+MORE_COMPONENTS 5 If set, at least one additional glyph follows this one.
+WE_HAVE_AN_X_AND_Y_SCALE  6 If set the x direction will use a different scale than the y direction.
+WE_HAVE_A_TWO_BY_TWO  7 If set there is a 2-by-2 transformation that will be used to scale the component.
+WE_HAVE_INSTRUCTIONS  8 If set, instructions for the component character follow the last component.
+USE_MY_METRICS  9 Use metrics from this component for the compound glyph.
+OVERLAP_COMPOUND  10  If set, the components of this compound glyph overlap.
+
+state feat header
+  fixed32 version Version number of the feature name table (0x00010000 for the current version).
+  uint16  featureNameCount  The number of entries in the feature name array.
+  uint16  (none)  Reserved (set to zero).
+  uint32  (none)  Reserved (set to zero).
+  FeatureName names[featureNameCount] The feature name array.
+
+state feat name array
+uint16  feature Feature type.
+uint16  nSettings The number of records in the setting name array.
+uint32  settingTable  Offset in bytes from the beginning of this table to this feature's setting name array. The actual type of record this offset refers to will depend on the exclusivity value, as described below.
+uint16  featureFlags  Single-bit flags associated with the feature type.
+int16 nameIndex The name table index for the feature's name. This index has values greater than 255 and less than 32768.
+
+stack feat flags
+0x8000  Exclusive settings. If set, the feature settings are mutually exclusive.
+0x4000  If clear, then the setting with an index of 0 in the setting name array for this feature should be taken as the default for the feature (if one is required). If set, then bits 0-15 of this featureFlags field contain the index of the setting which is to be taken as the default.
+0x3F00  Unused, must be set to 0.
+0x00FF  If bits 30 and 31 are set, then these sixteen bits indicate the index of the setting in the setting name array for this feature which should be taken as the default.
+
+state feat setting name
+uint16  setting The setting.
+int16 nameIndex The name table index for the setting's name. The nameIndex must be greater than 255 and less than 32768.
+
+state head
+  Fixed version 0x00010000 if (version 1.0)
+  Fixed fontRevision  set by font manufacturer
+  uint32  checkSumAdjustment  To compute: set it to 0, calculate the checksum for the 'head' table and put it in the table directory, sum the entire font as a uint32_t, then store 0xB1B0AFBA - sum. (The checksum for the 'head' table will be wrong as a result. That is OK; do not reset it.)
+  uint32  magicNumber set to 0x5F0F3CF5
+  uint16  flags bit 0 - y value of 0 specifies baseline
+  bit 1 - x position of left most black bit is LSB
+  bit 2 - scaled point size and actual point size will differ (i.e. 24 point glyph differs from 12 point glyph scaled by factor of 2)
+  bit 3 - use integer scaling instead of fractional
+  bit 4 - (used by the Microsoft implementation of the TrueType scaler)
+  bit 5 - This bit should be set in fonts that are intended to e laid out vertically, and in which the glyphs have been drawn such that an x-coordinate of 0 corresponds to the desired vertical baseline.
+  bit 6 - This bit must be set to zero.
+  bit 7 - This bit should be set if the font requires layout for correct linguistic rendering (e.g. Arabic fonts).
+  bit 8 - This bit should be set for an AAT font which has one or more metamorphosis effects designated as happening by default.
+  bit 9 - This bit should be set if the font contains any strong right-to-left glyphs.
+  bit 10 - This bit should be set if the font contains Indic-style rearrangement effects.
+  bits 11-13 - Defined by Adobe.
+  bit 14 - This bit should be set if the glyphs in the font are simply generic symbols for code point ranges, such as for a last resort font.
+  uint16  unitsPerEm  range from 64 to 16384
+  longDateTime  created international date
+  longDateTime  modified  international date
+  FWord xMin  for all glyph bounding boxes
+  FWord yMin  for all glyph bounding boxes
+  FWord xMax  for all glyph bounding boxes
+  FWord yMax  for all glyph bounding boxes
+  uint16  macStyle  bit 0 bold
+  bit 1 italic
+  bit 2 underline
+  bit 3 outline
+  bit 4 shadow
+  bit 5 condensed (narrow)
+  bit 6 extended
+  uint16  lowestRecPPEM smallest readable size in pixels
+  int16 fontDirectionHint 0 Mixed directional glyphs
+  1 Only strongly left to right glyphs
+  2 Like 1 but also contains neutrals
+  -1 Only strongly right to left glyphs
+  -2 Like -1 but also contains neutrals
+  int16 indexToLocFormat  0 for short offsets, 1 for long
+  int16 glyphDataFormat 0 for current format
+
+state hhea
+  Fixed version 0x00010000 (1.0)
+  FWord ascent  Distance from baseline of highest ascender
+  FWord descent Distance from baseline of lowest descender
+  FWord lineGap typographic line gap
+  uFWord  advanceWidthMax must be consistent with horizontal metrics
+  FWord minLeftSideBearing  must be consistent with horizontal metrics
+  FWord minRightSideBearing must be consistent with horizontal metrics
+  FWord xMaxExtent  max(lsb + (xMax-xMin))
+  int16 caretSlopeRise  used to calculate the slope of the caret (rise/run) set to 1 for vertical caret
+  int16 caretSlopeRun 0 for vertical
+  FWord caretOffset set value to 0 for non-slanted fonts
+  int16 reserved  set value to 0
+  int16 reserved  set value to 0
+  int16 reserved  set value to 0
+  int16 reserved  set value to 0
+  int16 metricDataFormat  0 for current format
+  uint16  numOfLongHorMetrics number of advance widths in metrics table
+
+state hmtx
+  longHorMetric hMetrics[numOfLongHorMetrics] The value numOfLongHorMetrics comes from the 'hhea' table. If the font is monospaced, only one entry need be in the array but that entry is required.
+  FWord leftSideBearing[] Here the advanceWidth is assumed to be the same as the advanceWidth for the last entry above. The number of entries in this array is derived from the total number of glyphs minus numOfLongHorMetrics. This generally is used with a run of monospaced glyphs (e.g. Kanji fonts or Courier fonts). Only one run is allowed and it must be at the end.
+
+state name
+  UInt16  format  Format selector. Set to 0.
+  UInt16  count The number of nameRecords in this name table.
+  UInt16  stringOffset  Offset in bytes to the beginning of the name character strings.
+  NameRecord  nameRecord[count] The name records array.
+  variable  name  character strings The character strings of the names. Note that these are not necessarily ASCII!
+
+state name record
+UInt16  platformID  Platform identifier code.
+UInt16  platformSpecificID  Platform-specific encoding identifier.
+UInt16  languageID  Language identifier.
+UInt16  nameID  Name identifiers.
+UInt16  length  Name string length in bytes.
+UInt16  offset  Name string offset in bytes from stringOffset.
+
+stack platform id
+0 Unicode Indicates Unicode version.
+1 Macintosh QuickDraw Script Manager code.
+2 (reserved; do not use)
+3 Microsoft Microsoft encoding.
+
+0 Default semantics
+1 Version 1.1 semantics
+2 ISO 10646 1993 semantics (deprecated)
+3 Unicode 2.0 or later semantics (BMP only)
+4 Unicode 2.0 or later semantics (non-BMP characters allowed)
+5 Unicode Variation Sequences
+6 Full Unicode coverage (used with type 13.0 cmaps by OpenType)
+
+state name id
+0 Copyright notice.
+1 Font Family.
+2 Font Subfamily.
+3 Unique subfamily identification.
+4 Full name of the font.
+5 Version of the name table.
+6 PostScript name of the font. All PostScript names in a font must be identical. They may not be longer than 63 characters and the characters used are restricted to the set of printable ASCII characters (U+0021 through U+007E), less the ten characters '[', ']', '(', ')', '{', '}', '<', '>', '/', and '%'.
+7 Trademark notice.
+8 Manufacturer name.
+9 Designer; name of the designer of the typeface.
+10  Description; description of the typeface. Can contain revision information, usage recommendations, history, features, and so on.
+11  URL of the font vendor (with procotol, e.g., http://, ftp://). If a unique serial number is embedded in the URL, it can be used to register the font.
+12  URL of the font designer (with protocol, e.g., http://, ftp://)
+13  License description; description of how the font may be legally used, or different example scenarios for licensed use. This field should be written in plain language, not legalese.
+14  License information URL, where additional licensing information can be found.
+15  Reserved
+16  Preferred Family. In Windows, the Family name is displayed in the font menu, and the Subfamily name is presented as the Style name. For historical reasons, font families have contained a maximum of four styles, but font designers may group more than four fonts to a single family. The Preferred Family and Preferred Subfamily IDs allow font designers to include the preferred family/subfamily groupings. These IDs are only present if they are different from IDs 1 and 2.
+17  Preferred Subfamily. In Windows, the Family name is displayed in the font menu, and the Subfamily name is presented as the Style name. For historical reasons, font families have contained a maximum of four styles, but font designers may group more than four fonts to a single family. The Preferred Family and Preferred Subfamily IDs allow font designers to include the preferred family/subfamily groupings. These IDs are only present if they are different from IDs 1 and 2.
+18  Compatible Full (Macintosh only). In QuickDraw, the menu name for a font is constructed using the FOND resource. This usually matches the Full Name. If you want the name of the font to appear differently than the Full Name, you can insert the Compatible Full Name in ID 18. This name is not used by OS X itself, but may be used by application developers (e.g., Adobe).
+19  Sample text. This can be the font name, or any other text that the designer thinks is the best sample text to show what the font looks like.
+20–22 Defined by OpenType.
+23–255  Reserved for future expansion.
+256 - 32767 Font-specific names (layout features and settings, variations, track names, etc.)
+
+state OS/2
+uint16  version table version number (set to 0)
+int16 xAvgCharWidth average weighted advance width of lower case letters and space
+uint16  usWeightClass visual weight (degree of blackness or thickness) of stroke in glyphs
+uint16  usWidthClass  relative change from the normal aspect ratio (width to height ratio) as specified by a font designer for the glyphs in the font
+int16 fsType  characteristics and properties of this font (set undefined bits to zero)
+int16 ySubscriptXSize;  recommended horizontal size in pixels for subscripts
+int16 ySubscriptYSize recommended vertical size in pixels for subscripts
+int16 ySubscriptXOffset recommended horizontal offset for subscripts
+int16 ySubscriptYOffset recommended vertical offset form the baseline for subscripts
+int16 ySuperscriptXSize recommended horizontal size in pixels for superscripts
+int16 ySuperscriptYSize recommended vertical size in pixels for superscripts
+int16 ySuperscriptXOffset recommended horizontal offset for superscripts
+int16 ySuperscriptYOffset recommended vertical offset from the baseline for superscripts
+int16 yStrikeoutSize  width of the strikeout stroke
+int16 yStrikeoutPosition  position of the strikeout stroke relative to the baseline
+int16 sFamilyClass  classification of font-family design.
+PANOSE  panose  10 byte series of number used to describe the visual characteristics of a given typeface
+uint32  ulUnicodeRange[4] Field is split into two bit fields of 96 and 36 bits each. The low 96 bits are used to specify the Unicode blocks encompassed by the font file. The high 32 bits are used to specify the character or script sets covered by the font file. Bit assignments are pending. Set to 0
+int8  achVendID[4]  four character identifier for the font vendor
+uint16  fsSelection 2-byte bit field containing information concerning the nature of the font patterns
+uint16  fsFirstCharIndex  The minimum Unicode index in this font.
+uint16  fsLastCharIndex The maximum Unicode index in this font.
+int16 sTypoAscender The typographic ascender for this font. This is not necessarily the same as the ascender value in the 'hhea' table.
+int16 sTypoDescender  The typographic descender for this font. This is not necessarily the same as the descender value in the 'hhea' table.
+int16 sTypoLineGap  The typographic line gap for this font. This is not necessarily the same as the line gap value in the 'hhea' table.
+uint16  usWinAscent The ascender metric for Windows. usWinAscent is computed as the yMax for all characters in the Windows ANSI character set.
+uint16  usWinDescent  The descender metric for Windows. usWinDescent is computed as the -yMin for all characters in the Windows ANSI character set.
+uint32  ulCodePageRange1  Bits 0-31
+uint32  ulCodePageRange2  Bits 32-63
+int16 sxHeight  The distance between the baseline and the approximate height of non-ascending lowercase letters measured in FUnits.
+int16 sCapHeight  The distance between the baseline and the approximate height of uppercase letters measured in FUnits.
+uint16  usDefaultChar The default character displayed by Windows to represent an unsupported character. (Typically this should be 0.)
+uint16  usBreakChar The break character used by Windows.
+uint16  usMaxContext  The maximum length of a target glyph OpenType context for any feature in this font.
+uint16  usLowerPointSize  Proposed for version 5 The lowest size (in twentieths of a typographic point), at which the font starts to be used. This is an inclusive value.
+uint16  usUpperPointSize  Proposed for version 5 The highest size (in twentieths of a typographic point), at which the font starts to be used. This is an exclusive value. Use 0xFFFFU to indicate no upper limit.
+
+state post
+Fixed format  Format of this table
+Fixed italicAngle Italic angle in degrees
+FWord underlinePosition Underline position
+FWord underlineThickness  Underline thickness
+uint32  isFixedPitch  Font is monospaced; set to 1 if the font is monospaced and 0 otherwise (N.B., to maintain compatibility with older versions of the TrueType spec, accept any non-zero value as meaning that the font is monospaced)
+uint32  minMemType42  Minimum memory usage when a TrueType font is downloaded as a Type 42 font
+uint32  maxMemType42  Maximum memory usage when a TrueType font is downloaded as a Type 42 font
+uint32  minMemType1 Minimum memory usage when a TrueType font is downloaded as a Type 1 font
+uint32  maxMemType1 Maximum memory usage when a TrueType font is downloaded as a Type 1 font
+
+state post format 2
+uint16  numberOfGlyphs  number of glyphs
+uint16  glyphNameIndex[numberOfGlyphs]  Ordinal number of this glyph in 'post' string tables. This is not an offset.
+Pascal string names[numberNewGlyphs]  glyph names with length bytes [variable] (a Pascal string)
+
+state loca short
+uint16  offsets[n]  The actual local offset divided by 2 is stored. The value of n is the number of glyphs in the font + 1. The number of glyphs in the font is found in the maximum profile table.
+
+state loca long
+uint32  offsets[n]  The actual local offset is stored. The value of n is the number of glyphs in the font + 1. The number of glyphs in the font is found in the maximum profile table.
+
+state maxp
+  Fixed version 0x00010000 (1.0)
+  uint16  numGlyphs the number of glyphs in the font
+  uint16  maxPoints points in non-compound glyph
+  uint16  maxContours contours in non-compound glyph
+  uint16  maxComponentPoints  points in compound glyph
+  uint16  maxComponentContours  contours in compound glyph
+  uint16  maxZones  set to 2
+  uint16  maxTwilightPoints points used in Twilight Zone (Z0)
+  uint16  maxStorage  number of Storage Area locations
+  uint16  maxFunctionDefs number of FDEFs
+  uint16  maxInstructionDefs  number of IDEFs
+  uint16  maxStackElements  maximum stack depth
+  uint16  maxSizeOfInstructions byte count for glyph instructions
+  uint16  maxComponentElements  number of glyphs referenced at top level
+  uint16  maxComponentDepth levels of recursion, set to 0 if font has only simple glyphs
+
+state table directory
+  uint32  tag 4-byte identifier
+  uint32  checkSum  checksum for this table
+  uint32  offset  offset from beginning of sfnt
+  uint32  length  length of this table in byte (actual length not padded length)
+
+state offset subtable
+  uint32  scaler type A tag to indicate the OFA scaler to be used to rasterize this font; see the note on the scaler type below for more information.
+  uint16  numTables number of tables
+  uint16  searchRange (maximum power of 2 <= numTables)*16
+  uint16  entrySelector log2(maximum power of 2 <= numTables)
+  uint16  rangeShift  numTables*16-searchRange

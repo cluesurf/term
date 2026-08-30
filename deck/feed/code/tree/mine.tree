@@ -1,0 +1,206 @@
+
+mine tree
+  mine list
+    mine any
+      mine form, form indented-term
+        bind indent, 0
+        take indented-term
+      mine form, form comment
+      mine form, form line-break
+
+mine indented-term
+  take indent, like i32
+
+  mine form, form indent
+    bind abind, read indent
+
+  mine form, form name
+    take name
+
+  mine maybe
+    mine form, form inline-input
+
+  save nested-indent
+    call add
+      read indent
+      1
+
+  mine maybe
+    mine list
+      mine flow
+        mine form, form line-break
+        mine form, form indented-term
+          bind indent, read nested-indent
+          take nested-child
+
+mine inline-input
+  mine any
+    mine form, form inline-parenthesized-input
+    mine form, form inline-non-parenthesized-input
+
+mine inline-non-parenthesized-input
+  mine form, form space
+  mine form, form inline-value
+  mine maybe
+    mine list
+      mine flow
+        mine form, form comma
+        mine form, form space
+        mine form, form inline-value
+
+mine inline-parenthesized-input
+  mine form, form open-parenthesis
+  mine form, form inline-value
+  mine maybe
+    mine list
+      mine flow
+        mine form, form comma
+        mine form, form space
+        mine form, form inline-value
+  mine form, form close-parenthesis
+
+mine inline-value
+  mine any
+    mine form, form inline-template
+      take inline-template
+    mine form, form code
+      take code
+    mine form, form number
+      take number
+    mine form, form path
+      take path
+    mine form, form inline-term
+      take inline-term
+
+mine inline-term
+  mine form, form name
+    take name
+  mine maybe
+    mine form, form inline-input
+
+mine name
+  mine form, form prefix-word
+  mine maybe
+    mine list
+      mine flow
+        mine form, form dash
+        mine form, form suffix-word
+
+mine prefix-word
+  mine form, form lowercase-alphabet-letter
+  mine list
+    mine form, form word-symbol
+
+mine suffix-word
+  mine list
+    bind minimum, 1
+    mine form, form word-symbol
+
+mine word-symbol
+  mine any
+    mine form, form lowercase-alphabet-letter
+    mine form, form digit
+
+mine inline-template
+  mine <\<>
+  mine form, form template-line
+    take template-line
+  mine <\>>
+
+mine template-line
+  mine list
+    mine any
+      mine form, form inline-string
+        take inline-string
+      mine form, form inline-code
+        take inline-code
+
+mine inline-string
+  mine list
+    bind minimum, 1
+    mine any
+      mine flow
+        mine <\\>
+        mine <\>>
+      mine not
+        mine any
+          mine <\>>
+          mine <:>
+
+mine inline-code
+  mine <:>
+  mine any
+    mine form, form name
+      take name
+    mine form, form inline-parenthesized-input
+
+mine number
+  mine maybe
+    mine <->
+  mine list
+    bind minimum, 1
+    mine form, form digit
+  mine maybe
+    mine flow
+      mine <.>
+      mine list
+        bind minimum, 1
+        mine form, form digit
+
+mine code
+  mine <0>
+  mine form, form lowercase-alphabet-letter
+  mine list
+    bind minimum, 1
+    mine form, form word-symbol
+
+mine path
+  mine any
+    mine <./>
+    mine <@>
+  mine list
+    mine any
+      mine form, form word-symbol
+      mine </>
+      mine <->
+      mine <.>
+
+mine comment
+  mine <#>
+  mine < >
+  mine list
+    mine not
+      mine form, form line-break
+
+mine line-break
+  mine #u000A
+
+mine space
+  mine < >
+
+mine comma
+  mine <,>
+
+mine open-parenthesis
+  mine <(>
+
+mine close-parenthesis
+  mine <)>
+
+mine dash
+  mine <->
+
+mine digit
+  mine range, <0>, <9>
+
+mine lowercase-alphabet-letter
+  mine range, <a>, <z>
+
+mine indent
+  take abind, like i32
+  mine list
+    bind minimum, read abind
+    bind maximum, read abind
+    mine flow
+      mine < >
+      mine < >

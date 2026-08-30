@@ -27,9 +27,15 @@ form hive-ear
     take entry, like hive-entry
 
 form hive
-  link deck, like list
-  link roll, like list
-  link ear, like list
+  link deck
+    like list
+      like hive-deck
+  link roll
+    like list
+      like hive-entry
+  link ear
+    like list
+      like hive-ear
 
 host hive
   make hive
@@ -40,7 +46,9 @@ host hive
 # a deck arrives with its static entries. Idempotent on the deck name: a deck that arrives twice is one deck.
 task hive-wake
   take name, like text
-  take roll, like list
+  take roll
+    like list
+      like hive-entry
   walk list
     read hive/deck
     hook next
@@ -119,6 +127,7 @@ task hive-roll
   take kind, like text
   take host, like text, fall text <>
   like list
+    like hive-entry
   save out
     make list
   walk list

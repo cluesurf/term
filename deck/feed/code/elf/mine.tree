@@ -1,0 +1,171 @@
+
+https://docs.oracle.com/cd/E23824_01/html/819-0690/ggdlu.html#scrolltoc
+
+fetch ../field
+  catch state ELFformNONE
+  catch state ELFform32
+  catch state ELFform64
+
+  catch state ELFDATANONE
+  catch state ELFDATA2LSB
+  catch state ELFDATA2MSB
+
+  catch state EV_NONE
+  catch state EV_CURRENT
+
+  catch state EM_NONE
+  catch state EM_M32
+  catch state EM_SPARC
+  catch state EM_386
+  catch state EM_68K
+  catch state EM_88K
+  catch state EM_860
+  catch state EM_MIPS
+
+  catch state SHN_UNDEF
+  catch state SHN_LORESERVE
+  catch state SHN_LOPROC
+  catch state SHN_HIPROC
+  catch state SHN_ABS
+  catch state SHN_COMMON
+  catch state SHN_HIRESERVE
+
+  catch state SHT_NULL
+  catch state SHT_PROGBITS
+  catch state SHT_SYMTAB
+  catch state SHT_STRTAB
+  catch state SHT_RELA
+  catch state SHT_HASH
+  catch state SHT_DYNAMIC
+  catch state SHT_NOTE
+  catch state SHT_NOBITS
+  catch state SHT_REL
+  catch state SHT_SHLIB
+  catch state SHT_DYNSYM
+  catch state SHT_LOPROC
+  catch state SHT_HIPROC
+  catch state SHT_LOUSER
+  catch state SHT_HIUSER
+
+  catch state SHF_WRITE
+  catch state SHF_ALLOC
+  catch state SHF_EXECINSTR
+  catch state SHF_MASKPROC
+
+read link
+  read header
+  read maybe, read program-header-table
+  read section
+  read list, read section-header-table
+
+read run
+  read header
+  read program-header-table
+  read list
+    read segment
+  read maybe
+    read section-header-table
+
+read half
+read word
+read address
+
+read magic
+  read write, #x7f
+  read write, |ELF|
+
+read identity
+  read magic
+  read form
+  read data
+  read version
+
+read osabi
+
+read abi-version
+
+read form
+  read first-mine
+    read write, share ELFform64
+    read write, share ELFform32
+    read write, share ELFformNONE
+
+read data
+  read first-mine
+    read write, share ELFDATANONE
+    read write, share ELFDATA2LSB
+    read write, share ELFDATA2MSB
+
+read version
+  read write, share EV_CURRENT
+
+read machine
+  read write, share EM_386
+
+read section-header
+  read section-header-name
+  read section-header-type
+    store type
+  read section-header-flags
+  read section-header-addr
+  read section-header-offset
+  read section-header-size
+  read section-header-link
+    bind type, share type
+  read section-header-info
+  read section-header-addr-align
+  read section-header-entsize
+
+read section-header-type
+  read first-mine
+    read write, share SHT_NULL
+    read write, share SHT_PROGBITS
+    read write, share SHT_SYMTAB
+    read write, share SHT_STRTAB
+    read write, share SHT_RELA
+    read write, share SHT_HASH
+    read write, share SHT_DYNAMIC
+    read write, share SHT_NOTE
+    read write, share SHT_NOBITS
+    read write, share SHT_REL
+    read write, share SHT_SHLIB
+    read write, share SHT_DYNSYM
+    read write, share SHT_LOPROC
+    read write, share SHT_HIPROC
+    read write, share SHT_LOUSER
+    read write, share SHT_HIUSER
+
+read section-header-flags
+  read first-mine
+    read write, share SHF_WRITE
+    read write, share SHF_ALLOC
+    read write, share SHF_EXECINSTR
+    read write, share SHF_MASKPROC
+
+read section-header-link
+  bind type
+  check slate
+    bind type, share type
+    catch share SHT_DYNAMIC
+
+    catch share SHT_HASH
+    catch share SHT_REL
+    catch share SHT_RELA
+    catch share SHT_SYMTAB
+    catch share SHT_DYNSYM
+
+read section-header-info
+  bind type
+  check slate
+    bind type, share type
+    catch share SHT_DYNAMIC
+      read write, 0
+    catch share SHT_HASH
+      read write, 0
+    catch share SHT_REL
+    catch share SHT_RELA
+    catch share SHT_SYMTAB
+    catch share SHT_DYNSYM
+
+read symbol-table-entry
+

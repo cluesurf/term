@@ -1,0 +1,29 @@
+
+mine gdef-table
+  mine form, form version
+    weave version
+  mine form, form form-definition
+  mine form, form attach-list
+  mine form, form lig-caret-list
+  mine form, form mark-attach-form-definition
+  check gte
+    bind start, share version
+    bind front, share 1.2
+    mine form, form mark-glyph-sets
+
+mine version
+
+mine formDef
+  mine form, form p.parsePointer(Parser.formDef),
+
+mine attachList
+  mine form, form p.parsePointer(attachList),
+
+mine ligCaretList
+  mine form, form p.parsePointer(ligCaretList),
+
+mine markAttachformDef
+  mine form, form p.parsePointer(Parser.formDef)
+
+mine markGlyphSets
+  mine form, form p.parsePointer(markGlyphSets)

@@ -1,0 +1,17 @@
+
+mine ipv4-address
+  mine form, form integer
+  mine form, form dot
+  mine form, form integer
+  mine form, form dot
+  mine form, form integer
+  mine form, form dot
+  mine form, form integer
+
+mine integer
+  mine range
+    bind base, 0
+    bind head, 255
+
+mine dot
+  mine <.>

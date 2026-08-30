@@ -1,0 +1,18 @@
+
+mount @term/fish/field
+
+class document
+  field header
+  field element, match chain, match element
+
+class element
+  field attribute, match chain, match attribute
+  field block, match block
+
+class attribute
+  field key, match chord
+  field value
+
+class attribute style
+  match attribute
+  field value, match trace style

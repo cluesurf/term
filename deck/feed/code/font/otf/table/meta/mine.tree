@@ -1,0 +1,40 @@
+
+mine meta-table
+  mine form, form meta-table-version
+    weave version
+  # this goes into the weave
+  check mine
+    bind start, share version
+    bind front, share 1
+    catch fault
+      leave build
+  mine form, form flags
+  mine form, form table-offset
+  mine form, form data-map-count
+    weave count
+  mine chain
+    bind front, share count
+    mine form, form tag
+    mine form, form data-offset
+    mine form, form data-length
+    # this goes into the weave
+    const text = decode.UTF8(data, start + dataOffset, dataLength);
+    tags[tag] = text;
+
+mine meta-table-version
+  mine form, form ulong
+
+mine flags
+  mine form, form ulong
+
+mine table-offset
+  mine form, form ulong
+
+mine data-map-count
+  mine form, form ulong
+
+mine data-offset
+  mine form, form ulong
+
+mine data-length
+  mine form, form ulong

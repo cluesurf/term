@@ -1,0 +1,17 @@
+
+state object
+  field pair, match chain, match pair
+
+state pair
+  field key, match chord
+  field value, match value
+
+state value
+
+state array
+
+state null
+
+state boolean
+
+state number

@@ -1,0 +1,43 @@
+
+mine glyf-table
+  start low-memory
+  check has
+    bind build, share low-memory
+    catch mine
+      parseGlyfTableOnLowMemory(data, start, loca, font);
+    catch fault
+      mine glyph-table-all(data, start, loca, font);
+
+mine glyph-table-all
+  start data
+  start start
+  start loca
+  start font
+
+  const glyphs = new glyphset.GlyphSet(font);
+
+  cause subtract
+    bind start, share loca/length
+    bind front, share 1
+    store size
+
+  cause chain
+    bind front, share size
+    store offset, share loca[count]
+
+    cause add
+      bind start, share count
+      bind front, share 1
+      store next-count
+    store next-offset, share loca[next-count]
+
+    check not-equal
+      bind start, share offset
+      bind front, share next-offset
+      catch mine
+        cause push
+          bind chain, share glyphs
+          bind index, share count
+          glyphset.ttfGlyphLoader(font, i, parseGlyph, data, start + offset, buildPath)
+      catch fault
+        glyphs.push(i, glyphset.glyphLoader(font, i))

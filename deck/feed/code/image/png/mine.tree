@@ -1,0 +1,162 @@
+http://www.libpng.org/pub/png/spec/1.2/PNG-Contents.html
+
+mine png
+  mine form, form first-8
+
+mine first-8
+  mine chunk, share 137
+  mine chunk, share 80
+  mine chunk, share 78
+  mine chunk, share 71
+  mine chunk, share 13
+  mine chunk, share 10
+  mine chunk, share 26
+  mine chunk, share 10
+
+mine chunk
+  mine form, form chunk-length
+  mine form, form chunk-type
+  mine form, form chunk-data
+  mine form, form chunk-crc
+
+mine chunk-length
+  mine count
+    bind scale, share 8
+    bind count, share 4
+
+mine chunk-type
+  mine count
+    bind scale, share 8
+    bind count, share 4
+    mine crown
+      bind bound
+        bind start, share <a>
+        bind front, share <a>
+      bind bound
+        bind start, share <A>
+        bind front, share <Z>
+
+mine chunk-data
+
+mine chunk-crc
+  mine count
+    bind scale, share 8
+    bind count, share 4
+
+mine ihdr-image-header-chunk
+  mine form, form ihdr-image-header-chunk-width
+  mine form, form ihdr-image-header-chunk-height
+  mine form, form ihdr-image-header-chunk-bit-depth
+  mine form, form ihdr-image-header-chunk-color-type
+  mine form, form ihdr-image-header-chunk-compression-method
+  mine form, form ihdr-image-header-chunk-filter-method
+  mine form, form ihdr-image-header-chunk-interlace
+
+# determined from chunk-length
+mine plte-palette-chunk
+  start chunk-length
+
+  mine chain
+    bind start, share 1
+    bind front, share 256
+    bind count, share chunk-length
+    bind form, form rgb-bytes
+
+mine idat-image-data-chunk
+
+mine iend-image-trailer-chunk
+
+mine chrm-chunk
+
+mine gama-chunk
+
+mine sBIT-chunk
+
+mine bKGD-chunk
+
+mine hIST-chunk
+
+mine tRNS-chunk
+
+mine pHYs-chunk
+
+mine tIME-chunk
+
+mine tEXt-chunk
+
+mine zTXt-chunk
+
+mine rgb-bytes
+  mine form, form red-byte
+  mine form, form blue-byte
+  mine form, form green-byte
+
+mine red-byte
+  mine count
+
+mine blue-byte
+  mine count
+
+mine green-byte
+  mine count
+
+mine ihdr-image-header-chunk-width
+  mine count
+    mine count 4
+
+mine ihdr-image-header-chunk-height
+  mine count
+    mine count 4
+
+mine ihdr-image-header-chunk-bit-depth
+  mine count
+    mine count 1
+
+mine ihdr-image-header-chunk-color-type
+  mine count
+    mine count 1
+
+mine ihdr-image-header-chunk-compression-method
+  mine count
+    mine count 1
+
+mine ihdr-image-header-chunk-filter-method
+  mine count
+    mine count 1
+
+mine ihdr-image-header-chunk-interlace
+  mine count
+    mine count 1
+
+http://www.libpng.org/pub/png/spec/1.2/PNG-Chunks.html
+http://www.libpng.org/pub/png/spec/iso/
+http://www.libpng.org/pub/mng/spec/#objects
+https://datatracker.ietf.org/doc/html/rfc2083
+
+color-type 0
+  bit-depth 1
+  bit-depth 2
+  bit-depth 4
+  bit-depth 8
+  bit-depth 16
+  description <Each pixel is a grayscale sample.>
+
+color-type 2
+  bit-depth 8
+  bit-depth 16
+  description <Each pixel is an R,G,B triple.>
+
+color-type 3
+  bit-depth 1
+  bit-depth 2
+  bit-depth 4
+  bit-depth 8
+  description <Each pixel is a palette index; a PLTE chunk must appear.>
+
+color-type 4
+  bit-depth 8,16
+  description <Each pixel is a grayscale sample, followed by an alpha sample.>
+
+color-type 6
+  bit-depth 8,16
+  description <Each pixel is an R,G,B triple, followed by an alpha sample.>

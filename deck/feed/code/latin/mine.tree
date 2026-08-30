@@ -1,0 +1,15 @@
+
+mine uppercase-alphabet
+  mine range
+    bind start, <A>
+    bind end, <Z>
+
+mine lowercase-alphabet
+  mine range
+    bind start, <a>
+    bind end, <z>
+
+mine alphabet
+  look after
+    mine form, form uppercase-alphabet
+    mine form, form lowercase-alphabet

@@ -1,0 +1,57 @@
+
+# write phone
+#   write sieve, write block, block |tel:|
+#   write sieve, write block, block |+|
+#   write chain, 10, 10, form count
+
+# write phone ru
+#   Phone: 8 (800) 555 35 35.
+
+# write phone sw
+#   044 668 18 00
+
+# write phone ch
+#   010-852644821
+
+# write phone fr
+#   +33169454850
+
+# write phone uk
+#   +44 7700 300000
+
+# write phone kz
+#   +7 702 211 1111
+
+# write phone br
+#   11987654321
+#   0 15 21 5555-5555
+
+# write phone long
+#   +212659777777
+
+# write phone us ext
+#   2134567890 ext 123
+#   +12134567890 ext. 12345
+#   +12134567890#1234
+#   +78005553535 x1234
+
+# write phone rfc3966
+#   tel:+78005553535;ext=123
+#   tel:+7(800)555-35.35;ext=123
+
+# write phone ru ext
+#   +78005553535 доб. 1234
+
+# write count
+#   write stack, 0, 9
+
+# state phone
+#   field country
+#   field code country
+#   field code carrier
+#   field number
+#   field extension
+#   field valid
+#   field possible
+
+# +١٢١٢٢٣٢٣٢٣٢

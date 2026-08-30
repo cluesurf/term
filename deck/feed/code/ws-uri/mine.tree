@@ -1,0 +1,7 @@
+ws-URI = "ws:" "//" host [ ":" port ] path [ "?" query ]
+          wss-URI = "wss:" "//" host [ ":" port ] path [ "?" query ]
+
+          host = <host, defined in [RFC3986], Section 3.2.2>
+          port = <port, defined in [RFC3986], Section 3.2.3>
+          path = <path-abempty, defined in [RFC3986], Section 3.3>
+          query = <query, defined in [RFC3986], Section 3.4>

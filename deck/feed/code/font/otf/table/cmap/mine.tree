@@ -1,0 +1,62 @@
+
+mine cmap-table
+  mine form, form cmap-table-version
+    weave version
+  check mine
+    bind start, share 0
+    bind front, share version
+  mine form, form table-count
+    weave table-count
+  wheel table-count
+    mine form, form platform-id
+      weave platform-id
+    mine form, form encoding-id
+      weave encoding-id
+    check or
+      check and
+        check mine
+          bind start, share platform-id
+          bind start, share 3
+      mine form, form count-4
+        weave offset
+      leave wheel
+
+mine cmap-table-version
+  mine form, form count-2
+
+mine table-count
+  mine form, form count-2
+
+mine platform-id
+  start shift
+  mine shift
+    bind shift, share shift
+    mine form, form count-2
+
+    cmap.numTables = parse.getUShort(data, start + 2);
+    let offset = -1;
+    for (let i = cmap.numTables - 1; i >= 0; i -= 1) {
+        const platformId = parse.getUShort(data, start + 4 + (i * 8));
+        const encodingId = parse.getUShort(data, start + 4 + (i * 8) + 2);
+        if ((platformId === 3 && (encodingId === 0 || encodingId === 1 || encodingId === 10)) ||
+            (platformId === 0 && (encodingId === 0 || encodingId === 1 || encodingId === 2 || encodingId === 3 || encodingId === 4))) {
+            offset = parse.getULong(data, start + 4 + (i * 8) + 4);
+            break;
+        }
+    }
+
+    if (offset === -1) {
+        // There is no cmap table in the font that we support.
+        throw new Error('No valid cmap sub-tables found.');
+    }
+
+    const p = new parse.Parser(data, start + offset);
+    cmap.format = p.parseUShort();
+
+    if (cmap.format === 12) {
+        parseCmapTableFormat12(cmap, p);
+    } else if (cmap.format === 4) {
+        parseCmapTableFormat4(cmap, p, data, start, offset);
+    } else {
+        throw new Error('Only format 4 and 12 cmap tables are supported (found format ' + cmap.format + ').');
+    }

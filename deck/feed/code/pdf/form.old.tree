@@ -1,0 +1,253 @@
+
+form document
+  take id, like text
+  take pages, list page
+  take dictionaries, list reference # for pages
+  take named-destinations, list string-pair
+  take embedded-files, list string-pair
+  take java-scripts, list string-pair
+  take language, like text
+  take display-title, like boolean
+  take security-settings, like security-settings
+  take x
+  take y
+
+  host current-page, like page
+  host page-buffer, list page
+
+  task flush-pages
+  task append-page
+    save self/current-page
+      make page
+    call self/page-buffer/add-at-end
+      read self/current-page
+
+form javascript-value
+  take code, like text
+
+form publishing-info
+  take producer, name <Producer>
+  take creator, name <Creator>
+  take creation-date, name <CreationDate>
+
+form pages-reference
+  take kids, list reference
+  take count, base 0
+
+form number-pair
+  take key
+  take value
+
+form string-pair
+  take key
+  take value
+
+form reference
+
+form page
+  take id
+  task margin-top, like decimal
+  task margin-right, like decimal
+  task margin-bottom, like decimal
+  task margin-left, like decimal
+  task width, like decimal
+  task height, like decimal
+  take patterns
+  take markings
+  take fonts
+  take annotations
+  take color-spaces
+  take graphics-state
+  take x-objects
+  take content, like reference
+
+form struct-tree-root
+  take parent-tree, like number-tree
+  take parent-tree-next-key, base 0
+
+form trailer
+  take size
+  take root
+  take info
+  take id
+  take encrypt
+
+form tree
+  task get-sorted-keys
+
+form number-tree
+
+form reference
+  take id
+  take data
+  take gen
+  take compress, like boolean
+
+form marking
+  take tag
+  take options
+
+form resource
+  take font, knit font
+  take opacity, knit opacity
+
+form content
+  take stack, list string
+
+host default-margin
+  host top, size 72
+  host left, size 72
+  host bottom, size 72
+  host right, size 72
+
+host size
+  host 4a0
+    host width, size 4767.87
+    host height, size 6740.79
+  host 2a0
+    host width, size 3370.39
+    host height, size 4767.87
+  host a0
+    host width, size 2383.94
+    host height, size 3370.39
+  host a1
+    host width, size 1683.78
+    host height, size 2383.94
+  host a2
+    host width, size 1190.55
+    host height, size 1683.78
+  host a3
+    host width, size 841.89
+    host height, size 1190.55
+  host a4
+    host width, size 595.28
+    host height, size 841.89
+  host a5
+    host width, size 419.53
+    host height, size 595.28
+  host a6
+    host width, size 297.64
+    host height, size 419.53
+  host a7
+    host width, size 209.76
+    host height, size 297.64
+  host a8
+    host width, size 147.4
+    host height, size 209.76
+  host a9
+    host width, size 104.88
+    host height, size 147.4
+  host a10
+    host width, size 73.7
+    host height, size 104.88
+  host b0
+    host width, size 2834.65
+    host height, size 4008.19
+  host b1
+    host width, size 2004.09
+    host height, size 2834.65
+  host b2
+    host width, size 1417.32
+    host height, size 2004.09
+  host b3
+    host width, size 1000.63
+    host height, size 1417.32
+  host b4
+    host width, size 708.66
+    host height, size 1000.63
+  host b5
+    host width, size 498.9
+    host height, size 708.66
+  host b6
+    host width, size 354.33
+    host height, size 498.9
+  host b7
+    host width, size 249.45
+    host height, size 354.33
+  host b8
+    host width, size 175.75
+    host height, size 249.45
+  host b9
+    host width, size 124.72
+    host height, size 175.75
+  host b10
+    host width, size 87.87
+    host height, size 124.72
+  host c0
+    host width, size 2599.37
+    host height, size 3676.54
+  host c1
+    host width, size 1836.85
+    host height, size 2599.37
+  host c2
+    host width, size 1298.27
+    host height, size 1836.85
+  host c3
+    host width, size 918.43
+    host height, size 1298.27
+  host c4
+    host width, size 649.13
+    host height, size 918.43
+  host c5
+    host width, size 459.21
+    host height, size 649.13
+  host c6
+    host width, size 323.15
+    host height, size 459.21
+  host c7
+    host width, size 229.61
+    host height, size 323.15
+  host c8
+    host width, size 161.57
+    host height, size 229.61
+  host c9
+    host width, size 113.39
+    host height, size 161.57
+  host c10
+    host width, size 79.37
+    host height, size 113.39
+  host ra0
+    host width, size 2437.8
+    host height, size 3458.27
+  host ra1
+    host width, size 1729.13
+    host height, size 2437.8
+  host ra2
+    host width, size 1218.9
+    host height, size 1729.13
+  host ra3
+    host width, size 864.57
+    host height, size 1218.9
+  host ra4
+    host width, size 609.45
+    host height, size 864.57
+  host sra0
+    host width, size 2551.18
+    host height, size 3628.35
+  host sra1
+    host width, size 1814.17
+    host height, size 2551.18
+  host sra2
+    host width, size 1275.59
+    host height, size 1814.17
+  host sra3
+    host width, size 907.09
+    host height, size 1275.59
+  host sra4
+    host width, size 637.8
+    host height, size 907.09
+  host executive
+    host width, size 521.86
+    host height, size 756.0
+  host folio
+    host width, size 612.0
+    host height, size 936.0
+  host legal
+    host width, size 612.0
+    host height, size 1008.0
+  host letter
+    host width, size 612.0
+    host height, size 792.0
+  host tabloid
+    host width, size 792.0
+    host height, size 1224.0

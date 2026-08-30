@@ -1,0 +1,71 @@
+
+force calcCFFSubroutineBias
+  start subrs
+  check lt
+    bind start, share subrs/length
+    bind front, share 1240
+    leave build, share 107
+  check lt
+    bind start, share subrs/length
+    bind front, share 33900
+    leave build, share 1131
+  leave build, share 32768
+
+force parseFloatOperand(parser) {
+    let s = '';
+    const eof = 15;
+    const lookup = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', 'E', 'E-', null, '-'];
+    while (true) {
+        const b = parser.parseByte();
+        const n1 = b >> 4;
+        const n2 = b & 15;
+
+        if (n1 === eof) {
+            break;
+        }
+
+        s += lookup[n1];
+
+        if (n2 === eof) {
+            break;
+        }
+
+        s += lookup[n2];
+    }
+
+    return parseFloat(s);
+}
+
+mine cff-table
+
+mine cff-index
+  mine form, form card16
+    weave count
+  check mine
+    bind start, share count
+    bind front, share 0
+    catch fault
+      mine form, form byte
+        store offset-size
+      mine chain
+        bind front, share count + 1
+        mine form, form offset
+          pos += offset-size
+
+      endOffset = objectOffset + offsets[count];
+    catch fault
+      endOffset = start + 2;
+  }
+
+    for (let i = 0; i < offsets.length - 1; i += 1) {
+        let value = parse.getBytes(data, objectOffset + offsets[i], objectOffset + offsets[i + 1]);
+        if (conversionFn) {
+            value = conversionFn(value);
+        }
+
+        objects.push(value);
+    }
+
+    return \{objects: objects, startOffset: start, endOffset: endOffset\};
+}
+

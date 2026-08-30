@@ -1,0 +1,101 @@
+
+write json
+  start value
+  cause check
+    catch check
+      catch check, latch check
+        cause check-match
+          mount start, share value/class
+          mount start, share array
+          leave build, latch check
+      catch match
+        write class, class array
+          mount array, share value
+      catch check, latch check
+        cause check-match
+          mount start, share value/class
+          mount start, share object
+          leave build, latch check
+      catch match
+        write class, class object
+          mount object, share value
+      catch check, latch check
+        cause check-match
+          mount start, share value/class
+          mount start, share string
+          leave build, latch check
+      catch match
+        write class, class string
+          mount string, share value
+      catch check, latch check
+        cause check-match
+          mount start, share value/class
+          mount start, share number
+          leave build, latch check
+      catch match
+        write class, class number
+          mount number, share value
+      catch check, latch check
+        cause check-match
+          mount start, share value/class
+          mount start, share boolean
+          leave build, latch check
+      catch match
+        write class, class boolean
+          mount boolean, share value
+      catch check, latch check
+        cause check-match
+          mount start, share value/class
+          mount start, share null
+          leave build, latch check
+      catch match
+        write class, class null
+          mount null, share value
+
+write array
+  start array
+
+  write chunk, chunk <[>
+  drive chain
+    mount chain, share array
+    catch block
+      start block
+      write class, class value
+        mount value, share block
+  write chunk, chunk <]>
+
+write object
+  start object
+
+  write chunk, chunk <\{>
+  drive latch
+    mount house, share object
+    catch block
+      start latch
+      start block
+      write class, class string
+        mount string, share latch
+      write chunk, chunk <:>
+      write class, class value
+        mount value, share block
+  write chunk, chunk <\}>
+
+write string
+  start string
+
+  write chunk, chunk <">
+  write chunk, share string
+  write chunk, chunk <">
+
+write number
+  start number
+
+write boolean
+  start boolean
+
+  cause check
+    mount value, share boolean
+    catch match
+      write chunk, chunk <true>
+    catch blank
+      write chunk, chunk <false>

@@ -1,0 +1,30 @@
+
+mine ltag-table
+  mine form, form tableVersion
+  check mine
+    bind start, share version
+    bind front, share 1
+    catch fault
+      leave build
+  mine form, form flags
+  mine form, form tag-count
+
+  mine chain
+    bind front, share tag-count
+    mine form, form relative-offset
+    mine form, form length
+
+mine tableVersion
+  mine form, form ulong
+
+mine flags
+  p.skip('uLong', 1);
+
+mine tag-count
+  mine form, form ulong
+
+mine relative-offset
+  mine form, form ushort
+
+mine length
+  mine form, form ushort

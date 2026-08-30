@@ -1,0 +1,162 @@
+
+mine os2-table
+  mine form, form version
+    weave version
+  mine form, form x-average-character-width
+  mine form, form us-weight-form
+  mine form, form us-width-form
+  mine form, form fs-type
+  mine form, form y-subscript-x-size
+  mine form, form y-subscript-y-size
+  mine form, form ySubscriptXOffset
+  mine form, form ySubscriptYOffset
+  mine form, form ySuperscriptXSize
+  mine form, form ySuperscriptYSize
+  mine form, form ySuperscriptXOffset
+  mine form, form ySuperscriptYOffset
+  mine form, form yStrikeoutSize
+  mine form, form yStrikeoutPosition
+  mine form, form sFamilyform
+  mine chain
+    bind front, share 10
+    mine form, form panose
+  mine form, form ulUnicodeRange1
+  mine form, form ulUnicodeRange2
+  mine form, form ulUnicodeRange3
+  mine form, form ulUnicodeRange4
+  mine form, form achVendID
+  mine form, form fsSelection
+  mine form, form usFirstCharIndex
+  mine form, form usLastCharIndex
+  mine form, form sTypoAscender
+  mine form, form sTypoDescender
+  mine form, form sTypoLineGap
+  mine form, form usWinAscent
+  mine form, form usWinDescent
+  check gte
+    bind start, share version
+    bind front, share 1
+    mine form, form ulCodePageRange1
+    mine form, form ulCodePageRange2
+
+  check gte
+    bind start, share version
+    bind front, share 2
+    mine form, form sxHeight
+    mine form, form sCapHeight
+    mine form, form usDefaultChar
+    mine form, form usBreakChar
+    mine form, form usMaxContent
+
+mine version
+  mine form, form ushort
+
+mine x-average-character-width
+  mine form, form short
+
+mine us-weight-form
+  mine form, form ushort
+
+mine us-width-form
+  mine form, form ushort
+
+mine fs-type
+  mine form, form ushort
+
+mine y-subscript-size-x
+  mine form, form short
+
+mine y-subscript-y-size
+  mine form, form short
+
+mine ySubscriptXOffset
+  mine form, form short
+
+mine ySubscriptYOffset
+  mine form, form short
+
+mine ySuperscriptXSize
+  mine form, form short
+
+mine ySuperscriptYSize
+  mine form, form short
+
+mine ySuperscriptXOffset
+  mine form, form short
+
+mine ySuperscriptYOffset
+  mine form, form short
+
+mine yStrikeoutSize
+  mine form, form short
+
+mine yStrikeoutPosition
+  mine form, form short
+
+mine sFamilyform
+  mine form, form short
+
+mine panose
+  mine form, form byte
+
+mine achVendID
+  mine chain
+    bind front, share 4
+    mine form, form byte
+
+mine ulUnicodeRange1
+  mine form, form ulong
+
+mine ulUnicodeRange2
+  mine form, form ulong
+
+mine ulUnicodeRange3
+  mine form, form ulong
+
+mine ulUnicodeRange4
+  mine form, form ulong
+
+mine fsSelection
+  mine form, form ushort
+
+mine usFirstCharIndex
+  mine form, form ushort
+
+mine usLastCharIndex
+  mine form, form ushort
+
+mine sTypoAscender
+  mine form, form short
+
+mine sTypoDescender
+  mine form, form short
+
+mine sTypoLineGap
+  mine form, form short
+
+mine usWinAscent
+  mine form, form ushort
+
+mine usWinDescent
+  mine form, form ushort
+
+mine ulCodePageRange1
+  mine form, form ulong
+
+mine ulCodePageRange2
+  mine form, form ulong
+
+mine sxHeight
+  mine form, form short
+
+mine sCapHeight
+  mine form, form short
+
+mine usDefaultChar
+  mine form, form ushort
+
+mine usBreakChar
+  mine form, form ushort
+
+mine usMaxContent
+  mine form, form ushort

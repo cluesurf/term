@@ -1,0 +1,186 @@
+
+mine uri
+  mine form, form scheme
+  mine <:>
+  look after
+    mine form, form authority
+    mine form, form absolute-path
+    mine form, form relative-path
+  mine form, form path
+  mine maybe
+    mine <?>
+    mine form, form query
+  mine maybe
+    mine <#>
+    mine form, form fragment
+
+mine scheme
+  mine form, form alpha
+  mine list
+    look after
+      mine form, form alpha
+      mine form, form digit
+      mine <+>
+      mine <->
+      mine <.>
+
+mine authority
+  mine maybe
+    mine form, form login
+    mine <@>
+  mine form, form host
+  mine maybe
+    mine <:>
+    mine form, form port
+
+mine host
+  mine form, form ip
+  mine form, form ipv4-address
+  mine form, form reg-name
+
+mine ip-literal
+  mine <[>
+  mine maybe
+    look after
+      mine form, form ipv6-address
+      mine form, form ipv-future
+  mine <]>
+
+mine abs_path
+  mine form, form "/"  path-segment-list
+
+mine path
+  mine </>
+  mine maybe
+    mine form, form segment
+    mine flow
+      mine </>
+      mine form, form segment
+
+mine segment
+  mine list
+    mine form, form pchar
+  mine flow
+    mine <;>
+    mine list
+      mine form, form pchar
+
+mine pchar
+  look after
+    mine form, form unreserved-symbol
+    mine form, form escaped
+    mine <:>
+    mine <@>
+    mine <&>
+    mine <=>
+    mine <+>
+    mine <$>
+    mine <,>
+
+mine uri-reference
+  look after
+    mine form, form uri
+    mine form, form relative-ref
+
+mine absolute-uri
+  mine form, form scheme
+  mine <:>
+  mine form, form absolute-path
+
+mine scheme
+  mine form, form ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+
+mine login
+  mine list
+    look after
+      mine form, form unreserved-symbol
+      mine form, form pct-encoded
+      mine form, form sub-delimiters
+      mine <:>
+
+mine host
+  mine form, form IP-literal / IPv4address / reg-name
+
+mine port
+  mine list
+    bind start, share 1
+    mine form, form digit
+
+mine IP-literal
+  mine form, form "[" ( ipv6-address / ipv-future  ) "]"
+
+mine ipv-future
+  mine form, form "v" 1*HEXDIG "." 1*( unreserved-symbol / sub-delimiters / ":" )
+
+mine ipv6-address
+  mine form, form                            6( h16 ":" ) ls32
+                 /                       "::" 5( h16 ":" ) ls32
+                 / [               h16 ] "::" 4( h16 ":" ) ls32
+                 / [ *1( h16 ":" ) h16 ] "::" 3( h16 ":" ) ls32
+                 / [ *2( h16 ":" ) h16 ] "::" 2( h16 ":" ) ls32
+                 / [ *3( h16 ":" ) h16 ] "::"    h16 ":"   ls32
+                 / [ *4( h16 ":" ) h16 ] "::"              ls32
+                 / [ *5( h16 ":" ) h16 ] "::"              h16
+                 / [ *6( h16 ":" ) h16 ] "::"
+
+mine h16
+  mine form, form 1*4HEXDIG
+mine ls32
+  mine form, form ( h16 ":" h16 ) / IPv4address
+mine IPv4address
+  mine form, form dec-octet "." dec-octet "." dec-octet "." dec-octet
+
+mine dec-octet
+  mine form, form DIGIT                 ; 0-9
+                 / %x31-39 DIGIT         ; 10-99
+                 / "1" 2DIGIT            ; 100-199
+                 / "2" %x30-34 DIGIT     ; 200-249
+                 / "25" %x30-35          ; 250-255
+
+mine name
+  mine list
+    look after
+      mine form, form unreserved-symbol
+      mine form, form pct-encoded
+      mine form, form sub-delimiters
+
+mine query
+  mine form, form *( pchar / "/" / "?" )
+
+mine fragment
+  mine list
+    look after
+      mine form, form pchar
+      mine </>
+      mine <?>
+
+mine pct-encoded
+  mine form, form "%" HEXDIG HEXDIG
+
+mine unreserved-symbol
+  look after
+    mine form, form alphabet
+    mine form, form digit
+    mine <->
+    mine <.>
+    mine <_>
+    mine <~>
+
+mine reserved
+  mine form, form gen-delimiters / sub-delimiters
+mine gen-delimiters
+  mine form, form ":" / "/" / "?" / "#" / "[" / "]" / "@"
+
+mine sub-delimiters
+  look after
+    mine <!>
+    mine <$>
+    mine <&>
+    mine <'>
+    mine <(>
+    mine <)>
+    mine <*>
+    mine <+>
+    mine <,>
+    mine <;>
+    mine <=>

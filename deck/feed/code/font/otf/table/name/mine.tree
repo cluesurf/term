@@ -1,0 +1,58 @@
+
+mine name-table
+  mine form, form format
+  mine form, form count
+    weave count
+  mine form, form string-offset
+    bind offset, share mine/slice
+  mine chain
+    bind front, share count
+    mine form, form platform-id
+    mine form, form encoding-id
+    mine form, form language-id
+    mine form, form name-id
+    mine form, form property
+    mine form, form byte-length
+    mine form, form offset
+  check mine
+    bind start, share format
+    bind front, share 1
+    mine form, form language-tag-count
+
+mine format
+  mine form, form ushort
+
+mine count
+  mine form, form ushort
+
+mine string-offset
+  start offset
+
+  mine form, form ushort
+    store value
+
+  cause add
+    bind start, share offset
+    bind value, share value
+    leave build, share build
+
+mine platformID
+  mine form, form UShort
+
+mine encodingID
+  mine form, form UShort
+
+mine languageID
+  mine form, form UShort
+
+mine nameID
+  mine form, form UShort
+
+mine property
+  mine form, form leNames
+
+mine byteLength
+  mine form, form UShort
+
+mine offset
+  mine form, form UShort

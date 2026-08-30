@@ -1,0 +1,95 @@
+
+mint json
+  mint value, form value
+    turn seed
+
+mint value
+  mint string, form string
+    turn seed
+  mint number, form number
+    turn seed
+  mint object, form object
+    turn seed
+  mint array, form array
+    turn seed
+  mint boolean, form boolean
+    turn seed
+  mint null
+    head text
+    call parse-string-to-null
+      bind text, link text
+      turn seed
+
+mint boolean
+  head text
+  call parse-string-to-boolean
+    bind text, link text
+    turn seed
+
+mint string
+  host symbol
+
+  mint esc
+    line symbol
+  mint safecodepoint
+    line symbol
+
+  turn seed, link symbol
+
+mint number
+  host minus, base false
+  host number
+  mint minus-sign
+    head text
+    test is-equal
+      bind base, link text
+      bind head, text <->
+      hook mesh
+        save minus, link true
+  mint integer
+    head text
+    call parse-string-to-integer
+      bind text, link text
+      save number
+  mint float
+    head text
+    call parse-string-to-float
+      bind text, link text
+      save number
+  mint exponent
+    mint sign
+    mint integer
+
+  test is-existant
+    bind seed, link minus
+    call multiply
+      bind base, text -1
+      bind head, link number
+      save number
+
+mint object
+  make object
+    save object
+  mint pair
+    mint string, form string
+      save key
+    mint value, form value
+      hook base
+        head base
+        save object[key], link base
+  turn seed, link object
+
+mint array
+  mint value, form value
+    line item
+  turn seed, link item
+
+mint esc
+  mint unicode, form unicode
+
+mint unicode
+  mint hex
+    head text
+    call hex-to-unicode-string
+      bind hex, link text
+      turn seed

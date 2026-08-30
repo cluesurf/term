@@ -1,0 +1,71 @@
+
+mine instruction
+  mine maybe, mine form, form legacy-prefix
+  mine form, form opcode
+  mine maybe, mine form, form suffix
+
+mine suffix
+  mine form, form mod-memory-register-byte
+    save mod-memory-register-byte
+  mine form, form scale-index-base-byte
+    mine check
+      bind start, read mod-memory-register-byte/register
+      bind front, #b100
+  mine form, form displacement
+    mine check
+      bind start, read mod/reg
+      bind front, #b100
+  mine form, form immediate
+    mine check
+      bind start, read mod/reg
+      bind front, #b100
+
+mine scale-index-base-byte
+
+mine mod-memory-register-byte
+
+mine opcode
+  mine pick-first
+    mine form, form opcode-size-3
+    mine form, form opcode-size-2
+    mine form, form opcode-1
+
+mine opcode-size-2
+  mine form, form opcode-2
+  mine form, form opcode-1
+
+mine opcode-size-3
+  mine form, form opcode-2
+  mine form, form opcode-3
+  mine form, form opcode-1
+
+mine opcode-1
+  mine form, form state-8
+
+mine opcode-2
+  mine binary, #h0F
+
+mine opcode-3
+  mine binary, #h38
+  mine binary, #h3A
+  mine binary, #h7A
+  mine binary, #h7B
+
+mine legacy-prefix
+  mine maybe, mine form, form instruction-prefix
+  mine maybe, mine form, form address-size-prefix
+  mine maybe, mine form, form operand-size-prefix
+  mine maybe, mine form, form segment-override-prefix
+
+mine instruction-prefix
+  mine binary, #hF3
+  mine binary, #hF2
+  mine binary, #hF0
+
+mine address-size-prefix
+  mine binary, #h67
+
+mine operand-size-prefix
+  mine binary, #h66
+
+mine segment-override-prefix

@@ -1,0 +1,514 @@
+
+# https://ghostscript.com/~robin/pdf_reference17.pdf
+
+load @term/seed/code/content/pdf
+  take form document
+  take form reference
+
+lace pdf-1-7
+  take document, like document
+
+  lace form, form start
+  lace form, form content
+    bind document, read document
+  lace form, form end
+    bind document, read document
+  lace flush, read document
+
+lace start
+  lace form, form version
+  lace form, form four
+
+lace version
+  lace text, text <%PDF->
+  lace text, text <1.7>
+
+lace four
+  lace text, text <%#u00FF#u00FF#u00FF#u00FF>
+
+lace begin-marked-content
+  take tag
+  lace text, text </{tag} BMC>
+
+lace marked-content-property-list
+  lace text, text </{tag} ${dictionary} BDC\n>
+
+lace end-marked-content
+  lace text, text <EMC\n>
+
+lace content
+  take document, like document
+
+  walk list, read document/pages
+    hook step
+      take page, name item
+      lace form, form tree
+        bind tree, read page/tree
+      lace form, form definition
+        read page/dictionary
+      lace form, form definition
+        read page/resource
+      lace form, form definition
+        read page/content
+
+lace tree
+  take tree
+
+  lace form, form color-space-fill
+  lace form, form color-fill
+  lace form, form color-space-line
+  lace form, form color-line
+  fork case, read tree/form
+    case like text
+      lace form, form text
+        bind tree, read tree
+    case like block
+      lace form, form block
+        bind tree, read tree
+
+lace encrypted-object
+
+lace pdf-tree
+  take tree
+
+  call tree/get-sorted-keys
+    save keys
+
+  lace text, text <\<\<\n>
+
+  fork test-and
+    test is-greater-than
+      read tree/limits
+      size 0
+    test is-greater-than
+      read keys/get-size
+      size 1
+    hook true
+      call keys/get-first
+        save first
+      call keys/get-last
+        save last
+      call convert-object
+        make array
+          read first
+          read last
+        save converted-object
+      lace text, text <  /Limits {converted-object}\n>
+
+  call tree/get-key-name
+    save key-name
+
+  lace text, text <  /${key-name} [\n>
+
+  walk list, read keys
+    take key, name item
+    call convert-object
+      call tree/get-data-for-key
+        read key
+      save a
+    call convert-object
+      call tree/get
+        read key
+      save b
+    lace text, text <    {a} {b}\n>
+
+  lace text, text <]\n>
+  lace text, text <\>\>>
+
+lace definition
+  take reference, form reference
+
+  lace text, text <{reference/id} {reference/generation} obj >
+  lace form, form encrypted-object
+    bind value, read reference/data
+    bind indent, read <  >
+  lace text, text <\n>
+
+  fork test
+    test if-greater-than
+      read reference/stream/count
+      size 0
+      hook true
+        lace text, text <  >
+        lace text, text <stream>
+        lace text, text <\n    >
+        lace text, text reference/stream
+        lace text, text <\n  >
+        lace text, text <endstream>
+        lace text, text <\n>
+
+  lace text, text <endobj>
+
+lace reference
+  take reference
+  lace text, text <{reference/id} {reference/generation} R>
+
+lace text-start
+  lace text, text <BT>
+
+lace text-end
+  lace text, text <ET>
+
+lace text-position
+  take x
+  take y
+  lace text, text <1 0 0 1 {x} {y} Tm>
+
+lace font
+  take font
+  take size
+
+  lace text, text </{font/id} {size} TF>
+
+lace text-rendering-mode
+  take mode
+  lace text, text <{mode} Tr>
+
+lace text-character-spacing
+  take space
+  lace text, text <{space} Tc>
+
+lace text-word-spacing
+  take space
+  lace text, text <{space} Tw>
+
+lace render-text
+  take text, like text
+  lace text, text <[{text}] TJ>
+
+lace text
+  take tree
+
+  lace form, form text-start
+  lace form, form text-position
+    bind x, read tree/x
+    bind y, read tree/y
+  lace form, form font
+    bind font, read tree/font-family
+    bind size, read tree/font-size
+  lace form, form select-rendering-mode
+    bind fill, read tree/fill
+    bind line, read tree/line
+  lace form, form add-character-spacing
+    bind spacing, read tree/character-spacing
+  lace form, form render-text
+    bind chunks, read tree/text
+
+lace block
+  take tree
+
+  fork test
+    test exists
+      read tree/line/color
+    hook true
+      lace form, form line-color
+        bind color, read tree/line/color
+  fork test
+    test exists
+      read tree/fill/color
+    hook true
+      lace form, form fill-color
+        bind color, read tree/fill/color
+
+lace fill-opacity
+  take fill
+
+  fork test
+    test exists
+      read fill/opacity/id
+    hook true
+      lace form, form global-state
+        bind id, read fill/opacity/id
+
+lace line-opacity
+  take line
+
+  fork test
+    test exists
+      read line/opacity/id
+    hook true
+      lace form, form global-state
+        bind id, read line/opacity/id
+
+lace dictionary
+  take dictionary
+
+  lace text, text <\<\<>
+  walk list, read dictionary/term
+    lace form, form property
+      bind property, read term/key
+    lace text, text < >
+    lace form, form converted-object
+      bind value, read term/value
+    lace text, text <\>>
+  lace text, text <\>\>>
+
+lace array
+  lace text, text <[>
+  walk list, read array
+    lace form, form converted-object
+      bind value, read block
+  lace text, text <]>
+
+lace datetime
+  take datetime
+
+  lace text, text <(D:>
+  lace stuff
+    bind stuff, read <0>
+    bind count, read 4
+    call get-datetime-utc-full-year
+      bind datetime, read datetime
+      save year
+    lace text, read year
+  lace stuff
+    bind stuff, read <0>
+    bind count, read 2
+    call get-datetime-utc-month
+      bind datetime, read datetime
+      save month
+    call add
+      bind start, read 1
+      bind front, read month
+      save month
+    lace text, read month
+  lace stuff
+    bind stuff, read <0>
+    bind count, read 2
+    call get-datetime-utc-date
+      lace text, text build
+  lace stuff
+    bind stuff, read <0>
+    bind count, read 2
+    call get-datetime-utc-hours
+      lace text, text build
+  lace stuff
+    bind stuff, read <0>
+    bind count, read 2
+    call get-datetime-utc-minutes
+      lace text, text build
+  lace stuff
+    bind stuff, read <0>
+    bind count, read 2
+    call get-datetime-utc-seconds
+      lace text, text build
+lace text, text <Z)>
+
+lace hex
+  take hex
+  lace text, text <\<{hex}\>>
+
+lace string
+  take string
+  lace text, text <({string})>
+
+lace property
+  take property
+  lace text, text </{property}>
+
+lace fill
+  lace text, text <f>
+
+lace line
+  lace text, text <S>
+
+lace clip
+  lace text, text <W n>
+
+lace color-space-fill
+  take space
+  lace text, text </{space} cs>
+
+lace color-fill
+  take color
+  fork case, read color/form
+    case like rgb-color
+      lace text, text <{color/red} {color/green} {color/blue} scn>
+    case like cmyk-color
+      lace text, text <{color/c} {color/m} {color/y} {color/k} scn>
+
+lace color-space-line
+  take space
+  lace text, text </{space} CS>
+
+lace color-line
+  take color
+  fork case, read color/form
+    case like rgb-color
+      lace text, text <{color/red} {color/green} {color/blue} SCN>
+    case like cmyk-color
+      lace text, text <{color/c} {color/m} {color/y} {color/k} SCN>
+
+lace opacity-label
+  take label
+  lace text, text <{label} gs>
+
+lace save
+  lace text, text <q>
+
+lace resave
+  lace text, text <Q>
+
+lace close-path
+  lace text, text <h>
+
+lace line-width
+  take width
+  lace text, text <{width} w>
+
+lace line-cap
+  take style
+  lace text, text <{style} J>
+
+lace line-join
+  take style
+  lace text, text <{style} j>
+
+lace miter-limit
+  take limit
+  lace text, text <{limit} M>
+
+lace dash
+  take length
+  take space
+  take phase
+
+  lace text, text <[{length} {space}] {phase} d>
+
+lace undash
+  lace text, text <[] 0 d>
+
+lace move-to
+  take x
+  take y
+  lace text, text <{x} {y} m>
+
+lace line-to
+  take x
+  take y
+  lace text, text <{x} {y} l>
+
+lace bezier-curve-to
+  take cp1x
+  take cp1y
+  take cp2x
+  take cp2y
+  take x
+  take y
+  lace text, text <{cp1x} {cp1y} {cp2x} {cp2y} {x} {y} c>
+
+lace bezier-curve-to
+  take cpx
+  take cpy
+  take x
+  take y
+  lace text, text <{cpx} {cpy} {x} {y} v>
+
+lace rectangle
+  take x
+  take y
+  take w
+  take h
+  lace text, text <{x} {y} {w} {h} re>
+
+lace matrix
+  take m11
+  take m12
+  take m21
+  take m22
+  take dx
+  take dy
+
+  lace text, text <{m11} {m12} {m21} {m22} {dx} {dy} cm>
+
+lace image-label
+  take label
+  lace text, text <{label} Do>
+
+lace comment
+  take text
+  lace text, text <% {text}>
+
+lace signed-integer
+  take integer
+  lace text, text <+{integer}>
+
+lace global-state
+  take id
+  lace text, text </{id} gs>
+
+lace end
+  take offset
+  take offset-list
+  take trailer
+  take pdf, like pdf
+
+  walk list, read pdf/reference
+    lace form, form definition
+      bind reference, read block
+
+  lace text, text <xref>
+  call add
+    bind start, read 1
+    bind front, read offset-list/count
+    lace text, text <0 {build}>
+  lace text, text <0000000000 65535 f >
+  walk list, read offset-list
+    lace stuff
+      bind stuff, read <0>
+      bind count, read 10
+      lace text, text <{block} 00000 n >
+  lace text, text <trailer>
+  lace form, form converted-object
+    bind value, read trailer
+  lace text, text <startxref>
+  lace text, text <{xRefOffset}>
+  lace text, text <%%EOF>
+
+# lace object stream
+#   /Type ObjStm
+#   /N
+#   /First
+
+# field page-collection
+#   state kids
+
+# state chain
+#   state page, <Pages>
+# state state
+#   state type, <Type>
+#   state type, <Type>
+
+# lace page-list
+#   2 0 obj <<
+#     /Type /Pages
+#     /Kids [
+#       4 0 R
+#       10 0 R
+#       24 0 R
+#     ]
+#     /Count 3
+#   >>
+#   endobj
+
+# lace page
+#   4 0 obj <<
+#     /Type /Page
+#     /Parent 4 0 R
+#     /MediaBox [0 0 612 792]
+#     /Resources <<
+#       /Font <<
+#         /F3 7 0 R
+#         /F5 9 0 R
+#         /F7 11 0 R
+#       >>
+#       /ProcSet [/PDF]
+#     >>
+#     /Contents 12 0 R
+#     /Thumb 14 0 R
+#     /Annots [
+#       23 0 R
+#       24 0 R
+#     ]
+#   >>
+#   endobj

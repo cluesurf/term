@@ -1,0 +1,8 @@
+
+bear ./latin/mine
+bear ./latin/number/mine
+bear ./latin/whitespace
+bear ./css/mine
+  find mine css
+bear ./xml/mine
+  find mine xml

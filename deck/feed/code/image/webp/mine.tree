@@ -1,0 +1,23 @@
+
+field uint16le
+field uint24le
+field uint32le
+field fourcc
+
+field Chunk-FourCC
+  field block-32
+
+field Chunk-Size
+  field block-32
+
+field Chunk-Payload
+  bind size, field chunk-size
+  state byte, scale share size padded if odd
+
+field WebP-File-Header
+  field RIFF, state-32
+The ASCII characters 'R' 'I' 'F' 'F'.
+File Size: 32 bits (uint32)
+The size of the file in bytes starting at offset 8. The maximum value of this field is 2^32 minus 10 bytes and thus the size of the whole file is at most 4GiB minus 2 bytes.
+'WEBP': 32 bits
+The ASCII characters 'W' 'E' 'B' 'P'.

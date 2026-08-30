@@ -1,0 +1,27 @@
+
+fetch @term/tree/code/latin/number
+  catch mine digit
+
+mine hex
+  mine any
+    mine range
+      bind start, share <A>
+      bind front, share <F>
+    mine range
+      bind start, share <a>
+      bind front, share <f>
+    mine form, form digit
+
+mine lowercase-hex
+  mine any
+    mine range
+      bind start, share <a>
+      bind front, share <f>
+    mine form, form digit
+
+mine uppercase-hex
+  mine any
+    mine range
+      bind start, share <A>
+      bind front, share <F>
+    mine form, form digit

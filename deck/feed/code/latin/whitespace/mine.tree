@@ -1,0 +1,17 @@
+
+mine carriage-return
+  mine text 13
+
+mine line-feed
+  mine text 10
+
+mine space
+  mine text 32
+
+mine horizontal-tab
+  mine text 9
+
+mine carriage-return-line-feed
+  mine carriage-return
+  mine line-feed
+

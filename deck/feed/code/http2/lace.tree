@@ -1,0 +1,32 @@
+
+hatch request
+
+hatch response
+  field response, class response
+
+  hatch prose, :HTTP/2:
+  hatch prose, block space ridge
+  hatch prose, reach response, status
+  hatch block, class header list
+    field header, reach response, header
+  hatch block, class body
+    field header, reach response, body
+
+hatch header list
+  field header, group yes
+
+  hatch wheel
+    field chain, reach header
+    hatch block, class header
+      field header, reach block
+
+hatch header
+  field header, class header
+
+  hatch prose
+    reach http header chart
+      reach header, name
+  hatch trace, :\::
+  hatch block
+    reach http header chart
+      reach header, value

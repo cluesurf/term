@@ -1,0 +1,36 @@
+
+mine digit
+  mine range
+    bind start, <0>
+    bind end, <9>
+
+mine non-zero-digit
+  mine range
+    bind start, <1>
+    bind end, <9>
+
+mine digit-list
+  mine list
+    mine form, form digit
+
+mine non-zero-digit-list
+  mine list
+    mine form, form non-zero-digit
+
+mine signed-integer
+  mine list
+    mine form, form non-zero-digit
+
+mine integer
+  mine maybe
+    mine form, form minus
+  mine list
+    mine form, form non-zero-digit
+
+mine minus
+  mine <->
+
+mine number
+  mine any
+    mine form, form decimal
+    mine form, form integer

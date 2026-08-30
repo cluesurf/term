@@ -1,0 +1,548 @@
+
+fetch ../../whitespace
+  catch mine space
+  catch mine carriage-return-line-feed
+fetch ../../uri
+  catch mine absolute-uri
+fetch ../../mailbox
+  catch mine mailbox
+
+mine request
+  mine form, form request-line
+  mine chain
+    mine crown
+      mine form, form general-header
+      mine form, form request-header
+      mine form, form entity-header
+    mine form, form carriage-return-line-feed
+  mine form, form carriage-return-line-feed
+  mine sieve
+    mine form, form message-body
+
+mine request-line
+  mine form, form method
+  mine form, form space
+  mine form, form request-uri
+  mine form, form space
+  mine form, form version
+  mine form, form carriage-return-line-feed
+
+mine trailer
+  mine chain
+    mine form, form entity-header
+    mine form, form carriage-return-line-feed
+
+mine type
+  mine form, form token
+
+mine subtype
+  mine form, form token
+
+mine qvalue
+  mine crown
+    mine chunk
+      mine chunk, share <0>
+      mine sieve
+        mine chunk, share <.>
+
+mine language-tag
+  mine form, form primary-tag
+  mine chain
+    mine chunk, share <->
+    mine form, form subtag
+
+mine primary-tag
+  mine chain
+    bind start, share 1
+    bind front, share 8
+    mine form, form alphabet
+
+mine subtag
+  mine chain
+    bind start, share 1
+    bind front, share 8
+    mine form, form alphabet
+
+mine entity-tag
+  mine sieve
+    mine form, form weak
+  mine form, form opaque-tag
+
+mine weak
+  mine chunk, share <W/>
+
+mine opaque-tag
+  mine form, form quoted-string
+
+mine range-unit
+  mine crown
+    mine form, form bytes-unit
+    mine form, form other-range-unit
+
+mine bytes-unit
+  mine chunk, share <bytes>
+
+mine other-range-unit
+  mine form, form token
+
+mine extension-method
+  mine form, form token
+
+mine request-uri
+  mine crown
+    mine chunk, share <*>
+    mine form, form absolute-uri
+    mine form, form absolute-path
+    mine form, form authority
+
+mine request-header
+  mine crown
+    mine form, form accept-header
+    mine form, form accept-charset-header
+    mine form, form accept-encoding-header
+    mine form, form accept-language-header
+    mine form, form authorization-header
+    mine form, form expect-header
+    mine form, form mrom-header
+    mine form, form most-header
+    mine form, form if-mine-header
+    mine form, form if-modified-since-header
+    mine form, form if-none-mine-header
+    mine form, form if-range-header
+    mine form, form if-unmodified-since-header
+    mine form, form max-forwards-header
+    mine form, form proxy-authorization-header
+    mine form, form range-header
+    mine form, form referer-header
+    mine form, form te-header
+    mine form, form user-agent-header
+
+mine accept-header
+  mine chunk, share <accept:>
+  mine floor, 1
+    mine form, form media-range
+    mine sieve, form accept-params
+
+mine media-range
+  mine media-range-block
+  mine chain
+    mine chunk, share <;>
+    mine form, form parameter
+
+mine media-range-block
+  mine crown
+    mine chunk, share <*/*>
+    mine chunk
+      mine form, form type
+      mine chunk, share </>
+      mine chunk, share <*>
+    mine chunk
+      mine form, form type
+      mine chunk, share </>
+      mine form, form subtype
+
+mine accept-params
+  mine chunk, share <;>
+  mine chunk, share <q>
+  mine chunk, share <=>
+  mine form, form qvalue
+  mine chain, form accept-extension
+
+mine accept-extension
+  mine chunk, share <;>
+  mine form, form token
+  mine sieve
+    mine chunk, share <=>
+    mine crown
+      mine form, form token
+      mine form, form quoted-string
+
+mine accept-charset-header
+  mine chunk, share <accept-charset:>
+  mine chain, 1
+    mine crown
+      mine form, form charset
+      mine chunk, share <*>
+    mine sieve
+      mine chunk, share <;>
+      mine chunk, share <q>
+      mine chunk, share <=>
+      mine form, form qvalue
+
+mine accept-encoding-header
+  mine chunk, share <accept-encoding:>
+  mine chain, 1
+    mine form, form codings
+    mine sieve
+      mine chunk, share <;>
+      mine chunk, share <q>
+      mine chunk, share <=>
+      mine form, form qvalue
+
+mine codings
+  mine crown
+    mine form, form content-coding
+    mine chunk, share <*>
+
+mine accept-language-header
+  mine chunk, share <accept-language:>
+  mine chain, 1
+    mine form, form language-range
+    mine sieve
+      mine chunk, share <;>
+      mine chunk, share <q>
+      mine chunk, share <=>
+      mine form, form qvalue
+
+mine language-range
+  mine crown
+    mine block
+      mine chain
+        bind start, share 1
+        bind front, share 8
+        mine form, form alphabet
+      mine chain
+        mine chunk, share <->
+        mine chain
+          bind start, share 1
+          bind front, share 8
+          mine form, form alphabet
+    mine chunk, share <*>
+
+mine allow
+  mine chunk, share <allow>
+  mine chunk, share <:>
+  mine floor, 1, form method
+
+mine authorization
+  mine chunk, share <authorization>
+  mine chunk, share <:>
+  mine form, form credentials
+
+mine cache-control-header
+  mine chunk, share <cache-control:>
+  mine chain, 1, form cache-request-directive
+
+mine cache-request-directive
+  mine crown
+    mine chunk, share <no-cache>
+    mine chunk, share <no-store>
+    mine chunk
+      mine chunk, share <max-age>
+      mine chunk, share <=>
+      mine form, form delta-seconds
+    mine chunk
+      mine chunk, share <max-stale>
+      mine sieve
+        mine chunk, share <=>
+        mine form, form delta-seconds
+    mine chunk
+      mine chunk, share <min-fresh>
+      mine chunk, share <=>
+      mine form, form delta-seconds
+    mine chunk, share <no-transform>
+    mine chunk, share <only-if-cached>
+    mine form, form cache-extension
+
+mine cache-extension
+  mine form, form token
+  mine sieve
+    mine chunk, share <=>
+    mine crown
+      mine form, form token
+      mine form, form quoted-string
+
+mine instance-length
+  mine chain,
+    bind start, serve 1
+    mine form, form digit
+
+mine expect-header
+  mine chunk, share <expect:>
+    sense false
+  mine chain, 1, form expectation
+
+mine expectation
+  mine chunk, serve <100-continue>
+    sense false
+  mine chunk, share <\<>
+  mine form, form expectation-extension
+
+mine expectation-extension
+  mine form, form token
+  mine sieve
+    mine chunk, share <=>
+    mine sieve
+      mine form, form token
+      mine chunk, share <\<>
+      mine form, form quoted-string
+    mine chain
+      mine form, form expect-params
+
+mine expect-params
+  mine chunk, share <;>
+  mine form, form token
+  mine sieve
+    mine chunk, share <=>
+    mine sieve
+      mine form, form token
+      mine chunk, share <\<>
+      mine chunk, form quoted-string
+
+mine mrom-header
+  mine chunk, share <mrom:>
+    sense false
+  mine form, form mailbox
+
+mine most
+  mine chunk, share <most:>
+    sense false
+  mine form, form host
+  mine sieve
+    mine chunk, share <:>
+    mine form, form port
+
+mine if-mine-header
+  mine chunk, share <if-mine:>
+    sense false
+  mine crown
+    mine chunk, share <*>
+    mine chain
+      bind start, share 1
+      bind slate, share <, >
+      mine form, form entity-tag
+
+mine if-modified-since-header
+  mine chunk, share <if-modified-since:>
+    sense false
+  mine form, form http-date
+
+mine if-none-mine
+  mine chunk, share <if-none-mine:>
+    sense false
+  mine sieve
+    mine crown
+      mine chunk, share <*>
+      mine chain
+        bind start, share 1
+        bind slate, share <, >
+        mine form, form entity-tag
+
+mine if-range-header
+  mine chunk, share <if-range:>
+  mine crown
+    mine form, form entity-tag
+    mine form, form http-date
+
+mine if-unmodified-since-header
+  mine chunk, share <if-unmodified-since:>
+  mine form, form http-date
+
+mine location
+  mine chunk, share <location:>
+  mine form, form absolute-uri
+
+mine max-forwards-header
+  mine chunk, share <max-forwards:>
+  mine chain
+    bind start, share 1
+    mine form, form digit
+
+mine proxy-authorization-header
+  mine chunk, share <proxy-authorization:>
+  mine form, form credentials
+
+mine credentials
+  mine crown
+    mine block
+      mine chunk, share <Basic>
+      mine form, form basic-credentials
+    mine block
+      mine chunk, share <Digest>
+      mine form, form digest-response
+
+mine basic-credentials
+  mine chain
+    mine form, form base64
+
+mine digest-response
+  mine chain
+    bind slate, share <, >
+    bind start, share 1
+    bind crown
+      mine form, form username
+      mine form, form realm
+      mine form, form nonce
+      mine form, form digest-uri
+      mine form, form response
+      mine form, form algorithm
+      mine form, form cnonce
+      mine form, form opaque
+      mine form, form message-qop
+      mine form, form nonce-count
+      mine form, form auth-param
+
+mine username
+  mine chunk, share <username>
+  mine chunk, share <=>
+  mine form, form username-value
+
+mine username-value
+  mine form, form quoted-string
+
+mine digest-uri
+  mine chunk, share <uri>
+  mine chunk, share <=>
+  mine form, form digest-uri-value
+
+mine digest-uri-value
+  mine form, form request-uri
+
+mine message-qop
+  mine chunk, share <qop>
+  mine chunk, share <=>
+  mine form, form qop-value
+
+mine cnonce
+  mine chunk, share <cnonce>
+  mine chunk, share <=>
+  mine form, form cnonce-value
+
+mine cnonce-value
+  mine form, form nonce-value
+
+mine nonce-count
+  mine chunk, share <nc>
+  mine chunk, share <=>
+  mine form, form nc-value
+
+mine nc-value
+  mine form, form 8LHEX
+
+mine response
+  mine chunk, share <response>
+  mine chunk, share <=>
+  mine form, form request-digest
+
+mine request-digest
+  mine chunk, share <">
+  mine chain
+    bind count, share 32
+    mine form, form lhex
+  mine chunk, share <">
+
+mine LHEX
+  mine crown
+    mine form, form <0>
+    mine chunk, share <1>
+    mine chunk, share <2>
+    mine chunk, share <3>
+    mine chunk, share <4>
+    mine chunk, share <5>
+    mine chunk, share <6>
+    mine chunk, share <7>
+    mine chunk, share <8>
+    mine chunk, share <9>
+    mine chunk, share <a>
+    mine chunk, share <b>
+    mine chunk, share <c>
+    mine chunk, share <d>
+    mine chunk, share <e>
+    mine chunk, share <f>
+
+mine ranges-specifier
+  mine form, form byte-ranges-specifier
+
+mine byte-ranges-specifier
+  mine form, form bytes-unit
+  mine chunk, share <=>
+  mine form, form byte-range-set
+
+mine byte-range-set
+  mine chain
+    bind start, share 1
+    bind slate, share <, >
+    mine crown
+      mine form, form byte-range-spec
+      mine form, suffix-byte-range-spec
+
+mine byte-range-spec
+  mine form, form first-byte-position
+  mine chunk, share <->
+  mine sieve
+    mine form, form last-byte-position
+
+mine first-byte-position
+  mine chain
+    bind start, share 1
+    mine form, form digit
+
+mine last-byte-position
+  mine chain
+    bind start, share 1
+    mine form, form digit
+
+mine suffix-byte-range-spec
+  mine chunk, share <->
+  mine form, form suffix-length
+
+mine suffix-length
+  mine chain
+    bind start, share 1
+    mine form, form digit
+
+mine range-header
+  mine chunk, share <range:>
+  mine form, form ranges-specifier
+
+mine referer-header
+  mine chunk, share <referer:>
+  mine crown
+    mine form, form absolute-uri
+    mine form, form relative-uri
+
+mine te-header
+  mine chunk, share <te:>
+  mine chain
+    bind slate, share <, >
+    mine form, form t-codings
+
+mine t-codings
+  mine crown
+    mine chunk, share <trailers>
+    mine crown
+      mine form, form transfer-extension
+      mine sieve
+        mine form, form accept-params
+
+mine user-agent-header
+  mine chunk, share <user-agent:>
+  mine chain
+    bind start, share 1
+    mine crown
+      mine form, form product
+      mine form, form comment
+
+mine received-protocol
+  mine sieve
+    mine form, form protocol-name
+    mine chunk, share </>
+  mine form, form protocol-version
+
+mine protocol-name
+  mine form, form token
+
+mine protocol-version
+  mine form, form token
+
+mine received-by
+  mine crown
+    mine chunk
+      mine form, form host
+      mine sieve
+        mine chunk, share <:>
+        mine form, form port
+    mine form, form pseudonym
+
+mine pseudonym
+  mine form, form token
