@@ -6,7 +6,7 @@
 // ignores the input layout and prints from the tree). Part of the one-parse pipeline (see plans/19-format-and-lint).
 // Pure and browser-safe.
 
-import { parse } from '@term/make/code/parser/tree'
+import { escapeTextChunks, parse } from '@term/make/code/parser/tree'
 import type {
   GroupNode,
   Node,
@@ -71,14 +71,19 @@ function flatten(node: Node, nested = false): string {
             : `{{${p.group ? flatten(p.group) : ''}}}`,
         )
         .join('')
-    case 'text':
+    case 'text': {
+      // the same re-escaping printTree does, computed across the WHOLE literal: an angle that cannot balance has
+      // to come back out escaped or the formatted literal reads as a nested bracket and stops parsing, while a
+      // balanced one is content and must be left exactly as it is
+      const escaped = escapeTextChunks(
+        node.parts.filter((p): p is typeof p & { kind: 'chunk' } => p.kind === 'chunk').map(p => p.text),
+      )
+      let at = 0
+
       return `<${node.parts
-        .map(p =>
-          p.kind === 'chunk'
-            ? p.text
-            : `{{${p.group ? flatten(p.group) : ''}}}`,
-        )
+        .map(p => (p.kind === 'chunk' ? escaped[at++]! : `{{${p.group ? flatten(p.group) : ''}}}`))
         .join('')}>`
+    }
     case 'integer':
     case 'decimal':
     case 'radix':
@@ -207,10 +212,15 @@ function formatGroup(group: GroupNode, depth: number): string[] {
   // stacked: the head line keeps the head and any leading atoms (the name); the rest are indented children
   const [head, ...kids] = group.nodes
 
+  // AT MOST ONE leading atom rides on the head line. A space NESTS, so `hook` with the two sibling children
+  // `test` and `true` printed as `hook test true` re-reads as `hook > test > true` — a different tree, and the
+  // second formatting pass then prints it as `hook` with `test true` indented, losing both children off the head
+  // line. Taking one is safe (`hook hold`, `walk list`, `case node`) because there is nothing after it to nest
+  // into; taking two is the bug. The rest go on their own indented lines, which is unambiguous.
   let split = 0
 
-  while (split < kids.length && isLeaf(kids[split]!)) {
-    split++
+  if (kids.length > 0 && isLeaf(kids[0]!)) {
+    split = 1
   }
 
   const headParts = [

@@ -471,12 +471,85 @@ export function parseTolerant(source: { file: string; text: string }): {
 }
 
 // Render a name or text node inline (e.g. inside interpolation or as a head value).
-function renderParts(parts: (ChunkNode | InterpolationNode)[]): string {
+// A text literal's chunks, re-escaped for printing.
+//
+// Inside a literal, angles BALANCE: `<a <b> c>` is legal and its inner angles are content, which is why the
+// tokenizer leaves them bare in the chunk. Escaping those would change the text's VALUE, so they are left alone.
+// What must be escaped is an angle that does NOT balance — the tokenizer unescapes the `\<` that opens a
+// literal's content, so `text <\<!doctype html\>>` gives a chunk starting with a bare `<` with no partner, and
+// printing it raw yields `<<!doctype html\>>`, which reads as a nested bracket and no longer parses.
+//
+// Balance is computed across the WHOLE literal, not per chunk. A literal is split into several chunk nodes
+// wherever an interpolation interrupts it, and a chunk holding only the `<` of a matched pair looks unbalanced
+// on its own: doing this per chunk escaped the balanced angles in `<std::sync::Arc<...AtomicBool>>` and changed
+// the module name the mill recorded.
+//
+// A backslash and the character after it are copied through untouched. Escaping an angle that already carries
+// one doubles it, which is how an earlier attempt took the round-trip failures from 12 to 83.
+export function escapeTextChunks(chunks: string[]): string[] {
+  const escape = chunks.map(() => new Set<number>())
+  const opens: { part: number; at: number }[] = []
+
+  chunks.forEach((text, part) => {
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i]!
+
+      if (c === '\\' && i + 1 < text.length) {
+        i++
+        continue
+      }
+
+      if (c === '<') {
+        opens.push({ part, at: i })
+      } else if (c === '>') {
+        const open = opens.pop()
+
+        if (!open) {
+          escape[part]!.add(i)
+        }
+      }
+    }
+  })
+
+  for (const open of opens) {
+    escape[open.part]!.add(open.at)
+  }
+
+  return chunks.map((text, part) => {
+    const marks = escape[part]!
+
+    if (marks.size === 0) {
+      return text
+    }
+
+    let out = ''
+
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i]!
+
+      if (c === '\\' && i + 1 < text.length) {
+        out += text.slice(i, i + 2)
+        i++
+        continue
+      }
+
+      out += marks.has(i) ? `\\${c}` : c
+    }
+
+    return out
+  })
+}
+
+function renderParts(parts: (ChunkNode | InterpolationNode)[], escape = false): string {
   let out = ''
+  const escaped = escape
+    ? escapeTextChunks(parts.filter((p): p is ChunkNode => p.kind === 'chunk').map(p => p.text))
+    : []
+  let chunkAt = 0
 
   for (const part of parts) {
     if (part.kind === 'chunk') {
-      out += part.text
+      out += escape ? escaped[chunkAt++]! : part.text
     } else {
       out += `${'{'.repeat(part.depth)}${
         part.group ? renderInline(part.group) : ''
@@ -508,7 +581,7 @@ export function renderHead(node: Node): string {
     case 'name':
       return renderParts(node.parts)
     case 'text':
-      return `<${renderParts(node.parts)}>`
+      return `<${renderParts(node.parts, true)}>`
     case 'integer':
       return String(node.value)
     // the TOKEN text, not the value: `String(1.0)` is `"1"`, which re-reads as an INTEGER and silently changes

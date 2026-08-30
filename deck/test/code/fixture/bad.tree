@@ -1,3 +1,9 @@
+note draft
+# Deliberately ill-typed: `add` is given a number and a text. This file exists to BE a diagnostic, so it must
+# not be part of the build — `note draft` shelves it the way deck/term/CLAUDE.md documents. Without that,
+# `term make` on this package reported one failure forever, which is why @term/test was on the known-broken
+# list in task/term/build-all.ts.
+
 task add-one
   take n, like number
   like number
