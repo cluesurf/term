@@ -38,8 +38,14 @@ task make-status
 
 # a response with an explicit status and body
 task make
-  take status, like number, fall 200
-  take body, like text, fall text <>
+  take
+    status
+    like number
+    fall 200
+  take
+    body
+    like text
+    fall text <>
   like response
   send back
     make response

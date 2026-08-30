@@ -81,7 +81,10 @@ task connect
   note async
   take host, like text
   take port, like number
-  take secure, like boolean, fall false
+  take
+    secure
+    like boolean
+    fall false
   like connection
   send back
     call do-connect
@@ -94,10 +97,22 @@ task connect
 task listen
   note async
   take port, like number
-  take host, like text, fall text <0.0.0.0>
-  take secure, like boolean, fall false
-  take certificate, like text, need false
-  take key, like text, need false
+  take
+    host
+    like text
+    fall text <0.0.0.0>
+  take
+    secure
+    like boolean
+    fall false
+  take
+    certificate
+    like text
+    need false
+  take
+    key
+    like text
+    need false
   like listener
   send back
     call do-listen

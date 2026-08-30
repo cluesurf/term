@@ -1943,7 +1943,7 @@ export function emitSwift(
       ? 'Int'
       : v.form === 'float'
         ? 'Double'
-        : v.form === 'text'
+        : v.form === 'string'
           ? 'String'
           : v.form === 'boolean'
             ? 'Bool'

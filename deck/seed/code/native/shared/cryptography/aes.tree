@@ -635,9 +635,17 @@ task aes-expand-key
       save t0, read rk/{base}
       save at1, call increment(read base)
       save t1, read rk/{at1}
-      save at2, call add(read base, code 2)
+      save
+        at2
+        call add
+          read base
+          code 2
       save t2, read rk/{at2}
-      save at3, call add(read base, code 3)
+      save
+        at3
+        call add
+          read base
+          code 3
       save t3, read rk/{at3}
       fork test
         hook test
@@ -672,9 +680,17 @@ task aes-expand-key
       save p0, read rk/{prior}
       save pa1, call increment(read prior)
       save p1, read rk/{pa1}
-      save pa2, call add(read prior, code 2)
+      save
+        pa2
+        call add
+          read prior
+          code 2
       save p2, read rk/{pa2}
-      save pa3, call add(read prior, code 3)
+      save
+        pa3
+        call add
+          read prior
+          code 3
       save p3, read rk/{pa3}
       call rk/push
         call bitwise-exclusive-or
@@ -820,20 +836,36 @@ task aes-encrypt-block
             read mc
             code 4
         hook hold
-          save b0-at, call multiply(read mc, code 4)
+          save
+            b0-at
+            call multiply
+              read mc
+              code 4
           save b0, read state/{b0-at}
           save b1-at, call increment(read b0-at)
           save b1, read state/{b1-at}
-          save b2-at, call add(read b0-at, code 2)
+          save
+            b2-at
+            call add
+              read b0-at
+              code 2
           save b2, read state/{b2-at}
-          save b3-at, call add(read b0-at, code 3)
+          save
+            b3-at
+            call add
+              read b0-at
+              code 3
           save b3, read state/{b3-at}
           call state/set
             read b0-at
             call bitwise-exclusive-or
               call bitwise-exclusive-or
-                call aes-gmul(read b0, code 2)
-                call aes-gmul(read b1, code 3)
+                call aes-gmul
+                  read b0
+                  code 2
+                call aes-gmul
+                  read b1
+                  code 3
               call bitwise-exclusive-or
                 read b2
                 read b3
@@ -842,9 +874,13 @@ task aes-encrypt-block
             call bitwise-exclusive-or
               call bitwise-exclusive-or
                 read b0
-                call aes-gmul(read b1, code 2)
+                call aes-gmul
+                  read b1
+                  code 2
               call bitwise-exclusive-or
-                call aes-gmul(read b2, code 3)
+                call aes-gmul
+                  read b2
+                  code 3
                 read b3
           call state/set
             read b2-at
@@ -853,17 +889,25 @@ task aes-encrypt-block
                 read b0
                 read b1
               call bitwise-exclusive-or
-                call aes-gmul(read b2, code 2)
-                call aes-gmul(read b3, code 3)
+                call aes-gmul
+                  read b2
+                  code 2
+                call aes-gmul
+                  read b3
+                  code 3
           call state/set
             read b3-at
             call bitwise-exclusive-or
               call bitwise-exclusive-or
-                call aes-gmul(read b0, code 3)
+                call aes-gmul
+                  read b0
+                  code 3
                 read b1
               call bitwise-exclusive-or
                 read b2
-                call aes-gmul(read b3, code 2)
+                call aes-gmul
+                  read b3
+                  code 2
           save mc, call increment(read mc)
       call aes-add-round-key
         read state
@@ -932,50 +976,94 @@ task aes-decrypt-block
             read mc
             code 4
         hook hold
-          save b0-at, call multiply(read mc, code 4)
+          save
+            b0-at
+            call multiply
+              read mc
+              code 4
           save b0, read state/{b0-at}
           save b1-at, call increment(read b0-at)
           save b1, read state/{b1-at}
-          save b2-at, call add(read b0-at, code 2)
+          save
+            b2-at
+            call add
+              read b0-at
+              code 2
           save b2, read state/{b2-at}
-          save b3-at, call add(read b0-at, code 3)
+          save
+            b3-at
+            call add
+              read b0-at
+              code 3
           save b3, read state/{b3-at}
           call state/set
             read b0-at
             call bitwise-exclusive-or
               call bitwise-exclusive-or
-                call aes-gmul(read b0, code 14)
-                call aes-gmul(read b1, code 11)
+                call aes-gmul
+                  read b0
+                  code 14
+                call aes-gmul
+                  read b1
+                  code 11
               call bitwise-exclusive-or
-                call aes-gmul(read b2, code 13)
-                call aes-gmul(read b3, code 9)
+                call aes-gmul
+                  read b2
+                  code 13
+                call aes-gmul
+                  read b3
+                  code 9
           call state/set
             read b1-at
             call bitwise-exclusive-or
               call bitwise-exclusive-or
-                call aes-gmul(read b0, code 9)
-                call aes-gmul(read b1, code 14)
+                call aes-gmul
+                  read b0
+                  code 9
+                call aes-gmul
+                  read b1
+                  code 14
               call bitwise-exclusive-or
-                call aes-gmul(read b2, code 11)
-                call aes-gmul(read b3, code 13)
+                call aes-gmul
+                  read b2
+                  code 11
+                call aes-gmul
+                  read b3
+                  code 13
           call state/set
             read b2-at
             call bitwise-exclusive-or
               call bitwise-exclusive-or
-                call aes-gmul(read b0, code 13)
-                call aes-gmul(read b1, code 9)
+                call aes-gmul
+                  read b0
+                  code 13
+                call aes-gmul
+                  read b1
+                  code 9
               call bitwise-exclusive-or
-                call aes-gmul(read b2, code 14)
-                call aes-gmul(read b3, code 11)
+                call aes-gmul
+                  read b2
+                  code 14
+                call aes-gmul
+                  read b3
+                  code 11
           call state/set
             read b3-at
             call bitwise-exclusive-or
               call bitwise-exclusive-or
-                call aes-gmul(read b0, code 11)
-                call aes-gmul(read b1, code 13)
+                call aes-gmul
+                  read b0
+                  code 11
+                call aes-gmul
+                  read b1
+                  code 13
               call bitwise-exclusive-or
-                call aes-gmul(read b2, code 9)
-                call aes-gmul(read b3, code 14)
+                call aes-gmul
+                  read b2
+                  code 9
+                call aes-gmul
+                  read b3
+                  code 14
           save mc, call increment(read mc)
       save rnd
         call decrement

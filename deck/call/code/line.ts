@@ -332,7 +332,7 @@ const cli = yargs(hideBin(process.argv))
       )
       .command(
         'project <commit>',
-        'What a projection would write, and with --into --commit, write it',
+        'What a projection would write, and with --into --write, write it',
         y =>
           y
             .positional('commit', { type: 'string', demandOption: true })

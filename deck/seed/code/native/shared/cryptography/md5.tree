@@ -275,8 +275,16 @@ task calculate-md5
                 read k
                 code 4
           save at1, call increment(read at)
-          save at2, call add(read at, code 2)
-          save at3, call add(read at, code 3)
+          save
+            at2
+            call add
+              read at
+              code 2
+          save
+            at3
+            call add
+              read at
+              code 3
           call w/push
             call bitwise-or
               call bitwise-or

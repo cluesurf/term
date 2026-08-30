@@ -54,11 +54,17 @@ task read-glyf-end-points
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read contour-count)
+      call is-below
+        read index
+        read contour-count
     hook hold
-      call push(read result, call read-u16(read cursor))
+      call push
+        read result
+        call read-u16 read cursor
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back, read result
 
 # how many points a simple glyph's flags/coordinate arrays hold: one past the last contour's end-point index, or
@@ -72,11 +78,17 @@ task glyf-point-count
   like number
   fork test
     hook test
-      call is-above(read contour-count, code 0)
+      call is-above
+        read contour-count
+        code 0
     hook hold
       send back
         call add
-          call get(read end-points, call subtract(read contour-count, code 1))
+          call get
+            read end-points
+            call subtract
+              read contour-count
+              code 1
           code 1
   send back, code 0
 
@@ -95,10 +107,16 @@ task read-glyf-flags
     hook hold
       save flag
         call read-byte(read cursor)
-      call push(read result, read flag)
+      call push
+        read result
+        read flag
       fork test
         hook test
-          call is-above(call bitwise-and(read flag, code 0x08), code 0)
+          call is-above
+            call bitwise-and
+              read flag
+              code 0x08
+            code 0
         hook hold
           save repeat-count
             call read-byte(read cursor)
@@ -106,12 +124,18 @@ task read-glyf-flags
           walk test
             hook test
               call and
-                call is-below(read copied, read repeat-count)
+                call is-below
+                  read copied
+                  read repeat-count
                 call is-below(call size(read result), read point-count)
             hook hold
-              call push(read result, read flag)
+              call push
+                read result
+                read flag
               save copied
-                call add(read copied, code 1)
+                call add
+                  read copied
+                  code 1
   send back, read result
 
 # one coordinate axis's delta for one point, from its own flag byte and the axis's own short/same-or-positive bit
@@ -127,24 +151,42 @@ task glyf-coordinate-delta
   like number
   fork test
     hook test
-      call is-above(call bitwise-and(read flag, read short-bit), code 0)
+      call is-above
+        call bitwise-and
+          read flag
+          read short-bit
+        code 0
     hook hold
       save magnitude
         call read-byte(read cursor)
       fork test
         hook test
-          call is-above(call bitwise-and(read flag, read same-bit), code 0)
+          call is-above
+            call bitwise-and
+              read flag
+              read same-bit
+            code 0
         hook hold
           send back, read magnitude
       send back
-        call multiply(read magnitude, code -1)
+        call multiply
+          read magnitude
+          code -1
   fork test
     hook test
-      call is-above(call bitwise-and(read flag, read same-bit), code 0)
+      call is-above
+        call bitwise-and
+          read flag
+          read same-bit
+        code 0
     hook hold
       send back, code 0
   send back
-    call read-int(read cursor, code 2, make big, make signed)
+    call read-int
+      read cursor
+      code 2
+      make big
+      make signed
 
 # every point's running coordinate on one axis, delta-decoded against the flags list already read. `short-bit`/
 # `same-bit` select which pair of flag bits this axis reads (x: 0x02 short, 0x10 same-or-positive; y: 0x04/0x20),
@@ -167,8 +209,14 @@ task read-glyf-coordinates
       save running
         call add
           read running
-          call glyf-coordinate-delta(read cursor, read flag, read short-bit, read same-bit)
-      call push(read result, read running)
+          call glyf-coordinate-delta
+            read cursor
+            read flag
+            read short-bit
+            read same-bit
+      call push
+        read result
+        read running
   send back, read result
 
 task glyf-point-on-curve
@@ -176,7 +224,9 @@ task glyf-point-on-curve
   like boolean
   send back
     call is-above
-      call bitwise-and(read flag, code 0x01)
+      call bitwise-and
+        read flag
+        code 0x01
       code 0
 
 # groups the flat per-point flag/x/y arrays back into one point list per contour, using each contour's own
@@ -209,19 +259,40 @@ task glyf-build-contours
         read start
       walk test
         hook test
-          call is-maximum(read index, read end)
+          call is-maximum
+            read index
+            read end
         hook hold
           call push
             read points
             make otf-glyph-point
-              bind x, call get(read x-coords, read index)
-              bind y, call get(read y-coords, read index)
-              bind on-curve, call glyf-point-on-curve(call get(read flags, read index))
+              bind
+                x
+                call get
+                  read x-coords
+                  read index
+              bind
+                y
+                call get
+                  read y-coords
+                  read index
+              bind
+                on-curve
+                call glyf-point-on-curve
+                  call get
+                    read flags
+                    read index
           save index
-            call add(read index, code 1)
-      call push(read contours, read points)
+            call add
+              read index
+              code 1
+      call push
+        read contours
+        read points
       save start
-        call add(read end, code 1)
+        call add
+          read end
+          code 1
   send back, read contours
 
 task read-otf-glyph
@@ -230,23 +301,47 @@ task read-otf-glyph
   like otf-glyph
   fork test
     hook test
-      call is-equal(read byte-length, code 0)
+      call is-equal
+        read byte-length
+        code 0
     hook hold
       send back
         make otf-glyph-empty
   save number-of-contours
-    call read-int(read cursor, code 2, make big, make signed)
+    call read-int
+      read cursor
+      code 2
+      make big
+      make signed
   save x-min
-    call read-int(read cursor, code 2, make big, make signed)
+    call read-int
+      read cursor
+      code 2
+      make big
+      make signed
   save y-min
-    call read-int(read cursor, code 2, make big, make signed)
+    call read-int
+      read cursor
+      code 2
+      make big
+      make signed
   save x-max
-    call read-int(read cursor, code 2, make big, make signed)
+    call read-int
+      read cursor
+      code 2
+      make big
+      make signed
   save y-max
-    call read-int(read cursor, code 2, make big, make signed)
+    call read-int
+      read cursor
+      code 2
+      make big
+      make signed
   fork test
     hook test
-      call is-below(read number-of-contours, code 0)
+      call is-below
+        read number-of-contours
+        code 0
     hook hold
       send back
         make otf-glyph-composite-unsupported
@@ -255,21 +350,41 @@ task read-otf-glyph
           bind x-max, read x-max
           bind y-max, read y-max
   save end-points
-    call read-glyf-end-points(read cursor, read number-of-contours)
+    call read-glyf-end-points
+      read cursor
+      read number-of-contours
   save point-count
-    call glyf-point-count(read end-points, read number-of-contours)
+    call glyf-point-count
+      read end-points
+      read number-of-contours
   save instruction-length
     call read-u16(read cursor)
   save instructions
-    call read-bytes(read cursor, read instruction-length)
+    call read-bytes
+      read cursor
+      read instruction-length
   save flags
-    call read-glyf-flags(read cursor, read point-count)
+    call read-glyf-flags
+      read cursor
+      read point-count
   save x-coords
-    call read-glyf-coordinates(read cursor, read flags, code 0x02, code 0x10)
+    call read-glyf-coordinates
+      read cursor
+      read flags
+      code 0x02
+      code 0x10
   save y-coords
-    call read-glyf-coordinates(read cursor, read flags, code 0x04, code 0x20)
+    call read-glyf-coordinates
+      read cursor
+      read flags
+      code 0x04
+      code 0x20
   save contours
-    call glyf-build-contours(read end-points, read x-coords, read y-coords, read flags)
+    call glyf-build-contours
+      read end-points
+      read x-coords
+      read y-coords
+      read flags
   send back
     make otf-glyph-simple
       bind x-min, read x-min
@@ -293,8 +408,12 @@ task glyf-end-points-from-contours
     hook next
       take site, name contour
       save total
-        call add(read total, call size(read contour))
-      call push(read result, read total)
+        call add
+          read total
+          call size read contour
+      call push
+        read result
+        read total
   send back, read result
 
 task glyf-flatten-points
@@ -312,7 +431,9 @@ task glyf-flatten-points
       walk list, read contour
         hook next
           take site, name point
-          call push(read result, read point)
+          call push
+            read result
+            read point
   send back, read result
 
 task glyf-flag-byte
@@ -343,30 +464,64 @@ task write-otf-glyph-simple-bytes
     call glyf-end-points-from-contours(read contours)
   save writer
     call make-writer
-  call write-int(read writer, call size(read contours), code 2, make big)
-  call write-int(read writer, read x-min, code 2, make big)
-  call write-int(read writer, read y-min, code 2, make big)
-  call write-int(read writer, read x-max, code 2, make big)
-  call write-int(read writer, read y-max, code 2, make big)
+  call write-int
+    read writer
+    call size read contours
+    code 2
+    make big
+  call write-int
+    read writer
+    read x-min
+    code 2
+    make big
+  call write-int
+    read writer
+    read y-min
+    code 2
+    make big
+  call write-int
+    read writer
+    read x-max
+    code 2
+    make big
+  call write-int
+    read writer
+    read y-max
+    code 2
+    make big
   walk list, read end-points
     hook next
       take site, name end
-      call write-int(read writer, read end, code 2, make big)
-  call write-int(read writer, call size(read instructions), code 2, make big)
-  call write-bytes(read writer, read instructions)
+      call write-int
+        read writer
+        read end
+        code 2
+        make big
+  call write-int
+    read writer
+    call size read instructions
+    code 2
+    make big
+  call write-bytes
+    read writer
+    read instructions
   save points
     call glyf-flatten-points(read contours)
   walk list, read points
     hook next
       take site, name point
-      call write-byte(read writer, call glyf-flag-byte(read point/on-curve))
+      call write-byte
+        read writer
+        call glyf-flag-byte read point/on-curve
   save running-x, code 0
   walk list, read points
     hook next
       take site, name point
       call write-int
         read writer
-        call subtract(read point/x, read running-x)
+        call subtract
+          read point/x
+          read running-x
         code 2
         make big
       save running-x, read point/x
@@ -376,7 +531,9 @@ task write-otf-glyph-simple-bytes
       take site, name point
       call write-int
         read writer
-        call subtract(read point/y, read running-y)
+        call subtract
+          read point/y
+          read running-y
         code 2
         make big
       save running-y, read point/y

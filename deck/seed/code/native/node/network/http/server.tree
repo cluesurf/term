@@ -22,7 +22,10 @@ form server
     send back, read self/port
 
 task make-server
-  take handler, like task, base response-handler
+  take
+    handler
+    like task
+    base response-handler
   take port, like u16
   take max-header-size, like u32
 
@@ -37,7 +40,10 @@ task make-server
     bind port, read port
 
 task make-server
-  take handler, like task, base response-handler
+  take
+    handler
+    like task
+    base response-handler
   take port, like u16
 
   free server, like server

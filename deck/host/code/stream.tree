@@ -68,8 +68,12 @@ task feed
   fork test
     hook test
       call or
-        call is-equal(read clean/length, code 0)
-        call starts-with(read clean, text <#>)
+        call is-equal
+          read clean/length
+          code 0
+        call starts-with
+          read clean
+          text <#>
     hook hold
       send back
         make none
@@ -79,33 +83,51 @@ task feed
     read file/trees
     hook next
       take site, name anchor
-      call put-tree(read reader/trees, read anchor)
+      call put-tree
+        read reader/trees
+        read anchor
   save kind
     call kind-of(read file/root)
   fork test
     hook test
-      call is-equal(read kind, text <>)
+      call is-equal
+        read kind
+        text <>
     hook hold
       send back
         make none
   fork test
     hook test
-      call is-equal(read reader/hold, text <>)
+      call is-equal
+        read reader/hold
+        text <>
     hook hold
       save reader/hold, read kind
   fork test
     hook test
-      call not(call is-equal(read reader/hold, read kind))
+      call not
+        call is-equal
+          read reader/hold
+          read kind
     hook hold
       halt data-defect
         bind rule, text <a stream is a map of h( entries or a list of m( items, never both>
-        bind line, call add(read reader/count, code 1)
+        bind
+          line
+          call
+            add
+              read reader/count
+              code 1
   save reader/count
-    call add(read reader/count, code 1)
+    call add
+      read reader/count
+      code 1
   send back
     make some
       bind value
-        call expand-with(read file/root, read reader/trees)
+        call expand-with
+          read file/root
+          read reader/trees
 
 # what a line's value is: `<hash>` for entries, `<list>` for items, `<>` for a line that carried no data
 task kind-of
@@ -146,19 +168,32 @@ task put-tree
   save index, code 0
   walk test
     hook test
-      call is-below(read index, call size(read trees))
+      call is-below
+        read index
+        call size read trees
     hook hold
       save present
-        call get(read trees, read index)
+        call get
+          read trees
+          read index
       fork test
         hook test
-          call is-equal(read present/name, read anchor/name)
+          call is-equal
+            read present/name
+            read anchor/name
         hook hold
-          call set(read trees, read index, read anchor)
+          call set
+            read trees
+            read index
+            read anchor
           send back
       save index
-        call add(read index, code 1)
-  call push(read trees, read anchor)
+        call add
+          read index
+          code 1
+  call push
+    read trees
+    read anchor
 
 # a whole stream held as text: every line through one reader, the entries or items gathered into one value
 task read-lines
@@ -171,11 +206,15 @@ task read-lines
   save items
     make list
   walk list
-    call split(read input, text <\n>)
+    call split
+      read input
+      text <\n>
     hook next
       take site, name line
       save found
-        call feed(read reader, read line)
+        call feed
+          read reader
+          read line
       fork case, read found
         case none
           turn next
@@ -188,14 +227,18 @@ task read-lines
                 read list
                 hook next
                   take site, name entry
-                  call push(read entries, read entry)
+                  call push
+                    read entries
+                    read entry
             case array
               link list
               walk list
                 read list
                 hook next
                   take site, name item
-                  call push(read items, read item)
+                  call push
+                    read items
+                    read item
             case text
               turn next
             case number
@@ -210,7 +253,9 @@ task read-lines
               turn next
   fork test
     hook test
-      call is-equal(read reader/hold, text <list>)
+      call is-equal
+        read reader/hold
+        text <list>
     hook hold
       send back
         make array
@@ -243,7 +288,11 @@ task emit
   like text
   save needed
     make list
-  call collect-trees(read value, read trees, read writer/sent, read needed)
+  call collect-trees
+    read value
+    read trees
+    read writer/sent
+    read needed
   save head
     text <>
   fork test
@@ -256,7 +305,9 @@ task emit
             bind list, make list
           read needed
   send back
-    call concat(read head, call pack(read value))
+    call concat
+      read head
+      call pack read value
 
 # every anchor a value fuses, not yet sent, with the anchors those fuse before them
 task collect-trees
@@ -276,43 +327,67 @@ task collect-trees
       link name
       fork test
         hook test
-          call contains(read sent, read name)
+          call contains
+            read sent
+            read name
         hook hold
           send back
-      call push(read sent, read name)
+      call push
+        read sent
+        read name
       walk list
         read trees
         hook next
           take site, name anchor
           fork test
             hook test
-              call is-equal(read anchor/name, read name)
+              call is-equal
+                read anchor/name
+                read name
             hook hold
               walk list
                 read anchor/entries
                 hook next
                   take site, name entry
-                  call collect-trees(read entry/base, read trees, read sent, read needed)
+                  call collect-trees
+                    read entry/base
+                    read trees
+                    read sent
+                    read needed
               walk list
                 read anchor/items
                 hook next
                   take site, name item
-                  call collect-trees(read item, read trees, read sent, read needed)
-              call push(read needed, read anchor)
+                  call collect-trees
+                    read item
+                    read trees
+                    read sent
+                    read needed
+              call push
+                read needed
+                read anchor
     case hash
       link list
       walk list
         read list
         hook next
           take site, name entry
-          call collect-trees(read entry/base, read trees, read sent, read needed)
+          call collect-trees
+            read entry/base
+            read trees
+            read sent
+            read needed
     case array
       link list
       walk list
         read list
         hook next
           take site, name item
-          call collect-trees(read item, read trees, read sent, read needed)
+          call collect-trees
+            read item
+            read trees
+            read sent
+            read needed
     case text
       send back
     case number
@@ -333,4 +408,7 @@ task write-lines
     fall make list
   like text
   send back
-    call emit(call make-writer, read value, read trees)
+    call emit
+      call make-writer
+      read value
+      read trees

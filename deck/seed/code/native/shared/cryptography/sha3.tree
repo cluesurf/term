@@ -547,9 +547,17 @@ task calculate-sha3-256
           save b0, read m/{b0-at}
           save b1-at, call increment(read b0-at)
           save b1, read m/{b1-at}
-          save b2-at, call add(read b0-at, code 2)
+          save
+            b2-at
+            call add
+              read b0-at
+              code 2
           save b2, read m/{b2-at}
-          save b3-at, call add(read b0-at, code 3)
+          save
+            b3-at
+            call add
+              read b0-at
+              code 3
           save b3, read m/{b3-at}
           save word-a
             call bitwise-or
@@ -578,9 +586,17 @@ task calculate-sha3-256
           save b0, read m/{b0-at}
           save b1-at, call increment(read b0-at)
           save b1, read m/{b1-at}
-          save b2-at, call add(read b0-at, code 2)
+          save
+            b2-at
+            call add
+              read b0-at
+              code 2
           save b2, read m/{b2-at}
-          save b3-at, call add(read b0-at, code 3)
+          save
+            b3-at
+            call add
+              read b0-at
+              code 3
           save b3, read m/{b3-at}
           save word-b
             call bitwise-or

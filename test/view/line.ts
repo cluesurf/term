@@ -49,6 +49,7 @@ view page
         read title
   view sound/chart
     bind source, code <quenya>
+    bind rows, read vowel
 `,
 )
 

@@ -1,0 +1,55 @@
+foo bar baz bang boom, a b c, d e f
+call add, read a, read b
+link @x, code <1.x.x>, have 1
+a b, c, d
+add 1, 2
+take message, like text, need false
+h(x,1)
+call add(read x, 2)
+
+---
+
+foo
+  bar
+    baz
+      bang
+        boom
+        a
+          b
+            c
+            d
+              e
+                f
+call
+  add
+  read
+    a
+    read
+      b
+link
+  @x
+  code
+    <1.x.x>
+  have
+    1
+a
+  b
+  c
+  d
+add
+  1
+  2
+take
+  message
+  like
+    text
+    need
+      false
+h
+  x
+  1
+call
+  add
+    read
+      x
+      2

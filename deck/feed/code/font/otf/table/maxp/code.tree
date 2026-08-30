@@ -26,7 +26,9 @@ task read-otf-maxp-table
   fork test
     hook test
       call not
-        call is-equal(read version, code 0x00010000)
+        call is-equal
+          read version
+          code 0x00010000
     hook hold
       halt <not a version 1.0 OTF maxp table>
   save num-glyphs
@@ -81,20 +83,50 @@ task write-otf-maxp-table
     like u8
   save writer
     call make-writer
-  call write-u32(read writer, read table/version)
-  call write-u16(read writer, read table/num-glyphs)
-  call write-u16(read writer, read table/max-points)
-  call write-u16(read writer, read table/max-contours)
-  call write-u16(read writer, read table/max-composite-points)
-  call write-u16(read writer, read table/max-composite-contours)
-  call write-u16(read writer, read table/max-zones)
-  call write-u16(read writer, read table/max-twilight-points)
-  call write-u16(read writer, read table/max-storage)
-  call write-u16(read writer, read table/max-function-defs)
-  call write-u16(read writer, read table/max-instruction-defs)
-  call write-u16(read writer, read table/max-stack-elements)
-  call write-u16(read writer, read table/max-size-of-instructions)
-  call write-u16(read writer, read table/max-component-elements)
-  call write-u16(read writer, read table/max-component-depth)
+  call write-u32
+    read writer
+    read table/version
+  call write-u16
+    read writer
+    read table/num-glyphs
+  call write-u16
+    read writer
+    read table/max-points
+  call write-u16
+    read writer
+    read table/max-contours
+  call write-u16
+    read writer
+    read table/max-composite-points
+  call write-u16
+    read writer
+    read table/max-composite-contours
+  call write-u16
+    read writer
+    read table/max-zones
+  call write-u16
+    read writer
+    read table/max-twilight-points
+  call write-u16
+    read writer
+    read table/max-storage
+  call write-u16
+    read writer
+    read table/max-function-defs
+  call write-u16
+    read writer
+    read table/max-instruction-defs
+  call write-u16
+    read writer
+    read table/max-stack-elements
+  call write-u16
+    read writer
+    read table/max-size-of-instructions
+  call write-u16
+    read writer
+    read table/max-component-elements
+  call write-u16
+    read writer
+    read table/max-component-depth
   send back
     call to-bytes(read writer)

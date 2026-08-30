@@ -43,8 +43,8 @@ form excess
   like exception
     bind note, <Too large>
     link thing, like text
-    link limit, like number, need false
-    link actual, like number, fall 0
+    link limit, like(number), need false
+    link actual, like(number), fall 0
 `
 
 function build(text: string) {

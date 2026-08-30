@@ -26,7 +26,11 @@ task read
   save language
     read parts/0
   save region
-    fork test, call is-above(read parts/length, code 1)
+    fork
+      test
+      call is-above
+        read parts/length
+        code 1
       hook hold
         read parts/1
       hook miss

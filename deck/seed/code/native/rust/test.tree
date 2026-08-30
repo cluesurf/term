@@ -11,9 +11,15 @@ load @term/seed/code/native/shared/test/assert
 
 task assert
   take value
-  take form, like text, fall text <truthy>
+  take
+    form
+    like text
+    fall text <truthy>
   take expected, need false
-  take message, like text, need false
+  take
+    message
+    like text
+    need false
   take tolerance, need false
 
   call assert-shared
@@ -25,9 +31,15 @@ task assert
 
 task deny
   take value
-  take form, like text, fall text <truthy>
+  take
+    form
+    like text
+    fall text <truthy>
   take expected, need false
-  take message, like text, need false
+  take
+    message
+    like text
+    need false
 
   call deny-shared
     bind value, read value
@@ -36,7 +48,10 @@ task deny
     bind message, read message
 
 task skip
-  take reason, like text, need false
+  take
+    reason
+    like text
+    need false
 
   call mark-skip
     bind reason, read reason

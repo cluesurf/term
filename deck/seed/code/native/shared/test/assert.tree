@@ -24,9 +24,18 @@ load @term/seed/code/native/shared/test
 
 task assert-shared
   take value, like unknown
-  take form, like text, fall text <truthy>
-  take expected, like unknown, need false
-  take message, like text, need false
+  take
+    form
+    like text
+    fall text <truthy>
+  take
+    expected
+    like unknown
+    need false
+  take
+    message
+    like text
+    need false
   take tolerance, need false
 
   save ctx
@@ -241,9 +250,18 @@ task assert-shared
 
 task deny-shared
   take value, like unknown
-  take form, like text, fall text <truthy>
-  take expected, like unknown, need false
-  take message, like text, need false
+  take
+    form
+    like text
+    fall text <truthy>
+  take
+    expected
+    like unknown
+    need false
+  take
+    message
+    like text
+    need false
 
   save ctx
     call get-context
@@ -277,7 +295,10 @@ task deny-shared
             bind actual, read value
 
 task mark-skip
-  take reason, like text, need false
+  take
+    reason
+    like text
+    need false
   save ctx
     call get-context
   call skip-context

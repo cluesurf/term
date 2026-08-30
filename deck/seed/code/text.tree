@@ -66,7 +66,10 @@ task char-code-at
 task index-of
   take value, like text
   take search, like text
-  take start-index, like integer, need false
+  take
+    start-index
+    like integer
+    need false
   like integer
   send back
     call value/index-of
@@ -76,7 +79,10 @@ task index-of
 task last-index-of
   take value, like text
   take search, like text
-  take start-index, like integer, need false
+  take
+    start-index
+    like integer
+    need false
   like integer
   send back
     call value/last-index-of
@@ -95,7 +101,10 @@ task split
 task substring
   take value, like text
   take start-index, like integer
-  take end-index, like integer, need false
+  take
+    end-index
+    like integer
+    need false
   like text
   send back
     call value/substring

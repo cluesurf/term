@@ -56,7 +56,9 @@ test <anchors are kept when asked>
     call read-raw(text <tree base\n  host env, \<prod\>\n\nhost one\n  fuse base\n>)
   want hold
     call is-equal
-      call pack(read file/root, read file/trees)
+      call pack
+        read file/root
+        read file/trees
       text <t(base,h(env,\<prod\>))\nh(one,f(base))\n>
 
 # a found value as text, `none` when there is none, so a test can compare
@@ -103,7 +105,9 @@ test <fill refuses a value that does not fit, naming the path>
     take problem
     save refused, read problem/link/path
   want hold
-    call is-equal(read refused, text <a/b/1>)
+    call is-equal
+      read refused
+      text <a/b/1>
 
 test <text that is not data is a defect naming the rule>
   save rule, text <>
@@ -113,7 +117,9 @@ test <text that is not data is a defect naming the rule>
     take problem
     save rule, read problem/link/rule
   want hold
-    call is-equal(read rule, text <"x" has 2 values. A list is written "list x">)
+    call is-equal
+      read rule
+      text <"x" has 2 values. A list is written "list x">
 
 test <a stream reads line by line, a later anchor replacing the earlier>
   want hold
@@ -126,5 +132,7 @@ test <a stream writer declares an anchor before the line that fuses it>
     call read-raw(text <tree base\n  host env, \<prod\>\n\ntree unused\n  host a, 1\n\nhost one\n  fuse base\n>)
   want hold
     call is-equal
-      call write-lines(read file/root, read file/trees)
+      call write-lines
+        read file/root
+        read file/trees
       text <t(base,h(env,\<prod\>))\nh(one,f(base))\n>

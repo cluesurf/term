@@ -278,7 +278,11 @@ task utf-8-code-points
             read k
             read width
         hook hold
-          save at, call add(read i, read k)
+          save
+            at
+            call add
+              read i
+              read k
           fork test
             hook test
               call is-below
@@ -316,7 +320,11 @@ task utf-8-code-points
         hook miss
           call points/push
             read point
-      save i, call add(read i, read width)
+      save
+        i
+        call add
+          read i
+          read width
   send back, read points
 
 # the UTF-16 code units of a codepoint list, supplementary codepoints as surrogate pairs

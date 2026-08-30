@@ -20,4 +20,7 @@ task exit
 # `id` is the worker number on the browser backend, where a Worker stands in for the process
 form child
   link dock, mark private
-  link id, like size, need false
+  link
+    id
+    like size
+    need false

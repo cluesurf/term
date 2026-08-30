@@ -19,10 +19,18 @@ task sample-offsets
     like number
   save result
     make list
-  call push(read result, code 0)
-  call push(read result, code 20)
-  call push(read result, code 20)
-  call push(read result, code 96)
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 20
+  call push
+    read result
+    code 20
+  call push
+    read result
+    code 96
   send back, read result
 
 task sample-loca-table
@@ -35,39 +43,53 @@ test <a short-format table round trips every offset>
   save reread
     call read-otf-loca-table
       call make-cursor
-        call write-otf-loca-table(call sample-loca-table, true)
+        call write-otf-loca-table
+          call sample-loca-table
+          true
       code 3
       true
   save offsets, read reread/offsets
   want hold
     call is-equal
-      call get(read offsets, code 3)
+      call get
+        read offsets
+        code 3
       code 96
 
 test <a short-format table's middle empty glyph reads as a zero-length span>
   save reread
     call read-otf-loca-table
       call make-cursor
-        call write-otf-loca-table(call sample-loca-table, true)
+        call write-otf-loca-table
+          call sample-loca-table
+          true
       code 3
       true
   save offsets, read reread/offsets
   want hold
     call is-equal
-      call get(read offsets, code 1)
-      call get(read offsets, code 2)
+      call get
+        read offsets
+        code 1
+      call get
+        read offsets
+        code 2
 
 test <a long-format table round trips every offset>
   save reread
     call read-otf-loca-table
       call make-cursor
-        call write-otf-loca-table(call sample-loca-table, false)
+        call write-otf-loca-table
+          call sample-loca-table
+          false
       code 3
       false
   save offsets, read reread/offsets
   want hold
     call is-equal
-      call get(read offsets, code 3)
+      call get
+        read offsets
+        code 3
       code 96
 
 test <a long-format offset above the short format's 16-bit*2 ceiling round trips>
@@ -75,15 +97,23 @@ test <a long-format offset above the short format's 16-bit*2 ceiling round trips
     make otf-loca-table
       bind offsets
         make list
-  call push(read table/offsets, code 0)
-  call push(read table/offsets, code 200000)
+  call push
+    read table/offsets
+    code 0
+  call push
+    read table/offsets
+    code 200000
   save reread
     call read-otf-loca-table
       call make-cursor
-        call write-otf-loca-table(read table, false)
+        call write-otf-loca-table
+          read table
+          false
       code 1
       false
   want hold
     call is-equal
-      call get(read reread/offsets, code 1)
+      call get
+        read reread/offsets
+        code 1
       code 200000

@@ -40,49 +40,109 @@ task status-of
   take case, like text
   like u16
   fork test
-    hook test, call is-equal(read case, text <defect>)
+    hook
+      test
+      call is-equal
+        read case
+        text <defect>
     hook hold
       send back, code 400
-    hook test, call is-equal(read case, text <omission>)
+    hook
+      test
+      call is-equal
+        read case
+        text <omission>
     hook hold
       send back, code 400
-    hook test, call is-equal(read case, text <mismatch>)
+    hook
+      test
+      call is-equal
+        read case
+        text <mismatch>
     hook hold
       send back, code 400
-    hook test, call is-equal(read case, text <anonymity>)
+    hook
+      test
+      call is-equal
+        read case
+        text <anonymity>
     hook hold
       send back, code 401
-    hook test, call is-equal(read case, text <denial>)
+    hook
+      test
+      call is-equal
+        read case
+        text <denial>
     hook hold
       send back, code 403
-    hook test, call is-equal(read case, text <absence>)
+    hook
+      test
+      call is-equal
+        read case
+        text <absence>
     hook hold
       send back, code 404
-    hook test, call is-equal(read case, text <conflict>)
+    hook
+      test
+      call is-equal
+        read case
+        text <conflict>
     hook hold
       send back, code 409
-    hook test, call is-equal(read case, text <shortage>)
+    hook
+      test
+      call is-equal
+        read case
+        text <shortage>
     hook hold
       send back, code 413
-    hook test, call is-equal(read case, text <excess>)
+    hook
+      test
+      call is-equal
+        read case
+        text <excess>
     hook hold
       send back, code 413
-    hook test, call is-equal(read case, text <exclusion>)
+    hook
+      test
+      call is-equal
+        read case
+        text <exclusion>
     hook hold
       send back, code 415
-    hook test, call is-equal(read case, text <refusal>)
+    hook
+      test
+      call is-equal
+        read case
+        text <refusal>
     hook hold
       send back, code 422
-    hook test, call is-equal(read case, text <overage>)
+    hook
+      test
+      call is-equal
+        read case
+        text <overage>
     hook hold
       send back, code 429
-    hook test, call is-equal(read case, text <outage>)
+    hook
+      test
+      call is-equal
+        read case
+        text <outage>
     hook hold
       send back, code 502
-    hook test, call is-equal(read case, text <overload>)
+    hook
+      test
+      call is-equal
+        read case
+        text <overload>
     hook hold
       send back, code 503
-    hook test, call is-equal(read case, text <timeout>)
+    hook
+      test
+      call is-equal
+        read case
+        text <timeout>
     hook hold
       send back, code 504
   send back, code 500
@@ -213,11 +273,29 @@ task tell-of
 task expose
   take e, like exception
   like response
-  save like, call like-of(read e/host, read e/form)
-  save told, call tell-of(read e/host, read e/form)
+  save
+    like
+    call like-of
+      read e/host
+      read e/form
+  save
+    told
+    call tell-of
+      read e/host
+      read e/form
   save body, call make-object
-  save body, call set-field(read body, text <form>, call from-text(text <exception>))
-  save body, call set-field(read body, text <code>, call from-text(read e/code))
+  save
+    body
+    call set-field
+      read body
+      text <form>
+      call from-text text <exception>
+  save
+    body
+    call set-field
+      read body
+      text <code>
+      call from-text read e/code
   fork case, read told
     case some
       link entry
@@ -226,8 +304,18 @@ task expose
         hook test, read entry/base/alias
         hook hold
           save case, call case-of(read entry/base/alias)
-      save body, call set-field(read body, text <case>, call from-text(read case))
-      save body, call set-field(read body, text <note>, call from-text(read entry/base/note))
+      save
+        body
+        call set-field
+          read body
+          text <case>
+          call from-text read case
+      save
+        body
+        call set-field
+          read body
+          text <note>
+          call from-text read entry/base/note
       walk list
         read entry/base/link
         hook next
@@ -239,7 +327,12 @@ task expose
                 read prop
               read e/link/{prop}
     case none
-      save body, call set-field(read body, text <case>, call from-text(read like))
+      save
+        body
+        call set-field
+          read body
+          text <case>
+          call from-text read like
   send back
     make response
       bind status, call status-of(read like)
@@ -327,7 +420,12 @@ task errors-page
 task error-page
   take case, like text
   like response
-  save form, call replace-all(read case, text <->, text <_>)
+  save
+    form
+    call replace-all
+      read case
+      text <->
+      text <_>
   walk list
     call hive-roll
       text <tell>
@@ -363,7 +461,11 @@ task render-error
   take case, like text
   like response
   save form, call bare-of(read entry/name)
-  save like, call like-of(read entry/host, read form)
+  save
+    like
+    call like-of
+      read entry/host
+      read form
   save status, call status-of(read like)
   save note, read entry/base/note
   save hint, text <>

@@ -395,16 +395,16 @@ task ten-zeros
     like u8
   save result
     make list
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
   send back, read result
 
 task four-zeros
@@ -412,10 +412,10 @@ task four-zeros
     like u8
   save result
     make list
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
+  call push(read(result), code(0))
   send back, read result
 
 task round-otf-os2
@@ -505,21 +505,21 @@ task round-otf-loca
   like text
   save offsets
     make list
-  call push(read offsets, code 0)
-  call push(read offsets, code 20)
-  call push(read offsets, code 20)
-  call push(read offsets, code 96)
+  call push(read(offsets), code(0))
+  call push(read(offsets), code(20))
+  call push(read(offsets), code(20))
+  call push(read(offsets), code(96))
   save table
     make otf-loca-table
       bind offsets, read offsets
   save bytes
-    call write-otf-loca-table(read table, true)
+    call write-otf-loca-table(read(table), true)
   save byte-count
     call size(read bytes)
   save reread
     call read-otf-loca-table(call make-cursor(read bytes), code 3, true)
   save last-offset
-    call get(read reread/offsets, code 3)
+    call get(read(reread/offsets), code(3))
   send back
     text <{{byte-count}}|{{last-offset}}>
 `,
@@ -557,9 +557,9 @@ task triangle-third-point-x
     case otf-glyph-simple
       link contours
       save contour
-        call get(read contours, code 0)
+        call get(read(contours), code(0))
       save point
-        call get(read contour, code 2)
+        call get(read(contour), code(2))
       send back
         read point/x
     case otf-glyph-empty
@@ -592,7 +592,7 @@ task round-otf-glyf
       bind on-curve, true
   save contours
     make list
-  call push(read contours, read contour)
+  call push(read(contours), read(contour))
   save glyph
     make otf-glyph-simple
       bind x-min, code 0
@@ -651,7 +651,7 @@ task cmap-group-1
     case otf-cmap-format-12
       link groups
       send back
-        call get(read groups, code 0)
+        call get(read(groups), code(0))
     case otf-cmap-format-4
       halt <expected a format 12 subtable, found format 4>
     case otf-cmap-format-unsupported
@@ -667,7 +667,7 @@ task round-otf-cmap
   save table
     call read-otf-cmap-table(call make-cursor(read bytes))
   save record
-    call get(read table/records, code 0)
+    call get(read(table/records), code(0))
   save group
     call cmap-group-1(read record/subtable)
   save rewritten
@@ -675,7 +675,7 @@ task round-otf-cmap
   save reread
     call read-otf-cmap-table(call make-cursor(read rewritten))
   save record-2
-    call get(read reread/records, code 0)
+    call get(read(reread/records), code(0))
   save group-2
     call cmap-group-1(read record-2/subtable)
   send back

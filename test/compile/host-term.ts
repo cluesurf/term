@@ -81,7 +81,9 @@ task keep-trees
   save file
     call read-raw(read input)
   send back
-    call write(read file/root, read file/trees)
+    call write
+      read file/root
+      read file/trees
 
 task pack-trees
   take input, like text
@@ -89,14 +91,18 @@ task pack-trees
   save file
     call read-raw(read input)
   send back
-    call pack(read file/root, read file/trees)
+    call pack
+      read file/root
+      read file/trees
 
 task probe-fill
   take input, like text
   take shape, like text
   like dynamic
   send back
-    call fill(call read(read input), call read(read shape))
+    call fill
+      call read(read input)
+      call read(read shape)
 
 task probe-melt
   take value, like dynamic
@@ -109,7 +115,9 @@ task probe-get
   take path, like text
   like text
   save found
-    call get-at(call read(read input), read path)
+    call get-at
+      call read(read input)
+      read path
   fork case, read found
     case none
       send back, text <none>
@@ -136,7 +144,9 @@ task probe-emit
   save file
     call read-raw(read input)
   send back
-    call write-lines(read file/root, read file/trees)
+    call write-lines
+      read file/root
+      read file/trees
 
 task probe-feed
   take first, like text
@@ -144,8 +154,12 @@ task probe-feed
   like text
   save reader
     call make-reader
-  call feed(read reader, read first)
-  call feed(read reader, read second)
+  call feed
+    read reader
+    read first
+  call feed
+    read reader
+    read second
   send back, read reader/hold
 `
 

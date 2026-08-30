@@ -14,7 +14,11 @@ mine loca-table
   take short-format, like boolean
 
   mine list
-    bind count, call add(read num-glyphs, code 1)
+    bind
+      count
+      call add
+        read num-glyphs
+        code 1
     mine case, read short-format
       case true
         mine int

@@ -485,7 +485,9 @@ function renderInline(group: GroupNode): string {
     .join(', ')})`
 }
 
-function renderHead(node: Node): string {
+// one node as source text. Exported so a migration can re-emit a parsed line without reimplementing how a
+// name, text literal, number or inline group is spelled.
+export function renderHead(node: Node): string {
   switch (node.kind) {
     case 'name':
       return renderParts(node.parts)
@@ -493,8 +495,11 @@ function renderHead(node: Node): string {
       return `<${renderParts(node.parts)}>`
     case 'integer':
       return String(node.value)
+    // the TOKEN text, not the value: `String(1.0)` is `"1"`, which re-reads as an INTEGER and silently changes
+    // the type (`like decimal` becomes `like number`, and Rust then refuses to multiply a float by an integer).
+    // `radix` already prints its token for the same reason.
     case 'decimal':
-      return String(node.value)
+      return node.token.text
     case 'radix':
       return node.token.text
     case 'group':

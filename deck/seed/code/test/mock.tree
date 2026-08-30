@@ -4,7 +4,10 @@ form mock
 
 task make
   take returns, need false
-  take handler, like task, need false
+  take
+    handler
+    like task
+    need false
   like mock
 
 task replace
@@ -13,7 +16,10 @@ task replace
 
 task read
   take mock, like mock
-  take field, like text, fall text <calls>
+  take
+    field
+    like text
+    fall text <calls>
 
 task reset
   take mock, like mock

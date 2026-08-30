@@ -81,21 +81,37 @@ mine cmap-subtable-format-4
   mine skip
     bind width, code 6
   mine list
-    bind count, read seg-count-x2, divide, code 2
+    bind
+      count
+      read seg-count-x2
+      divide
+      code 2
     mine form, form ushort
     send end-codes
   mine skip
     bind width, code 2
   mine list
-    bind count, read seg-count-x2, divide, code 2
+    bind
+      count
+      read seg-count-x2
+      divide
+      code 2
     mine form, form ushort
     send start-codes
   mine list
-    bind count, read seg-count-x2, divide, code 2
+    bind
+      count
+      read seg-count-x2
+      divide
+      code 2
     mine form, form short
     send id-deltas
   mine list
-    bind count, read seg-count-x2, divide, code 2
+    bind
+      count
+      read seg-count-x2
+      divide
+      code 2
     mine form, form ushort
     send id-range-offsets
   mine list

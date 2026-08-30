@@ -217,7 +217,10 @@ form list
   task get-every-match-position
     take self
     take pattern
-    free positions, like list, like u32
+    free
+      positions
+      like list
+      like u32
 
   task get-first-match-position
     take self

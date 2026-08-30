@@ -2,27 +2,42 @@
 # Assertion: assert expectations about a value, raising a kink on failure. The basis of the test helpers.
 
 mask assertion
-  head other, like dimension, base self
+  head
+    other
+    like dimension
+    base self
 
   task assert-equal
     take self
     take other, like other
-    take message, like text, need false
+    take
+      message
+      like text
+      need false
     like void
 
   task assert-not-equal
     take self
     take other, like other
-    take message, like text, need false
+    take
+      message
+      like text
+      need false
     like void
 
 mask truth-assertion
   task assert-true
     take self
-    take message, like text, need false
+    take
+      message
+      like text
+      need false
     like void
 
   task assert-false
     take self
-    take message, like text, need false
+    take
+      message
+      like text
+      need false
     like void

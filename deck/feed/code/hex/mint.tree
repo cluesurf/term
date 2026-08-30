@@ -9,6 +9,10 @@ mint hex
 mint hex-byte
   take value, like u8
   mint hex-digit
-    call shift-right(read value, code 4)
+    call shift-right
+      read value
+      code 4
   mint hex-digit
-    call bitwise-and(read value, code 0x0f)
+    call bitwise-and
+      read value
+      code 0x0f

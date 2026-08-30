@@ -45,11 +45,17 @@ task read-otf-cmap-segments
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read count)
+      call is-below
+        read index
+        read count
     hook hold
-      call push(read result, call read-u16(read cursor))
+      call push
+        read result
+        call read-u16 read cursor
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back, read result
 
 task read-otf-cmap-subtable-format-4
@@ -62,43 +68,79 @@ task read-otf-cmap-subtable-format-4
   save seg-count-x2
     call read-u16(read cursor)
   save seg-count
-    call divide(read seg-count-x2, code 2)
+    call divide
+      read seg-count-x2
+      code 2
   call read-u16(read cursor)
   call read-u16(read cursor)
   call read-u16(read cursor)
   save end-codes
-    call read-otf-cmap-segments(read cursor, read seg-count)
+    call read-otf-cmap-segments
+      read cursor
+      read seg-count
   call read-u16(read cursor)
   save start-codes
-    call read-otf-cmap-segments(read cursor, read seg-count)
+    call read-otf-cmap-segments
+      read cursor
+      read seg-count
   save id-deltas
-    call read-otf-cmap-segments(read cursor, read seg-count)
+    call read-otf-cmap-segments
+      read cursor
+      read seg-count
   save id-range-offsets
-    call read-otf-cmap-segments(read cursor, read seg-count)
+    call read-otf-cmap-segments
+      read cursor
+      read seg-count
   save segments
     make list
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read seg-count)
+      call is-below
+        read index
+        read seg-count
     hook hold
       call push
         read segments
         make otf-cmap-segment
-          bind end-code, call get(read end-codes, read index)
-          bind start-code, call get(read start-codes, read index)
-          bind id-delta, call get(read id-deltas, read index)
-          bind id-range-offset, call get(read id-range-offsets, read index)
+          bind
+            end-code
+            call get
+              read end-codes
+              read index
+          bind
+            start-code
+            call get
+              read start-codes
+              read index
+          bind
+            id-delta
+            call get
+              read id-deltas
+              read index
+          bind
+            id-range-offset
+            call get
+              read id-range-offsets
+              read index
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   save glyph-id-array-count
     call divide
       call subtract
         read length
-        call add(code 16, call multiply(read seg-count, code 8))
+        call add
+          code 16
+          call multiply
+            read seg-count
+            code 8
       code 2
   save glyph-id-array
-    call read-otf-cmap-segments(read cursor, read glyph-id-array-count)
+    call read-otf-cmap-segments
+      read cursor
+      read glyph-id-array-count
   send back
     make otf-cmap-format-4
       bind language, read language
@@ -115,7 +157,9 @@ task read-otf-cmap-groups
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read count)
+      call is-below
+        read index
+        read count
     hook hold
       call push
         read result
@@ -124,7 +168,9 @@ task read-otf-cmap-groups
           bind end-char-code, call read-u32(read cursor)
           bind start-glyph-id, call read-u32(read cursor)
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back, read result
 
 task read-otf-cmap-subtable-format-12
@@ -138,7 +184,9 @@ task read-otf-cmap-subtable-format-12
   save num-groups
     call read-u32(read cursor)
   save groups
-    call read-otf-cmap-groups(read cursor, read num-groups)
+    call read-otf-cmap-groups
+      read cursor
+      read num-groups
   send back
     make otf-cmap-format-12
       bind language, read language
@@ -151,12 +199,16 @@ task read-otf-cmap-subtable
     call read-u16(read cursor)
   fork test
     hook test
-      call is-equal(read format, code 4)
+      call is-equal
+        read format
+        code 4
     hook hold
       send back
         call read-otf-cmap-subtable-format-4(read cursor)
     hook test
-      call is-equal(read format, code 12)
+      call is-equal
+        read format
+        code 12
     hook hold
       send back
         call read-otf-cmap-subtable-format-12(read cursor)
@@ -175,10 +227,15 @@ task read-otf-cmap-encoding-record
   save subtable-offset
     call read-u32(read cursor)
   save prior
-    call seek(read cursor, read subtable-offset, read table-start)
+    call seek
+      read cursor
+      read subtable-offset
+      read table-start
   save subtable
     call read-otf-cmap-subtable(read cursor)
-  call seek(read cursor, read prior)
+  call seek
+    read cursor
+    read prior
   send back
     make otf-cmap-encoding-record
       bind platform-id, read platform-id
@@ -200,13 +257,19 @@ task read-otf-cmap-table
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read table-count)
+      call is-below
+        read index
+        read table-count
     hook hold
       call push
         read records
-        call read-otf-cmap-encoding-record(read cursor, read table-start)
+        call read-otf-cmap-encoding-record
+          read cursor
+          read table-start
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back
     make otf-cmap-table
       bind version, read version
@@ -222,10 +285,16 @@ task otf-cmap-search-hint-power
   save power, code 1
   walk test
     hook test
-      call is-maximum(call multiply(read power, code 2), read value)
+      call is-maximum
+        call multiply
+          read power
+          code 2
+        read value
     hook hold
       save power
-        call multiply(read power, code 2)
+        call multiply
+          read power
+          code 2
   send back, read power
 
 task otf-cmap-search-hint-selector
@@ -235,12 +304,20 @@ task otf-cmap-search-hint-selector
   save selector, code 0
   walk test
     hook test
-      call is-maximum(call multiply(read power, code 2), read value)
+      call is-maximum
+        call multiply
+          read power
+          code 2
+        read value
     hook hold
       save power
-        call multiply(read power, code 2)
+        call multiply
+          read power
+          code 2
       save selector
-        call add(read selector, code 1)
+        call add
+          read selector
+          code 1
   send back, read selector
 
 task write-otf-cmap-format-4-bytes
@@ -256,45 +333,81 @@ task write-otf-cmap-format-4-bytes
   save seg-count
     call size(read segments)
   save seg-count-x2
-    call multiply(read seg-count, code 2)
+    call multiply
+      read seg-count
+      code 2
   save length
     call add
-      call add(code 16, call multiply(read seg-count, code 8))
+      call add
+        code 16
+        call multiply
+          read seg-count
+          code 8
       call multiply(call size(read glyph-id-array), code 2)
   save search-power
     call otf-cmap-search-hint-power(read seg-count)
   save search-range
-    call multiply(read search-power, code 2)
+    call multiply
+      read search-power
+      code 2
   save writer
     call make-writer
-  call write-u16(read writer, code 4)
-  call write-u16(read writer, read length)
-  call write-u16(read writer, read language)
-  call write-u16(read writer, read seg-count-x2)
-  call write-u16(read writer, read search-range)
-  call write-u16(read writer, call otf-cmap-search-hint-selector(read seg-count))
-  call write-u16(read writer, call subtract(read seg-count-x2, read search-range))
+  call write-u16
+    read writer
+    code 4
+  call write-u16
+    read writer
+    read length
+  call write-u16
+    read writer
+    read language
+  call write-u16
+    read writer
+    read seg-count-x2
+  call write-u16
+    read writer
+    read search-range
+  call write-u16
+    read writer
+    call otf-cmap-search-hint-selector read seg-count
+  call write-u16
+    read writer
+    call subtract
+      read seg-count-x2
+      read search-range
   walk list, read segments
     hook next
       take site, name segment
-      call write-u16(read writer, read segment/end-code)
-  call write-u16(read writer, code 0)
+      call write-u16
+        read writer
+        read segment/end-code
+  call write-u16
+    read writer
+    code 0
   walk list, read segments
     hook next
       take site, name segment
-      call write-u16(read writer, read segment/start-code)
+      call write-u16
+        read writer
+        read segment/start-code
   walk list, read segments
     hook next
       take site, name segment
-      call write-u16(read writer, read segment/id-delta)
+      call write-u16
+        read writer
+        read segment/id-delta
   walk list, read segments
     hook next
       take site, name segment
-      call write-u16(read writer, read segment/id-range-offset)
+      call write-u16
+        read writer
+        read segment/id-range-offset
   walk list, read glyph-id-array
     hook next
       take site, name value
-      call write-u16(read writer, read value)
+      call write-u16
+        read writer
+        read value
   send back
     call to-bytes(read writer)
 
@@ -308,20 +421,40 @@ task write-otf-cmap-format-12-bytes
   save num-groups
     call size(read groups)
   save length
-    call add(code 16, call multiply(read num-groups, code 12))
+    call add
+      code 16
+      call multiply
+        read num-groups
+        code 12
   save writer
     call make-writer
-  call write-u16(read writer, code 12)
-  call write-u16(read writer, code 0)
-  call write-u32(read writer, read length)
-  call write-u32(read writer, read language)
-  call write-u32(read writer, read num-groups)
+  call write-u16
+    read writer
+    code 12
+  call write-u16
+    read writer
+    code 0
+  call write-u32
+    read writer
+    read length
+  call write-u32
+    read writer
+    read language
+  call write-u32
+    read writer
+    read num-groups
   walk list, read groups
     hook next
       take site, name group
-      call write-u32(read writer, read group/start-char-code)
-      call write-u32(read writer, read group/end-char-code)
-      call write-u32(read writer, read group/start-glyph-id)
+      call write-u32
+        read writer
+        read group/start-char-code
+      call write-u32
+        read writer
+        read group/end-char-code
+      call write-u32
+        read writer
+        read group/start-glyph-id
   send back
     call to-bytes(read writer)
 
@@ -335,12 +468,17 @@ task write-otf-cmap-subtable-bytes
       link segments
       link glyph-id-array
       send back
-        call write-otf-cmap-format-4-bytes(read language, read segments, read glyph-id-array)
+        call write-otf-cmap-format-4-bytes
+          read language
+          read segments
+          read glyph-id-array
     case otf-cmap-format-12
       link language
       link groups
       send back
-        call write-otf-cmap-format-12-bytes(read language, read groups)
+        call write-otf-cmap-format-12-bytes
+          read language
+          read groups
     case otf-cmap-format-unsupported
       halt <cannot write an unsupported cmap subtable format>
 
@@ -360,29 +498,55 @@ task write-otf-cmap-table
         call write-otf-cmap-subtable-bytes(read record/subtable)
   save writer
     call make-writer
-  call write-u16(read writer, read table/version)
-  call write-u16(read writer, read record-count)
+  call write-u16
+    read writer
+    read table/version
+  call write-u16
+    read writer
+    read record-count
   save offset
-    call add(code 4, call multiply(read record-count, code 8))
+    call add
+      code 4
+      call multiply
+        read record-count
+        code 8
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read record-count)
+      call is-below
+        read index
+        read record-count
     hook hold
       save record
-        call get(read table/records, read index)
+        call get
+          read table/records
+          read index
       save subtable-bytes
-        call get(read subtable-bytes-list, read index)
-      call write-u16(read writer, read record/platform-id)
-      call write-u16(read writer, read record/encoding-id)
-      call write-u32(read writer, read offset)
+        call get
+          read subtable-bytes-list
+          read index
+      call write-u16
+        read writer
+        read record/platform-id
+      call write-u16
+        read writer
+        read record/encoding-id
+      call write-u32
+        read writer
+        read offset
       save offset
-        call add(read offset, call size(read subtable-bytes))
+        call add
+          read offset
+          call size read subtable-bytes
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   walk list, read subtable-bytes-list
     hook next
       take site, name subtable-bytes
-      call write-bytes(read writer, read subtable-bytes)
+      call write-bytes
+        read writer
+        read subtable-bytes
   send back
     call to-bytes(read writer)

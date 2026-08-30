@@ -13,9 +13,18 @@ load @term/seed/code/kink
 task make
   take code, like text
   take message, like text
-  take fields, like hash, need false
-  take cause, like kink, need false
-  take trace, like boolean, fall false
+  take
+    fields
+    like hash
+    need false
+  take
+    cause
+    like kink
+    need false
+  take
+    trace
+    like boolean
+    fall false
   send back
     make kink
       bind code, read code

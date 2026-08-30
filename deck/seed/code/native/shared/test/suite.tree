@@ -124,9 +124,18 @@ task suite-describe
 
 task suite-run
   note async
-  take filter, like text, need false
-  take timeout, like size, fall 5000
-  take parallel, like boolean, fall false
+  take
+    filter
+    like text
+    need false
+  take
+    timeout
+    like size
+    fall 5000
+  take
+    parallel
+    like boolean
+    fall false
   like report
 
   save passed, code 0

@@ -27,27 +27,39 @@ mine gzip
 
   mine maybe
     test
-      call bitwise-and(read flags, code 0x04)
+      call
+        bitwise-and
+          read flags
+          code 0x04
     mine form, form extra-field
     send extra
 
   mine maybe
     test
-      call bitwise-and(read flags, code 0x08)
+      call
+        bitwise-and
+          read flags
+          code 0x08
     mine until
       mine byte, code 0x00
     send name
 
   mine maybe
     test
-      call bitwise-and(read flags, code 0x10)
+      call
+        bitwise-and
+          read flags
+          code 0x10
     mine until
       mine byte, code 0x00
     send comment
 
   mine maybe
     test
-      call bitwise-and(read flags, code 0x02)
+      call
+        bitwise-and
+          read flags
+          code 0x02
     mine int
       bind width, code 2
       bind order, term little

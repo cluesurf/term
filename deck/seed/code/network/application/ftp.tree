@@ -13,7 +13,10 @@ host ftp-data-type
 # a control-channel command: a verb and an optional argument
 form ftp-command
   link verb, like text
-  link argument, like text, need false
+  link
+    argument
+    like text
+    need false
 
 # a control-channel reply: a three-digit code and a human message
 form ftp-reply

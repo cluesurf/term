@@ -23,6 +23,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { Repository } from '@term/base/code/repo/repo'
+import { isMark, mintMark } from '@term/base/code/base/mark'
 import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
 import { MemoryRefStore } from '@term/base/code/store/ref-store'
 import { commitChanges } from '@term/base/code/project/feed'
@@ -45,6 +46,20 @@ const HOME = '.base'
 
 const CHUNKS = 'chunk.json'
 const REFS = 'ref.json'
+
+/**
+ * The repository's own identity, one uuid on one line.
+ *
+ * A projection's bookkeeping is keyed by repository and that column is a UUID, so a
+ * repository needs one before it can be projected anywhere.
+ *
+ * Persisted rather than derived from the directory name, which was the obvious first idea
+ * and is wrong: renaming or moving the directory would change the identity, and the
+ * projection's watermark would be orphaned. Nothing would report it, because a watermark
+ * for a repository nobody asks about looks exactly like a repository that has never been
+ * projected, and the next run would rebuild from empty.
+ */
+const NAME = 'repository'
 
 /**
  * Load a repository from disk.
@@ -329,6 +344,30 @@ export function callBaseList(input: { root: string; commit: string }): void {
   console.log(`\n${dataset.size} record(s)`)
 }
 
+/**
+ * This repository's uuid, minting one if it predates the file.
+ *
+ * Minted on demand rather than refused, so a repository made before identities existed
+ * starts working instead of needing a migration. It is written once and never changes.
+ */
+export function repositoryName(root: string): string {
+  const at = path.join(root, HOME, NAME)
+
+  if (fs.existsSync(at)) {
+    const held = fs.readFileSync(at, 'utf8').trim()
+
+    if (isMark(held)) {
+      return held
+    }
+  }
+
+  const minted = mintMark()
+
+  fs.writeFileSync(at, `${minted}\n`)
+
+  return minted
+}
+
 /** Create a repository here. The one write verb, because nothing else can run without it. */
 export function callBaseInit(input: { root: string }): void {
   const home = path.join(input.root, HOME)
@@ -341,6 +380,7 @@ export function callBaseInit(input: { root: string }): void {
   fs.mkdirSync(home, { recursive: true })
   fs.writeFileSync(path.join(home, CHUNKS), '{}\n')
   fs.writeFileSync(path.join(home, REFS), '{}\n')
+  fs.writeFileSync(path.join(home, NAME), `${mintMark()}\n`)
 
   console.log(`initialised an empty repository in ${HOME}/`)
 }
@@ -750,7 +790,15 @@ export async function callBaseProject(input: {
     return
   }
 
-  const repository = input.repository ?? path.basename(path.resolve(input.root))
+  const repository = input.repository ?? repositoryName(input.root)
+
+  if (!isMark(repository)) {
+    console.error(
+      `--repository must be a uuid version 4, because a projection's bookkeeping is keyed by one. Got ${repository}`,
+    )
+    process.exit(1)
+  }
+
   const pool = await openPostgres(input.into)
 
   try {
@@ -760,12 +808,32 @@ export async function callBaseProject(input: {
     // somebody else's, so only the projector's own bookkeeping is installed.
     await projector.install(forms ?? [])
 
-    const changes = commitChanges(repo, undefined, at)
-    const done = await projector.apply({ commit: at, changes })
+    // From wherever this projection already is, not from empty. The first run writes
+    // everything; a later one writes only what changed, which is what makes projecting a
+    // large repository after a small edit cheap instead of a full rewrite.
+    const from = await projector.serving()
+    const changes = commitChanges(repo, from, at)
+
+    // Every commit the span folds is recorded as applied, not just the last one, so a
+    // client that committed an intermediate commit reads it as applied rather than behind.
+    const covers = repo.commitsBetween(from, at)
+
+    const done = await projector.apply({
+      commit: at,
+      changes,
+      ...(covers.length ? { covers } : {}),
+    })
+
+    if (!done.applied) {
+      console.log(`\nalready serving ${at}. Nothing to do.`)
+
+      return
+    }
 
     console.log(
       `\nwrote ${done.writes} statement(s) into \`${repository}\`` +
-        (forms ? `, creating ${forms.length} table(s)` : ''),
+        (forms ? `, creating ${forms.length} table(s)` : '') +
+        (from ? `, advancing from ${from.slice(0, 20)}` : ', from empty'),
     )
     console.log(`serving ${at}`)
   } finally {

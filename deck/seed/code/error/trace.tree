@@ -8,7 +8,10 @@ form frame
   link column, like size
 
 task capture
-  take limit, like size, fall 10
+  take
+    limit
+    like size
+    fall 10
   like list
 
 task read

@@ -88,42 +88,75 @@ mine digits
 
 mine object
   mine char, text <{>
-  mine list, mine form, form whitespace
+  mine
+    list
+    mine form
+    form whitespace
   mine maybe
     mine form, form pair
     mine list
-      mine list, mine form, form whitespace
+      mine
+        list
+        mine form
+        form whitespace
       mine char, text <,>
-      mine list, mine form, form whitespace
+      mine
+        list
+        mine form
+        form whitespace
       mine form, form pair
     send pairs
-  mine list, mine form, form whitespace
+  mine
+    list
+    mine form
+    form whitespace
   mine char, text <}>
 
 mine pair
   take key, like text
   take value, like value
-  mine list, mine form, form whitespace
+  mine
+    list
+    mine form
+    form whitespace
   bind key
     mine form, form string
-  mine list, mine form, form whitespace
+  mine
+    list
+    mine form
+    form whitespace
   mine char, text <:>
-  mine list, mine form, form whitespace
+  mine
+    list
+    mine form
+    form whitespace
   bind value
     mine form, form value
 
 mine array
   mine char, text <[>
-  mine list, mine form, form whitespace
+  mine
+    list
+    mine form
+    form whitespace
   mine maybe
     mine form, form value
     mine list
-      mine list, mine form, form whitespace
+      mine
+        list
+        mine form
+        form whitespace
       mine char, text <,>
-      mine list, mine form, form whitespace
+      mine
+        list
+        mine form
+        form whitespace
       mine form, form value
     send items
-  mine list, mine form, form whitespace
+  mine
+    list
+    mine form
+    form whitespace
   mine char, text <]>
 
 mine true

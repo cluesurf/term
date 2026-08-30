@@ -20,10 +20,18 @@ task bytes-of-4
     like u8
   save result
     make list
-  call push(read result, code 0x01)
-  call push(read result, code 0x02)
-  call push(read result, code 0x03)
-  call push(read result, code 0x04)
+  call push
+    read result
+    code 0x01
+  call push
+    read result
+    code 0x02
+  call push
+    read result
+    code 0x03
+  call push
+    read result
+    code 0x04
   send back, read result
 
 task bytes-of-1-255
@@ -31,7 +39,9 @@ task bytes-of-1-255
     like u8
   save result
     make list
-  call push(read result, code 0xff)
+  call push
+    read result
+    code 0xff
   send back, read result
 
 test <a big-endian u32 reads high byte first>
@@ -67,7 +77,11 @@ test <a signed byte above 127 reads negative>
 test <write-int then read-int round trips, both byte orders>
   save writer
     call make-writer
-  call write-int(read writer, code 16909060, code 4, make big)
+  call write-int
+    read writer
+    code 16909060
+    code 4
+    make big
   want hold
     call is-equal
       call read-int
@@ -80,7 +94,11 @@ test <write-int then read-int round trips, both byte orders>
 test <width 8 round trips without truncating, the case a 32-bit shift would break>
   save writer
     call make-writer
-  call write-int(read writer, code 9007199254740991, code 8, make big)
+  call write-int
+    read writer
+    code 9007199254740991
+    code 8
+    make big
   want hold
     call is-equal
       call read-int
@@ -106,14 +124,18 @@ test <seek returns the cursor's prior position>
   call read-byte(read cursor)
   want hold
     call is-equal
-      call seek(read cursor, code 3)
+      call seek
+        read cursor
+        code 3
       code 1
 
 test <seek moves the cursor to the new position>
   save cursor
     call make-cursor(call bytes-of-4)
   call read-byte(read cursor)
-  call seek(read cursor, code 3)
+  call seek
+    read cursor
+    code 3
   want hold
     call is-equal
       call read-byte(read cursor)
@@ -122,7 +144,10 @@ test <seek moves the cursor to the new position>
 test <seek with a base adds it to the offset, OTF/ELF table-relative style>
   save cursor
     call make-cursor(call bytes-of-4)
-  call seek(read cursor, code 1, code 2)
+  call seek
+    read cursor
+    code 1
+    code 2
   want hold
     call is-equal
       call read-byte(read cursor)

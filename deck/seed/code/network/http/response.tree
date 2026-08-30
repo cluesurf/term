@@ -5,5 +5,8 @@ load @term/seed/code/network/http
 task read
   note async
   take response, like response
-  take format, like text, fall text <text>
+  take
+    format
+    like text
+    fall text <text>
   like text

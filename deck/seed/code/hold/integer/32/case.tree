@@ -15,15 +15,27 @@ host suite
     host zero
       host a, code 0
       host b, code 0
-      host r, make some(bind value, code 0)
+      host
+        r
+        make some
+          bind value
+          code 0
     host small
       host a, code 0
       host b, code 1
-      host r, make some(bind value, code 1)
+      host
+        r
+        make some
+          bind value
+          code 1
     host inner
       host a, code 1000
       host b, code 1000
-      host r, make some(bind value, code 2000)
+      host
+        r
+        make some
+          bind value
+          code 2000
     host boundary-base
       host a, read max
       host b, code 1

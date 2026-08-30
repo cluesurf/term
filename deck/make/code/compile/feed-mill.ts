@@ -389,13 +389,10 @@ export function printNode(node: Node, depth = 0): string {
         return headText
       }
 
-      // anything else with exactly one argument prints space-separated (`read high`), not parenthesized
-      // (`read(high)`) — matches this package's own idiom; both are valid, this is just consistent with every
-      // hand-written file.
-      if (rest.length === 1) {
-        return `${headText} ${printNode(rest[0]!)}`
-      }
-
+      // ALWAYS parenthesized, never space-separated. A comma pops exactly one level, so a space-nested argument
+      // that is followed by a comma swallows what comes next: `call f(read x, code 0)` reads `code 0` as a child
+      // of `read`, and `f` gets one argument. `read(x)` closes its own group, so the comma after it lands where
+      // it should. See note/term/tree-syntax-vs-term-keywords.md.
       return `${headText}(${rest.map(printNode).join(', ')})`
     }
     default:
@@ -654,14 +651,14 @@ function compileNamedRule(
     out.push(`task ${taskName}`, `  take cursor, like ${ops.cursorType}`)
     out.push(...returnTypeOf(name, ops, grammar).map(line => `  ${line}`))
     out.push('  save result', '    make list', '  walk test', '    hook test')
-    out.push(`      call not, call ${ops.atEnd}(read cursor)`)
+    out.push(`      call not, call ${ops.atEnd}(read(cursor))`)
     out.push('    hook hold')
 
     compileSequence(inner.children, 3, ops, grammar, scope, nextHelperName, out, helpers)
 
     const captured = scope.sends[scope.sends.length - 1] ?? 'item'
 
-    out.push(`      call push(read result, read ${captured})`)
+    out.push(`      call push(read(result), read(${captured}))`)
     out.push('  send back, read result')
 
     return
@@ -742,7 +739,7 @@ function compileExpr(
       const localName = rule.send ?? `match-${sends.length}`
 
       bindCapture(scope, localName, rule, ops, grammar)
-      out.push(`${p}save ${localName}`, `${p}  call read-${rule.name}(read cursor)`)
+      out.push(`${p}save ${localName}`, `${p}  call read-${rule.name}(read(cursor))`)
 
       return
     }
@@ -755,7 +752,7 @@ function compileExpr(
       const localName = rule.send ?? `char-${sends.length}`
 
       bindCapture(scope, localName, rule, ops, grammar)
-      out.push(`${p}save ${localName}`, `${p}  call ${helperName}(read cursor)`)
+      out.push(`${p}save ${localName}`, `${p}  call ${helperName}(read(cursor))`)
 
       return
     }
@@ -766,7 +763,7 @@ function compileExpr(
       bindCapture(scope, localName, rule, ops, grammar)
 
       if (rule.literal === undefined) {
-        out.push(`${p}save ${localName}`, `${p}  call ${ops.advance}(read cursor)`)
+        out.push(`${p}save ${localName}`, `${p}  call ${ops.advance}(read(cursor))`)
 
         return
       }
@@ -775,11 +772,11 @@ function compileExpr(
       // fixed value): read it, halt if it isn't what the format requires.
       out.push(`${p}fork test`)
       out.push(`${p}  hook test`)
-      out.push(`${p}    call not, call is-equal(call ${ops.peekCode}(read cursor), code ${rule.literal})`)
+      out.push(`${p}    call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${rule.literal})`)
       out.push(`${p}  hook hold`)
       out.push(`${p}    halt <expected byte ${rule.literal}>`)
       out.push(`${p}save ${localName}`)
-      out.push(`${p}  call ${ops.advance}(read cursor)`)
+      out.push(`${p}  call ${ops.advance}(read(cursor))`)
 
       return
     }
@@ -789,7 +786,7 @@ function compileExpr(
 
       bindCapture(scope, localName, rule, ops, grammar)
       out.push(`${p}save ${localName}`)
-      out.push(`${p}  call read-int(read cursor, code ${rule.width}, make ${rule.order}, make ${rule.sign})`)
+      out.push(`${p}  call read-int(read(cursor), code ${rule.width}, make(${rule.order}), make(${rule.sign}))`)
 
       return
     }
@@ -799,7 +796,7 @@ function compileExpr(
 
       bindCapture(scope, localName, rule, ops, grammar)
       out.push(`${p}save ${localName}`)
-      out.push(`${p}  call read-bytes(read cursor, ${printNode(rule.width)})`)
+      out.push(`${p}  call read-bytes(read(cursor), ${printNode(rule.width)})`)
 
       return
     }
@@ -810,7 +807,7 @@ function compileExpr(
 
       helpers.push(...compileUntilHelper(helperName, rule.terminator, ops))
       bindCapture(scope, localName, rule, ops, grammar)
-      out.push(`${p}save ${localName}`, `${p}  call ${helperName}(read cursor)`)
+      out.push(`${p}save ${localName}`, `${p}  call ${helperName}(read(cursor))`)
 
       return
     }
@@ -823,7 +820,7 @@ function compileExpr(
       helpers.push(...built.lines)
       bindCapture(scope, localName, rule, ops, grammar)
 
-      const args = ['read cursor', ...built.params.map(name => `read ${name}`)].join(', ')
+      const args = ['read(cursor)', ...built.params.map(name => `read(${name})`)].join(', ')
 
       out.push(`${p}save ${localName}`, `${p}  call ${helperName}(${args})`)
 
@@ -864,7 +861,7 @@ function compileAnyHelper(name: string, branches: FeedMineRule[], ops: Ops): str
     `  take cursor, like ${ops.cursorType}`,
     `  ${element}`,
     '  save code',
-    `    call ${ops.peekCode}(read cursor)`,
+    `    call ${ops.peekCode}(read(cursor))`,
   ]
 
   ranges.forEach((branch, i) => {
@@ -877,11 +874,11 @@ function compileAnyHelper(name: string, branches: FeedMineRule[], ops: Ops): str
 
     lines.push('    hook test')
     lines.push('      call and')
-    lines.push(`        call is-minimum(read code, code ${baseCode})`)
-    lines.push(`        call is-maximum(read code, code ${headCode})`)
+    lines.push(`        call is-minimum(read(code), code ${baseCode})`)
+    lines.push(`        call is-maximum(read(code), code ${headCode})`)
     lines.push('    hook hold')
     lines.push('      send back')
-    lines.push(`        call ${ops.advance}(read cursor)`)
+    lines.push(`        call ${ops.advance}(read(cursor))`)
   })
 
   lines.push(`  halt <expected a match for ${name}>`)
@@ -909,19 +906,19 @@ function compileUntilHelper(name: string, terminator: number, ops: Ops): string[
   lines.push('  walk test')
   lines.push('    hook test')
   lines.push('      call and')
-  lines.push(`        call not, call ${ops.atEnd}(read cursor)`)
-  lines.push(`        call not, call is-equal(call ${ops.peekCode}(read cursor), code ${terminator})`)
+  lines.push(`        call not, call ${ops.atEnd}(read(cursor))`)
+  lines.push(`        call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${terminator})`)
   lines.push('    hook hold')
-  lines.push(`      call push(read result, call ${ops.advance}(read cursor))`)
+  lines.push(`      call push(read(result), call ${ops.advance}(read(cursor)))`)
   lines.push('  fork test')
   lines.push('    hook test')
-  lines.push(`      call not, call ${ops.atEnd}(read cursor)`)
+  lines.push(`      call not, call ${ops.atEnd}(read(cursor))`)
   lines.push('    hook hold')
-  lines.push(`      call ${ops.advance}(read cursor)`)
+  lines.push(`      call ${ops.advance}(read(cursor))`)
 
   if (text) {
     lines.push('  send back')
-    lines.push('    call join(read result, text <>)')
+    lines.push('    call join(read(result), text <>)')
 
     return lines
   }

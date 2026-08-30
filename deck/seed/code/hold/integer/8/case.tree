@@ -4,15 +4,27 @@ hook suite
     host zero
       host a, code 0
       host b, code 0
-      host r, make some(bind value, code 0)
+      host
+        r
+        make some
+          bind value
+          code 0
     host small
       host a, code 0
       host b, code 1
-      host r, make some(bind value, code 1)
+      host
+        r
+        make some
+          bind value
+          code 1
     host inner
       host a, code 5
       host b, code 5
-      host r, make some(bind value, code 10)
+      host
+        r
+        make some
+          bind value
+          code 10
     host boundary-base
       host a, code 255
       host b, code 1
@@ -30,27 +42,51 @@ hook suite
     host zero
       host a, code 0
       host b, code 0
-      host r, make some(bind value, code 0)
+      host
+        r
+        make some
+          bind value
+          code 0
     host small
       host a, code 1
       host b, code 0
-      host r, make some(bind value, code 1)
+      host
+        r
+        make some
+          bind value
+          code 1
     host inner
       host a, code 5
       host b, code 5
-      host r, make some(bind value, code 0)
+      host
+        r
+        make some
+          bind value
+          code 0
     host boundary-base
       host a, code 255
       host b, code 1
-      host r, make some(bind value, code 254)
+      host
+        r
+        make some
+          bind value
+          code 254
     host boundary-head
       host a, code 1
       host b, code 255
-      host r, make some(bind value, code 254)
+      host
+        r
+        make some
+          bind value
+          code 254
     host max
       host a, code 255
       host b, code 255
-      host r, make some(bind value, code 0)
+      host
+        r
+        make some
+          bind value
+          code 0
     host min-negative
       host a, code 0
       host b, code 1

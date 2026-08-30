@@ -43,7 +43,9 @@ task read-otf-hhea-table
     call read-i16(read cursor)
   save caret-offset
     call read-i16(read cursor)
-  call skip(read cursor, code 8)
+  call skip
+    read cursor
+    code 8
   save metric-data-format
     call read-i16(read cursor)
   save number-of-h-metrics
@@ -71,23 +73,59 @@ task write-otf-hhea-table
     like u8
   save writer
     call make-writer
-  call write-u16(read writer, read table/version-major)
-  call write-u16(read writer, read table/version-minor)
-  call write-i16(read writer, read table/ascender)
-  call write-i16(read writer, read table/descender)
-  call write-i16(read writer, read table/line-gap)
-  call write-u16(read writer, read table/advance-width-max)
-  call write-i16(read writer, read table/min-left-side-bearing)
-  call write-i16(read writer, read table/min-right-side-bearing)
-  call write-i16(read writer, read table/x-max-extent)
-  call write-i16(read writer, read table/caret-slope-rise)
-  call write-i16(read writer, read table/caret-slope-run)
-  call write-i16(read writer, read table/caret-offset)
-  call write-i16(read writer, code 0)
-  call write-i16(read writer, code 0)
-  call write-i16(read writer, code 0)
-  call write-i16(read writer, code 0)
-  call write-i16(read writer, read table/metric-data-format)
-  call write-u16(read writer, read table/number-of-h-metrics)
+  call write-u16
+    read writer
+    read table/version-major
+  call write-u16
+    read writer
+    read table/version-minor
+  call write-i16
+    read writer
+    read table/ascender
+  call write-i16
+    read writer
+    read table/descender
+  call write-i16
+    read writer
+    read table/line-gap
+  call write-u16
+    read writer
+    read table/advance-width-max
+  call write-i16
+    read writer
+    read table/min-left-side-bearing
+  call write-i16
+    read writer
+    read table/min-right-side-bearing
+  call write-i16
+    read writer
+    read table/x-max-extent
+  call write-i16
+    read writer
+    read table/caret-slope-rise
+  call write-i16
+    read writer
+    read table/caret-slope-run
+  call write-i16
+    read writer
+    read table/caret-offset
+  call write-i16
+    read writer
+    code 0
+  call write-i16
+    read writer
+    code 0
+  call write-i16
+    read writer
+    code 0
+  call write-i16
+    read writer
+    code 0
+  call write-i16
+    read writer
+    read table/metric-data-format
+  call write-u16
+    read writer
+    read table/number-of-h-metrics
   send back
     call to-bytes(read writer)

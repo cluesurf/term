@@ -49,13 +49,26 @@ mint cmap-subtable-format-4
   mint ushort
     read language
   mint ushort
-    call multiply, call size, read segments, code 2
+    call
+      multiply
+      call size
+      read segments
+      code 2
   mint ushort
-    call otf-cmap-search-range, call size, read segments
+    call
+      otf-cmap-search-range
+      call size
+      read segments
   mint ushort
-    call otf-cmap-search-hint-selector, call size, read segments
+    call
+      otf-cmap-search-hint-selector
+      call size
+      read segments
   mint ushort
-    call otf-cmap-range-shift, call size, read segments
+    call
+      otf-cmap-range-shift
+      call size
+      read segments
   mint list, read segments
     mint ushort
       read end-code

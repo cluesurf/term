@@ -20,7 +20,10 @@ task wait
 
 task stop
   take child, like child
-  take form, like text, fall text <gentle>
+  take
+    form
+    like text
+    fall text <gentle>
 
   fork test
     hook test
@@ -53,8 +56,14 @@ task close
 task read
   note async
   take child, like child
-  take kind, like text, fall text <stdout>
-  take format, like text, fall text <text>
+  take
+    kind
+    like text
+    fall text <stdout>
+  take
+    format
+    like text
+    fall text <text>
   like text
 
   send back

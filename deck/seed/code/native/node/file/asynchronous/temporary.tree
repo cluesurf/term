@@ -9,16 +9,29 @@ dock load
 
 task make
   note async
-  take kind, like text, fall text <file>
-  take prefix, like text, fall text <tmp->
-  take suffix, like text, fall text <>
+  take
+    kind
+    like text
+    fall text <file>
+  take
+    prefix
+    like text
+    fall text <tmp->
+  take
+    suffix
+    like text
+    fall text <>
 
   save base
     call path/join
       call os/tmpdir
       read prefix
 
-  fork test, call is-equal(read kind, text <directory>)
+  fork
+    test
+    call is-equal
+      read kind
+      text <directory>
     hook hold
       send back
         call fs-promise/mkdtemp

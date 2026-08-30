@@ -17,9 +17,15 @@ task bytes-of-3
     like u8
   save result
     make list
-  call push(read result, code 0x00)
-  call push(read result, code 0xff)
-  call push(read result, code 0x7a)
+  call push
+    read result
+    code 0x00
+  call push
+    read result
+    code 0xff
+  call push
+    read result
+    code 0x7a
   send back, read result
 
 test <write-hex lower-cases and zero-pads>

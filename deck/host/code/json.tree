@@ -47,15 +47,23 @@ load ./write
 
 task to-json
   take value, like data
-  take keep, like boolean, fall false
+  take
+    keep
+    like boolean
+    fall false
   like text
   send back
     call stringify
-      call to-dynamic(read value, read keep)
+      call to-dynamic
+        read value
+        read keep
 
 task to-dynamic
   take item, like data
-  take keep, like boolean, fall false
+  take
+    keep
+    like boolean
+    fall false
   like dynamic
   fork case, read item
     case hash
@@ -74,7 +82,13 @@ task to-dynamic
               save key
                 call snake(read entry/name)
           save out
-            call set-field(read out, read key, call to-dynamic(read entry/base, read keep))
+            call set-field
+              read out
+              read key
+              call
+                to-dynamic
+                  read entry/base
+                  read keep
       send back, read out
     case array
       link list
@@ -85,7 +99,12 @@ task to-dynamic
         hook next
           take site, name item
           save out
-            call push-item(read out, call to-dynamic(read item, read keep))
+            call push-item
+              read out
+              call
+                to-dynamic
+                  read item
+                  read keep
       send back, read out
     case text
       link value
@@ -139,13 +158,20 @@ task from-dynamic
         call array-size(read value)
       walk test
         hook test
-          call is-below(read index, read count)
+          call is-below
+            read index
+            read count
         hook hold
           call push
             read out
-            call from-dynamic(call array-item(read value, read index))
+            call from-dynamic
+              call array-item
+                read value
+                read index
           save index
-            call add(read index, code 1)
+            call add
+              read index
+              code 1
       send back
         make array
           bind list, read out
@@ -163,7 +189,14 @@ task from-dynamic
             read out
             make data-entry
               bind name, call kebab(read key)
-              bind base, call from-dynamic(call get-field(read value, read key))
+              bind
+                base
+                call
+                  from-dynamic
+                    call
+                      get-field
+                        read value
+                        read key
       send back
         make hash
           bind list, read out
@@ -199,7 +232,11 @@ task is-whole
   take value, like decimal
   like boolean
   send back
-    call is-equal(call modulo(read value, 1.0), 0.0)
+    call is-equal
+      call modulo
+        read value
+        1.0
+      0.0
 
 
 # kebab in the file, snake in JSON. A key that is not a name is left alone, both ways.
@@ -211,7 +248,10 @@ task snake
       call is-key(read key)
     hook hold
       send back
-        call replace-all(read key, text <->, text <_>)
+        call replace-all
+          read key
+          text <->
+          text <_>
   send back, read key
 
 task kebab
@@ -222,7 +262,10 @@ task kebab
       call is-snake(read key)
     hook hold
       send back
-        call replace-all(read key, text <_>, text <->)
+        call replace-all
+          read key
+          text <_>
+          text <->
   send back, read key
 
 task is-snake
@@ -231,34 +274,70 @@ task is-snake
   like boolean
   fork test
     hook test
-      call is-equal(read key/length, code 0)
+      call is-equal
+        read key/length
+        code 0
     hook hold
       send back, false
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read key/length)
+      call is-below
+        read index
+        read key/length
     hook hold
       save code
-        call char-code-at(read key, read index)
+        call char-code-at
+          read key
+          read index
       save lower
-        call and(call is-minimum(read code, code 97), call is-maximum(read code, code 122))
+        call and
+          call
+            is-minimum
+              read code
+              code 97
+          call
+            is-maximum
+              read code
+              code 122
       save digit
-        call and(call is-minimum(read code, code 48), call is-maximum(read code, code 57))
+        call and
+          call
+            is-minimum
+              read code
+              code 48
+          call
+            is-maximum
+              read code
+              code 57
       save under
-        call is-equal(read code, code 95)
+        call is-equal
+          read code
+          code 95
       fork test
         hook test
-          call and(call is-equal(read index, code 0), call not(read lower))
+          call and
+            call
+              is-equal
+                read index
+                code 0
+            call not read lower
         hook hold
           send back, false
       fork test
         hook test
-          call not(call or(read lower, call or(read digit, read under)))
+          call not
+            call or
+              read lower
+              call or
+                read digit
+                read under
         hook hold
           send back, false
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back, true
 
 load @term/seed/code/float

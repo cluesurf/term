@@ -39,7 +39,9 @@ task read-otf-head-table
   fork test
     hook test
       call not
-        call is-equal(read magic-number, code 0x5f0f3cf5)
+        call is-equal
+          read magic-number
+          code 0x5f0f3cf5
     hook hold
       halt <not an OTF head table: bad magic number>
   save flags
@@ -95,23 +97,59 @@ task write-otf-head-table
     like u8
   save writer
     call make-writer
-  call write-u16(read writer, read table/version-major)
-  call write-u16(read writer, read table/version-minor)
-  call write-i32(read writer, read table/font-revision)
-  call write-u32(read writer, read table/checksum-adjustment)
-  call write-u32(read writer, read table/magic-number)
-  call write-u16(read writer, read table/flags)
-  call write-u16(read writer, read table/units-per-em)
-  call write-i64(read writer, read table/created)
-  call write-i64(read writer, read table/modified)
-  call write-i16(read writer, read table/x-min)
-  call write-i16(read writer, read table/y-min)
-  call write-i16(read writer, read table/x-max)
-  call write-i16(read writer, read table/y-max)
-  call write-u16(read writer, read table/mac-style)
-  call write-u16(read writer, read table/lowest-rec-ppem)
-  call write-i16(read writer, read table/font-direction-hint)
-  call write-i16(read writer, read table/index-to-loc-format)
-  call write-i16(read writer, read table/glyph-data-format)
+  call write-u16
+    read writer
+    read table/version-major
+  call write-u16
+    read writer
+    read table/version-minor
+  call write-i32
+    read writer
+    read table/font-revision
+  call write-u32
+    read writer
+    read table/checksum-adjustment
+  call write-u32
+    read writer
+    read table/magic-number
+  call write-u16
+    read writer
+    read table/flags
+  call write-u16
+    read writer
+    read table/units-per-em
+  call write-i64
+    read writer
+    read table/created
+  call write-i64
+    read writer
+    read table/modified
+  call write-i16
+    read writer
+    read table/x-min
+  call write-i16
+    read writer
+    read table/y-min
+  call write-i16
+    read writer
+    read table/x-max
+  call write-i16
+    read writer
+    read table/y-max
+  call write-u16
+    read writer
+    read table/mac-style
+  call write-u16
+    read writer
+    read table/lowest-rec-ppem
+  call write-i16
+    read writer
+    read table/font-direction-hint
+  call write-i16
+    read writer
+    read table/index-to-loc-format
+  call write-i16
+    read writer
+    read table/glyph-data-format
   send back
     call to-bytes(read writer)

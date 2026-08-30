@@ -31,7 +31,10 @@ tree make-server
 
   hook bind
     task make-server
-      take handle, like task, base handle
+      take
+        handle
+        like task
+        base handle
       take port, like u16
       fuse extra-properties
 

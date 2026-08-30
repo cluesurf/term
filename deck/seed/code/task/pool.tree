@@ -4,7 +4,10 @@ form pool
   link size, like size
 
 task make
-  take size, like size, need false
+  take
+    size
+    like size
+    need false
   like pool
 
 task run

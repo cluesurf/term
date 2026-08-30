@@ -23,7 +23,10 @@ task match
   note async
   take value
   take name, like text
-  take format, like text, fall text <json>
+  take
+    format
+    like text
+    fall text <json>
 
   save path
     call resolve
@@ -86,7 +89,10 @@ task update
   note async
   take value
   take name, like text
-  take format, like text, fall text <json>
+  take
+    format
+    like text
+    fall text <json>
 
   save path
     call resolve

@@ -44,14 +44,14 @@ load @term/site/code/http/tell
 form upload-excess
   like excess
     bind note, <File too large>
-    link secret, like text, need false
-    link api-key, like text, need false
+    link secret, like(text), need false
+    link api-key, like(text), need false
 
 form quota-excess
   like excess
     bind note, <Quota exceeded>
-    link secret, like text, need false
-    link api-key, like text, need false
+    link secret, like(text), need false
+    link api-key, like(text), need false
 
 task upload
   take size, like number

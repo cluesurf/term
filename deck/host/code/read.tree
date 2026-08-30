@@ -65,7 +65,9 @@ task read-raw
           read root
       fork test
         hook test
-          call is-equal(read kind, text <tree>)
+          call is-equal
+            read kind
+            text <tree>
         hook hold
           fork test
             hook test
@@ -86,7 +88,9 @@ task read-raw
               take site, name known
               fork test
                 hook test
-                  call is-equal(read known/name, read anchor/name)
+                  call is-equal
+                    read known/name
+                    read anchor/name
                 hook hold
                   halt data-defect
                     bind rule
@@ -101,7 +105,9 @@ task read-raw
       save seen-data, true
       fork test
         hook test
-          call is-equal(read kind, text <mesh>)
+          call is-equal
+            read kind
+            text <mesh>
         hook hold
           call push
             read items
@@ -110,7 +116,9 @@ task read-raw
           turn next
       fork test
         hook test
-          call is-equal(read kind, text <fuse>)
+          call is-equal
+            read kind
+            text <fuse>
         hook hold
           call push
             read entries
@@ -124,7 +132,9 @@ task read-raw
           turn next
       fork test
         hook test
-          call is-equal(read kind, text <>)
+          call is-equal
+            read kind
+            text <>
         hook hold
           halt data-defect
             bind rule
@@ -174,36 +184,56 @@ task head-kind
   fork test
     hook test
       call or
-        call is-equal(read head, text <host>)
-        call is-equal(read head, text <h>)
+        call is-equal
+          read head
+          text <host>
+        call is-equal
+          read head
+          text <h>
     hook hold
       send back, text <host>
   fork test
     hook test
       call or
-        call is-equal(read head, text <list>)
-        call is-equal(read head, text <l>)
+        call is-equal
+          read head
+          text <list>
+        call is-equal
+          read head
+          text <l>
     hook hold
       send back, text <list>
   fork test
     hook test
       call or
-        call is-equal(read head, text <mesh>)
-        call is-equal(read head, text <m>)
+        call is-equal
+          read head
+          text <mesh>
+        call is-equal
+          read head
+          text <m>
     hook hold
       send back, text <mesh>
   fork test
     hook test
       call or
-        call is-equal(read head, text <tree>)
-        call is-equal(read head, text <t>)
+        call is-equal
+          read head
+          text <tree>
+        call is-equal
+          read head
+          text <t>
     hook hold
       send back, text <tree>
   fork test
     hook test
       call or
-        call is-equal(read head, text <fuse>)
-        call is-equal(read head, text <f>)
+        call is-equal
+          read head
+          text <fuse>
+        call is-equal
+          read head
+          text <f>
     hook hold
       send back, text <fuse>
   send back, text <>
@@ -240,7 +270,9 @@ task key-of
         hook hold
           send back, text <>
       save first
-        call get(read kids, code 0)
+        call get
+          read kids
+          code 0
       fork case, read first
         case word
           link word
@@ -284,13 +316,19 @@ task rest-of
       save index, code 1
       walk test
         hook test
-          call is-below(read index, call size(read kids))
+          call is-below
+            read index
+            call size read kids
         hook hold
           call push
             read out
-            call get(read kids, read index)
+            call get
+              read kids
+              read index
           save index
-            call add(read index, code 1)
+            call add
+              read index
+              code 1
     case word
       send back, read out
     case text
@@ -311,10 +349,16 @@ task is-scalar
       link word
       send back
         call or
-          call is-equal(read word, text <true>)
+          call is-equal
+            read word
+            text <true>
           call or
-            call is-equal(read word, text <false>)
-            call is-equal(read word, text <void>)
+            call is-equal
+              read word
+              text <false>
+            call is-equal
+              read word
+              text <void>
     case group
       link head
       link kids
@@ -322,10 +366,16 @@ task is-scalar
         call and
           call is-equal(call size(read kids), code 0)
           call or
-            call is-equal(read head, text <true>)
+            call is-equal
+              read head
+              text <true>
             call or
-              call is-equal(read head, text <false>)
-              call is-equal(read head, text <void>)
+              call is-equal
+                read head
+                text <false>
+              call is-equal
+                read head
+                text <void>
     case text
       send back, true
     case number
@@ -370,14 +420,18 @@ task read-word
   like data
   fork test
     hook test
-      call is-equal(read word, text <true>)
+      call is-equal
+        read word
+        text <true>
     hook hold
       send back
         make flag
           bind value, true
   fork test
     hook test
-      call is-equal(read word, text <false>)
+      call is-equal
+        read word
+        text <false>
     hook hold
       send back
         make flag
@@ -396,11 +450,15 @@ task read-entry
       read root
   fork test
     hook test
-      call is-equal(read name, text <>)
+      call is-equal
+        read name
+        text <>
     hook hold
       fork test
         hook test
-          call is-equal(read kind, text <list>)
+          call is-equal
+            read kind
+            text <list>
         hook hold
           halt data-defect
             bind rule, text <a "list" at this level needs a key. A nested list without one sits inside a list>
@@ -425,7 +483,9 @@ task read-entry
       read root
   fork test
     hook test
-      call is-equal(read kind, text <list>)
+      call is-equal
+        read kind
+        text <list>
     hook hold
       send back
         make data-entry
@@ -449,7 +509,9 @@ task read-entry
             read one
         hook hold
           save scalars
-            call add(read scalars, code 1)
+            call add
+              read scalars
+              code 1
         hook miss
           call push
             read blocks
@@ -457,7 +519,9 @@ task read-entry
   fork test
     hook test
       call and
-        call is-above(read scalars, code 0)
+        call is-above
+          read scalars
+          code 0
         call is-above(call size(read blocks), code 0)
     hook hold
       halt data-defect
@@ -468,7 +532,9 @@ task read-entry
         bind line, code 0
   fork test
     hook test
-      call is-above(read scalars, code 1)
+      call is-above
+        read scalars
+        code 1
     hook hold
       halt data-defect
         bind rule
@@ -484,14 +550,18 @@ task read-entry
         bind line, code 0
   fork test
     hook test
-      call is-equal(read scalars, code 1)
+      call is-equal
+        read scalars
+        code 1
     hook hold
       send back
         make data-entry
           bind name, read name
           bind base
             call read-scalar
-              call get(read rest, code 0)
+              call get
+                read rest
+                code 0
   send back
     make data-entry
       bind name, read name
@@ -523,8 +593,12 @@ task read-entries
       fork test
         hook test
           call or
-            call is-equal(read kind, text <host>)
-            call is-equal(read kind, text <list>)
+            call is-equal
+              read kind
+              text <host>
+            call is-equal
+              read kind
+              text <list>
         hook hold
           call push
             read out
@@ -534,7 +608,9 @@ task read-entries
           turn next
       fork test
         hook test
-          call is-equal(read kind, text <fuse>)
+          call is-equal
+            read kind
+            text <fuse>
         hook hold
           call push
             read out
@@ -548,7 +624,9 @@ task read-entries
           turn next
       fork test
         hook test
-          call is-equal(read kind, text <mesh>)
+          call is-equal
+            read kind
+            text <mesh>
         hook hold
           halt data-defect
             bind rule
@@ -560,7 +638,9 @@ task read-entries
             bind line, code 0
       fork test
         hook test
-          call is-equal(read kind, text <tree>)
+          call is-equal
+            read kind
+            text <tree>
         hook hold
           halt data-defect
             bind rule
@@ -608,7 +688,9 @@ task read-items
           read one
       fork test
         hook test
-          call is-equal(read kind, text <mesh>)
+          call is-equal
+            read kind
+            text <mesh>
         hook hold
           call push
             read out
@@ -617,7 +699,9 @@ task read-items
           turn next
       fork test
         hook test
-          call is-equal(read kind, text <list>)
+          call is-equal
+            read kind
+            text <list>
         hook hold
           fork test
             hook test
@@ -646,7 +730,9 @@ task read-items
           turn next
       fork test
         hook test
-          call is-equal(read kind, text <fuse>)
+          call is-equal
+            read kind
+            text <fuse>
         hook hold
           call push
             read out
@@ -657,7 +743,9 @@ task read-items
           turn next
       fork test
         hook test
-          call is-equal(read kind, text <host>)
+          call is-equal
+            read kind
+            text <host>
         hook hold
           halt data-defect
             bind rule
@@ -714,7 +802,9 @@ task read-tree
       read root
   fork test
     hook test
-      call is-equal(read name, text <>)
+      call is-equal
+        read name
+        text <>
     hook hold
       halt data-defect
         bind rule, text <"tree" needs a name>
@@ -735,17 +825,25 @@ task read-tree
           bind items
             make list
   save first
-    call get(read rest, code 0)
+    call get
+      read rest
+      code 0
   save kind
     call head-kind
       read first
   fork test
     hook test
       call or
-        call is-equal(read kind, text <host>)
+        call is-equal
+          read kind
+          text <host>
         call or
-          call is-equal(read kind, text <list>)
-          call is-equal(read kind, text <fuse>)
+          call is-equal
+            read kind
+            text <list>
+          call is-equal
+            read kind
+            text <fuse>
     hook hold
       send back
         make data-tree
@@ -808,7 +906,9 @@ task check-keys
               take site, name name
               fork test
                 hook test
-                  call is-equal(read name, read entry/name)
+                  call is-equal
+                    read name
+                    read entry/name
                 hook hold
                   halt data-defect
                     bind rule
@@ -858,7 +958,9 @@ task not-value-rule
               call quote(read head)
               call concat
                 text < is not a value. Text is written \<>
-                call concat(read head, text <\>>)
+                call concat
+                  read head
+                  text <\>>
       send back
         call concat
           call quote(read head)
@@ -870,7 +972,9 @@ task not-value-rule
           call quote(read word)
           call concat
             text < is not a value. Text is written \<>
-            call concat(read word, text <\>>)
+            call concat
+              read word
+              text <\>>
     case text
       send back, text <a text is a value>
     case number
@@ -892,7 +996,9 @@ task key-is-word
         hook hold
           send back, false
       save first
-        call get(read kids, code 0)
+        call get
+          read kids
+          code 0
       fork case, read first
         case word
           send back, true
@@ -922,7 +1028,13 @@ task is-scalar-word
   like boolean
   send back
     call or
-      call is-equal(read word, text <true>)
+      call is-equal
+        read word
+        text <true>
       call or
-        call is-equal(read word, text <false>)
-        call is-equal(read word, text <void>)
+        call is-equal
+          read word
+          text <false>
+        call is-equal
+          read word
+          text <void>

@@ -1,0 +1,25 @@
+
+task x
+  call name{{
+    something random{
+      here
+    }
+  }}
+
+boom baz
+  foo hello{{
+    world
+      bar
+        baz(bing, boop)
+  }}
+
+---
+
+task
+  x
+  call
+    name{{something(random{here})}}
+boom
+  baz
+  foo
+    hello{{world(bar(baz(bing, boop)))}}

@@ -11,7 +11,10 @@ task read
   like process-info
 
 task exit
-  take code, like size, fall 0
+  take
+    code
+    like size
+    fall 0
 
 task listen
   take signal, like text

@@ -7,7 +7,6 @@ load @term/seed/code/boolean
   find and
 
 load @term/seed/code/text
-  find char-count
   find char-at
   find char-code-at
 
@@ -31,25 +30,43 @@ task hex-digit-value
   fork test
     hook test
       call and
-        call is-minimum(read code, code 48)
-        call is-maximum(read code, code 57)
+        call is-minimum
+          read code
+          code 48
+        call is-maximum
+          read code
+          code 57
     hook hold
       send back
-        call subtract(read code, code 48)
+        call subtract
+          read code
+          code 48
     hook test
       call and
-        call is-minimum(read code, code 97)
-        call is-maximum(read code, code 102)
+        call is-minimum
+          read code
+          code 97
+        call is-maximum
+          read code
+          code 102
     hook hold
       send back
-        call subtract(read code, code 87)
+        call subtract
+          read code
+          code 87
     hook test
       call and
-        call is-minimum(read code, code 65)
-        call is-maximum(read code, code 70)
+        call is-minimum
+          read code
+          code 65
+        call is-maximum
+          read code
+          code 70
     hook hold
       send back
-        call subtract(read code, code 55)
+        call subtract
+          read code
+          code 55
     hook miss
       halt <invalid hex digit>
 
@@ -58,7 +75,9 @@ task nibble-to-hex-char
   take value, like number
   like text
   send back
-    call char-at(read hex-digits, read value)
+    call char-at
+      read hex-digits
+      read value
 
 task read-hex
   take input, like text
@@ -66,26 +85,43 @@ task read-hex
     like u8
   save result
     make list
-  save length
-    call char-count(read input)
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read length)
+      call not
+        call is-equal
+          call char-at
+            read input
+            read index
+          text <>
     hook hold
       save high
         call hex-digit-value
-          call char-code-at(read input, read index)
+          call char-code-at
+            call char-at
+              read input
+              read index
+            code 0
       save low
         call hex-digit-value
-          call char-code-at(read input, call add(read index, code 1))
+          call char-code-at
+            call char-at
+              read input
+              call add
+                read index
+                code 1
+            code 0
       call push
         read result
         call add
-          call shift-left(read high, code 4)
+          call shift-left
+            read high
+            code 4
           read low
       save index
-        call add(read index, code 2)
+        call add
+          read index
+          code 2
   send back, read result
 
 task write-hex
@@ -102,7 +138,11 @@ task write-hex
           read result
           call concat
             call nibble-to-hex-char
-              call shift-right(read value, code 4)
+              call shift-right
+                read value
+                code 4
             call nibble-to-hex-char
-              call bitwise-and(read value, code 0x0f)
+              call bitwise-and
+                read value
+                code 0x0f
   send back, read result

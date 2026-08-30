@@ -6,7 +6,10 @@ dock load
 task list
   note async
   take path, like text
-  take deep, like boolean, fall false
+  take
+    deep
+    like boolean
+    fall false
 
   fork test, name deep
     hook hold
@@ -82,7 +85,10 @@ task make
 task walk
   note async
   take path, like text
-  take depth, like size, fall code 0
+  take
+    depth
+    like size
+    fall code 0
 
   save result, make list
 

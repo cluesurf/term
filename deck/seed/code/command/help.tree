@@ -4,7 +4,10 @@ load @term/seed/code/command
 
 task generate
   take schema, like schema
-  take command, like text, need false
+  take
+    command
+    like text
+    need false
   like text
 
 task format

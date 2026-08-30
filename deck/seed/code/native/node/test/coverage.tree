@@ -51,7 +51,10 @@ task read
 
 task format
   take coverage, like coverage
-  take style, like text, fall text <summary>
+  take
+    style
+    like text
+    fall text <summary>
   like text
 
   save total, code 0

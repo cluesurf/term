@@ -1,0 +1,29 @@
+
+deck <@termsurf/wolf>
+  bear ./code
+  test ./test
+  mark <0.0.1>
+
+deck @termsurf/wolf
+  bear ./code
+  mark <0.0.1>
+  test ./test{{{another 12}}}two/one
+
+---
+
+deck
+  <@termsurf/wolf>
+  bear
+    ./code
+  test
+    ./test
+  mark
+    <0.0.1>
+deck
+  @termsurf/wolf
+  bear
+    ./code
+  mark
+    <0.0.1>
+  test
+    ./test{{{another(12)}}}two/one

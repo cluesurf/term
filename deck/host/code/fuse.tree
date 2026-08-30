@@ -62,7 +62,9 @@ task find-tree
       take site, name anchor
       fork test
         hook test
-          call is-equal(read anchor/name, read name)
+          call is-equal
+            read anchor/name
+            read name
         hook hold
           send back
             make some
@@ -132,18 +134,29 @@ task replace
   save index, code 0
   walk test
     hook test
-      call is-below(read index, call size(read out))
+      call is-below
+        read index
+        call size read out
     hook hold
       save present
-        call get(read out, read index)
+        call get
+          read out
+          read index
       fork test
         hook test
-          call is-equal(read present/name, read entry/name)
+          call is-equal
+            read present/name
+            read entry/name
         hook hold
-          call set(read out, read index, read entry)
+          call set
+            read out
+            read index
+            read entry
           send back
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   call push
     read out
     read entry
@@ -160,18 +173,24 @@ task guard-cycle
       take site, name open
       fork test
         hook test
-          call is-equal(read open, read name)
+          call is-equal
+            read open
+            read name
         hook hold
           save chain
             call copy(read expanding)
-          call push(read chain, read name)
+          call push
+            read chain
+            read name
           halt data-defect
             bind rule
               call concat
                 call quote(read name)
                 call concat
                   text < fuses itself through >
-                  call join(read chain, text <, >)
+                  call join
+                    read chain
+                    text <, >
             bind line, code 0
 
 task expand-entries
@@ -212,7 +231,9 @@ task expand-entries
               link value
               fork test
                 hook test
-                  call is-equal(read value/hold, text <list>)
+                  call is-equal
+                    read value/hold
+                    text <list>
                 hook hold
                   halt data-defect
                     bind rule
@@ -320,7 +341,9 @@ task expand-items
               link value
               fork test
                 hook test
-                  call is-equal(read value/hold, text <hash>)
+                  call is-equal
+                    read value/hold
+                    text <hash>
                 hook hold
                   halt data-defect
                     bind rule

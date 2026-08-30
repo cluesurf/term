@@ -4,7 +4,10 @@ form channel
   link receiver
 
 task make
-  take capacity, like size, fall 0
+  take
+    capacity
+    like size
+    fall 0
   like channel
 
 task send

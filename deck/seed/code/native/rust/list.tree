@@ -67,7 +67,11 @@ suit list
 #    type Output = I::Output;
 
 head item
-head i, base slice-read, like line, like item
+head
+  i
+  base slice-read
+  like line
+  like item
 head allocator, base allocator
 
 form list
@@ -84,7 +88,11 @@ form list
       free self/output, read true
 
 head item
-head i, base slice-read, like line, like item
+head
+  i
+  base slice-read
+  like line
+  like item
 head allocator, base allocator
 
 suit list
@@ -204,8 +212,15 @@ suit list
   head allocator
 
   task splice
-    head r, like range-bounds, like usize
-    head i, like becoming-iterable, bind item, base item
+    head
+      r
+      like range-bounds
+      like usize
+    head
+      i
+      like becoming-iterable
+      bind item
+      base item
     take self, flex true
     take range, like r
     take replace-with, like i

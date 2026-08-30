@@ -44,7 +44,10 @@ form error
 task make
   take code, like text
   take message, like text
-  take hint, like text, need false
+  take
+    hint
+    like text
+    need false
   like error
   send back
     make error

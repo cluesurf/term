@@ -26,11 +26,15 @@ task get-at
   like maybe
   save here, read value
   walk list
-    call split(read path, text </>)
+    call split
+      read path
+      text </>
     hook next
       take site, name part
       save next
-        call step(read here, read part)
+        call step
+          read here
+          read part
       fork case, read next
         case none
           send back
@@ -57,7 +61,9 @@ task step
           take site, name entry
           fork test
             hook test
-              call is-equal(read entry/name, read part)
+              call is-equal
+                read entry/name
+                read part
             hook hold
               send back
                 make some
@@ -76,11 +82,17 @@ task step
           link at
           fork test
             hook test
-              call is-below(read at, call size(read list))
+              call is-below
+                read at
+                call size read list
             hook hold
               send back
                 make some
-                  bind value, call get(read list, read at)
+                  bind
+                    value
+                    call get
+                      read list
+                      read at
           send back
             make none
     case text
@@ -109,7 +121,9 @@ task parse-index
   like maybe
   fork test
     hook test
-      call is-equal(read part/length, code 0)
+      call is-equal
+        read part/length
+        code 0
     hook hold
       send back
         make none
@@ -117,22 +131,38 @@ task parse-index
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read part/length)
+      call is-below
+        read index
+        read part/length
     hook hold
       save code
-        call char-code-at(read part, read index)
+        call char-code-at
+          read part
+          read index
       fork test
         hook test
           call or
-            call is-below(read code, code 48)
-            call is-above(read code, code 57)
+            call is-below
+              read code
+              code 48
+            call is-above
+              read code
+              code 57
         hook hold
           send back
             make none
       save out
-        call add(call multiply(read out, code 10), call subtract(read code, code 48))
+        call add
+          call multiply
+            read out
+            code 10
+          call subtract
+            read code
+            code 48
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back
     make some
       bind value, read out
@@ -151,7 +181,10 @@ task to-hash
         read list
         hook next
           take site, name entry
-          call set(read out, read entry/name, read entry/base)
+          call set
+            read out
+            read entry/name
+            read entry/base
     case array
       send back, read out
     case text

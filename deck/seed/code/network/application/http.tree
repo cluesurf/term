@@ -24,7 +24,10 @@ task handle
   take context, like handle-context
 
 task make-server
-  take handler, like task, base handle
+  take
+    handler
+    like task
+    base handle
   take port, like u16
 
   free server, like server

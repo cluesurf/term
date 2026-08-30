@@ -469,6 +469,13 @@ export function emitRust(
   // `move` (so the original stays usable after the closure is built). This is the same interior-mutability currency
   // the collections already use, applied to a scalar/struct local. Recomputed per function body.
   let cellVars = new Set<string>()
+  // the names the CURRENT function or closure body actually reassigns. A `let` only needs `mut` when something
+  // later assigns to it: a list or map local is an `Rc<RefCell<...>>`, so `push` and `insert` mutate through the
+  // cell and never touch the binding. Declaring every local `let mut` made rustc's unused_mut fire on all of
+  // them, and a strict build treats that as fatal.
+  let assignedVars = new Set<string>()
+
+  const mutOf = (name: string): string => (assignedVars.has(name) ? 'mut ' : '')
 
   // the forms a `fill` / `melt` with a form walks, gathered while the bodies are emitted; their walkers ride at the
   // end of the module
@@ -553,26 +560,43 @@ export function emitRust(
 
   // the empty value of a type: what a left-out field or argument holds
 
-  // a condition in a `while` / `if` head: a binary comparison drops its self-parenthesization there, since rustc
-  // warns on `while (a > b)` (unused_parens) and a strict build makes the warning fatal
+  // a condition in a `while` / `if` head drops its self-parenthesization, since rustc warns on `while (a > b)`
+  // (unused_parens) and a strict build makes the warning fatal. This used to apply only to a BINARY comparison,
+  // which left every other self-parenthesizing form to trip the warning: a negated comparison renders `(!(a ==
+  // b))` and failed the pdf package's Rust build the moment one was written as an `if` head. The paren-depth
+  // scan below is what makes the strip safe, so it does not need the form to be anything in particular.
   const condExpr = (cond: Expression): string => {
     const rendered = expr(cond)
 
-    if (
-      cond.form !== 'binary' ||
-      !rendered.startsWith('(') ||
-      !rendered.endsWith(')')
-    ) {
+    if (!rendered.startsWith('(') || !rendered.endsWith(')')) {
       return rendered
     }
 
-    // strip the pair only when the FIRST paren really closes at the last character
+    // strip the pair only when the FIRST paren really closes at the last character. Parens INSIDE a string
+    // literal do not count: `(char == ")".to_string())` closes at the `)` within the string otherwise, the scan
+    // gives up, and rustc's unused_parens then fails a strict build on a condition that compares against a
+    // bracket character — which is most of a PDF or JSON reader.
     let depth = 0
+    let inString = false
 
     for (let i = 0; i < rendered.length; i++) {
-      if (rendered[i] === '(') {
+      const c = rendered[i]
+
+      if (inString) {
+        if (c === '\\') {
+          i++
+        } else if (c === '"') {
+          inString = false
+        }
+
+        continue
+      }
+
+      if (c === '"') {
+        inString = true
+      } else if (c === '(') {
         depth++
-      } else if (rendered[i] === ')') {
+      } else if (c === ')') {
         depth--
 
         if (depth === 0 && i < rendered.length - 1) {
@@ -648,7 +672,7 @@ export function emitRust(
       ? 'i64'
       : v.form === 'float'
         ? 'f64'
-        : v.form === 'text'
+        : v.form === 'string'
           ? 'String'
           : v.form === 'boolean'
             ? 'bool'
@@ -1170,6 +1194,8 @@ export function emitRust(
         const params = node.params.map(p => vname(p.name)).join(', ')
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
+        const previousAssignedInClosure = assignedVars
+        assignedVars = mutated
 
         const shadows = node.params
           .filter(p => mutated.has(p.name) && !cellVars.has(p.name))
@@ -1204,6 +1230,7 @@ export function emitRust(
           .join(' ')
 
         cellVars = previousCells
+        assignedVars = previousAssignedInClosure
 
         // an async closure becomes a plain `Fn` whose body is a pinned async block: calling it returns a future the
         // caller `.await`s (Rust closures can't themselves be `async`). The `let`/parameter type annotation supplies
@@ -1465,7 +1492,7 @@ export function emitRust(
           (node.init.type?.kind === 'unknown' ||
             node.init.type?.kind === 'dynamic')
         ) {
-          return `let mut ${vname(node.name)} = ${expr(node.init)}.downcast_ref::<${rustType(node.type)}>().unwrap().clone();`
+          return `let ${mutOf(node.name)}${vname(node.name)} = ${expr(node.init)}.downcast_ref::<${rustType(node.type)}>().unwrap().clone();`
         }
 
         // a MUTATED CAPTURE is declared as its Rc<RefCell> handle (reads / writes go through the cell)
@@ -1493,10 +1520,10 @@ export function emitRust(
 
         // a local declared `like unknown` boxes its concrete init, so every later read is already the boxed dynamic
         if (node.type?.kind === 'unknown' && node.init.type?.kind !== 'unknown') {
-          return `let mut ${vname(node.name)}: std::rc::Rc<dyn std::any::Any> = std::rc::Rc::new(${owned(node.init)});`
+          return `let ${mutOf(node.name)}${vname(node.name)}: std::rc::Rc<dyn std::any::Any> = std::rc::Rc::new(${owned(node.init)});`
         }
 
-        return `let mut ${vname(node.name)}${ann || emptyAnn(node.init)} = ${bare(owned(node.init))};`
+        return `let ${mutOf(node.name)}${vname(node.name)}${ann || emptyAnn(node.init)} = ${bare(owned(node.init))};`
       }
       case 'assign': {
         // an assignment to a mutated capture writes through the cell: `*x.borrow_mut() = v`, and a field of a
@@ -2004,8 +2031,13 @@ export function emitRust(
         // MUTATED CAPTURE gets its Rc<RefCell> handle shadow instead.
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
-        // a parameter mutated in place by a `push` / `pop` is also rebound `let mut` (Rust parameters are immutable)
-        arrayBounds.mutated.forEach(name => mutated.add(name))
+        const previousAssigned = assignedVars
+        assignedVars = mutated
+        // A parameter mutated in place by `push` / `pop` needs NO rebinding: a list is
+        // `Rc<RefCell<Vec<T>>>` here, so the mutation goes through `borrow_mut()` and the binding itself is
+        // never assigned. Adding it produced `let mut slf = slf;` in `list_push` and `list_pop`, which rustc
+        // reports as unused_mut and a strict build treats as fatal — the otf head package failed on exactly
+        // that. Only a genuine REASSIGNMENT (handled by `reassigned` above) needs the shadow.
 
         const shadows = node.params
           .filter(p => mutated.has(p.name) || cellVars.has(p.name))
@@ -2118,6 +2150,7 @@ export function emitRust(
         fnReturnsArray = previousReturnsArray
         moveArgs = previousMoveArgs
         cellVars = previousCellVars
+        assignedVars = previousAssigned
 
         const asyncMark = node.async ? 'async ' : ''
 

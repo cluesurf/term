@@ -71,27 +71,51 @@ task inspect
   save redundant, false
   fork test
     hook test
-      call is-equal(read op, text <+>)
+      call is-equal
+        read op
+        text <+>
     hook hold
       save redundant
         call or
-          call neutral(read node/right, code 0)
-          call neutral(read node/left, code 0)
+          call neutral
+            read node/right
+            code 0
+          call neutral
+            read node/left
+            code 0
     hook test
-      call is-equal(read op, text <->)
+      call is-equal
+        read op
+        text <->
     hook hold
-      save redundant, call neutral(read node/right, code 0)
+      save
+        redundant
+        call neutral
+          read node/right
+          code 0
     hook test
-      call is-equal(read op, text <*>)
+      call is-equal
+        read op
+        text <*>
     hook hold
       save redundant
         call or
-          call neutral(read node/right, code 1)
-          call neutral(read node/left, code 1)
+          call neutral
+            read node/right
+            code 1
+          call neutral
+            read node/left
+            code 1
     hook test
-      call is-equal(read op, text </>)
+      call is-equal
+        read op
+        text </>
     hook hold
-      save redundant, call neutral(read node/right, code 1)
+      save
+        redundant
+        call neutral
+          read node/right
+          code 1
   fork test
     hook test, read redundant
     hook hold

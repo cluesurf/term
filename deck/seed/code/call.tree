@@ -10,7 +10,10 @@ load ./task
 form call
   link name, like term
   link bind, list bind
-  link hook, mesh hook, link name
+  link
+    hook
+    mesh hook
+    link name
 
 form hook
   link name, like term
@@ -24,6 +27,12 @@ host flow
   term save
   term back
 
-form save, link road, like road
+form
+  save
+  link road
+  like road
 
-form back, link term, like term
+form
+  back
+  link term
+  like term

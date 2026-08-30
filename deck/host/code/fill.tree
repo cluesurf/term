@@ -34,9 +34,14 @@ task fill
   take value, like data
   take shape, like data
   like dynamic
-  call check-shape(read value, read shape, text <>)
+  call check-shape
+    read value
+    read shape
+    text <>
   send back
-    call to-dynamic(read value, true)
+    call to-dynamic
+      read value
+      true
 
 task melt
   take value, like dynamic
@@ -53,7 +58,10 @@ task check-shape
   fork case, read shape
     case text
       link kind
-      call check-kind(read value, read kind, read path)
+      call check-kind
+        read value
+        read kind
+        read path
     case hash
       link expected
       fork case, read value
@@ -70,15 +78,26 @@ task check-shape
                   take site, name entry
                   fork test
                     hook test
-                      call is-equal(read entry/name, read want/name)
+                      call is-equal
+                        read entry/name
+                        read want/name
                     hook hold
                       save found, true
-                      call check-shape(read entry/base, read want/base, call join-path(read path, read want/name))
+                      call check-shape
+                        read entry/base
+                        read want/base
+                        call join-path
+                          read path
+                          read want/name
               fork test
                 hook test
                   call and(call not(read found), call not(call is-optional(read want/base)))
                 hook hold
-                  call refuse(call join-path(read path, read want/name), text <is missing>)
+                  call refuse
+                    call join-path
+                      read path
+                      read want/name
+                    text <is missing>
           walk list
             read present
             hook next
@@ -90,28 +109,48 @@ task check-shape
                   take site, name want
                   fork test
                     hook test
-                      call is-equal(read entry/name, read want/name)
+                      call is-equal
+                        read entry/name
+                        read want/name
                     hook hold
                       save known, true
               fork test
                 hook test
                   call not(read known)
                 hook hold
-                  call refuse(call join-path(read path, read entry/name), text <is not in the shape>)
+                  call refuse
+                    call join-path
+                      read path
+                      read entry/name
+                    text <is not in the shape>
         case array
-          call refuse(read path, text <is a list where a map belongs>)
+          call refuse
+            read path
+            text <is a list where a map belongs>
         case text
-          call refuse(read path, text <is a scalar where a map belongs>)
+          call refuse
+            read path
+            text <is a scalar where a map belongs>
         case number
-          call refuse(read path, text <is a scalar where a map belongs>)
+          call refuse
+            read path
+            text <is a scalar where a map belongs>
         case decimal
-          call refuse(read path, text <is a scalar where a map belongs>)
+          call refuse
+            read path
+            text <is a scalar where a map belongs>
         case flag
-          call refuse(read path, text <is a scalar where a map belongs>)
+          call refuse
+            read path
+            text <is a scalar where a map belongs>
         case blank
-          call refuse(read path, text <is void where a map belongs>)
+          call refuse
+            read path
+            text <is void where a map belongs>
         case graft
-          call refuse(read path, text <is an unexpanded fuse>)
+          call refuse
+            read path
+            text <is an unexpanded fuse>
     case array
       link items
       fork case, read value
@@ -126,33 +165,66 @@ task check-shape
                 read present
                 hook next
                   take site, name item
-                  call check-shape(read item, call get(read items, code 0), call join-path(read path, call index-text(read index)))
+                  call check-shape
+                    read item
+                    call get
+                      read items
+                      code 0
+                    call join-path
+                      read path
+                      call index-text read index
                   save index
-                    call add(read index, code 1)
+                    call add
+                      read index
+                      code 1
         case hash
-          call refuse(read path, text <is a map where a list belongs>)
+          call refuse
+            read path
+            text <is a map where a list belongs>
         case text
-          call refuse(read path, text <is a scalar where a list belongs>)
+          call refuse
+            read path
+            text <is a scalar where a list belongs>
         case number
-          call refuse(read path, text <is a scalar where a list belongs>)
+          call refuse
+            read path
+            text <is a scalar where a list belongs>
         case decimal
-          call refuse(read path, text <is a scalar where a list belongs>)
+          call refuse
+            read path
+            text <is a scalar where a list belongs>
         case flag
-          call refuse(read path, text <is a scalar where a list belongs>)
+          call refuse
+            read path
+            text <is a scalar where a list belongs>
         case blank
-          call refuse(read path, text <is void where a list belongs>)
+          call refuse
+            read path
+            text <is void where a list belongs>
         case graft
-          call refuse(read path, text <is an unexpanded fuse>)
+          call refuse
+            read path
+            text <is an unexpanded fuse>
     case number
-      call refuse(read path, text <has a shape that is not a shape>)
+      call refuse
+        read path
+        text <has a shape that is not a shape>
     case decimal
-      call refuse(read path, text <has a shape that is not a shape>)
+      call refuse
+        read path
+        text <has a shape that is not a shape>
     case flag
-      call refuse(read path, text <has a shape that is not a shape>)
+      call refuse
+        read path
+        text <has a shape that is not a shape>
     case blank
-      call refuse(read path, text <has a shape that is not a shape>)
+      call refuse
+        read path
+        text <has a shape that is not a shape>
     case graft
-      call refuse(read path, text <has a shape that is not a shape>)
+      call refuse
+        read path
+        text <has a shape that is not a shape>
 
 # a scalar kind named by the shape: `<text>`, `<number>`, `<decimal>`, `<flag>`, `<blank>`, `<map>`, `<list>`,
 # `<any>`, with a `?` for one that may also be void. A number fits a decimal
@@ -168,25 +240,47 @@ task check-kind
   fork test
     hook test
       call or
-        call is-equal(read want, text <any>)
-        call is-equal(read want, read have)
+        call is-equal
+          read want
+          text <any>
+        call is-equal
+          read want
+          read have
     hook hold
       send back
   fork test
     hook test
       call and
-        call is-equal(read have, text <blank>)
-        call ends-with(read kind, text <?>)
+        call is-equal
+          read have
+          text <blank>
+        call ends-with
+          read kind
+          text <?>
     hook hold
       send back
   fork test
     hook test
       call and
-        call is-equal(read want, text <decimal>)
-        call is-equal(read have, text <number>)
+        call is-equal
+          read want
+          text <decimal>
+        call is-equal
+          read have
+          text <number>
     hook hold
       send back
-  call refuse(read path, call concat(text <is >, call concat(read have, call concat(text < where >, call concat(read want, text < belongs>)))))
+  call refuse
+    read path
+    call concat
+      text <is >
+      call concat
+        read have
+        call concat
+          text < where >
+          call concat
+            read want
+            text < belongs>
 
 task kind-name
   note private
@@ -219,7 +313,9 @@ task is-optional
     case text
       link value
       send back
-        call ends-with(read value, text <?>)
+        call ends-with
+          read value
+          text <?>
     case hash
       send back, false
     case array
@@ -241,10 +337,17 @@ task plain-kind
   like text
   fork test
     hook test
-      call ends-with(read kind, text <?>)
+      call ends-with
+        read kind
+        text <?>
     hook hold
       send back
-        call substring(read kind, code 0, call subtract(read kind/length, code 1))
+        call substring
+          read kind
+          code 0
+          call subtract
+            read kind/length
+            code 1
   send back, read kind
 
 task join-path
@@ -254,11 +357,17 @@ task join-path
   like text
   fork test
     hook test
-      call is-equal(read path/length, code 0)
+      call is-equal
+        read path/length
+        code 0
     hook hold
       send back, read key
   send back
-    call concat(read path, call concat(text </>, read key))
+    call concat
+      read path
+      call concat
+        text </>
+        read key
 
 task index-text
   note private

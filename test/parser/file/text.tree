@@ -1,0 +1,25 @@
+
+one two <
+  three
+>
+
+one <
+  two
+>
+
+one
+  two <
+    three
+    four
+  >
+
+---
+
+one
+  two
+    <three>
+one
+  <two>
+one
+  two
+    <three four>

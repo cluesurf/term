@@ -29,11 +29,15 @@ task read-otf-loca-table
   save offsets
     make list
   save count
-    call add(read num-glyphs, code 1)
+    call add
+      read num-glyphs
+      code 1
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read count)
+      call is-below
+        read index
+        read count
     hook hold
       fork test
         hook test
@@ -43,9 +47,13 @@ task read-otf-loca-table
             read offsets
             call multiply(call read-u16(read cursor), code 2)
         hook miss
-          call push(read offsets, call read-u32(read cursor))
+          call push
+            read offsets
+            call read-u32 read cursor
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back
     make otf-loca-table
       bind offsets, read offsets
@@ -64,8 +72,14 @@ task write-otf-loca-table
         hook test
           read short-format
         hook hold
-          call write-u16(read writer, call divide(read offset, code 2))
+          call write-u16
+            read writer
+            call divide
+              read offset
+              code 2
         hook miss
-          call write-u32(read writer, read offset)
+          call write-u32
+            read writer
+            read offset
   send back
     call to-bytes(read writer)

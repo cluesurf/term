@@ -21,7 +21,10 @@ task read
         call process/executable
 
 task exit
-  take code, like size, fall 0
+  take
+    code
+    like size
+    fall 0
 
   call process/exit
 

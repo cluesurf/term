@@ -35,7 +35,7 @@ load ./seed
 load ./bind
   find bind
 
-load ./zone
+load ./view
   find view-def
   find view-node
 

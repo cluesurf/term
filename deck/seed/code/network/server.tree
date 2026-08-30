@@ -25,14 +25,26 @@ form server
 task start
   note async
   take port, like size
-  take host, like text, fall text <0.0.0.0>
+  take
+    host
+    like text
+    fall text <0.0.0.0>
   take handler
     like task
       take request, like request
       like response
-  take secure, like boolean, fall wave false
-  take certificate, like text, fall text <>
-  take key, like text, fall text <>
+  take
+    secure
+    like boolean
+    fall wave false
+  take
+    certificate
+    like text
+    fall text <>
+  take
+    key
+    like text
+    fall text <>
   like server
   send back
     call do-start
@@ -58,7 +70,10 @@ task stop
 # backends this runs the blocking accept loop directly. The portable way to stand up a server.
 task serve
   take port, like size
-  take host, like text, fall text <0.0.0.0>
+  take
+    host
+    like text
+    fall text <0.0.0.0>
   take handler
     like task
       take request, like request

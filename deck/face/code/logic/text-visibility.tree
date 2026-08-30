@@ -260,7 +260,10 @@ task apply-render
 task drive-visibility
   take node, like view
   take family, like text
-  take opacity, like number, fall 1
+  take
+    opacity
+    like number
+    fall 1
   save watch
     call subscribe-font
       read family

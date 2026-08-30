@@ -17,19 +17,50 @@ const WIDTH = 84
 
 // definition heads whose group never collapses onto one line: the head stays on its own line with its children
 // indented below, the convention for top-level declarations.
-const ALWAYS_STACK = new Set(['load', 'task', 'form'])
+//
+// `view` is here for the same reason `task` and `form` are: its children are a BODY, not arguments. Collapsing is
+// meaning-preserving (a comma returns to the head, so the tree is identical) but a whole component, or a whole
+// document in the `view` role, rendered onto one line reads as nothing at all. Was `zone` until 2026-08-30 and
+// was never in this set, so a short component collapsed then too.
+// Control flow is in here for the same reason: `walk`, `fork` and their `hook` / `case` arms hold a BODY, not an
+// argument list. Collapsing one is meaning-preserving now that a nested part is parenthesized, which is exactly
+// why they had to be named: before that, the shape check refused the collapse on its own and a whole loop could
+// never end up on one line. `walk list, read(xs), hook(next, take(site, name(item)), save(n, code 1))` is a real
+// thing this produced, and it is unreadable.
+const ALWAYS_STACK = new Set(['load', 'task', 'form', 'view', 'walk', 'fork', 'hook', 'case'])
 
 // the inline (comma-joined) rendering of a node: `head a, b, c`
-function flatten(node: Node): string {
+//
+// A child that has children of its own is written PARENTHESIZED (`loan(n)`), not space-separated. A comma pops
+// exactly one level, so a space-nested part followed by a comma swallows what comes after it: `call add, loan n,
+// code 1` reads `code 1` as a child of `loan`, and `add` gets one argument. `loan(n)` closes its own group, so
+// the comma lands where it belongs. Without this the inline rendering fails `formatGroup`'s own shape check and
+// every such line stacks, which is correct but turns short calls into four lines apiece.
+function flatten(node: Node, nested = false): string {
   switch (node.kind) {
     case 'group': {
       const [head, ...kids] = node.nodes
       const h = head ? flatten(head) : ''
       const optional = node.optional ? '?' : ''
 
-      return kids.length
-        ? `${h}${optional} ${kids.map(flatten).join(', ')}`
-        : `${h}${optional}`
+      if (!kids.length) {
+        return `${h}${optional}`
+      }
+
+      const opensLevel = kids.some(k => k.kind === 'name' || k.kind === 'group')
+
+      if (nested && opensLevel) {
+        return `${h}${optional}(${kids.map((k, i) => flatten(k, i < kids.length - 1)).join(', ')})`
+      }
+
+      // only a part that a COMMA FOLLOWS can be swallowed, so the last one never needs parentheses: `take n,
+      // like number` and `send back n` stay as they read. And only a NAME or a GROUP opens a level for a comma
+      // to pop into; a number or text literal is a leaf, so `code 1` is already safe.
+      const args = kids
+        .map((k, i) => flatten(k, i < kids.length - 1))
+        .join(', ')
+
+      return `${h}${optional} ${args}`
     }
 
     case 'name':
@@ -184,7 +215,8 @@ function formatGroup(group: GroupNode, depth: number): string[] {
 
   const headParts = [
     head ? flatten(head) : '',
-    ...kids.slice(0, split).map(flatten),
+    // `.map(flatten)` would hand the INDEX to `nested`, parenthesizing every leading atom but the first
+    ...kids.slice(0, split).map(kid => flatten(kid)),
   ].filter(Boolean)
 
   lines.push(

@@ -28,7 +28,9 @@ mine hex-byte
     send low
   mine value
     call add
-      call multiply(read high, code 16)
+      call multiply
+        read high
+        code 16
       read low
 
 mine hex-digit
@@ -45,4 +47,6 @@ mine hex-digit
   send char
   mine value
     call hex-digit-value
-      call char-code-at(read char, code 0)
+      call char-code-at
+        read char
+        code 0

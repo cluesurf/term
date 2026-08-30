@@ -5,8 +5,14 @@ load @term/seed/code/network/websocket
 task connect
   note async
   take url, like text
-  take headers, like hash, need false
-  take protocols, like list, need false
+  take
+    headers
+    like hash
+    need false
+  take
+    protocols
+    like list
+    need false
 
   save raw
     call make-websocket

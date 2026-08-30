@@ -16,7 +16,10 @@ write rule
         mount comment, share rule/comment
     write class, share state-comment-line
       write class, class comment-line
-        mount comment, share rule, comment
+        mount
+          comment
+          share rule
+          comment
 
   write check
     share rule/state

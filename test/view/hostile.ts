@@ -313,6 +313,159 @@ const counted = withCatalog(
 
 ok('while the synthesized one passes', counted === '', counted)
 
+// ---- a constant is a constant ----
+// Documented in 01-grammar.md and never enforced. `host a, read a` lowered to a variable reading itself, and
+// `host a, read b` made the ORDER of two constants matter, which is the thing a constant is supposed to not have.
+
+// A constant built from another is a good thing to write and the lowering folds it. Only a CYCLE is refused,
+// because the fold is recursive and a value defined as itself has nothing to fold to.
+bound('a constant defined as itself', 'host a, read a\nview page\n  text <x>\n', 'a reads a')
+bound('two constants defined as each other',
+  'host a, read b\nhost b, read a\nview page\n  text <y>\n', 'cannot be built from itself')
+bound('a cycle through a call',
+  'host a\n  call titlecase\n    read b\nhost b, read a\nview page\n  text <y>\n', 'cannot be built from itself')
+
+const constants = attack(
+  'host a, text <x>\nhost b, read a\nhost c\n  call titlecase\n    read b\nhost n, 20\nhost p, like text\nview page\n  text <y>\n',
+)
+
+ok('but a constant built from another is fine, through a call too', constants === '', constants)
+
+// ---- declared and never used ----
+// An unread `find` is not untidy, it is a COST: the manifest lists it, the host batches it, and the database
+// runs it on every render for a result nothing reads. Found by probing, and both of this suite's own fixtures
+// turned out to have it.
+
+bound('a query nothing reads',
+  'find v\n  task <a>\n  hold is-equal\n    read self/k\n    text <x>\nview page\n  text <y>\n',
+  'costs a request per render')
+bound('a package loaded with nothing taken from it',
+  'load @view/text\nview page\n  text <x>\n', 'nothing is taken from it')
+
+// a query read only inside a walk, or only by another query's filter, counts as read
+const usedInWalk = attack(
+  'find v\n  task <filter:phoneme>\n  hold is-equal\n    read self/kind\n    text <x>\nview page\n  walk list, read v\n    hook next\n      take site, name i\n      view text/item\n        bind t, read i/symbol\n',
+)
+
+ok('a query read only inside a walk counts as read', usedInWalk === '', usedInWalk)
+
+const usedInFilter = attack(
+  'host cap, 20\nfind v\n  task <filter:phoneme>\n  hold is-below\n    read self/rank\n    read cap\nview page\n  view text/item\n    bind t, read v\n',
+)
+
+ok('and a host read only by a filter counts as read', usedInFilter === '', usedInFilter)
+
+// ---- a find that asks for nothing ----
+// Each of these was accepted and each produced a query that could not do what the document meant. None said so.
+
+bound('a find that names a query twice', 'find v\n  task <a>\n  task <b>\n', 'names a query twice')
+bound('two sorts on one field',
+  'find v\n  task <a>\n  sort rise, read self/k\n  sort fall, read self/k\n', 'decides nothing')
+bound('a size of zero', 'find v\n  task <a>\n  size 0\n', 'asks for at least one row')
+bound('a negative size', 'find v\n  task <a>\n  size -5\n', 'asks for at least one row')
+bound('a negative slot', 'find v\n  task <a>\n  slot -1\n', 'starts at zero or later')
+bound('a meet grouping nothing', 'find v\n  task <a>\n  meet and\n', 'groups nothing')
+bound('a predicate with nothing to compare', 'find v\n  task <a>\n  hold is-equal\n', 'has nothing to compare')
+bound('a counted walk that counts backwards',
+  'view page\n  walk size\n    bind base, 9\n    bind head, 0\n    hook next\n      take site, name i\n      text <x>\n',
+  'draws nothing')
+
+// two sorts on DIFFERENT fields is the ordinary shape
+const ordered = attack(
+  'find v\n  task <filter:phoneme>\n  sort fall, read self/rank\n  sort rise, read self/symbol\nview page\n  view text/item\n    bind t, read v\n',
+)
+
+ok('but two sorts on different fields is ordinary', ordered === '', ordered)
+
+// ---- declared twice ----
+// Each of these was accepted. The repeated `take` was the worst: it emitted the component's parameter list with
+// the name in it twice, so the compiled signature was broken and nothing said so.
+
+bound('a view declared twice', 'view page\n  text <a>\nview page\n  text <b>\n', 'already declared by a view')
+bound('a take declared twice on one view',
+  'view page\n  take a, like text\n  take a, like text\n  text <x>\n', 'is taken twice by "page"')
+bound('a name imported twice in one load',
+  'load @view/text\n  find heading\n  find heading\nview page\n  text <x>\n', 'is taken twice from')
+bound('a property bound twice on one component',
+  'view page\n  view text/item\n    bind t, text <a>\n    bind t, text <b>\n', 'is bound twice on')
+
+// an alias makes two imports of one name legitimate
+const aliased = attack('load @view/text\n  find heading\n  find heading, name title\nview page\n  text <x>\n')
+
+ok('but an alias makes two imports of one name fine', aliased === '', aliased)
+
+// ---- shapes the lowering would have quietly mangled ----
+// Neither of these failed to compile. A `walk` with two bodies rendered the FIRST and dropped the second; a
+// `fork` with no `hook test` had nothing to branch on and used `true`, so a document that forgot its condition
+// rendered that branch unconditionally. Both said nothing at all, which is the shape worth hunting.
+
+bound('a walk with two bodies',
+  'host l, like text\nview page\n  walk list, read l\n    hook next\n      take site, name a\n      text <one>\n    hook next\n      take site, name b\n      text <two>\n',
+  'the rest would vanish without being named')
+bound('a walk with no body',
+  'host l, like text\nview page\n  walk list, read l\n', 'names what to render per item')
+bound('a fork that branches on nothing',
+  'view page\n  fork test\n    hook hold\n      text <a>\n', 'branches on nothing')
+bound('a fork whose test comes after its body',
+  'host x, true\nview page\n  fork test\n    hook hold\n      text <a>\n    hook test\n      read x\n',
+  'branches on nothing')
+bound('a fork whose test decides nothing',
+  'host x, true\nview page\n  fork test\n    hook test\n      read x\n', 'decides nothing')
+
+// the well-formed shape is untouched
+const branching = attack(
+  'host x, true\nview page\n  fork test\n    hook test\n      read x\n    hook hold\n      text <a>\n    hook miss\n      text <b>\n',
+)
+
+ok('a well-formed fork is not caught by any of that', branching === '', branching)
+
+// ---- the oldest denial of service there is ----
+// A macro that fuses another twice, thirteen deep, is a 26-line document holding two million nodes. The node cap
+// counts the EXPANDED tree, which is the right thing to count and the wrong time: expansion has already happened.
+// Measured 2026-08-30 before the fix: 22 levels took 2.2 seconds, and 26 took the compiler down with an
+// out-of-memory crash. The size is computed over the macro graph first, so expansion never runs.
+
+function bombOf(levels: number): string {
+  const lines: string[] = []
+
+  for (let i = 0; i < levels; i++) {
+    lines.push(`tree m${i}`)
+    lines.push('  hook fuse')
+
+    if (i + 1 < levels) {
+      lines.push(`    fuse m${i + 1}`)
+      lines.push(`    fuse m${i + 1}`)
+    } else {
+      lines.push('    text <x>')
+    }
+  }
+
+  lines.push('view page')
+  lines.push('  fuse m0')
+
+  return lines.join('\n') + '\n'
+}
+
+for (const levels of [18, 26, 40]) {
+  const started = Date.now()
+  const said = attack(bombOf(levels))
+  const spent = Date.now() - started
+
+  ok(
+    `a macro bomb ${levels} deep is refused before expanding`,
+    said.includes('would expand to about') && said.includes('before expanding'),
+    said || 'NOT REFUSED',
+  )
+  ok(`and in well under a second (took ${spent}ms)`, spent < 1000)
+}
+
+// a document whose macros are real and small still passes
+const honest = attack(
+  'tree row\n  hook fuse\n    view text/item\n      bind t, text <x>\nview page\n  fuse row\n  fuse row\n  fuse row\n',
+)
+
+ok('a document with ordinary macros is not caught by it', honest === '', honest)
+
 console.log(`\nview-hostile: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

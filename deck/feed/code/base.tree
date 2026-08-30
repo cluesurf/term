@@ -94,25 +94,35 @@ task cursor-bytes
   like list
     like u8
   send back
-    call get(read cursor/bytes, code 0)
+    call get
+      read cursor/bytes
+      code 0
 
 task set-cursor-bytes
   take cursor, like feed-cursor
   take value
     like list
       like u8
-  call set(read cursor/bytes, code 0, read value)
+  call set
+    read cursor/bytes
+    code 0
+    read value
 
 task cursor-position
   take cursor, like feed-cursor
   like number
   send back
-    call get(read cursor/position, code 0)
+    call get
+      read cursor/position
+      code 0
 
 task set-cursor-position
   take cursor, like feed-cursor
   take value, like number
-  call set(read cursor/position, code 0, read value)
+  call set
+    read cursor/position
+    code 0
+    read value
 
 task make-cursor
   take bytes
@@ -121,13 +131,19 @@ task make-cursor
   like feed-cursor
   save position
     make list
-  call push(read position, code 0)
+  call push
+    read position
+    code 0
   save bytes-cell
     make list
-  call push(read bytes-cell, read bytes)
+  call push
+    read bytes-cell
+    read bytes
   save exhausted
     make list
-  call push(read exhausted, true)
+  call push
+    read exhausted
+    true
   send back
     make feed-cursor
       bind bytes, read bytes-cell
@@ -149,13 +165,19 @@ task make-streaming-cursor
   like feed-cursor
   save position
     make list
-  call push(read position, code 0)
+  call push
+    read position
+    code 0
   save bytes-cell
     make list
-  call push(read bytes-cell, make list)
+  call push
+    read bytes-cell
+    make list
   save exhausted
     make list
-  call push(read exhausted, false)
+  call push
+    read exhausted
+    false
   send back
     make feed-cursor
       bind bytes, read bytes-cell
@@ -177,12 +199,16 @@ task feed-cursor-compact
     call cursor-position(read cursor)
   fork test
     hook test
-      call is-above(read pos, read feed-cursor-compact-threshold)
+      call is-above
+        read pos
+        read feed-cursor-compact-threshold
     hook hold
       call set-cursor-bytes
         read cursor
         call drop-first(call cursor-bytes(read cursor), read pos)
-      call set-cursor-position(read cursor, code 0)
+      call set-cursor-position
+        read cursor
+        code 0
 
 # pulls and appends chunks from the cursor's source until at least `width` more bytes are buffered ahead of the
 # current position, or the source is exhausted. A no-op for a materialized cursor (`pull` is `none`) or a
@@ -195,7 +221,10 @@ task feed-cursor-compact
 # single-byte call site emit exactly the comparison it did before.
 task feed-cursor-ensure-width
   take cursor, like feed-cursor
-  take width, like number, fall 1
+  take
+    width
+    like number
+    fall 1
   fork case, read cursor/pull
     case none
       send back
@@ -209,13 +238,20 @@ task feed-cursor-ensure-width
                 call size(call cursor-bytes(read cursor))
                 call cursor-position(read cursor)
               read width
-            call not, call get(read cursor/exhausted, code 0)
+            call
+              not
+              call get
+                read cursor/exhausted
+                code 0
         hook hold
           save chunk
             call value
           fork case, read chunk
             case none
-              call set(read cursor/exhausted, code 0, true)
+              call set
+                read cursor/exhausted
+                code 0
+                true
             case some
               link value
               call set-cursor-bytes
@@ -287,7 +323,10 @@ task skip
 task seek
   take cursor, like feed-cursor
   take offset, like number
-  take base, like number, fall 0
+  take
+    base
+    like number
+    fall 0
   like number
   fork case, read cursor/pull
     case some
@@ -295,7 +334,11 @@ task seek
     case none
   save prior
     call cursor-position(read cursor)
-  call set-cursor-position(read cursor, call add(read base, read offset))
+  call set-cursor-position
+    read cursor
+    call add
+      read base
+      read offset
   send back, read prior
 
 # a block of `width` bytes, taken in ONE native slice rather than pushed one at a time. The loop this replaced
@@ -309,14 +352,23 @@ task read-bytes
   take width, like number
   like list
     like u8
-  call feed-cursor-ensure-width(read cursor, read width)
+  call feed-cursor-ensure-width
+    read cursor
+    read width
   save start
     call cursor-position(read cursor)
   save end
-    call add(read start, read width)
-  call set-cursor-position(read cursor, read end)
+    call add
+      read start
+      read width
+  call set-cursor-position
+    read cursor
+    read end
   send back
-    call slice(call cursor-bytes(read cursor), read start, read end)
+    call slice
+      call cursor-bytes read cursor
+      read start
+      read end
 
 # 256^index, built by repeated multiply rather than a bit shift: `bit.tree` documents shift-left/shift-right as
 # 32-bit operations on the TypeScript backend, which would silently truncate any field wider than 4 bytes (OTF's
@@ -329,12 +381,18 @@ task byte-place
   save counter, code 0
   walk test
     hook test
-      call is-below(read counter, read index)
+      call is-below
+        read counter
+        read index
     hook hold
       save result
-        call multiply(read result, code 256)
+        call multiply
+          read result
+          code 256
       save counter
-        call add(read counter, code 1)
+        call add
+          read counter
+          code 1
   send back, read result
 
 # the most-significant byte of a signed field reinterpreted as its two's-complement value (128-255 becomes
@@ -358,10 +416,14 @@ task sign-extend-byte
         hook test
           call and
             read is-top
-            call is-minimum(read raw, code 128)
+            call is-minimum
+              read raw
+              code 128
         hook hold
           send back
-            call subtract(read raw, code 256)
+            call subtract
+              read raw
+              code 256
       send back, read raw
 
 # a fixed-width integer field. Big-endian folds high byte first (so the first byte read is the top one);
@@ -380,38 +442,59 @@ task read-int
     case big
       walk test
         hook test
-          call is-below(read index, read width)
+          call is-below
+            read index
+            read width
         hook hold
           save byte-value
             call sign-extend-byte
               call read-byte(read cursor)
-              call is-equal(read index, code 0)
+              call is-equal
+                read index
+                code 0
               read sign
           save magnitude
             call add
-              call multiply(read magnitude, code 256)
+              call multiply
+                read magnitude
+                code 256
               read byte-value
           save index
-            call add(read index, code 1)
+            call add
+              read index
+              code 1
     case little
-      save place, code 1
       walk test
         hook test
-          call is-below(read index, read width)
+          call is-below
+            read index
+            read width
         hook hold
           save byte-value
             call sign-extend-byte
               call read-byte(read cursor)
-              call is-equal(read index, call subtract(read width, code 1))
+              call is-equal
+                read index
+                call subtract
+                  read width
+                  code 1
               read sign
+          # `byte-place(index)`, not a place value carried forward and multiplied at the END of each pass. That
+          # running form multiplied one time too many: after the last byte of a width-8 field it computed 256^8,
+          # which is 2^64 and does not fit in an i64, so Rust panicked with "attempt to multiply with overflow"
+          # the moment a real LONGDATETIME (OTF head's `created` / `modified`) was read natively. Deriving the
+          # place from the index never exceeds 256^(width-1), the largest value the field itself can use. The
+          # cost is quadratic in the width, which for a field of at most eight bytes is at most 28 multiplies.
           save magnitude
             call add
               read magnitude
-              call multiply(read byte-value, read place)
-          save place
-            call multiply(read place, code 256)
+              call multiply
+                read byte-value
+                call byte-place(read index)
           save index
-            call add(read index, code 1)
+            call add
+              read index
+              code 1
   send back, read magnitude
 
 # a position into a text buffer, streaming-capable the same way `feed-cursor` is above — `json`'s and PDF's own
@@ -426,12 +509,41 @@ task read-int
 # refill would reintroduce the exact O(n²) `text-cursor-at-end` regression `02-cursor.md` already documents and
 # fixed once, just via a different path (per-refill instead of per-character).
 #
-# Compaction slices with `substring`, not `text/string.tree`'s `slice`: `char-at`/`char-code-at`/`substring` (all
-# three, `text.tree`) share the native UTF-16-code-unit index space, while `char-count` counts Unicode SCALAR
-# values (`Array.from`-based) — a pre-existing mismatch in the stdlib for any text with astral characters
-# (surrogate pairs), not introduced here. Using `substring` keeps compaction in the same index space `position`
-# already advances through via `text-cursor-read`, so it does not make that pre-existing mismatch any worse; it
-# would take a stdlib-wide fix (`text.tree` itself) to actually close it, out of scope for this package.
+# WHAT `position` COUNTS IS A DIFFERENT THING ON EVERY BACKEND. The stdlib's text primitives do not agree on an
+# index space, and this was checked in the emitters rather than assumed (`deck/make/code/compile/*.ts`, each
+# one's own `stringExpr`), because an earlier version of this comment asserted all three shared UTF-16 and that
+# is true on only two of the four:
+#
+#   backend      char-at                char-code-at    char-count
+#   TypeScript   UTF-16 code unit       UTF-16 code unit   scalar
+#   Rust         Unicode scalar         UTF-16 code unit   scalar
+#   Swift        grapheme cluster       UTF-16 code unit   scalar
+#   Kotlin       UTF-16 code unit       UTF-16 code unit   scalar
+#
+# So on Rust and Swift `char-at` and `char-code-at` DISAGREE WITH EACH OTHER at the same index, and `char-count`
+# agrees with neither except on Rust. Every ASCII input hides all of it, which is why this package's own 118
+# tests never saw it: the spaces coincide exactly until the first character outside the basic plane, and then a
+# JSON string holding one emoji reads differently on four backends.
+#
+# This cursor therefore refuses to depend on any two of them agreeing:
+#
+#   - `text-cursor-peek-code` is derived FROM `text-cursor-peek`, taking the code of the one-character string it
+#     already returned, rather than indexing the buffer a second time with the other primitive. Index 0 of a
+#     one-character string is that character in every index space, so the two now agree everywhere by
+#     construction instead of by luck.
+#   - `text-cursor-at-end` asks whether `char-at` reads EMPTY, which all four backends document as what a read
+#     past the end gives (never an exception, never a trap — see each emitter's own comment). That is correct in
+#     whatever space the backend chose, and it costs O(1), so it is also strictly cheaper than the comparison
+#     against a counted length it replaced.
+#   - `length` is consequently bookkeeping, NOT the end-of-input authority. It is a `char-count`, so it is only
+#     ever comparable to another `char-count`, never to `position`. Nothing reads it to decide a boundary.
+#
+# Compaction slices with `substring` rather than `text/string.tree`'s `slice` because `substring` is the one that
+# tracks `char-at` on each backend, which is the space `position` advances through.
+#
+# The underlying divergence is a real stdlib defect and it is NOT fixed here: closing it means picking one index
+# space and making all four emitters honor it, which changes every `text.tree` caller in the ecosystem. This
+# package is merely made immune to it. See note/term/feed/02-cursor.md.
 form text-cursor
   link text
     like list
@@ -455,45 +567,65 @@ task cursor-text
   take cursor, like text-cursor
   like text
   send back
-    call get(read cursor/text, code 0)
+    call get
+      read cursor/text
+      code 0
 
 task set-cursor-text
   take cursor, like text-cursor
   take value, like text
-  call set(read cursor/text, code 0, read value)
+  call set
+    read cursor/text
+    code 0
+    read value
 
 task text-cursor-position
   take cursor, like text-cursor
   like number
   send back
-    call get(read cursor/position, code 0)
+    call get
+      read cursor/position
+      code 0
 
 task set-text-cursor-position
   take cursor, like text-cursor
   take value, like number
-  call set(read cursor/position, code 0, read value)
+  call set
+    read cursor/position
+    code 0
+    read value
 
 task text-cursor-length
   take cursor, like text-cursor
   like number
   send back
-    call get(read cursor/length, code 0)
+    call get
+      read cursor/length
+      code 0
 
 task make-text-cursor
   take value, like text
   like text-cursor
   save position
     make list
-  call push(read position, code 0)
+  call push
+    read position
+    code 0
   save text-cell
     make list
-  call push(read text-cell, read value)
+  call push
+    read text-cell
+    read value
   save length
     make list
-  call push(read length, call char-count(read value))
+  call push
+    read length
+    call char-count read value
   save exhausted
     make list
-  call push(read exhausted, true)
+  call push
+    read exhausted
+    true
   send back
     make text-cursor
       bind text, read text-cell
@@ -516,16 +648,24 @@ task make-streaming-text-cursor
   like text-cursor
   save position
     make list
-  call push(read position, code 0)
+  call push
+    read position
+    code 0
   save text-cell
     make list
-  call push(read text-cell, text <>)
+  call push
+    read text-cell
+    text <>
   save length
     make list
-  call push(read length, code 0)
+  call push
+    read length
+    code 0
   save exhausted
     make list
-  call push(read exhausted, false)
+  call push
+    read exhausted
+    false
   send back
     make text-cursor
       bind text, read text-cell
@@ -544,13 +684,24 @@ task text-cursor-compact
     call text-cursor-position(read cursor)
   fork test
     hook test
-      call is-above(read pos, read text-cursor-compact-threshold)
+      call is-above
+        read pos
+        read text-cursor-compact-threshold
     hook hold
       call set-cursor-text
         read cursor
         call substring(call cursor-text(read cursor), read pos)
-      call set-text-cursor-position(read cursor, code 0)
-      call set(read cursor/length, code 0, call subtract(call text-cursor-length(read cursor), read pos))
+      call set-text-cursor-position
+        read cursor
+        code 0
+      # recounted from the compacted buffer, not `length - pos`: `length` is a scalar count and `pos` indexes
+      # whatever space `char-at` uses, so subtracting one from the other mixes units and leaves a number that is
+      # not a count of anything. Recounting costs an extra O(remaining) pass over text the `substring` above
+      # already walked, so it does not change what compaction costs, and compaction only runs once per 64 KiB.
+      call set
+        read cursor/length
+        code 0
+        call char-count call cursor-text read cursor
 
 task text-cursor-ensure-available
   take cursor, like text-cursor
@@ -562,16 +713,23 @@ task text-cursor-ensure-available
       walk test
         hook test
           call and
-            call is-minimum
-              call text-cursor-position(read cursor)
-              call text-cursor-length(read cursor)
-            call not, call get(read cursor/exhausted, code 0)
+            call is-equal
+              call char-at(call cursor-text(read cursor), call text-cursor-position(read cursor))
+              text <>
+            call
+              not
+              call get
+                read cursor/exhausted
+                code 0
         hook hold
           save chunk
             call value
           fork case, read chunk
             case none
-              call set(read cursor/exhausted, code 0, true)
+              call set
+                read cursor/exhausted
+                code 0
+                true
             case some
               link value
               call set-cursor-text
@@ -583,14 +741,17 @@ task text-cursor-ensure-available
                 call add(call text-cursor-length(read cursor), call char-count(read value))
               call text-cursor-compact(read cursor)
 
+# end of input is "`char-at` reads empty", which every backend guarantees for a read past the end, rather than
+# "position has reached a counted length" — see this form's own comment for why no two of these primitives can be
+# assumed to count the same things.
 task text-cursor-at-end
   take cursor, like text-cursor
   like boolean
   call text-cursor-ensure-available(read cursor)
   send back
     call is-equal
-      call text-cursor-position(read cursor)
-      call text-cursor-length(read cursor)
+      call char-at(call cursor-text(read cursor), call text-cursor-position(read cursor))
+      text <>
 
 task text-cursor-peek
   take cursor, like text-cursor
@@ -599,19 +760,26 @@ task text-cursor-peek
   send back
     call char-at(call cursor-text(read cursor), call text-cursor-position(read cursor))
 
+# the code of the character `text-cursor-peek` returns, NOT a second independent index into the buffer with the
+# other primitive. On Rust and Swift `char-at` and `char-code-at` walk different index spaces, so indexing twice
+# at the same `position` can name two different characters; taking index 0 of the one-character string `peek`
+# already produced is the same character in every space, on every backend.
 task text-cursor-peek-code
   take cursor, like text-cursor
   like number
-  call text-cursor-ensure-available(read cursor)
   send back
-    call char-code-at(call cursor-text(read cursor), call text-cursor-position(read cursor))
+    call char-code-at(call text-cursor-peek(read cursor), code 0)
 
 task text-cursor-read
   take cursor, like text-cursor
   like text
   save value
     call text-cursor-peek(read cursor)
-  call set-text-cursor-position(read cursor, call add(call text-cursor-position(read cursor), code 1))
+  call set-text-cursor-position
+    read cursor
+    call add
+      call text-cursor-position read cursor
+      code 1
   send back, read value
 
 # an accumulating byte buffer. `to-bytes` hands back the finished list; every `write-*` appends to it in place.
@@ -629,7 +797,9 @@ task make-writer
 task write-byte
   take writer, like feed-writer
   take value, like u8
-  call push(read writer/bytes, read value)
+  call push
+    read writer/bytes
+    read value
 
 task write-bytes
   take writer, like feed-writer
@@ -639,7 +809,9 @@ task write-bytes
   walk list, read block
     hook next
       take site, name value
-      call write-byte(read writer, read value)
+      call write-byte
+        read writer
+        read value
 
 # the byte of `value` at a given place value (1, 256, 65536, ...): floor(value / place) mod 256. `round-down`
 # (floor) on a negative `value` is arithmetic-shift-equivalent, so a negative signed value's bytes come out
@@ -677,17 +849,27 @@ task int-bytes
     like u8
   save result
     make list
-  save place, code 1
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read width)
+      call is-below
+        read index
+        read width
     hook hold
-      call push(read result, call int-byte-at-place(read value, read place))
-      save place
-        call multiply(read place, code 256)
+      # `byte-place(index)`, for the same reason `read-int` derives its place from the index rather than
+      # carrying one forward: multiplying at the end of every pass computes 256^width on the last one, and for
+      # a width-8 field that is 2^64, which overflows an i64 and panics on Rust. Deriving it never exceeds
+      # 256^(width-1). This function introduced the bug while making `write-int` linear, and OTF head's
+      # LONGDATETIME is the field that finds it.
+      call push
+        read result
+        call int-byte-at-place
+          read value
+          call byte-place(read index)
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back, read result
 
 # both orders write the same bytes, so both share one encode and differ only in the direction they emit it. This
@@ -700,12 +882,18 @@ task write-int
   take width, like number
   take order, like byte-order
   save bytes
-    call int-bytes(read value, read width)
+    call int-bytes
+      read value
+      read width
   fork case, read order
     case big
-      call write-bytes(read writer, call reverse(read bytes))
+      call write-bytes
+        read writer
+        call reverse read bytes
     case little
-      call write-bytes(read writer, read bytes)
+      call write-bytes
+        read writer
+        read bytes
 
 task to-bytes
   take writer, like feed-writer

@@ -48,8 +48,8 @@ async function main(): Promise<void> {
   // named arguments in any order, and a default that fills in
   const NAMED = `task scale
   take value, like number
-  take by, like number, fall 2
-  take shift, like number, fall 0
+  take by, like(number), fall 2
+  take shift, like(number), fall 0
   like number
   send back
     call add
@@ -159,7 +159,7 @@ task use
   const SLOT_FORM = `form point
   slot x, like number
   slot y, like number
-  link label, like text, fall text <origin>
+  link label, like(text), fall text <origin>
 
 task make-point
   like point

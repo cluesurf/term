@@ -3,7 +3,10 @@ task make
   note async
   take from, like text
   take to, like text
-  take hard, like boolean, fall false
+  take
+    hard
+    like boolean
+    fall false
 
 task read
   note async

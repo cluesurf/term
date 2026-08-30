@@ -134,6 +134,7 @@ view page
     bind name
       call titlecase
         text <quenya>
+    bind rows, read vowel
 `
 
 const good = check(GOOD)

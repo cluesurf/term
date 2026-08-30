@@ -125,7 +125,10 @@ task hive-clear
 # read the roster: every entry of one kind, from one deck when `host` is given
 task hive-roll
   take kind, like text
-  take host, like text, fall text <>
+  take
+    host
+    like text
+    fall text <>
   like list
     like hive-entry
   save out

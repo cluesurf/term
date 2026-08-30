@@ -14,12 +14,30 @@ load @term/seed/code/process/run
 task run
   note async
   take command, like text
-  take arguments, like list, need false
-  take directory, like text, need false
-  take environment, like hash, need false
-  take shell, like boolean, fall false
-  take timeout, like size, need false
-  take input, like text, need false
+  take
+    arguments
+    like list
+    need false
+  take
+    directory
+    like text
+    need false
+  take
+    environment
+    like hash
+    need false
+  take
+    shell
+    like boolean
+    fall false
+  take
+    timeout
+    like size
+    need false
+  take
+    input
+    like text
+    need false
   like run-result
 
   save worker
@@ -38,10 +56,22 @@ task run
 task spawn
   note async
   take command, like text
-  take arguments, like list, need false
-  take directory, like text, need false
-  take environment, like hash, need false
-  take shell, like boolean, fall false
+  take
+    arguments
+    like list
+    need false
+  take
+    directory
+    like text
+    need false
+  take
+    environment
+    like hash
+    need false
+  take
+    shell
+    like boolean
+    fall false
   like child
 
   save id

@@ -4067,6 +4067,12 @@ export function mill(tree: RootNode, file: string): MillResult {
         nameGroup?.kind === 'group' ? headName(nameGroup) : undefined
 
       const valueNode = rest(child)[1]
+      // `bind` takes one value here too — see the view-props path and extraValueMessage
+      const extraArg = rest(child)[2]
+
+      if (extraArg && extraArg.kind !== 'root') {
+        fail(child, extraValueMessage('bind', valueNode, extraArg))
+      }
 
       if (name) {
         args.push({
@@ -4416,6 +4422,15 @@ export function mill(tree: RootNode, file: string): MillResult {
                   : undefined
 
               const valueNode = rest(child)[1]
+              // the same refusal `bind` already gets inside a `make` (see extraValueMessage's own comment). A
+              // view's props went unchecked, so `bind style, call container-style, read vp` built a prop from
+              // `call container-style` with NO arguments and dropped `read vp` on the floor, silently. That
+              // shipped three times in deck/face/code/component/layout.tree.
+              const extraProp = rest(child)[2]
+
+              if (extraProp && extraProp.kind !== 'root') {
+                fail(child, extraValueMessage('bind', valueNode, extraProp))
+              }
 
               if (bindName) {
                 props.push({

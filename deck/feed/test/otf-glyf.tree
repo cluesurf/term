@@ -47,7 +47,9 @@ task sample-triangle-glyph
   like otf-glyph
   save contours
     make list
-  call push(read contours, call triangle-contour)
+  call push
+    read contours
+    call triangle-contour
   send back
     make otf-glyph-simple
       bind x-min, code 0
@@ -67,7 +69,9 @@ task triangle-point
       link contours
       send back
         call get
-          call get(read contours, read contour-index)
+          call get
+            read contours
+            read contour-index
           read point-index
     case otf-glyph-empty
       halt <expected a simple glyph, found empty>
@@ -81,7 +85,10 @@ task first-contour-point-count
     case otf-glyph-simple
       link contours
       send back
-        call size(call get(read contours, code 0))
+        call size
+          call get
+            read contours
+            code 0
     case otf-glyph-empty
       halt <expected a simple glyph, found empty>
     case otf-glyph-composite-unsupported
@@ -103,7 +110,10 @@ test <the triangle's third point round trips its exact coordinates>
   save reread
     call read-otf-glyph(call make-cursor(read bytes), call size(read bytes))
   save point
-    call triangle-point(read reread, code 0, code 2)
+    call triangle-point
+      read reread
+      code 0
+      code 2
   want hold
     call is-equal
       read point/x
@@ -126,7 +136,9 @@ test <a negative-coordinate point round trips through the signed short-vector de
       bind on-curve, false
   save contours
     make list
-  call push(read contours, read contour)
+  call push
+    read contours
+    read contour
   save glyph
     make otf-glyph-simple
       bind x-min, code -30
@@ -140,7 +152,10 @@ test <a negative-coordinate point round trips through the signed short-vector de
       call make-cursor(call write-otf-glyph(read glyph))
       call size(call write-otf-glyph(read glyph))
   save point
-    call triangle-point(read reread, code 0, code 0)
+    call triangle-point
+      read reread
+      code 0
+      code 0
   want hold
     call is-equal
       read point/x
@@ -163,7 +178,9 @@ test <the second point's off-curve flag round trips>
       bind on-curve, false
   save contours
     make list
-  call push(read contours, read contour)
+  call push
+    read contours
+    read contour
   save glyph
     make otf-glyph-simple
       bind x-min, code -30
@@ -177,7 +194,10 @@ test <the second point's off-curve flag round trips>
       call make-cursor(call write-otf-glyph(read glyph))
       call size(call write-otf-glyph(read glyph))
   save point
-    call triangle-point(read reread, code 0, code 1)
+    call triangle-point
+      read reread
+      code 0
+      code 1
   want hold
     call is-equal
       read point/on-curve
@@ -204,16 +224,36 @@ task composite-header-bytes
     like u8
   save result
     make list
-  call push(read result, code 0xff)
-  call push(read result, code 0xff)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 100)
-  call push(read result, code 0)
-  call push(read result, code 100)
+  call push
+    read result
+    code 0xff
+  call push
+    read result
+    code 0xff
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 100
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 100
   send back, read result
 
 task composite-x-max

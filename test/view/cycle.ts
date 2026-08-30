@@ -113,6 +113,64 @@ ok(
   places('view one\n  text <x>\nview two\n  view one\n'),
 )
 
+// ---- the checker itself is bounded ----
+// The walk was EXPONENTIAL on a graph that merely fans out, with no cycle in it at all: 26 macros each fusing the
+// next four took 1.6 seconds, and 35 would not have finished. A document could hang the compiler with a handful
+// of tiny macros and never approach a node cap, which is threat 5 of the sandbox met by the checker meant to
+// enforce it. Names proven acyclic are remembered, so no name is walked twice.
+
+function dense(n: number, fan: number): string {
+  const lines: string[] = []
+
+  for (let i = 0; i < n; i++) {
+    lines.push(`tree m${i}`)
+    lines.push('  hook fuse')
+
+    for (let k = 1; k <= fan && i + k < n; k++) {
+      lines.push(`    fuse m${i + k}`)
+    }
+
+    if (i + 1 >= n) {
+      lines.push('    text <end>')
+    }
+  }
+
+  lines.push('view page')
+  lines.push('  fuse m0')
+
+  return lines.join('\n') + '\n'
+}
+
+for (const [n, fan, budget] of [[60, 4, 250], [200, 4, 500]] as [number, number, number][]) {
+  const parsed = parse({ file: 'page.tree', text: dense(n, fan) })
+
+  if (!parsed.ok) {
+    ok(`a dense acyclic graph of ${n} macros parses`, false)
+    continue
+  }
+
+  const started = Date.now()
+  const found = viewCycles(parsed.tree, 'page.tree')
+  const spent = Date.now() - started
+
+  ok(`${n} macros fanning out to ${fan} report no cycle`, found.length === 0)
+  ok(`and finish well inside ${budget}ms (took ${spent}ms)`, spent < budget)
+}
+
+// and a cycle buried inside a dense graph is still found
+const buried = dense(40, 4).replace('tree m39\n  hook fuse\n    text <end>', 'tree m39\n  hook fuse\n    fuse m0')
+const parsedBuried = parse({ file: 'page.tree', text: buried })
+
+if (parsedBuried.ok) {
+  const found = viewCycles(parsedBuried.tree, 'page.tree')
+
+  ok(
+    'a cycle buried in a dense graph is still found',
+    found.length > 0 && found.some(d => /cannot fuse itself/.test(d.message)),
+    found.map(d => d.message).join(' | ') || 'NOT FOUND',
+  )
+}
+
 console.log(`\nview-cycle: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

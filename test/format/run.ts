@@ -79,11 +79,13 @@ function main(): void {
     once.includes('take n, like number'),
     once,
   )
-  // a call with arguments inlines them when they fit: a comma returns to the head, so `call add, loan n, code 1`
-  // is add(loan n, code 1) and re-parses to the same structure
+  // a call with arguments inlines them when they fit. A part that a COMMA FOLLOWS is parenthesized, because a
+  // comma pops exactly one level: `call add, loan n, code 1` would read `code 1` as a child of `loan`, leaving
+  // `add` one argument. `loan(n)` closes its own group, so the comma lands where it belongs. The last part needs
+  // nothing after it, so `code 1` stays bare.
   ok(
     'call arguments inline when they fit',
-    once.includes('call add, loan n, code 1'),
+    once.includes('call add, loan(n), code 1'),
     once,
   )
 

@@ -3,21 +3,42 @@ form sink
   link dock, mark private
 
 task console
-  take format, like text, fall text <text>
-  take color, like boolean, fall true
+  take
+    format
+    like text
+    fall text <text>
+  take
+    color
+    like boolean
+    fall true
   like sink
 
 task file
   take path, like text
-  take format, like text, fall text <json>
-  take rotate, like boolean, fall false
-  take max-size, like size, fall 10485760
+  take
+    format
+    like text
+    fall text <json>
+  take
+    rotate
+    like boolean
+    fall false
+  take
+    max-size
+    like size
+    fall 10485760
   like sink
 
 task filter
   take sink, like sink
-  take minimum, like text, fall text <trace>
-  take maximum, like text, fall text <fatal>
+  take
+    minimum
+    like text
+    fall text <trace>
+  take
+    maximum
+    like text
+    fall text <fatal>
   like sink
 
 task combine

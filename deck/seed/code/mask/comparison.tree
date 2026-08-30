@@ -1,7 +1,10 @@
 
 mask incomplete-comparison
   # Partial Equality.
-  head other, like dimension, base self
+  head
+    other
+    like dimension
+    base self
 
   task is-equal
     take self

@@ -115,10 +115,16 @@ task scan
           call is-above(call size(read stack), code 0)
         hook hold
           save top
-            call get(read stack, call subtract(call size(read stack), code 1))
+            call get
+              read stack
+              call subtract
+                call size read stack
+                code 1
           fork test
             hook test
-              call is-minimum(read top/depth, read depth)
+              call is-minimum
+                read top/depth
+                read depth
             hook hold
               call pop(read stack)
             hook miss
@@ -139,7 +145,11 @@ task scan
                 read one
         hook miss
           save parent
-            call get(read stack, call subtract(call size(read stack), code 1))
+            call get
+              read stack
+              call subtract
+                call size read stack
+                code 1
           walk list
             read nodes
             hook next

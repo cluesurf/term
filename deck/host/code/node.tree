@@ -22,7 +22,11 @@ task quote
   take name, like text
   like text
   send back
-    call concat(text <">, call concat(read name, text <">))
+    call concat
+      text <">
+      call concat
+        read name
+        text <">
 
 load @term/seed/code/text/string
   find concat
@@ -33,14 +37,18 @@ task integer-text
   like text
   fork test
     hook test
-      call is-equal(read value, code 0)
+      call is-equal
+        read value
+        code 0
     hook hold
       send back, text <0>
   save rest, read value
   save negative, false
   fork test
     hook test
-      call is-below(read value, code 0)
+      call is-below
+        read value
+        code 0
     hook hold
       save negative, true
       save rest
@@ -48,16 +56,24 @@ task integer-text
   save out, text <>
   walk test
     hook test
-      call is-above(read rest, code 0)
+      call is-above
+        read rest
+        code 0
     hook hold
       save digit
-        call modulo(read rest, code 10)
+        call modulo
+          read rest
+          code 10
       save out
         call concat
           call char-at(text <0123456789>, read digit)
           read out
       save rest
-        call divide(call subtract(read rest, read digit), code 10)
+        call divide
+          call subtract
+            read rest
+            read digit
+          code 10
   fork test
     hook test
       read negative
@@ -76,26 +92,44 @@ task parse-integer
   save negative, false
   fork test
     hook test
-      call starts-with(read word, text <->)
+      call starts-with
+        read word
+        text <->
     hook hold
       save negative, true
       save index, code 1
   walk test
     hook test
-      call is-below(read index, read word/length)
+      call is-below
+        read index
+        read word/length
     hook hold
       save code
-        call char-code-at(read word, read index)
+        call char-code-at
+          read word
+          read index
       fork test
         hook test
           call and
-            call is-minimum(read code, code 48)
-            call is-maximum(read code, code 57)
+            call is-minimum
+              read code
+              code 48
+            call is-maximum
+              read code
+              code 57
         hook hold
           save value
-            call add(call multiply(read value, code 10), call subtract(read code, code 48))
+            call add
+              call multiply
+                read value
+                code 10
+              call subtract
+                read code
+                code 48
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   fork test
     hook test
       read negative

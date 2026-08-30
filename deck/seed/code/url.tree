@@ -163,7 +163,10 @@ form url
 # parse a URL. A relative `href` resolves against `base` (default `http://localhost`).
 task make-url
   take href, like text
-  take base, like text, fall text <http://localhost>
+  take
+    base
+    like text
+    fall text <http://localhost>
   like url
   send back
     make url

@@ -26,11 +26,17 @@ task ten-zero-bytes
   save index, code 0
   walk test
     hook test
-      call is-below(read index, code 10)
+      call is-below
+        read index
+        code 10
     hook hold
-      call push(read result, code 0)
+      call push
+        read result
+        code 0
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back, read result
 
 task four-zero-bytes
@@ -38,10 +44,18 @@ task four-zero-bytes
     like u8
   save result
     make list
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
   send back, read result
 
 task version-0-table
@@ -180,7 +194,9 @@ test <a version-0 table reads back no code-page-range>
       call make-cursor(call write-otf-os2-table(call version-0-table))
   want hold
     call is-equal
-      call code-page-range-1-or-default(read reread/ul-code-page-range-1, code -1)
+      call code-page-range-1-or-default
+        read reread/ul-code-page-range-1
+        code -1
       code -1
 
 test <a version-2 table reads back its code-page-range and sx-height>
@@ -189,7 +205,9 @@ test <a version-2 table reads back its code-page-range and sx-height>
       call make-cursor(call write-otf-os2-table(call version-2-table))
   want hold
     call is-equal
-      call code-page-range-1-or-default(read reread/ul-code-page-range-1, code -1)
+      call code-page-range-1-or-default
+        read reread/ul-code-page-range-1
+        code -1
       code 1
 
 test <a version-2 table's always-present fields still round trip>

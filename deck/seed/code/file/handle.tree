@@ -6,11 +6,26 @@ form file
 task open
   note async
   take path, like text
-  take read, like boolean, fall true
-  take write, like boolean, fall false
-  take create, like boolean, fall false
-  take append, like boolean, fall false
-  take clear, like boolean, fall false
+  take
+    read
+    like boolean
+    fall true
+  take
+    write
+    like boolean
+    fall false
+  take
+    create
+    like boolean
+    fall false
+  take
+    append
+    like boolean
+    fall false
+  take
+    clear
+    like boolean
+    fall false
   like file
 
 task close
@@ -33,7 +48,10 @@ task seek
   note async
   take file, like file
   take offset, like size
-  take frame, like text, fall text <start>
+  take
+    frame
+    like text
+    fall text <start>
 
 task flush
   note async
@@ -42,4 +60,7 @@ task flush
 task clear
   note async
   take file, like file
-  take size, like size, fall 0
+  take
+    size
+    like size
+    fall 0

@@ -69,10 +69,13 @@ function main(): void {
   // pure indentation chain
   check('indent chain', `a\n  b\n    c`, `a\n  b\n    c`)
 
-  // comma siblings under the head. A comma returns to the head of the line, so every part is a sibling child of it,
-  // however deep the previous part nested: `foo x, bar` + `foo y bar` beneath is foo(x, bar, foo(y(bar)))
+  // A comma POPS ONE LEVEL: the part after it is a sibling of the part before it. When the previous part is a
+  // single token that is the same as returning to the head, which is why these first cases look unchanged.
   check('comma siblings', `a b, c, d`, `a\n  b\n  c\n  d`)
-  check('comma after a nested part', `call add, read a, read b`, `call\n  add\n  read\n    a\n  read\n    b`)
+  // ...and when it is not, the difference shows. `read a` nested two deep, so `read b` lands beside `a`, INSIDE
+  // `read`, rather than beside `read`. This is why a multi-word argument cannot be followed by a comma: write
+  // `call add, read(a), read(b)`, or put the arguments on their own indented lines.
+  check('comma after a nested part', `call add, read a, read b`, `call\n  add\n  read\n    a\n    read\n      b`)
   check('comma then an indented child', `foo x, bar\n  foo y bar`, `foo\n  x\n  bar\n  foo\n    y\n      bar`)
   check('comma after a deep part', `link @x, code <1.x.x>, have 1`, `link\n  @x\n  code\n    <1.x.x>\n  have\n    1`)
 
@@ -94,8 +97,9 @@ function main(): void {
   check('paren list', `l(a,5,6,7)`, `l\n  a\n  5\n  6\n  7`)
   check('paren mesh', `m(h(name,<foo>))`, `m\n  h\n    name\n    <foo>`)
   check('paren text with commas and parens', `h(k,<a, b (c)>)`, `h\n  k\n  <a, b (c)>`)
-  // a comma returns to the enclosing paren, so `2` is a sibling of `read x`
-  check('paren in code keeps working', `call add(read x, 2)`, `call\n  add\n    read\n      x\n    2`)
+  // inside a paren the rule is the same: the comma pops one level off `x`, so `2` lands beside `x` inside
+  // `read`, not beside `read`. `call add(read(x), 2)` is how to mean two arguments here.
+  check('paren in code keeps working', `call add(read x, 2)`, `call\n  add\n    read\n      x\n      2`)
   check('paren spaced', `add (1, 2)`, `add\n  1\n  2`)
   check('two paren lines', `h(1,2)\nh(3,4)`, `h\n  1\n  2\nh\n  3\n  4`)
 

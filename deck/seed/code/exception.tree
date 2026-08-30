@@ -84,8 +84,14 @@ form defect
   like exception
     bind note, <Invalid>
     link thing, like text
-    link value, like text, need false
-    link expected, like text, need false
+    link
+      value
+      like text
+      need false
+    link
+      expected
+      like text
+      need false
 
 form omission
   like exception
@@ -96,29 +102,53 @@ form excess
   like exception
     bind note, <Too large>
     link thing, like text
-    link limit, like number, need false
-    link actual, like number, need false
+    link
+      limit
+      like number
+      need false
+    link
+      actual
+      like number
+      need false
 
 form shortage
   like exception
     bind note, <Too small>
     link thing, like text
-    link limit, like number, need false
-    link actual, like number, need false
+    link
+      limit
+      like number
+      need false
+    link
+      actual
+      like number
+      need false
 
 form mismatch
   like exception
     bind note, <Mismatch>
     link thing, like text
-    link expected, like text, need false
-    link actual, like text, need false
+    link
+      expected
+      like text
+      need false
+    link
+      actual
+      like text
+      need false
 
 form exclusion
   like exception
     bind note, <Not accepted>
     link thing, like text
-    link value, like text, need false
-    link accepted, like list, need false
+    link
+      value
+      like text
+      need false
+    link
+      accepted
+      like list
+      need false
 
 # pick a different thing
 
@@ -131,52 +161,82 @@ form conflict
   like exception
     bind note, <Conflict>
     link thing, like text
-    link current, like text, need false
+    link
+      current
+      like text
+      need false
 
 form refusal
   like exception
     bind note, <Refused>
     link thing, like text
-    link reason, like text, need false
+    link
+      reason
+      like text
+      need false
 
 # get permission
 
 form anonymity
   like exception
     bind note, <Not signed in>
-    link thing, like text, need false
+    link
+      thing
+      like text
+      need false
 
 form denial
   like exception
     bind note, <Not permitted>
-    link thing, like text, need false
+    link
+      thing
+      like text
+      need false
 
 # try again
 
 form overload
   like exception
     bind note, <Overloaded>
-    link thing, like text, need false
-    link retry-after, like number, need false
+    link
+      thing
+      like text
+      need false
+    link
+      retry-after
+      like number
+      need false
 
 form outage
   like exception
     bind note, <Unavailable>
     link thing, like text
-    link retry-after, like number, need false
+    link
+      retry-after
+      like number
+      need false
 
 form timeout
   like exception
     bind note, <Timed out>
     link thing, like text
-    link waited, like number, need false
+    link
+      waited
+      like number
+      need false
 
 form overage
   like exception
     bind note, <Over the limit>
     link thing, like text
-    link limit, like number, need false
-    link retry-after, like number, need false
+    link
+      limit
+      like number
+      need false
+    link
+      retry-after
+      like number
+      need false
 
 # do nothing
 
@@ -190,5 +250,8 @@ form failure
 form bundle
   like exception
     bind note, <Several problems>
-    link thing, like text, need false
+    link
+      thing
+      like text
+      need false
     link list, like list

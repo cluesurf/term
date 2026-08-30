@@ -21,7 +21,10 @@ bind do-response-json
 task read
   note async
   take response, like response
-  take format, like text, fall text <text>
+  take
+    format
+    like text
+    fall text <text>
   like unknown
 
   save raw, read response/dock

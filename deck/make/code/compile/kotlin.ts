@@ -1501,7 +1501,7 @@ export function emitKotlin(
       ? 'Long'
       : v.form === 'float'
         ? 'Double'
-        : v.form === 'text'
+        : v.form === 'string'
           ? 'String'
           : v.form === 'boolean'
             ? 'Boolean'

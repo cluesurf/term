@@ -402,6 +402,35 @@ ok(
   })(),
 )
 
+// ---- the three spellings of one call ----
+// `call f(a)`, `call f, a` and the stacked form are one call. A parenthesis after the callee holds the CALLEE's
+// own children, so the paren form nests its arguments under `f` rather than beside it, and a reader that only
+// looks beside it calls with none. That is the hole the comma rule's correction named in the code role on
+// 2026-08-30, and it was here too.
+
+for (const [shape, text] of [
+  ['commas', 'host vp, text <x>\nview page\n  view t/i\n    bind s, call titlecase, read vp\n'],
+  ['parens', 'host vp, text <x>\nview page\n  view t/i\n    bind s, call titlecase(read vp)\n'],
+  ['stacked', 'host vp, text <x>\nview page\n  view t/i\n    bind s\n      call titlecase\n        read vp\n'],
+] as [string, string][]) {
+  const one = read(text)
+
+  ok(`a call written with ${shape} reads`, one.ok, one.ok ? '' : one.diagnostics.map(d => d.message).join(' | '))
+
+  if (one.ok) {
+    const bond = one.file.view[0]?.node[0]
+    const value = bond?.form === 'view' ? bond.value.bind[0]?.bond : undefined
+
+    ok(
+      `and carries its one argument (${shape})`,
+      value?.form === 'call' && value.value.slot.length + value.value.bind.length === 1,
+      value?.form === 'call'
+        ? `slot ${value.value.slot.length}, bind ${value.value.bind.length}`
+        : String(value?.form),
+    )
+  }
+}
+
 // ---- a counted walk ----
 // `walk size` normalises into a `walk list` over `range(base, head)`, because `view-walk` carries only a list walk
 // and adding a counted one would touch every pass that reads a walk. `range` is a render-runtime task.

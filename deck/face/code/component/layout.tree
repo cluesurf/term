@@ -66,11 +66,11 @@ view layout
     call make-viewport
   view div
     bind data-slot, text <layout-container>
-    bind style, call container-style, read vp
+    bind style, call container-style(read vp)
     view div
       bind data-slot, text <layout-grid>
-      bind style, call grid-style, read vp
+      bind style, call grid-style(read vp)
       view div
         bind data-slot, text <layout-middle>
-        bind style, call middle-style, read vp
+        bind style, call middle-style(read vp)
         slot

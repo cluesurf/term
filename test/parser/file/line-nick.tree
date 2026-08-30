@@ -1,0 +1,7 @@
+
+bear ./{base/env/host}/cord
+
+---
+
+bear
+  ./{base/env/host}/cord

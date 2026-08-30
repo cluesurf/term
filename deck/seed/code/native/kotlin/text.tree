@@ -8,7 +8,10 @@ dock load
 task slice
   take value, like text
   take start, like size
-  take end, like size, need false
+  take
+    end
+    like size
+    need false
   like text
 
   fork test
@@ -30,7 +33,10 @@ task slice
 task find
   take value, like text
   take search, like text
-  take start, like size, fall code 0
+  take
+    start
+    like size
+    fall code 0
   like size
 
   send back
@@ -43,7 +49,10 @@ task replace
   take value, like text
   take search, like text
   take replacement, like text
-  take all, like boolean, fall false
+  take
+    all
+    like boolean
+    fall false
   like text
 
   fork test, name all
@@ -75,7 +84,10 @@ task join
   take list
     like list
       like text
-  take separator, like text, fall text <>
+  take
+    separator
+    like text
+    fall text <>
   like text
 
   send back

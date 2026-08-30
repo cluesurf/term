@@ -31,8 +31,14 @@ task send
 task close
   note async
   take socket, like socket
-  take code, like size, fall 1000
-  take reason, like text, need false
+  take
+    code
+    like size
+    fall 1000
+  take
+    reason
+    like text
+    need false
 
   save raw, read socket/dock
   call raw/close

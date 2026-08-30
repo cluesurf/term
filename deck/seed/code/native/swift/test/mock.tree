@@ -10,7 +10,10 @@ task make
   take returns
     like unknown
     need false
-  take handler, like task, need false
+  take
+    handler
+    like task
+    need false
   like mock
 
   send back
@@ -24,7 +27,10 @@ task replace
 
 task read
   take mock, like mock
-  take field, like text, fall text <calls>
+  take
+    field
+    like text
+    fall text <calls>
 
   send back
     call shared-read

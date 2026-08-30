@@ -300,6 +300,11 @@ export function readView(
       const aliasNode = rest(child).find(n => n.kind === 'group' && headOf(n) === 'name')
       const alias = aliasNode?.kind === 'group' ? keyOf(aliasNode) : undefined
 
+      if (find.some(one => (one.alias ?? one.name) === (alias ?? name))) {
+        error(spanOf(child), `"${alias ?? name}" is taken twice from "${path}"`)
+        continue
+      }
+
       find.push(alias ? { name, alias } : { name })
     }
 
@@ -423,7 +428,18 @@ export function readView(
           const one = readSort(child)
 
           if (one) {
-            sort.push(one)
+            const had = sort.find(
+              had => had.road.step.join('/') === one.road.step.join('/'),
+            )
+
+            if (had) {
+              error(
+                one.span,
+                `"${name}" sorts on "${one.road.step.join('/')}" twice, and the second one decides nothing`,
+              )
+            } else {
+              sort.push(one)
+            }
           }
 
           break
@@ -438,8 +454,18 @@ export function readView(
           }
 
           if (childHead === 'size') {
+            if (value < 1) {
+              error(spanOf(child), `a \`size\` asks for at least one row, and this one asks for ${value}`)
+              break
+            }
+
             size = value
           } else {
+            if (value < 0) {
+              error(spanOf(child), `a \`slot\` starts at zero or later, and this one starts at ${value}`)
+              break
+            }
+
             slot = value
           }
 
@@ -497,7 +523,9 @@ export function readView(
       }
     }
 
-    if (mode === 'not' && hold.length + meet.length !== 1) {
+    if (hold.length + meet.length === 0) {
+      error(span, `a \`meet ${mode}\` groups nothing, so it decides nothing`)
+    } else if (mode === 'not' && hold.length + meet.length !== 1) {
       error(span, `a \`meet not\` takes exactly one child, and this one has ${hold.length + meet.length}`)
     }
 
@@ -515,6 +543,10 @@ export function readView(
     }
 
     const { bind, slot } = readArguments(group, 'hold', name)
+
+    if (bind.length + slot.length === 0) {
+      error(span, `"${name}" has nothing to compare`)
+    }
 
     return { name, bind, slot, span }
   }
@@ -584,6 +616,14 @@ export function readView(
           continue
         }
 
+        if (take.some(one => one.name === takeName)) {
+          error(
+            spanOf(child),
+            `"${takeName}" is taken twice by "${name}", so the component would carry the parameter twice`,
+          )
+          continue
+        }
+
         take.push({ name: takeName, like: likeNode ? readLike(likeNode) : undefined, span: spanOf(child) })
         continue
       }
@@ -630,7 +670,11 @@ export function readView(
             const one = readBind(child)
 
             if (one) {
-              bind.push(one)
+              if (bind.some(had => had.term === one.term)) {
+                error(one.span, `"${one.term}" is bound twice on "${name}"`)
+              } else {
+                bind.push(one)
+              }
             }
 
             continue
@@ -724,6 +768,15 @@ export function readView(
         return undefined
       }
 
+      if (base.form === 'mark' && head.form === 'mark' && head.value <= base.value) {
+        error(
+          span,
+          `a \`walk size\` from ${base.value} to ${head.value} draws nothing. The head is the bound it counts TO`,
+        )
+
+        return undefined
+      }
+
       return {
         form: 'walk',
         value: {
@@ -803,6 +856,17 @@ export function readView(
       next.push({ site, node })
     }
 
+    if (next.length > 1) {
+      error(
+        spanOf(group),
+        `a \`walk\` has one \`hook next\` and this one has ${next.length}. The lowering renders the first, so the rest would vanish without being named`,
+      )
+    }
+
+    if (next.length === 0) {
+      error(spanOf(group), 'a `walk` names what to render per item: `hook next`')
+    }
+
     return next
   }
 
@@ -869,6 +933,37 @@ export function readView(
       error(spanOf(child), `a \`fork\` holds hook test, hook hold and hook miss, never "hook ${kind ?? '?'}"`)
     }
 
+    // Every `hook hold` needs a `hook test` before it. Without one the lowering had nothing to branch on and used
+    // `true`, so a document that forgot its condition rendered that branch unconditionally and said nothing.
+    let pending = false
+
+    for (const one of hook) {
+      if (one.form === 'test') {
+        if (pending) {
+          error(one.span, 'a `hook test` follows a `hook hold`, so the one before it branches on nothing')
+        }
+
+        pending = true
+        continue
+      }
+
+      if (one.form === 'hold') {
+        if (!pending) {
+          error(one.span, 'a `hook hold` with no `hook test` before it branches on nothing')
+        }
+
+        pending = false
+      }
+    }
+
+    if (pending) {
+      error(span, 'a `hook test` with no `hook hold` after it decides nothing')
+    }
+
+    if (!hook.some(one => one.form === 'test')) {
+      error(span, 'a `fork test` branches on nothing. It needs a `hook test`')
+    }
+
     return { form: 'fork', value: { hook }, span }
   }
 
@@ -905,7 +1000,15 @@ export function readView(
     const bind: Bind[] = []
     const slot: Seed[] = []
 
-    for (const child of rest(group).slice(1)) {
+    // A parenthesis after the callee holds the callee's OWN children, so `call f(read a, code 1)` nests the
+    // arguments under `f` rather than beside it. The mill takes the callee's children as the arguments, and this
+    // has to do the same or the paren spelling silently calls with none. `call f, read(a)` and the stacked form
+    // put them beside the callee instead, so both places are read and joined.
+    const callee = rest(group)[0]
+    const inner =
+      callee?.kind === 'group' ? rest(callee) : []
+
+    for (const child of [...inner, ...rest(group).slice(1)]) {
       if (child.kind !== 'group') {
         continue
       }
@@ -1308,6 +1411,92 @@ export function readView(
     }
   }
 
+  // ---- a constant may be built from another ----
+  // `host title, call weld / read name / text < guide>` is a good thing to be able to write, and the lowering
+  // already folds it: a read of a constant is replaced by that constant's value, recursively.
+  //
+  // What that recursion cannot survive is a CYCLE. `host a, read a` is a value defined as itself, and a pair
+  // defining each other is the same thing with a step in it. Both send the fold into infinite recursion, so the
+  // graph is checked here and only the cycle is refused.
+
+  const hostBond = new Map<string, Seed>()
+
+  for (const host of out.host) {
+    if (host.bond) {
+      hostBond.set(host.name, host.bond)
+    }
+  }
+
+  const hostReads = (seed: Seed, into: Set<string>): Set<string> => {
+    if (seed.form === 'read') {
+      const head = seed.value.step[0]
+
+      if (head !== undefined && hostBond.has(head)) {
+        into.add(head)
+      }
+    } else if (seed.form === 'call') {
+      for (const one of [...seed.value.slot, ...seed.value.bind.map(b => b.bond)]) {
+        hostReads(one, into)
+      }
+    }
+
+    return into
+  }
+
+  const hostEdges = new Map<string, Set<string>>()
+
+  for (const [name, bond] of hostBond) {
+    hostEdges.set(name, hostReads(bond, new Set()))
+  }
+
+  const hostClean = new Set<string>()
+
+  const hostRing = (
+    name: string,
+    path: string[],
+    seen: Set<string>,
+  ): string | undefined => {
+    if (hostClean.has(name)) {
+      return undefined
+    }
+
+    if (seen.has(name)) {
+      const at = path.indexOf(name)
+
+      return [...path.slice(at === -1 ? 0 : at), name].join(' reads ')
+    }
+
+    seen.add(name)
+
+    for (const one of hostEdges.get(name) ?? []) {
+      const found = hostRing(one, [...path, name], seen)
+
+      if (found) {
+        return found
+      }
+    }
+
+    seen.delete(name)
+    hostClean.add(name)
+
+    return undefined
+  }
+
+  for (const host of out.host) {
+    if (!host.bond) {
+      continue
+    }
+
+    const ring = hostRing(host.name, [], new Set())
+
+    if (ring) {
+      error(
+        host.span,
+        `a constant cannot be built from itself, and this one is: ${ring}`,
+      )
+    }
+  }
+
   // ---- the operators no catalog may register ----
   // Run whether or not a catalog is given, because determinism and purity are properties of the RENDERING MODEL
   // and not of a project's taste. A document that renders differently on the server and in the browser breaks
@@ -1400,6 +1589,79 @@ export function readView(
 
     if (find.meet) {
       meetSeeds(find.meet)
+    }
+  }
+
+  // ---- nothing declared for nothing ----
+  // A `find` nobody reads is not untidy, it is a COST: the manifest lists it, the host batches it, and the
+  // database runs it on every render for a result nothing uses. A `load` that takes no name is dead weight in
+  // the same manifest. Neither is caught by anything else, because both are perfectly well formed.
+
+  const readHeads = new Set<string>()
+
+  const noteReads = (seed: Seed): void => {
+    if (seed.form === 'read') {
+      const head = seed.value.step[0]
+
+      if (head !== undefined) {
+        readHeads.add(head)
+      }
+    } else if (seed.form === 'call') {
+      for (const one of [...seed.value.slot, ...seed.value.bind.map(b => b.bond)]) {
+        noteReads(one)
+      }
+    }
+  }
+
+  for (const def of out.view) {
+    everySeed(def.node, noteReads)
+  }
+
+  for (const host of out.host) {
+    if (host.bond) {
+      noteReads(host.bond)
+    }
+  }
+
+  // a filter may read a `host`, so those count as reads too
+  for (const find of out.find) {
+    const holdReads = (hold: ViewHold): void => {
+      for (const one of [...hold.slot, ...hold.bind.map(b => b.bond)]) {
+        noteReads(one)
+      }
+    }
+
+    const meetReads = (meet: ViewMeet): void => {
+      for (const hold of meet.hold) {
+        holdReads(hold)
+      }
+
+      for (const inner of meet.meet) {
+        meetReads(inner)
+      }
+    }
+
+    for (const hold of find.hold) {
+      holdReads(hold)
+    }
+
+    if (find.meet) {
+      meetReads(find.meet)
+    }
+  }
+
+  for (const find of out.find) {
+    if (!readHeads.has(find.name)) {
+      error(
+        find.span,
+        `nothing reads "${find.name}", and the host resolves every query before rendering, so this one costs a request per render for a result no one uses`,
+      )
+    }
+  }
+
+  for (const load of out.load) {
+    if (load.find.length === 0) {
+      error(load.span, `"${load.path}" is loaded and nothing is taken from it`)
     }
   }
 
@@ -1596,8 +1858,10 @@ export function readView(
     placed.set(def.name, places(def.node, new Set()))
   }
 
+  const placedClean = new Set<string>()
+
   for (const def of out.view) {
-    const ring = ringFrom(def.name, placed)
+    const ring = ringFrom(def.name, placed, placedClean)
 
     if (ring) {
       error(def.span, `a view cannot place itself, and this one does: ${ring}`)
@@ -1622,8 +1886,18 @@ export function readView(
 }
 
 // The cycle a view is in, named, or nothing. Depth first over the places-graph, which is small.
-function ringFrom(start: string, graph: Map<string, Set<string>>): string | undefined {
+function ringFrom(
+  start: string,
+  graph: Map<string, Set<string>>,
+  // names already proven acyclic, shared across every start so the walk stays linear. Same reason as the macro
+  // graph: without it a view that merely fans out costs exponential time.
+  clean: Set<string> = new Set(),
+): string | undefined {
   const walk = (name: string, path: string[], seen: Set<string>): string | undefined => {
+    if (clean.has(name)) {
+      return undefined
+    }
+
     if (seen.has(name)) {
       const at = path.indexOf(name)
 
@@ -1647,6 +1921,7 @@ function ringFrom(start: string, graph: Map<string, Set<string>>): string | unde
     }
 
     seen.delete(name)
+    clean.add(name)
 
     return undefined
   }
@@ -1769,6 +2044,27 @@ export function checkView(
     return { ok: false, diagnostics: missing }
   }
 
+  // what it WOULD expand to, before it does. Every macro this file declares, by name, plus nothing from the graph:
+  // an imported macro's body is not in this tree, so it counts as one node here and the node cap catches the rest
+  // after expansion. The bomb this stops is the local one, which is the one a single file can build.
+  const bodies = new Map<string, GroupNode>()
+
+  for (const node of tree.nodes) {
+    if (node.kind === 'group' && headOf(node) === 'tree') {
+      const name = keyOf(node)
+
+      if (name) {
+        bodies.set(name, node)
+      }
+    }
+  }
+
+  const bomb = viewBomb(tree, source.file, bodies, (options.caps ?? VIEW_CAPS).node)
+
+  if (bomb.length > 0) {
+    return { ok: false, diagnostics: bomb }
+  }
+
   return readView(
     expandTemplates(tree, templates),
     source.file,
@@ -1842,6 +2138,101 @@ export function viewFused(
   return diagnostics
 }
 
+// What the document will expand to, computed WITHOUT expanding it.
+//
+// The node cap counts the expanded tree, which is the right thing to count and the wrong time to count it: the
+// expansion has already happened by then. Measured 2026-08-30, thirteen macros each fusing the next one twice is
+// a 26-line document that builds two million nodes in 2.2 seconds, and eighteen of them take the compiler down
+// with an out-of-memory crash. That is the oldest denial of service there is, and a cap that runs afterwards
+// cannot stop it.
+//
+// So the size is computed over the macro graph first. Every macro's expanded size is its own nodes plus the size
+// of everything it fuses, memoised, which is linear because the graph is already known to be acyclic. If the
+// document's total is over the cap it is refused and expansion never runs.
+export function viewBomb(
+  tree: RootNode,
+  file: string,
+  known: Map<string, GroupNode>,
+  cap: number,
+): Diagnostic[] {
+  const size = new Map<string, number>()
+
+  // the nodes a group holds, plus the expanded size of every `fuse` beneath it
+  const weigh = (group: GroupNode, seen: Set<string>): number => {
+    let total = 0
+
+    for (const node of group.nodes) {
+      if (node.kind !== 'group') {
+        continue
+      }
+
+      total++
+
+      if (headOf(node) === 'fuse') {
+        const name = keyOf(node)
+
+        if (name) {
+          total += sizeOf(name, seen)
+          continue
+        }
+      }
+
+      total += weigh(node, seen)
+
+      if (total > cap * 64) {
+        // far past anything a message needs to be exact about, and the point is to stop counting
+        return total
+      }
+    }
+
+    return total
+  }
+
+  const sizeOf = (name: string, seen: Set<string>): number => {
+    const held = size.get(name)
+
+    if (held !== undefined) {
+      return held
+    }
+
+    const body = known.get(name)
+
+    if (!body || seen.has(name)) {
+      return 0
+    }
+
+    seen.add(name)
+    const weight = weigh(body, seen)
+    seen.delete(name)
+
+    size.set(name, weight)
+
+    return weight
+  }
+
+  let total = 0
+
+  for (const node of tree.nodes) {
+    if (node.kind === 'group' && headOf(node) === 'view') {
+      total += weigh(node, new Set())
+    }
+  }
+
+  if (total <= cap) {
+    return []
+  }
+
+  const at = tree.nodes.find(n => n.kind === 'group' && headOf(n) === 'view')
+
+  return [
+    diagnose('syntax-error', {
+      file,
+      span: at ? spanOf(at) : ZERO,
+      message: `this document would expand to about ${total} nodes and the cap is ${cap}. Counted from the macros before expanding, because expanding it first is the denial of service`,
+    }),
+  ]
+}
+
 export function viewCycles(tree: RootNode, file: string): Diagnostic[] {
   const body = new Map<string, GroupNode>()
 
@@ -1884,8 +2275,18 @@ export function viewCycles(tree: RootNode, file: string): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
   const said = new Set<string>()
 
+  // Names already proven acyclic. Without this the walk is EXPONENTIAL on a graph that merely fans out: measured
+  // 2026-08-30, 26 macros each fusing the next four took 1.6 seconds and 35 would not finish, so a document could
+  // hang the compiler with a handful of tiny macros and never approach a node cap. Once a name completes with no
+  // cycle beneath it, no later path through it can find one, so it is never walked twice.
+  const clean = new Set<string>()
+
   // depth-first, keeping the path, so the message can name the cycle rather than only that there is one
   const walk = (name: string, path: string[], seen: Set<string>): void => {
+    if (clean.has(name)) {
+      return
+    }
+
     if (seen.has(name)) {
       const at = path.indexOf(name)
       const ring = [...path.slice(at === -1 ? 0 : at), name].join(' fuses ')
@@ -1920,6 +2321,7 @@ export function viewCycles(tree: RootNode, file: string): Diagnostic[] {
     }
 
     seen.delete(name)
+    clean.add(name)
   }
 
   for (const name of body.keys()) {

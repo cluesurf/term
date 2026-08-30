@@ -70,6 +70,15 @@ enum Context {
 type ContextFrame = { kind: Context; token?: Token }
 type IndentFrame = { depth: number; ownLine?: boolean; used: boolean }
 
+// Which comma rule the parser applies (see `comma` below). The one-level rule is the grammar's; the flag exists
+// so a migration can parse the same source both ways and report every line whose meaning differs, rather than
+// flipping 2,241 files blind. Flip it back only to reproduce the superseded reading.
+export let commaPopsOneLevel = true
+
+export function setCommaRule(oneLevel: boolean): void {
+  commaPopsOneLevel = oneLevel
+}
+
 export function buildEvents(tokens: TokenList): EventResult {
   const events: Event[] = []
   const contexts: ContextFrame[] = [{ kind: Context.Root }]
@@ -343,31 +352,49 @@ export function buildEvents(tokens: TokenList): EventResult {
     })
   }
 
-  // A comma returns to the head of the line, or to the enclosing parenthesis: every comma-separated part is a
-  // sibling child of that head, and only a space nests. So `foo x, bar` with `foo y bar` beneath is
-  // `foo(x, bar, foo(y(bar)))`, `call add, read a, read b` is `call(add, read(a), read(b))`, and inside parens
-  // `add(read x, 2)` is `add(read(x), 2)`. The head's own group stays open to receive what follows.
+  // A comma POPS ONE LEVEL: the part after it is a sibling of the part before it, however deep that part had
+  // nested. So `foo bar baz bang boom, a b c, d e f` puts `a` beside `boom` (both under `bang`) and `d` beside
+  // `c` (both under `b`), because `boom` was the deepest node when the first comma arrived and `c` was when the
+  // second did. Only a space nests, and a comma undoes exactly one space.
+  //
+  // This is the rule the tree grammar is specified by. The ported parser had a comma close ALL the way back to
+  // the head of the line instead, which agrees with the one-level rule whenever the preceding part is a single
+  // token (`a b, c, d`, `add 1, 2`, `take x, like text`) and silently disagrees the moment it is not — which is
+  // most of the interesting cases, and is why every fixture carried over from the original implementation still
+  // passed. See test/parser/file/comma-depth.tree.
   function comma() {
     if (top()?.kind === Context.Name) {
       pop()
       events.push({ kind: EventKind.CloseName })
     }
 
-    // close nested groups until the group directly above an indent or the root, which is the line's head. Inside
-    // a parenthesis the owner sits BELOW the paren frame, so every group above it is a child and closes.
-    while (top()?.kind === Context.Group) {
+    const closeOne = (): boolean => {
+      if (top()?.kind !== Context.Group) {
+        return false
+      }
+
+      // the line's head, or a parenthesis owner, is the floor: a comma never escapes past it, so the head stays
+      // open to receive what follows
       const below = contexts[contexts.length - 2]
 
-      if (
-        !below ||
-        below.kind === Context.Indent ||
-        below.kind === Context.Root
-      ) {
-        break
+      if (!below || below.kind === Context.Indent || below.kind === Context.Root) {
+        return false
       }
 
       pop()
       events.push({ kind: EventKind.CloseGroup })
+
+      return true
+    }
+
+    if (commaPopsOneLevel) {
+      closeOne()
+
+      return
+    }
+
+    while (closeOne()) {
+      // the superseded rule: close every nested group back to the line head
     }
   }
 

@@ -15,7 +15,10 @@ note draft
 form network-kink
   link code, like text
   link note, like text
-  link hint, like text, need false
+  link
+    hint
+    like text
+    need false
 
 host kink-code
   term connection-refused
@@ -30,7 +33,10 @@ host kink-code
 task make
   take code, like text
   take note, like text
-  take hint, like text, need false
+  take
+    hint
+    like text
+    need false
   send back
     make network-kink
       bind code, read code
@@ -40,7 +46,10 @@ task make
 task throw
   take code, like text
   take note, like text
-  take hint, like text, need false
+  take
+    hint
+    like text
+    need false
   halt kink
     call make
       bind code, read code

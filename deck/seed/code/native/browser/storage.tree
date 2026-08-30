@@ -7,7 +7,10 @@ dock load
 
 task get
   take key, like text
-  take store, like text, fall text <local>
+  take
+    store
+    like text
+    fall text <local>
   like text
 
   send back
@@ -18,7 +21,10 @@ task get
 task set
   take key, like text
   take value, like text
-  take store, like text, fall text <local>
+  take
+    store
+    like text
+    fall text <local>
 
   call storage/set
     read key
@@ -27,27 +33,39 @@ task set
 
 task remove
   take key, like text
-  take store, like text, fall text <local>
+  take
+    store
+    like text
+    fall text <local>
 
   call storage/remove
     read key
     read store
 
 task clear
-  take store, like text, fall text <local>
+  take
+    store
+    like text
+    fall text <local>
 
   call storage/clear
     read store
 
 task list-keys
-  take store, like text, fall text <local>
+  take
+    store
+    like text
+    fall text <local>
 
   send back
     call storage/keys
       read store
 
 task length
-  take store, like text, fall text <local>
+  take
+    store
+    like text
+    fall text <local>
 
   send back
     call storage/length

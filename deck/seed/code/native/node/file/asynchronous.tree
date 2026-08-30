@@ -9,9 +9,16 @@ dock load
 task read
   note async
   take path, like text
-  take format, like text, fall text <text>
+  take
+    format
+    like text
+    fall text <text>
 
-  fork test, call is-equal(read format, text <bytes>)
+  fork
+    test
+    call is-equal
+      read format
+      text <bytes>
     hook hold
       save result
         call fs-promise/read-file
@@ -54,7 +61,10 @@ task copy
   note async
   take from, like text
   take to, like text
-  take deep, like boolean, fall false
+  take
+    deep
+    like boolean
+    fall false
 
   fork test, name deep
     hook hold
@@ -86,7 +96,10 @@ task move
 task remove
   note async
   take path, like text
-  take deep, like boolean, fall false
+  take
+    deep
+    like boolean
+    fall false
 
   call fs-promise/rm
     wait true
@@ -99,7 +112,10 @@ task remove
 task test
   note async
   take path, like text
-  take kind, like text, need false
+  take
+    kind
+    like text
+    need false
 
   call fs-promise/access
     wait true
@@ -116,17 +132,29 @@ task test
       read path
       halt kink
 
-  fork test, call is-equal(read kind, text <file>)
+  fork
+    test
+    call is-equal
+      read kind
+      text <file>
     hook hold
       send back
         call stats/is-file
 
-  fork test, call is-equal(read kind, text <directory>)
+  fork
+    test
+    call is-equal
+      read kind
+      text <directory>
     hook hold
       send back
         call stats/is-directory
 
-  fork test, call is-equal(read kind, text <link>)
+  fork
+    test
+    call is-equal
+      read kind
+      text <link>
     hook hold
       send back
         call stats/is-symbolic-link
@@ -136,7 +164,10 @@ task test
 task watch
   note async
   take path, like text
-  take deep, like boolean, fall false
+  take
+    deep
+    like boolean
+    fall false
 
   call fs/watch
     read path

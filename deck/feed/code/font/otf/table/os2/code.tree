@@ -40,7 +40,9 @@ task read-otf-os2-maybe-u16
     like number
   fork test
     hook test
-      call is-minimum(read version, read minimum-version)
+      call is-minimum
+        read version
+        read minimum-version
     hook hold
       send back
         make some
@@ -57,7 +59,9 @@ task read-otf-os2-maybe-i16
     like number
   fork test
     hook test
-      call is-minimum(read version, read minimum-version)
+      call is-minimum
+        read version
+        read minimum-version
     hook hold
       send back
         make some
@@ -74,7 +78,9 @@ task read-otf-os2-maybe-u32
     like number
   fork test
     hook test
-      call is-minimum(read version, read minimum-version)
+      call is-minimum
+        read version
+        read minimum-version
     hook hold
       send back
         make some
@@ -119,7 +125,9 @@ task read-otf-os2-table
   save s-family-class
     call read-i16(read cursor)
   save panose
-    call read-bytes(read cursor, code 10)
+    call read-bytes
+      read cursor
+      code 10
   save ul-unicode-range-1
     call read-u32(read cursor)
   save ul-unicode-range-2
@@ -129,7 +137,9 @@ task read-otf-os2-table
   save ul-unicode-range-4
     call read-u32(read cursor)
   save ach-vend-id
-    call read-bytes(read cursor, code 4)
+    call read-bytes
+      read cursor
+      code 4
   save fs-selection
     call read-u16(read cursor)
   save us-first-char-index
@@ -147,19 +157,40 @@ task read-otf-os2-table
   save us-win-descent
     call read-u16(read cursor)
   save ul-code-page-range-1
-    call read-otf-os2-maybe-u32(read cursor, read version, code 1)
+    call read-otf-os2-maybe-u32
+      read cursor
+      read version
+      code 1
   save ul-code-page-range-2
-    call read-otf-os2-maybe-u32(read cursor, read version, code 1)
+    call read-otf-os2-maybe-u32
+      read cursor
+      read version
+      code 1
   save sx-height
-    call read-otf-os2-maybe-i16(read cursor, read version, code 2)
+    call read-otf-os2-maybe-i16
+      read cursor
+      read version
+      code 2
   save s-cap-height
-    call read-otf-os2-maybe-i16(read cursor, read version, code 2)
+    call read-otf-os2-maybe-i16
+      read cursor
+      read version
+      code 2
   save us-default-char
-    call read-otf-os2-maybe-u16(read cursor, read version, code 2)
+    call read-otf-os2-maybe-u16
+      read cursor
+      read version
+      code 2
   save us-break-char
-    call read-otf-os2-maybe-u16(read cursor, read version, code 2)
+    call read-otf-os2-maybe-u16
+      read cursor
+      read version
+      code 2
   save us-max-context
-    call read-otf-os2-maybe-u16(read cursor, read version, code 2)
+    call read-otf-os2-maybe-u16
+      read cursor
+      read version
+      code 2
   send back
     make otf-os2-table
       bind version, read version
@@ -210,7 +241,9 @@ task write-otf-os2-maybe-u16
   fork case, read subject
     case some
       link value
-      call write-u16(read writer, read value)
+      call write-u16
+        read writer
+        read value
     case none
 
 task write-otf-os2-maybe-i16
@@ -221,7 +254,9 @@ task write-otf-os2-maybe-i16
   fork case, read subject
     case some
       link value
-      call write-i16(read writer, read value)
+      call write-i16
+        read writer
+        read value
     case none
 
 task write-otf-os2-maybe-u32
@@ -232,7 +267,9 @@ task write-otf-os2-maybe-u32
   fork case, read subject
     case some
       link value
-      call write-u32(read writer, read value)
+      call write-u32
+        read writer
+        read value
     case none
 
 task write-otf-os2-table
@@ -241,42 +278,116 @@ task write-otf-os2-table
     like u8
   save writer
     call make-writer
-  call write-u16(read writer, read table/version)
-  call write-i16(read writer, read table/x-avg-char-width)
-  call write-u16(read writer, read table/us-weight-class)
-  call write-u16(read writer, read table/us-width-class)
-  call write-u16(read writer, read table/fs-type)
-  call write-i16(read writer, read table/y-subscript-x-size)
-  call write-i16(read writer, read table/y-subscript-y-size)
-  call write-i16(read writer, read table/y-subscript-x-offset)
-  call write-i16(read writer, read table/y-subscript-y-offset)
-  call write-i16(read writer, read table/y-superscript-x-size)
-  call write-i16(read writer, read table/y-superscript-y-size)
-  call write-i16(read writer, read table/y-superscript-x-offset)
-  call write-i16(read writer, read table/y-superscript-y-offset)
-  call write-i16(read writer, read table/y-strikeout-size)
-  call write-i16(read writer, read table/y-strikeout-position)
-  call write-i16(read writer, read table/s-family-class)
-  call write-bytes(read writer, read table/panose)
-  call write-u32(read writer, read table/ul-unicode-range-1)
-  call write-u32(read writer, read table/ul-unicode-range-2)
-  call write-u32(read writer, read table/ul-unicode-range-3)
-  call write-u32(read writer, read table/ul-unicode-range-4)
-  call write-bytes(read writer, read table/ach-vend-id)
-  call write-u16(read writer, read table/fs-selection)
-  call write-u16(read writer, read table/us-first-char-index)
-  call write-u16(read writer, read table/us-last-char-index)
-  call write-i16(read writer, read table/s-typo-ascender)
-  call write-i16(read writer, read table/s-typo-descender)
-  call write-i16(read writer, read table/s-typo-line-gap)
-  call write-u16(read writer, read table/us-win-ascent)
-  call write-u16(read writer, read table/us-win-descent)
-  call write-otf-os2-maybe-u32(read writer, read table/ul-code-page-range-1)
-  call write-otf-os2-maybe-u32(read writer, read table/ul-code-page-range-2)
-  call write-otf-os2-maybe-i16(read writer, read table/sx-height)
-  call write-otf-os2-maybe-i16(read writer, read table/s-cap-height)
-  call write-otf-os2-maybe-u16(read writer, read table/us-default-char)
-  call write-otf-os2-maybe-u16(read writer, read table/us-break-char)
-  call write-otf-os2-maybe-u16(read writer, read table/us-max-context)
+  call write-u16
+    read writer
+    read table/version
+  call write-i16
+    read writer
+    read table/x-avg-char-width
+  call write-u16
+    read writer
+    read table/us-weight-class
+  call write-u16
+    read writer
+    read table/us-width-class
+  call write-u16
+    read writer
+    read table/fs-type
+  call write-i16
+    read writer
+    read table/y-subscript-x-size
+  call write-i16
+    read writer
+    read table/y-subscript-y-size
+  call write-i16
+    read writer
+    read table/y-subscript-x-offset
+  call write-i16
+    read writer
+    read table/y-subscript-y-offset
+  call write-i16
+    read writer
+    read table/y-superscript-x-size
+  call write-i16
+    read writer
+    read table/y-superscript-y-size
+  call write-i16
+    read writer
+    read table/y-superscript-x-offset
+  call write-i16
+    read writer
+    read table/y-superscript-y-offset
+  call write-i16
+    read writer
+    read table/y-strikeout-size
+  call write-i16
+    read writer
+    read table/y-strikeout-position
+  call write-i16
+    read writer
+    read table/s-family-class
+  call write-bytes
+    read writer
+    read table/panose
+  call write-u32
+    read writer
+    read table/ul-unicode-range-1
+  call write-u32
+    read writer
+    read table/ul-unicode-range-2
+  call write-u32
+    read writer
+    read table/ul-unicode-range-3
+  call write-u32
+    read writer
+    read table/ul-unicode-range-4
+  call write-bytes
+    read writer
+    read table/ach-vend-id
+  call write-u16
+    read writer
+    read table/fs-selection
+  call write-u16
+    read writer
+    read table/us-first-char-index
+  call write-u16
+    read writer
+    read table/us-last-char-index
+  call write-i16
+    read writer
+    read table/s-typo-ascender
+  call write-i16
+    read writer
+    read table/s-typo-descender
+  call write-i16
+    read writer
+    read table/s-typo-line-gap
+  call write-u16
+    read writer
+    read table/us-win-ascent
+  call write-u16
+    read writer
+    read table/us-win-descent
+  call write-otf-os2-maybe-u32
+    read writer
+    read table/ul-code-page-range-1
+  call write-otf-os2-maybe-u32
+    read writer
+    read table/ul-code-page-range-2
+  call write-otf-os2-maybe-i16
+    read writer
+    read table/sx-height
+  call write-otf-os2-maybe-i16
+    read writer
+    read table/s-cap-height
+  call write-otf-os2-maybe-u16
+    read writer
+    read table/us-default-char
+  call write-otf-os2-maybe-u16
+    read writer
+    read table/us-break-char
+  call write-otf-os2-maybe-u16
+    read writer
+    read table/us-max-context
   send back
     call to-bytes(read writer)

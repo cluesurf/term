@@ -23,7 +23,10 @@ task read
         call current/executable
 
 task exit
-  take code, like size, fall 0
+  take
+    code
+    like size
+    fall 0
 
   call current/exit
     read code

@@ -24,26 +24,66 @@ task minimal-gzip-bytes
     like u8
   save result
     make list
-  call push(read result, code 0x1f)
-  call push(read result, code 0x8b)
-  call push(read result, code 0x08)
-  call push(read result, code 0x00)
-  call push(read result, code 0x00)
-  call push(read result, code 0x00)
-  call push(read result, code 0x00)
-  call push(read result, code 0x00)
-  call push(read result, code 0x00)
-  call push(read result, code 0xff)
-  call push(read result, code 0xaa)
-  call push(read result, code 0xbb)
-  call push(read result, code 0x78)
-  call push(read result, code 0x56)
-  call push(read result, code 0x34)
-  call push(read result, code 0x12)
-  call push(read result, code 0x02)
-  call push(read result, code 0x00)
-  call push(read result, code 0x00)
-  call push(read result, code 0x00)
+  call push
+    read result
+    code 0x1f
+  call push
+    read result
+    code 0x8b
+  call push
+    read result
+    code 0x08
+  call push
+    read result
+    code 0x00
+  call push
+    read result
+    code 0x00
+  call push
+    read result
+    code 0x00
+  call push
+    read result
+    code 0x00
+  call push
+    read result
+    code 0x00
+  call push
+    read result
+    code 0x00
+  call push
+    read result
+    code 0xff
+  call push
+    read result
+    code 0xaa
+  call push
+    read result
+    code 0xbb
+  call push
+    read result
+    code 0x78
+  call push
+    read result
+    code 0x56
+  call push
+    read result
+    code 0x34
+  call push
+    read result
+    code 0x12
+  call push
+    read result
+    code 0x02
+  call push
+    read result
+    code 0x00
+  call push
+    read result
+    code 0x00
+  call push
+    read result
+    code 0x00
   send back, read result
 
 task name-or-default
@@ -72,7 +112,9 @@ test <read-gzip reads no name when the name flag bit is unset>
     call read-gzip(call minimal-gzip-bytes)
   want hold
     call is-equal
-      call name-or-default(read file/name, text <no name>)
+      call name-or-default
+        read file/name
+        text <no name>
       text <no name>
 
 test <read-gzip reads the two compressed-data bytes>
@@ -128,5 +170,7 @@ test <a name flag round trips through write-gzip and back>
     call read-gzip(call write-gzip(read file))
   want hold
     call is-equal
-      call name-or-default(read reread/name, text <no name>)
+      call name-or-default
+        read reread/name
+        text <no name>
       text <hi.txt>

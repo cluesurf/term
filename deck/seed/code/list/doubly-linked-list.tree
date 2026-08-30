@@ -1,14 +1,26 @@
 form doubly-linked-list-node
   head t
   link value, like t
-  link next, void doubly-linked-list-node, like t
-  link prev, void doubly-linked-list-node, like t
+  link
+    next
+    void doubly-linked-list-node
+    like t
+  link
+    prev
+    void doubly-linked-list-node
+    like t
 
 form doubly-linked-list
   head t
 
-  link head, void doubly-linked-list-node, like t
-  link tail, void doubly-linked-list-node, like t
+  link
+    head
+    void doubly-linked-list-node
+    like t
+  link
+    tail
+    void doubly-linked-list-node
+    like t
 
   link size, like number
 

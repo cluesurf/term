@@ -73,3 +73,16 @@ test <an exponent parses to the same value written back>
     call is-equal
       call write-json(call read-json(text <1.5e2>))
       text <150>
+
+# A character outside the basic multilingual plane, which is where this package's text cursor used to lose data.
+# `char-count` counts Unicode SCALAR values on every backend, while `char-at` indexes UTF-16 code units on
+# TypeScript and Kotlin, Unicode scalars on Rust, and grapheme clusters on Swift (checked in each emitter's own
+# `stringExpr`, not assumed). The cursor compared a UTF-16 `position` against a scalar-counted `length` to decide
+# end of input, so one astral character made the buffer look one unit shorter than it is and the parse stopped
+# early, silently truncating. Two emoji and a trailing key make that off-by-N wide enough that no boundary can
+# land right by accident. See the index-space table on `form text-cursor` in ../code/base.tree.
+test <a string holding astral characters survives the text cursor>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <{"a":"😀🚀b","b":1}>))
+      text <{"a":"😀🚀b","b":1}>

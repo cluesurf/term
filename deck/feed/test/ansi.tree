@@ -34,82 +34,110 @@ test <reset-all-modes is ESC[0m>
   want hold
     call is-equal
       call reset-all-modes
-      call concat(call esc, text <[0m>)
+      call concat
+        call esc
+        text <[0m>
 
 test <set-bold-mode is ESC[1m>
   want hold
     call is-equal
       call set-bold-mode
-      call concat(call esc, text <[1m>)
+      call concat
+        call esc
+        text <[1m>
 
 test <move-cursor-to-home-position is ESC[H>
   want hold
     call is-equal
       call move-cursor-to-home-position
-      call concat(call esc, text <[H>)
+      call concat
+        call esc
+        text <[H>
 
 test <move-cursor-to-line-and-column interpolates both numbers>
   want hold
     call is-equal
       call move-cursor-to-line-and-column(code 3, code 12)
-      call concat(call esc, text <[3;12H>)
+      call concat
+        call esc
+        text <[3;12H>
 
 test <set-color-foreground-256 interpolates the palette index>
   want hold
     call is-equal
       call set-color-foreground-256(code 200)
-      call concat(call esc, text <[38;5;200m>)
+      call concat
+        call esc
+        text <[38;5;200m>
 
 test <set-color-foreground-rgb interpolates all three channels>
   want hold
     call is-equal
       call set-color-foreground-rgb(code 10, code 20, code 30)
-      call concat(call esc, text <[38;2;10;20;30m>)
+      call concat
+        call esc
+        text <[38;2;10;20;30m>
 
 test <make-cursor-invisible is ESC[?25l>
   want hold
     call is-equal
       call make-cursor-invisible
-      call concat(call esc, text <[?25l>)
+      call concat
+        call esc
+        text <[?25l>
 
 test <set-italic-mode is ESC[3m>
   want hold
     call is-equal
       call set-italic-mode
-      call concat(call esc, text <[3m>)
+      call concat
+        call esc
+        text <[3m>
 
 test <set-strike-through-mode is ESC[9m>
   want hold
     call is-equal
       call set-strike-through-mode
-      call concat(call esc, text <[9m>)
+      call concat
+        call esc
+        text <[9m>
 
 test <set-red-foreground is ESC[31m>
   want hold
     call is-equal
       call set-red-foreground
-      call concat(call esc, text <[31m>)
+      call concat
+        call esc
+        text <[31m>
 
 test <set-bright-cyan-background is ESC[106m>
   want hold
     call is-equal
       call set-bright-cyan-background
-      call concat(call esc, text <[106m>)
+      call concat
+        call esc
+        text <[106m>
 
 test <save-cursor-position is ESC7, no bracket>
   want hold
     call is-equal
       call save-cursor-position
-      call concat(call esc, text <7>)
+      call concat
+        call esc
+        text <7>
 
 test <enable-alternative-buffer is ESC[?1049h>
   want hold
     call is-equal
       call enable-alternative-buffer
-      call concat(call esc, text <[?1049h>)
+      call concat
+        call esc
+        text <[?1049h>
 
 test <erase-from-cursor-to-end-of-line is ESC[0K>
   want hold
     call is-equal
       call erase-from-cursor-to-end-of-line
-      call concat(call esc, text <[0K>)
+      call concat
+        call esc
+        text <[0K>

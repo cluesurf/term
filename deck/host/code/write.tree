@@ -49,41 +49,72 @@ task write
         call concat(text <tree >, read anchor/name)
       fork test
         hook test
-          call is-equal(read anchor/hold, text <hash>)
+          call is-equal
+            read anchor/hold
+            text <hash>
         hook hold
-          call write-entries(read anchor/entries, code 1, read lines)
+          call write-entries
+            read anchor/entries
+            code 1
+            read lines
         hook miss
-          call write-items(read anchor/items, code 1, read lines)
+          call write-items
+            read anchor/items
+            code 1
+            read lines
       call push
         read lines
         text <>
   fork case, read value
     case hash
       link list
-      call write-entries(read list, code 0, read lines)
+      call write-entries
+        read list
+        code 0
+        read lines
     case array
       link list
-      call write-items(read list, code 0, read lines)
+      call write-items
+        read list
+        code 0
+        read lines
     case text
       link content
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case number
       link content
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case decimal
       link content
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case flag
       link content
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case blank
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case graft
       link name
-      call push(read lines, call concat(text <fuse >, read name))
+      call push
+        read lines
+        call
+          concat
+            text <fuse >
+            read name
   send back
     call concat
-      call join(read lines, text <\n>)
+      call join
+        read lines
+        text <\n>
       text <\n>
 
 task pad
@@ -94,12 +125,18 @@ task pad
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read depth)
+      call is-below
+        read index
+        read depth
     hook hold
       save out
-        call concat(read out, text <  >)
+        call concat
+          read out
+          text <  >
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back, read out
 
 # a key that is a name is written bare; any other key as a text
@@ -120,30 +157,60 @@ task is-key
   like boolean
   fork test
     hook test
-      call is-equal(read name/length, code 0)
+      call is-equal
+        read name/length
+        code 0
     hook hold
       send back, false
   save index, code 0
   save last-dash, false
   walk test
     hook test
-      call is-below(read index, read name/length)
+      call is-below
+        read index
+        read name/length
     hook hold
       save glyph
-        call char-at(read name, read index)
+        call char-at
+          read name
+          read index
       save lower
         call and
-          call is-minimum(call char-code-at(read name, read index), code 97)
-          call is-maximum(call char-code-at(read name, read index), code 122)
+          call is-minimum
+            call
+              char-code-at
+                read name
+                read index
+            code 97
+          call is-maximum
+            call
+              char-code-at
+                read name
+                read index
+            code 122
       save digit
         call and
-          call is-minimum(call char-code-at(read name, read index), code 48)
-          call is-maximum(call char-code-at(read name, read index), code 57)
+          call is-minimum
+            call
+              char-code-at
+                read name
+                read index
+            code 48
+          call is-maximum
+            call
+              char-code-at
+                read name
+                read index
+            code 57
       save dash
-        call is-equal(read glyph, text <->)
+        call is-equal
+          read glyph
+          text <->
       fork test
         hook test
-          call is-equal(read index, code 0)
+          call is-equal
+            read index
+            code 0
         hook hold
           fork test
             hook test
@@ -152,17 +219,26 @@ task is-key
               send back, false
       fork test
         hook test
-          call not(call or(read lower, call or(read digit, read dash)))
+          call not
+            call or
+              read lower
+              call or
+                read digit
+                read dash
         hook hold
           send back, false
       fork test
         hook test
-          call and(read dash, read last-dash)
+          call and
+            read dash
+            read last-dash
         hook hold
           send back, false
       save last-dash, read dash
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back
     call not(read last-dash)
 
@@ -189,25 +265,91 @@ task write-entries
       fork case, read entry/base
         case graft
           link name
-          call push(read out, call concat(read prefix, call concat(text <fuse >, read name)))
+          call push
+            read out
+            call
+              concat
+                read prefix
+                call
+                  concat
+                    text <fuse >
+                    read name
         case hash
           link list
-          call push(read out, call concat(read prefix, call concat(text <host >, read key)))
-          call write-entries(read list, call add(read depth, code 1), read out)
+          call push
+            read out
+            call
+              concat
+                read prefix
+                call
+                  concat
+                    text <host >
+                    read key
+          call write-entries
+            read list
+            call
+              add
+                read depth
+                code 1
+            read out
         case array
           link list
-          call push(read out, call concat(read prefix, call concat(text <list >, read key)))
-          call write-items(read list, call add(read depth, code 1), read out)
+          call push
+            read out
+            call
+              concat
+                read prefix
+                call
+                  concat
+                    text <list >
+                    read key
+          call write-items
+            read list
+            call
+              add
+                read depth
+                code 1
+            read out
         case text
-          call push(read out, call entry-line(read prefix, read key, read entry/base))
+          call push
+            read out
+            call
+              entry-line
+                read prefix
+                read key
+                read entry/base
         case number
-          call push(read out, call entry-line(read prefix, read key, read entry/base))
+          call push
+            read out
+            call
+              entry-line
+                read prefix
+                read key
+                read entry/base
         case decimal
-          call push(read out, call entry-line(read prefix, read key, read entry/base))
+          call push
+            read out
+            call
+              entry-line
+                read prefix
+                read key
+                read entry/base
         case flag
-          call push(read out, call entry-line(read prefix, read key, read entry/base))
+          call push
+            read out
+            call
+              entry-line
+                read prefix
+                read key
+                read entry/base
         case blank
-          call push(read out, call entry-line(read prefix, read key, read entry/base))
+          call push
+            read out
+            call
+              entry-line
+                read prefix
+                read key
+                read entry/base
 
 task entry-line
   note private
@@ -252,21 +394,45 @@ task write-items
           fork test
             hook test
               call and
-                call not(call is-equal(read line, read prefix))
-                call is-above(call add(read line/length, call add(code 2, read word/length)), code 78)
+                call not
+                  call is-equal
+                    read line
+                    read prefix
+                call is-above
+                  call
+                    add
+                      read line/length
+                      call
+                        add
+                          code 2
+                          read word/length
+                  code 78
             hook hold
-              call push(read out, read line)
+              call push
+                read out
+                read line
               save line, read prefix
           fork test
             hook test
-              call is-equal(read line, read prefix)
+              call is-equal
+                read line
+                read prefix
             hook hold
               save line
-                call concat(read line, read word)
+                call concat
+                  read line
+                  read word
             hook miss
               save line
-                call concat(read line, call concat(text <, >, read word))
-      call push(read out, read line)
+                call concat
+                  read line
+                  call
+                    concat
+                      text <, >
+                      read word
+      call push
+        read out
+        read line
       send back
   walk list
     read list
@@ -275,25 +441,80 @@ task write-items
       fork case, read item
         case graft
           link name
-          call push(read out, call concat(read prefix, call concat(text <fuse >, read name)))
+          call push
+            read out
+            call
+              concat
+                read prefix
+                call
+                  concat
+                    text <fuse >
+                    read name
         case hash
           link list
-          call push(read out, call concat(read prefix, text <mesh>))
-          call write-entries(read list, call add(read depth, code 1), read out)
+          call push
+            read out
+            call
+              concat
+                read prefix
+                text <mesh>
+          call write-entries
+            read list
+            call
+              add
+                read depth
+                code 1
+            read out
         case array
           link list
-          call push(read out, call concat(read prefix, text <list>))
-          call write-items(read list, call add(read depth, code 1), read out)
+          call push
+            read out
+            call
+              concat
+                read prefix
+                text <list>
+          call write-items
+            read list
+            call
+              add
+                read depth
+                code 1
+            read out
         case text
-          call push(read out, call concat(read prefix, call scalar(read item)))
+          call push
+            read out
+            call
+              concat
+                read prefix
+                call scalar read item
         case number
-          call push(read out, call concat(read prefix, call scalar(read item)))
+          call push
+            read out
+            call
+              concat
+                read prefix
+                call scalar read item
         case decimal
-          call push(read out, call concat(read prefix, call scalar(read item)))
+          call push
+            read out
+            call
+              concat
+                read prefix
+                call scalar read item
         case flag
-          call push(read out, call concat(read prefix, call scalar(read item)))
+          call push
+            read out
+            call
+              concat
+                read prefix
+                call scalar read item
         case blank
-          call push(read out, call concat(read prefix, call scalar(read item)))
+          call push
+            read out
+            call
+              concat
+                read prefix
+                call scalar read item
 
 task all-scalar
   note private
@@ -375,37 +596,72 @@ task decimal-text
   save index, code 0
   walk test
     hook test
-      call is-below(read index, read shown/length)
+      call is-below
+        read index
+        read shown/length
     hook hold
       fork test
         hook test
-          call is-equal(call char-at(read shown, read index), text <.>)
+          call is-equal
+            call
+              char-at
+                read shown
+                read index
+            text <.>
         hook hold
           send back, read shown
       save index
-        call add(read index, code 1)
+        call add
+          read index
+          code 1
   send back
-    call concat(read shown, text <.0>)
+    call concat
+      read shown
+      text <.0>
 
 task escape
   take value, like text
   like text
   save out
-    call replace-all(read value, text <\\>, text <\\\\>)
+    call replace-all
+      read value
+      text <\\>
+      text <\\\\>
   save out
-    call replace-all(read out, text <\<>, text <\\\<>)
+    call replace-all
+      read out
+      text <\<>
+      text <\\\<>
   save out
-    call replace-all(read out, text <\>>, text <\\\>>)
+    call replace-all
+      read out
+      text <\>>
+      text <\\\>>
   save out
-    call replace-all(read out, text <{>, text <\\{>)
+    call replace-all
+      read out
+      text <\{>
+      text <\\\{>
   save out
-    call replace-all(read out, text <}>, text <\\}>)
+    call replace-all
+      read out
+      text <\}>
+      text <\\\}>
   save out
-    call replace-all(read out, text <\n>, text <\\n>)
+    call replace-all
+      read out
+      text <\n>
+      text <\\n>
   save out
-    call replace-all(read out, text <\r>, text <\\r>)
+    call replace-all
+      read out
+      text <\r>
+      text <\\r>
   save out
-    call replace-all(read out, text <\t>, text <\\t>)
+    call replace-all
+      read out
+      text <\t>
+      text <\\t>
   send back, read out
 
 # the compact form: one line per top-level form, anchors first
@@ -424,25 +680,41 @@ task pack
       take site, name anchor
       save parts
         make list
-      call push(read parts, read anchor/name)
+      call push
+        read parts
+        read anchor/name
       fork test
         hook test
-          call is-equal(read anchor/hold, text <hash>)
+          call is-equal
+            read anchor/hold
+            text <hash>
         hook hold
           walk list
             read anchor/entries
             hook next
               take site, name entry
-              call push(read parts, call pack-entry(read entry))
+              call push
+                read parts
+                call pack-entry read entry
         hook miss
           walk list
             read anchor/items
             hook next
               take site, name item
-              call push(read parts, call pack-item(read item))
+              call push
+                read parts
+                call pack-item read item
       call push
         read lines
-        call concat(text <t(>, call concat(call join(read parts, text <,>), text <)>))
+        call concat
+          text <t(>
+          call
+            concat
+              call
+                join
+                  read parts
+                  text <,>
+              text <)>
   fork case, read value
     case hash
       link list
@@ -450,34 +722,58 @@ task pack
         read list
         hook next
           take site, name entry
-          call push(read lines, call pack-entry(read entry))
+          call push
+            read lines
+            call pack-entry read entry
     case array
       link list
       walk list
         read list
         hook next
           take site, name item
-          call push(read lines, call pack-item(read item))
+          call push
+            read lines
+            call pack-item read item
     case text
       link content
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case number
       link content
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case decimal
       link content
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case flag
       link content
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case blank
-      call push(read lines, call scalar(read value))
+      call push
+        read lines
+        call scalar read value
     case graft
       link name
-      call push(read lines, call concat(text <f(>, call concat(read name, text <)>)))
+      call push
+        read lines
+        call
+          concat
+            text <f(>
+            call
+              concat
+                read name
+                text <)>
   send back
     call concat
-      call join(read lines, text <\n>)
+      call join
+        read lines
+        text <\n>
       text <\n>
 
 task pack-entry
@@ -490,46 +786,130 @@ task pack-entry
     case graft
       link name
       send back
-        call concat(text <f(>, call concat(read name, text <)>))
+        call concat
+          text <f(>
+          call
+            concat
+              read name
+              text <)>
     case hash
       link list
       save parts
         make list
-      call push(read parts, read key)
+      call push
+        read parts
+        read key
       walk list
         read list
         hook next
           take site, name one
-          call push(read parts, call pack-entry(read one))
+          call push
+            read parts
+            call pack-entry read one
       send back
-        call concat(text <h(>, call concat(call join(read parts, text <,>), text <)>))
+        call concat
+          text <h(>
+          call
+            concat
+              call
+                join
+                  read parts
+                  text <,>
+              text <)>
     case array
       link list
       save parts
         make list
-      call push(read parts, read key)
+      call push
+        read parts
+        read key
       walk list
         read list
         hook next
           take site, name one
-          call push(read parts, call pack-item(read one))
+          call push
+            read parts
+            call pack-item read one
       send back
-        call concat(text <l(>, call concat(call join(read parts, text <,>), text <)>))
+        call concat
+          text <l(>
+          call
+            concat
+              call
+                join
+                  read parts
+                  text <,>
+              text <)>
     case text
       send back
-        call concat(text <h(>, call concat(read key, call concat(text <,>, call concat(call scalar(read entry/base), text <)>))))
+        call concat
+          text <h(>
+          call
+            concat
+              read key
+              call
+                concat
+                  text <,>
+                  call
+                    concat
+                      call scalar read entry/base
+                      text <)>
     case number
       send back
-        call concat(text <h(>, call concat(read key, call concat(text <,>, call concat(call scalar(read entry/base), text <)>))))
+        call concat
+          text <h(>
+          call
+            concat
+              read key
+              call
+                concat
+                  text <,>
+                  call
+                    concat
+                      call scalar read entry/base
+                      text <)>
     case decimal
       send back
-        call concat(text <h(>, call concat(read key, call concat(text <,>, call concat(call scalar(read entry/base), text <)>))))
+        call concat
+          text <h(>
+          call
+            concat
+              read key
+              call
+                concat
+                  text <,>
+                  call
+                    concat
+                      call scalar read entry/base
+                      text <)>
     case flag
       send back
-        call concat(text <h(>, call concat(read key, call concat(text <,>, call concat(call scalar(read entry/base), text <)>))))
+        call concat
+          text <h(>
+          call
+            concat
+              read key
+              call
+                concat
+                  text <,>
+                  call
+                    concat
+                      call scalar read entry/base
+                      text <)>
     case blank
       send back
-        call concat(text <h(>, call concat(read key, call concat(text <,>, call concat(call scalar(read entry/base), text <)>))))
+        call concat
+          text <h(>
+          call
+            concat
+              read key
+              call
+                concat
+                  text <,>
+                  call
+                    concat
+                      call scalar read entry/base
+                      text <)>
 
 task pack-item
   note private
@@ -539,7 +919,12 @@ task pack-item
     case graft
       link name
       send back
-        call concat(text <f(>, call concat(read name, text <)>))
+        call concat
+          text <f(>
+          call
+            concat
+              read name
+              text <)>
     case hash
       link list
       save parts
@@ -548,9 +933,19 @@ task pack-item
         read list
         hook next
           take site, name one
-          call push(read parts, call pack-entry(read one))
+          call push
+            read parts
+            call pack-entry read one
       send back
-        call concat(text <m(>, call concat(call join(read parts, text <,>), text <)>))
+        call concat
+          text <m(>
+          call
+            concat
+              call
+                join
+                  read parts
+                  text <,>
+              text <)>
     case array
       link list
       save parts
@@ -559,9 +954,19 @@ task pack-item
         read list
         hook next
           take site, name one
-          call push(read parts, call pack-item(read one))
+          call push
+            read parts
+            call pack-item read one
       send back
-        call concat(text <l(>, call concat(call join(read parts, text <,>), text <)>))
+        call concat
+          text <l(>
+          call
+            concat
+              call
+                join
+                  read parts
+                  text <,>
+              text <)>
     case text
       send back, call scalar(read item)
     case number

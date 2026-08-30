@@ -1,11 +1,17 @@
 
 task list
-  take limit, like size, fall 100
+  take
+    limit
+    like size
+    fall 100
   like list
 
 task search
   take pattern, like text
-  take limit, like size, fall 10
+  take
+    limit
+    like size
+    fall 10
   like list
 
 task clear

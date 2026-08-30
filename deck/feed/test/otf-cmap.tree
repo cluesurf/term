@@ -29,46 +29,126 @@ task cmap-bytes
     like u8
   save result
     make list
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 1)
-  call push(read result, code 0)
-  call push(read result, code 3)
-  call push(read result, code 0)
-  call push(read result, code 10)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 12)
-  call push(read result, code 0)
-  call push(read result, code 12)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 28)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 1)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 65)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 90)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 0)
-  call push(read result, code 36)
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 1
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 3
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 10
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 12
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 12
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 28
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 1
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 65
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 90
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 0
+  call push
+    read result
+    code 36
   send back, read result
 
 test <cmap-bytes is 40 bytes long, sanity-checking the fixture itself>
@@ -89,7 +169,9 @@ test <the encoding record's platform-id and encoding-id round trip>
   save table
     call read-otf-cmap-table(call make-cursor(call cmap-bytes))
   save record
-    call get(read table/records, code 0)
+    call get
+      read table/records
+      code 0
   want hold
     call is-equal
       read record/platform-id
@@ -112,7 +194,9 @@ test <mine-at seeks to the subtable at the offset relative to the cmap table's o
   save table
     call read-otf-cmap-table(call make-cursor(call cmap-bytes))
   save record
-    call get(read table/records, code 0)
+    call get
+      read table/records
+      code 0
   want hold
     call is-equal
       call size(call format-12-groups(read record/subtable))
@@ -122,7 +206,9 @@ test <the format-12 group's char codes and start-glyph-id all read correctly>
   save table
     call read-otf-cmap-table(call make-cursor(call cmap-bytes))
   save record
-    call get(read table/records, code 0)
+    call get
+      read table/records
+      code 0
   save group
     call get(call format-12-groups(read record/subtable), code 0)
   want hold
@@ -137,7 +223,9 @@ test <write-otf-cmap-table then read-otf-cmap-table round trips the format-12 gr
     call read-otf-cmap-table
       call make-cursor(call write-otf-cmap-table(read table))
   save record
-    call get(read reread/records, code 0)
+    call get
+      read reread/records
+      code 0
   save group
     call get(call format-12-groups(read record/subtable), code 0)
   want hold
@@ -152,7 +240,9 @@ test <write-otf-cmap-table recomputes the subtable-offset correctly>
     call read-otf-cmap-table
       call make-cursor(call write-otf-cmap-table(read table))
   save record
-    call get(read reread/records, code 0)
+    call get
+      read reread/records
+      code 0
   want hold
     call is-equal
       read record/subtable-offset
@@ -205,7 +295,9 @@ test <a format-4 subtable's single segment round trips through write then read>
     call read-otf-cmap-table
       call make-cursor(call write-otf-cmap-table(call one-segment-table))
   save record
-    call get(read reread/records, code 0)
+    call get
+      read reread/records
+      code 0
   save segment
     call get(call format-4-segments(read record/subtable), code 0)
   want hold
@@ -218,7 +310,9 @@ test <a format-4 subtable's end-code sentinel and segment count are correct>
     call read-otf-cmap-table
       call make-cursor(call write-otf-cmap-table(call one-segment-table))
   save record
-    call get(read reread/records, code 0)
+    call get
+      read reread/records
+      code 0
   want hold
     call is-equal
       call size(call format-4-segments(read record/subtable))

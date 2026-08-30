@@ -11,53 +11,93 @@ task read-u16
   take cursor, like feed-cursor
   like number
   send back
-    call read-int(read cursor, code 2, make big, make unsigned)
+    call read-int
+      read cursor
+      code 2
+      make big
+      make unsigned
 
 task read-i16
   take cursor, like feed-cursor
   like number
   send back
-    call read-int(read cursor, code 2, make big, make signed)
+    call read-int
+      read cursor
+      code 2
+      make big
+      make signed
 
 task read-u32
   take cursor, like feed-cursor
   like number
   send back
-    call read-int(read cursor, code 4, make big, make unsigned)
+    call read-int
+      read cursor
+      code 4
+      make big
+      make unsigned
 
 task read-i32
   take cursor, like feed-cursor
   like number
   send back
-    call read-int(read cursor, code 4, make big, make signed)
+    call read-int
+      read cursor
+      code 4
+      make big
+      make signed
 
 task read-i64
   take cursor, like feed-cursor
   like number
   send back
-    call read-int(read cursor, code 8, make big, make signed)
+    call read-int
+      read cursor
+      code 8
+      make big
+      make signed
 
 task write-u16
   take writer, like feed-writer
   take value, like number
-  call write-int(read writer, read value, code 2, make big)
+  call write-int
+    read writer
+    read value
+    code 2
+    make big
 
 task write-i16
   take writer, like feed-writer
   take value, like number
-  call write-int(read writer, read value, code 2, make big)
+  call write-int
+    read writer
+    read value
+    code 2
+    make big
 
 task write-u32
   take writer, like feed-writer
   take value, like number
-  call write-int(read writer, read value, code 4, make big)
+  call write-int
+    read writer
+    read value
+    code 4
+    make big
 
 task write-i32
   take writer, like feed-writer
   take value, like number
-  call write-int(read writer, read value, code 4, make big)
+  call write-int
+    read writer
+    read value
+    code 4
+    make big
 
 task write-i64
   take writer, like feed-writer
   take value, like number
-  call write-int(read writer, read value, code 8, make big)
+  call write-int
+    read writer
+    read value
+    code 8
+    make big

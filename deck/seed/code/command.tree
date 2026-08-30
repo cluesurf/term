@@ -54,8 +54,14 @@ task parse
 
 task define
   take name, like text
-  take description, like text, need false
-  take version, like text, need false
+  take
+    description
+    like text
+    need false
+  take
+    version
+    like text
+    need false
   take commands
     like list
       like unknown
@@ -80,12 +86,27 @@ task define
 
 task flag
   take name, like text
-  take short, like text, need false
-  take kind, like text, fall text <text>
-  take description, like text, need false
-  take required, like boolean, fall false
+  take
+    short
+    like text
+    need false
+  take
+    kind
+    like text
+    fall text <text>
+  take
+    description
+    like text
+    need false
+  take
+    required
+    like boolean
+    fall false
   take fallback, need false
-  take choices, like list, need false
+  take
+    choices
+    like list
+    need false
   like command-flag
   send back
     make command-flag
@@ -99,8 +120,14 @@ task flag
 
 task argument
   take name, like text
-  take description, like text, need false
-  take required, like boolean, fall true
+  take
+    description
+    like text
+    need false
+  take
+    required
+    like boolean
+    fall true
   take fallback, need false
   like command-argument
   send back

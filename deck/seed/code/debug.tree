@@ -1,17 +1,32 @@
 
 task inspect
   take value
-  take depth, like size, fall 4
-  take color, like boolean, fall true
-  take width, like size, fall 80
+  take
+    depth
+    like size
+    fall 4
+  take
+    color
+    like boolean
+    fall true
+  take
+    width
+    like size
+    fall 80
   like text
 
 task print
   take value
-  take label, like text, need false
+  take
+    label
+    like text
+    need false
 
 task pause
 
 task assert
   take condition, like boolean
-  take message, like text, need false
+  take
+    message
+    like text
+    need false

@@ -2,7 +2,10 @@
 form suggestion
   link text, like text
   link label, like text
-  link kind, like text, need false
+  link
+    kind
+    like text
+    need false
 
 task suggest
   take input, like text

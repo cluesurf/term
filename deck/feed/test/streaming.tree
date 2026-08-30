@@ -1,0 +1,328 @@
+# The streaming cursors, which nothing exercised until now. Every other suite in this package builds its cursor
+# from an already-materialized buffer, so the whole `pull` / refill / compaction path — the reason this package
+# can read a file larger than memory at all — shipped without a single check on it. These sources hand back the
+# input in DELIBERATELY TINY chunks (one, two, three bytes at a time), so a boundary lands in the middle of a
+# multi-byte integer, in the middle of a NUL-terminated string, and in the middle of a JSON token. A cursor that
+# only refilled at token boundaries would pass a one-big-chunk test and fail every one of these.
+#
+# Run: term test, from deck/feed.
+
+load @term/seed/code/list
+  find push
+  find get
+  find set
+  find size
+  find slice
+  find join
+
+load @term/seed/code/maybe
+  find maybe
+  find some
+  find none
+
+load @term/seed/code/text
+  find substring
+  find char-count
+
+load ../code/base
+  find feed-cursor
+  find text-cursor
+  find make-cursor
+  find make-streaming-cursor
+  find make-streaming-text-cursor
+  find read-byte
+  find read-bytes
+  find read-int
+  find at-end
+  find text-cursor-at-end
+  find text-cursor-read
+
+load ../code/json/code
+  find read-json
+  find read-json-stream
+  find write-json
+
+load ../code/hex/code
+  find read-hex
+
+# a `pull` over a byte list that hands back at most `width` bytes per call, then `none` for ever. The position
+# lives in a one-element list rather than a plain local because the returned task closes over it and mutates it
+# across calls, which is the same cell trick `feed-cursor` itself documents.
+task make-byte-source
+  take bytes
+    like list
+      like u8
+  take width, like number
+  like task
+    like maybe
+      like list
+        like u8
+  save at
+    make list
+  call push
+    read at
+    code 0
+  send back
+    task next
+      like maybe
+        like list
+          like u8
+      save start
+        call get
+          read at
+          code 0
+      fork test
+        hook test
+          call is-minimum
+            read start
+            call size read bytes
+        hook hold
+          send back
+            make none
+      save end
+        call add
+          read start
+          read width
+      call set
+        read at
+        code 0
+        read end
+      send back
+        make some
+          bind
+            value
+            call slice
+              read bytes
+              read start
+              read end
+
+task make-text-source
+  take value, like text
+  take width, like number
+  like task
+    like maybe
+      like text
+  save at
+    make list
+  call push
+    read at
+    code 0
+  send back
+    task next
+      like maybe
+        like text
+      save start
+        call get
+          read at
+          code 0
+      fork test
+        hook test
+          call is-minimum
+            read start
+            call char-count read value
+        hook hold
+          send back
+            make none
+      call set
+        read at
+        code 0
+        call add
+          read start
+          read width
+      send back
+        make some
+          bind
+            value
+            call substring
+              read value
+              read start
+              call add
+                read start
+                read width
+
+# every byte of a cursor, read one at a time until it says it is done: the plainest possible exercise of refill,
+# and the one that catches an `at-end` that lies.
+task drain-bytes
+  take cursor, like feed-cursor
+  like list
+    like u8
+  save result
+    make list
+  walk test
+    hook test
+      call not, call at-end(read cursor)
+    hook hold
+      call push
+        read result
+        call read-byte read cursor
+  send back, read result
+
+task streamed-round-trip
+  take input, like text
+  take width, like number
+  like list
+    like u8
+  send back
+    call drain-bytes
+      call make-streaming-cursor(call make-byte-source(call read-hex(read input), read width))
+
+test <a streaming byte cursor one byte per chunk yields the whole input>
+  want hold
+    call is-equal
+      call join(call streamed-round-trip(text <00ff7a2b>, code 1), text <,>)
+      text <0,255,122,43>
+
+test <a chunk width that does not divide the input still yields the whole input>
+  want hold
+    call is-equal
+      call join(call streamed-round-trip(text <00ff7a2b3c>, code 3), text <,>)
+      text <0,255,122,43,60>
+
+test <a chunk wider than the whole input yields the whole input>
+  want hold
+    call is-equal
+      call join(call streamed-round-trip(text <00ff7a>, code 64), text <,>)
+      text <0,255,122>
+
+test <an empty streaming source is immediately at its end>
+  want hold
+    call is-equal
+      call size(call streamed-round-trip(text <>, code 4))
+      code 0
+
+# read-bytes takes its whole block in one slice now, so it has to be the thing that PULLS enough to satisfy the
+# width. With a two-byte source and a five-byte request it must refill three times before it can answer.
+test <read-bytes pulls across several chunks to satisfy one wide request>
+  save cursor
+    call make-streaming-cursor
+      call make-byte-source(call read-hex(text <0102030405060708>), code 2)
+  save block
+    call read-bytes
+      read cursor
+      code 5
+  want hold
+    call is-equal
+      call join
+        read block
+        text <,>
+      text <1,2,3,4,5>
+
+test <a read-bytes that outruns the source stops at what the source had>
+  save cursor
+    call make-streaming-cursor
+      call make-byte-source(call read-hex(text <010203>), code 2)
+  save block
+    call read-bytes
+      read cursor
+      code 16
+  want hold
+    call is-equal
+      call join
+        read block
+        text <,>
+      text <1,2,3>
+
+# a four-byte big-endian integer read from a source that only ever hands over one byte at a time: the refill has
+# to happen three times INSIDE one read-int, between its own per-byte reads.
+test <a multi-byte integer reads correctly across chunk boundaries>
+  save cursor
+    call make-streaming-cursor
+      call make-byte-source(call read-hex(text <0000010f>), code 1)
+  want hold
+    call is-equal
+      call read-int
+        read cursor
+        code 4
+        make big
+        make unsigned
+      code 271
+
+test <a little-endian integer reads correctly across chunk boundaries>
+  save cursor
+    call make-streaming-cursor
+      call make-byte-source(call read-hex(text <0f010000>), code 1)
+  want hold
+    call is-equal
+      call read-int
+        read cursor
+        code 4
+        make little
+        make unsigned
+      code 271
+
+# The headline claim of the whole streaming design: a document parsed a few characters at a time is the same
+# document parsed all at once. The chunk width is coprime with every token length here, so boundaries fall inside
+# a key, inside a number, and between a value and its comma.
+task streamed-json
+  take input, like text
+  take width, like number
+  like text
+  send back
+    call write-json
+      call read-json-stream
+        call make-streaming-text-cursor
+          call make-text-source
+            read input
+            read width
+
+test <a JSON object parses identically from a streaming text cursor>
+  want hold
+    call is-equal
+      call streamed-json(text <{"alpha":1,"beta":[1,2,3],"gamma":{"x":true}}>, code 3)
+      call write-json(call read-json(text <{"alpha":1,"beta":[1,2,3],"gamma":{"x":true}}>))
+
+test <a JSON document parses identically one character at a time>
+  want hold
+    call is-equal
+      call streamed-json(text <{"a":[1,-2.5,null,false],"b":"str"}>, code 1)
+      call write-json(call read-json(text <{"a":[1,-2.5,null,false],"b":"str"}>))
+
+test <a streamed JSON string spanning many chunks keeps every character>
+  want hold
+    call is-equal
+      call streamed-json(text <"the quick brown fox jumps over the lazy dog">, code 2)
+      text <"the quick brown fox jumps over the lazy dog">
+
+test <a streamed bare number parses to the same value>
+  want hold
+    call is-equal
+      call streamed-json(text <-3.5>, code 1)
+      text <-3.5>
+
+# past the compaction threshold the cursor drops its consumed prefix and resets `position` to zero mid-parse, so
+# this is the one test where compaction actually fires rather than being configured and never reached.
+task long-json-array
+  take count, like number
+  like text
+  save parts
+    make list
+  save index, code 0
+  walk test
+    hook test
+      call is-below
+        read index
+        read count
+    hook hold
+      call push
+        read parts
+        text <"0123456789abcdef0123456789abcdef">
+      save index
+        call add
+          read index
+          code 1
+  save joined
+    call join
+      read parts
+      text <,>
+  send back
+    text <[{{joined}}]>
+
+test <a document larger than the compaction threshold streams correctly>
+  save input
+    call long-json-array(code 4096)
+  want hold
+    call is-equal
+      call streamed-json
+        read input
+        code 997
+      call write-json(call read-json(read input))

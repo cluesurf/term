@@ -7,7 +7,10 @@ mine controls
     mine chord, share 127
 
 mine linear-whitespace
-  mine sieve, mine form, form carriage-return-line-feed
+  mine
+    sieve
+    mine form
+    form carriage-return-line-feed
   mine crest
     bind start, share 1
     mine crown

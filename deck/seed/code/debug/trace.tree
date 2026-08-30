@@ -8,16 +8,25 @@ form trace-entry
 
 task wrap
   take work, like task
-  take name, like text, need false
+  take
+    name
+    like text
+    need false
   like task
 
 task start
-  take filter, like text, need false
+  take
+    filter
+    like text
+    need false
 
 task stop
   like list
 
 task format
   take entries, like list
-  take depth, like size, fall 10
+  take
+    depth
+    like size
+    fall 10
   like text

@@ -29,7 +29,10 @@ bind do-stop
 
 task stop
   take child, like child
-  take form, like text, fall text <gentle>
+  take
+    form
+    like text
+    fall text <gentle>
 
   call do-stop
     read child
@@ -76,8 +79,14 @@ bind do-read
 task read
   note async
   take child, like child
-  take kind, like text, fall text <stdout>
-  take format, like text, fall text <text>
+  take
+    kind
+    like text
+    fall text <stdout>
+  take
+    format
+    like text
+    fall text <text>
   like text
 
   send back
