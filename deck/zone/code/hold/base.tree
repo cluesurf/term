@@ -64,6 +64,9 @@ task read-hold-many
   note async
   take kind, like text
   take body, like text
+  # The organization. The SDK takes it on every call, where the retired
+  # `bws` path derived it from the credential.
+  take team, like text
   take list, like list
   like list
   fork case, read kind
@@ -71,6 +74,7 @@ task read-hold-many
       send back
         call bitwarden-read-many
           bind body, read body
+          bind team, read team
           bind list, read list
           wait true
   send back

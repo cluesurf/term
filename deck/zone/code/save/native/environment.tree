@@ -13,6 +13,16 @@
 # `ZONE_CODE_<TIER>` for a specific one (`ZONE_CODE_PRODUCTION`), so a
 # runner can carry a token per sort. The sort-specific name wins.
 #
+# THE MASTER KEY IS `ZONE_LOCK`, and is not part of that pattern.
+#
+# It used to be, and that was a real defect twice over. The key is stored
+# under the seat `<host>:seal`, so deriving the name from the sort gave
+# `ZONE_CODE_SEAL` -- which reads as the credential for a tier named `seal`,
+# and would be silently picked up by one. It also meant renaming the
+# documented name to `ZONE_LOCK` changed every message and no actual read,
+# so a correctly set `ZONE_LOCK` was ignored and the failure surfaced as
+# `Invalid key length` out of SubtleCrypto, three layers from the cause.
+#
 # There is nothing to save or remove: the value lives in the
 # environment for the life of the process and is owned by whatever set
 # it. `term zone code save` / `toss` say so rather than pretending.
@@ -39,14 +49,14 @@ bind do-environment-read
   like maybe
     head text
   case node
-    text <(function () { var sort = String($spot.name).split(":").pop().toUpperCase().replace(/[^A-Z0-9]+/g, "_"); var v = process.env["ZONE_CODE_" + sort] || process.env.ZONE_CODE; return (v && v.length \> 0) ? { form: "some", value: v } : { form: "none" } })()>
+    text <(function () { var sort = String($spot.name).split(":").pop(); if (sort === "seal") { var k = process.env.ZONE_LOCK; return (k && k.length \> 0) ? { form: "some", value: k } : { form: "none" } } var tier = sort.toUpperCase().replace(/[^A-Z0-9]+/g, "_"); var v = process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE; return (v && v.length \> 0) ? { form: "some", value: v } : { form: "none" } })()>
 
 # Whether the environment carries a token for this seat.
 bind do-environment-have
   take spot, like seat
   like boolean
   case node
-    text <(function () { var sort = String($spot.name).split(":").pop().toUpperCase().replace(/[^A-Z0-9]+/g, "_"); return Boolean((process.env["ZONE_CODE_" + sort] || process.env.ZONE_CODE || "").length) })()>
+    text <(function () { var sort = String($spot.name).split(":").pop(); if (sort === "seal") { return Boolean((process.env.ZONE_LOCK || "").length) } var tier = sort.toUpperCase().replace(/[^A-Z0-9]+/g, "_"); return Boolean((process.env["ZONE_CODE_" + tier] || process.env.ZONE_CODE || "").length) })()>
 
 # Exportable wrapper: a native `bind` is file-local.
 task environment-read

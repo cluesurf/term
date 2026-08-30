@@ -16,7 +16,7 @@ TERM_HOST="$ZONE/../../host/line.js"
 WORK="$(mktemp -d)"
 PROJ="$WORK/proj"
 SBOX="$WORK/home"
-mkdir -p "$PROJ" "$SBOX/.config/zone"
+mkdir -p "$PROJ" "$SBOX/.base/@term/zone"
 
 cleanup(){ rm -rf "$WORK"; }
 trap cleanup EXIT
@@ -40,7 +40,7 @@ zone word.surf
     need sentry-dsn
 EOF
 
-cat > "$SBOX/.config/zone/zone.tree" <<'EOF'
+cat > "$SBOX/.base/@term/zone/zone.tree" <<'EOF'
 mind lance
 host freshbox
 team cluesurf
@@ -48,7 +48,10 @@ sort moon
 save env
 EOF
 
-export PATH="$ZONE/test/fixture/bin-read:$PATH"
+# THE FAKE IS THE SDK NOW, not a `bws` on PATH. Reading moved off the
+# command line tool, so a fake bws would sit there never being called while
+# every assertion failed. `NODE_PATH` is how the shim's `require` finds it.
+export NODE_PATH="$ZONE/test/fixture/sdk/node_modules"
 export HOME="$SBOX"
 export SEED_CACHE_HOME="$SBOX/.cache"
 export ZONE_SAVE=env
@@ -130,17 +133,24 @@ zone word.surf
     need sentry-dsn
 EOF
 : > "$ZONE_FAKE_LOG"
+# COUNTED BY VALUES FETCHED, NOT BY CALLS.
+#
+# Reading goes through the SDK now, which lists the organization once and
+# then asks for values by id. So the number of CALLS is the same whether one
+# zone was named or all of them, and counting calls would say isolation was
+# lost when it was not. What matters is which values crossed the wire, and
+# `secret get <ids>` names exactly those.
 zone read --fresh >/dev/null 2>&1
-whole=$(grep -c "secret list" "$ZONE_FAKE_LOG")
+whole=$(grep -o "secret get .*" "$ZONE_FAKE_LOG" | tr ',' '\n' | grep -c "s-")
 
 : > "$ZONE_FAKE_LOG"
 zone read word.surf --fresh >/dev/null 2>&1
-narrow=$(grep -c "secret list" "$ZONE_FAKE_LOG")
+narrow=$(grep -o "secret get .*" "$ZONE_FAKE_LOG" | tr ',' '\n' | grep -c "s-")
 
-[ "$whole" -gt "$narrow" ] && ok "a named path fetches fewer projects ($narrow vs $whole)" \
-                           || no "naming a path fetched $narrow, same as the whole tree ($whole)"
-grep -q "secret list base " "$ZONE_FAKE_LOG" && ok "it still fetches the zones it inherits from" \
-                                             || no "it skipped an ancestor, so inherited names would be missing"
+[ "$whole" -gt "$narrow" ] && ok "a named path fetches fewer values ($narrow vs $whole)" \
+                           || no "naming a path fetched $narrow values, same as the whole tree ($whole)"
+grep -q "s-1" "$ZONE_FAKE_LOG" && ok "it still fetches the zones it inherits from" \
+                                || no "it skipped an ancestor, so inherited names would be missing"
 grep -q "word.surf/star" "$ZONE_FAKE_LOG" && no "it fetched a zone BELOW the one asked for" \
                                           || ok "it does not fetch below the named zone"
 

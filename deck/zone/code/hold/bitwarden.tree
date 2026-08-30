@@ -101,20 +101,23 @@ bind do-bitwarden-make
 # names the value, which is more use than a provider error naming a project.
 bind do-bitwarden-read-many
   take body, like text
+  take team, like text
   take list, like list
   like list
   case node
-    text <(function () { var cp = require("node:child_process"); var running = $list.map(function (bind) { return new Promise(function (done) { cp.execFile("bws", ["secret", "list", bind, "--output", "json"], { encoding: "utf8", maxBuffer: 33554432, timeout: 20000, killSignal: "SIGKILL", env: Object.assign({}, process.env, { BWS_ACCESS_TOKEN: $body }) }, function (bad, out) { if (bad) { done({ bind: bind, hold: [] }); return } try { done({ bind: bind, hold: JSON.parse(out).map(function (s) { var k = String(s.key); var cut = k.indexOf(":"); if (cut \> 0) { k = k.slice(cut + 1) } return { name: k.toLowerCase().split("_").join("-"), body: s.value, note: s.note || "" } }) }) } catch (e) { done({ bind: bind, hold: [] }) } }) }) }); return Promise.all(running) })()>
+    text <(async function () { var all = await vault.all($body, $team, $list); var want = $list; var by = {}; want.forEach(function (bind) { by[bind] = [] }); var loose = []; all.forEach(function (one) { var row = { name: one.name, body: one.body, note: one.note }; if (one.bind && by[one.bind]) { by[one.bind].push(row) } else { loose.push(row) } }); return want.map(function (bind) { return { bind: bind, hold: by[bind].length ? by[bind] : loose } }) })()>
 
 # Exportable wrapper: a native `bind` is file-local.
 task bitwarden-read-many
   note async
   take body, like text
+  take team, like text
   take list, like list
   like list
   send back
     call do-bitwarden-read-many
       bind body, read body
+      bind team, read team
       bind list, read list
 
 # Exportable wrapper: a native `bind` is file-local.

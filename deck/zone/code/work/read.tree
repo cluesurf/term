@@ -533,6 +533,7 @@ task pull
     call read-hold-many
       bind kind, read root/base
       bind body, read token
+      bind team, read root/team
       bind list, read binds
       wait true
 
